@@ -94,11 +94,17 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
 
     // Cursor mapping only matters when the embedded viewport is
     // visible. Hide the host cursor whenever a selector is open so the
-    // pane cursor doesn't blink behind the menu.
+    // pane cursor doesn't blink behind the menu. The skip and h_offset
+    // computed here MUST match what `render_embedded_viewport` will
+    // pick — otherwise the cursor lands at the wrong row when the user
+    // is panned away from the bottom-right corner.
     let new_cursor = if state.expanded.is_none() {
         let viewport_lines_len = state.current_pane_viewport_len();
-        let skip = viewport_lines_len.saturating_sub(viewport_height);
-        compute_cursor_position(state, body_top, viewport_height, cols, skip)
+        let max_v_pan = viewport_lines_len.saturating_sub(viewport_height);
+        let v_pan = state.viewport_v_pan.min(max_v_pan);
+        let skip = max_v_pan - v_pan;
+        let h_offset = state.viewport_h_pan;
+        compute_cursor_position(state, body_top, viewport_height, cols, skip, h_offset)
     } else {
         None
     };
@@ -161,6 +167,7 @@ fn compute_cursor_position(
     viewport_height: usize,
     cols: usize,
     skip: usize,
+    h_offset: usize,
 ) -> Option<(usize, usize)> {
     if viewport_height == 0 {
         return None;
@@ -169,17 +176,20 @@ fn compute_cursor_position(
     let pane_id = pane_id_of(&pane);
     let (cursor_x, cursor_y) = state.latest_pane_contents.get(&pane_id)?.cursor?;
     if cursor_y < skip {
-        return None; // above the bottom-anchored slice
+        return None; // above the rendered slice (user has panned up)
     }
     let row_in_slice = cursor_y - skip;
     if row_in_slice >= viewport_height {
-        return None; // below the slice (shouldn't happen with skip = len - height)
+        return None; // below the rendered slice (shouldn't normally happen)
     }
-    if cursor_x >= cols {
-        return None; // past the right edge
+    if cursor_x < h_offset {
+        return None; // left of the rendered slice (user has panned right)
+    }
+    let plugin_x = cursor_x - h_offset;
+    if plugin_x >= cols {
+        return None; // past the right edge of the rendered slice
     }
     let plugin_y = viewport_top + row_in_slice;
-    let plugin_x = cursor_x;
     Some((plugin_x, plugin_y))
 }
 
@@ -890,8 +900,33 @@ fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize,
     // Anchor the slice to the bottom of the pane's viewport: when the
     // pane is taller than our embedded area, the most recent (bottom)
     // lines are what the user wants to see — that's where the cursor
-    // and most-recent terminal output live.
-    let skip = viewport_lines.len().saturating_sub(height);
+    // and most-recent terminal output live. `viewport_v_pan` shifts
+    // that slice upward (toward older content). Clamp here so a stale
+    // pan offset survives viewport-length changes without flipping
+    // into negative territory or pinning the user past the new top.
+    let max_v_pan = viewport_lines.len().saturating_sub(height);
+    state.viewport_v_pan = state.viewport_v_pan.min(max_v_pan);
+    let skip = max_v_pan - state.viewport_v_pan;
+    // Horizontal pan: anchor the slice to col 0 by default, and let
+    // `viewport_h_pan` walk it to the right. Use `pane_content_columns`
+    // from the most recent `PaneInfo` as the authoritative width — that
+    // is the visible cell count of the pane's grid. Fall back to the
+    // widest cached line when no `PaneInfo` is available (transient
+    // race during pane teardown).
+    let pane_width = pane
+        .as_ref()
+        .map(|p| p.pane_content_columns)
+        .filter(|&w| w > 0)
+        .unwrap_or_else(|| {
+            viewport_lines
+                .iter()
+                .map(|l| visible_width(l))
+                .max()
+                .unwrap_or(0)
+        });
+    let max_h_pan = pane_width.saturating_sub(cols);
+    state.viewport_h_pan = state.viewport_h_pan.min(max_h_pan);
+    let h_offset = state.viewport_h_pan;
 
     // Record where the viewport landed so the mouse handler can
     // reverse-map clicks into pane coordinates. We store this even when
@@ -902,6 +937,7 @@ fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize,
         row_end,
         cols,
         skip,
+        h_offset,
     });
 
     // Disable autowrap (DECAWM, `\x1b[?7l`) for the duration of the
@@ -919,24 +955,37 @@ fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize,
     print!("\x1b[?7l");
 
     // Reset before each row to keep the chrome's styling separate from
-    // the pane's emitted SGR runs.
+    // the pane's emitted SGR runs. When `h_offset` is non-zero the
+    // slicer trims each line down to the visible window before
+    // emission, so DECAWM-off is still doing the same job — dropping
+    // overflow past `cols` cells from a now-trimmed string.
     for i in 0..height {
         let row = row_start + i;
         print!("{}{}", RESET, move_to(row, 0));
         if let Some(line) = viewport_lines.get(skip + i) {
-            // Trust the ANSI; xterm style resets at end of pane line
-            // are already part of the rendered stream.
-            print!("{}", line);
+            if h_offset == 0 {
+                // Fast path: no horizontal pan, no slicing needed —
+                // trust the ANSI; xterm style resets at end of pane
+                // line are already part of the rendered stream.
+                print!("{}", line);
+            } else {
+                let sliced = slice_ansi_visible(line, h_offset, cols);
+                print!("{}", sliced);
+            }
         } else if i == 0 && pane_id.is_none() {
             print!("{}(no pane selected)", RESET);
         } else if i == 0 && viewport_lines.is_empty() {
             print!("{}(awaiting first render…)", RESET);
         }
-        // Clear any overrun from the previous frame.
-        let printed_width = viewport_lines
+        // Clear any overrun from the previous frame. When the user
+        // is panned right, only the slice of the line past `h_offset`
+        // contributes to the rendered width — anything to the left of
+        // `h_offset` was trimmed by the slicer and never emitted.
+        let raw_width = viewport_lines
             .get(skip + i)
             .map(|l| visible_width(l))
             .unwrap_or(0);
+        let printed_width = raw_width.saturating_sub(h_offset).min(cols);
         if printed_width < cols {
             print!("{}\x1b[K", RESET);
         }
@@ -994,6 +1043,236 @@ fn utf8_char_len(byte: u8) -> usize {
         3
     } else {
         4
+    }
+}
+
+/// Slice `line` so the output, when emitted at column 0, renders the
+/// same visible cells that the original would have rendered at columns
+/// `[h_offset, h_offset + max_cols)`. ANSI escape sequences are
+/// preserved verbatim so style state propagates correctly into the
+/// visible window. Wide characters straddling the left boundary are
+/// replaced with a single space placeholder so the rest of the line
+/// stays column-aligned; wide characters straddling the right boundary
+/// are dropped entirely (caller pads with `\x1b[K`).
+///
+/// A trailing `RESET` is appended so any open SGR run does not bleed
+/// into the next row's chrome.
+pub(crate) fn slice_ansi_visible(line: &str, h_offset: usize, max_cols: usize) -> String {
+    if max_cols == 0 {
+        return String::new();
+    }
+    let mut out = String::new();
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    let mut cell_index = 0usize;
+    let right_edge = h_offset.saturating_add(max_cols);
+    while i < bytes.len() {
+        if bytes[i] == 0x1b {
+            // Emit the entire escape sequence regardless of where the
+            // visible cell cursor sits — escapes cost zero visible
+            // cells, and replaying every escape we have walked past
+            // means the first visible cell inside the slice arrives
+            // with the correct SGR state.
+            let start = i;
+            i += 1;
+            if i < bytes.len() && bytes[i] == b'[' {
+                // CSI: ESC [ <params> <final byte in 0x40..=0x7E>
+                i += 1;
+                while i < bytes.len() && !(bytes[i] >= 0x40 && bytes[i] <= 0x7e) {
+                    i += 1;
+                }
+                if i < bytes.len() {
+                    i += 1;
+                }
+            } else if i < bytes.len() && bytes[i] == b']' {
+                // OSC: ESC ] <body> BEL | ESC ] <body> ESC \
+                i += 1;
+                while i < bytes.len()
+                    && bytes[i] != 0x07
+                    && !(bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i + 1] == b'\\')
+                {
+                    i += 1;
+                }
+                if i < bytes.len() {
+                    if bytes[i] == 0x07 {
+                        i += 1;
+                    } else if bytes[i] == 0x1b {
+                        i += 2.min(bytes.len() - i);
+                    }
+                }
+            } else if i < bytes.len() {
+                // Two-byte ESC sequence (rare in our viewport but
+                // walked over so we don't desynchronise on stray
+                // ESC + letter).
+                i += 1;
+            }
+            // Safe because the walker only advances on valid UTF-8
+            // boundaries inside the escape body (ASCII control range).
+            if let Ok(esc) = std::str::from_utf8(&bytes[start..i]) {
+                out.push_str(esc);
+            }
+            continue;
+        }
+        let ch_len = utf8_char_len(bytes[i]).max(1);
+        let end = (i + ch_len).min(bytes.len());
+        let ch_bytes = &bytes[i..end];
+        let ch_str = match std::str::from_utf8(ch_bytes) {
+            Ok(s) => s,
+            Err(_) => {
+                i = end;
+                continue;
+            },
+        };
+        let w = UnicodeWidthStr::width(ch_str);
+        if w == 0 {
+            // Zero-width chars (e.g. combining marks) ride along with
+            // the previous cell if any visible content has been
+            // emitted; otherwise they are dropped to avoid orphan
+            // marks at the start of the slice.
+            if cell_index > h_offset && cell_index <= right_edge && !out.is_empty() {
+                out.push_str(ch_str);
+            }
+            i = end;
+            continue;
+        }
+        if cell_index + w <= h_offset {
+            // Still left of the visible window.
+            cell_index += w;
+            i = end;
+            continue;
+        }
+        if cell_index < h_offset {
+            // Wide char straddling the left boundary. Emit a single
+            // space to preserve column alignment for the cells that
+            // follow.
+            out.push(' ');
+            cell_index += w;
+            i = end;
+            continue;
+        }
+        if cell_index >= right_edge {
+            break;
+        }
+        if cell_index + w > right_edge {
+            // Wide char straddling the right boundary: drop it. The
+            // caller pads with `\x1b[K`, so leaving the cell blank
+            // here is correct.
+            break;
+        }
+        out.push_str(ch_str);
+        cell_index += w;
+        i = end;
+    }
+    out.push_str(RESET);
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    //! Tests for the horizontal slicer used by the embedded viewport.
+    //!
+    //! Each test pins one concern: ASCII window math, escape preservation,
+    //! wide-character handling at boundaries, and the empty / oversize
+    //! cases. The slicer always appends a trailing `\x1b[0m` so the next
+    //! row's chrome cannot inherit a stale SGR run.
+    use super::*;
+
+    /// Trailing `RESET` is part of the contract; tests assert the visible
+    /// portion separately.
+    fn visible(s: &str) -> &str {
+        s.strip_suffix(RESET).unwrap_or(s)
+    }
+
+    #[test]
+    fn ascii_slice_inside_line() {
+        let line = "abcdefghij";
+        let sliced = slice_ansi_visible(line, 2, 4);
+        assert_eq!(visible(&sliced), "cdef");
+    }
+
+    #[test]
+    fn ascii_slice_at_left_edge() {
+        let line = "abcdefghij";
+        let sliced = slice_ansi_visible(line, 0, 4);
+        assert_eq!(visible(&sliced), "abcd");
+    }
+
+    #[test]
+    fn ascii_slice_past_right_edge() {
+        let line = "abcd";
+        let sliced = slice_ansi_visible(line, 1, 10);
+        // Visible portion is the rest of the line; padding is the
+        // caller's job (via \x1b[K).
+        assert_eq!(visible(&sliced), "bcd");
+    }
+
+    #[test]
+    fn empty_when_offset_past_line_width() {
+        let line = "abcd";
+        let sliced = slice_ansi_visible(line, 10, 4);
+        assert_eq!(visible(&sliced), "");
+        assert!(sliced.ends_with(RESET));
+    }
+
+    #[test]
+    fn max_cols_zero_returns_empty() {
+        let sliced = slice_ansi_visible("abcd", 0, 0);
+        assert_eq!(sliced, "");
+    }
+
+    #[test]
+    fn ansi_escape_preserved_when_in_window() {
+        let line = "\x1b[31mred\x1b[0m end";
+        let sliced = slice_ansi_visible(line, 0, 7);
+        // Visible cells: "red end" — escapes ride along verbatim.
+        assert!(sliced.contains("\x1b[31m"));
+        assert!(sliced.contains("\x1b[0m"));
+        assert!(sliced.contains("red"));
+        assert!(sliced.contains("end"));
+    }
+
+    #[test]
+    fn ansi_escape_replayed_when_offset_skips_text() {
+        // The slicer must emit every escape it walked past so the
+        // first visible cell renders with the correct SGR state.
+        let line = "\x1b[31maaaa\x1b[32mbbbb";
+        let sliced = slice_ansi_visible(line, 4, 4);
+        // Window covers the four 'b' cells; the red escape was walked
+        // past but should still appear, followed by the green escape
+        // that styles the visible region.
+        assert!(sliced.contains("\x1b[31m"));
+        assert!(sliced.contains("\x1b[32m"));
+        // Visible payload is "bbbb" (plus the final RESET).
+        assert!(sliced.contains("bbbb"));
+        assert!(!sliced.contains("aaaa"));
+    }
+
+    #[test]
+    fn wide_char_straddling_left_boundary_becomes_space() {
+        // A CJK char "中" is 2 cells wide. Place it so its left half
+        // is at cell 0 and the slice starts at cell 1.
+        let line = "中abc";
+        let sliced = slice_ansi_visible(line, 1, 3);
+        // Cell 1 (right half of the wide char) becomes a space; then
+        // 'a' and 'b' fill cells 2 and 3.
+        assert_eq!(visible(&sliced), " ab");
+    }
+
+    #[test]
+    fn wide_char_straddling_right_boundary_dropped() {
+        // Window covers cells [0, 3); "中" spans cells 2..=3 so its
+        // right half falls outside the window. The whole char is
+        // dropped — the caller pads with \x1b[K.
+        let line = "ab中cd";
+        let sliced = slice_ansi_visible(line, 0, 3);
+        assert_eq!(visible(&sliced), "ab");
+    }
+
+    #[test]
+    fn wide_char_entirely_inside_window() {
+        let line = "ab中cd";
+        let sliced = slice_ansi_visible(line, 0, 4);
+        assert_eq!(visible(&sliced), "ab中");
     }
 }
 

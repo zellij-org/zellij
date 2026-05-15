@@ -312,6 +312,12 @@ pub trait Pane {
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
+    /// Horizontal wheel ticks. Default no-op — only plugin panes
+    /// consume these today (to drive the mobile plugin's embedded-
+    /// viewport pan). Terminal panes have no horizontal scrollback,
+    /// so the wheel event is discarded for them.
+    fn scroll_left(&mut self, _count: usize, _client_id: ClientId) {}
+    fn scroll_right(&mut self, _count: usize, _client_id: ClientId) {}
     fn clear_scroll(&mut self);
     fn is_scrolled(&self) -> bool;
     fn active_at(&self) -> Instant;

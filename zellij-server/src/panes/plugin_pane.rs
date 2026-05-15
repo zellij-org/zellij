@@ -595,6 +595,29 @@ impl Pane for PluginPane {
             )]))
             .unwrap();
     }
+    fn scroll_left(&mut self, count: usize, client_id: ClientId) {
+        // Horizontal wheel: forwarded to the plugin via the same
+        // `Event::Mouse` surface as vertical scroll. The only plugin
+        // that does anything with it today is the mobile plugin's
+        // embedded-viewport panner; every other plugin silently
+        // ignores the variant in its `match Mouse { … }`.
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(vec![(
+                Some(self.pid),
+                Some(client_id),
+                Event::Mouse(Mouse::ScrollLeft(count)),
+            )]))
+            .unwrap();
+    }
+    fn scroll_right(&mut self, count: usize, client_id: ClientId) {
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(vec![(
+                Some(self.pid),
+                Some(client_id),
+                Event::Mouse(Mouse::ScrollRight(count)),
+            )]))
+            .unwrap();
+    }
     fn clear_screen(&mut self) {
         // do nothing
     }

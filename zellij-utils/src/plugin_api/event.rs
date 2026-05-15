@@ -1624,6 +1624,22 @@ impl TryFrom<MouseEventPayload> for Mouse {
                 ),
                 _ => Err("Malformed payload for mouse hover"),
             },
+            Some(MouseEventName::MouseScrollLeft) => {
+                match mouse_event_payload.mouse_event_payload {
+                    Some(mouse_event_payload::MouseEventPayload::LineCount(line_count)) => {
+                        Ok(Mouse::ScrollLeft(line_count as usize))
+                    },
+                    _ => Err("Malformed payload for mouse scroll left"),
+                }
+            },
+            Some(MouseEventName::MouseScrollRight) => {
+                match mouse_event_payload.mouse_event_payload {
+                    Some(mouse_event_payload::MouseEventPayload::LineCount(line_count)) => {
+                        Ok(Mouse::ScrollRight(line_count as usize))
+                    },
+                    _ => Err("Malformed payload for mouse scroll right"),
+                }
+            },
             None => Err("Malformed payload for MouseEventName"),
         }
     }
@@ -1688,6 +1704,18 @@ impl TryFrom<Mouse> for MouseEventPayload {
                         line: line as i64,
                         column: column as i64,
                     },
+                )),
+            }),
+            Mouse::ScrollLeft(cols) => Ok(MouseEventPayload {
+                mouse_event_name: MouseEventName::MouseScrollLeft as i32,
+                mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
+                    cols as u32,
+                )),
+            }),
+            Mouse::ScrollRight(cols) => Ok(MouseEventPayload {
+                mouse_event_name: MouseEventName::MouseScrollRight as i32,
+                mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
+                    cols as u32,
                 )),
             }),
         }

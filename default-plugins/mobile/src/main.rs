@@ -181,6 +181,52 @@ impl ZellijPlugin for State {
                 true
             },
             Event::Mouse(mouse) => {
+                match mouse {
+                    // Swipe up on the viewport pans the rendered slice
+                    // toward older content (away from the bottom-anchored
+                    // default). Capped by `render_embedded_viewport` on
+                    // the next frame, so the pan offset cannot exceed
+                    // what the current cached viewport supports.
+                    Mouse::ScrollUp(lines) => {
+                        if pan_is_allowed(self) {
+                            self.viewport_v_pan = self.viewport_v_pan.saturating_add(lines);
+                            return true;
+                        }
+                        return false;
+                    },
+                    Mouse::ScrollDown(lines) => {
+                        if pan_is_allowed(self) {
+                            self.viewport_v_pan =
+                                self.viewport_v_pan.saturating_sub(lines);
+                            return true;
+                        }
+                        return false;
+                    },
+                    // Convention (see mobile_panning.md): ScrollRight
+                    // increases `viewport_h_pan` to reveal more of the
+                    // right edge — mirrors swipe-up = ScrollUp =
+                    // reveal more recent content. Render-side clamps
+                    // against the pane's actual width on the next
+                    // frame, so we don't need to know `pane_width`
+                    // here.
+                    Mouse::ScrollRight(cols) => {
+                        if pan_is_allowed(self) {
+                            self.viewport_h_pan =
+                                self.viewport_h_pan.saturating_add(cols);
+                            return true;
+                        }
+                        return false;
+                    },
+                    Mouse::ScrollLeft(cols) => {
+                        if pan_is_allowed(self) {
+                            self.viewport_h_pan =
+                                self.viewport_h_pan.saturating_sub(cols);
+                            return true;
+                        }
+                        return false;
+                    },
+                    _ => {},
+                }
                 if let Some((line, col)) = mouse.position() {
                     if let Mouse::LeftClick(_, _) = mouse {
                         // Top-bar / selector regions always win —
@@ -285,6 +331,33 @@ fn merge_held_modifiers(key: &KeyWithModifier, ctrl: bool, alt: bool) -> KeyWith
     merged
 }
 
+/// True when a scroll event should drive the embedded-viewport pan
+/// offsets rather than be dropped.
+///
+/// The check intentionally omits any "did the gesture land inside the
+/// viewport region" predicate — `Mouse::ScrollUp/Down` carry no
+/// position today (see `Mouse::position` in `zellij-utils/src/data.rs`),
+/// and Stage 4 of the panning plan extends the variants with coords
+/// so this gate can grow a region check then. Until then the only
+/// scrollable surface in the plugin is the embedded viewport, so any
+/// scroll while a viewport is showing is unambiguous.
+fn pan_is_allowed(state: &State) -> bool {
+    // No panning while a selector is open: the menu replaces the
+    // viewport, so the gesture target the user expects to scroll is
+    // the menu itself, not the hidden viewport behind it. (The menu
+    // is not scrollable today; the event is simply dropped.)
+    if state.expanded.is_some() {
+        return false;
+    }
+    // Need a selected pane with cached content — otherwise the pan
+    // offset has nothing to act on and the renderer would clamp it
+    // back to 0 on the next frame anyway.
+    if state.current_pane().is_none() {
+        return false;
+    }
+    state.current_pane_viewport_len() > 0
+}
+
 /// Build an SGR mouse left-click press+release sequence targeting the
 /// (0-based) `pane_row`/`pane_col` of the underlying pane's viewport.
 /// SGR mouse coordinates are 1-based. Emits press then release in a
@@ -342,6 +415,11 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             // back to the first pane in the newly-selected tab.
             state.selected_tab_position = Some(position);
             state.selected_pane_id = None;
+            // A new tab lands at its bottom-right corner: any
+            // accumulated pan offset belongs to the previous pane and
+            // makes no sense in this context.
+            state.viewport_v_pan = 0;
+            state.viewport_h_pan = 0;
             state.expanded = None;
             true
         },
@@ -355,6 +433,9 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             // `write_to_pane_id`; neither needs the host's focus.
             state.selected_tab_position = Some(tab_position);
             state.selected_pane_id = Some(pane_id);
+            // Reset pan so the user lands at the new pane's bottom.
+            state.viewport_v_pan = 0;
+            state.viewport_h_pan = 0;
             state.expanded = None;
             true
         },

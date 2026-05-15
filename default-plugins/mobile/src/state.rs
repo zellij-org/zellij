@@ -186,8 +186,13 @@ pub struct ViewportRegion {
     /// rendering — i.e. the offset into `PaneContents.viewport` that
     /// corresponds to `row_start`. Anchored at the bottom: when the
     /// pane is taller than `row_end - row_start` we show the last
-    /// `row_end - row_start` lines.
+    /// `row_end - row_start` lines, minus any active vertical pan.
     pub skip: usize,
+    /// How many leading cells were sliced off each cached viewport
+    /// line when rendering — i.e. the offset into each line that
+    /// corresponds to col 0 of the embedded viewport. 0 when the pane
+    /// fits horizontally or the user has not panned right yet.
+    pub h_offset: usize,
 }
 
 #[derive(Default)]
@@ -254,6 +259,20 @@ pub struct State {
     pub ctrl_held: bool,
     /// Sticky-Alt flag. Same semantics as `ctrl_held`.
     pub alt_held: bool,
+    /// Rows panned UP from the bottom-anchored default — 0 means
+    /// "follow latest" (current behaviour). When > 0 the rendered
+    /// slice's bottom edge sits this many rows above the viewport's
+    /// last line. Capped at `viewport.len().saturating_sub(height)`
+    /// inside the renderer so transient values that exceed the new
+    /// maximum (after a resize, or after lines fall off the top of
+    /// the viewport) clamp gracefully without forcing follow-mode.
+    pub viewport_v_pan: usize,
+    /// Cols panned RIGHT from the left edge — 0 = leftmost (current
+    /// behaviour). When > 0 the rendered slice's left edge sits this
+    /// many cells into each cached viewport line. Capped at
+    /// `pane_content_columns.saturating_sub(cols)` inside the
+    /// renderer.
+    pub viewport_h_pan: usize,
     /// Last `show_cursor` payload the plugin emitted to the host.
     /// Calling `show_cursor` is *not* idempotent on the server side:
     /// `ScreenInstruction::ShowPluginCursor` triggers a full
@@ -399,7 +418,8 @@ impl State {
             return None;
         }
         let pane_row = region.skip + (row - region.row_start);
-        Some((pane_row, col))
+        let pane_col = region.h_offset + col;
+        Some((pane_row, pane_col))
     }
 
     /// Resolve a click at (row, col) to the action it should fire,

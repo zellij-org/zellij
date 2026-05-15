@@ -143,7 +143,9 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
     //
     // SGR mouse coordinates are 1-based, hence the `+ 1` on col/row.
     let last_touch_y = null;
+    let last_touch_x = null;
     let pending_scroll = 0;
+    let pending_h_scroll = 0;
     let touch_origin = null;      // { x, y, t } captured at touchstart
     let touch_moved = false;      // movement exceeded click_move_threshold
     let long_press_fired = false; // right-click already emitted for this gesture
@@ -199,6 +201,22 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
     const sendWheelEvent = (direction, touch) => {
         const { col, row } = reportCoords(touch.clientX, touch.clientY);
         const button = direction < 0 ? 65 : 64; // inverted: swipe up => wheel down
+        sendFunction(`\x1b[<${button};${col + 1};${row + 1}M`);
+    };
+
+    /// Horizontal wheel SGR. Buttons 66/67 mirror 64/65 — 66 is
+    /// "wheel right" (positive horizontal), 67 is "wheel left". The
+    /// server's mouse_handler decodes both via `event.wheel_left/right`.
+    ///
+    /// Convention matches `sendWheelEvent`'s "swipe up => wheel down"
+    /// inversion: the wheel direction is the direction the *content*
+    /// moves under the finger, not the direction the finger moves.
+    /// A finger swiping left drags content leftward and reveals the
+    /// right edge — the plugin interprets that as ScrollRight (which
+    /// increases `viewport_h_pan`). Likewise finger right => ScrollLeft.
+    const sendHorizontalWheelEvent = (direction, touch) => {
+        const { col, row } = reportCoords(touch.clientX, touch.clientY);
+        const button = direction < 0 ? 66 : 67; // finger left => wheel right
         sendFunction(`\x1b[<${button};${col + 1};${row + 1}M`);
     };
 
@@ -312,7 +330,9 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
                 event.preventDefault();
                 const touch = event.touches[0];
                 last_touch_y = touch.clientY;
+                last_touch_x = touch.clientX;
                 pending_scroll = 0;
+                pending_h_scroll = 0;
                 // Capture the cell coords NOW, while the terminal
                 // layout still reflects what the user is looking at.
                 // On iOS the soft keyboard sliding up between
@@ -403,9 +423,20 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
                 }
             }
 
-            const delta = touch.clientY - last_touch_y;
+            // Per-axis accumulators are advanced independently — there
+            // is no axis lock. A diagonal swipe of, say, 48 px on each
+            // axis fires two vertical ticks AND two horizontal ticks
+            // (interleaved at whatever order frame deltas cross the
+            // threshold). The mobile plugin clamps both pan offsets
+            // against the cached viewport extent so an off-axis tick
+            // that lands at the current max is a harmless no-op.
+            const delta_y = touch.clientY - last_touch_y;
+            const delta_x =
+                last_touch_x === null ? 0 : touch.clientX - last_touch_x;
             last_touch_y = touch.clientY;
-            pending_scroll += delta;
+            last_touch_x = touch.clientX;
+            pending_scroll += delta_y;
+            pending_h_scroll += delta_x;
             while (pending_scroll <= -touch_scroll_threshold) {
                 sendWheelEvent(-1, touch);
                 pending_scroll += touch_scroll_threshold;
@@ -413,6 +444,14 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
             while (pending_scroll >= touch_scroll_threshold) {
                 sendWheelEvent(1, touch);
                 pending_scroll -= touch_scroll_threshold;
+            }
+            while (pending_h_scroll <= -touch_scroll_threshold) {
+                sendHorizontalWheelEvent(-1, touch);
+                pending_h_scroll += touch_scroll_threshold;
+            }
+            while (pending_h_scroll >= touch_scroll_threshold) {
+                sendHorizontalWheelEvent(1, touch);
+                pending_h_scroll -= touch_scroll_threshold;
             }
         },
         { passive: false }
@@ -466,7 +505,9 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
                 sendSgrButton(0, touch_origin.col, touch_origin.row);
             }
             last_touch_y = null;
+            last_touch_x = null;
             pending_scroll = 0;
+            pending_h_scroll = 0;
             touch_origin = null;
             touch_moved = false;
             long_press_fired = false;
@@ -482,7 +523,9 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
             // doesn't see a stray click after a cancelled gesture.
             cancelLongPress();
             last_touch_y = null;
+            last_touch_x = null;
             pending_scroll = 0;
+            pending_h_scroll = 0;
             touch_origin = null;
             touch_moved = false;
             long_press_fired = false;

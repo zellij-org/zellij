@@ -1017,6 +1017,8 @@ message MouseEvent {
   bool alt = 8;
   bool ctrl = 9;
   Position position = 10;
+  bool wheel_left = 11;
+  bool wheel_right = 12;
 }
 
 enum MouseEventType {

@@ -896,6 +896,12 @@ impl fmt::Display for ResizeStrategy {
 pub enum Mouse {
     ScrollUp(usize),          // number of lines
     ScrollDown(usize),        // number of lines
+    /// Horizontal wheel tick toward column 0 (SGR button 67). Number
+    /// of cells. Currently only the mobile plugin consumes this; other
+    /// plugins ignore it via their `_ =>` arms.
+    ScrollLeft(usize),
+    /// Horizontal wheel tick away from column 0 (SGR button 66).
+    ScrollRight(usize),
     LeftClick(isize, usize),  // line and column
     RightClick(isize, usize), // line and column
     Hold(isize, usize),       // line and column

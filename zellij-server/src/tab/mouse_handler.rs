@@ -148,6 +148,14 @@ enum MouseAction {
         pane_id: PaneId,
         lines: usize,
     },
+    ScrollLeft {
+        pane_id: PaneId,
+        cols: usize,
+    },
+    ScrollRight {
+        pane_id: PaneId,
+        cols: usize,
+    },
     ResizeScrollUp {
         pane_id: PaneId,
     },
@@ -775,6 +783,33 @@ impl MouseHandler {
                 Self::handle_scrollwheel_down(tab, &event.position, lines, client_id)
                     .with_context(err_context)
             },
+            MouseAction::ScrollLeft { pane_id, cols } => {
+                // The only consumer of horizontal scroll today is the
+                // mobile plugin; route to plugin panes via the wheel
+                // event the plugin subscribes to, otherwise drop. A
+                // future per-pane horizontal scrollback can grow more
+                // arms here.
+                Self::handle_scrollwheel_horizontal(
+                    tab,
+                    pane_id,
+                    &event.position,
+                    cols,
+                    /*scroll_right=*/ false,
+                    client_id,
+                )
+                .with_context(err_context)
+            },
+            MouseAction::ScrollRight { pane_id, cols } => {
+                Self::handle_scrollwheel_horizontal(
+                    tab,
+                    pane_id,
+                    &event.position,
+                    cols,
+                    /*scroll_right=*/ true,
+                    client_id,
+                )
+                .with_context(err_context)
+            },
             MouseAction::ResizeScrollUp { pane_id } => {
                 Self::handle_resize_scroll_up(tab, pane_id, client_id).with_context(err_context)
             },
@@ -1270,6 +1305,22 @@ impl MouseHandler {
             return Ok(MouseAction::NoAction);
         }
 
+        // Horizontal wheel ticks (SGR 66 / 67). Cells per tick is set
+        // a little larger than the vertical step because cells are
+        // typically narrower than tall in mobile font sizes; one
+        // typical horizontal swipe step lines up with four cells.
+        if event.wheel_left || event.wheel_right {
+            if let Some(pane_id) = ctx.pane_id_at_position {
+                if event.wheel_left {
+                    return Ok(MouseAction::ScrollLeft { pane_id, cols: 4 });
+                }
+                if event.wheel_right {
+                    return Ok(MouseAction::ScrollRight { pane_id, cols: 4 });
+                }
+            }
+            return Ok(MouseAction::NoAction);
+        }
+
         let is_ctrl_left_press =
             event.ctrl && event.left && event.event_type == MouseEventType::Press;
         if is_ctrl_left_press {
@@ -1576,6 +1627,37 @@ impl MouseHandler {
                             .with_context(err_context)?;
                     }
                 }
+            }
+        }
+        Ok(MouseEffect::default())
+    }
+
+    /// Dispatch a horizontal wheel tick. The only consumer today is
+    /// the mobile plugin's embedded-viewport panner; non-plugin panes
+    /// drop the event because terminal panes have no notion of
+    /// horizontal scrollback. `scroll_right == true` corresponds to
+    /// SGR button 66 (positive horizontal wheel); `false` to 67.
+    pub(crate) fn handle_scrollwheel_horizontal(
+        tab: &mut Tab,
+        pane_id: PaneId,
+        point: &Position,
+        cols: usize,
+        scroll_right: bool,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
+        let err_context = || {
+            format!(
+                "failed to handle horizontal scrollwheel at position {point:?} for client {client_id}"
+            )
+        };
+        if !matches!(pane_id, PaneId::Plugin(_)) {
+            return Ok(MouseEffect::default());
+        }
+        if let Some(pane) = Self::get_pane_at(tab, point, false).with_context(err_context)? {
+            if scroll_right {
+                pane.scroll_right(cols, client_id);
+            } else {
+                pane.scroll_left(cols, client_id);
             }
         }
         Ok(MouseEffect::default())

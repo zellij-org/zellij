@@ -793,6 +793,10 @@ pub struct MouseEventPayload {
     pub line: i64,
     #[prost(int64, tag="11")]
     pub column: i64,
+    #[prost(bool, tag="12")]
+    pub wheel_left: bool,
+    #[prost(bool, tag="13")]
+    pub wheel_right: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
