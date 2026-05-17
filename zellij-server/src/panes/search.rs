@@ -27,6 +27,7 @@ impl<'a> SearchSource<'a> {
         &mut self,
         ridx: &mut usize,
         hidx: &mut usize,
+        col_pos: &mut usize,
         tailit: &mut std::slice::Iter<&'a Row>,
         start: &Option<Position>,
     ) -> bool {
@@ -39,6 +40,7 @@ impl<'a> SearchSource<'a> {
                     if let Some(curr_tail) = start.and(curr_tail) {
                         *ridx += 1; // Go one line down
                         *hidx = 0; // and start from the beginning of the new line
+                        *col_pos = 0;
                         *self = SearchSource::Tail(curr_tail);
                     } else {
                         return false; // We reached the end of the tail
@@ -52,6 +54,7 @@ impl<'a> SearchSource<'a> {
                     if let Some(curr_tail) = tailit.next() {
                         *ridx += 1; // Go one line down
                         *hidx = 0; // and start from the beginning of the new line
+                        *col_pos = 0;
                         *self = SearchSource::Tail(curr_tail);
                     } else {
                         return false; // We reached the end of the tail
@@ -82,6 +85,13 @@ impl<'a> SearchSource<'a> {
             None // Doesn't get used, when not doing whole-word search
         };
         (haystack_char, next_haystack_char)
+    }
+
+    fn get_char_width(&self, hidx: usize) -> usize {
+        match self {
+            SearchSource::Main(row) => row.columns[hidx].width(),
+            SearchSource::Tail(tail) => tail.columns[hidx].width(),
+        }
     }
 }
 
@@ -114,29 +124,63 @@ impl SearchResult {
                     '#'
                 };
 
-                let (skip, take) = if ridx as isize == s.start.line() {
-                    let skip = s.start.column();
-                    let take = if s.end.line() == s.start.line() {
+                let (col_skip, col_take) = if ridx as isize == s.start.line() {
+                    let col_skip = s.start.column();
+                    let col_take = if s.end.line() == s.start.line() {
                         s.end.column() - s.start.column()
                     } else {
-                        // Just mark the rest of the line. This number is certainly too big but the iterator takes care of this
-                        row.columns.len()
+                        row.width()
                     };
-                    (skip, take)
+                    (col_skip, col_take)
                 } else if ridx as isize == s.end.line() {
-                    // We wrapped a line and the end is in this row, so take from the beginning to the end
                     (0, s.end.column())
                 } else {
-                    // We are in the middle (start is above and end is below), so mark all
-                    (0, row.columns.len())
+                    (0, row.width())
                 };
+
+                // Convert width-aware column positions to character indices
+                let mut accumulated_width = 0;
+                let mut char_skip = 0;
+                for c in row.columns.iter() {
+                    if accumulated_width >= col_skip {
+                        break;
+                    }
+                    accumulated_width += c.width();
+                    char_skip += 1;
+                }
+
+                let mut taken_width = 0;
+                let char_take = row
+                    .columns
+                    .iter()
+                    .skip(char_skip)
+                    .take_while(|c| {
+                        if taken_width >= col_take {
+                            return false;
+                        }
+                        taken_width += c.width();
+                        true
+                    })
+                    .count();
 
                 row.to_mut()
                     .columns
                     .iter_mut()
-                    .skip(skip)
-                    .take(take)
-                    .for_each(|x| *x = TerminalCharacter::new(replacement_char));
+                    .skip(char_skip)
+                    .take(char_take)
+                    .for_each(|x| {
+                        // Use fullwidth variants for wide chars to keep Debug output aligned
+                        let c = if x.width() > 1 {
+                            if replacement_char == '_' {
+                                '＿'
+                            } else {
+                                '＃'
+                            }
+                        } else {
+                            replacement_char
+                        };
+                        *x = TerminalCharacter::new(c);
+                    });
             }
         }
     }
@@ -182,18 +226,22 @@ impl SearchResult {
         if self.needle.is_empty() || row.columns.is_empty() {
             return res;
         }
+        let needle_char_count = self.needle.chars().count();
 
         let mut tailit = tail.iter();
         let mut source = SearchSource::Main(row); // Where we currently get the haystack-characters from
         let orig_ridx = ridx;
-        let mut start = None; // If we find a hit, this is where it starts
+        let mut start = None; // If we find a hit, this is where it starts (column position, width-aware)
+        let mut start_hidx = None; // Character index where the match started
         let mut nidx = 0; // Needle index
-        let mut hidx = 0; // Haystack index
+        let mut hidx = 0; // Haystack index (character index into columns)
+        let mut col_pos: usize = 0; // Column position (width-aware)
         let mut prev_haystack_char: Option<char> = None;
         loop {
             // Get the current and next haystack character
             let (mut haystack_char, next_haystack_char) =
                 source.get_next_two_chars(hidx, self.whole_word_only);
+            let haystack_char_width = source.get_char_width(hidx);
 
             // Get current needle character
             let needle_char = self.needle.chars().nth(nidx).unwrap(); // Unwrapping is safe here
@@ -209,9 +257,10 @@ impl SearchResult {
             if chars_match {
                 // If the needle is only 1 long, the next `if` could also happen, so we are not merging it into one big if-else
                 if nidx == 0 {
-                    start = Some(Position::new(ridx as i32, hidx as u16));
+                    start = Some(Position::new(ridx as i32, col_pos as u16));
+                    start_hidx = Some((ridx, hidx));
                 }
-                if nidx == self.needle.len() - 1 {
+                if nidx == needle_char_count - 1 {
                     let mut end_found = true;
                     // If we search whole-word-only, the next non-needle char needs to be a word-boundary,
                     // otherwise its not a hit (e.g. some occurrence inside a longer word).
@@ -219,14 +268,17 @@ impl SearchResult {
                         // The end of the match is not a word boundary, so this is not a hit!
                         // We have to jump back from where we started (plus one char)
                         nidx = 0;
-                        ridx = start.unwrap().line() as usize;
-                        hidx = start.unwrap().column(); // Will be incremented below
-                        if start.unwrap().line() as usize == orig_ridx {
+                        let (saved_ridx, saved_hidx) = start_hidx.unwrap();
+                        ridx = saved_ridx;
+                        hidx = saved_hidx; // Will be incremented below
+                                           // Recompute col_pos for the start position
+                        col_pos = start.unwrap().column();
+                        if saved_ridx == orig_ridx {
                             source = SearchSource::Main(row);
                             haystack_char = row.columns[hidx].character; // so that prev_char gets set correctly
                         } else {
                             // The -1 comes from the main row
-                            let tail_idx = start.unwrap().line() as usize - orig_ridx - 1;
+                            let tail_idx = saved_ridx - orig_ridx - 1;
                             // We have to reset the tail-iterator as well.
                             tailit = tail[tail_idx..].iter();
                             let trow = tailit.next().unwrap();
@@ -234,14 +286,19 @@ impl SearchResult {
                             source = SearchSource::Tail(trow);
                         }
                         start = None;
+                        start_hidx = None;
                         end_found = false;
                     }
                     if end_found {
                         let mut selection = Selection::default();
                         selection.start(start.unwrap());
-                        selection.end(Position::new(ridx as i32, (hidx + 1) as u16));
+                        selection.end(Position::new(
+                            ridx as i32,
+                            (col_pos + haystack_char_width) as u16,
+                        ));
                         res.push(selection);
                         nidx = 0;
+                        start_hidx = None;
                         if matches!(source, SearchSource::Tail(..)) {
                             // When searching the tail, we can only find one additional selection, so stopping here
                             break;
@@ -253,6 +310,7 @@ impl SearchResult {
             } else {
                 // Chars don't match. Start searching the needle from the beginning
                 start = None;
+                start_hidx = None;
                 nidx = 0;
                 if matches!(source, SearchSource::Tail(..)) {
                     // When searching the tail and we find a mismatch, just quit right now
@@ -261,9 +319,10 @@ impl SearchResult {
             }
 
             hidx += 1;
+            col_pos += haystack_char_width;
             prev_haystack_char = Some(haystack_char);
             // We might need to switch to a new line in the tail
-            if !source.get_next_source(&mut ridx, &mut hidx, &mut tailit, &start) {
+            if !source.get_next_source(&mut ridx, &mut hidx, &mut col_pos, &mut tailit, &start) {
                 break;
             }
         }
