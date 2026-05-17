@@ -28,6 +28,11 @@ const WEB_CLIENT_PAGE: &str = include_str!(concat!(
 
 const ASSETS_DIR: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/assets");
 
+const LOGO_PNG: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../assets/logo.png"
+));
+
 pub async fn serve_html(State(state): State<AppState>, request: Request) -> Html<String> {
     let cookies = parse_cookies(&request);
     let is_authenticated = cookies.get("session_token").is_some();
@@ -160,4 +165,8 @@ pub async fn get_static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResp
 
 pub async fn version_handler() -> &'static str {
     VERSION
+}
+
+pub async fn serve_logo_png() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "image/png")], LOGO_PNG)
 }

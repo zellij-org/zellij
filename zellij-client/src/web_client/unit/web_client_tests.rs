@@ -2972,10 +2972,7 @@ mod web_client_tests {
 
         let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
 
-        let cases: &[(&str, &str)] = &[
-            ("icon-192.png", "image/png"),
-            ("icon-512.png", "image/png"),
-        ];
+        let cases: &[(&str, &str)] = &[("logo.png", "image/png")];
 
         for (filename, expected_mime) in cases {
             let url = format!("http://127.0.0.1:{}/assets/{}", port, filename);
