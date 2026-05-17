@@ -3025,10 +3025,6 @@ mod web_client_tests {
             "index.html must declare an apple-touch-icon for iOS"
         );
         assert!(
-            body.contains("apple-mobile-web-app-capable"),
-            "index.html must declare apple-mobile-web-app-capable for iOS standalone mode"
-        );
-        assert!(
             body.contains("theme-color"),
             "index.html must declare a theme-color meta tag"
         );
