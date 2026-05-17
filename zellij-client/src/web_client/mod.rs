@@ -44,8 +44,7 @@ use zellij_utils::input::{config::Config, options::Options};
 
 use authentication::auth_middleware;
 use http_handlers::{
-    create_new_client, get_static_asset, login_handler, serve_html, serve_logo_png,
-    version_handler,
+    create_new_client, get_static_asset, login_handler, serve_html, version_handler,
 };
 use ipc_listener::listen_to_web_server_instructions;
 
@@ -241,7 +240,6 @@ pub async fn serve_web_client(
         .route_layer(middleware::from_fn(auth_middleware))
         .route("/", get(serve_html))
         .route("/{session}", get(serve_html))
-        .route("/assets/logo.png", get(serve_logo_png))
         .route("/assets/{*path}", get(get_static_asset))
         .route("/command/login", post(login_handler))
         .route("/info/version", get(version_handler))

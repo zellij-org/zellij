@@ -9,9 +9,9 @@
     "background_color": "#000000",
     "icons": [
         {
-            "src": "./logo.png",
+            "src": "./icon-192.png",
             "type": "image/png",
-            "sizes": "2269x2620",
+            "sizes": "192x192",
             "purpose": "any"
         }
     ]
