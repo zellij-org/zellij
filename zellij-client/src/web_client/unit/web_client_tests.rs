@@ -2973,10 +2973,8 @@ mod web_client_tests {
         let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
 
         let cases: &[(&str, &str)] = &[
-            ("icon.svg", "image/svg+xml"),
             ("icon-192.png", "image/png"),
             ("icon-512.png", "image/png"),
-            ("icon-maskable-512.png", "image/png"),
         ];
 
         for (filename, expected_mime) in cases {

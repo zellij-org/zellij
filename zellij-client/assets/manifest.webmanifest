@@ -9,12 +9,6 @@
     "background_color": "#000000",
     "icons": [
         {
-            "src": "./icon.svg",
-            "type": "image/svg+xml",
-            "sizes": "any",
-            "purpose": "any"
-        },
-        {
             "src": "./icon-192.png",
             "type": "image/png",
             "sizes": "192x192",
@@ -25,12 +19,6 @@
             "type": "image/png",
             "sizes": "512x512",
             "purpose": "any"
-        },
-        {
-            "src": "./icon-maskable-512.png",
-            "type": "image/png",
-            "sizes": "512x512",
-            "purpose": "maskable"
         }
     ]
 }

@@ -1,25 +1,25 @@
 #!/bin/sh
-# Renders PWA icon PNGs from zellij-client/assets/icon.svg.
-# Re-run from the repository root after icon.svg changes:
+# Renders PWA icon PNGs from assets/logo.svg into zellij-client/assets/.
+# Re-run from the repository root after logo.svg changes:
 #
 #     scripts/render-pwa-icons.sh
 #
 # Requires: librsvg (rsvg-convert) and ImageMagick (convert).
 #
-# Produces three PNGs alongside icon.svg:
-#   icon-192.png             192x192, transparent, logo centered      (purpose "any")
-#   icon-512.png             512x512, transparent, logo centered      (purpose "any")
-#   icon-maskable-512.png    512x512, #080317 fill, logo at 70% scale (purpose "maskable")
+# Produces two PNGs:
+#   icon-192.png    192x192, transparent, logo centered      (purpose "any")
+#   icon-512.png    512x512, transparent, logo centered      (purpose "any")
 #
-# The maskable scale (70% of canvas, glyph height 358 of 512) keeps the logo's
-# vertical tips inside the W3C safe-zone radius of 40% (205px), with margin to
-# spare for aggressive circular and squircle masks.
+# The logo SVG is taller than wide (2307x2664). rsvg-convert preserves aspect
+# ratio when scaling to a target height; ImageMagick then composites the result
+# onto a transparent square canvas so the manifest's declared "192x192" /
+# "512x512" sizes are honest.
 
 set -eu
 
 cd "$(dirname "$0")/.."
 
-SRC_SVG="zellij-client/assets/icon.svg"
+SRC_SVG="assets/logo.svg"
 OUT_DIR="zellij-client/assets"
 
 if [ ! -f "$SRC_SVG" ]; then
@@ -40,21 +40,8 @@ render_any() {
     echo "  $out"
 }
 
-render_maskable() {
-    canvas=512
-    glyph=358   # 70% of 512 — content sits inside the 80%-diameter safe zone
-    bg="#080317"
-    out="$OUT_DIR/icon-maskable-${canvas}.png"
-    tmp=$(mktemp --suffix=.png)
-    rsvg-convert -h "$glyph" -o "$tmp" "$SRC_SVG"
-    convert -size "${canvas}x${canvas}" "xc:${bg}" "$tmp" -gravity center -composite "$out"
-    rm -f "$tmp"
-    echo "  $out"
-}
-
 echo "Rendering PWA icons from $SRC_SVG:"
 render_any 192
 render_any 512
-render_maskable
 
 echo "Done."
