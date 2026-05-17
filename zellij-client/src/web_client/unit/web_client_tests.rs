@@ -2822,6 +2822,261 @@ mod web_client_tests {
         server_handle.abort();
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+
+    // ========== PWA manifest and icon tests ==========
+
+    async fn spawn_test_server_with_config(config: Config) -> (u16, tokio::task::JoinHandle<()>) {
+        let session_manager = Arc::new(MockSessionManager::new());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(serve_web_client(
+            config,
+            options,
+            Some(temp_config_path),
+            listener,
+            None,
+            Some(session_manager),
+            Some(client_os_api_factory),
+            addr.ip(),
+            port,
+        ));
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        (port, server_handle)
+    }
+
+    async fn fetch_url(url: String) -> isahc::Response<isahc::Body> {
+        timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || isahc::get(&url)),
+        )
+        .await
+        .expect("Request timed out")
+        .expect("Spawn blocking failed")
+        .expect("Request failed")
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_manifest_endpoint_returns_correct_content_type_and_required_fields() {
+        let _ = delete_db();
+
+        let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
+
+        let url = format!("http://127.0.0.1:{}/assets/manifest.webmanifest", port);
+        let mut response = fetch_url(url).await;
+
+        assert!(
+            response.status().is_success(),
+            "manifest endpoint should return 2xx, got {}",
+            response.status()
+        );
+
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+        assert_eq!(
+            content_type, "application/manifest+json",
+            "manifest must be served as application/manifest+json"
+        );
+
+        let body = response.text().expect("Failed to read manifest body");
+        let manifest: serde_json::Value =
+            serde_json::from_str(&body).expect("Manifest body must be valid JSON");
+
+        assert!(
+            manifest.get("name").and_then(|v| v.as_str()).is_some(),
+            "manifest must declare `name`"
+        );
+        assert!(
+            manifest.get("start_url").is_some(),
+            "manifest must declare `start_url` (W3C required member)"
+        );
+        let icons = manifest
+            .get("icons")
+            .and_then(|v| v.as_array())
+            .expect("manifest must declare a non-empty `icons` array");
+        assert!(!icons.is_empty(), "icons array must contain at least one icon");
+        assert!(
+            manifest.get("display").is_some() || manifest.get("display_override").is_some(),
+            "manifest must declare `display` or `display_override`"
+        );
+
+        server_handle.abort();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_manifest_uses_relative_urls() {
+        // Pins the relative-URL contract that lets the static manifest work under any
+        // reverse-proxy base_url. start_url, scope, and icons[*].src must all be relative
+        // to the manifest URL — never absolute paths and never absolute URLs.
+        let _ = delete_db();
+
+        let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
+
+        let url = format!("http://127.0.0.1:{}/assets/manifest.webmanifest", port);
+        let mut response = fetch_url(url).await;
+        let body = response.text().expect("Failed to read manifest body");
+        let manifest: serde_json::Value = serde_json::from_str(&body).expect("Invalid JSON");
+
+        let is_relative = |v: &serde_json::Value| -> bool {
+            v.as_str()
+                .map(|s| !s.starts_with('/') && !s.starts_with("http://") && !s.starts_with("https://"))
+                .unwrap_or(false)
+        };
+
+        if let Some(start_url) = manifest.get("start_url") {
+            assert!(
+                is_relative(start_url),
+                "start_url must be relative, got {:?}",
+                start_url
+            );
+        }
+        if let Some(scope) = manifest.get("scope") {
+            assert!(is_relative(scope), "scope must be relative, got {:?}", scope);
+        }
+        let icons = manifest
+            .get("icons")
+            .and_then(|v| v.as_array())
+            .expect("icons array required");
+        for icon in icons {
+            let src = icon.get("src").expect("each icon must have src");
+            assert!(
+                is_relative(src),
+                "icon src must be relative, got {:?}",
+                src
+            );
+        }
+
+        server_handle.abort();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_pwa_icon_assets_reachable() {
+        let _ = delete_db();
+
+        let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
+
+        let cases: &[(&str, &str)] = &[
+            ("icon.svg", "image/svg+xml"),
+            ("icon-192.png", "image/png"),
+            ("icon-512.png", "image/png"),
+            ("icon-maskable-512.png", "image/png"),
+        ];
+
+        for (filename, expected_mime) in cases {
+            let url = format!("http://127.0.0.1:{}/assets/{}", port, filename);
+            let response = fetch_url(url).await;
+
+            assert!(
+                response.status().is_success(),
+                "{} should return 2xx, got {}",
+                filename,
+                response.status()
+            );
+
+            let content_type = response
+                .headers()
+                .get("content-type")
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or("");
+            assert_eq!(
+                content_type, *expected_mime,
+                "{} must be served as {}",
+                filename, expected_mime
+            );
+        }
+
+        server_handle.abort();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_index_html_references_manifest_and_pwa_meta_tags() {
+        let _ = delete_db();
+
+        let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
+
+        let url = format!("http://127.0.0.1:{}/", port);
+        let mut response = fetch_url(url).await;
+        let body = response.text().expect("Failed to read index.html");
+
+        assert!(
+            body.contains("rel=\"manifest\""),
+            "index.html must reference the manifest via <link rel=\"manifest\">"
+        );
+        assert!(
+            body.contains("manifest.webmanifest"),
+            "manifest link must point at manifest.webmanifest"
+        );
+        assert!(
+            body.contains("apple-touch-icon"),
+            "index.html must declare an apple-touch-icon for iOS"
+        );
+        assert!(
+            body.contains("apple-mobile-web-app-capable"),
+            "index.html must declare apple-mobile-web-app-capable for iOS standalone mode"
+        );
+        assert!(
+            body.contains("theme-color"),
+            "index.html must declare a theme-color meta tag"
+        );
+
+        server_handle.abort();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_manifest_body_invariant_under_base_url() {
+        // The server-side manifest response is identical regardless of base_url config —
+        // base_url only affects the browser-side URL composition via <base href> in
+        // serve_html. The manifest itself is a static asset.
+        let _ = delete_db();
+
+        let default_body = {
+            let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
+            let url = format!("http://127.0.0.1:{}/assets/manifest.webmanifest", port);
+            let mut response = fetch_url(url).await;
+            let body = response.text().expect("Failed to read default-base manifest");
+            server_handle.abort();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            body
+        };
+
+        let prefixed_body = {
+            let mut config = Config::default();
+            config.web_client.base_url = Some("/zellij/".to_string());
+            let (port, server_handle) = spawn_test_server_with_config(config).await;
+            let url = format!("http://127.0.0.1:{}/assets/manifest.webmanifest", port);
+            let mut response = fetch_url(url).await;
+            let body = response.text().expect("Failed to read prefixed-base manifest");
+            server_handle.abort();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            body
+        };
+
+        assert_eq!(
+            default_body, prefixed_body,
+            "manifest body must be identical regardless of base_url config"
+        );
+    }
 }
 
 #[derive(Debug, Clone)]
