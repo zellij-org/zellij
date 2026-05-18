@@ -59,18 +59,25 @@ export const MAX_FONT_SIZE_PX = 96;
  * attached mobile client past the threshold checks.
  *
  * The `fit()` call here is load-bearing for the SetConfig flow.
- * It synchronously resizes `term` so the SetConfig handler's
- * downstream `proposeDimensions == term.rows/cols` comparison
- * short-circuits and no follow-up resize broadcast is sent. That
- * matters because SetConfig represents a *rendering* preference
- * change (which cells to draw at which pixel size), NOT a device
- * viewport change.
+ * It synchronously resizes `term` so the SetConfig handler can
+ * detect a dim change (by comparing pre- and post-call rows/cols)
+ * and broadcast a `RenderingPreference`-tagged resize to the
+ * server. SetConfig represents a *rendering* preference change —
+ * NOT a device-viewport change — so the `RenderingPreference`
+ * cause prevents the server's mobile-mode re-evaluation. The
+ * server still must learn about the new cell count: it owns the
+ * pane layout and serialises terminal output at the client's grid
+ * size. An earlier version of this code intentionally suppressed
+ * the resize broadcast on the theory that "rendering preference
+ * means server doesn't need to know"; that was wrong and caused
+ * the server to render at the original (pre-font-change) grid
+ * size, producing scrambled output on the mobile client.
  *
  * The runtime pinch path lives in `input.js` and intentionally
- * does NOT call fit() — there the resize IS the user's intent and
- * the server must learn about the new grid (it sends a
- * `RenderingPreference`-tagged resize so mobile-mode is not
- * re-evaluated). That asymmetry is deliberate.
+ * does NOT call fit() — there the dispatched
+ * `zellij:rendering-resize` event triggers the same broadcast via
+ * a different path. The two flows converge on the same server
+ * message; only the trigger differs.
  */
 export function applyFontSize(term, fitAddon, requestedPx) {
     const requested =

@@ -205,6 +205,18 @@ pub fn render_keyboard(
         return 0;
     }
 
+    // Disable DECAWM (autowrap) for the duration of the keyboard paint.
+    // Mirrors what `render_embedded_viewport` does: the keyboard writes
+    // its bottom-most row near `rows - 1`, and `clip_buf` is only a
+    // best-effort visible-cell cap — if any escape sequence or wide
+    // glyph survives the clip and pushes the cursor past the right
+    // edge, autowrap forces the host's plugin-pane grid to scroll,
+    // which silently pushes the top bar at row 0 off-screen. With
+    // DECAWM off the host's `Grid::add_character`
+    // (`zellij-server/src/panes/grid.rs:1925`) drops anything past the
+    // right edge — which is what we want for a clipped chrome paint.
+    print!("\x1b[?7l");
+
     // Scaled block width = widest row in the active layer, after
     // applying the `h_num / h_den` ratio to every column extent.
     // Every row in the layer is indented by the same `left_pad` so
@@ -273,6 +285,11 @@ pub fn render_keyboard(
 
         term_row += height;
     }
+
+    // Restore autowrap before returning so later chrome paints (top
+    // bar / viewport on the next frame) are unaffected. Mirrors the
+    // re-enable in `render_embedded_viewport`.
+    print!("\x1b[?7h");
 
     term_row - plugin_row_start
 }

@@ -129,6 +129,18 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
     // cursor target genuinely moves.
     emit_cursor(state, new_cursor);
 
+    // Disable DECAWM (autowrap) for the entire plugin paint. Confirmed
+    // via host grid dump that the top bar's `print_text_with_coordinates`
+    // call over-emits past `cols`, triggering autowrap from row 0 into
+    // row 1 — which marks row 1 as a wrap-continuation (`(W)` in
+    // Grid Debug) and corrupts transmission to the client (xterm.js
+    // treats row 0 + row 1 as a single soft-wrapped line). DECAWM-off
+    // makes the host's `Grid::add_character` drop overflow past the
+    // right edge instead, preserving canonical row boundaries. The
+    // matching `\x1b[?7h` re-enable at the end of `render()` restores
+    // global state before any unrelated chrome later in the frame.
+    print!("\x1b[?7l");
+
     // Always start the chrome paint clean — `\x1b[2J` clears the
     // visible area and we rewrite each region from (0, 0).
     print!("{}\x1b[2J", RESET);
@@ -159,6 +171,10 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
             );
         }
     }
+
+    // Re-enable DECAWM. Pairs with the `\x1b[?7l` at the top of this
+    // function — see comment there for rationale.
+    print!("\x1b[?7h");
 }
 
 /// Map the underlying pane's reported cursor coordinates into the

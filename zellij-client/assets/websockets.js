@@ -287,11 +287,21 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
                     : isMobileViewport
                     ? 24
                     : 12;
-            // applyFontSize layers in two extras over a bare assignment:
-            // a persisted (pinch-set) override wins over the server's
-            // resolved value, and the result is clamped + re-fit in
-            // one call. The subsequent fit() / TerminalResize plumbing
-            // below still runs unchanged.
+            // Capture dims BEFORE applyFontSize so the post-fit
+            // comparison detects any change driven by the font-size
+            // swap. applyFontSize calls `fitAddon.fit()` internally,
+            // which synchronously mutates term.rows/term.cols. A
+            // previous implementation read proposeDimensions() AFTER
+            // applyFontSize and compared against the already-mutated
+            // term.rows/term.cols — the comparison short-circuited,
+            // no resize was broadcast, and the server kept rendering
+            // the plugin pane at the original (pre-font-change)
+            // dimensions. On mobile that meant the server sent a
+            // 46×38 grid to a 28×23 client and the on-screen content
+            // landed at the wrong rows. Capturing prev dims and
+            // comparing afterwards fixes that gap.
+            const prevRows = term.rows;
+            const prevCols = term.cols;
             applyFontSize(term, fitAddon, resolvedFontSize);
             const body = document.querySelector("body");
             body.style.background = theme.background || "black";
@@ -299,21 +309,29 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             const terminal = document.getElementById("terminal");
             terminal.style.background = theme.background;
 
-            const fitDimensions = fitAddon.proposeDimensions();
-            if (fitDimensions === undefined) {
-                console.warn("failed to get new fit dimensions");
+            const newRows = term.rows;
+            const newCols = term.cols;
+            if (newRows === prevRows && newCols === prevCols) {
                 return;
             }
-
-            const { rows, cols } = fitDimensions;
-            if (rows !== term.rows || cols !== term.cols) {
-                term.resize(cols, rows);
-            }
-            // Always emit a size update on SetConfig: even if the grid
-            // didn't change, font metrics may have shifted and the
-            // pixel-cell measurements in TerminalMetrics need to
-            // refresh so host-terminal queries get accurate values.
-            sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols);
+            // Tag as a *rendering* resize so the server's mobile-mode
+            // re-evaluation does NOT fire. SetConfig changing the font
+            // size is a rendering preference, not a device-viewport
+            // change — the device is the same screen, just with
+            // different cell pixel dimensions. The server still needs
+            // to know about the new cell count so it lays out the
+            // panes (and therefore serialises payloads) at the
+            // client's actual grid size. The TerminalMetrics half of
+            // sendSizeUpdate also refreshes — font metrics may have
+            // shifted even when the grid count happens to match.
+            sendSizeUpdate(
+                wsControl,
+                ownWebClientId,
+                term,
+                newRows,
+                newCols,
+                "RenderingPreference"
+            );
         } else if (msg.type === "QueryTerminalSize") {
             const fitDimensions = fitAddon.proposeDimensions();
             const { rows, cols } = fitDimensions;
