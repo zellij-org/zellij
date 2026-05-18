@@ -4,6 +4,7 @@ use crate::stdin_ansi_parser::StdinAnsiParser;
 #[cfg(windows)]
 use crate::stdin_handler_windows::enable_vt_input;
 use crate::InputInstruction;
+use std::io::Write;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 use zellij_utils::{
@@ -48,9 +49,9 @@ pub(crate) fn stdin_loop(
 
         if can_query_terminal {
             let query_string = build_startup_query_string();
-            let _ = os_input
+            os_input
                 .get_stdout_writer()
-                .write(query_string.as_bytes())
+                .write_all(query_string.as_bytes())
                 .unwrap();
         }
     }

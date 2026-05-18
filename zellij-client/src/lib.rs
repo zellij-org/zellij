@@ -1127,7 +1127,7 @@ pub fn start_client(
         );
         let mut stdout = os_input.get_stdout_writer();
         if enabled_2027 {
-            let _ = stdout.write(b"\x1b[?2027l");
+            let _ = stdout.write_all(b"\x1b[?2027l");
         }
         stdout.write_all(error.as_bytes()).unwrap();
         stdout.flush().unwrap();
@@ -1299,7 +1299,7 @@ pub fn start_client(
     } else {
         let mut stdout = os_input.get_stdout_writer();
         if host_grapheme_cluster_mode {
-            let _ = stdout.write(b"\x1b[?2027l").unwrap();
+            let _ = stdout.write_all(b"\x1b[?2027l");
         }
         let clear_screen = "\u{1b}[2J";
         stdout.write_all(clear_screen.as_bytes()).unwrap();
