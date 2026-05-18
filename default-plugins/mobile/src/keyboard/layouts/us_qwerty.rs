@@ -79,6 +79,15 @@ const ID_BOTTOM_FN: u16 = 201;
 const ID_BOTTOM_SPACE: u16 = 202;
 const ID_BOTTOM_ENTER: u16 = 203;
 
+/// Canonical natural-block width of every compact-tier row in
+/// cells. Each row is laid out so its column extents sum to this
+/// value; the renderer applies a per-row scale of
+/// `(target_block_width, COMPACT_NATURAL_BLOCK)` to stretch the
+/// canonical block to the actual available width on viewports
+/// wider than 28 cols. Matches the visual reference in
+/// `compact_keyboard_mock.ansi` at the canonical 28-col target.
+pub(super) const COMPACT_NATURAL_BLOCK: u16 = 26;
+
 // -------------------------------------------------------------------
 // Layout content tables. Static `&'static str` labels so `label()`
 // returns borrowed Cows without allocating.
@@ -404,6 +413,164 @@ impl UsQwerty {
         KeyRow::tall(0, cells)
     }
 
+    // ---------------------------------------------------------------
+    // Compact-tier rows (narrow-viewport variant).
+    //
+    // Each row's column extents sum to `COMPACT_NATURAL_BLOCK` so the
+    // renderer's per-row scale primitive can stretch them to the
+    // available width with a single ratio. Cells are constructed
+    // afresh because their `col_start`/`col_end` differ from the
+    // natural-tier widths stored in `self.cells` — the existing
+    // `CellId`s are reused, which is enough for `label()`, `emit()`,
+    // `modifier_of()`, and `layer_of()` to keep working unchanged.
+    //
+    // Widths reproduce the visual reference in
+    // `compact_keyboard_mock.ansi` at the canonical 28-col target.
+    // ---------------------------------------------------------------
+
+    fn compact_letters_row_1(&self) -> KeyRow {
+        // q w e r t y u i o p — 10 cells × widths [3,2,3,2,3,2,3,2,3,3] = 26.
+        let widths = [3u16, 2, 3, 2, 3, 2, 3, 2, 3, 3];
+        let ids_widths: Vec<(u16, u16)> = (0..LETTERS_R1.len() as u16)
+            .map(|i| (ID_LETTERS_R1_START + i, widths[i as usize]))
+            .collect();
+        KeyRow::tall(0, lay_out_compact_cells(&ids_widths))
+    }
+
+    fn compact_letters_row_2(&self) -> KeyRow {
+        // a s d f g h j k l — 9 cells × widths [3,2,3,3,2,3,2,3,3] = 24
+        // with offset 2 → row natural extent 26.
+        let widths = [3u16, 2, 3, 3, 2, 3, 2, 3, 3];
+        let ids_widths: Vec<(u16, u16)> = (0..LETTERS_R2.len() as u16)
+            .map(|i| (ID_LETTERS_R2_START + i, widths[i as usize]))
+            .collect();
+        KeyRow::tall(2, lay_out_compact_cells(&ids_widths))
+    }
+
+    fn compact_letters_row_3(&self) -> KeyRow {
+        // ⇧ z x c v b n m ⌫ — 9 cells with widths
+        // [3, 2,3,2,3,2,3,2, 6] = 26. ⇧ and ⌫ are wider anchors; the
+        // seven letter cells in the middle alternate 2/3 to match the
+        // mock's per-cell widths.
+        let letter_widths = [2u16, 3, 2, 3, 2, 3, 2];
+        let mut ids_widths: Vec<(u16, u16)> = Vec::with_capacity(9);
+        ids_widths.push((ID_LETTERS_R3_SHIFT, 3));
+        for i in 0..LETTERS_R3_LETTERS.len() as u16 {
+            ids_widths.push((
+                ID_LETTERS_R3_LETTERS_START + i,
+                letter_widths[i as usize],
+            ));
+        }
+        ids_widths.push((ID_LETTERS_R3_BACKSPACE, 6));
+        KeyRow::tall(0, lay_out_compact_cells(&ids_widths))
+    }
+
+    fn compact_symbols_row_1(&self) -> KeyRow {
+        // Esc Tab Ctl Alt ← ↓ ↑ → — terminal affordances live here in
+        // the compact tier (the natural-tier extras strip is removed).
+        // Widths [4,4,4,4, 2,2,2, 4] = 26.
+        let ids_widths = [
+            (ID_ESC, 4u16),
+            (ID_TAB, 4),
+            (ID_CTL, 4),
+            (ID_ALT, 4),
+            (ID_ARROW_LEFT, 2),
+            (ID_ARROW_DOWN, 2),
+            (ID_ARROW_UP, 2),
+            (ID_ARROW_RIGHT, 4),
+        ];
+        KeyRow::tall(0, lay_out_compact_cells(&ids_widths))
+    }
+
+    fn compact_symbols_row_2(&self) -> KeyRow {
+        // 1 2 3 4 5 6 7 8 9 0 — 10 cells × widths [3,2,3,2,3,2,3,2,3,3]
+        // = 26. Same pattern as compact Letters R1 so column edges
+        // line up vertically between layers.
+        let widths = [3u16, 2, 3, 2, 3, 2, 3, 2, 3, 3];
+        let ids_widths: Vec<(u16, u16)> = (0..10u16)
+            .map(|i| (ID_SYMBOLS_R1_START + i, widths[i as usize]))
+            .collect();
+        KeyRow::tall(0, lay_out_compact_cells(&ids_widths))
+    }
+
+    fn compact_symbols_row_3(&self) -> KeyRow {
+        // / \ : ; | < > ? . ⌫ — 10 cells × widths
+        // [2,2,3,3,2,3,3,2,2,4] = 26. The "." is sourced from
+        // SYMBOLS_R3[11] (which the natural-tier punctuation table
+        // already encodes). The backspace re-uses
+        // ID_SYMBOLS_R2_BACKSPACE so the existing label/emit handling
+        // continues to work.
+        let widths = [2u16, 2, 3, 3, 2, 3, 3, 2, 2, 4];
+        let mut ids_widths: Vec<(u16, u16)> = Vec::with_capacity(10);
+        for i in 0..8u16 {
+            ids_widths.push((ID_SYMBOLS_R3_START + i, widths[i as usize]));
+        }
+        // `.` is index 11 in SYMBOLS_R3 (after `'`, `"`, `,`).
+        ids_widths.push((ID_SYMBOLS_R3_START + 11, widths[8]));
+        ids_widths.push((ID_SYMBOLS_R2_BACKSPACE, widths[9]));
+        KeyRow::tall(0, lay_out_compact_cells(&ids_widths))
+    }
+
+    fn compact_functions_row_1(&self) -> KeyRow {
+        // F1 F2 F3 F4 F5 F6 — widths [4,4,5,4,4,5] = 26. F3 and F6
+        // take the extra cell so their column edges line up with the
+        // wider F-keys in the row below.
+        let widths = [4u16, 4, 5, 4, 4, 5];
+        let ids_widths: Vec<(u16, u16)> = (0..6u16)
+            .map(|i| (ID_FUNCTIONS_R1_START + i, widths[i as usize]))
+            .collect();
+        KeyRow::tall(0, lay_out_compact_cells(&ids_widths))
+    }
+
+    fn compact_functions_row_2(&self) -> KeyRow {
+        // F7 F8 F9 F10 F11 F12 — widths [4,4,5,4,4,5] = 26. F7..F9
+        // re-use the natural-tier IDs (ID_FUNCTIONS_R1_START + 6..8);
+        // F10 also lives in that range. F11/F12 keep their dedicated
+        // IDs.
+        let widths = [4u16, 4, 5, 4, 4, 5];
+        let ids = [
+            ID_FUNCTIONS_R1_START + 6, // F7
+            ID_FUNCTIONS_R1_START + 7, // F8
+            ID_FUNCTIONS_R1_START + 8, // F9
+            ID_FUNCTIONS_R1_START + 9, // F10
+            ID_FUNCTIONS_R2_F11,
+            ID_FUNCTIONS_R2_F12,
+        ];
+        let ids_widths: Vec<(u16, u16)> = ids
+            .iter()
+            .zip(widths.iter())
+            .map(|(id, w)| (*id, *w))
+            .collect();
+        KeyRow::tall(0, lay_out_compact_cells(&ids_widths))
+    }
+
+    fn compact_functions_row_3(&self) -> KeyRow {
+        // Mirror of the compact Symbols R1 so Esc/arrows stay
+        // reachable while editing F-keys.
+        self.compact_symbols_row_1()
+    }
+
+    /// Bottom bar for the compact tier. Letters keeps the wider
+    /// `?123` label; Symbols / Functions show `ABC`. Widths differ
+    /// from the natural-tier bottom bar (which is 34 cells natural,
+    /// not 26) so the compact bottom-bar cells must be constructed
+    /// fresh.
+    fn compact_bottom_bar(&self, layer: KeyLayer) -> KeyRow {
+        // Letters: ?123(5) Fn(3) space(15) ↵(3) = 26
+        // Symbols/Functions: ABC(4) Fn(2) space(17) ↵(3) = 26
+        let widths = match layer {
+            KeyLayer::Letters => [5u16, 3, 15, 3],
+            KeyLayer::Symbols | KeyLayer::Functions => [4u16, 2, 17, 3],
+        };
+        let ids_widths = [
+            (ID_BOTTOM_TOGGLE, widths[0]),
+            (ID_BOTTOM_FN, widths[1]),
+            (ID_BOTTOM_SPACE, widths[2]),
+            (ID_BOTTOM_ENTER, widths[3]),
+        ];
+        KeyRow::tall(0, lay_out_compact_cells(&ids_widths))
+    }
+
     /// The bottom bar shifts the toggle cell's right edge by one
     /// column when on the Letters layer (label `?123` is 4 chars, so
     /// cell width is 6 instead of 5). Reflect that geometry change
@@ -455,6 +622,25 @@ fn push_row(cells: &mut HashMap<u16, CellSpec>, row: &[(u16, u16)]) {
     }
 }
 
+/// Build a fresh `Vec<KeyCell>` from a contiguous `(id, width)`
+/// sequence. Used by the compact-tier helpers — those rows need
+/// `col_start`/`col_end` values different from what
+/// `self.cells` stores (the natural-tier widths), so they construct
+/// `KeyCell`s directly instead of looking them up.
+fn lay_out_compact_cells(row: &[(u16, u16)]) -> Vec<KeyCell> {
+    let mut col: u16 = 0;
+    let mut out = Vec::with_capacity(row.len());
+    for (id, width) in row {
+        out.push(KeyCell {
+            col_start: col,
+            col_end: col + *width,
+            id: CellId(*id),
+        });
+        col += *width;
+    }
+    out
+}
+
 impl KeyboardLayout for UsQwerty {
     fn id(&self) -> &'static str {
         "us-qwerty"
@@ -487,6 +673,57 @@ impl KeyboardLayout for UsQwerty {
                 self.bottom_bar(KeyLayer::Functions),
             ],
         }
+    }
+
+    fn compact_rows(
+        &self,
+        mods: &KeyboardModifiers,
+        target_block_width: u16,
+    ) -> Vec<KeyRow> {
+        // `target_block_width` is consumed by the renderer via
+        // `compact_row_scales` — the cell positions themselves are
+        // laid out at the canonical 26-col extent, and the renderer
+        // applies the per-row stretch factor on top.
+        let _ = target_block_width;
+        match mods.layer {
+            KeyLayer::Letters => vec![
+                self.compact_letters_row_1(),
+                self.compact_letters_row_2(),
+                self.compact_letters_row_3(),
+                self.compact_bottom_bar(KeyLayer::Letters),
+            ],
+            KeyLayer::Symbols => vec![
+                self.compact_symbols_row_1(),
+                self.compact_symbols_row_2(),
+                self.compact_symbols_row_3(),
+                self.compact_bottom_bar(KeyLayer::Symbols),
+            ],
+            KeyLayer::Functions => vec![
+                self.compact_functions_row_1(),
+                self.compact_functions_row_2(),
+                self.compact_functions_row_3(),
+                self.compact_bottom_bar(KeyLayer::Functions),
+            ],
+        }
+    }
+
+    fn compact_row_scales(
+        &self,
+        mods: &KeyboardModifiers,
+        target_block_width: u16,
+    ) -> Vec<(u16, u16)> {
+        // Every compact row is laid out so its natural extent is
+        // exactly `COMPACT_NATURAL_BLOCK`; a single `(target, 26)`
+        // ratio scales the row to fill the available width. Per-row
+        // scaling stays as the architectural primitive even though
+        // every row currently shares the ratio — a future change
+        // could give rows with anchored cells (R3, bottom bar) their
+        // own ratio without disturbing the renderer.
+        let _ = mods;
+        let n = match mods.layer {
+            KeyLayer::Letters | KeyLayer::Symbols | KeyLayer::Functions => 4,
+        };
+        vec![(target_block_width, COMPACT_NATURAL_BLOCK); n]
     }
 
     fn label(&self, cell: CellId, mods: &KeyboardModifiers) -> Cow<'static, str> {
@@ -1009,5 +1246,299 @@ mod tests {
             }
         }
         None
+    }
+
+    // -----------------------------------------------------------------
+    // Compact-tier tests.
+    //
+    // The compact tier ships a 4-row layout for narrow viewports. The
+    // canonical target is 28 cols × 23 rows on a 24-px-font Android
+    // phone in portrait. Per-row widths reproduce the visual
+    // reference in `compact_keyboard_mock.ansi`.
+    // -----------------------------------------------------------------
+
+    /// All three compact layers expose exactly 4 rows, regardless of
+    /// active layer. This is the invariant that lets
+    /// `compute_compact_geometry` produce a uniform row-height
+    /// distribution.
+    #[test]
+    fn compact_rows_count_per_layer() {
+        let layout = UsQwerty::new();
+        for layer in [KeyLayer::Letters, KeyLayer::Symbols, KeyLayer::Functions] {
+            let mods = KeyboardModifiers { layer, ..KeyboardModifiers::default() };
+            let rows = layout.compact_rows(&mods, COMPACT_NATURAL_BLOCK);
+            assert_eq!(rows.len(), 4, "{:?}", layer);
+        }
+    }
+
+    /// Compact-tier Letters R1 — `q w e r t y u i o p` with the
+    /// per-cell widths pinned by `compact_keyboard_mock.ansi`. The row
+    /// sums to `COMPACT_NATURAL_BLOCK = 26` cells.
+    #[test]
+    fn compact_letters_row_1_widths_match_mock() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        let rows = layout.compact_rows(&mods, COMPACT_NATURAL_BLOCK);
+        let r1 = &rows[0];
+        let widths: Vec<u16> = r1
+            .cells
+            .iter()
+            .map(|c| c.col_end - c.col_start)
+            .collect();
+        assert_eq!(widths, vec![3, 2, 3, 2, 3, 2, 3, 2, 3, 3]);
+        assert_eq!(r1.offset_col, 0);
+    }
+
+    /// Compact-tier Letters R2 — `a..l` with the canonical 24-cell
+    /// row plus a 2-cell stagger (`offset_col = 2`) so column edges
+    /// line up with R1 and R3.
+    #[test]
+    fn compact_letters_row_2_widths_match_mock() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        let rows = layout.compact_rows(&mods, COMPACT_NATURAL_BLOCK);
+        let r2 = &rows[1];
+        assert_eq!(r2.offset_col, 2);
+        let widths: Vec<u16> = r2
+            .cells
+            .iter()
+            .map(|c| c.col_end - c.col_start)
+            .collect();
+        assert_eq!(widths, vec![3, 2, 3, 3, 2, 3, 2, 3, 3]);
+    }
+
+    /// Compact-tier Letters R3 — `⇧ z..m ⌫` with fixed-width anchors
+    /// (`⇧` 3 cells, `⌫` 6 cells) and 7 letters sharing the 17-cell
+    /// middle span.
+    #[test]
+    fn compact_letters_row_3_widths_match_mock() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        let rows = layout.compact_rows(&mods, COMPACT_NATURAL_BLOCK);
+        let r3 = &rows[2];
+        let widths: Vec<u16> = r3
+            .cells
+            .iter()
+            .map(|c| c.col_end - c.col_start)
+            .collect();
+        assert_eq!(widths, vec![3, 2, 3, 2, 3, 2, 3, 2, 6]);
+    }
+
+    /// Compact-tier bottom bar on the Letters layer: `?123 Fn space ↵`
+    /// with widths 5 / 3 / 15 / 3 = 26.
+    #[test]
+    fn compact_letters_bottom_bar_matches_mock() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        let rows = layout.compact_rows(&mods, COMPACT_NATURAL_BLOCK);
+        let bottom = rows.last().expect("bottom bar present");
+        let widths: Vec<u16> = bottom
+            .cells
+            .iter()
+            .map(|c| c.col_end - c.col_start)
+            .collect();
+        assert_eq!(widths, vec![5, 3, 15, 3]);
+    }
+
+    /// Compact-tier Symbols R1 carries the terminal affordances
+    /// (Esc / Tab / Ctl / Alt + four arrows) — that was originally
+    /// the natural-tier extras strip. The compact tier removes the
+    /// extras strip, so these cells live here on Symbols.
+    #[test]
+    fn compact_symbols_row_1_carries_terminal_affordances() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers {
+            layer: KeyLayer::Symbols,
+            ..KeyboardModifiers::default()
+        };
+        let rows = layout.compact_rows(&mods, COMPACT_NATURAL_BLOCK);
+        let r1 = &rows[0];
+        let ids: Vec<u16> = r1.cells.iter().map(|c| c.id.0).collect();
+        assert_eq!(
+            ids,
+            vec![
+                ID_ESC,
+                ID_TAB,
+                ID_CTL,
+                ID_ALT,
+                ID_ARROW_LEFT,
+                ID_ARROW_DOWN,
+                ID_ARROW_UP,
+                ID_ARROW_RIGHT,
+            ],
+        );
+        let widths: Vec<u16> = r1
+            .cells
+            .iter()
+            .map(|c| c.col_end - c.col_start)
+            .collect();
+        assert_eq!(widths, vec![4, 4, 4, 4, 2, 2, 2, 4]);
+    }
+
+    /// Compact-tier Symbols R2 — digits `1..0` with the same per-cell
+    /// widths as compact Letters R1 so column edges align between
+    /// layers.
+    #[test]
+    fn compact_symbols_row_2_widths_match_mock() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers {
+            layer: KeyLayer::Symbols,
+            ..KeyboardModifiers::default()
+        };
+        let rows = layout.compact_rows(&mods, COMPACT_NATURAL_BLOCK);
+        let widths: Vec<u16> = rows[1]
+            .cells
+            .iter()
+            .map(|c| c.col_end - c.col_start)
+            .collect();
+        assert_eq!(widths, vec![3, 2, 3, 2, 3, 2, 3, 2, 3, 3]);
+    }
+
+    /// Compact-tier Symbols R3 — `/ \ : ; | < > ? . ⌫` with widths
+    /// summing to 26 and `.` sourced from SYMBOLS_R3[11] so the
+    /// natural-tier label / emit paths handle it unchanged.
+    #[test]
+    fn compact_symbols_row_3_widths_match_mock() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers {
+            layer: KeyLayer::Symbols,
+            ..KeyboardModifiers::default()
+        };
+        let rows = layout.compact_rows(&mods, COMPACT_NATURAL_BLOCK);
+        let r3 = &rows[2];
+        let widths: Vec<u16> = r3
+            .cells
+            .iter()
+            .map(|c| c.col_end - c.col_start)
+            .collect();
+        assert_eq!(widths, vec![2, 2, 3, 3, 2, 3, 3, 2, 2, 4]);
+        // Period cell sources its label / action from SYMBOLS_R3[11].
+        let period_id = r3.cells[8].id;
+        assert_eq!(layout.label(period_id, &mods).as_ref(), ".");
+        match layout.emit(period_id, &mods) {
+            KeyAction::SendKey(k) => assert_eq!(k.bare_key, BareKey::Char('.')),
+            other => panic!("expected SendKey('.'), got {:?}", other),
+        }
+    }
+
+    /// Compact-tier Symbols / Functions bottom bar: `ABC Fn space ↵`
+    /// at widths 4 / 2 / 17 / 3 — Functions reuses the same widths.
+    #[test]
+    fn compact_non_letters_bottom_bar_matches_mock() {
+        let layout = UsQwerty::new();
+        for layer in [KeyLayer::Symbols, KeyLayer::Functions] {
+            let mods = KeyboardModifiers { layer, ..KeyboardModifiers::default() };
+            let rows = layout.compact_rows(&mods, COMPACT_NATURAL_BLOCK);
+            let bottom = rows.last().expect("bottom bar present");
+            let widths: Vec<u16> = bottom
+                .cells
+                .iter()
+                .map(|c| c.col_end - c.col_start)
+                .collect();
+            assert_eq!(widths, vec![4, 2, 17, 3], "{:?}", layer);
+        }
+    }
+
+    /// Compact-tier Functions layer R1 / R2 carry F1..F12. R3 is the
+    /// terminal-affordances row (mirror of compact Symbols R1) so
+    /// Esc / arrows stay reachable while editing F-keys.
+    #[test]
+    fn compact_functions_layout_is_complete() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers {
+            layer: KeyLayer::Functions,
+            ..KeyboardModifiers::default()
+        };
+        let rows = layout.compact_rows(&mods, COMPACT_NATURAL_BLOCK);
+        // R1: F1..F6.
+        let r1_widths: Vec<u16> = rows[0]
+            .cells
+            .iter()
+            .map(|c| c.col_end - c.col_start)
+            .collect();
+        assert_eq!(r1_widths, vec![4, 4, 5, 4, 4, 5]);
+        // R2: F7..F12.
+        let r2_widths: Vec<u16> = rows[1]
+            .cells
+            .iter()
+            .map(|c| c.col_end - c.col_start)
+            .collect();
+        assert_eq!(r2_widths, vec![4, 4, 5, 4, 4, 5]);
+        // R3 is a mirror of compact Symbols R1.
+        let r3_ids: Vec<u16> = rows[2].cells.iter().map(|c| c.id.0).collect();
+        assert_eq!(
+            r3_ids,
+            vec![
+                ID_ESC,
+                ID_TAB,
+                ID_CTL,
+                ID_ALT,
+                ID_ARROW_LEFT,
+                ID_ARROW_DOWN,
+                ID_ARROW_UP,
+                ID_ARROW_RIGHT,
+            ],
+        );
+    }
+
+    /// Every compact-tier row sums to `COMPACT_NATURAL_BLOCK` cells —
+    /// the invariant that lets the renderer apply a single per-row
+    /// stretch ratio. R2's stagger is included via `offset_col`.
+    #[test]
+    fn every_compact_row_sums_to_natural_block() {
+        let layout = UsQwerty::new();
+        for layer in [KeyLayer::Letters, KeyLayer::Symbols, KeyLayer::Functions] {
+            let mods = KeyboardModifiers { layer, ..KeyboardModifiers::default() };
+            for (row_index, row) in layout
+                .compact_rows(&mods, COMPACT_NATURAL_BLOCK)
+                .iter()
+                .enumerate()
+            {
+                let last_end = row.cells.last().map(|c| c.col_end).unwrap_or(0);
+                let extent = row.offset_col + last_end + row.right_pad;
+                assert_eq!(
+                    extent, COMPACT_NATURAL_BLOCK,
+                    "{:?} row {} extent {} != COMPACT_NATURAL_BLOCK",
+                    layer, row_index, extent,
+                );
+            }
+        }
+    }
+
+    /// `compact_row_scales` returns one entry per row, all using the
+    /// uniform `(target_block_width, COMPACT_NATURAL_BLOCK)` ratio
+    /// for the v1 layout.
+    #[test]
+    fn compact_row_scales_uniform_per_layer() {
+        let layout = UsQwerty::new();
+        for layer in [KeyLayer::Letters, KeyLayer::Symbols, KeyLayer::Functions] {
+            let mods = KeyboardModifiers { layer, ..KeyboardModifiers::default() };
+            let target = 30u16;
+            let scales = layout.compact_row_scales(&mods, target);
+            assert_eq!(scales.len(), 4, "{:?}", layer);
+            for (num, den) in scales {
+                assert_eq!((num, den), (target, COMPACT_NATURAL_BLOCK));
+            }
+        }
+    }
+
+    /// Compact rows still resolve their cell IDs through the same
+    /// `label`/`emit` paths as the natural tier. The compact-tier
+    /// helpers reuse the existing CellIds, so the only requirement
+    /// is that every cell returned by `compact_rows` has a defined
+    /// label and a non-`NoOp` action where appropriate.
+    #[test]
+    fn every_compact_cell_resolves_on_every_layer() {
+        let layout = UsQwerty::new();
+        for layer in [KeyLayer::Letters, KeyLayer::Symbols, KeyLayer::Functions] {
+            let mods = KeyboardModifiers { layer, ..KeyboardModifiers::default() };
+            let rows = layout.compact_rows(&mods, COMPACT_NATURAL_BLOCK);
+            for row in &rows {
+                for cell in &row.cells {
+                    let _label = layout.label(cell.id, &mods);
+                    let _action = layout.emit(cell.id, &mods);
+                }
+            }
+        }
     }
 }

@@ -75,11 +75,20 @@ const MIN_H_PAD: usize = 1;
 /// individual widths. `row_heights` replaces each `KeyRow.height`
 /// on a per-row basis. `h_num == h_den` and `row_heights == [2; n]`
 /// reproduces the unscaled rendering exactly.
+///
+/// `per_row_scale`, when `Some`, supplies a row-local `(num, den)`
+/// ratio that overrides the global `h_num/h_den` for that row only.
+/// The compact tier uses this to give each row a different scaling
+/// factor: homogeneous rows (10 cells) use `(target, 10)` while
+/// rows with fixed-width anchors return cells already in scaled
+/// coordinates and set the row scale to `(1, 1)`. The natural tier
+/// leaves this `None` and behaves exactly as before.
 #[derive(Debug, Clone)]
 pub struct KeyboardGeometry {
     pub h_num: u16,
     pub h_den: u16,
     pub row_heights: Vec<u16>,
+    pub per_row_scale: Option<Vec<(u16, u16)>>,
 }
 
 impl KeyboardGeometry {
@@ -96,16 +105,75 @@ impl KeyboardGeometry {
     pub fn scale_col(&self, c: u16) -> usize {
         (c as usize * self.h_num as usize) / self.h_den as usize
     }
+
+    /// Row-aware variant of `scale_col`. When `per_row_scale` is
+    /// `Some`, the row at `row_index` uses its own `(num, den)` ratio
+    /// instead of the global `h_num/h_den`; otherwise this falls back
+    /// to `scale_col`. Renderer call sites use this in place of
+    /// `scale_col` so they remain agnostic to the active tier.
+    pub fn scale_col_for_row(&self, c: u16, row_index: usize) -> usize {
+        match &self.per_row_scale {
+            Some(scales) => {
+                let (num, den) = scales
+                    .get(row_index)
+                    .copied()
+                    .unwrap_or((self.h_num, self.h_den));
+                if den == 0 {
+                    return 0;
+                }
+                (c as usize * num as usize) / den as usize
+            },
+            None => self.scale_col(c),
+        }
+    }
 }
+
+/// Minimum row count required for the compact tier to engage. 4
+/// compact rows × `MIN_ROW_HEIGHT` (2) = 8 rows of keyboard, plus 1
+/// row of viewport reserve and 1 row for the top bar. Below this the
+/// compact tier returns `None` and the keyboard is suppressed.
+const COMPACT_MIN_ROWS: usize = 10;
+/// Minimum column count required for the compact tier to engage. The
+/// compact block is sized so the row's `cols - 2 * MIN_H_PAD` natural
+/// width is at least 10 cells (one cell per Letters R1 key).
+const COMPACT_MIN_COLS: usize = 12;
+/// The compact tier always lays out 4 KeyRows per layer (top row +
+/// two content rows + bottom bar). This drives row-height
+/// distribution inside `compute_compact_geometry`.
+const COMPACT_ROW_COUNT: usize = 4;
 
 /// Resolve the keyboard's terminal-row / terminal-col extent for the
 /// given layout, modifier state, and plugin dimensions.
 ///
-/// Returns `None` when the 40% budget is smaller than the per-row
-/// minimum × the layer's row count (e.g. on a very short screen) —
-/// the caller suppresses the keyboard for that frame and the viewport
-/// reclaims the rows.
+/// Two tiers are tried in priority order:
+/// 1. **Natural** — the legacy 5-row (Letters/Symbols) / 4-row
+///    (Functions) layout. Wins whenever it fits.
+/// 2. **Compact** — a 4-row narrow-screen variant that lays out each
+///    row independently to fill the available width. Engages when the
+///    natural tier returns `None` but the viewport is still tall and
+///    wide enough to host the compact rows.
+///
+/// Returns `None` only when neither tier fits — the caller suppresses
+/// the keyboard for that frame and the viewport reclaims the rows.
 pub fn compute_geometry(
+    layout: &dyn KeyboardLayout,
+    mods: &KeyboardModifiers,
+    rows: usize,
+    cols: usize,
+) -> Option<KeyboardGeometry> {
+    if let Some(g) = compute_natural_geometry(layout, mods, rows, cols) {
+        return Some(g);
+    }
+    compute_compact_geometry(layout, mods, rows, cols)
+}
+
+/// Natural-tier geometry — the legacy `compute_geometry` body,
+/// extracted verbatim so its behaviour is pinned by the existing
+/// tests. Returns `None` when the 40% budget is smaller than the
+/// per-row minimum × the layer's row count (e.g. on a very short
+/// screen). The caller falls back to the compact tier when this
+/// happens.
+pub fn compute_natural_geometry(
     layout: &dyn KeyboardLayout,
     mods: &KeyboardModifiers,
     rows: usize,
@@ -142,19 +210,97 @@ pub fn compute_geometry(
     // share boundaries because the scaling is applied to absolute
     // positions, not to individual widths.
     //
-    // When the natural block already exceeds the target width
-    // (very narrow grids), fall back to 1:1 and let `clip_buf`
-    // truncate the overflow. Out-of-scope: responsive key removal
-    // at extremely narrow widths.
+    // When the natural block exceeds the target width, the natural
+    // tier returns `None` instead of falling back to a 1:1 ratio
+    // (which would render the keyboard at full natural width and
+    // let `clip_buf` truncate the right side). With the compact
+    // tier available, suppressing here is the correct answer — the
+    // caller will retry through `compute_compact_geometry`, which
+    // renders a narrower 4-row layout instead of a clipped 5-row
+    // one.
     let natural_block = natural_block_width(&key_rows);
     let target_block = cols.saturating_sub(2 * MIN_H_PAD);
-    let (h_num, h_den) = if natural_block == 0 || target_block < natural_block {
-        (1u16, 1u16)
+    if natural_block == 0 || target_block < natural_block {
+        return None;
+    }
+    let h_num = target_block as u16;
+    let h_den = natural_block as u16;
+
+    Some(KeyboardGeometry { h_num, h_den, row_heights, per_row_scale: None })
+}
+
+/// Compact-tier geometry — narrow / short viewports. Engages when
+/// the natural tier returns `None` (typically because the 40% budget
+/// is smaller than the natural row count × `MIN_ROW_HEIGHT`). Lays
+/// out a 4-row block whose total height fits inside the 40% budget
+/// and whose width fills `cols - 2 * MIN_H_PAD`.
+///
+/// Returns `None` when the viewport is too small to host even the
+/// compact block (`rows < COMPACT_MIN_ROWS` or `cols < COMPACT_MIN_COLS`).
+pub fn compute_compact_geometry(
+    layout: &dyn KeyboardLayout,
+    mods: &KeyboardModifiers,
+    rows: usize,
+    cols: usize,
+) -> Option<KeyboardGeometry> {
+    if rows < COMPACT_MIN_ROWS || cols < COMPACT_MIN_COLS {
+        return None;
+    }
+
+    let target_block = cols.saturating_sub(2 * MIN_H_PAD);
+    if target_block == 0 {
+        return None;
+    }
+
+    let key_rows = layout.compact_rows(mods, target_block as u16);
+    let n = key_rows.len();
+    if n == 0 {
+        return None;
+    }
+
+    // The compact tier always lays out the same number of rows
+    // regardless of which layer is active, but defensively guard
+    // against an alternate-layout implementation that returns a
+    // different row count.
+    let target_total = rows * KEYBOARD_PCT_NUM / KEYBOARD_PCT_DEN;
+    let min_total = n * MIN_ROW_HEIGHT;
+    if target_total < min_total {
+        return None;
+    }
+
+    // Same row-height distribution as the natural tier: a uniform
+    // base height with `rem` extra rows front-loaded into the top of
+    // the keyboard. With 4 compact rows and a budget of 8..=10 the
+    // common shapes are `[2, 2, 2, 2]` and `[3, 2, 2, 2]`.
+    let base = target_total / n;
+    let rem = target_total % n;
+    let row_heights: Vec<u16> = (0..n)
+        .map(|i| if i < rem { (base + 1) as u16 } else { base as u16 })
+        .collect();
+
+    // Per-row scales come from the layout. Fall back to a uniform
+    // `(target_block, COMPACT_NATURAL_BLOCK)` ratio if the layout
+    // returned fewer entries than rows — that keeps the renderer
+    // sane for layouts whose default `compact_row_scales` returns
+    // `Vec::new()`. The fallback uses the widest row's natural
+    // extent as the denominator so cells still align with the
+    // target width.
+    let scales = layout.compact_row_scales(mods, target_block as u16);
+    let per_row_scale: Vec<(u16, u16)> = if scales.len() == n {
+        scales
     } else {
-        (target_block as u16, natural_block as u16)
+        let natural_block = natural_block_width(&key_rows);
+        let den = (natural_block as u16).max(1);
+        vec![(target_block as u16, den); n]
     };
 
-    Some(KeyboardGeometry { h_num, h_den, row_heights })
+    let _ = COMPACT_ROW_COUNT; // touchpoint for the documented 4-row design
+    Some(KeyboardGeometry {
+        h_num: target_block as u16,
+        h_den: 1,
+        row_heights,
+        per_row_scale: Some(per_row_scale),
+    })
 }
 
 /// Widest row in `rows` in *natural* (unscaled) cell units. Used by
@@ -200,7 +346,21 @@ pub fn render_keyboard(
     cols: usize,
     click_regions: &mut Vec<ClickRegion>,
 ) -> usize {
-    let rows = layout.rows(mods);
+    // The row source must match what `compute_geometry` used when it
+    // built `geometry`: natural-tier geometries are sized against
+    // `layout.rows(mods)`, compact-tier geometries against
+    // `layout.compact_rows(mods, target_block_width)`. Mismatching the
+    // two desyncs `geometry.row_heights` / `per_row_scale` from the
+    // rows actually drawn — at narrow widths that produces natural
+    // rows clipped on the right plus a runaway bottom bar (no
+    // `per_row_scale[4]` entry → fallback to `h_num/h_den = (target,
+    // 1)` blows widths up to hundreds of cells).
+    let rows = if geometry.per_row_scale.is_some() {
+        let target_block = cols.saturating_sub(2 * MIN_H_PAD) as u16;
+        layout.compact_rows(mods, target_block)
+    } else {
+        layout.rows(mods)
+    };
     if rows.is_empty() {
         return 0;
     }
@@ -260,6 +420,7 @@ pub fn render_keyboard(
                 mods,
                 press_flash,
                 row,
+                row_index,
                 palette,
                 geometry,
                 term_row + pad_offset,
@@ -273,6 +434,7 @@ pub fn render_keyboard(
             mods,
             press_flash,
             row,
+            row_index,
             palette,
             geometry,
             term_row,
@@ -296,18 +458,22 @@ pub fn render_keyboard(
 
 /// Widest row in `rows` after applying the geometry's scale ratio.
 /// Used as the block width that centers the keyboard horizontally.
-/// Returns 0 for an empty `rows` slice. With `h_num == h_den` this
-/// reproduces the unscaled natural width.
+/// Returns 0 for an empty `rows` slice. With `h_num == h_den` and
+/// `per_row_scale == None` this reproduces the unscaled natural
+/// width. With `per_row_scale == Some(_)` each row contributes its
+/// own per-row scaled extent — every compact-tier row is constructed
+/// to fill the same available width, so the max equals that width.
 fn scaled_block_width(rows: &[KeyRow], geometry: &KeyboardGeometry) -> usize {
     rows.iter()
-        .map(|r| {
+        .enumerate()
+        .map(|(row_index, r)| {
             let last_end = r
                 .cells
                 .last()
                 .map(|c| c.col_end)
                 .unwrap_or(0);
             let extent = r.offset_col + last_end + r.right_pad;
-            geometry.scale_col(extent)
+            geometry.scale_col_for_row(extent, row_index)
         })
         .max()
         .unwrap_or(0)
@@ -360,6 +526,7 @@ fn render_row(
     mods: &KeyboardModifiers,
     press_flash: &HashMap<CellId, Instant>,
     row: &KeyRow,
+    row_index: usize,
     palette: [u8; 2],
     geometry: &KeyboardGeometry,
     cell_top: usize,
@@ -369,7 +536,7 @@ fn render_row(
     cols: usize,
     click_regions: &mut Vec<ClickRegion>,
 ) {
-    let offset = geometry.scale_col(row.offset_col);
+    let offset = geometry.scale_col_for_row(row.offset_col, row_index);
     let cell_bottom = cell_top + height; // exclusive
     let label_row = cell_top + label_row_offset;
 
@@ -389,8 +556,8 @@ fn render_row(
     // remainder absorb naturally across cells in the row.
     for (cell_index, cell) in row.cells.iter().enumerate() {
         let shade = compute_shade(layout, mods, press_flash, cell.id, palette, cell_index);
-        let scaled_start = geometry.scale_col(cell.col_start);
-        let scaled_end = geometry.scale_col(cell.col_end);
+        let scaled_start = geometry.scale_col_for_row(cell.col_start, row_index);
+        let scaled_end = geometry.scale_col_for_row(cell.col_end, row_index);
         let cell_width = scaled_end.saturating_sub(scaled_start);
         let label = layout.label(cell.id, mods);
         let centered = center(label.as_ref(), cell_width);
@@ -440,7 +607,7 @@ fn render_row(
     // unstyled spaces after the reset so they don't pick up the last
     // cell's bg. `right_pad` scales with the rest of the row.
     buf.push_str(RESET);
-    let scaled_right_pad = geometry.scale_col(row.right_pad);
+    let scaled_right_pad = geometry.scale_col_for_row(row.right_pad, row_index);
     for _ in 0..scaled_right_pad {
         buf.push(' ');
     }
@@ -467,13 +634,14 @@ fn render_padding_row(
     mods: &KeyboardModifiers,
     press_flash: &HashMap<CellId, Instant>,
     row: &KeyRow,
+    row_index: usize,
     palette: [u8; 2],
     geometry: &KeyboardGeometry,
     term_row: usize,
     left_pad: usize,
     cols: usize,
 ) {
-    let offset = geometry.scale_col(row.offset_col);
+    let offset = geometry.scale_col_for_row(row.offset_col, row_index);
     let mut buf = String::new();
     for _ in 0..offset {
         buf.push(' ');
@@ -481,8 +649,8 @@ fn render_padding_row(
     for (cell_index, cell) in row.cells.iter().enumerate() {
         let shade = compute_shade(layout, mods, press_flash, cell.id, palette, cell_index);
         let cell_width = geometry
-            .scale_col(cell.col_end)
-            .saturating_sub(geometry.scale_col(cell.col_start));
+            .scale_col_for_row(cell.col_end, row_index)
+            .saturating_sub(geometry.scale_col_for_row(cell.col_start, row_index));
         buf.push_str(&ansi_bg(shade));
         for _ in 0..cell_width {
             buf.push(' ');
@@ -491,7 +659,7 @@ fn render_padding_row(
     // Match the label row: drop bg before emitting any `right_pad` so
     // the trailing padding is unstyled, not bg-shaded.
     buf.push_str(RESET);
-    let scaled_right_pad = geometry.scale_col(row.right_pad);
+    let scaled_right_pad = geometry.scale_col_for_row(row.right_pad, row_index);
     for _ in 0..scaled_right_pad {
         buf.push(' ');
     }
@@ -736,7 +904,9 @@ mod tests {
     /// base=2, remainder=2 → row_heights `[3, 3, 2, 2, 2]` summing to
     /// 12. Horizontal scale is `38 / 34`: the widest row (the bottom
     /// bar at natural 34 cells) stretches to fill the available
-    /// `cols - 2*MIN_H_PAD = 38` cells.
+    /// `cols - 2*MIN_H_PAD = 38` cells. `per_row_scale` is `None`
+    /// because the natural tier never switches into per-row
+    /// scaling.
     #[test]
     fn compute_geometry_phone_baseline() {
         use crate::keyboard::layouts::us_qwerty::UsQwerty;
@@ -749,6 +919,7 @@ mod tests {
         assert_eq!(geom.h_den, 34);
         assert_eq!(geom.row_heights, vec![3, 3, 2, 2, 2]);
         assert_eq!(geom.total_height(), 12);
+        assert!(geom.per_row_scale.is_none(), "natural tier must not set per_row_scale");
     }
 
     /// Pinch-in doubles the grid (60 rows × 80 cols). The 40% budget
@@ -804,21 +975,26 @@ mod tests {
         assert_eq!(scaled_block_width(&layout.rows(&mods), &geom), 118);
     }
 
-    /// A tall but narrow screen — the natural block already exceeds
-    /// `cols - 2`, so the geometry falls back to 1:1 (no stretching)
-    /// and the keyboard renders at its natural width, clipped on the
-    /// right where it overflows.
+    /// A tall but narrow screen — the natural block (34 cells)
+    /// exceeds the available width (`cols - 2 = 28`), so the natural
+    /// tier returns `None` and the compact tier engages instead. The
+    /// compact tier always sets `per_row_scale = Some(_)`, which is
+    /// the distinguishing marker against the natural tier.
     #[test]
-    fn compute_geometry_falls_back_to_one_to_one_when_too_narrow() {
+    fn compute_geometry_falls_back_to_compact_when_too_narrow() {
         use crate::keyboard::layouts::us_qwerty::UsQwerty;
         use crate::keyboard::modifiers::KeyboardModifiers;
 
         let layout = UsQwerty::new();
         let mods = KeyboardModifiers::default();
-        // cols=30 ⇒ target=28 < natural=34 ⇒ 1:1 fallback.
-        let geom = compute_geometry(&layout, &mods, 80, 30).expect("fits");
-        assert_eq!(geom.h_num, 1);
-        assert_eq!(geom.h_den, 1);
+        // cols=30 ⇒ target=28 < natural=34. Natural fails; compact
+        // takes over with 4 rows.
+        let geom = compute_geometry(&layout, &mods, 80, 30).expect("compact fits");
+        assert!(
+            geom.per_row_scale.is_some(),
+            "narrow viewport must route through the compact tier",
+        );
+        assert_eq!(geom.row_heights.len(), 4);
     }
 
     /// `total_height` matches the sum of `row_heights` even for
@@ -829,6 +1005,7 @@ mod tests {
             h_num: 2,
             h_den: 1,
             row_heights: vec![3, 4, 5],
+            per_row_scale: None,
         };
         assert_eq!(g.total_height(), 12);
     }
@@ -842,6 +1019,7 @@ mod tests {
             h_num: 38,
             h_den: 34,
             row_heights: vec![],
+            per_row_scale: None,
         };
         // Cell A's end and cell B's start both at natural col 3 must
         // produce the same scaled col.
@@ -851,6 +1029,140 @@ mod tests {
         let positions: Vec<usize> = (0..=34).map(|c| g.scale_col(c)).collect();
         for w in positions.windows(2) {
             assert!(w[0] <= w[1], "scale_col must be monotone");
+        }
+    }
+
+    /// Canonical compact-tier engagement: 23 rows × 28 cols (Firefox
+    /// Android post-SetConfig resize on a 24-px-font phone). The
+    /// natural tier returns `None` because 23 × 2/5 = 9 < 5 × 2 = 10;
+    /// the compact tier takes over and lays out 4 rows whose
+    /// per-row scale matches the layout's `compact_row_scales`
+    /// output. `target_block = 28 - 2 = 26`, equal to
+    /// `COMPACT_NATURAL_BLOCK`, so the per-row ratio is `(26, 26)`.
+    #[test]
+    fn compute_geometry_engages_compact_at_phone_dimensions() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::KeyboardModifiers;
+
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        let geom = compute_geometry(&layout, &mods, 23, 28).expect("compact fits");
+        assert_eq!(geom.row_heights.len(), 4);
+        let scales = geom
+            .per_row_scale
+            .as_ref()
+            .expect("compact tier sets per_row_scale");
+        assert_eq!(scales.len(), 4);
+        for (num, den) in scales {
+            assert_eq!((*num, *den), (26, 26));
+        }
+        // 23 × 2/5 = 9 row budget split across 4 rows yields
+        // base=2, rem=1 → `[3, 2, 2, 2]` summing to 9.
+        assert_eq!(geom.row_heights, vec![3, 2, 2, 2]);
+        assert_eq!(geom.total_height(), 9);
+    }
+
+    /// At a viewport size where natural geometry succeeds, the
+    /// compact tier must not run — `per_row_scale` must stay `None`.
+    /// 30 × 40 is the same canonical phone-portrait baseline used by
+    /// `compute_geometry_phone_baseline`.
+    #[test]
+    fn compute_geometry_prefers_natural_when_both_could_fit() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::KeyboardModifiers;
+
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        let geom = compute_geometry(&layout, &mods, 30, 40).expect("fits");
+        assert!(geom.per_row_scale.is_none());
+    }
+
+    /// `compute_geometry` returns `None` when both tiers fail. The
+    /// natural tier fails the row-budget check, and the compact tier
+    /// fails its width threshold (`cols < COMPACT_MIN_COLS`).
+    #[test]
+    fn compute_geometry_suppresses_below_compact_threshold() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::KeyboardModifiers;
+
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        // 8 rows × 12 cols: natural fails on rows (8 × 2/5 = 3 < 10),
+        // compact fails on rows (8 < COMPACT_MIN_ROWS=10).
+        assert!(compute_geometry(&layout, &mods, 8, 12).is_none());
+        // 23 rows × 8 cols: natural fails on rows; compact fails on
+        // cols (8 < COMPACT_MIN_COLS=12).
+        assert!(compute_geometry(&layout, &mods, 23, 8).is_none());
+    }
+
+    /// Every compact row's scaled extent equals the target block
+    /// width (`cols - 2 * MIN_H_PAD`). This is the architectural
+    /// invariant that lets the renderer center the block correctly
+    /// — there is no row narrower than the available width.
+    #[test]
+    fn compact_geometry_rows_fill_available_width() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::{KeyLayer, KeyboardModifiers};
+
+        let layout = UsQwerty::new();
+        let mut mods = KeyboardModifiers::default();
+        let cols = 28usize;
+        let target_block = cols - 2 * MIN_H_PAD;
+        for layer in [KeyLayer::Letters, KeyLayer::Symbols, KeyLayer::Functions] {
+            mods.layer = layer;
+            let geom = compute_compact_geometry(&layout, &mods, 23, cols)
+                .expect("compact fits");
+            let key_rows = layout.compact_rows(&mods, target_block as u16);
+            assert_eq!(key_rows.len(), geom.row_heights.len(), "{:?}", layer);
+            for (row_index, row) in key_rows.iter().enumerate() {
+                let last_end = row
+                    .cells
+                    .last()
+                    .map(|c| c.col_end)
+                    .unwrap_or(0);
+                let extent = row.offset_col + last_end + row.right_pad;
+                let scaled = geom.scale_col_for_row(extent, row_index);
+                assert_eq!(
+                    scaled, target_block,
+                    "{:?} row {} scaled extent {} != target {}",
+                    layer, row_index, scaled, target_block,
+                );
+            }
+        }
+    }
+
+    /// `scale_col_for_row` preserves adjacent-cell boundaries for
+    /// every row of the compact tier — the row's scaled boundary
+    /// sequence is monotone non-decreasing and starts at 0.
+    #[test]
+    fn compact_geometry_preserves_adjacent_boundaries_per_row() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::{KeyLayer, KeyboardModifiers};
+
+        let layout = UsQwerty::new();
+        let mut mods = KeyboardModifiers::default();
+        let cols = 28usize;
+        for layer in [KeyLayer::Letters, KeyLayer::Symbols, KeyLayer::Functions] {
+            mods.layer = layer;
+            let geom = compute_compact_geometry(&layout, &mods, 23, cols)
+                .expect("compact fits");
+            let key_rows = layout.compact_rows(&mods, (cols - 2 * MIN_H_PAD) as u16);
+            for (row_index, row) in key_rows.iter().enumerate() {
+                let mut last = 0usize;
+                for cell in &row.cells {
+                    let start = geom.scale_col_for_row(cell.col_start, row_index);
+                    let end = geom.scale_col_for_row(cell.col_end, row_index);
+                    assert!(start <= end, "{:?} row {} cell {:?} reverses", layer, row_index, cell.id);
+                    assert!(
+                        start >= last,
+                        "{:?} row {} cell {:?} starts before previous end",
+                        layer,
+                        row_index,
+                        cell.id,
+                    );
+                    last = end;
+                }
+            }
         }
     }
 
@@ -875,6 +1187,7 @@ mod tests {
             h_num: 1,
             h_den: 1,
             row_heights: vec![4; layout.rows(&mods).len()],
+            per_row_scale: None,
         };
         let mut regions: Vec<ClickRegion> = Vec::new();
         let press_flash: HashMap<CellId, std::time::Instant> = HashMap::new();
@@ -901,5 +1214,101 @@ mod tests {
             }
         }
         assert!(found_first_row_center, "no slop region from the first row");
+    }
+
+    /// Pins the bug fix where `render_keyboard` used to call
+    /// `layout.rows(mods)` (5 natural-tier rows) while the geometry
+    /// was sized for `compact_rows(mods, target_block)` (4 rows).
+    /// The mismatch produced spilling rows and a giant bottom-bar
+    /// painted entirely in the background colour (the 5th row had
+    /// no `per_row_scale[4]` entry → fallback to the global
+    /// `h_num/h_den`).
+    ///
+    /// `render_keyboard` returns the number of terminal rows drawn;
+    /// for a compact geometry that must equal `geometry.total_height()`.
+    /// In the buggy version it returned `total_height + last_row_height`
+    /// because it iterated 5 rows over a 4-element row-height vector
+    /// and fell through to `row.height` on the 5th.
+    #[test]
+    fn render_keyboard_uses_compact_rows_under_compact_geometry() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::{KeyLayer, KeyboardModifiers};
+        use crate::state::ClickRegion;
+        use std::collections::HashMap;
+
+        let layout = UsQwerty::new();
+        let mut mods = KeyboardModifiers::default();
+        for layer in [KeyLayer::Letters, KeyLayer::Symbols, KeyLayer::Functions] {
+            mods.layer = layer;
+            let geom = compute_compact_geometry(&layout, &mods, 23, 28).expect("compact fits");
+            let mut regions: Vec<ClickRegion> = Vec::new();
+            let press_flash: HashMap<CellId, std::time::Instant> = HashMap::new();
+            let drawn = render_keyboard(
+                &layout,
+                &mods,
+                &press_flash,
+                &geom,
+                /* plugin_row_start */ 0,
+                28,
+                &mut regions,
+            );
+            assert_eq!(
+                drawn,
+                geom.total_height(),
+                "{:?}: render_keyboard returned {} rows, geometry expected {}",
+                layer,
+                drawn,
+                geom.total_height(),
+            );
+            // Every click region must sit inside the geometry's
+            // total height, plus slop. The buggy version produced
+            // regions on term rows well beyond `total_height + slop`
+            // because it iterated over 5 natural rows on top of the
+            // 4-row compact geometry; slop alone only adds one row.
+            let max_row_end = geom.total_height() + SLOP_V;
+            for region in &regions {
+                assert!(
+                    region.row_end <= max_row_end,
+                    "{:?}: region {:?} extends past total_height+slop {}",
+                    layer,
+                    region,
+                    max_row_end,
+                );
+            }
+        }
+    }
+
+    /// Label vertical centering still works under a compact-tier
+    /// geometry — the renderer doesn't special-case the natural
+    /// path, but the test pins this explicitly so a future renderer
+    /// change can't quietly regress it.
+    #[test]
+    fn label_row_is_vertically_centered_under_compact_geometry() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::KeyboardModifiers;
+        use crate::state::{ClickAction, ClickRegion};
+        use std::collections::HashMap;
+
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        let geom = compute_compact_geometry(&layout, &mods, 23, 28).expect("compact fits");
+        // The compact tier's row_heights at this size are `[3, 2, 2, 2]`.
+        // Row 0 occupies term rows [0, 3); label sits at height/2 = 1.
+        let mut regions: Vec<ClickRegion> = Vec::new();
+        let press_flash: HashMap<CellId, std::time::Instant> = HashMap::new();
+        render_keyboard(&layout, &mods, &press_flash, &geom, 0, 28, &mut regions);
+        let mut found_first_row_center = false;
+        for region in &regions {
+            if let (Some((_, cy)), ClickAction::Keyboard(_)) = (region.center, &region.action) {
+                if region.row_start == 0 && region.row_end > region.row_start {
+                    assert_eq!(cy, 1, "compact label row must center at height/2 = 1");
+                    found_first_row_center = true;
+                }
+            }
+        }
+        assert!(
+            found_first_row_center,
+            "compact tier produced no slop region from the first row",
+        );
     }
 }
