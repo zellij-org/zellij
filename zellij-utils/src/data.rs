@@ -318,6 +318,7 @@ impl FromStr for KeyModifier {
 /// Used to bridge the kitty keyboard protocol (which reports the unshifted
 /// code point + SHIFT) with legacy xterm-style encoding (which expects the
 /// already-shifted character).
+#[cfg(not(target_family = "wasm"))]
 fn us_keyboard_shifted_char(c: char) -> Option<char> {
     match c {
         '1' => Some('!'),
