@@ -204,13 +204,18 @@ fn enable_vt_processing_on_stdout() {
 ///
 /// When TERM is not set we're in a native console (cmd, PowerShell,
 /// Windows Terminal) and use crossterm's Console API approach.
-pub(crate) fn enable_mouse_support(stdout: &mut dyn Write) -> Result<()> {
+pub(crate) fn enable_mouse_support(stdout: &mut dyn Write, track_any_motion: bool) -> Result<()> {
     let err_context = "failed to enable mouse mode";
     if std::env::var("TERM").is_ok() {
         enable_vt_processing_on_stdout();
         stdout
             .write_all(super::os_input_output::ENABLE_MOUSE_SUPPORT.as_bytes())
             .context(err_context)?;
+        if track_any_motion {
+            stdout
+                .write_all(super::os_input_output::ENABLE_MOUSE_ANY_MOTION_TRACKING.as_bytes())
+                .context(err_context)?;
+        }
         stdout.flush().context(err_context)?;
     } else {
         // crossterm::execute! requires Sized, so we use std::io::stdout()

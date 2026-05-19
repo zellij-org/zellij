@@ -88,11 +88,16 @@ pub(crate) fn setup_ipc(
     (sender, receiver)
 }
 
-pub(crate) fn enable_mouse_support(stdout: &mut dyn Write) -> Result<()> {
+pub(crate) fn enable_mouse_support(stdout: &mut dyn Write, track_any_motion: bool) -> Result<()> {
     let err_context = "failed to enable mouse mode";
     stdout
         .write_all(super::os_input_output::ENABLE_MOUSE_SUPPORT.as_bytes())
         .context(err_context)?;
+    if track_any_motion {
+        stdout
+            .write_all(super::os_input_output::ENABLE_MOUSE_ANY_MOTION_TRACKING.as_bytes())
+            .context(err_context)?;
+    }
     stdout.flush().context(err_context)?;
     Ok(())
 }
@@ -104,4 +109,35 @@ pub(crate) fn disable_mouse_support(stdout: &mut dyn Write) -> Result<()> {
         .context(err_context)?;
     stdout.flush().context(err_context)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod mouse_support_tests {
+    use super::*;
+
+    /// With hover effects off we must NOT send `?1003h`. Otherwise a dropped
+    /// ssh session leaves the host terminal in any-motion tracking and every
+    /// hover spews escape codes — see issue #3333.
+    #[test]
+    fn enable_mouse_support_omits_any_motion_when_disabled() {
+        let mut buf: Vec<u8> = Vec::new();
+        enable_mouse_support(&mut buf, false).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        assert!(
+            !output.contains("\u{1b}[?1003h"),
+            "any-motion tracking must not be enabled when track_any_motion=false; got {:?}",
+            output
+        );
+        assert!(output.contains("\u{1b}[?1000h"));
+        assert!(output.contains("\u{1b}[?1002h"));
+        assert!(output.contains("\u{1b}[?1006h"));
+    }
+
+    #[test]
+    fn enable_mouse_support_includes_any_motion_when_enabled() {
+        let mut buf: Vec<u8> = Vec::new();
+        enable_mouse_support(&mut buf, true).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        assert!(output.contains("\u{1b}[?1003h"));
+    }
 }

@@ -153,7 +153,8 @@ impl InputHandler {
         let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
         let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201~
         if self.options.mouse_mode.unwrap_or(true) {
-            self.os_input.enable_mouse().non_fatal();
+            let track_any_motion = self.options.mouse_hover_effects.unwrap_or(true);
+            self.os_input.enable_mouse(track_any_motion).non_fatal();
             self.mouse_mode_active = true;
         }
         loop {
@@ -410,7 +411,8 @@ impl InputHandler {
                     self.os_input.disable_mouse().non_fatal();
                     self.mouse_mode_active = false;
                 } else {
-                    self.os_input.enable_mouse().non_fatal();
+                    let track_any_motion = self.options.mouse_hover_effects.unwrap_or(true);
+                    self.os_input.enable_mouse(track_any_motion).non_fatal();
                     self.mouse_mode_active = true;
                 }
             },
