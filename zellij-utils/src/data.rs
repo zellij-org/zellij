@@ -311,6 +311,40 @@ impl FromStr for KeyModifier {
     }
 }
 
+/// Returns the US-keyboard shifted form of an ASCII punctuation/digit
+/// character (e.g. '/' -> '?', '1' -> '!'). Returns `None` for characters
+/// without a distinct shifted form (letters, control codes, non-ASCII).
+///
+/// Used to bridge the kitty keyboard protocol (which reports the unshifted
+/// code point + SHIFT) with legacy xterm-style encoding (which expects the
+/// already-shifted character).
+fn us_keyboard_shifted_char(c: char) -> Option<char> {
+    match c {
+        '1' => Some('!'),
+        '2' => Some('@'),
+        '3' => Some('#'),
+        '4' => Some('$'),
+        '5' => Some('%'),
+        '6' => Some('^'),
+        '7' => Some('&'),
+        '8' => Some('*'),
+        '9' => Some('('),
+        '0' => Some(')'),
+        '-' => Some('_'),
+        '=' => Some('+'),
+        '[' => Some('{'),
+        ']' => Some('}'),
+        '\\' => Some('|'),
+        ';' => Some(':'),
+        '\'' => Some('"'),
+        ',' => Some('<'),
+        '.' => Some('>'),
+        '/' => Some('?'),
+        '`' => Some('~'),
+        _ => None,
+    }
+}
+
 impl BareKey {
     pub fn from_bytes_with_u(bytes: &[u8]) -> Option<Self> {
         match str::from_utf8(bytes) {
@@ -578,7 +612,21 @@ impl KeyWithModifier {
     }
     #[cfg(not(target_family = "wasm"))]
     pub fn serialize_non_kitty(&self) -> Option<String> {
-        let modifiers = self.to_termwiz_modifiers();
+        let mut modifiers = self.to_termwiz_modifiers();
+        let mut keycode = self.to_termwiz_keycode();
+        // The kitty keyboard protocol reports the unshifted code point with a SHIFT
+        // modifier (e.g. Shift+/ on a US keyboard is reported as '/' + SHIFT). When
+        // re-encoding for a pane that doesn't speak kitty, apply the shift to the
+        // character itself — otherwise the inner terminal receives the unshifted form
+        // (e.g. Alt+Shift+/ would be sent as `ESC /` instead of `ESC ?`).
+        if modifiers.contains(Modifiers::SHIFT) {
+            if let KeyCode::Char(c) = keycode {
+                if let Some(shifted) = us_keyboard_shifted_char(c) {
+                    keycode = KeyCode::Char(shifted);
+                    modifiers.remove(Modifiers::SHIFT);
+                }
+            }
+        }
         let key_code_encode_modes = KeyCodeEncodeModes {
             encoding: KeyboardEncoding::Xterm,
             // all these flags are false because they have been dealt with before this
@@ -587,9 +635,7 @@ impl KeyWithModifier {
             newline_mode: false,
             modify_other_keys: None,
         };
-        self.to_termwiz_keycode()
-            .encode(modifiers, key_code_encode_modes, true)
-            .ok()
+        keycode.encode(modifiers, key_code_encode_modes, true).ok()
     }
     #[cfg(not(target_family = "wasm"))]
     pub fn serialize_kitty(&self) -> Option<String> {
@@ -3652,5 +3698,38 @@ pub fn can_parse_unicode_bare_keys() {
         BareKey::from_bytes_with_u(&key.as_bytes()),
         Some(BareKey::Char('ъ')),
         "Can parse a bare 'ъ' keypress"
+    );
+}
+
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn serialize_non_kitty_alt_shift_question_mark() {
+    // Kitty keyboard protocol reports Shift+/ as the unshifted code point
+    // ('/', 47) with the SHIFT modifier; when re-encoding for a pane that
+    // doesn't speak kitty, we must apply the shift so the inner terminal
+    // receives "\x1b?" (ESC + ?), not "\x1b/" (ESC + /).
+    let alt_shift_slash = KeyWithModifier::new(BareKey::Char('/'))
+        .with_alt_modifier()
+        .with_shift_modifier();
+    assert_eq!(
+        alt_shift_slash.serialize_non_kitty(),
+        Some("\u{1b}?".to_string()),
+        "Alt+Shift+/ should serialize as ESC + ? on a US keyboard"
+    );
+
+    let shift_slash = KeyWithModifier::new(BareKey::Char('/')).with_shift_modifier();
+    assert_eq!(
+        shift_slash.serialize_non_kitty(),
+        Some("?".to_string()),
+        "Shift+/ should serialize as ? on a US keyboard"
+    );
+
+    let alt_shift_1 = KeyWithModifier::new(BareKey::Char('1'))
+        .with_alt_modifier()
+        .with_shift_modifier();
+    assert_eq!(
+        alt_shift_1.serialize_non_kitty(),
+        Some("\u{1b}!".to_string()),
+        "Alt+Shift+1 should serialize as ESC + !"
     );
 }
