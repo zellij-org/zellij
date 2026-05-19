@@ -375,20 +375,44 @@ pub fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
 /// process with a hidden console.  We use CREATE_NO_WINDOW (not
 /// DETACHED_PROCESS) so the server gets valid standard handles;
 /// DETACHED_PROCESS leaves stdin/stdout/stderr as NULL, which breaks PTY
-/// creation, WASM plugin loading, and logging.
+/// creation, WASM plugin loading, and logging. CREATE_BREAKAWAY_FROM_JOB
+/// is the closest equivalent to Unix daemonization: it detaches the server
+/// from the parent's job object so it can outlive things like the
+/// per-connection sshd-session.exe job on SSH disconnect.
 #[cfg(windows)]
 pub fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
     use std::os::windows::process::CommandExt;
-    let mut cmd = Command::new(current_exe()?);
-    cmd.arg("--server").arg(socket_path);
-    if debug {
-        cmd.arg("--debug");
-    }
+
     const CREATE_NO_WINDOW: u32 = 0x08000000;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-    cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
-    cmd.spawn()?;
-    Ok(())
+    const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x01000000;
+    const ERROR_ACCESS_DENIED: i32 = 5;
+
+    let build_cmd = |flags: u32| -> io::Result<Command> {
+        let mut cmd = Command::new(current_exe()?);
+        cmd.arg("--server").arg(socket_path);
+        if debug {
+            cmd.arg("--debug");
+        }
+        cmd.creation_flags(flags);
+        Ok(cmd)
+    };
+
+    let base_flags = CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP;
+    match build_cmd(base_flags | CREATE_BREAKAWAY_FROM_JOB)?.spawn() {
+        Ok(_) => Ok(()),
+        // Some job objects forbid breakaway; retry without the flag so the
+        // server still starts (it just won't outlive the parent's job).
+        Err(e) if e.raw_os_error() == Some(ERROR_ACCESS_DENIED) => {
+            log::warn!(
+                "spawn_server: parent job denied CREATE_BREAKAWAY_FROM_JOB; \
+                 server will inherit the parent's job and may not outlive it"
+            );
+            build_cmd(base_flags)?.spawn()?;
+            Ok(())
+        },
+        Err(e) => Err(e),
+    }
 }
 
 #[derive(Debug, Clone)]
