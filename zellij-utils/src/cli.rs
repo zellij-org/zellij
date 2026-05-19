@@ -348,6 +348,12 @@ pub enum Sessions {
         /// Skip TLS certificate validation (DANGEROUS — development only)
         #[clap(long, value_parser)]
         insecure: bool,
+
+        /// Custom HTTP header to include in remote session requests (can be repeated).
+        /// Format: "Name: Value"
+        /// Example: --header "CF-Access-Client-Id: xxx" --header "CF-Access-Client-Secret: yyy"
+        #[clap(long = "header", short('H'), value_parser, number_of_values = 1)]
+        headers: Vec<String>,
     },
 
     /// Watch a session (read-only)
