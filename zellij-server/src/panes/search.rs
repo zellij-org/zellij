@@ -9,15 +9,31 @@ use zellij_utils::input::actions::SearchDirection;
 use zellij_utils::position::Position;
 
 // If the first char of a grapheme is neither alphanumeric nor an underscore,
-// we consider it a word-boundary.  Uses Unicode-aware is_alphanumeric() so that
-// non-ASCII letters (Greek, Cyrillic, CJK, Arabic, …) are correctly treated as
-// non-boundary characters in whole-word search.
+// we consider it a word-boundary. Uses Unicode-aware is_alphanumeric() so that
+// non-ASCII space-delimited scripts (Greek, Cyrillic, Arabic, etc.) are treated
+// as words. For no-space CJK scripts, this is a pragmatic first-pass rule rather
+// than dictionary word segmentation: ideographs and kana allow per-character
+// whole-word matches, preserving useful terminal search behavior.
 fn is_word_boundary(grapheme: Option<&str>) -> bool {
     grapheme.map_or(true, |g| {
-        g.chars()
-            .next()
-            .map_or(true, |c| !c.is_alphanumeric() && c != '_')
+        g.chars().next().map_or(true, |c| {
+            is_cjk_word_boundary_character(c) || (!c.is_alphanumeric() && c != '_')
+        })
     })
+}
+
+fn is_cjk_word_boundary_character(c: char) -> bool {
+    matches!(
+        c,
+        '\u{3040}'..='\u{309F}' // Hiragana
+            | '\u{30A0}'..='\u{30FF}' // Katakana
+            | '\u{31F0}'..='\u{31FF}' // Katakana Phonetic Extensions
+            | '\u{3400}'..='\u{4DBF}' // CJK Unified Ideographs Extension A
+            | '\u{4E00}'..='\u{9FFF}' // CJK Unified Ideographs
+            | '\u{F900}'..='\u{FAFF}' // CJK Compatibility Ideographs
+            | '\u{FF65}'..='\u{FF9F}' // Halfwidth Katakana
+            | '\u{20000}'..='\u{2EBEF}' // CJK Unified Ideographs Extensions B-F
+    )
 }
 
 fn display_col_to_cell_index(row: &Row, display_col: usize) -> usize {

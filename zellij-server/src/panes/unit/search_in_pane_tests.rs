@@ -458,3 +458,36 @@ pub fn whole_word_search_non_ascii_letters_are_not_boundaries() {
         "expected one whole-word match for λ when surrounded by spaces"
     );
 }
+
+#[test]
+pub fn whole_word_search_cjk_characters_are_boundaries() {
+    // Chinese/Japanese text often has no spaces between words. This is a
+    // pragmatic first-pass rule, not dictionary segmentation: single Han/kana
+    // characters remain searchable as whole words inside adjacent Han/kana text,
+    // while the Greek/Cyrillic/Arabic path above remains non-boundary.
+    let mut pane = create_pane();
+    pane.handle_pty_bytes("中文".as_bytes().to_vec());
+    pane.update_search_term("中");
+    assert_eq!(
+        pane.grid.search_results.selections.len(),
+        1,
+        "expected one plain match for 中 in 中文"
+    );
+
+    pane.toggle_search_whole_words();
+    assert_eq!(
+        pane.grid.search_results.selections.len(),
+        1,
+        "expected 中 to remain a whole-word match when followed by 文"
+    );
+
+    let mut pane2 = create_pane();
+    pane2.handle_pty_bytes("かな".as_bytes().to_vec());
+    pane2.update_search_term("か");
+    pane2.toggle_search_whole_words();
+    assert_eq!(
+        pane2.grid.search_results.selections.len(),
+        1,
+        "expected hiragana to use the same no-space-script boundary behavior"
+    );
+}
