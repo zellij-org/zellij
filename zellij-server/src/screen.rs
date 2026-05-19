@@ -775,6 +775,22 @@ pub enum ScreenInstruction {
     PageScrollUpInPaneId(PaneId),
     PageScrollDownInPaneId(PaneId),
     TogglePaneIdFullscreen(PaneId),
+    /// Mobile-plugin "Fit" — enter. See `Action::EnterFitMode`.
+    EnterFitMode {
+        client_id: ClientId,
+        tab_id: usize,
+        pane_id: PaneId,
+        size: Size,
+    },
+    /// Mobile-plugin "Fit" — exit (per-client).
+    ExitFitMode {
+        client_id: ClientId,
+    },
+    /// Mobile-plugin "Fit" — update target size for an active fit.
+    UpdateFitSize {
+        client_id: ClientId,
+        size: Size,
+    },
     TogglePaneEmbedOrEjectForPaneId(PaneId),
     CloseTabWithIndex(usize),
     BreakPanesToNewTab {
@@ -1135,6 +1151,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PageScrollUpInPaneId(..) => ScreenContext::PageScrollUpInPaneId,
             ScreenInstruction::PageScrollDownInPaneId(..) => ScreenContext::PageScrollDownInPaneId,
             ScreenInstruction::TogglePaneIdFullscreen(..) => ScreenContext::TogglePaneIdFullscreen,
+            ScreenInstruction::EnterFitMode { .. } => ScreenContext::EnterFitMode,
+            ScreenInstruction::ExitFitMode { .. } => ScreenContext::ExitFitMode,
+            ScreenInstruction::UpdateFitSize { .. } => ScreenContext::UpdateFitSize,
             ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(..) => {
                 ScreenContext::TogglePaneEmbedOrEjectForPaneId
             },
@@ -1519,6 +1538,38 @@ pub(crate) struct Screen {
     /// a client that explicitly entered mobile via
     /// `Action::ToggleMobileMode` stays put until they toggle back.
     mobile_auto_entered: HashSet<ClientId>,
+    /// Per-tab "fit mode" override installed by the mobile plugin's
+    /// Fit button. When present, `recompute_tab_size` returns
+    /// `FitState::size` for that tab instead of taking the min of all
+    /// viewers' viewports. Keyed by tab id so the recompute hot path
+    /// is a single O(1) lookup; per-client cleanup paths
+    /// (`ExitFitMode`, `UpdateFitSize`, `remove_client`) iterate to
+    /// find the entry by `owning_client`.
+    ///
+    /// Collision: if a second mobile client targets the same tab,
+    /// `insert` overwrites — last writer wins. The first client's
+    /// plugin still thinks fit is on locally; its next
+    /// `UpdateFitSize` will re-install its own size and reclaim the
+    /// override.
+    fit_states: HashMap<usize, FitState>,
+}
+
+/// Per-tab fit-mode bookkeeping. See `Screen::fit_states`.
+#[derive(Debug, Clone, Copy)]
+struct FitState {
+    /// Mobile client that installed this fit. `remove_client` for
+    /// this id removes the override + reverts fullscreen.
+    owning_client: ClientId,
+    /// Pane that was fullscreened. Needed for the disconnect cleanup
+    /// to call `toggle_pane_fullscreen` on the correct pane.
+    pane_id: PaneId,
+    /// Override size returned by `recompute_tab_size` while this
+    /// entry is live.
+    size: Size,
+    /// True iff the pane was *already* fullscreen when fit was
+    /// entered. Determines whether disconnect cleanup or
+    /// `ExitFitMode` should toggle fullscreen back off.
+    was_fullscreen_before: bool,
 }
 
 /// A pending forward waiting to be dispatched once the current in-flight
@@ -1676,6 +1727,7 @@ impl Screen {
             mobile_tabs: HashMap::new(),
             mobile_previous_tab_ids: HashMap::new(),
             mobile_auto_entered: HashSet::new(),
+            fit_states: HashMap::new(),
         }
     }
 
@@ -2370,6 +2422,34 @@ impl Screen {
     /// and a force-render is scheduled.
     pub fn recompute_tab_size(&mut self, tab_id: usize) -> Result<()> {
         let err_context = || format!("failed to recompute size for tab {tab_id}");
+
+        // Fit override short-circuits the min-of-viewers computation.
+        // Installed by the mobile plugin's Fit button via
+        // `EnterFitMode`; cleared by `ExitFitMode` or by
+        // `remove_client` when the owning mobile client disconnects.
+        // While present, other viewers' sizes are ignored — per the
+        // user-confirmed decision, a fit by one client shrinks the
+        // tab for every viewer.
+        //
+        // Force a display clear for connected viewers whenever the
+        // override branch runs: if a desktop client is focused on
+        // (or switches to) a tab whose override size is smaller than
+        // their terminal viewport, the area outside the tab would
+        // otherwise be left with whatever bytes were on-screen
+        // previously. `set_should_clear_display_before_rendering`
+        // emits `\x1b[2J` to every connected client on the next
+        // tab render so they start from a clean canvas. Idempotent
+        // and one-shot — the flag clears itself after the first use.
+        if let Some(fit) = self.fit_states.get(&tab_id).copied() {
+            if let Some(tab) = self.tabs.get_mut(&tab_id) {
+                if tab.size != fit.size {
+                    tab.resize_whole_tab(fit.size).with_context(err_context)?;
+                }
+                tab.set_should_clear_display_before_rendering();
+                tab.set_force_render();
+            }
+            return Ok(());
+        }
 
         let mut rows: Vec<usize> = Vec::new();
         let mut cols: Vec<usize> = Vec::new();
@@ -3473,6 +3553,30 @@ impl Screen {
         self.mobile_tabs.remove(&client_id);
         self.mobile_previous_tab_ids.remove(&client_id);
         self.mobile_auto_entered.remove(&client_id);
+
+        // Fit-mode cleanup: drop every fit_states entry owned by the
+        // disconnecting client. For each, revert fullscreen if it
+        // wasn't already on before fit, then recompute the tab size
+        // so it grows back to fit the remaining viewers. Done before
+        // the visibility/garbage-collect loop below so the recompute
+        // sees the cleared override.
+        let to_clean: Vec<(usize, FitState)> = self
+            .fit_states
+            .iter()
+            .filter(|(_, f)| f.owning_client == client_id)
+            .map(|(&t, f)| (t, *f))
+            .collect();
+        for (tab_id, fit) in to_clean {
+            self.fit_states.remove(&tab_id);
+            if !fit.was_fullscreen_before {
+                if let Some(tab) = self.tabs.get_mut(&tab_id) {
+                    if tab.has_pane_with_pid(&fit.pane_id) {
+                        tab.toggle_pane_fullscreen(fit.pane_id);
+                    }
+                }
+            }
+            self.recompute_tab_size(tab_id).with_context(err_context)?;
+        }
 
         // Drop the detaching client from every tab's per-tab visibility
         // set. Tabs whose `visible_to` becomes `Some({})` are collected
@@ -9455,6 +9559,87 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.render(None)?;
+            },
+            ScreenInstruction::EnterFitMode {
+                client_id,
+                tab_id,
+                pane_id,
+                size,
+            } => {
+                // Capture pre-fit fullscreen state for the target
+                // pane. `was_fullscreen_before` is true iff fullscreen
+                // is active on the tab AND it's specifically THIS pane
+                // that's fullscreen. The cleanup paths
+                // (`ExitFitMode`, `remove_client`) consult this so they
+                // only toggle fullscreen back off when fit itself
+                // turned it on.
+                let was_fullscreen_before = screen
+                    .tabs
+                    .get(&tab_id)
+                    .map(|t| {
+                        t.is_fullscreen_active() && t.fullscreen_pane_id() == Some(pane_id)
+                    })
+                    .unwrap_or(false);
+                if !was_fullscreen_before {
+                    if let Some(tab) = screen.tabs.get_mut(&tab_id) {
+                        if tab.has_pane_with_pid(&pane_id) {
+                            tab.toggle_pane_fullscreen(pane_id);
+                        }
+                    }
+                }
+                // Last-writer-wins insert. A prior fit by another
+                // client on the same tab is silently overwritten;
+                // that client's plugin still thinks fit is on and
+                // will reclaim the override on its next UpdateFitSize
+                // (see the collision note on `Screen::fit_states`).
+                screen.fit_states.insert(
+                    tab_id,
+                    FitState {
+                        owning_client: client_id,
+                        pane_id,
+                        size,
+                        was_fullscreen_before,
+                    },
+                );
+                screen.recompute_tab_size(tab_id)?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::ExitFitMode { client_id } => {
+                // Find the (single) fit entry owned by this client.
+                // Per-client lookup iterates because the map is keyed
+                // by tab_id for the recompute hot path.
+                let owned_tab = screen
+                    .fit_states
+                    .iter()
+                    .find(|(_, f)| f.owning_client == client_id)
+                    .map(|(&t, _)| t);
+                if let Some(tab_id) = owned_tab {
+                    if let Some(fit) = screen.fit_states.remove(&tab_id) {
+                        if !fit.was_fullscreen_before {
+                            if let Some(tab) = screen.tabs.get_mut(&tab_id) {
+                                if tab.has_pane_with_pid(&fit.pane_id) {
+                                    tab.toggle_pane_fullscreen(fit.pane_id);
+                                }
+                            }
+                        }
+                        screen.recompute_tab_size(tab_id)?;
+                        screen.render(None)?;
+                    }
+                }
+            },
+            ScreenInstruction::UpdateFitSize { client_id, size } => {
+                let owned_tab = screen
+                    .fit_states
+                    .iter()
+                    .find(|(_, f)| f.owning_client == client_id)
+                    .map(|(&t, _)| t);
+                if let Some(tab_id) = owned_tab {
+                    if let Some(fit) = screen.fit_states.get_mut(&tab_id) {
+                        fit.size = size;
+                    }
+                    screen.recompute_tab_size(tab_id)?;
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(pane_id) => {
                 let all_tabs = screen.get_tabs_mut();

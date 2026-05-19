@@ -56,6 +56,13 @@ pub enum ClickAction {
     /// `set_soft_keyboard(true|false)` to suppress the OS soft
     /// keyboard whenever the plugin keyboard is showing.
     ToggleKeyboard,
+    /// Tap on the fit (⛶) glyph in the top bar. Toggles a server-
+    /// side per-tab override that resizes the focused pane's tab to
+    /// match this plugin's embedded viewport area, fullscreening
+    /// the pane in the process. The plugin keeps a mirror
+    /// (`State::fit_active`) so the next tap takes the off path.
+    /// See `enter_fit_mode` / `exit_fit_mode` in the shim.
+    ToggleFit,
     /// Tap on a cell of the in-plugin keyboard. Routed through
     /// `KeyboardController::handle_tap` which resolves to bytes,
     /// modifier toggles, or a visibility flip.
@@ -273,6 +280,35 @@ pub struct State {
     /// `pane_content_columns.saturating_sub(cols)` inside the
     /// renderer.
     pub viewport_h_pan: usize,
+    /// True while Fit mode is active (the ⛶ glyph is "armed"). The
+    /// authoritative state lives on the server (`Screen::fit_states`)
+    /// — this is just the plugin's mirror so the next tap on the
+    /// glyph takes the off path and the renderer colours the glyph.
+    /// Reset to `false` when the user picks a different tab or pane,
+    /// or when the previously-selected pane disappears.
+    pub fit_active: bool,
+    /// The (rows, cols) most recently sent to the server via
+    /// `enter_fit_mode` or `update_fit_size`. Diffed against
+    /// `fit_pending_target` in `update()` so we only re-send when
+    /// the embedded viewport has actually moved.
+    pub fit_last_sent_size: Option<(usize, usize)>,
+    /// The target tab size last computed by `render_embedded_viewport`
+    /// based on the most recent embedded-viewport area + cached pane
+    /// /tab geometry. Set during render but the matching shim call
+    /// is deferred to `update()` — calling `update_fit_size` from
+    /// inside render corrupts `print!` output because
+    /// `host_run_plugin_command` drains the entire plugin stdout
+    /// pipe via `read_to_end` (see `wasi_read_bytes` /
+    /// `host_run_plugin_command` in `zellij_exports.rs`), so any
+    /// rendered bytes already written would be consumed and the
+    /// JSON-decode of the protobuf would fail on the mixed payload.
+    /// `update()` runs with a clean stdout, so calling the shim
+    /// from there is safe. The compare/send happens on every event
+    /// — by the time the next event fires after a pinch (TabUpdate
+    /// or PaneUpdate from the same RecomputeTabSize handler that
+    /// emitted the resize), this field reflects the new embedded
+    /// area and the shim is dispatched.
+    pub fit_pending_target: Option<(usize, usize)>,
     /// Last `show_cursor` payload the plugin emitted to the host.
     /// Calling `show_cursor` is *not* idempotent on the server side:
     /// `ScreenInstruction::ShowPluginCursor` triggers a full

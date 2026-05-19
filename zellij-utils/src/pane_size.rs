@@ -68,7 +68,7 @@ pub struct Offset {
     pub left: usize,
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Size {
     pub rows: usize,
     pub cols: usize,

@@ -5,7 +5,7 @@ use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
-use crate::pane_size::PaneGeom;
+use crate::pane_size::{PaneGeom, Size};
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
 use clap::ArgEnum;
@@ -3624,6 +3624,25 @@ pub enum PluginCommand {
     /// Mobile-only: show or hide the soft keyboard on the calling
     /// client's browser. No-op on non-web clients. Fire-and-forget.
     SetSoftKeyboard(bool),
+    /// Mobile "Fit" — enter. Captures pre-fit fullscreen state,
+    /// toggles fullscreen on if needed, and installs a tab-size
+    /// override so the tab matches the mobile plugin's embedded
+    /// viewport area. Per-client; auto-reverted by `ExitFitMode` or
+    /// client disconnect.
+    EnterFitMode {
+        tab_id: usize,
+        pane_id: PaneId,
+        size: Size,
+    },
+    /// Mobile "Fit" — exit (per-client). Reverts the size override
+    /// and any fit-induced fullscreen. No-op if no active fit.
+    ExitFitMode,
+    /// Mobile "Fit" — update the active fit's target size (e.g.
+    /// after keyboard toggle or device rotation). No-op if no
+    /// active fit for the calling client.
+    UpdateFitSize {
+        size: Size,
+    },
 }
 
 // Response type for plugin API methods that open a pane in a new tab

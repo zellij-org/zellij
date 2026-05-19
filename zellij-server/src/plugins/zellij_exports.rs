@@ -52,6 +52,7 @@ use zellij_utils::web_authentication_tokens::{
 use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
+use zellij_utils::pane_size::Size;
 use kdl::KdlDocument;
 
 use prost::Message;
@@ -448,6 +449,13 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ListWindowsVolumes => list_windows_volumes(env),
                     PluginCommand::GetSessionList => get_session_list(env),
                     PluginCommand::SetSoftKeyboard(on) => set_soft_keyboard(env, on),
+                    PluginCommand::EnterFitMode {
+                        tab_id,
+                        pane_id,
+                        size,
+                    } => enter_fit_mode(env, tab_id, pane_id.into(), size),
+                    PluginCommand::ExitFitMode => exit_fit_mode(env),
+                    PluginCommand::UpdateFitSize { size } => update_fit_size(env, size),
                     PluginCommand::DumpSessionLayout { tab_index } => {
                         dump_session_layout(env, tab_index)
                     },
@@ -3918,6 +3926,50 @@ fn set_soft_keyboard(env: &PluginEnv, on: bool) {
         .non_fatal();
 }
 
+/// Mobile "Fit" — enter. Forwarded straight to the screen thread,
+/// which atomically captures pre-fit fullscreen state, toggles
+/// fullscreen if needed, installs the tab-size override, and
+/// recomputes the tab. Per-client; the screen thread tags the
+/// resulting `FitState` with `env.client_id` so disconnect cleanup
+/// can find and revert it.
+fn enter_fit_mode(env: &PluginEnv, tab_id: usize, pane_id: PaneId, size: Size) {
+    env.senders
+        .send_to_screen(ScreenInstruction::EnterFitMode {
+            client_id: env.client_id,
+            tab_id,
+            pane_id,
+            size,
+        })
+        .with_context(|| format!("failed to dispatch EnterFitMode for plugin {}", env.plugin_id))
+        .non_fatal();
+}
+
+/// Mobile "Fit" — exit. No-op if the calling client has no active
+/// fit (e.g. the plugin's mirror state drifted; the server is
+/// authoritative).
+fn exit_fit_mode(env: &PluginEnv) {
+    env.senders
+        .send_to_screen(ScreenInstruction::ExitFitMode {
+            client_id: env.client_id,
+        })
+        .with_context(|| format!("failed to dispatch ExitFitMode for plugin {}", env.plugin_id))
+        .non_fatal();
+}
+
+/// Mobile "Fit" — update the active fit's target size. Sent on
+/// every render where the embedded viewport area changes (keyboard
+/// toggle, rotation, etc.). The plugin diffs locally to avoid
+/// spamming.
+fn update_fit_size(env: &PluginEnv, size: Size) {
+    env.senders
+        .send_to_screen(ScreenInstruction::UpdateFitSize {
+            client_id: env.client_id,
+            size,
+        })
+        .with_context(|| format!("failed to dispatch UpdateFitSize for plugin {}", env.plugin_id))
+        .non_fatal();
+}
+
 #[cfg(windows)]
 fn list_windows_volumes(env: &PluginEnv) {
     let send_plugin_instructions = env.senders.to_plugin.clone();
@@ -5446,7 +5498,10 @@ fn check_command_permission(
         | PluginCommand::HideFloatingPanes { .. }
         | PluginCommand::SetPaneRegexHighlights(..)
         | PluginCommand::ClearPaneHighlights(..)
-        | PluginCommand::SetSoftKeyboard(..) => PermissionType::ChangeApplicationState,
+        | PluginCommand::SetSoftKeyboard(..)
+        | PluginCommand::EnterFitMode { .. }
+        | PluginCommand::ExitFitMode
+        | PluginCommand::UpdateFitSize { .. } => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,

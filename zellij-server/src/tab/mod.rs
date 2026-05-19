@@ -3224,6 +3224,14 @@ impl Tab {
     pub fn is_fullscreen_active(&self) -> bool {
         self.tiled_panes.fullscreen_is_active()
     }
+    /// Returns the pane id currently held in fullscreen for this tab,
+    /// or `None` if no pane is fullscreen. Used by `EnterFitMode` to
+    /// capture the pre-fit fullscreen state so the disconnect /
+    /// `ExitFitMode` cleanup can revert correctly only when fit
+    /// itself flipped the toggle.
+    pub fn fullscreen_pane_id(&self) -> Option<PaneId> {
+        self.tiled_panes.fullscreen_pane_id()
+    }
     pub fn are_floating_panes_visible(&self) -> bool {
         self.floating_panes.panes_are_visible()
     }

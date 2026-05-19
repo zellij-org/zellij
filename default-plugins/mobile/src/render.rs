@@ -302,23 +302,26 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
 
     let prefix = "Zellij ";
     let pipe = " | ";
+    let fit_icon = "\u{26F6}"; // ⛶ (square four corners)
     let typing_icon = "\u{2328}"; // ⌨
     let hamburger = "\u{2630}"; // ☰
 
     // Priority truncation: keep the trailing icons visible by shrinking
     // segments in tab → pane → session order until the row fits.
     //
-    // Fixed chrome that can never be reduced: prefix + three pipes +
-    // typing icon + at least one cell of separator + hamburger. The
-    // saturating subtraction means `available` is 0 when even the
-    // chrome alone exceeds `cols` — at that point all three segments
-    // collapse to their minimums and the host clips whatever spills.
+    // Fixed chrome that can never be reduced: prefix + four pipes +
+    // fit icon + typing icon + at least one cell of separator +
+    // hamburger. The saturating subtraction means `available` is 0
+    // when even the chrome alone exceeds `cols` — at that point all
+    // three segments collapse to their minimums and the host clips
+    // whatever spills.
     const MIN_SEG: usize = 3;
     let prefix_w = UnicodeWidthStr::width(prefix);
     let pipe_w = UnicodeWidthStr::width(pipe);
+    let fit_icon_w = UnicodeWidthStr::width(fit_icon);
     let typing_icon_w = UnicodeWidthStr::width(typing_icon);
     let hamburger_w = UnicodeWidthStr::width(hamburger);
-    let fixed_w = prefix_w + pipe_w * 3 + typing_icon_w + 1 + hamburger_w;
+    let fixed_w = prefix_w + pipe_w * 4 + fit_icon_w + typing_icon_w + 1 + hamburger_w;
     let available = cols.saturating_sub(fixed_w);
 
     let session_w = UnicodeWidthStr::width(session_name.as_str());
@@ -364,6 +367,9 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
     let (pane_chars_s, pane_chars_e, pane_cells_s, pane_cells_e) =
         append_segment(&mut bar, &mut chars, &mut cells, &pane_display);
     append_segment(&mut bar, &mut chars, &mut cells, pipe);
+    let (fit_chars_s, fit_chars_e, fit_cells_s, fit_cells_e) =
+        append_segment(&mut bar, &mut chars, &mut cells, fit_icon);
+    append_segment(&mut bar, &mut chars, &mut cells, pipe);
     let (typing_chars_s, typing_chars_e, typing_cells_s, typing_cells_e) =
         append_segment(&mut bar, &mut chars, &mut cells, typing_icon);
 
@@ -384,15 +390,20 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
     let (hamburger_chars_s, hamburger_chars_e, hamburger_cells_s, hamburger_cells_e) =
         append_segment(&mut bar, &mut chars, &mut cells, hamburger);
 
-    // Compose the styled bar. The keyboard icon switches between
-    // emphasis-3 (unarmed) and success-colour (armed); both are clear
-    // signals against the selected-bar background.
+    // Compose the styled bar. The keyboard and fit icons switch
+    // between emphasis-3 (unarmed) and success-colour (armed);
+    // both are clear signals against the selected-bar background.
     let mut text = Text::new(&bar)
         .selected()
         .color_range(0, session_chars_s..session_chars_e)
         .color_range(1, tab_chars_s..tab_chars_e)
         .color_range(2, pane_chars_s..pane_chars_e)
         .color_range(3, hamburger_chars_s..hamburger_chars_e);
+    text = if state.fit_active {
+        text.success_color_range(fit_chars_s..fit_chars_e)
+    } else {
+        text.color_range(3, fit_chars_s..fit_chars_e)
+    };
     text = if state.keyboard.visible {
         text.success_color_range(typing_chars_s..typing_chars_e)
     } else {
@@ -412,11 +423,13 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
     let session_center = (session_cells_s + session_cells_e) / 2;
     let tab_center = (tab_cells_s + tab_cells_e) / 2;
     let pane_center = (pane_cells_s + pane_cells_e) / 2;
+    let fit_center = (fit_cells_s + fit_cells_e) / 2;
     let typing_center = (typing_cells_s + typing_cells_e) / 2;
     let hamburger_center = (hamburger_cells_s + hamburger_cells_e) / 2;
     let mid_session_tab = (session_center + tab_center) / 2;
     let mid_tab_pane = (tab_center + pane_center) / 2;
-    let mid_pane_typing = (pane_center + typing_center) / 2;
+    let mid_pane_fit = (pane_center + fit_center) / 2;
+    let mid_fit_typing = (fit_center + typing_center) / 2;
     let mid_typing_hamburger = (typing_center + hamburger_center) / 2;
     state.click_regions.push(ClickRegion::tight(
         row,
@@ -433,12 +446,18 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
     state.click_regions.push(ClickRegion::tight(
         row,
         mid_tab_pane,
-        mid_pane_typing,
+        mid_pane_fit,
         ClickAction::ExpandPanes,
     ));
     state.click_regions.push(ClickRegion::tight(
         row,
-        mid_pane_typing,
+        mid_pane_fit,
+        mid_fit_typing,
+        ClickAction::ToggleFit,
+    ));
+    state.click_regions.push(ClickRegion::tight(
+        row,
+        mid_fit_typing,
         mid_typing_hamburger,
         ClickAction::ToggleKeyboard,
     ));
@@ -969,6 +988,29 @@ fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize,
         skip,
         h_offset,
     });
+
+    // If Fit is active, the server's tab-size override should track
+    // the embedded viewport area: keyboard toggles, rotation, and
+    // pinch-zoom all change the embedded area's dimensions, and the
+    // pane must follow or the user is back to panning. We can't
+    // call `update_fit_size` directly here — see the doc on
+    // `fit_pending_target`. Instead, stash the target for the next
+    // `update()` to flush. The diff against `fit_last_sent_size`
+    // (also done in update) avoids a feedback loop where the
+    // server's resize triggers a fresh `PaneRenderReportWithAnsi`,
+    // which triggers another render, which would re-send the same
+    // size, ad infinitum.
+    if state.fit_active {
+        if let (Some(pane), Some(tab)) =
+            (state.current_pane(), state.current_tab().cloned())
+        {
+            let region = state.viewport_region.unwrap(); // just assigned
+            let target = crate::fit_target_tab_size(&pane, &tab, &region);
+            state.fit_pending_target = Some(target);
+        }
+    } else {
+        state.fit_pending_target = None;
+    }
 
     // Disable autowrap (DECAWM, `\x1b[?7l`) for the duration of the
     // viewport emit. The cached viewport lines come from the

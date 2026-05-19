@@ -120,6 +120,7 @@ pub use super::generated_api::api::{
         SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
         SetPaneBorderlessPayload, SetPaneColorPayload, SetPaneRegexHighlightsPayload,
         SetSelfMouseSelectionSupportPayload,
+        EnterFitModePayload as ProtobufEnterFitModePayload, UpdateFitSizePayload as ProtobufUpdateFitSizePayload,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
         ShowCursorPayload,
         ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
@@ -143,6 +144,7 @@ use crate::data::{
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
+use crate::pane_size::Size;
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
@@ -1455,6 +1457,33 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     Ok(PluginCommand::SetSoftKeyboard(payload.on))
                 },
                 _ => Err("Mismatched payload for SetSoftKeyboard"),
+            },
+            Some(CommandName::EnterFitMode) => match protobuf_plugin_command.payload {
+                Some(Payload::EnterFitModePayload(payload)) => match payload.pane_id {
+                    Some(pane_id) => Ok(PluginCommand::EnterFitMode {
+                        tab_id: payload.tab_id as usize,
+                        pane_id: pane_id.try_into()?,
+                        size: Size {
+                            rows: payload.rows as usize,
+                            cols: payload.cols as usize,
+                        },
+                    }),
+                    _ => Err("Malformed enter_fit_mode_payload payload"),
+                },
+                _ => Err("Mismatched payload for EnterFitMode"),
+            },
+            Some(CommandName::ExitFitMode) => match protobuf_plugin_command.payload {
+                Some(_) => Err("ExitFitMode should have no payload, found a payload"),
+                None => Ok(PluginCommand::ExitFitMode),
+            },
+            Some(CommandName::UpdateFitSize) => match protobuf_plugin_command.payload {
+                Some(Payload::UpdateFitSizePayload(payload)) => Ok(PluginCommand::UpdateFitSize {
+                    size: Size {
+                        rows: payload.rows as usize,
+                        cols: payload.cols as usize,
+                    },
+                }),
+                _ => Err("Mismatched payload for UpdateFitSize"),
             },
             Some(CommandName::DumpSessionLayout) => match protobuf_plugin_command.payload {
                 Some(Payload::DumpSessionLayoutPayload(payload)) => {
@@ -3327,6 +3356,32 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::SetSoftKeyboard as i32,
                 payload: Some(Payload::SetSoftKeyboardPayload(
                     ProtobufSetSoftKeyboardPayload { on },
+                )),
+            }),
+            PluginCommand::EnterFitMode {
+                tab_id,
+                pane_id,
+                size,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::EnterFitMode as i32,
+                payload: Some(Payload::EnterFitModePayload(ProtobufEnterFitModePayload {
+                    tab_id: tab_id as u32,
+                    pane_id: Some(pane_id.try_into()?),
+                    rows: size.rows as u32,
+                    cols: size.cols as u32,
+                })),
+            }),
+            PluginCommand::ExitFitMode => Ok(ProtobufPluginCommand {
+                name: CommandName::ExitFitMode as i32,
+                payload: None,
+            }),
+            PluginCommand::UpdateFitSize { size } => Ok(ProtobufPluginCommand {
+                name: CommandName::UpdateFitSize as i32,
+                payload: Some(Payload::UpdateFitSizePayload(
+                    ProtobufUpdateFitSizePayload {
+                        rows: size.rows as u32,
+                        cols: size.cols as u32,
+                    },
                 )),
             }),
             PluginCommand::DumpSessionLayout { tab_index } => Ok(ProtobufPluginCommand {

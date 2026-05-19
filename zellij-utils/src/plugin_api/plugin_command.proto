@@ -208,6 +208,9 @@ enum CommandName {
   DeleteDeadSessionAndReply = 213;
   DeleteAllDeadSessionsAndReply = 214;
   SetSoftKeyboard = 215;
+  EnterFitMode = 216;
+  ExitFitMode = 217;
+  UpdateFitSize = 218;
 }
 
 message PluginCommand {
@@ -363,6 +366,8 @@ message PluginCommand {
     KillSessionsPayload kill_sessions_and_reply_payload = 162;
     string delete_dead_session_and_reply_payload = 163;
     SetSoftKeyboardPayload set_soft_keyboard_payload = 164;
+    EnterFitModePayload enter_fit_mode_payload = 165;
+    UpdateFitSizePayload update_fit_size_payload = 166;
   }
 }
 
@@ -1333,4 +1338,16 @@ message DeleteAllDeadSessionsResponse {
 
 message SetSoftKeyboardPayload {
   bool on = 1;
+}
+
+message EnterFitModePayload {
+  uint32 tab_id = 1;
+  PaneId pane_id = 2;
+  uint32 rows = 3;
+  uint32 cols = 4;
+}
+
+message UpdateFitSizePayload {
+  uint32 rows = 1;
+  uint32 cols = 2;
 }

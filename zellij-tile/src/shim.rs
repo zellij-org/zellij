@@ -7,6 +7,7 @@ use std::{
 use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
+use zellij_utils::pane_size::Size;
 pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::generated_api::api::plugin_command::{
@@ -1660,6 +1661,46 @@ pub fn scan_host_folder<S: AsRef<Path>>(folder_to_scan: &S) {
 /// damage. Fire-and-forget; no return value, no error.
 pub fn set_soft_keyboard(on: bool) {
     let plugin_command = PluginCommand::SetSoftKeyboard(on);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Mobile "Fit" — enter. Tells the server to fullscreen `pane_id` in
+/// tab `tab_id` (capturing whether fullscreen was already on so the
+/// state can be reverted) and to size the tab to `rows`×`cols`. The
+/// override persists until `exit_fit_mode()` is called or this
+/// client disconnects, whichever comes first.
+pub fn enter_fit_mode(tab_id: usize, pane_id: PaneId, rows: usize, cols: usize) {
+    let plugin_command = PluginCommand::EnterFitMode {
+        tab_id,
+        pane_id,
+        size: Size { rows, cols },
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Mobile "Fit" — exit. No-op if the calling client has no active
+/// fit (the server is authoritative; harmless to call when the
+/// plugin's mirror state is uncertain).
+pub fn exit_fit_mode() {
+    let plugin_command = PluginCommand::ExitFitMode;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Mobile "Fit" — update the active fit's target size. Intended
+/// for after-render diff: the plugin recomputes the desired tab
+/// size whenever the embedded viewport area changes (e.g. keyboard
+/// toggle) and forwards it. No-op server-side if this client has
+/// no active fit.
+pub fn update_fit_size(rows: usize, cols: usize) {
+    let plugin_command = PluginCommand::UpdateFitSize {
+        size: Size { rows, cols },
+    };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

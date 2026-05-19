@@ -53,6 +53,18 @@ impl ZellijPlugin for State {
     }
 
     fn update(&mut self, event: Event) -> bool {
+        // Flush any pending fit-size update accumulated by the last
+        // render. The shim call MUST happen here (in update) and not
+        // in render — `host_run_plugin_command` drains the plugin's
+        // stdout pipe via `read_to_end`, so calling it mid-render
+        // would consume the already-written `print!` output and the
+        // host would receive an empty frame. By the time this fires
+        // there is always a fresh event in flight (TabUpdate /
+        // PaneUpdate from the same `RecomputeTabSize` handler that
+        // resized the mobile tab), so the deferral adds at most one
+        // event-loop tick before the server sees the new target.
+        flush_pending_fit_size(self);
+
         match event {
             Event::ModeUpdate(mode_info) => {
                 self.mode_info = Some(mode_info);
@@ -100,6 +112,15 @@ impl ZellijPlugin for State {
                     .retain(|id, _| live_pane_ids.contains(id));
                 self.pane_last_activity
                     .retain(|id, _| live_pane_ids.contains(id));
+                // If the pane that was being "fit" disappeared (closed
+                // by the user from another client, layout change),
+                // the server's fit entry is now stuck on a dead pane
+                // id. Clear locally + tell the server to revert.
+                if let Some(selected) = self.selected_pane_id {
+                    if !live_pane_ids.contains(&selected) {
+                        clear_fit_if_active(self);
+                    }
+                }
                 // Re-evaluate the tab default in case TabUpdate arrived
                 // before any PaneUpdate — `tab_is_self_only` depends on
                 // pane data and may have classified everything as
@@ -108,6 +129,11 @@ impl ZellijPlugin for State {
                     let still_visible =
                         self.tabs_in_order().iter().any(|t| t.position == pos);
                     if !still_visible {
+                        // Selected tab vanished — fit was bound to
+                        // its tab_id, so the server's entry is now
+                        // useless. Tell it to clear before we lose
+                        // the tab reference.
+                        clear_fit_if_active(self);
                         self.selected_tab_position =
                             self.tabs_in_order().first().map(|t| t.position);
                         self.selected_pane_id = None;
@@ -413,6 +439,9 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             // which tab's panes the embedded viewport reads.
             // Resetting `selected_pane_id` lets the renderer fall
             // back to the first pane in the newly-selected tab.
+            // Tab-switch invalidates any active fit (the fit is
+            // pinned to a specific (tab_id, pane_id) server-side).
+            clear_fit_if_active(state);
             state.selected_tab_position = Some(position);
             state.selected_pane_id = None;
             // A new tab lands at its bottom-right corner: any
@@ -431,6 +460,9 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             // own renderer (reading `PaneRenderReportWithAnsi` from
             // the host) and forwards keystrokes/clicks via
             // `write_to_pane_id`; neither needs the host's focus.
+            // Pane-switch invalidates any active fit — fit is bound
+            // to the specific pane that was focused when toggled on.
+            clear_fit_if_active(state);
             state.selected_tab_position = Some(tab_position);
             state.selected_pane_id = Some(pane_id);
             // Reset pan so the user lands at the new pane's bottom.
@@ -449,6 +481,47 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             state.keyboard.visible = !state.keyboard.visible;
             set_soft_keyboard(!state.keyboard.visible);
             true
+        },
+        ClickAction::ToggleFit => {
+            // Round-trip the toggle through the server. On entry we
+            // need (a) the focused pane, (b) its tab, (c) the most
+            // recent embedded viewport region (to compute the target
+            // tab size including chrome compensation). If any of
+            // those are missing we silently bail rather than send a
+            // malformed command.
+            if state.fit_active {
+                state.fit_active = false;
+                state.fit_last_sent_size = None;
+                state.fit_pending_target = None;
+                exit_fit_mode();
+                true
+            } else {
+                let Some(pane) = state.current_pane() else {
+                    return false;
+                };
+                let Some(tab) = state.current_tab().cloned() else {
+                    return false;
+                };
+                let Some(region) = state.viewport_region else {
+                    return false;
+                };
+                let target = fit_target_tab_size(&pane, &tab, &region);
+                state.fit_active = true;
+                // Seed both fields so the first render+update after
+                // entering fit doesn't immediately re-send the same
+                // size: render's `fit_pending_target` will equal the
+                // value we just sent, and the diff in
+                // `flush_pending_fit_size` short-circuits.
+                state.fit_last_sent_size = Some((target.0, target.1));
+                state.fit_pending_target = Some((target.0, target.1));
+                enter_fit_mode(
+                    tab.tab_id,
+                    state::pane_id_of(&pane),
+                    target.0,
+                    target.1,
+                );
+                true
+            }
         },
         ClickAction::Keyboard(cell) => {
             let outcome = state.keyboard.handle_tap(
@@ -475,6 +548,80 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             true
         },
     }
+}
+
+/// If fit is locally active, clear the mirror state and tell the
+/// server to revert the override + any fit-induced fullscreen. Used
+/// at every plugin-driven focus change (tab/pane switch, focused
+/// pane disappearing) so the server's `FitState` doesn't outlive
+/// the pane it was bound to.
+pub fn clear_fit_if_active(state: &mut State) {
+    if state.fit_active {
+        state.fit_active = false;
+        state.fit_last_sent_size = None;
+        state.fit_pending_target = None;
+        exit_fit_mode();
+    }
+}
+
+/// If render() stashed a new fit target on `fit_pending_target` and
+/// it differs from what we last sent, forward it to the server. The
+/// diff is what prevents a render-resize loop: the server's resize
+/// triggers a fresh PaneRenderReportWithAnsi → render → which
+/// recomputes the *same* target → no new send. See the doc on
+/// `State::fit_pending_target` for why this can't live inside
+/// render itself.
+pub fn flush_pending_fit_size(state: &mut State) {
+    if !state.fit_active {
+        return;
+    }
+    let Some(target) = state.fit_pending_target else {
+        return;
+    };
+    if state.fit_last_sent_size == Some(target) {
+        return;
+    }
+    state.fit_last_sent_size = Some(target);
+    update_fit_size(target.0, target.1);
+}
+
+/// Compute the tab size the server should set so that the focused
+/// pane's *content area* fills this plugin's embedded viewport area
+/// exactly.
+///
+/// `viewport_rows`/`viewport_columns` on `TabInfo` are the bounds of
+/// the selectable-pane area (status bar / tab bar already subtracted
+/// from `display_area_*`). `pane_rows`/`pane_content_rows` on
+/// `PaneInfo` reflect the current frame draw — non-zero deltas
+/// indicate pane chrome (borders / pane frames).
+///
+/// Heuristic: scale up the embedded dimensions by both deltas so the
+/// resulting tab, after chrome and frame are re-applied server-side,
+/// leaves a pane-content rectangle that matches the embedded area.
+/// Layouts with asymmetric chrome (no bottom bar; floating panes
+/// dominant) may leave one row of slack — still strictly better than
+/// the panning fallback.
+pub fn fit_target_tab_size(
+    pane: &PaneInfo,
+    tab: &TabInfo,
+    region: &state::ViewportRegion,
+) -> (usize, usize) {
+    let embedded_rows = region.row_end.saturating_sub(region.row_start);
+    let embedded_cols = region.cols;
+    let chrome_rows = tab
+        .display_area_rows
+        .saturating_sub(tab.viewport_rows);
+    let chrome_cols = tab
+        .display_area_columns
+        .saturating_sub(tab.viewport_columns);
+    let frame_rows = pane.pane_rows.saturating_sub(pane.pane_content_rows);
+    let frame_cols = pane
+        .pane_columns
+        .saturating_sub(pane.pane_content_columns);
+    (
+        embedded_rows + chrome_rows + frame_rows,
+        embedded_cols + chrome_cols + frame_cols,
+    )
 }
 
 /// Wall-clock seconds since the unix epoch, as returned by the
