@@ -105,51 +105,30 @@ pub trait KeyboardLayout: Send + Sync {
     /// for a future layout-picker UI.
     fn display_name(&self) -> &'static str;
 
-    /// Row structure for the current modifier state. Layouts return
-    /// different shapes per layer (e.g. Fn layer has fewer rows than
-    /// Letters / Symbols).
-    fn rows(&self, mods: &KeyboardModifiers) -> Vec<KeyRow>;
+    /// Natural-tier rows sized to fill `target_block_width` cells.
+    ///
+    /// Layouts produce `KeyRow`s whose `col_start`/`col_end` are
+    /// absolute terminal-column positions — the renderer draws each
+    /// cell at its `col_start..col_end` without any further scaling.
+    /// `target_block_width` is the width the keyboard block should
+    /// fill (typically the full viewport width).
+    fn rows(&self, mods: &KeyboardModifiers, target_block_width: u16) -> Vec<KeyRow>;
 
-    /// Compact-tier rows for narrow / short viewports.
+    /// Compact-tier rows for narrow / short viewports. Same sizing
+    /// contract as `rows`: each `KeyRow`'s cells already carry
+    /// absolute terminal-column positions. Compact rows skip the
+    /// extras strip on Letters; Symbols / Functions layers carry a
+    /// terminal-affordance row inline.
     ///
-    /// `target_block_width` is the width in cells (= `cols - 2 *
-    /// MIN_H_PAD`) that each compact row should collectively fill.
-    /// Implementations that handle the compact tier construct rows
-    /// whose post-scaled extent matches this width — homogeneous
-    /// rows lean on the renderer's per-row scaling primitive while
-    /// rows with fixed-width anchors return cells whose
-    /// `col_start`/`col_end` already carry post-stretch absolute
-    /// positions and use a `(1, 1)` per-row scale.
-    ///
-    /// The default returns `self.rows(mods)` unchanged so layouts
-    /// that have not been audited for compact-tier rendering simply
-    /// re-use their natural rows. They are still subject to the
-    /// natural-tier "doesn't fit" test inside the renderer — if the
-    /// natural rows do not fit at the compact dimensions, the
-    /// keyboard is suppressed instead.
+    /// The default returns `self.rows(mods, target_block_width)`
+    /// unchanged so layouts that have not been audited for compact
+    /// rendering simply re-use their natural rows.
     fn compact_rows(
         &self,
         mods: &KeyboardModifiers,
         target_block_width: u16,
     ) -> Vec<KeyRow> {
-        let _ = target_block_width;
-        self.rows(mods)
-    }
-
-    /// Per-row `(num, den)` scale factors applied by the renderer
-    /// when laying out compact-tier rows. Must match the row order
-    /// returned by `compact_rows(mods, target_block_width)`.
-    ///
-    /// The default empty vector is treated as "fall back to the
-    /// global `h_num/h_den`" — appropriate for the default
-    /// `compact_rows` impl, which just forwards the natural rows.
-    fn compact_row_scales(
-        &self,
-        mods: &KeyboardModifiers,
-        target_block_width: u16,
-    ) -> Vec<(u16, u16)> {
-        let _ = (mods, target_block_width);
-        Vec::new()
+        self.rows(mods, target_block_width)
     }
 
     /// Bare label for `cell` given the current mods. The renderer
