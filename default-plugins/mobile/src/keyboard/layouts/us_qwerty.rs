@@ -483,13 +483,22 @@ impl UsQwerty {
     }
 
     fn compact_symbols_row_2(&self) -> KeyRow {
-        // 1 2 3 4 5 6 7 8 9 0 — 10 cells × widths [3,2,3,2,3,2,3,2,3,3]
-        // = 26. Same pattern as compact Letters R1 so column edges
-        // line up vertically between layers.
-        let widths = [3u16, 2, 3, 2, 3, 2, 3, 2, 3, 3];
-        let ids_widths: Vec<(u16, u16)> = (0..10u16)
-            .map(|i| (ID_SYMBOLS_R1_START + i, widths[i as usize]))
-            .collect();
+        // 1 2 3 4 5 6 7 8 9 0 ~ — 11 cells × widths
+        // [2,2,2,2,2,2,2,2,3,3,4] = 26. Tilde anchors the right edge to
+        // mirror the natural-tier digits row (which terminates in
+        // - = ~). Adding the 11th cell forces digits 1–8 down to width
+        // 2, sacrificing per-column alignment with compact Letters R1
+        // in exchange for tilde reachability on narrow viewports. `-`
+        // and `=` (SYMBOLS_R1 indices 10, 11) are omitted in the
+        // compact tier and remain reachable only on the natural tier.
+        let widths = [2u16, 2, 2, 2, 2, 2, 2, 2, 3, 3, 4];
+        let mut ids_widths: Vec<(u16, u16)> = Vec::with_capacity(11);
+        for i in 0..10u16 {
+            ids_widths.push((ID_SYMBOLS_R1_START + i, widths[i as usize]));
+        }
+        // `~` is index 12 in SYMBOLS_R1 (after `-` and `=`, which the
+        // compact tier omits).
+        ids_widths.push((ID_SYMBOLS_R1_START + 12, widths[10]));
         KeyRow::tall(0, lay_out_compact_cells(&ids_widths))
     }
 
@@ -1375,9 +1384,13 @@ mod tests {
         assert_eq!(widths, vec![4, 4, 4, 4, 2, 2, 2, 4]);
     }
 
-    /// Compact-tier Symbols R2 — digits `1..0` with the same per-cell
-    /// widths as compact Letters R1 so column edges align between
-    /// layers.
+    /// Compact-tier Symbols R2 — digits `1..0` plus tilde anchoring
+    /// the right edge, mirroring the natural-tier digits row (which
+    /// terminates in `- = ~`). The compact tier omits `-` and `=`
+    /// and keeps only `~`, so the row holds 11 cells summing to
+    /// `COMPACT_NATURAL_BLOCK = 26`. Adding the 11th cell forces the
+    /// per-column alignment with compact Letters R1 to break — that
+    /// trade-off is documented at the call site.
     #[test]
     fn compact_symbols_row_2_widths_match_mock() {
         let layout = UsQwerty::new();
@@ -1386,12 +1399,24 @@ mod tests {
             ..KeyboardModifiers::default()
         };
         let rows = layout.compact_rows(&mods, COMPACT_NATURAL_BLOCK);
-        let widths: Vec<u16> = rows[1]
+        let r2 = &rows[1];
+        let widths: Vec<u16> = r2
             .cells
             .iter()
             .map(|c| c.col_end - c.col_start)
             .collect();
-        assert_eq!(widths, vec![3, 2, 3, 2, 3, 2, 3, 2, 3, 3]);
+        assert_eq!(widths, vec![2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 4]);
+
+        // Tilde sources its label / action from SYMBOLS_R1[12] and
+        // anchors the right edge.
+        let tilde_cell = r2.cells.last().expect("row has cells");
+        assert_eq!(tilde_cell.id.0, ID_SYMBOLS_R1_START + 12);
+        assert_eq!(tilde_cell.col_end, COMPACT_NATURAL_BLOCK);
+        assert_eq!(layout.label(tilde_cell.id, &mods).as_ref(), "~");
+        match layout.emit(tilde_cell.id, &mods) {
+            KeyAction::SendKey(k) => assert_eq!(k.bare_key, BareKey::Char('~')),
+            other => panic!("expected SendKey('~'), got {:?}", other),
+        }
     }
 
     /// Compact-tier Symbols R3 — `/ \ : ; | < > ? . ⌫` with widths
