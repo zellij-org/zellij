@@ -7,6 +7,23 @@ import { getBaseUrl, getWebSocketBaseUrl } from "./utils.js";
 import { setSoftKeyboard } from "./input.js";
 import { applyFontSize } from "./terminal.js";
 
+// Minimum total terminal rows required for the mobile-plugin keyboard's
+// "natural" tier to engage. Mirrors the threshold derived from the
+// keyboard constants in
+// default-plugins/mobile/src/keyboard/render.rs:43-59
+// (NATURAL_MAX_ROWS * MIN_ROW_HEIGHT / (KEYBOARD_PCT_NUM/KEYBOARD_PCT_DEN)
+//  = 5 * 2 / (2/5) = 25). If those constants change in the Rust plugin,
+// update this value too.
+const NATURAL_MIN_TOTAL_ROWS = 25;
+// Lowest font size the adaptive mobile-default walk is allowed to pick.
+// Sits above the global MIN_FONT_SIZE_PX (terminal.js:50) so glyphs stay
+// readable on a phone and xterm.js's WebGL renderer stays comfortable.
+const MOBILE_LEGIBLE_FLOOR_PX = 16;
+// Hard cap on the adaptive walk's iteration count. Cell metrics are
+// quasi-linear in font size so 1-2 passes usually converge; the extra
+// iterations absorb rounding-down overshoots.
+const MOBILE_ADAPTIVE_MAX_ITERATIONS = 4;
+
 /**
  * Read cell pixel dimensions from xterm.js. Tries the internal
  * _renderService first (matches what the vendored FitAddon uses) and
@@ -266,27 +283,28 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             // (touch) AND a narrow viewport, OR a UA string that
             // identifies a known mobile platform.
             //
-            // Mobile default is intentionally bumped to 24 px so the
-            // grid `fitAddon.proposeDimensions()` reports stays small
-            // enough to fit the *visible* viewport on phones where
-            // `visualViewport.height` is only fractionally smaller than
-            // the layout viewport. At 18 px the proposed grid could be
-            // taller than the on-screen canvas, leaving the keyboard's
-            // bottom rows off-screen and untouchable until the user
-            // pinched a smaller font in. 24 px sits comfortably above
-            // that failure mode while still letting users pinch down
-            // for more rows when they want them.
+            // Mobile starts from 24 px and then steps down adaptively
+            // until either the resulting grid hosts the mobile-plugin
+            // keyboard's natural tier (>= NATURAL_MIN_TOTAL_ROWS) or
+            // we hit MOBILE_LEGIBLE_FLOOR_PX. The terminal element's
+            // CSS height is bound to 100dvh (style.css), so
+            // `fitAddon.proposeDimensions()` already measures against
+            // the *visible* canvas — the earlier off-screen-keyboard
+            // bug (where 18 px proposed more rows than visualViewport
+            // could host) is prevented by the dynamic viewport CSS,
+            // not by the font size floor.
             const isMobileViewport =
                 (window.matchMedia &&
                     window.matchMedia("(pointer: coarse)").matches &&
                     window.innerWidth < 600) ||
                 /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-            const resolvedFontSize =
-                typeof font_size === "number" && font_size > 0
-                    ? font_size
-                    : isMobileViewport
-                    ? 24
-                    : 12;
+            const hasExplicitFontSize =
+                typeof font_size === "number" && font_size > 0;
+            const initialCandidate = hasExplicitFontSize
+                ? font_size
+                : isMobileViewport
+                ? 24
+                : 12;
             // Capture dims BEFORE applyFontSize so the post-fit
             // comparison detects any change driven by the font-size
             // swap. applyFontSize calls `fitAddon.fit()` internally,
@@ -302,7 +320,40 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             // comparing afterwards fixes that gap.
             const prevRows = term.rows;
             const prevCols = term.cols;
-            applyFontSize(term, fitAddon, resolvedFontSize);
+            applyFontSize(term, fitAddon, initialCandidate);
+            // Adaptive walk: only when no explicit font_size was
+            // configured AND the device looks mobile. If the natural
+            // tier already fits at the starting candidate, the loop
+            // exits immediately and the font stays at 24 px.
+            if (!hasExplicitFontSize && isMobileViewport) {
+                let candidate = initialCandidate;
+                for (
+                    let i = 0;
+                    i < MOBILE_ADAPTIVE_MAX_ITERATIONS &&
+                    term.rows < NATURAL_MIN_TOTAL_ROWS &&
+                    candidate > MOBILE_LEGIBLE_FLOOR_PX;
+                    i++
+                ) {
+                    // Cell height is quasi-linear in font size, so
+                    // scaling the candidate by (current_rows /
+                    // target_rows) lands close to the desired row
+                    // count in one pass. Round down so we err on the
+                    // smaller-font / more-rows side, then clamp at
+                    // the legibility floor.
+                    const scaled = Math.floor(
+                        (candidate * term.rows) / NATURAL_MIN_TOTAL_ROWS
+                    );
+                    const next = Math.max(scaled, MOBILE_LEGIBLE_FLOOR_PX);
+                    if (next >= candidate) {
+                        // No forward progress (e.g. already at the
+                        // floor, or rounding produced a no-op). Stop
+                        // to avoid an infinite-loop edge case.
+                        break;
+                    }
+                    candidate = next;
+                    applyFontSize(term, fitAddon, candidate);
+                }
+            }
             const body = document.querySelector("body");
             body.style.background = theme.background || "black";
 
