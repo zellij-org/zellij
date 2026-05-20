@@ -9559,7 +9559,7 @@ pub(crate) fn screen_thread_main(
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         if let PaneId::Terminal(terminal_pane_id) = pane_id {
-                            tab.scroll_terminal_up(terminal_pane_id);
+                            tab.scroll_terminal_up(terminal_pane_id)?;
                         } else {
                             // this is because to do this with plugins, we need the client_id -
                             // which we do not have (yet?) in this context...
@@ -9577,7 +9577,7 @@ pub(crate) fn screen_thread_main(
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         if let PaneId::Terminal(terminal_pane_id) = pane_id {
-                            tab.scroll_terminal_down(terminal_pane_id);
+                            tab.scroll_terminal_down(terminal_pane_id)?;
                         } else {
                             // this is because to do this with plugins, we need the client_id -
                             // which we do not have (yet?) in this context...

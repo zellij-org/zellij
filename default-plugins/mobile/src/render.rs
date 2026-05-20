@@ -968,7 +968,17 @@ fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize,
     // that slice upward (toward older content). Clamp here so a stale
     // pan offset survives viewport-length changes without flipping
     // into negative territory or pinning the user past the new top.
-    let max_v_pan = viewport_lines.len().saturating_sub(height);
+    //
+    // `State::max_viewport_v_pan` encodes the same formula — it
+    // returns `None` only when no `viewport_region` is recorded yet
+    // (we're recording it a few lines below). On that first frame the
+    // helper has nothing to read, so we fall back to the inline
+    // formula against the freshly-computed `height`. Once a single
+    // frame has been laid out, the handler and renderer share the
+    // helper's output and cannot drift.
+    let max_v_pan = state
+        .max_viewport_v_pan()
+        .unwrap_or_else(|| viewport_lines.len().saturating_sub(height));
     state.viewport_v_pan = state.viewport_v_pan.min(max_v_pan);
     let skip = max_v_pan - state.viewport_v_pan;
     // Horizontal pan: anchor the slice to col 0 by default, and let

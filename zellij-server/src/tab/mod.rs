@@ -4495,13 +4495,51 @@ impl Tab {
         }
     }
 
-    pub fn scroll_terminal_up(&mut self, terminal_pane_id: u32) {
-        if let Some(terminal_pane) = self.get_pane_with_id_mut(PaneId::Terminal(terminal_pane_id)) {
-            let fictitious_client_id = 1; // this is not checked for terminal panes and we
-                                          // don't have an actual client id here
-                                          // TODO: traits were a mistake
-            terminal_pane.scroll_up(1, fictitious_client_id);
+    /// Dispatch a wheel-up tick on the terminal pane identified by id.
+    /// Mirrors `MouseHandler::handle_scrollwheel_up`'s three-case
+    /// dispatch so the plugin-facing `ScrollUpInPaneId` command (used
+    /// by the mobile plugin's overflow-into-scrollback path) routes
+    /// the same way a real desktop wheel tick would:
+    ///
+    /// 1. If the pane has mouse tracking enabled (vim with
+    ///    `set mouse=a`, less, htop, btop), forward the SGR wheel
+    ///    sequence its `mouse_scroll_up` produces — the program
+    ///    parses it from its pty and scrolls its own view.
+    /// 2. Else if the pane is in alternate-screen mode but does not
+    ///    track mouse (vim without mouse, an interactive REPL on
+    ///    alt-screen), emit a single arrow-up sequence — faux
+    ///    scrolling, the same fallback the desktop uses.
+    /// 3. Otherwise walk the zellij scrollback buffer by one line —
+    ///    the original semantic of this method.
+    ///
+    /// The synthetic `Position::new(0, 0)` we hand to
+    /// `mouse_scroll_up` is acceptable because pane-id-based commands
+    /// carry no real gesture coordinate; programs that use the wheel
+    /// position to pick a target split (e.g. multi-window vim) will
+    /// land on the top-left split, which is the conservative choice
+    /// for a viewport that has no further information.
+    pub fn scroll_terminal_up(&mut self, terminal_pane_id: u32) -> Result<()> {
+        let pane_id = PaneId::Terminal(terminal_pane_id);
+        let err_context = || format!("failed to scroll up pane {pane_id:?}");
+        let fictitious_client_id = 1; // not checked for terminal panes; see scroll_active_terminal_up
+        let synthetic_position = Position::new(0, 0);
+        let (mouse_sgr, is_alt) = match self.get_pane_with_id(pane_id) {
+            Some(pane) => (
+                pane.mouse_scroll_up(&synthetic_position),
+                pane.is_alternate_mode_active(),
+            ),
+            None => return Ok(()),
+        };
+        if let Some(sgr) = mouse_sgr {
+            self.write_to_pane_id(&None, sgr.into_bytes(), false, pane_id, None, None)
+                .with_context(err_context)?;
+        } else if is_alt {
+            self.write_to_pane_id(&None, b"\x1b[A".to_vec(), false, pane_id, None, None)
+                .with_context(err_context)?;
+        } else if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.scroll_up(1, fictitious_client_id);
         }
+        Ok(())
     }
 
     pub fn scroll_active_terminal_down(&mut self, client_id: ClientId) -> Result<()> {
@@ -4519,13 +4557,44 @@ impl Tab {
         Ok(())
     }
 
-    pub fn scroll_terminal_down(&mut self, terminal_pane_id: u32) {
-        if let Some(terminal_pane) = self.get_pane_with_id_mut(PaneId::Terminal(terminal_pane_id)) {
-            let fictitious_client_id = 1; // this is not checked for terminal panes and we
-                                          // don't have an actual client id here
-                                          // TODO: traits were a mistake
-            terminal_pane.scroll_down(1, fictitious_client_id);
+    /// Mirror of `scroll_terminal_up` for the wheel-down direction.
+    /// Three-case dispatch matches `MouseHandler::handle_scrollwheel_down`:
+    /// SGR forward when the pane tracks mouse, arrow-down faux when in
+    /// alt mode without mouse, otherwise walk the scrollback by one
+    /// line. When walking out of scrollback into the present, flush any
+    /// pending VTE events that accumulated while the pane was scrolled
+    /// — mirrors the same flush at `mouse_handler.rs:1624-1628`.
+    pub fn scroll_terminal_down(&mut self, terminal_pane_id: u32) -> Result<()> {
+        let pane_id = PaneId::Terminal(terminal_pane_id);
+        let err_context = || format!("failed to scroll down pane {pane_id:?}");
+        let fictitious_client_id = 1; // not checked for terminal panes; see scroll_active_terminal_down
+        let synthetic_position = Position::new(0, 0);
+        let (mouse_sgr, is_alt) = match self.get_pane_with_id(pane_id) {
+            Some(pane) => (
+                pane.mouse_scroll_down(&synthetic_position),
+                pane.is_alternate_mode_active(),
+            ),
+            None => return Ok(()),
+        };
+        if let Some(sgr) = mouse_sgr {
+            self.write_to_pane_id(&None, sgr.into_bytes(), false, pane_id, None, None)
+                .with_context(err_context)?;
+        } else if is_alt {
+            self.write_to_pane_id(&None, b"\x1b[B".to_vec(), false, pane_id, None, None)
+                .with_context(err_context)?;
+        } else {
+            let needs_flush = if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.scroll_down(1, fictitious_client_id);
+                !pane.is_scrolled()
+            } else {
+                false
+            };
+            if needs_flush {
+                self.process_pending_vte_events(terminal_pane_id)
+                    .with_context(err_context)?;
+            }
         }
+        Ok(())
     }
 
     pub fn scroll_active_terminal_up_page(&mut self, client_id: ClientId) {

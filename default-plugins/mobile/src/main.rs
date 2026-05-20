@@ -213,20 +213,20 @@ impl ZellijPlugin for State {
                     // default). Capped by `render_embedded_viewport` on
                     // the next frame, so the pan offset cannot exceed
                     // what the current cached viewport supports.
+                    //
+                    // Once the pan saturates at `max_v_pan`, any
+                    // remaining gesture lines spill into the underlying
+                    // pane's scrollback via `scroll_up_in_pane_id` —
+                    // see `apply_v_pan` for the partition math. The
+                    // host returns a fresh `PaneRenderReportWithAnsi`
+                    // after each scroll call, so we return `true` only
+                    // when the local pan actually moved (otherwise the
+                    // pane render event will refresh us).
                     Mouse::ScrollUp(lines) => {
-                        if pan_is_allowed(self) {
-                            self.viewport_v_pan = self.viewport_v_pan.saturating_add(lines);
-                            return true;
-                        }
-                        return false;
+                        return handle_scroll_pan(self, lines, /*up=*/true);
                     },
                     Mouse::ScrollDown(lines) => {
-                        if pan_is_allowed(self) {
-                            self.viewport_v_pan =
-                                self.viewport_v_pan.saturating_sub(lines);
-                            return true;
-                        }
-                        return false;
+                        return handle_scroll_pan(self, lines, /*up=*/false);
                     },
                     // Convention (see mobile_panning.md): ScrollRight
                     // increases `viewport_h_pan` to reveal more of the
@@ -357,6 +357,139 @@ fn merge_held_modifiers(key: &KeyWithModifier, ctrl: bool, alt: bool) -> KeyWith
     merged
 }
 
+/// Compute the new vertical pan offset for a slide gesture and report
+/// how many of the gesture's lines did not fit (i.e. would push the
+/// pan past the edge). The overflow count is what the mouse handler
+/// converts into `scroll_*_in_pane_id` shim calls so a saturating
+/// gesture continues into the underlying pane's scrollback instead of
+/// dying at the edge.
+///
+/// Direction encoding matches the `Mouse::Scroll*` variants:
+/// - `up = true` corresponds to `Mouse::ScrollUp` — pan increases
+///   toward `max_pan` (older content). Overflow > 0 when the gesture
+///   would have pushed past `max_pan`.
+/// - `up = false` corresponds to `Mouse::ScrollDown` — pan decreases
+///   toward 0 (newer content). Overflow > 0 when the gesture would
+///   have pushed below 0.
+///
+/// Pure function; no I/O. Exists as a free fn so the handler's
+/// branchy event-tick code stays straight-line and the partition math
+/// is unit-testable on its own.
+fn apply_v_pan(
+    old_pan: usize,
+    max_pan: usize,
+    lines: usize,
+    up: bool,
+) -> (usize, usize) {
+    if up {
+        let desired = old_pan.saturating_add(lines);
+        let new_pan = desired.min(max_pan);
+        let absorbed = new_pan - old_pan;
+        (new_pan, lines - absorbed)
+    } else {
+        let new_pan = old_pan.saturating_sub(lines);
+        let absorbed = old_pan - new_pan;
+        (new_pan, lines - absorbed)
+    }
+}
+
+/// Apply a vertical slide gesture to the embedded viewport:
+/// 1. Drop the gesture entirely if `pan_is_allowed` is false (no
+///    selected pane, empty cache, or a selector menu is on top of the
+///    viewport).
+/// 2. On the very first event tick — before any frame has been laid
+///    out — `viewport_region` is `None` and `max_viewport_v_pan`
+///    returns `None`. With no embed height in hand the handler cannot
+///    compute overflow, so we fall back to today's pure-pan behaviour
+///    and let the next render clamp the offset.
+/// 3. Otherwise partition the gesture's `lines` into "absorbed by the
+///    pan" plus "overflow", and forward every overflow line to the
+///    selected pane as a single-line scrollback step.
+///
+/// Returns the value the `update()` event handler should propagate
+/// back to the host: `true` iff the local pan moved (a re-render is
+/// useful immediately). Pure-overflow events return `false` because
+/// the scroll itself produces a `PaneRenderReportWithAnsi` from the
+/// host that drives the next frame — same pattern as the SGR click
+/// passthrough at the bottom of the `Event::Mouse` arm.
+fn handle_scroll_pan(state: &mut State, lines: usize, up: bool) -> bool {
+    let dir = if up { "Up" } else { "Down" };
+    eprintln!(
+        "[mobile/scroll] enter dir={dir} lines={lines} v_pan={} h_pan={} \
+         viewport_len={} viewport_region={:?} expanded={:?} \
+         current_pane_some={}",
+        state.viewport_v_pan,
+        state.viewport_h_pan,
+        state.current_pane_viewport_len(),
+        state.viewport_region,
+        state.expanded,
+        state.current_pane().is_some(),
+    );
+    if !pan_is_allowed(state) {
+        eprintln!(
+            "[mobile/scroll] dropped: pan_is_allowed=false (see prior log for reason) dir={dir} lines={lines}"
+        );
+        return false;
+    }
+    let Some(max_v_pan) = state.max_viewport_v_pan() else {
+        // First event tick: no frame has rendered yet, so we don't
+        // know the embed height. Preserve today's pure-pan behaviour;
+        // the renderer will clamp on the first frame.
+        eprintln!(
+            "[mobile/scroll] fallback pure-pan (max_v_pan=None, no viewport_region yet) dir={dir} lines={lines} old_pan={}",
+            state.viewport_v_pan
+        );
+        if up {
+            state.viewport_v_pan = state.viewport_v_pan.saturating_add(lines);
+        } else {
+            state.viewport_v_pan = state.viewport_v_pan.saturating_sub(lines);
+        }
+        eprintln!(
+            "[mobile/scroll] fallback pure-pan new_pan={}",
+            state.viewport_v_pan
+        );
+        return true;
+    };
+    let old_pan = state.viewport_v_pan;
+    let (new_pan, overflow) = apply_v_pan(old_pan, max_v_pan, lines, up);
+    let pan_moved = new_pan != old_pan;
+    state.viewport_v_pan = new_pan;
+    eprintln!(
+        "[mobile/scroll] partition dir={dir} lines={lines} old_pan={old_pan} \
+         max_v_pan={max_v_pan} new_pan={new_pan} overflow={overflow} pan_moved={pan_moved}"
+    );
+    if overflow > 0 {
+        match state.current_pane() {
+            Some(pane) => {
+                let pane_id = state::pane_id_of(&pane);
+                eprintln!(
+                    "[mobile/scroll] forwarding {overflow} scroll_{} call(s) to pane_id={pane_id:?}",
+                    if up { "up" } else { "down" }
+                );
+                for i in 0..overflow {
+                    if up {
+                        scroll_up_in_pane_id(pane_id);
+                    } else {
+                        scroll_down_in_pane_id(pane_id);
+                    }
+                    eprintln!(
+                        "[mobile/scroll]   fired scroll_{} #{}/{overflow}",
+                        if up { "up" } else { "down" },
+                        i + 1
+                    );
+                }
+            },
+            None => {
+                eprintln!(
+                    "[mobile/scroll] WARN overflow={overflow} but current_pane()=None — scroll dropped"
+                );
+            },
+        }
+    }
+    eprintln!("[mobile/scroll] return pan_moved={pan_moved}");
+    pan_moved
+}
+
 /// True when a scroll event should drive the embedded-viewport pan
 /// offsets rather than be dropped.
 ///
@@ -373,15 +506,27 @@ fn pan_is_allowed(state: &State) -> bool {
     // the menu itself, not the hidden viewport behind it. (The menu
     // is not scrollable today; the event is simply dropped.)
     if state.expanded.is_some() {
+        eprintln!(
+            "[mobile/scroll] pan_is_allowed=false: selector open ({:?})",
+            state.expanded
+        );
         return false;
     }
     // Need a selected pane with cached content — otherwise the pan
     // offset has nothing to act on and the renderer would clamp it
     // back to 0 on the next frame anyway.
     if state.current_pane().is_none() {
+        eprintln!("[mobile/scroll] pan_is_allowed=false: current_pane()=None");
         return false;
     }
-    state.current_pane_viewport_len() > 0
+    let len = state.current_pane_viewport_len();
+    if len == 0 {
+        eprintln!(
+            "[mobile/scroll] pan_is_allowed=false: current_pane_viewport_len()=0"
+        );
+        return false;
+    }
+    true
 }
 
 /// Build an SGR mouse left-click press+release sequence targeting the
@@ -1002,5 +1147,68 @@ mod tests {
         assert_eq!(state.fit_last_sent_size, None);
         assert_eq!(state.fit_pending_target, None);
         assert_eq!(state.fit_tab_id, None);
+    }
+
+    /// Gesture lies entirely below the edge — every line lands in the
+    /// pan offset and no overflow is reported. The baseline case the
+    /// pre-existing renderer already handled correctly; documented
+    /// here so the helper's "absorbed = lines, overflow = 0" path is
+    /// pinned.
+    #[test]
+    fn apply_v_pan_up_fully_absorbed() {
+        assert_eq!(apply_v_pan(0, 100, 3, true), (3, 0));
+        assert_eq!(apply_v_pan(50, 100, 3, true), (53, 0));
+    }
+
+    /// Gesture starts inside the legal range but its last lines would
+    /// step past `max_pan`. The pan saturates at `max_pan` and the
+    /// remaining lines are reported as overflow — this is the central
+    /// new behaviour: pan-then-scroll inside a single event.
+    #[test]
+    fn apply_v_pan_up_partial_overflow() {
+        assert_eq!(apply_v_pan(99, 100, 3, true), (100, 2));
+        assert_eq!(apply_v_pan(98, 100, 5, true), (100, 3));
+    }
+
+    /// Already at the top edge — pan cannot move and every gesture
+    /// line is overflow. Confirms the all-or-nothing degenerate case.
+    #[test]
+    fn apply_v_pan_up_fully_overflowed() {
+        assert_eq!(apply_v_pan(100, 100, 3, true), (100, 3));
+    }
+
+    /// `max_pan == 0` (embed area covers the entire cached viewport):
+    /// no pan is ever legal, so every line of every gesture is
+    /// overflow.
+    #[test]
+    fn apply_v_pan_up_zero_max() {
+        assert_eq!(apply_v_pan(0, 0, 3, true), (0, 3));
+        assert_eq!(apply_v_pan(0, 0, 0, true), (0, 0));
+    }
+
+    /// Down direction mirrors the up case: pan decreases toward 0,
+    /// and lines that would have pushed below 0 are reported as
+    /// overflow (to be forwarded as `scroll_down_in_pane_id` calls).
+    #[test]
+    fn apply_v_pan_down_partial_overflow() {
+        assert_eq!(apply_v_pan(2, 100, 3, false), (0, 1));
+        assert_eq!(apply_v_pan(5, 100, 3, false), (2, 0));
+    }
+
+    /// Already at the bottom edge — pan saturates at 0 and the
+    /// gesture's lines all become overflow.
+    #[test]
+    fn apply_v_pan_down_fully_overflowed() {
+        assert_eq!(apply_v_pan(0, 100, 3, false), (0, 3));
+    }
+
+    /// Zero-line gestures (theoretical; the wire protocol never
+    /// sends 0) must be no-ops in both directions — important so a
+    /// future caller that accidentally passes 0 cannot trigger
+    /// spurious shim calls.
+    #[test]
+    fn apply_v_pan_zero_lines() {
+        assert_eq!(apply_v_pan(5, 100, 0, true), (5, 0));
+        assert_eq!(apply_v_pan(5, 100, 0, false), (5, 0));
     }
 }

@@ -1,8 +1,10 @@
 use super::Tab;
 use crate::pane_groups::PaneGroups;
 use crate::panes::sixel::SixelImageStore;
+use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
 use crate::{os_input_output::ServerOsApi, panes::PaneId, thread_bus::ThreadSenders, ClientId};
+use zellij_utils::channels::{unbounded, Receiver, SenderWithContext};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use zellij_utils::data::{Direction, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
@@ -16309,4 +16311,234 @@ pub fn cli_rename_active_pane_then_interactive_esc_restores() {
     let _ = tab.undo_active_rename_pane(client_id);
     let pane = tab.get_pane_with_id(pane_id).unwrap();
     assert_eq!(pane.current_title(), "spark");
+}
+
+// --- scroll_terminal_up / scroll_terminal_down wheel dispatch ---
+//
+// These cover the three-case routing introduced when these methods stopped
+// being a blind scrollback walk and started mirroring
+// `MouseHandler::handle_scrollwheel_up/down`. They use a captured pty-writer
+// channel because the wheel-forward / faux-arrow branches communicate via
+// `PtyWriteInstruction::Write`, not by mutating pane state.
+
+/// Install a real `to_pty_writer` channel on the tab so we can observe the
+/// bytes the dispatch wants to write to the pty. The harness's default
+/// senders silently drop pty-writer messages, which is what makes the
+/// scrollback-walk path (which mutates pane state directly) usable in
+/// existing tests but invisible to assertions for the new wheel branches.
+fn install_pty_writer_capture(
+    tab: &mut Tab,
+) -> Receiver<(PtyWriteInstruction, zellij_utils::errors::ErrorContext)> {
+    let (tx, rx) = unbounded();
+    tab.senders.replace_to_pty_writer(SenderWithContext::new(tx));
+    rx
+}
+
+/// Drain every queued message from the capture channel. `try_recv` is the
+/// crossbeam idiom for a non-blocking drain since the channel is unbounded
+/// and we don't have an iterator helper here.
+fn drain_pty_writer(
+    rx: &Receiver<(PtyWriteInstruction, zellij_utils::errors::ErrorContext)>,
+) -> Vec<PtyWriteInstruction> {
+    let mut out = Vec::new();
+    while let Ok((msg, _ctx)) = rx.try_recv() {
+        out.push(msg);
+    }
+    out
+}
+
+/// When the pane has SGR mouse tracking enabled (the vim-with-`set mouse=a`
+/// case), `scroll_terminal_up` must hand the SGR wheel-up byte stream to
+/// the pty rather than walking the scrollback. The leading `\x1b[<64;`
+/// matches what the grid produces in `mouse_scroll_up_signal` at
+/// `panes/grid.rs:3233-3239`.
+#[test]
+pub fn scroll_terminal_up_forwards_sgr_when_pane_tracks_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    // Enable Normal mouse tracking (CSI ?1000h) + SGR encoding (CSI ?1006h).
+    tab.handle_pty_bytes(1, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+
+    tab.scroll_terminal_up(1).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(!writes.is_empty(), "expected at least one pty write");
+    match &writes[0] {
+        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
+            assert_eq!(*terminal_id, 1);
+            let s = String::from_utf8_lossy(bytes);
+            assert!(
+                s.starts_with("\u{1b}[<64;"),
+                "expected SGR wheel-up (button 64) prefix, got {s:?}"
+            );
+        },
+        other => panic!("expected PtyWriteInstruction::Write, got {other:?}"),
+    }
+}
+
+/// Mirror of `scroll_terminal_up_forwards_sgr_when_pane_tracks_mouse` for
+/// the wheel-down direction; button 65 per the SGR wheel encoding.
+#[test]
+pub fn scroll_terminal_down_forwards_sgr_when_pane_tracks_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+
+    tab.scroll_terminal_down(1).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(!writes.is_empty(), "expected at least one pty write");
+    match &writes[0] {
+        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
+            assert_eq!(*terminal_id, 1);
+            let s = String::from_utf8_lossy(bytes);
+            assert!(
+                s.starts_with("\u{1b}[<65;"),
+                "expected SGR wheel-down (button 65) prefix, got {s:?}"
+            );
+        },
+        other => panic!("expected PtyWriteInstruction::Write, got {other:?}"),
+    }
+}
+
+/// Alternate-screen-without-mouse is the vim-without-`set mouse=a` case.
+/// The desktop wheel handler emits a single `\x1b[A` (cursor up) as faux
+/// scrolling; the by-pane-id path must do the same.
+#[test]
+pub fn scroll_terminal_up_emits_arrow_up_in_alt_mode_without_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    // Enter alternate-screen mode without touching mouse tracking.
+    tab.handle_pty_bytes(1, b"\x1b[?1049h".to_vec()).unwrap();
+
+    tab.scroll_terminal_up(1).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(!writes.is_empty(), "expected at least one pty write");
+    match &writes[0] {
+        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
+            assert_eq!(*terminal_id, 1);
+            assert_eq!(bytes.as_slice(), b"\x1b[A");
+        },
+        other => panic!("expected PtyWriteInstruction::Write, got {other:?}"),
+    }
+}
+
+/// Mirror of the alt-mode test for the wheel-down direction. Expects a
+/// single `\x1b[B` (cursor down).
+#[test]
+pub fn scroll_terminal_down_emits_arrow_down_in_alt_mode_without_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1049h".to_vec()).unwrap();
+
+    tab.scroll_terminal_down(1).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(!writes.is_empty(), "expected at least one pty write");
+    match &writes[0] {
+        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
+            assert_eq!(*terminal_id, 1);
+            assert_eq!(bytes.as_slice(), b"\x1b[B");
+        },
+        other => panic!("expected PtyWriteInstruction::Write, got {other:?}"),
+    }
+}
+
+/// In the default (regular) state — no alt screen, no mouse tracking —
+/// the dispatch must fall through to a scrollback walk. The pane is a
+/// fresh shell with nothing in `lines_above`, so the underlying
+/// `scroll_up_one_line` at `panes/grid.rs:1148` is a no-op (the
+/// `!lines_above.is_empty()` guard fails); the test asserts the
+/// observable contract: no pty write is emitted (we'd see one if the
+/// dispatch had taken the SGR or alt-mode branch).
+#[test]
+pub fn scroll_terminal_up_walks_scrollback_in_regular_mode_no_pty_write() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+
+    tab.scroll_terminal_up(1).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(
+        writes.is_empty(),
+        "expected no pty writes in regular mode, got {writes:?}"
+    );
+}
+
+/// Mirror of the regular-mode no-pty-write contract for the wheel-down
+/// path.
+#[test]
+pub fn scroll_terminal_down_walks_scrollback_in_regular_mode_no_pty_write() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+
+    tab.scroll_terminal_down(1).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(
+        writes.is_empty(),
+        "expected no pty writes in regular mode, got {writes:?}"
+    );
+}
+
+/// A nonexistent pane id must be tolerated (no panic, no pty write,
+/// returns Ok). Belt-and-braces against a race where the pane closes
+/// between the plugin's `scroll_up_in_pane_id` shim call and the screen
+/// instruction reaching this handler.
+#[test]
+pub fn scroll_terminal_up_nonexistent_pane_id_is_a_noop() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+
+    tab.scroll_terminal_up(999).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(writes.is_empty());
+}
+
+/// Mirror of the nonexistent-pane defensive test for the wheel-down path.
+#[test]
+pub fn scroll_terminal_down_nonexistent_pane_id_is_a_noop() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+
+    tab.scroll_terminal_down(999).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(writes.is_empty());
 }

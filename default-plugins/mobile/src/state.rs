@@ -430,6 +430,25 @@ impl State {
             .unwrap_or(0)
     }
 
+    /// Maximum legal `viewport_v_pan` for the *current* embed bounds:
+    /// the number of rows we could pan UP from the bottom-anchored
+    /// default before running out of cached viewport lines. This is
+    /// the same formula the renderer applies at the top of
+    /// `render_embedded_viewport` to clamp a stale offset.
+    ///
+    /// Returns `None` when no render has happened yet (no
+    /// `viewport_region` is recorded) — in that case the embed height
+    /// is unknown, so callers cannot meaningfully distinguish
+    /// "absorbed" from "overflowed" and should fall back to the
+    /// pre-existing pure-pan behaviour. Once a single frame has
+    /// rendered, `viewport_region` becomes `Some` and remains set,
+    /// so this only returns `None` during the very first event tick.
+    pub fn max_viewport_v_pan(&self) -> Option<usize> {
+        let region = self.viewport_region?;
+        let embed_height = region.row_end.saturating_sub(region.row_start);
+        Some(self.current_pane_viewport_len().saturating_sub(embed_height))
+    }
+
     /// Currently-selected pane info, falling back to the first pane in
     /// the selected tab. We deliberately do NOT fall back to
     /// `is_focused` — that flag is global on the server (true if any
@@ -657,5 +676,85 @@ mod tests {
         assert_eq!(s.fit_last_sent_size, None);
         assert_eq!(s.fit_pending_target, None);
         assert_eq!(s.fit_tab_id, None);
+    }
+
+    /// Build a minimal `State` whose `current_pane()` resolves to a
+    /// terminal pane with `viewport_len` lines cached, and whose
+    /// `viewport_region` (if `Some`) spans rows `[0, embed_height)`.
+    fn state_with_viewport(
+        viewport_len: usize,
+        embed_height: Option<usize>,
+    ) -> State {
+        use zellij_tile::prelude::TabInfo;
+
+        let mut state = State::default();
+
+        let mut tab = TabInfo::default();
+        tab.position = 0;
+        state.tabs.push(tab);
+        state.selected_tab_position = Some(0);
+
+        let mut pane = PaneInfo::default();
+        pane.id = 42;
+        pane.is_plugin = false;
+        pane.is_selectable = true;
+        pane.is_suppressed = false;
+        state.panes_by_tab_position.insert(0, vec![pane.clone()]);
+        state.selected_pane_id = Some(PaneId::Terminal(42));
+
+        let mut contents = PaneContents::default();
+        contents.viewport = vec![String::new(); viewport_len];
+        state
+            .latest_pane_contents
+            .insert(PaneId::Terminal(42), contents);
+
+        if let Some(h) = embed_height {
+            state.viewport_region = Some(ViewportRegion {
+                row_start: 0,
+                row_end: h,
+                cols: 80,
+                skip: 0,
+                h_offset: 0,
+            });
+        }
+
+        state
+    }
+
+    /// Without a recorded `viewport_region` the embed height is
+    /// unknown, so the helper cannot compute a maximum and must
+    /// return `None` — the contract the mouse handler relies on to
+    /// fall back to pure-pan behaviour on the very first event tick.
+    #[test]
+    fn max_viewport_v_pan_none_without_region() {
+        let state = state_with_viewport(100, None);
+        assert_eq!(state.max_viewport_v_pan(), None);
+    }
+
+    /// Standard case: cached viewport is taller than the embed area,
+    /// so `max_v_pan = cached - embed`.
+    #[test]
+    fn max_viewport_v_pan_some_typical() {
+        let state = state_with_viewport(100, Some(20));
+        assert_eq!(state.max_viewport_v_pan(), Some(80));
+    }
+
+    /// Embed area is taller than (or equal to) the cached viewport —
+    /// no panning is possible, so the helper saturates to 0 rather
+    /// than wrapping into a huge value.
+    #[test]
+    fn max_viewport_v_pan_saturates_when_embed_larger() {
+        let state = state_with_viewport(10, Some(20));
+        assert_eq!(state.max_viewport_v_pan(), Some(0));
+    }
+
+    /// Empty cache with a region still set is well-defined: 0 lines
+    /// minus any embed height saturates to 0. (`pan_is_allowed` gates
+    /// this case at the handler entry, but the helper must remain
+    /// total.)
+    #[test]
+    fn max_viewport_v_pan_empty_cache() {
+        let state = state_with_viewport(0, Some(20));
+        assert_eq!(state.max_viewport_v_pan(), Some(0));
     }
 }
