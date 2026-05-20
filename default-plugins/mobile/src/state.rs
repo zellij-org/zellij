@@ -287,6 +287,14 @@ pub struct State {
     /// Reset to `false` when the user picks a different tab or pane,
     /// or when the previously-selected pane disappears.
     pub fit_active: bool,
+    /// The tab the local fit is bound to. Set when `EnterFitMode` is
+    /// sent; cleared by every path that clears `fit_active`. Threaded
+    /// through `UpdateFitSize` so the server can look up the override
+    /// entry by tab_id (rather than by owning_client), which is what
+    /// lets a displaced client (whose entry was overwritten by a
+    /// colliding fit on the same tab) reclaim ownership on its next
+    /// push.
+    pub fit_tab_id: Option<usize>,
     /// The (rows, cols) most recently sent to the server via
     /// `enter_fit_mode` or `update_fit_size`. Diffed against
     /// `fit_pending_target` in `update()` so we only re-send when
@@ -622,5 +630,32 @@ mod tests {
             .push(ClickRegion::slop(5, 9, 14, kb(1), (11, 5)));
         assert!(s.click_to_action(0, 0).is_none());
         assert!(s.click_to_action(5, 20).is_none());
+    }
+
+    /// Manually arm fit state (as the `ToggleFit` ON path would) then
+    /// exercise the OFF path via `clear_fit_if_active`. All four fit
+    /// fields must reset to their default off-state values regardless
+    /// of which subset was set on entry.
+    #[test]
+    fn toggle_fit_field_round_trip() {
+        let mut s = State::default();
+        s.fit_active = true;
+        s.fit_last_sent_size = Some((10, 40));
+        s.fit_pending_target = Some((10, 40));
+        s.fit_tab_id = Some(7);
+        crate::clear_fit_if_active(&mut s);
+        assert!(!s.fit_active);
+        assert_eq!(s.fit_last_sent_size, None);
+        assert_eq!(s.fit_pending_target, None);
+        assert_eq!(s.fit_tab_id, None);
+
+        // Calling clear again while inactive is a no-op (no panic, no
+        // mutation) — required because the dispatch paths invoke this
+        // unconditionally on tab/pane switch.
+        crate::clear_fit_if_active(&mut s);
+        assert!(!s.fit_active);
+        assert_eq!(s.fit_last_sent_size, None);
+        assert_eq!(s.fit_pending_target, None);
+        assert_eq!(s.fit_tab_id, None);
     }
 }

@@ -1478,6 +1478,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::UpdateFitSize) => match protobuf_plugin_command.payload {
                 Some(Payload::UpdateFitSizePayload(payload)) => Ok(PluginCommand::UpdateFitSize {
+                    tab_id: payload.tab_id as usize,
                     size: Size {
                         rows: payload.rows as usize,
                         cols: payload.cols as usize,
@@ -3375,12 +3376,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ExitFitMode as i32,
                 payload: None,
             }),
-            PluginCommand::UpdateFitSize { size } => Ok(ProtobufPluginCommand {
+            PluginCommand::UpdateFitSize { tab_id, size } => Ok(ProtobufPluginCommand {
                 name: CommandName::UpdateFitSize as i32,
                 payload: Some(Payload::UpdateFitSizePayload(
                     ProtobufUpdateFitSizePayload {
                         rows: size.rows as u32,
                         cols: size.cols as u32,
+                        tab_id: tab_id as u32,
                     },
                 )),
             }),
@@ -5119,6 +5121,77 @@ impl From<OpenPluginPaneFloatingResponse> for ProtobufOpenPluginPaneFloatingResp
     fn from(response: OpenPluginPaneFloatingResponse) -> Self {
         ProtobufOpenPluginPaneFloatingResponse {
             pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Protobuf round-trip tests for the mobile-only Fit commands.
+    //!
+    //! Catches protobuf tag / field-number drift and parser /
+    //! serializer divergence — the exact failure mode produced when
+    //! `plugin_command.proto` changes without re-running
+    //! `cargo xtask build`. `PluginCommand` itself does not derive
+    //! `PartialEq`, so the decoded value is destructured by pattern.
+    use super::*;
+    use crate::data::{PaneId, PluginCommand};
+    use crate::pane_size::Size;
+
+    #[test]
+    fn enter_fit_mode_protobuf_round_trip() {
+        let original = PluginCommand::EnterFitMode {
+            tab_id: 7,
+            pane_id: PaneId::Terminal(3),
+            size: Size {
+                rows: 11,
+                cols: 42,
+            },
+        };
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::EnterFitMode {
+                tab_id,
+                pane_id,
+                size,
+            } => {
+                assert_eq!(tab_id, 7);
+                assert_eq!(pane_id, PaneId::Terminal(3));
+                assert_eq!(size, Size { rows: 11, cols: 42 });
+            },
+            other => panic!("expected EnterFitMode, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn exit_fit_mode_protobuf_round_trip() {
+        let original = PluginCommand::ExitFitMode;
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::ExitFitMode => {},
+            other => panic!("expected ExitFitMode, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn update_fit_mode_protobuf_round_trip() {
+        let original = PluginCommand::UpdateFitSize {
+            tab_id: 7,
+            size: Size {
+                rows: 11,
+                cols: 42,
+            },
+        };
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::UpdateFitSize { tab_id, size } => {
+                assert_eq!(tab_id, 7);
+                assert_eq!(size, Size { rows: 11, cols: 42 });
+            },
+            other => panic!("expected UpdateFitSize, got {:?}", other),
         }
     }
 }

@@ -411,62 +411,77 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
     };
     print_text_with_coordinates(text, 0, row, Some(cols), None);
 
-    // Tile the entire row across the visible elements so taps on
-    // separator/whitespace fall through to the nearest meaningful
-    // action. The row is partitioned into 5 contiguous regions by
-    // computing midpoints between adjacent label centers; every cell
-    // in [0, cols) lands in exactly one region.
-    //
-    // The "Zellij " prefix to the left of the session name has no
-    // associated action, so we fold it into the session region —
-    // tapping the prefix is treated as a tap on the session name.
-    let session_center = (session_cells_s + session_cells_e) / 2;
-    let tab_center = (tab_cells_s + tab_cells_e) / 2;
-    let pane_center = (pane_cells_s + pane_cells_e) / 2;
-    let fit_center = (fit_cells_s + fit_cells_e) / 2;
-    let typing_center = (typing_cells_s + typing_cells_e) / 2;
-    let hamburger_center = (hamburger_cells_s + hamburger_cells_e) / 2;
+    let segments = TopBarSegments {
+        session: (session_cells_s, session_cells_e),
+        tab: (tab_cells_s, tab_cells_e),
+        pane: (pane_cells_s, pane_cells_e),
+        fit: (fit_cells_s, fit_cells_e),
+        typing: (typing_cells_s, typing_cells_e),
+        hamburger: (hamburger_cells_s, hamburger_cells_e),
+    };
+    for region in top_bar_collapsed_click_regions(row, cols, &segments) {
+        state.click_regions.push(region);
+    }
+}
+
+/// Cell-column extents of the six top-bar segments. Each `(start,
+/// end)` pair is the half-open `[start, end)` cell range the segment
+/// occupies after layout. Provided as a parameter rather than the raw
+/// rendered string so the partition logic stays a pure function and
+/// can be unit-tested without driving any host shim.
+pub struct TopBarSegments {
+    pub session: (usize, usize),
+    pub tab: (usize, usize),
+    pub pane: (usize, usize),
+    pub fit: (usize, usize),
+    pub typing: (usize, usize),
+    pub hamburger: (usize, usize),
+}
+
+/// Compute the six tight click regions for the collapsed top bar.
+///
+/// The row is partitioned into six contiguous regions by taking the
+/// midpoint between each adjacent pair of segment centers; every cell
+/// in `[0, cols)` lands in exactly one region. The "Zellij " prefix to
+/// the left of the session name has no associated action so we fold
+/// it into the session region — tapping the prefix is treated as a
+/// tap on the session name. The trailing region (right of the
+/// keyboard glyph) is the hamburger, which today opens the panes
+/// selector — same action as the pane segment.
+///
+/// The fit (⛶) region sits strictly between the pane region (to its
+/// left) and the keyboard-glyph region (to its right). Returns the
+/// six `ClickRegion`s in left-to-right order. Pure / shim-free so a
+/// `mod tests` can exercise the partition math directly.
+pub fn top_bar_collapsed_click_regions(
+    row: usize,
+    cols: usize,
+    seg: &TopBarSegments,
+) -> Vec<ClickRegion> {
+    let session_center = (seg.session.0 + seg.session.1) / 2;
+    let tab_center = (seg.tab.0 + seg.tab.1) / 2;
+    let pane_center = (seg.pane.0 + seg.pane.1) / 2;
+    let fit_center = (seg.fit.0 + seg.fit.1) / 2;
+    let typing_center = (seg.typing.0 + seg.typing.1) / 2;
+    let hamburger_center = (seg.hamburger.0 + seg.hamburger.1) / 2;
     let mid_session_tab = (session_center + tab_center) / 2;
     let mid_tab_pane = (tab_center + pane_center) / 2;
     let mid_pane_fit = (pane_center + fit_center) / 2;
     let mid_fit_typing = (fit_center + typing_center) / 2;
     let mid_typing_hamburger = (typing_center + hamburger_center) / 2;
-    state.click_regions.push(ClickRegion::tight(
-        row,
-        0,
-        mid_session_tab,
-        ClickAction::ExpandSessions,
-    ));
-    state.click_regions.push(ClickRegion::tight(
-        row,
-        mid_session_tab,
-        mid_tab_pane,
-        ClickAction::ExpandTabs,
-    ));
-    state.click_regions.push(ClickRegion::tight(
-        row,
-        mid_tab_pane,
-        mid_pane_fit,
-        ClickAction::ExpandPanes,
-    ));
-    state.click_regions.push(ClickRegion::tight(
-        row,
-        mid_pane_fit,
-        mid_fit_typing,
-        ClickAction::ToggleFit,
-    ));
-    state.click_regions.push(ClickRegion::tight(
-        row,
-        mid_fit_typing,
-        mid_typing_hamburger,
-        ClickAction::ToggleKeyboard,
-    ));
-    state.click_regions.push(ClickRegion::tight(
-        row,
-        mid_typing_hamburger,
-        cols,
-        ClickAction::ExpandPanes,
-    ));
+    vec![
+        ClickRegion::tight(row, 0, mid_session_tab, ClickAction::ExpandSessions),
+        ClickRegion::tight(row, mid_session_tab, mid_tab_pane, ClickAction::ExpandTabs),
+        ClickRegion::tight(row, mid_tab_pane, mid_pane_fit, ClickAction::ExpandPanes),
+        ClickRegion::tight(row, mid_pane_fit, mid_fit_typing, ClickAction::ToggleFit),
+        ClickRegion::tight(
+            row,
+            mid_fit_typing,
+            mid_typing_hamburger,
+            ClickAction::ToggleKeyboard,
+        ),
+        ClickRegion::tight(row, mid_typing_hamburger, cols, ClickAction::ExpandPanes),
+    ]
 }
 
 /// Selector top bar: `Zellij <current-X> | Switch <X>`. The current
@@ -1345,6 +1360,85 @@ mod tests {
         let line = "ab中cd";
         let sliced = slice_ansi_visible(line, 0, 4);
         assert_eq!(visible(&sliced), "ab中");
+    }
+
+    /// The collapsed top bar emits exactly one `ToggleFit` region,
+    /// strictly between the pane region (to its left) and the
+    /// keyboard / typing region (to its right). Guards against a
+    /// partition-math drift if another glyph is added between them.
+    #[test]
+    fn top_bar_partition_includes_fit_region() {
+        // Hand-built segment positions matching the layout
+        // `Zellij <session> | <tab> | <pane> | ⛶ | ⌨   ☰`. The exact
+        // numbers don't matter; what matters is that each segment's
+        // center sits strictly to the right of the previous one.
+        let seg = TopBarSegments {
+            session: (7, 17),       // center 12
+            tab: (20, 26),          // center 23
+            pane: (29, 35),         // center 32
+            fit: (38, 39),          // center 38
+            typing: (42, 43),       // center 42
+            hamburger: (79, 80),    // center 79
+        };
+        let cols = 80;
+        let regions = top_bar_collapsed_click_regions(0, cols, &seg);
+
+        // Exactly one ToggleFit region.
+        let fit_regions: Vec<&ClickRegion> = regions
+            .iter()
+            .filter(|r| matches!(r.action, ClickAction::ToggleFit))
+            .collect();
+        assert_eq!(
+            fit_regions.len(),
+            1,
+            "Top bar must produce exactly one ToggleFit region; got {} \
+             (sibling-glyph addition probably broke the partition)",
+            fit_regions.len()
+        );
+        let fit = fit_regions[0];
+
+        // ToggleFit sits strictly between the pane region and the
+        // keyboard region: pane.col_end <= fit.col_start AND
+        // fit.col_end <= keyboard.col_start, with the fit region
+        // itself non-empty. The collapsed top bar contains *two*
+        // ExpandPanes regions (the pane name segment and the trailing
+        // hamburger), so pick the left one by `col_start`.
+        let mut expand_panes: Vec<&ClickRegion> = regions
+            .iter()
+            .filter(|r| matches!(r.action, ClickAction::ExpandPanes))
+            .collect();
+        expand_panes.sort_by_key(|r| r.col_start);
+        let pane_region = expand_panes[0];
+        let keyboard_region = regions
+            .iter()
+            .find(|r| matches!(r.action, ClickAction::ToggleKeyboard))
+            .expect("keyboard region present");
+
+        assert!(
+            pane_region.col_end <= fit.col_start,
+            "Fit region must start at or after the pane region ends; \
+             pane.col_end={} fit.col_start={}",
+            pane_region.col_end,
+            fit.col_start
+        );
+        assert!(
+            fit.col_end <= keyboard_region.col_start,
+            "Fit region must end at or before the keyboard region \
+             starts; fit.col_end={} keyboard.col_start={}",
+            fit.col_end,
+            keyboard_region.col_start
+        );
+        assert!(
+            fit.col_start < fit.col_end,
+            "Fit region must occupy at least one cell"
+        );
+        // The dispatch path is the actual user-visible behaviour;
+        // re-affirm a click in the middle of the fit region resolves
+        // to ToggleFit on a freshly seeded State.
+        let mut state = State::default();
+        state.click_regions = regions.clone();
+        let click_col = (fit.col_start + fit.col_end) / 2;
+        assert_eq!(state.click_to_action(0, click_col), Some(ClickAction::ToggleFit));
     }
 }
 

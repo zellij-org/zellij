@@ -1350,4 +1350,9 @@ message EnterFitModePayload {
 message UpdateFitSizePayload {
   uint32 rows = 1;
   uint32 cols = 2;
+  // Tab the fit is bound to. The server uses this to look up the
+  // override entry directly so a displaced client (whose entry was
+  // overwritten by a colliding fit) can reclaim ownership on its
+  // next push.
+  uint32 tab_id = 3;
 }

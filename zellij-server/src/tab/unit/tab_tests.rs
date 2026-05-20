@@ -217,6 +217,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -303,6 +304,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        0, // mobile_tab_count
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -395,6 +397,7 @@ fn create_new_tab_with_cell_size(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),

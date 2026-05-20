@@ -6085,6 +6085,18 @@ Config {
                     "/",
                 ),
             },
+            "mobile": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "mobile",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
             "plugin-manager": RunPlugin {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
@@ -6192,5 +6204,6 @@ Config {
         cursor_style: None,
         mac_option_is_meta: true,
         base_url: None,
+        font_size: None,
     },
 }

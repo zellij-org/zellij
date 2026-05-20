@@ -3284,6 +3284,15 @@ impl Tab {
         self.floating_panes.set_force_render(); // we do this to make sure pinned panes are
                                                 // rendered even if their surface is not visible
     }
+    /// Whether the next render of this tab will emit a `\x1b[2J`
+    /// display-clear sequence for every viewer. Test-only — used by
+    /// the fit-mode integration tests to verify the regression where
+    /// a desktop viewer of a smaller fit tab saw garbage outside the
+    /// tab area on first render.
+    #[cfg(test)]
+    pub fn should_clear_display_before_rendering(&self) -> bool {
+        self.should_clear_display_before_rendering
+    }
     pub fn is_sync_panes_active(&self) -> bool {
         self.synchronize_is_active
     }

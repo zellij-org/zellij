@@ -455,7 +455,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         size,
                     } => enter_fit_mode(env, tab_id, pane_id.into(), size),
                     PluginCommand::ExitFitMode => exit_fit_mode(env),
-                    PluginCommand::UpdateFitSize { size } => update_fit_size(env, size),
+                    PluginCommand::UpdateFitSize { tab_id, size } => {
+                        update_fit_size(env, tab_id, size)
+                    },
                     PluginCommand::DumpSessionLayout { tab_index } => {
                         dump_session_layout(env, tab_index)
                     },
@@ -3959,11 +3961,14 @@ fn exit_fit_mode(env: &PluginEnv) {
 /// Mobile "Fit" — update the active fit's target size. Sent on
 /// every render where the embedded viewport area changes (keyboard
 /// toggle, rotation, etc.). The plugin diffs locally to avoid
-/// spamming.
-fn update_fit_size(env: &PluginEnv, size: Size) {
+/// spamming. `tab_id` identifies the override directly so a
+/// displaced client (its prior fit overwritten by a colliding one)
+/// can reclaim ownership server-side on the next push.
+fn update_fit_size(env: &PluginEnv, tab_id: usize, size: Size) {
     env.senders
         .send_to_screen(ScreenInstruction::UpdateFitSize {
             client_id: env.client_id,
+            tab_id,
             size,
         })
         .with_context(|| format!("failed to dispatch UpdateFitSize for plugin {}", env.plugin_id))

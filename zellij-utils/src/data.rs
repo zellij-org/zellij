@@ -3638,9 +3638,13 @@ pub enum PluginCommand {
     /// and any fit-induced fullscreen. No-op if no active fit.
     ExitFitMode,
     /// Mobile "Fit" — update the active fit's target size (e.g.
-    /// after keyboard toggle or device rotation). No-op if no
-    /// active fit for the calling client.
+    /// after keyboard toggle or device rotation). The server looks
+    /// up the override entry by `tab_id` and reattributes ownership
+    /// to the calling client, so a displaced client (whose entry was
+    /// overwritten by a colliding fit on the same tab) reclaims the
+    /// override on its next push. No-op if no fit exists for `tab_id`.
     UpdateFitSize {
+        tab_id: usize,
         size: Size,
     },
 }

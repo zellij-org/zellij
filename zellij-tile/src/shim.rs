@@ -1695,10 +1695,15 @@ pub fn exit_fit_mode() {
 /// Mobile "Fit" — update the active fit's target size. Intended
 /// for after-render diff: the plugin recomputes the desired tab
 /// size whenever the embedded viewport area changes (e.g. keyboard
-/// toggle) and forwards it. No-op server-side if this client has
-/// no active fit.
-pub fn update_fit_size(rows: usize, cols: usize) {
+/// toggle) and forwards it. `tab_id` identifies the override the
+/// caller installed via `enter_fit_mode` and lets the server
+/// reattribute the entry on the way through — a displaced caller
+/// whose entry was overwritten by a colliding fit on the same tab
+/// reclaims ownership here. No-op server-side if no fit exists on
+/// `tab_id`.
+pub fn update_fit_size(tab_id: usize, rows: usize, cols: usize) {
     let plugin_command = PluginCommand::UpdateFitSize {
+        tab_id,
         size: Size { rows, cols },
     };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -2957,7 +2962,22 @@ pub fn clear_pane_highlights(pane_id: PaneId) {
     unsafe { host_run_plugin_command() };
 }
 
+#[cfg(target_arch = "wasm32")]
 #[link(wasm_import_module = "zellij")]
 extern "C" {
     fn host_run_plugin_command();
 }
+
+/// Native-build stub for `host_run_plugin_command`. The real symbol is
+/// a wasm import resolved by Zellij's plugin host at runtime; on
+/// native targets (i.e. `cargo test` against any plugin crate) the
+/// linker has no definition for it, which would prevent test binaries
+/// from being built. The stub is a no-op — the protobuf payload that
+/// callers wrote to stdout via `object_to_stdout` just before this is
+/// captured by the test runner along with any other plugin output.
+///
+/// Keeping this here (rather than gating every call site with
+/// `#[cfg(not(test))]`) means production code is shim-call-agnostic:
+/// the same function bodies compile and link under both targets.
+#[cfg(not(target_arch = "wasm32"))]
+unsafe fn host_run_plugin_command() {}

@@ -493,6 +493,7 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
                 state.fit_active = false;
                 state.fit_last_sent_size = None;
                 state.fit_pending_target = None;
+                state.fit_tab_id = None;
                 exit_fit_mode();
                 true
             } else {
@@ -507,13 +508,16 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
                 };
                 let target = fit_target_tab_size(&pane, &tab, &region);
                 state.fit_active = true;
-                // Seed both fields so the first render+update after
-                // entering fit doesn't immediately re-send the same
-                // size: render's `fit_pending_target` will equal the
-                // value we just sent, and the diff in
-                // `flush_pending_fit_size` short-circuits.
+                // Seed all four fields so the first render+update
+                // after entering fit doesn't immediately re-send the
+                // same size: render's `fit_pending_target` will equal
+                // the value we just sent, and the diff in
+                // `flush_pending_fit_size` short-circuits. `fit_tab_id`
+                // is what subsequent `update_fit_size` calls use to
+                // address the server-side entry by tab.
                 state.fit_last_sent_size = Some((target.0, target.1));
                 state.fit_pending_target = Some((target.0, target.1));
+                state.fit_tab_id = Some(tab.tab_id);
                 enter_fit_mode(
                     tab.tab_id,
                     state::pane_id_of(&pane),
@@ -560,6 +564,7 @@ pub fn clear_fit_if_active(state: &mut State) {
         state.fit_active = false;
         state.fit_last_sent_size = None;
         state.fit_pending_target = None;
+        state.fit_tab_id = None;
         exit_fit_mode();
     }
 }
@@ -578,11 +583,17 @@ pub fn flush_pending_fit_size(state: &mut State) {
     let Some(target) = state.fit_pending_target else {
         return;
     };
+    let Some(tab_id) = state.fit_tab_id else {
+        // `fit_active` without a `fit_tab_id` is a programming error
+        // — every ON path seeds both. Bail rather than send a
+        // malformed UpdateFitSize against tab_id 0.
+        return;
+    };
     if state.fit_last_sent_size == Some(target) {
         return;
     }
     state.fit_last_sent_size = Some(target);
-    update_fit_size(target.0, target.1);
+    update_fit_size(tab_id, target.0, target.1);
 }
 
 /// Compute the tab size the server should set so that the focused
@@ -668,5 +679,328 @@ pub fn refresh_pane_titles(state: &mut State) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for the pure-math helper `fit_target_tab_size` and
+    //! the gating logic of `flush_pending_fit_size`. Shim calls inside
+    //! these functions resolve to the native-build stub of
+    //! `host_run_plugin_command` (see `zellij-tile/src/shim.rs`), so
+    //! the tests observe state mutation only; the shim's effect on
+    //! the (non-existent) host is irrelevant.
+    use super::*;
+    use crate::state::{State, ViewportRegion};
+    use zellij_tile::prelude::{PaneInfo, TabInfo};
+
+    fn region(row_start: usize, row_end: usize, cols: usize) -> ViewportRegion {
+        ViewportRegion {
+            row_start,
+            row_end,
+            cols,
+            skip: 0,
+            h_offset: 0,
+        }
+    }
+
+    /// Embedded viewport of (11 rows, 80 cols) inside a tab with two
+    /// rows of chrome (tab + status bars) and a pane with a 1-cell
+    /// border on every side. Target = embedded + chrome + frame =
+    /// (15, 82).
+    #[test]
+    fn adds_chrome_and_frame_to_embedded() {
+        let mut tab = TabInfo::default();
+        tab.display_area_rows = 24;
+        tab.display_area_columns = 80;
+        tab.viewport_rows = 22;
+        tab.viewport_columns = 80;
+        let mut pane = PaneInfo::default();
+        pane.pane_rows = 22;
+        pane.pane_columns = 80;
+        pane.pane_content_rows = 20;
+        pane.pane_content_columns = 78;
+        let r = region(0, 11, 80);
+        let target = fit_target_tab_size(&pane, &tab, &r);
+        assert_eq!(target, (15, 82));
+    }
+
+    /// Borderless pane in a tab with no surrounding chrome — the
+    /// target equals the embedded area exactly.
+    #[test]
+    fn zero_chrome_zero_frame_passes_through() {
+        let mut tab = TabInfo::default();
+        tab.display_area_rows = 20;
+        tab.display_area_columns = 60;
+        tab.viewport_rows = 20;
+        tab.viewport_columns = 60;
+        let mut pane = PaneInfo::default();
+        pane.pane_rows = 20;
+        pane.pane_columns = 60;
+        pane.pane_content_rows = 20;
+        pane.pane_content_columns = 60;
+        let r = region(0, 10, 40);
+        let target = fit_target_tab_size(&pane, &tab, &r);
+        assert_eq!(target, (10, 40));
+    }
+
+    /// Pathological inputs where `viewport_*` exceeds `display_area_*`
+    /// must not panic. `saturating_sub` collapses chrome to 0 and the
+    /// result remains sensible.
+    #[test]
+    fn saturating_subtraction_on_inverted_inputs() {
+        let mut tab = TabInfo::default();
+        tab.display_area_rows = 10;
+        tab.display_area_columns = 40;
+        tab.viewport_rows = 20;
+        tab.viewport_columns = 80;
+        let mut pane = PaneInfo::default();
+        pane.pane_rows = 5;
+        pane.pane_columns = 30;
+        pane.pane_content_rows = 10;
+        pane.pane_content_columns = 50;
+        let r = region(0, 8, 32);
+        let target = fit_target_tab_size(&pane, &tab, &r);
+        assert_eq!(target, (8, 32));
+    }
+
+    /// Inactive fit must not mutate `fit_last_sent_size` even if a
+    /// pending target is set. Observed via the side-effect proxy
+    /// because the shim's host stub on native builds is a no-op.
+    #[test]
+    fn flush_skips_when_inactive() {
+        let mut state = State::default();
+        state.fit_active = false;
+        state.fit_pending_target = Some((10, 40));
+        state.fit_last_sent_size = None;
+        state.fit_tab_id = Some(7);
+        flush_pending_fit_size(&mut state);
+        assert_eq!(state.fit_last_sent_size, None);
+    }
+
+    /// When the pending target equals what was already sent, the diff
+    /// short-circuits and `fit_last_sent_size` stays untouched.
+    #[test]
+    fn flush_skips_when_already_sent() {
+        let mut state = State::default();
+        state.fit_active = true;
+        state.fit_pending_target = Some((10, 40));
+        state.fit_last_sent_size = Some((10, 40));
+        state.fit_tab_id = Some(7);
+        flush_pending_fit_size(&mut state);
+        assert_eq!(state.fit_last_sent_size, Some((10, 40)));
+    }
+
+    /// A pending target that differs from the last sent size updates
+    /// `fit_last_sent_size` to the new value (the shim itself fires
+    /// but resolves to a host-stub no-op on native builds).
+    #[test]
+    fn flush_updates_on_pending_change() {
+        let mut state = State::default();
+        state.fit_active = true;
+        state.fit_pending_target = Some((9, 36));
+        state.fit_last_sent_size = Some((10, 40));
+        state.fit_tab_id = Some(7);
+        flush_pending_fit_size(&mut state);
+        assert_eq!(state.fit_last_sent_size, Some((9, 36)));
+    }
+
+    /// `flush_pending_fit_size` must bail when `fit_tab_id` is unset:
+    /// without it the server can't address the override entry and we'd
+    /// send an UpdateFitSize against tab_id 0. Belt-and-braces guard
+    /// against a future ON path that forgets to seed `fit_tab_id`.
+    #[test]
+    fn flush_skips_when_tab_id_unset() {
+        let mut state = State::default();
+        state.fit_active = true;
+        state.fit_pending_target = Some((10, 40));
+        state.fit_last_sent_size = None;
+        state.fit_tab_id = None;
+        flush_pending_fit_size(&mut state);
+        assert_eq!(state.fit_last_sent_size, None);
+    }
+
+    /// Static canary: `render.rs` must not invoke any host shim.
+    ///
+    /// Every shim in `zellij-tile` is backed by
+    /// `host_run_plugin_command`, which drains the plugin's stdout via
+    /// `read_to_end`. If a shim is called mid-`render`, every byte
+    /// already written to stdout is consumed by the host as the
+    /// (malformed) protobuf reply payload and the rendered frame the
+    /// user actually sees is empty. The fix is to defer the shim call
+    /// to `update()` (see `State::fit_pending_target` and
+    /// `flush_pending_fit_size`). This test is the canary that would
+    /// have caught the original pinch-zoom regression and prevents the
+    /// same shape of bug from recurring on a different shim.
+    ///
+    /// Comment-only lines are skipped so the existing doc reference to
+    /// `update_fit_size` in `render.rs` remains legal.
+    ///
+    /// Located here (rather than under `tests/`) because the `mobile`
+    /// crate is a wasm-only bin: a regular integration test would
+    /// require linking the bin against the host shims natively, which
+    /// is impossible on the test host. The static check only needs
+    /// `include_str!`, so a `mod tests` `#[test]` works just as well.
+    #[test]
+    fn no_shim_calls_from_render() {
+        const RENDER_SRC: &str = include_str!("render.rs");
+        // The documented four (per fit_tests.md) plus
+        // `host_run_plugin_command` to catch a manually-coded shim.
+        // `show_cursor` is deliberately omitted: render calls it via
+        // `emit_cursor` with an idempotence guard (see
+        // `LastEmittedCursor`). The render-loop feedback the guard
+        // prevents is a separate hazard from the
+        // stdout-drain-during-render hazard this test guards against.
+        const FORBIDDEN_SHIMS: &[&str] = &[
+            "update_fit_size",
+            "enter_fit_mode",
+            "exit_fit_mode",
+            "set_soft_keyboard",
+            "switch_session",
+            "write_to_pane_id",
+            "set_timeout",
+            "get_pane_info",
+            "host_run_plugin_command",
+        ];
+        let mut offences: Vec<String> = Vec::new();
+        for (idx, line) in RENDER_SRC.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") {
+                continue;
+            }
+            for name in FORBIDDEN_SHIMS {
+                let needle = format!("{name}(");
+                if line.contains(&needle) {
+                    offences.push(format!("line {}: `{}`", idx + 1, line.trim()));
+                }
+            }
+        }
+        assert!(
+            offences.is_empty(),
+            "render.rs must not invoke host shims (they drain plugin \
+             stdout mid-frame). Offending occurrences:\n  {}",
+            offences.join("\n  ")
+        );
+    }
+
+    /// Build a `State` seeded with one tab + one pane + a viewport
+    /// region — the minimum surface required for the `ToggleFit`
+    /// dispatch path to reach `fit_target_tab_size`. Returns the
+    /// `State` ready to receive `dispatch_click(&mut state, ...)`.
+    fn fit_ready_state() -> State {
+        let mut state = State::default();
+        let tab = TabInfo {
+            position: 0,
+            name: "shell".to_string(),
+            tab_id: 7,
+            display_area_rows: 24,
+            display_area_columns: 80,
+            viewport_rows: 22,
+            viewport_columns: 80,
+            ..TabInfo::default()
+        };
+        state.tabs.push(tab);
+        state.selected_tab_position = Some(0);
+        let pane = PaneInfo {
+            id: 3,
+            is_plugin: false,
+            is_selectable: true,
+            pane_rows: 22,
+            pane_columns: 80,
+            pane_content_rows: 20,
+            pane_content_columns: 78,
+            ..PaneInfo::default()
+        };
+        state.panes_by_tab_position.insert(0, vec![pane]);
+        state.selected_pane_id = Some(PaneId::Terminal(3));
+        state.viewport_region = Some(crate::state::ViewportRegion {
+            row_start: 0,
+            row_end: 11,
+            cols: 80,
+            skip: 0,
+            h_offset: 0,
+        });
+        state
+    }
+
+    /// `dispatch_click(ToggleFit)` from the OFF state seeds all four
+    /// fit fields. The shim itself fires (its native stub no-ops) —
+    /// the test asserts on the visible state mutation that gates the
+    /// later `flush_pending_fit_size`. Target value matches what
+    /// `fit_target_tab_size` would compute for the seeded surface:
+    /// embedded (11, 80) + chrome (2, 0) + frame (2, 2) = (15, 82).
+    /// `fit_tab_id` is what subsequent `update_fit_size` calls use to
+    /// address the server-side entry.
+    #[test]
+    fn dispatch_toggle_fit_on_path_seeds_fields() {
+        let mut state = fit_ready_state();
+        assert!(!state.fit_active, "Pre-condition: fit is off");
+
+        let consumed = dispatch_click(&mut state, ClickAction::ToggleFit);
+
+        assert!(consumed);
+        assert!(state.fit_active);
+        assert_eq!(state.fit_last_sent_size, Some((15, 82)));
+        assert_eq!(state.fit_pending_target, Some((15, 82)));
+        assert_eq!(
+            state.fit_tab_id,
+            Some(7),
+            "tab_id from the seeded TabInfo flows into fit_tab_id"
+        );
+    }
+
+    /// `dispatch_click(ToggleFit)` from the ON state clears every fit
+    /// field. The state is fully reset regardless of which subset was
+    /// set when the toggle was tripped — guards the symmetric path
+    /// against future drift between the ON and OFF branches.
+    #[test]
+    fn dispatch_toggle_fit_off_path_clears_fields() {
+        let mut state = fit_ready_state();
+        state.fit_active = true;
+        state.fit_last_sent_size = Some((15, 82));
+        state.fit_pending_target = Some((15, 82));
+        state.fit_tab_id = Some(7);
+
+        let consumed = dispatch_click(&mut state, ClickAction::ToggleFit);
+
+        assert!(consumed);
+        assert!(!state.fit_active);
+        assert_eq!(state.fit_last_sent_size, None);
+        assert_eq!(state.fit_pending_target, None);
+        assert_eq!(state.fit_tab_id, None);
+    }
+
+    /// `PaneUpdate` whose manifest no longer contains the
+    /// selected pane clears the local fit mirror. This is the auto-
+    /// recovery path when the fit pane is closed externally — without
+    /// it, the plugin would keep showing "fit armed" against a dead
+    /// pane id.
+    #[test]
+    fn pane_update_clears_fit_when_selected_pane_disappears() {
+        let mut state = fit_ready_state();
+        state.fit_active = true;
+        state.fit_last_sent_size = Some((15, 82));
+        state.fit_pending_target = Some((15, 82));
+        state.fit_tab_id = Some(7);
+
+        // Manifest with the same tab but pane 3 (the selected one)
+        // removed — only pane 99 survives. `clear_fit_if_active`
+        // should fire from the `PaneUpdate` handler.
+        let replacement_pane = PaneInfo {
+            id: 99,
+            is_plugin: false,
+            is_selectable: true,
+            ..PaneInfo::default()
+        };
+        let mut panes = std::collections::HashMap::new();
+        panes.insert(0_usize, vec![replacement_pane]);
+        let manifest = PaneManifest { panes };
+
+        state.update(Event::PaneUpdate(manifest));
+
+        assert!(!state.fit_active, "Local fit mirror cleared");
+        assert_eq!(state.fit_last_sent_size, None);
+        assert_eq!(state.fit_pending_target, None);
+        assert_eq!(state.fit_tab_id, None);
     }
 }

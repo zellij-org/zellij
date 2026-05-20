@@ -9857,3 +9857,616 @@ fn detaching_client_grows_vacated_tab_back() {
         "Tab grows back to fit the remaining viewer after the smaller one detaches"
     );
 }
+
+// ----------------------------------------------------------------------
+// Fit mode (mobile plugin "Fit" toggle) — integration tests.
+//
+// Each test drives the same screen methods the
+// `ScreenInstruction::EnterFitMode`/`ExitFitMode`/`UpdateFitSize`
+// handlers dispatch to. The fit feature has been shipped with two
+// regressions (display-clear on shrink, deferred shim send for pinch
+// zoom); the tests below are the safety net described in
+// `fit_tests.md`.
+// ----------------------------------------------------------------------
+
+/// `toggle_pane_fullscreen` no-ops on a tab with a single pane (there
+/// is nothing to hide → "already as fullscreen as it can be" early
+/// return inside `tiled_panes::toggle_pane_fullscreen`). Every fit
+/// test that asserts on fullscreen state opens a second tiled pane
+/// first via this helper. `pid` is the new terminal id; pane id 1
+/// remains the "primary" pane the fit tests target.
+fn add_second_pane_to_active_tab(screen: &mut Screen, pid: u32) {
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    active_tab
+        .new_pane(
+            PaneId::Terminal(pid),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+}
+
+/// Mobile client at (10, 40) fitting a (20, 80) tab — the tab adopts
+/// the override size and `fit_states` records the owning client.
+#[test]
+fn fit_override_resizes_tab() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+
+    let mobile_client = 1;
+    screen
+        .enter_fit_mode(
+            mobile_client,
+            0,
+            PaneId::Terminal(1),
+            Size { cols: 40, rows: 10 },
+        )
+        .expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 40, rows: 10 },
+        "Tab adopts the fit override size"
+    );
+    let fit = screen.fit_states.get(&0).expect("fit installed");
+    assert_eq!(fit.owning_client, mobile_client);
+    assert_eq!(fit.pane_id, PaneId::Terminal(1));
+    assert_eq!(fit.size, Size { cols: 40, rows: 10 });
+}
+
+/// Pre-fit fullscreen state is captured into `FitState`. When the pane
+/// was already fullscreen on entry, `was_fullscreen_before` is true so
+/// the cleanup paths know not to toggle it back off. A second pane is
+/// required: `tiled_panes::toggle_pane_fullscreen` no-ops on a tab
+/// with a single pane (nothing to hide → "already as fullscreen as it
+/// can be" early return).
+#[test]
+fn fit_override_captures_fullscreen_state() {
+    let initial_size = Size { cols: 80, rows: 20 };
+
+    // Case A: pane already fullscreen before fit.
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    {
+        let tab = screen.get_active_tab_mut(1).unwrap();
+        tab.toggle_pane_fullscreen(PaneId::Terminal(1));
+        assert!(tab.is_fullscreen_active());
+    }
+    screen
+        .enter_fit_mode(
+            1,
+            0,
+            PaneId::Terminal(1),
+            Size { cols: 40, rows: 10 },
+        )
+        .expect("TEST");
+    assert!(
+        screen
+            .fit_states
+            .get(&0)
+            .expect("fit installed")
+            .was_fullscreen_before,
+        "Pre-existing fullscreen recorded so exit/disconnect won't toggle it off"
+    );
+
+    // Case B: fresh screen + tab with two panes, none fullscreen.
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Pre-condition: no fullscreen"
+    );
+    screen
+        .enter_fit_mode(
+            1,
+            0,
+            PaneId::Terminal(1),
+            Size { cols: 40, rows: 10 },
+        )
+        .expect("TEST");
+    assert!(
+        !screen
+            .fit_states
+            .get(&0)
+            .expect("fit installed")
+            .was_fullscreen_before,
+        "Fit toggled fullscreen on itself; exit path will revert it"
+    );
+    assert!(
+        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Entering fit fullscreens the target pane"
+    );
+}
+
+/// Exit path reverts the size override AND the fullscreen that fit
+/// itself turned on. After exit, the tab grows back to fit its
+/// remaining viewer(s) and the pane is no longer fullscreen. A second
+/// pane is required so `toggle_pane_fullscreen` has something to hide.
+#[test]
+fn exit_fit_reverts_size_and_fullscreen() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    screen.set_client_size(1, Size { cols: 80, rows: 20 });
+    screen.recompute_tab_size(0).expect("TEST");
+
+    screen
+        .enter_fit_mode(
+            1,
+            0,
+            PaneId::Terminal(1),
+            Size { cols: 40, rows: 10 },
+        )
+        .expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 40, rows: 10 },
+        "Pre-condition: override installed"
+    );
+    assert!(screen.tabs.get(&0).unwrap().is_fullscreen_active());
+
+    assert!(screen.exit_fit_mode(1).expect("TEST"));
+
+    assert!(screen.fit_states.is_empty(), "Override cleared");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 20 },
+        "Tab grew back to its lone viewer's size"
+    );
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Fit-induced fullscreen reverted on exit"
+    );
+}
+
+/// Pre-existing fullscreen survives the exit path: only the
+/// fit-induced fullscreen is undone.
+#[test]
+fn exit_fit_preserves_pre_fit_fullscreen() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    {
+        let tab = screen.get_active_tab_mut(1).unwrap();
+        tab.toggle_pane_fullscreen(PaneId::Terminal(1));
+    }
+    screen
+        .enter_fit_mode(
+            1,
+            0,
+            PaneId::Terminal(1),
+            Size { cols: 40, rows: 10 },
+        )
+        .expect("TEST");
+
+    screen.exit_fit_mode(1).expect("TEST");
+
+    assert!(screen.fit_states.is_empty(), "Override cleared");
+    assert!(
+        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Pre-existing fullscreen preserved across exit"
+    );
+}
+
+/// Chrome-following: a subsequent `UpdateFitSize` rewrites both the
+/// tab's size and the entry's bookkeeping. Pinch-zoom and the keyboard
+/// toggle both ride this path.
+#[test]
+fn update_fit_size_changes_tab_size() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+
+    screen
+        .enter_fit_mode(
+            1,
+            0,
+            PaneId::Terminal(1),
+            Size { cols: 40, rows: 10 },
+        )
+        .expect("TEST");
+
+    assert!(screen
+        .update_fit_size(1, 0, Size { cols: 36, rows: 8 })
+        .expect("TEST"));
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 36, rows: 8 }
+    );
+    assert_eq!(
+        screen.fit_states.get(&0).unwrap().size,
+        Size { cols: 36, rows: 8 }
+    );
+}
+
+/// `UpdateFitSize` without an active fit is a silent no-op — no panic,
+/// no `fit_states` mutation. Important because the plugin's
+/// `flush_pending_fit_size` will sometimes call this on stale state
+/// (e.g. tab/pane switch races with an in-flight shim).
+#[test]
+fn update_fit_size_no_active_fit_is_noop() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+
+    let did_something = screen
+        .update_fit_size(1, 0, Size { cols: 36, rows: 8 })
+        .expect("TEST");
+
+    assert!(!did_something, "No fit on tab → no-op");
+    assert!(screen.fit_states.is_empty());
+}
+
+/// On disconnect, every `fit_states` entry owned by the leaving client
+/// is cleared, the tab grows back to fit any remaining viewers, and
+/// fullscreen reverts (since `was_fullscreen_before == false`).
+#[test]
+fn disconnect_clears_fit_for_owning_client() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(2, Size { cols: 80, rows: 20 });
+    screen.recompute_tab_size(0).expect("TEST");
+
+    // Client 1 (the mobile one) installs the fit.
+    screen
+        .enter_fit_mode(
+            1,
+            0,
+            PaneId::Terminal(1),
+            Size { cols: 40, rows: 10 },
+        )
+        .expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 40, rows: 10 }
+    );
+
+    screen.remove_client(1).expect("TEST");
+
+    assert!(
+        screen.fit_states.is_empty(),
+        "Override owned by the leaving client cleared"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 20 },
+        "Tab grew back to fit the remaining viewer (client 2)"
+    );
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Fit-induced fullscreen reverted on disconnect"
+    );
+}
+
+/// Disconnect cleanup is scoped to the leaving client only. A second
+/// client's unrelated fit on a different tab survives intact.
+#[test]
+fn disconnect_only_clears_own_fits() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.add_client(2, false).expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(2, Size { cols: 40, rows: 10 });
+    // Park each client on its own tab so each can install an override
+    // for a tab it actually sees.
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(1, None, true, 2).expect("TEST");
+    screen
+        .enter_fit_mode(1, 0, PaneId::Terminal(1), Size { cols: 30, rows: 8 })
+        .expect("TEST");
+    screen
+        .enter_fit_mode(2, 1, PaneId::Terminal(2), Size { cols: 30, rows: 8 })
+        .expect("TEST");
+
+    screen.remove_client(1).expect("TEST");
+
+    assert!(
+        screen.fit_states.get(&0).is_none(),
+        "Disconnecting client's entry cleared"
+    );
+    let other = screen
+        .fit_states
+        .get(&1)
+        .expect("Other client's entry survives");
+    assert_eq!(other.owning_client, 2);
+    assert_eq!(other.size, Size { cols: 30, rows: 8 });
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 30, rows: 8 },
+        "Tab still pinned to surviving client's override"
+    );
+}
+
+/// The override branch of `recompute_tab_size` calls
+/// `set_should_clear_display_before_rendering` so a desktop viewer of
+/// a smaller fit tab doesn't see stale bytes outside the new tab area.
+/// This is the regression captured as bug #1 in the test plan.
+#[test]
+fn override_emits_display_clear() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(2, Size { cols: 80, rows: 20 });
+    screen.recompute_tab_size(0).expect("TEST");
+
+    screen
+        .enter_fit_mode(
+            1,
+            0,
+            PaneId::Terminal(1),
+            Size { cols: 40, rows: 10 },
+        )
+        .expect("TEST");
+
+    assert!(
+        screen
+            .tabs
+            .get(&0)
+            .unwrap()
+            .should_clear_display_before_rendering(),
+        "Tab must request a display-clear so a larger desktop viewer's \
+         viewport outside the fit area is wiped before the next render"
+    );
+}
+
+/// Override wins against the min-of-viewers path: even if a desktop
+/// client's viewport grows, the tab stays at the override size while
+/// the fit is installed.
+#[test]
+fn recompute_tab_size_short_circuit() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(2, Size { cols: 80, rows: 20 });
+
+    screen
+        .enter_fit_mode(
+            1,
+            0,
+            PaneId::Terminal(1),
+            Size { cols: 40, rows: 10 },
+        )
+        .expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 40, rows: 10 },
+        "Pre-condition: override active"
+    );
+
+    // Desktop client's viewport grows; without the override branch the
+    // tab would expand to the min of the two clients (still 40x10).
+    // Push the smaller (mobile) client's viewport up too so the
+    // min-of-viewers path would yield a *larger* tab — only the
+    // override can keep it at (40, 10).
+    screen.set_client_size(1, Size { cols: 100, rows: 30 });
+    screen.set_client_size(2, Size { cols: 120, rows: 40 });
+    screen.recompute_tab_size(0).expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 40, rows: 10 },
+        "Override wins against the min-of-viewers path"
+    );
+}
+
+/// Last-writer-wins collision. Two mobile clients targeting the same
+/// tab: the second `enter_fit_mode` overwrites the first. Documented
+/// behaviour on `Screen::fit_states` — verifying it here so the
+/// invariant survives any future re-key of that map.
+#[test]
+fn fit_collision_last_writer_wins() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    screen.add_client(2, false).expect("TEST");
+
+    screen
+        .enter_fit_mode(1, 0, PaneId::Terminal(1), Size { cols: 40, rows: 10 })
+        .expect("TEST");
+    screen
+        .enter_fit_mode(2, 0, PaneId::Terminal(2), Size { cols: 30, rows: 8 })
+        .expect("TEST");
+
+    let fit = screen.fit_states.get(&0).expect("fit present");
+    assert_eq!(fit.owning_client, 2, "Second writer owns the entry");
+    assert_eq!(fit.pane_id, PaneId::Terminal(2));
+    assert_eq!(fit.size, Size { cols: 30, rows: 8 });
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 30, rows: 8 },
+        "Tab size matches the second writer's override"
+    );
+}
+
+/// A displaced client (whose entry was overwritten by a colliding
+/// fit on the same tab) reclaims ownership on its next
+/// `update_fit_size` push. Server-side lookup is keyed by `tab_id`
+/// (not `owning_client`), so the displaced client's call finds the
+/// entry and rewrites both `size` and `owning_client`. Subsequent
+/// `exit_fit_mode` / disconnect cleanup correctly attribute the
+/// override to the reclaiming client.
+#[test]
+fn fit_update_after_collision_reclaims_ownership() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    screen.add_client(2, false).expect("TEST");
+
+    screen
+        .enter_fit_mode(1, 0, PaneId::Terminal(1), Size { cols: 40, rows: 10 })
+        .expect("TEST");
+    screen
+        .enter_fit_mode(2, 0, PaneId::Terminal(2), Size { cols: 30, rows: 8 })
+        .expect("TEST");
+    assert_eq!(
+        screen.fit_states.get(&0).unwrap().owning_client,
+        2,
+        "Pre-condition: client 2 displaced client 1"
+    );
+
+    // Displaced client 1's plugin keeps believing fit is active and
+    // pushes its target. The server finds the entry by tab_id and
+    // reattributes it.
+    let mutated = screen
+        .update_fit_size(1, 0, Size { cols: 20, rows: 6 })
+        .expect("TEST");
+
+    assert!(mutated, "Reclaim must mutate the entry");
+    let fit = screen.fit_states.get(&0).unwrap();
+    assert_eq!(fit.owning_client, 1, "Ownership reattributed to caller");
+    assert_eq!(fit.size, Size { cols: 20, rows: 6 });
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 20, rows: 6 },
+        "Tab size follows the reclaimed override"
+    );
+
+    // Disconnect cleanup now applies to client 1 (the new owner).
+    // Client 2 disconnecting first must NOT clear the override.
+    screen.remove_client(2).expect("TEST");
+    assert!(
+        screen.fit_states.contains_key(&0),
+        "Override survives the original (now non-owning) client's disconnect"
+    );
+    screen.remove_client(1).expect("TEST");
+    assert!(
+        screen.fit_states.is_empty(),
+        "Override clears when the reclaim-owner disconnects"
+    );
+}
+
+/// Closing a tab while a fit is active drops the corresponding
+/// `fit_states` entry. Without this cleanup the map grows unboundedly
+/// across repeated open/close cycles; with it, a disconnect cleanup
+/// running afterwards has nothing stale to skip past.
+#[test]
+fn fit_tab_close_cleans_state() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1); // need a second tab so close_tab_by_id isn't on the last tab
+    screen
+        .enter_fit_mode(1, 0, PaneId::Terminal(1), Size { cols: 40, rows: 10 })
+        .expect("TEST");
+    assert!(screen.fit_states.contains_key(&0), "Pre-condition: fit installed");
+
+    screen.close_tab_by_id(0).expect("TEST");
+
+    assert!(
+        !screen.fit_states.contains_key(&0),
+        "fit_states entry removed when its tab is closed"
+    );
+    assert!(
+        !screen.tabs.contains_key(&0),
+        "Pre-condition: tab is actually gone"
+    );
+}
+
+/// Closing the fit-owning pane (e.g. from another client, or because
+/// the underlying process exited) does NOT clean `fit_states`
+/// server-side — the mobile plugin owns that path: it observes the
+/// pane disappear via `PaneUpdate` and sends `ExitFitMode`. The
+/// server's invariant is that a stale pane_id is harmless: the
+/// disconnect cleanup guards every fullscreen-revert with
+/// `tab.has_pane_with_pid(&fit.pane_id)`. This test pins both
+/// behaviours.
+#[test]
+fn fit_pane_close_keeps_state_and_disconnect_is_safe() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    screen
+        .enter_fit_mode(1, 0, PaneId::Terminal(1), Size { cols: 40, rows: 10 })
+        .expect("TEST");
+
+    // Close the fit-owning pane directly on the tab — the path another
+    // client (or a pty exit) would drive. `fit_states` retains the
+    // entry; clean-up is the plugin's responsibility on the next
+    // PaneUpdate.
+    {
+        let tab = screen.get_active_tab_mut(1).unwrap();
+        tab.close_pane(PaneId::Terminal(1), false, None);
+    }
+    assert!(
+        screen.fit_states.contains_key(&0),
+        "Server-side entry survives external pane close; \
+         cleanup is the plugin's responsibility"
+    );
+
+    // The disconnect path must safely skip the now-dead pane id.
+    // Without the `has_pane_with_pid` guard inside `remove_client`
+    // this would panic or toggle fullscreen on a missing pane.
+    screen.remove_client(1).expect("Disconnect must not panic on dead pane_id");
+    assert!(
+        screen.fit_states.is_empty(),
+        "Disconnect cleanup eventually clears the orphan"
+    );
+}
+
+/// Override beats min-of-viewers even with three viewers on the tab.
+/// Adding a third client must not perturb the fit size, and removing
+/// a non-owning viewer must not either.
+#[test]
+fn fit_three_viewers_override_persists() {
+    let initial_size = Size { cols: 200, rows: 60 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+    screen.add_client(3, false).expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });   // mobile
+    screen.set_client_size(2, Size { cols: 100, rows: 30 }); // desktop A
+    screen.set_client_size(3, Size { cols: 200, rows: 60 }); // desktop B
+
+    screen
+        .enter_fit_mode(1, 0, PaneId::Terminal(1), Size { cols: 40, rows: 10 })
+        .expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 40, rows: 10 },
+        "Override wins over the three viewers' minimum"
+    );
+
+    // Non-owning desktop client disconnects — override must still
+    // hold; only the owning client's departure should disturb it.
+    screen.remove_client(2).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 40, rows: 10 },
+        "Override survives non-owner disconnect"
+    );
+    assert!(screen.fit_states.contains_key(&0));
+
+    // The owning client leaves — override is cleared and the tab
+    // grows back to the remaining viewer.
+    screen.remove_client(1).expect("TEST");
+    assert!(screen.fit_states.is_empty());
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 200, rows: 60 },
+        "Tab grew to fit the surviving desktop client"
+    );
+}
+

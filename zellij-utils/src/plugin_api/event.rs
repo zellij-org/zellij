@@ -3141,6 +3141,7 @@ fn serialize_pane_render_report_with_ansi_event_with_data() {
             selected_text: None,
             lines_above_viewport: vec![],
             lines_below_viewport: vec![],
+            cursor: None,
         },
     );
     let event = Event::PaneRenderReportWithAnsi(pane_contents_map);

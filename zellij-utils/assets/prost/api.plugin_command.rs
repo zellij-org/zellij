@@ -1986,6 +1986,12 @@ pub struct UpdateFitSizePayload {
     pub rows: u32,
     #[prost(uint32, tag="2")]
     pub cols: u32,
+    /// Tab the fit is bound to. The server uses this to look up the
+    /// override entry directly so a displaced client (whose entry was
+    /// overwritten by a colliding fit) can reclaim ownership on its
+    /// next push.
+    #[prost(uint32, tag="3")]
+    pub tab_id: u32,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
