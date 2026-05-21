@@ -153,9 +153,22 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
             Some(Selector::Sessions) => {
                 render_sessions_menu(state, body_top, body_bottom, cols)
             },
-            Some(Selector::Tabs) => render_tabs_menu(state, body_top, body_bottom, cols),
             Some(Selector::Panes) => render_panes_menu(state, body_top, body_bottom, cols),
         }
+    }
+
+    // The dropdown menu paints AFTER the embedded viewport so the
+    // menu's cells overwrite the viewport's right-edge cells where
+    // the two overlap (the viewport uses raw `print!` and would
+    // otherwise overwrite the menu). Gated on `expanded.is_none()`
+    // because the selectors occupy the body entirely; the menu would
+    // overlay a list of session/tab/pane rows with no purpose. The
+    // menu also truncates its rows to fit within `[body_top,
+    // body_bottom)` so its click regions never overlap the
+    // keyboard's tight regions (which would otherwise win on first-
+    // hit and block keyboard taps under the menu).
+    if state.menu_open && state.expanded.is_none() && body_bottom > body_top {
+        render_hamburger_menu(state, body_top, body_bottom, cols);
     }
 
     if effective_keyboard_height > 0 {
@@ -223,33 +236,35 @@ fn compute_cursor_position(
     Some((plugin_x, plugin_y))
 }
 
-/// Top bar: `Zellij <session> | <tab> | <pane> | ⌨    ☰`. Rendered as
-/// a single `Text` component with `.selected()` and a width covering
-/// the entire row, so:
-/// - Each segment's foreground colour comes from the host's selected
-///   emphasis palette (levels 0..=3 → `text_selected.emphasis_0..3`)
-///   via `color_range`. See `style_of_index` in
+/// Top bar: `Zellij <pane>` left-aligned with `☰` right-aligned.
+/// Rendered as a single `Text` component with `.selected()` and a
+/// width covering the entire row, so:
+/// - The pane segment's foreground colour comes from the host's
+///   selected emphasis-2 palette (`text_selected.emphasis_2`) via
+///   `color_range`. See `style_of_index` in
 ///   `zellij-server/src/ui/components/text.rs`.
 /// - The whole row is painted with `text_selected.background`, which
 ///   on the standard Zellij themes is the lighter-gray "selection"
 ///   shade — distinct from the embedded pane content below.
+/// - The "Zellij " prefix inherits the selected-bar foreground (no
+///   `color_range` applied) so it reads as chrome rather than data.
 ///
-/// The keyboard glyph (`⌨`) toggles `state.keyboard.visible` and
-/// asks the browser to suppress the OS soft keyboard while the
-/// plugin keyboard is up. When the keyboard is visible the glyph is
-/// drawn in the success palette colour (typically green) so the
-/// user can tell at a glance which state they are in. The hamburger
-/// glyph (`☰`) opens the panes selector when collapsed and
-/// collapses back when a selector is open — a single right-anchored
-/// "menu" affordance.
+/// The hamburger glyph (`☰`) toggles `state.menu_open`. The dropdown
+/// menu it opens contains the toggles for the on-screen keyboard,
+/// Fit-to-Screen, and the three Change-X navigation items — see
+/// `render_hamburger_menu`. Tapping the prefix or pane name still
+/// opens the Panes selector directly (existing behaviour
+/// preserved).
 fn render_top_bar(state: &mut State, row: usize, cols: usize) {
     if cols == 0 {
         return;
     }
-    match state.expanded {
-        None => render_top_bar_collapsed(state, row, cols),
-        Some(selector) => render_top_bar_in_selector(state, row, cols, selector),
-    }
+    // Identical layout in every screen — collapsed viewport, panes
+    // selector, sessions selector, and dropdown menu all share this
+    // bar. The pane name shown is the currently-selected pane (the
+    // one the embedded viewport reads), even while a selector is
+    // open, so the user always sees what they would return to.
+    render_top_bar_collapsed(state, row, cols);
 }
 
 /// Helper: append `s` to `bar`, bumping both the character cursor
@@ -272,23 +287,32 @@ fn append_segment(
     (chars_start, *chars, cells_start, *cells)
 }
 
-/// Collapsed top bar: `Zellij <session> | <tab> | <pane> | ⌨    ☰`.
+/// Number of cells reserved to the *left* of the hamburger glyph as
+/// a slop halo. The visible glyph is just one cell — at touch-target
+/// scale that's nearly impossible to hit — so the layout always
+/// keeps this many cells of pad between the rendered pane title and
+/// the glyph, and registers a slop click region (priority 1)
+/// covering the pad. Taps that miss the glyph but land on any of
+/// those pad cells still toggle the menu.
+const HAMBURGER_SLOP_CELLS: usize = 3;
+
+/// Collapsed top bar: `"Zellij <pane>"` left-aligned, `☰` right-
+/// aligned. The pane title truncates with `…` when the natural width
+/// exceeds the available cells; the hamburger always stays visible
+/// with a slop halo on its left so the tap target is generous.
 ///
-/// The keyboard (`⌨`) and hamburger (`☰`) glyphs must remain visible
-/// even when the natural bar width exceeds `cols`. To honour that,
-/// segment widths are reduced in priority order — tab first, then
-/// pane, then session — until the total fits. If even all segments at
-/// their minimum width still overflow, rendering degrades to best
-/// effort and the trailing icons may be clipped by the host.
+/// Click behaviour depends on whether a selector is currently open:
+/// - **Collapsed (no selector)**: tap on the prefix/pane title opens
+///   the Panes selector (`ExpandPanes`).
+/// - **In a selector**: tap on the prefix/pane title collapses the
+///   selector and returns to the viewport (`CollapseSelector`) —
+///   matches the existing selector escape-tap gesture so the
+///   identical-looking top bar offers a one-tap way home from
+///   Change Pane / Change Session.
+///
+/// The hamburger glyph itself (tight) and the pad to its left
+/// (slop) always toggle the dropdown menu in either state.
 fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
-    let session_name = state
-        .session_name
-        .clone()
-        .unwrap_or_else(|| "—".to_string());
-    let tab_name = state
-        .current_tab()
-        .map(|t| t.name.clone())
-        .unwrap_or_else(|| "—".to_string());
     let pane_name = state
         .current_pane()
         .map(|p| {
@@ -301,56 +325,17 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
         .unwrap_or_else(|| "—".to_string());
 
     let prefix = "Zellij ";
-    let pipe = " | ";
-    let fit_icon = "\u{26F6}"; // ⛶ (square four corners)
-    let typing_icon = "\u{2328}"; // ⌨
     let hamburger = "\u{2630}"; // ☰
 
-    // Priority truncation: keep the trailing icons visible by shrinking
-    // segments in tab → pane → session order until the row fits.
-    //
-    // Fixed chrome that can never be reduced: prefix + four pipes +
-    // fit icon + typing icon + at least one cell of separator +
-    // hamburger. The saturating subtraction means `available` is 0
-    // when even the chrome alone exceeds `cols` — at that point all
-    // three segments collapse to their minimums and the host clips
-    // whatever spills.
-    const MIN_SEG: usize = 3;
+    // Layout reserves prefix + HAMBURGER_SLOP_CELLS pad cells +
+    // hamburger glyph. The pad cells double as both visible spacing
+    // and the hamburger's slop halo.
     let prefix_w = UnicodeWidthStr::width(prefix);
-    let pipe_w = UnicodeWidthStr::width(pipe);
-    let fit_icon_w = UnicodeWidthStr::width(fit_icon);
-    let typing_icon_w = UnicodeWidthStr::width(typing_icon);
     let hamburger_w = UnicodeWidthStr::width(hamburger);
-    let fixed_w = prefix_w + pipe_w * 4 + fit_icon_w + typing_icon_w + 1 + hamburger_w;
-    let available = cols.saturating_sub(fixed_w);
-
-    let session_w = UnicodeWidthStr::width(session_name.as_str());
-    let tab_w = UnicodeWidthStr::width(tab_name.as_str());
-    let pane_w = UnicodeWidthStr::width(pane_name.as_str());
-
-    let session_min = session_w.min(MIN_SEG);
-    let tab_min = tab_w.min(MIN_SEG);
-    let pane_min = pane_w.min(MIN_SEG);
-
-    let natural = session_w + tab_w + pane_w;
-    let (target_session, target_tab, target_pane) = if natural <= available {
-        (session_w, tab_w, pane_w)
-    } else {
-        let mut overflow = natural - available;
-        let tab_shrink = overflow.min(tab_w - tab_min);
-        let target_tab = tab_w - tab_shrink;
-        overflow -= tab_shrink;
-        let pane_shrink = overflow.min(pane_w - pane_min);
-        let target_pane = pane_w - pane_shrink;
-        overflow -= pane_shrink;
-        let session_shrink = overflow.min(session_w - session_min);
-        let target_session = session_w - session_shrink;
-        // Any remaining overflow falls to best-effort clipping.
-        (target_session, target_tab, target_pane)
-    };
-
-    let session_display = pad_or_truncate(&session_name, target_session);
-    let tab_display = pad_or_truncate(&tab_name, target_tab);
+    let reserved = prefix_w + HAMBURGER_SLOP_CELLS + hamburger_w;
+    let pane_max = cols.saturating_sub(reserved);
+    let pane_w_natural = UnicodeWidthStr::width(pane_name.as_str());
+    let target_pane = pane_w_natural.min(pane_max);
     let pane_display = pad_or_truncate(&pane_name, target_pane);
 
     let mut bar = String::with_capacity(cols + 16);
@@ -358,202 +343,104 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
     let mut cells: usize = 0;
 
     append_segment(&mut bar, &mut chars, &mut cells, prefix);
-    let (session_chars_s, session_chars_e, session_cells_s, session_cells_e) =
-        append_segment(&mut bar, &mut chars, &mut cells, &session_display);
-    append_segment(&mut bar, &mut chars, &mut cells, pipe);
-    let (tab_chars_s, tab_chars_e, tab_cells_s, tab_cells_e) =
-        append_segment(&mut bar, &mut chars, &mut cells, &tab_display);
-    append_segment(&mut bar, &mut chars, &mut cells, pipe);
-    let (pane_chars_s, pane_chars_e, pane_cells_s, pane_cells_e) =
+    let (pane_chars_s, pane_chars_e, _, _) =
         append_segment(&mut bar, &mut chars, &mut cells, &pane_display);
-    append_segment(&mut bar, &mut chars, &mut cells, pipe);
-    let (fit_chars_s, fit_chars_e, fit_cells_s, fit_cells_e) =
-        append_segment(&mut bar, &mut chars, &mut cells, fit_icon);
-    append_segment(&mut bar, &mut chars, &mut cells, pipe);
-    let (typing_chars_s, typing_chars_e, typing_cells_s, typing_cells_e) =
-        append_segment(&mut bar, &mut chars, &mut cells, typing_icon);
+    // The pane tight click region ends here — at the right edge of
+    // the rendered prefix + title text. Anything to the right is
+    // either pad (slop catches it) or the hamburger glyph itself.
+    let pane_tight_end_cell = cells;
 
-    // Right-align the hamburger. With successful truncation `pad_cells`
-    // collapses to 1 (segments already consumed all available room);
-    // with extra slack it absorbs the leftover and pushes the hamburger
-    // to the right edge. `.max(1)` still prevents glyph collision in
-    // the best-effort case.
-    let hamburger_cells = UnicodeWidthStr::width(hamburger);
+    // Pad with spaces so the hamburger sits at the right edge. The
+    // `pane_max` reservation guarantees at least HAMBURGER_SLOP_CELLS
+    // pad cells when the title is at max width; shorter titles
+    // produce more pad, which expands the slop halo.
     let pad_cells = cols
-        .saturating_sub(cells + hamburger_cells)
-        .max(1);
+        .saturating_sub(cells + hamburger_w)
+        .max(HAMBURGER_SLOP_CELLS);
     for _ in 0..pad_cells {
         bar.push(' ');
     }
     chars += pad_cells;
     cells += pad_cells;
-    let (hamburger_chars_s, hamburger_chars_e, hamburger_cells_s, hamburger_cells_e) =
+
+    let hamburger_start_cell = cells;
+    let (hamburger_chars_s, hamburger_chars_e, _, _) =
         append_segment(&mut bar, &mut chars, &mut cells, hamburger);
 
-    // Compose the styled bar. The keyboard and fit icons switch
-    // between emphasis-3 (unarmed) and success-colour (armed);
-    // both are clear signals against the selected-bar background.
-    let mut text = Text::new(&bar)
+    // Compose the styled bar. The "Zellij " prefix takes no
+    // color_range — it inherits the selected-bar foreground so it
+    // reads as chrome rather than data. The pane title uses
+    // emphasis-2 (matching the colour the old layout used for the
+    // pane segment), and the hamburger uses emphasis-3.
+    let text = Text::new(&bar)
         .selected()
-        .color_range(0, session_chars_s..session_chars_e)
-        .color_range(1, tab_chars_s..tab_chars_e)
         .color_range(2, pane_chars_s..pane_chars_e)
         .color_range(3, hamburger_chars_s..hamburger_chars_e);
-    text = if state.fit_active {
-        text.success_color_range(fit_chars_s..fit_chars_e)
-    } else {
-        text.color_range(3, fit_chars_s..fit_chars_e)
-    };
-    text = if state.keyboard.visible {
-        text.success_color_range(typing_chars_s..typing_chars_e)
-    } else {
-        text.color_range(3, typing_chars_s..typing_chars_e)
-    };
     print_text_with_coordinates(text, 0, row, Some(cols), None);
 
-    let segments = TopBarSegments {
-        session: (session_cells_s, session_cells_e),
-        tab: (tab_cells_s, tab_cells_e),
-        pane: (pane_cells_s, pane_cells_e),
-        fit: (fit_cells_s, fit_cells_e),
-        typing: (typing_cells_s, typing_cells_e),
-        hamburger: (hamburger_cells_s, hamburger_cells_e),
+    // Context-sensitive pane action: in selector mode the prefix/
+    // pane segment is the escape hatch back to the viewport; in
+    // collapsed mode it opens the Panes selector.
+    let pane_action = if state.expanded.is_some() {
+        ClickAction::CollapseSelector
+    } else {
+        ClickAction::ExpandPanes
     };
-    for region in top_bar_collapsed_click_regions(row, cols, &segments) {
+
+    for region in top_bar_collapsed_click_regions(
+        row,
+        cols,
+        pane_tight_end_cell,
+        hamburger_start_cell,
+        pane_action,
+    ) {
         state.click_regions.push(region);
     }
 }
 
-/// Cell-column extents of the six top-bar segments. Each `(start,
-/// end)` pair is the half-open `[start, end)` cell range the segment
-/// occupies after layout. Provided as a parameter rather than the raw
-/// rendered string so the partition logic stays a pure function and
-/// can be unit-tested without driving any host shim.
-pub struct TopBarSegments {
-    pub session: (usize, usize),
-    pub tab: (usize, usize),
-    pub pane: (usize, usize),
-    pub fit: (usize, usize),
-    pub typing: (usize, usize),
-    pub hamburger: (usize, usize),
-}
-
-/// Compute the six tight click regions for the collapsed top bar.
+/// Compute the click regions for the simplified collapsed top bar.
 ///
-/// The row is partitioned into six contiguous regions by taking the
-/// midpoint between each adjacent pair of segment centers; every cell
-/// in `[0, cols)` lands in exactly one region. The "Zellij " prefix to
-/// the left of the session name has no associated action so we fold
-/// it into the session region — tapping the prefix is treated as a
-/// tap on the session name. The trailing region (right of the
-/// keyboard glyph) is the hamburger, which today opens the panes
-/// selector — same action as the pane segment.
+/// Three regions total:
+/// - **Tight pane** `[0, pane_tight_end)` — exact extent of the
+///   rendered prefix + pane title. Fires `pane_action` (either
+///   `ExpandPanes` in collapsed mode or `CollapseSelector` in
+///   selector mode).
+/// - **Tight hamburger** `[hamburger_tight_start, cols)` — just the
+///   visible glyph. Fires `ToggleMenu`.
+/// - **Slop hamburger** `[pane_tight_end, cols)` priority 1, centered
+///   on the glyph — covers the pad cells between the title and the
+///   glyph. Tapping any of these cells (which look like empty
+///   spacing) also fires `ToggleMenu`, giving the small one-cell
+///   glyph a generous tap halo.
 ///
-/// The fit (⛶) region sits strictly between the pane region (to its
-/// left) and the keyboard-glyph region (to its right). Returns the
-/// six `ClickRegion`s in left-to-right order. Pure / shim-free so a
-/// `mod tests` can exercise the partition math directly.
+/// The slop region overlaps the tight hamburger region, but tight
+/// wins on pass 1, so the overlap is harmless: cells in
+/// `[hamburger_tight_start, cols)` resolve to tight hamburger; cells
+/// in `[pane_tight_end, hamburger_tight_start)` (the pad) fall to
+/// slop on pass 2. Pure / shim-free so the partition can be
+/// exercised from `mod tests`.
 pub fn top_bar_collapsed_click_regions(
     row: usize,
     cols: usize,
-    seg: &TopBarSegments,
+    pane_tight_end: usize,
+    hamburger_tight_start: usize,
+    pane_action: ClickAction,
 ) -> Vec<ClickRegion> {
-    let session_center = (seg.session.0 + seg.session.1) / 2;
-    let tab_center = (seg.tab.0 + seg.tab.1) / 2;
-    let pane_center = (seg.pane.0 + seg.pane.1) / 2;
-    let fit_center = (seg.fit.0 + seg.fit.1) / 2;
-    let typing_center = (seg.typing.0 + seg.typing.1) / 2;
-    let hamburger_center = (seg.hamburger.0 + seg.hamburger.1) / 2;
-    let mid_session_tab = (session_center + tab_center) / 2;
-    let mid_tab_pane = (tab_center + pane_center) / 2;
-    let mid_pane_fit = (pane_center + fit_center) / 2;
-    let mid_fit_typing = (fit_center + typing_center) / 2;
-    let mid_typing_hamburger = (typing_center + hamburger_center) / 2;
-    vec![
-        ClickRegion::tight(row, 0, mid_session_tab, ClickAction::ExpandSessions),
-        ClickRegion::tight(row, mid_session_tab, mid_tab_pane, ClickAction::ExpandTabs),
-        ClickRegion::tight(row, mid_tab_pane, mid_pane_fit, ClickAction::ExpandPanes),
-        ClickRegion::tight(row, mid_pane_fit, mid_fit_typing, ClickAction::ToggleFit),
-        ClickRegion::tight(
-            row,
-            mid_fit_typing,
-            mid_typing_hamburger,
-            ClickAction::ToggleKeyboard,
-        ),
-        ClickRegion::tight(row, mid_typing_hamburger, cols, ClickAction::ExpandPanes),
-    ]
-}
-
-/// Selector top bar: `Zellij <current-X> | Switch <X>`. The current
-/// value mirrors the entity the user is browsing — session name when
-/// the Sessions selector is open, active tab name for Tabs, focused
-/// pane name for Panes — and is coloured with the same emphasis
-/// level the collapsed bar uses for that entity (session=0, tab=1,
-/// pane=2). The keyboard and hamburger glyphs are deliberately
-/// omitted; the entire bar is a single click region that closes the
-/// menu and returns to the viewport.
-fn render_top_bar_in_selector(
-    state: &mut State,
-    row: usize,
-    cols: usize,
-    selector: Selector,
-) {
-    let (current_value, entity_emphasis, action_label) = match selector {
-        Selector::Sessions => (
-            state
-                .session_name
-                .clone()
-                .unwrap_or_else(|| "—".to_string()),
-            0usize,
-            "Switch Session",
-        ),
-        Selector::Tabs => (
-            state
-                .session_name
-                .clone()
-                .unwrap_or_else(|| "—".to_string()),
-            0usize,
-            "Switch Tab",
-        ),
-        Selector::Panes => (
-            state
-                .current_tab()
-                .map(|t| t.name.clone())
-                .unwrap_or_else(|| "—".to_string()),
-            1usize,
-            "Switch Pane",
-        ),
-    };
-
-    let prefix = "Zellij ";
-    let pipe = " | ";
-
-    let mut bar = String::with_capacity(cols + 16);
-    let mut chars: usize = 0;
-    let mut cells: usize = 0;
-
-    append_segment(&mut bar, &mut chars, &mut cells, prefix);
-    let (entity_chars_s, entity_chars_e, _, _) =
-        append_segment(&mut bar, &mut chars, &mut cells, &current_value);
-    append_segment(&mut bar, &mut chars, &mut cells, pipe);
-    let (action_chars_s, action_chars_e, _, _) =
-        append_segment(&mut bar, &mut chars, &mut cells, action_label);
-
-    let text = Text::new(&bar)
-        .selected()
-        .color_range(entity_emphasis, entity_chars_s..entity_chars_e)
-        .color_range(3, action_chars_s..action_chars_e);
-    print_text_with_coordinates(text, 0, row, Some(cols), None);
-
-    // Single bar-wide click region: tapping anywhere on the title
-    // collapses the menu and returns to the embedded viewport. The
-    // bar carries no other interactive segment in this mode.
-    state.click_regions.push(ClickRegion::tight(
+    let hamburger_center = (
+        hamburger_tight_start.min(cols.saturating_sub(1)),
         row,
-        0,
-        cols,
-        ClickAction::CollapseSelector,
-    ));
+    );
+    vec![
+        ClickRegion::tight(row, 0, pane_tight_end, pane_action),
+        ClickRegion::tight(row, hamburger_tight_start, cols, ClickAction::ToggleMenu),
+        ClickRegion::slop(
+            row,
+            pane_tight_end,
+            cols,
+            ClickAction::ToggleMenu,
+            hamburger_center,
+        ),
+    ]
 }
 
 /// One pre-styled cell paired with its visible width. Width is
@@ -638,14 +525,25 @@ fn render_centered_selector(
     let table_layout_w = (sum_col_w + n_cols).min(cols);
     let table_visual_w = (sum_col_w + n_cols.saturating_sub(1)).min(cols);
 
-    // Block layout: title + 1 empty header row + `rows.len()` data
-    // rows. If the block exceeds the body, items are truncated to
-    // fit; the rest of the layout still centers.
+    // Block layout: title + 1 empty header row + visible data rows.
+    // Once the list outgrows the body the block anchors at the top
+    // (no vertical centering) so scrolling has a stable reference;
+    // shorter lists keep the original vertical centering for the
+    // empty-screen feel.
     let max_data_rows = body_height.saturating_sub(2);
-    let visible_data_rows = rows.len().min(max_data_rows);
-    let block_height = 2 + visible_data_rows;
-    let leftover = body_height.saturating_sub(block_height);
-    let title_y = row_start + leftover / 2;
+    let max_offset = rows.len().saturating_sub(max_data_rows);
+    let offset = state.selector_scroll_offset.min(max_offset);
+    state.selector_scroll_offset = offset;
+
+    let visible_data_rows = rows.len().saturating_sub(offset).min(max_data_rows);
+    let needs_scroll = rows.len() > max_data_rows;
+    let title_y = if needs_scroll {
+        row_start
+    } else {
+        let block_height = 2 + visible_data_rows;
+        let leftover = body_height.saturating_sub(block_height);
+        row_start + leftover / 2
+    };
     let table_y = title_y + 1;
 
     // Title — coloured uniformly with emphasis 3, centered to `cols`
@@ -670,7 +568,9 @@ fn render_centered_selector(
     let header_row: Vec<Text> = (0..n_cols).map(|_| Text::new(" ")).collect();
     let mut table = Table::new().add_styled_row(header_row);
 
-    for row in rows.iter().take(visible_data_rows) {
+    let visible_rows: Vec<&SelectorRow> =
+        rows.iter().skip(offset).take(visible_data_rows).collect();
+    for row in &visible_rows {
         let cells: Vec<Text> = row.cells.iter().map(|c| c.text.clone()).collect();
         table = table.add_styled_row(cells);
     }
@@ -686,7 +586,7 @@ fn render_centered_selector(
     // Click region per visible item. The header sits at `table_y`;
     // item `i` lands at `table_y + 1 + i`. Spans the visible table
     // width so a tap anywhere on the row hits.
-    for (i, row) in rows.iter().take(visible_data_rows).enumerate() {
+    for (i, row) in visible_rows.iter().enumerate() {
         state.click_regions.push(ClickRegion::tight(
             table_y + 1 + i,
             table_x,
@@ -711,34 +611,12 @@ fn count_cell(text: String, digits_start: usize, digit_count: usize, digit_color
     SelectorCell { text: t, width }
 }
 
-/// Build a neutral cell for the last-activity column: no emphasis
-/// colour and unbold (the table component bolds every cell by
-/// default; `unbold_all` flips that off via the level-5 mechanism in
-/// `zellij-server/src/ui/components/text.rs::is_unbold_at`).
-fn activity_cell(text: String) -> SelectorCell {
-    let width = UnicodeWidthStr::width(text.as_str());
-    let t = Text::new(&text).unbold_all();
-    SelectorCell { text: t, width }
-}
-
 /// Cell carrying a plain entity name in the supplied emphasis
-/// colour. Used for session / tab / pane name cells.
+/// colour. Used for session name cells in the Sessions selector.
 fn named_cell(text: String, color: usize) -> SelectorCell {
     let width = UnicodeWidthStr::width(text.as_str());
     let t = Text::new(&text).color_range(color, ..);
     SelectorCell { text: t, width }
-}
-
-/// Most recent activity stamp across `tab_position`'s panes, used
-/// for the Tabs menu's third column. `None` when no pane in the tab
-/// has been mentioned in any `PaneRenderReportWithAnsi` yet (true
-/// right after attach until the first delta arrives).
-fn tab_last_activity(state: &State, tab_position: usize) -> Option<u64> {
-    state
-        .panes_for_tab(tab_position)
-        .into_iter()
-        .filter_map(|p| state.pane_last_activity.get(&pane_id_of(p)).copied())
-        .max()
 }
 
 /// Sessions selector. Three rows total: name (color 0), tab count
@@ -798,64 +676,60 @@ fn render_sessions_menu(state: &mut State, row_start: usize, row_end: usize, col
     render_centered_selector(state, row_start, row_end, cols, "Switch Session", rows);
 }
 
-/// Tabs selector. Columns: name (color 1), pane count (digits in
-/// color 2), last activity (neutral / unbold). Last activity for a
-/// tab is the max activity stamp across that tab's panes.
-fn render_tabs_menu(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
-    let tabs: Vec<TabInfo> = state.tabs_in_order().into_iter().cloned().collect();
-    let now = unix_now();
-    let rows: Vec<SelectorRow> = tabs
-        .into_iter()
-        .map(|tab| {
-            let pane_count =
-                tab.selectable_tiled_panes_count + tab.selectable_floating_panes_count;
-            let panes_text = format!("{} panes", pane_count);
-            let panes_digits = pane_count.to_string().chars().count();
-            let panes_cell = count_cell(panes_text, 0, panes_digits, 2);
-
-            let last_activity = tab_last_activity(state, tab.position);
-            let activity_text = format_time_ago(last_activity, now);
-
-            SelectorRow {
-                cells: vec![
-                    named_cell(tab.name.clone(), 1),
-                    panes_cell,
-                    activity_cell(activity_text),
-                ],
-                action: ClickAction::SelectTab(tab.position),
-            }
-        })
-        .collect();
-
-    render_centered_selector(state, row_start, row_end, cols, "Switch Tab", rows);
+/// One row in the unified Change Pane navigator. Tab headers are
+/// visual nesting only — they carry no click action; pane rows are
+/// the only clickable items, matching the user-facing rule "we
+/// always select the pane".
+enum PaneSelectorItem {
+    /// Header row for `tab.name`. Rendered full-width in emphasis-1.
+    TabHeader(String),
+    /// Pane row nested under its tab. Indented two cells, pane
+    /// title in emphasis-2, activity right-aligned in unbold.
+    PaneRow {
+        title: String,
+        activity: String,
+        action: ClickAction,
+    },
 }
 
-/// Panes selector. Lists panes across **every** visible tab so the
-/// "tab" column carries useful disambiguation. Columns: pane title
-/// (color 2), tab name (color 1), last activity (neutral / unbold).
+/// Unified Change Pane selector. Panes are listed grouped by tab —
+/// a tab-name header followed by the panes belonging to that tab,
+/// indented for visual nesting. Scrollable via `Mouse::ScrollUp` /
+/// `Mouse::ScrollDown` (handled in `main.rs`): the offset slices
+/// into the flat item list and stale offsets are clamped here on
+/// the next frame.
 fn render_panes_menu(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
+    let body_height = row_end.saturating_sub(row_start);
+    if body_height == 0 || cols == 0 {
+        return;
+    }
+
+    // Build the flat item list once per frame. Order: each visible
+    // tab's header followed by its panes in display order, matching
+    // `tabs_in_order` / `panes_for_tab` so the user sees the same
+    // ordering they would in the underlying Zellij UI.
     let now = unix_now();
     let tabs: Vec<TabInfo> = state.tabs_in_order().into_iter().cloned().collect();
-    let mut rows: Vec<SelectorRow> = Vec::new();
-    for tab in tabs {
-        let panes: Vec<PaneInfo> = state.panes_for_tab(tab.position).into_iter().cloned().collect();
-        for pane in panes {
-            let id = pane_id_of(&pane);
+    let mut items: Vec<PaneSelectorItem> = Vec::new();
+    for tab in &tabs {
+        items.push(PaneSelectorItem::TabHeader(tab.name.clone()));
+        let panes: Vec<PaneInfo> = state
+            .panes_for_tab(tab.position)
+            .into_iter()
+            .cloned()
+            .collect();
+        for pane in &panes {
+            let id = pane_id_of(pane);
             let title = if pane.title.is_empty() {
                 format!("#{}", pane.id)
             } else {
                 pane.title.clone()
             };
-
             let last_activity = state.pane_last_activity.get(&id).copied();
-            let activity_text = format_time_ago(last_activity, now);
-
-            rows.push(SelectorRow {
-                cells: vec![
-                    named_cell(title, 2),
-                    named_cell(tab.name.clone(), 1),
-                    activity_cell(activity_text),
-                ],
+            let activity = format_time_ago(last_activity, now);
+            items.push(PaneSelectorItem::PaneRow {
+                title,
+                activity,
                 action: ClickAction::SelectPane {
                     tab_position: tab.position,
                     pane_id: id,
@@ -864,7 +738,216 @@ fn render_panes_menu(state: &mut State, row_start: usize, row_end: usize, cols: 
         }
     }
 
-    render_centered_selector(state, row_start, row_end, cols, "Switch Pane", rows);
+    // Title at the top of the body, centered horizontally and
+    // coloured emphasis-3 (matching `render_centered_selector`'s
+    // title styling for visual continuity with the Sessions
+    // selector).
+    let title = "Switch Pane";
+    let title_w = UnicodeWidthStr::width(title);
+    let title_x = cols.saturating_sub(title_w) / 2;
+    print_text_with_coordinates(
+        Text::new(title).color_range(3, ..),
+        title_x,
+        row_start,
+        None,
+        None,
+    );
+
+    // One blank row between the title and the data block; data
+    // starts at `row_start + 2`. When the body is too short for any
+    // data row we bail rather than crowd the title.
+    let data_top = row_start + 2;
+    if data_top >= row_end {
+        return;
+    }
+    let max_visible = row_end - data_top;
+
+    // Clamp scroll offset against the current item count. The
+    // handler increments `selector_scroll_offset` blindly past the
+    // valid range; this is where it gets snapped back so the user
+    // can never scroll past the end (which would leave a partially-
+    // empty view with no rows visible).
+    let max_offset = items.len().saturating_sub(max_visible);
+    let offset = state.selector_scroll_offset.min(max_offset);
+    state.selector_scroll_offset = offset;
+
+    let visible_count = items.len().saturating_sub(offset).min(max_visible);
+
+    for (i, item) in items.iter().skip(offset).take(visible_count).enumerate() {
+        let row = data_top + i;
+        match item {
+            PaneSelectorItem::TabHeader(name) => {
+                // Tab header occupies the full row width with the
+                // tab name in emphasis-1 and no click region — per
+                // "we should always select the pane".
+                let display = pad_or_truncate(name, cols);
+                let chars = display.chars().count();
+                let t = Text::new(&display).color_range(1, 0..chars);
+                print_text_with_coordinates(t, 0, row, Some(cols), None);
+            },
+            PaneSelectorItem::PaneRow { title, activity, action } => {
+                let indent_w = 2usize;
+                let activity_w = UnicodeWidthStr::width(activity.as_str());
+                // Reserve indent + activity + 1 separator cell;
+                // whatever's left is the title's maximum width
+                // (truncated with `…` when the title is longer).
+                let title_max_w = cols
+                    .saturating_sub(indent_w + activity_w + 1);
+                let title_display = pad_or_truncate(title, title_max_w);
+                let title_chars = title_display.chars().count();
+
+                // Render the indent + title as one Text (so the
+                // emphasis-2 colour applies to the title only, not
+                // the indent). Activity is rendered separately so
+                // its `unbold_all()` doesn't bleed into the title.
+                let left_str = format!("  {}", title_display);
+                let left_text =
+                    Text::new(&left_str).color_range(2, 2..2 + title_chars);
+                print_text_with_coordinates(
+                    left_text,
+                    0,
+                    row,
+                    Some(indent_w + title_max_w),
+                    None,
+                );
+
+                if activity_w > 0 && activity_w <= cols {
+                    let activity_x = cols - activity_w;
+                    let activity_text = Text::new(activity).unbold_all();
+                    print_text_with_coordinates(
+                        activity_text,
+                        activity_x,
+                        row,
+                        Some(activity_w),
+                        None,
+                    );
+                }
+
+                // Click region spans the entire row so a tap
+                // anywhere on the pane row selects it. Headers (no
+                // region) above and below remain non-interactive.
+                state.click_regions.push(ClickRegion::tight(
+                    row,
+                    0,
+                    cols,
+                    action.clone(),
+                ));
+            },
+        }
+    }
+}
+
+/// One row in the hamburger dropdown menu. Toggle items track the
+/// underlying state (`NativeKeyboard` mirrors `!state.keyboard.visible`,
+/// `Fit` mirrors `state.fit_active`); navigation items are stateless.
+enum HamburgerItem {
+    /// "Native Keyboard" — armed when the OS soft keyboard is showing
+    /// (which corresponds to `state.keyboard.visible == false`,
+    /// because the embedded plugin keyboard suppresses the OS one via
+    /// `set_soft_keyboard`).
+    NativeKeyboard,
+    /// "Fit to Screen" — armed when `state.fit_active == true`.
+    Fit,
+    /// "Change Pane" — opens the unified Panes selector (panes
+    /// grouped under their tabs) and closes the menu.
+    ChangePane,
+    /// "Change Session" — opens the Sessions selector and closes the
+    /// menu.
+    ChangeSession,
+}
+
+/// Render the hamburger dropdown menu in the upper-right corner of
+/// the body region. Four items, one per row, starting at `row_start`
+/// and truncated to fit within `[row_start, row_end)` so menu rows
+/// never overlap the keyboard's click regions below.
+///
+/// Toggle items (Native Keyboard, Fit to Screen) render in the
+/// success-green palette when armed and emphasis-3 when unarmed;
+/// navigation items always render in emphasis-3. The menu reuses the
+/// existing `ToggleKeyboard`, `ToggleFit`, and `ExpandPanes /
+/// ExpandSessions` dispatch arms — toggles preserve `menu_open`
+/// (they don't touch it), and navigation closes the menu inside the
+/// `Expand*` arms themselves.
+fn render_hamburger_menu(
+    state: &mut State,
+    row_start: usize,
+    row_end: usize,
+    cols: usize,
+) {
+    let items: [(&str, HamburgerItem); 4] = [
+        ("Native Keyboard", HamburgerItem::NativeKeyboard),
+        ("Fit to Screen", HamburgerItem::Fit),
+        ("Change Pane", HamburgerItem::ChangePane),
+        ("Change Session", HamburgerItem::ChangeSession),
+    ];
+
+    let label_max = items
+        .iter()
+        .map(|(l, _)| UnicodeWidthStr::width(*l))
+        .max()
+        .unwrap_or(0);
+    // 1 cell of left padding + label_max + 1 cell of right padding.
+    let menu_w = label_max + 2;
+    if label_max == 0 || menu_w > cols {
+        return;
+    }
+    let menu_x = cols - menu_w;
+
+    // Truncate to fit vertically. A short body (e.g. plugin keyboard
+    // takes most of the screen) clips menu items rather than
+    // overlapping the keyboard cells below.
+    let max_visible = row_end.saturating_sub(row_start);
+    let visible_items = items.len().min(max_visible);
+
+    for (i, (label, item)) in items.iter().take(visible_items).enumerate() {
+        let row = row_start + i;
+        let label_w = UnicodeWidthStr::width(*label);
+        let trailing_pad = label_max - label_w;
+
+        // Build " <label><trailing-pad> ": one cell left pad,
+        // label_max cells of label-plus-trailing-pad, one cell right
+        // pad. Constant `menu_w` cells total so click regions are
+        // uniform across rows.
+        let mut text_str = String::with_capacity(menu_w);
+        text_str.push(' ');
+        text_str.push_str(label);
+        for _ in 0..trailing_pad {
+            text_str.push(' ');
+        }
+        text_str.push(' ');
+
+        // `color_range` is character-indexed (not cell-indexed). The
+        // leading space is one char; the label starts immediately
+        // after.
+        let label_char_start = 1;
+        let label_char_end = label_char_start + label.chars().count();
+
+        let armed = match item {
+            HamburgerItem::NativeKeyboard => !state.keyboard.visible,
+            HamburgerItem::Fit => state.fit_active,
+            _ => false,
+        };
+        let mut t = Text::new(&text_str).selected();
+        t = if armed {
+            t.success_color_range(label_char_start..label_char_end)
+        } else {
+            t.color_range(3, label_char_start..label_char_end)
+        };
+        print_text_with_coordinates(t, menu_x, row, Some(menu_w), None);
+
+        let action = match item {
+            HamburgerItem::NativeKeyboard => ClickAction::ToggleKeyboard,
+            HamburgerItem::Fit => ClickAction::ToggleFit,
+            HamburgerItem::ChangePane => ClickAction::ExpandPanes,
+            HamburgerItem::ChangeSession => ClickAction::ExpandSessions,
+        };
+        state.click_regions.push(ClickRegion::tight(
+            row,
+            menu_x,
+            menu_x + menu_w,
+            action,
+        ));
+    }
 }
 
 /// Format a timestamp as `Active <time> ago`, relative to `now`.
@@ -1372,83 +1455,83 @@ mod tests {
         assert_eq!(visible(&sliced), "ab中");
     }
 
-    /// The collapsed top bar emits exactly one `ToggleFit` region,
-    /// strictly between the pane region (to its left) and the
-    /// keyboard / typing region (to its right). Guards against a
-    /// partition-math drift if another glyph is added between them.
+    /// The collapsed top bar emits three regions: a tight pane
+    /// region for the rendered text, a tight hamburger region for
+    /// the glyph cell, and a slop region covering the pad between
+    /// them so the small one-cell glyph has a generous tap halo.
+    /// Verifies the partition, the slop fallback, and the context-
+    /// sensitive pane action.
     #[test]
-    fn top_bar_partition_includes_fit_region() {
-        // Hand-built segment positions matching the layout
-        // `Zellij <session> | <tab> | <pane> | ⛶ | ⌨   ☰`. The exact
-        // numbers don't matter; what matters is that each segment's
-        // center sits strictly to the right of the previous one.
-        let seg = TopBarSegments {
-            session: (7, 17),       // center 12
-            tab: (20, 26),          // center 23
-            pane: (29, 35),         // center 32
-            fit: (38, 39),          // center 38
-            typing: (42, 43),       // center 42
-            hamburger: (79, 80),    // center 79
-        };
+    fn collapsed_top_bar_partition_with_slop() {
+        // 80-col bar: pane text fills cells 0..40, pad spans 40..79,
+        // hamburger sits at cell 79.
         let cols = 80;
-        let regions = top_bar_collapsed_click_regions(0, cols, &seg);
+        let pane_tight_end = 40;
+        let hamburger_start = 79;
+        let regions = top_bar_collapsed_click_regions(
+            0,
+            cols,
+            pane_tight_end,
+            hamburger_start,
+            ClickAction::ExpandPanes,
+        );
 
-        // Exactly one ToggleFit region.
-        let fit_regions: Vec<&ClickRegion> = regions
-            .iter()
-            .filter(|r| matches!(r.action, ClickAction::ToggleFit))
-            .collect();
-        assert_eq!(
-            fit_regions.len(),
-            1,
-            "Top bar must produce exactly one ToggleFit region; got {} \
-             (sibling-glyph addition probably broke the partition)",
-            fit_regions.len()
-        );
-        let fit = fit_regions[0];
+        assert_eq!(regions.len(), 3);
+        // Tight pane.
+        assert!(matches!(regions[0].action, ClickAction::ExpandPanes));
+        assert_eq!(regions[0].priority, 0);
+        assert_eq!(regions[0].col_start, 0);
+        assert_eq!(regions[0].col_end, pane_tight_end);
+        // Tight hamburger.
+        assert!(matches!(regions[1].action, ClickAction::ToggleMenu));
+        assert_eq!(regions[1].priority, 0);
+        assert_eq!(regions[1].col_start, hamburger_start);
+        assert_eq!(regions[1].col_end, cols);
+        // Slop hamburger.
+        assert!(matches!(regions[2].action, ClickAction::ToggleMenu));
+        assert_eq!(regions[2].priority, 1);
+        assert_eq!(regions[2].col_start, pane_tight_end);
+        assert_eq!(regions[2].col_end, cols);
 
-        // ToggleFit sits strictly between the pane region and the
-        // keyboard region: pane.col_end <= fit.col_start AND
-        // fit.col_end <= keyboard.col_start, with the fit region
-        // itself non-empty. The collapsed top bar contains *two*
-        // ExpandPanes regions (the pane name segment and the trailing
-        // hamburger), so pick the left one by `col_start`.
-        let mut expand_panes: Vec<&ClickRegion> = regions
-            .iter()
-            .filter(|r| matches!(r.action, ClickAction::ExpandPanes))
-            .collect();
-        expand_panes.sort_by_key(|r| r.col_start);
-        let pane_region = expand_panes[0];
-        let keyboard_region = regions
-            .iter()
-            .find(|r| matches!(r.action, ClickAction::ToggleKeyboard))
-            .expect("keyboard region present");
-
-        assert!(
-            pane_region.col_end <= fit.col_start,
-            "Fit region must start at or after the pane region ends; \
-             pane.col_end={} fit.col_start={}",
-            pane_region.col_end,
-            fit.col_start
-        );
-        assert!(
-            fit.col_end <= keyboard_region.col_start,
-            "Fit region must end at or before the keyboard region \
-             starts; fit.col_end={} keyboard.col_start={}",
-            fit.col_end,
-            keyboard_region.col_start
-        );
-        assert!(
-            fit.col_start < fit.col_end,
-            "Fit region must occupy at least one cell"
-        );
-        // The dispatch path is the actual user-visible behaviour;
-        // re-affirm a click in the middle of the fit region resolves
-        // to ToggleFit on a freshly seeded State.
+        // Dispatch: pane cell, slop pad cell, hamburger glyph.
         let mut state = State::default();
         state.click_regions = regions.clone();
-        let click_col = (fit.col_start + fit.col_end) / 2;
-        assert_eq!(state.click_to_action(0, click_col), Some(ClickAction::ToggleFit));
+        assert_eq!(
+            state.click_to_action(0, 0),
+            Some(ClickAction::ExpandPanes)
+        );
+        assert_eq!(
+            state.click_to_action(0, pane_tight_end + 5),
+            Some(ClickAction::ToggleMenu),
+            "pad cell should fall through to slop hamburger",
+        );
+        assert_eq!(
+            state.click_to_action(0, hamburger_start),
+            Some(ClickAction::ToggleMenu)
+        );
+    }
+
+    /// In selector mode the pane region collapses the selector
+    /// instead of opening Change Pane — the simplified top bar
+    /// preserves the legacy "tap the bar to escape" gesture as a
+    /// one-tap return to the viewport.
+    #[test]
+    fn collapsed_top_bar_pane_action_collapses_in_selector_mode() {
+        let cols = 80;
+        let regions = top_bar_collapsed_click_regions(
+            0,
+            cols,
+            40,
+            79,
+            ClickAction::CollapseSelector,
+        );
+        assert!(matches!(regions[0].action, ClickAction::CollapseSelector));
+        let mut state = State::default();
+        state.click_regions = regions.clone();
+        assert_eq!(
+            state.click_to_action(0, 0),
+            Some(ClickAction::CollapseSelector)
+        );
     }
 }
 

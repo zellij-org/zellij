@@ -235,9 +235,22 @@ impl ZellijPlugin for State {
                     // when the local pan actually moved (otherwise the
                     // pane render event will refresh us).
                     Mouse::ScrollUp(lines) => {
+                        // When a selector menu is open, scroll the
+                        // selector's row list instead of panning the
+                        // (hidden) embedded viewport. The renderer
+                        // clamps a stale offset against the current
+                        // item count on the next frame, so we can
+                        // saturate-subtract toward zero here without
+                        // querying item lengths.
+                        if self.expanded.is_some() {
+                            return handle_selector_scroll(self, lines, /*up=*/true);
+                        }
                         return handle_scroll_pan(self, lines, /*up=*/true);
                     },
                     Mouse::ScrollDown(lines) => {
+                        if self.expanded.is_some() {
+                            return handle_selector_scroll(self, lines, /*up=*/false);
+                        }
                         return handle_scroll_pan(self, lines, /*up=*/false);
                     },
                     // Convention (see mobile_panning.md): ScrollRight
@@ -274,6 +287,16 @@ impl ZellijPlugin for State {
                         if let Some(action) = self.click_to_action(line, col) {
                             return dispatch_click(self, action);
                         }
+                        // No chrome region matched. If the hamburger
+                        // dropdown is open, the click landed outside
+                        // any menu item — dismiss the menu without
+                        // forwarding the click to the underlying pane.
+                        // Pane passthrough resumes on the next click
+                        // once the menu is closed.
+                        if self.menu_open {
+                            self.menu_open = false;
+                            return true;
+                        }
                         // No chrome region matched. Synthesize an SGR
                         // mouse press+release at the equivalent cell
                         // of the underlying pane so taps inside the
@@ -297,13 +320,18 @@ impl ZellijPlugin for State {
                 false
             },
             Event::Key(key) => {
-                // Esc always closes an open selector first — the menu
-                // has hidden the embedded pane, so Esc-to-pane while a
-                // menu is up would never reach the user's eye anyway,
-                // and using Esc as the universal back affordance is
-                // the convention soft-keyboard users expect.
-                if key.bare_key == BareKey::Esc && self.expanded.is_some() {
+                // Esc always returns to the main view: closes any
+                // open selector and dismisses the dropdown menu in a
+                // single press. The selector/menu have hidden (or
+                // overlaid) the embedded pane, so Esc-to-pane while
+                // either is up would never reach the user's eye
+                // anyway; using Esc as the universal back affordance
+                // is the convention soft-keyboard users expect.
+                if key.bare_key == BareKey::Esc
+                    && (self.expanded.is_some() || self.menu_open)
+                {
                     self.expanded = None;
+                    self.menu_open = false;
                     return true;
                 }
                 // Forward to the selected pane's pty. Sticky modifiers
@@ -403,6 +431,23 @@ fn apply_v_pan(
         let absorbed = old_pan - new_pan;
         (new_pan, lines - absorbed)
     }
+}
+
+/// Scroll the currently-open selector's row list. `up = true`
+/// mirrors `Mouse::ScrollUp` — saturating-decrement toward zero (the
+/// top of the list, matching the viewport convention where ScrollUp
+/// reveals earlier content). `up = false` increments past the end;
+/// the renderer clamps against the actual item count on the next
+/// frame so the offset never sticks past the last visible row.
+/// Returns `true` whenever the offset moved so the host re-renders.
+fn handle_selector_scroll(state: &mut State, lines: usize, up: bool) -> bool {
+    let old = state.selector_scroll_offset;
+    state.selector_scroll_offset = if up {
+        old.saturating_sub(lines)
+    } else {
+        old.saturating_add(lines)
+    };
+    state.selector_scroll_offset != old
 }
 
 /// Apply a vertical slide gesture to the embedded viewport:
@@ -558,14 +603,20 @@ fn sgr_left_click(pane_row: usize, pane_col: usize) -> Vec<u8> {
 fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
     match action {
         ClickAction::ExpandSessions => {
+            // Selectors and the hamburger menu are mutually exclusive
+            // — opening a selector (whether from the menu or from a
+            // direct top-bar tap) clears the menu state. Harmless when
+            // the menu was already closed. Reset scroll so each entry
+            // into the selector starts anchored at the top regardless
+            // of where the previous session in this selector landed.
+            state.menu_open = false;
+            state.selector_scroll_offset = 0;
             state.expanded = Some(Selector::Sessions);
             true
         },
-        ClickAction::ExpandTabs => {
-            state.expanded = Some(Selector::Tabs);
-            true
-        },
         ClickAction::ExpandPanes => {
+            state.menu_open = false;
+            state.selector_scroll_offset = 0;
             // Refresh titles once on open so the menu doesn't show
             // the stale `Pane #N` placeholder when the shell has
             // already emitted OSC 2 before this click. Subsequent
@@ -573,6 +624,22 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             // event handler whenever the menu stays open.
             refresh_pane_titles(state);
             state.expanded = Some(Selector::Panes);
+            true
+        },
+        ClickAction::ToggleMenu => {
+            // The hamburger toggles the dropdown menu. Since the top
+            // bar is identical in every screen the hamburger is
+            // tappable from selectors too — opening the menu while a
+            // selector is active closes the selector first so the
+            // menu (which is gated on `expanded.is_none()`) actually
+            // renders. From the user's perspective a tap on ☰ always
+            // takes them to the menu over the viewport.
+            if state.menu_open {
+                state.menu_open = false;
+            } else {
+                state.expanded = None;
+                state.menu_open = true;
+            }
             true
         },
         ClickAction::CollapseSelector => {
@@ -587,43 +654,22 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             state.expanded = None;
             true
         },
-        ClickAction::SelectTab(position) => {
-            // The mobile plugin never moves the *client's* focused
-            // tab — doing so would yank the client out of the mobile
-            // tab (where this plugin lives) and into the destination
-            // tab, making the entire mobile UI vanish. The "selected
-            // tab" here is a purely internal concept: it controls
-            // which tab's panes the embedded viewport reads.
-            // Resetting `selected_pane_id` lets the renderer fall
-            // back to the first pane in the newly-selected tab.
-            // Tab-switch invalidates any active fit (the fit is
-            // pinned to a specific (tab_id, pane_id) server-side).
-            clear_fit_if_active(state);
-            state.selected_tab_position = Some(position);
-            state.selected_pane_id = None;
-            // A new tab lands at its bottom-right corner: any
-            // accumulated pan offset belongs to the previous pane and
-            // makes no sense in this context.
-            state.viewport_v_pan = 0;
-            state.viewport_h_pan = 0;
-            state.expanded = None;
-            // Notify the server so the shadow focus marker follows
-            // the viewport into the new tab. `current_pane()` falls
-            // back to the first pane in the newly-selected tab when
-            // `selected_pane_id` is None.
-            sync_shadow_focus(state);
-            true
-        },
         ClickAction::SelectPane { tab_position, pane_id } => {
-            // Same rationale as SelectTab: do not call
-            // `switch_tab_to` or `focus_*_pane` here — those would
-            // change the client's actual focus and dismount the
-            // mobile UI. The plugin embeds the chosen pane via its
-            // own renderer (reading `PaneRenderReportWithAnsi` from
-            // the host) and forwards keystrokes/clicks via
-            // `write_to_pane_id`; neither needs the host's focus.
-            // Pane-switch invalidates any active fit — fit is bound
-            // to the specific pane that was focused when toggled on.
+            // The mobile plugin never moves the *client's* focused
+            // tab or pane — doing so would yank the client out of the
+            // mobile tab (where this plugin lives) and into the
+            // destination, making the entire mobile UI vanish. The
+            // "selected tab/pane" here is a purely internal concept:
+            // it controls which pane's viewport the embedded display
+            // reads. We never call `switch_tab_to` or `focus_*_pane`
+            // — those would change the client's actual focus and
+            // dismount the mobile UI. The plugin embeds the chosen
+            // pane via its own renderer (reading
+            // `PaneRenderReportWithAnsi` from the host) and forwards
+            // keystrokes/clicks via `write_to_pane_id`; neither needs
+            // the host's focus. Pane-switch invalidates any active
+            // fit — fit is bound to the specific pane that was
+            // focused when toggled on.
             clear_fit_if_active(state);
             state.selected_tab_position = Some(tab_position);
             state.selected_pane_id = Some(pane_id);

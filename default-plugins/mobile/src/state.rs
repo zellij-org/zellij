@@ -13,12 +13,11 @@ pub enum Selector {
     /// session's tab + pane counts. Selecting a row calls
     /// `switch_session`.
     Sessions,
-    /// Tabs list — col 1 is the tab name, col 2 is the tab's pane
-    /// count. Selecting a row updates `selected_tab_position`.
-    Tabs,
-    /// Panes list (panes of the currently-selected tab). Col 1 is the
-    /// pane title, col 2 is the pane's last-activity timestamp
-    /// rendered as a relative `<time> ago` string.
+    /// Unified pane navigator. Panes are listed grouped under their
+    /// tab as nested rows: a tab-name header followed by the panes
+    /// belonging to that tab in display order. Only pane rows are
+    /// clickable — selecting one updates the embedded viewport. The
+    /// header rows are visual nesting and carry no action.
     Panes,
 }
 
@@ -26,9 +25,7 @@ pub enum Selector {
 pub enum ClickAction {
     /// Open the sessions selector.
     ExpandSessions,
-    /// Open the tabs selector.
-    ExpandTabs,
-    /// Open the panes selector (panes of the currently-selected tab).
+    /// Open the unified pane navigator (panes grouped under tabs).
     ExpandPanes,
     /// Close any open selector without changing the current selection.
     /// Used by the in-selector top-bar tap (escape hatch back to the
@@ -37,11 +34,6 @@ pub enum ClickAction {
     /// Selecting a session calls `switch_session(name)` on the host —
     /// the client genuinely changes session, leaving this one.
     SelectSession(String),
-    /// Tap a tab row in the Tabs selector. Updates the plugin's
-    /// internal `selected_tab_position` (does NOT change the client's
-    /// actual focused tab — that would dismount the mobile plugin
-    /// itself).
-    SelectTab(usize),
     /// Tap a pane row in the Panes selector. Updates the plugin's
     /// internal `selected_tab_position` + `selected_pane_id` so the
     /// embedded viewport shows that pane (the panes selector lists
@@ -67,6 +59,12 @@ pub enum ClickAction {
     /// `KeyboardController::handle_tap` which resolves to bytes,
     /// modifier toggles, or a visibility flip.
     Keyboard(CellId),
+    /// Tap on the hamburger glyph in the top bar. Flips
+    /// `State::menu_open`. The dropdown menu and the selector menus
+    /// (`State::expanded`) are mutually exclusive — opening any
+    /// selector also clears `menu_open`, and the menu render is
+    /// gated on `state.expanded.is_none()`.
+    ToggleMenu,
 }
 
 /// A rectangular click target with a priority for layered scanning.
@@ -224,6 +222,20 @@ pub struct State {
     /// Which selector (if any) is currently expanded. None = collapsed
     /// view (the embedded viewport dominates the screen).
     pub expanded: Option<Selector>,
+    /// True while the hamburger dropdown menu is open. Mutually
+    /// exclusive with `expanded`: opening any selector clears this,
+    /// and the menu render is gated on `expanded.is_none()`. The
+    /// menu overlays the upper-right corner of the embedded viewport
+    /// when open.
+    pub menu_open: bool,
+    /// Scroll offset into the currently-open selector's row list. 0
+    /// = first row visible at the top of the body region. Reset to 0
+    /// every time a selector is opened so each entry into Change
+    /// Pane / Change Session begins anchored at the top. The
+    /// renderer clamps stale values against the row list's actual
+    /// length on the next frame, so handlers can blindly increment
+    /// past the maximum without producing a glitch.
+    pub selector_scroll_offset: usize,
     /// Latest ANSI-formatted viewport for every pane the server is
     /// reporting on. Populated by `Event::PaneRenderReportWithAnsi`.
     pub latest_pane_contents: HashMap<PaneId, PaneContents>,
