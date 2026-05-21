@@ -3113,12 +3113,31 @@ impl Screen {
                     for tab in self.tabs.values() {
                         for pane_id in tab.get_static_and_floating_pane_ids() {
                             if let Some(pane) = tab.get_pane_with_id(pane_id) {
-                                let contents = pane.pane_contents_with_ansi(None, false, None);
-                                output.add_pane_contents_with_ansi(
-                                    &all_regular_clients,
-                                    pane_id,
-                                    contents,
-                                );
+                                match pane_id {
+                                    PaneId::Terminal(_) => {
+                                        let contents =
+                                            pane.pane_contents_with_ansi(None, false, None);
+                                        output.add_pane_contents_with_ansi(
+                                            &all_regular_clients,
+                                            pane_id,
+                                            contents,
+                                        );
+                                    },
+                                    PaneId::Plugin(_) => {
+                                        for client_id in &all_regular_clients {
+                                            let contents = pane.pane_contents_with_ansi(
+                                                Some(*client_id),
+                                                false,
+                                                None,
+                                            );
+                                            output.add_pane_contents_with_ansi(
+                                                &[*client_id],
+                                                pane_id,
+                                                contents,
+                                            );
+                                        }
+                                    },
+                                }
                             }
                         }
                     }

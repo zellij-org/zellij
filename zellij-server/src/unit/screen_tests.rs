@@ -10470,3 +10470,146 @@ fn fit_three_viewers_override_persists() {
     );
 }
 
+// Plugin panes hold a separate Grid per ClientId. The legacy fallback
+// in `render_to_clients` that walks every pane (originally added for
+// tabs whose client routed away, e.g. into the mobile UI) used to call
+// `pane.pane_contents_with_ansi(None, false, None)` for *all* pane
+// kinds. For terminal panes the `client_id` is ignored, but for plugin
+// panes that lookup returns `Default::default()` — an empty
+// `PaneContents`. Because `PaneRenderReport::add_pane_contents_with_ansi`
+// uses `HashMap::insert`, those empty contents overwrote the per-client
+// contents that the main `tab.render` path had just written. Plugins
+// subscribed to `PaneRenderReportWithAnsi` (notably the mobile plugin
+// that embeds shadow-focused panes) then saw an empty viewport and
+// rendered "(awaiting first render…)".
+//
+// This test exercises the fallback path: two clients are connected,
+// each plugin-pane grid is populated with distinct bytes, the screen
+// is told a plugin needs ANSI pane contents (which both flips the
+// flag and forces a render), and the resulting `PaneRenderReport`
+// must contain per-client, non-empty, and distinct viewports for the
+// plugin pane.
+#[test]
+pub fn render_report_writes_per_client_plugin_pane_contents_in_fallback() {
+    use crate::plugins::PluginRenderAsset;
+    use zellij_utils::data::PaneId as DataPaneId;
+
+    let size = Size { cols: 80, rows: 20 };
+    let mut initial_layout = TiledPaneLayout::default();
+    let mut plugin_pane_layout = TiledPaneLayout::default();
+    plugin_pane_layout.run = Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+        configuration: Default::default(),
+        ..Default::default()
+    })));
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![plugin_pane_layout];
+
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+
+    // Attach a second client to the same tab so two per-client plugin
+    // grids will exist after we populate them. The plugin pane was
+    // created during `run()` while only client 1 was connected, so
+    // client 2's grid does not exist yet — it will be lazily created
+    // by `handle_plugin_bytes` below.
+    let first_client_id: ClientId = mock_screen.main_client_id;
+    let second_client_id: ClientId = 2;
+    let _ = mock_screen.to_screen.send(ScreenInstruction::AddClient(
+        second_client_id,
+        false,
+        size,
+        None,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Send distinct VTE bytes per client. Plugin id 1 matches the
+    // layout's first (and only) pane id; see `MockScreen::run`.
+    let plugin_id: u32 = 1;
+    let bytes_for_client_1 = b"client one render payload".to_vec();
+    let bytes_for_client_2 = b"client two render payload".to_vec();
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::PluginBytes(vec![
+            PluginRenderAsset::new(plugin_id, first_client_id, bytes_for_client_1.clone()),
+            PluginRenderAsset::new(plugin_id, second_client_id, bytes_for_client_2.clone()),
+        ]));
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Flip the subscription flag from false → true. The screen forces
+    // a render in response (see the ANSI-subscription handler), which
+    // ultimately produces a `PluginInstruction::PaneRenderReport` on
+    // the plugin bus — that's what we'll inspect.
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::PluginSubscribedToAnsiPaneContents(true));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    let captured = received_plugin_instructions.lock().unwrap();
+    let last_report = captured
+        .iter()
+        .rev()
+        .find_map(|i| match i {
+            PluginInstruction::PaneRenderReport(r) => Some(r.clone()),
+            _ => None,
+        })
+        .expect("expected at least one PaneRenderReport on the plugin bus");
+
+    let plugin_pane_id = DataPaneId::Plugin(plugin_id);
+    let client_1_contents = last_report
+        .all_pane_contents_with_ansi
+        .get(&first_client_id)
+        .and_then(|p| p.get(&plugin_pane_id))
+        .cloned()
+        .expect("client 1 must have plugin-pane contents in the report");
+    let client_2_contents = last_report
+        .all_pane_contents_with_ansi
+        .get(&second_client_id)
+        .and_then(|p| p.get(&plugin_pane_id))
+        .cloned()
+        .expect("client 2 must have plugin-pane contents in the report");
+
+    assert!(
+        !client_1_contents.viewport.is_empty(),
+        "client 1's plugin-pane viewport must not be empty — the fallback \
+         must read from the client's per-client grid, not return \
+         Default::default() via a `None` client_id lookup"
+    );
+    assert!(
+        !client_2_contents.viewport.is_empty(),
+        "client 2's plugin-pane viewport must not be empty — same reason \
+         as client 1, but this is the path that was broken pre-fix for \
+         the mobile-UI case"
+    );
+    assert_ne!(
+        client_1_contents.viewport, client_2_contents.viewport,
+        "per-client plugin grids must surface distinct viewports when \
+         distinct PluginBytes were delivered to each client"
+    );
+
+    let joined_viewport_1 = client_1_contents.viewport.join("");
+    let joined_viewport_2 = client_2_contents.viewport.join("");
+    assert!(
+        joined_viewport_1.contains("client one render payload"),
+        "client 1's viewport must contain its bytes; got {:?}",
+        joined_viewport_1
+    );
+    assert!(
+        joined_viewport_2.contains("client two render payload"),
+        "client 2's viewport must contain its bytes; got {:?}",
+        joined_viewport_2
+    );
+}
+
