@@ -921,6 +921,16 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         on: bool,
     },
+    /// Mobile plugin → server: record `client_id` as visually focused
+    /// on `pane_id` in whichever tab contains it, so other connected
+    /// clients see the mobile client's focus marker on the pane the
+    /// mobile viewport is currently rendering. Does not change the
+    /// client's `active_tab_ids` (the client stays in the mobile tab
+    /// so the plugin UI remains mounted) and does not sync to the PTY
+    /// thread (keystroke routing for the mobile client continues to
+    /// go through `write_to_pane_id`, not the PTY thread's
+    /// `active_panes`).
+    SetMobileFocusedPane(ClientId, PaneId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -1286,6 +1296,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleMobileMode(..) => ScreenContext::ToggleMobileMode,
             ScreenInstruction::ReevaluateMobileMode { .. } => ScreenContext::ReevaluateMobileMode,
             ScreenInstruction::SetSoftKeyboard { .. } => ScreenContext::SetSoftKeyboard,
+            ScreenInstruction::SetMobileFocusedPane(..) => ScreenContext::SetMobileFocusedPane,
         }
     }
 }
@@ -1805,6 +1816,81 @@ impl Screen {
         self.mobile_tabs.contains_key(&client_id)
     }
 
+    /// Remove every shadow-focus entry for `client_id` across all tabs
+    /// **except** the client's mobile tab. The mobile tab keeps its
+    /// real `active_panes` entry pointing at the mobile plugin pane
+    /// (which is what mounts the plugin UI); all other tabs get the
+    /// stale visual-focus marker cleared.
+    ///
+    /// Called when:
+    /// - The mobile plugin reports a new viewport pane via
+    ///   `SetMobileFocusedPane` (before applying the new entry).
+    /// - The client enters mobile mode (`enter_mobile_mode`), to
+    ///   purge any pre-existing real-focus entry that would otherwise
+    ///   show the mobile client focused on a desktop pane.
+    /// - The client exits mobile mode (`exit_mobile_mode`).
+    /// - The client disconnects (`remove_client`).
+    fn clear_mobile_shadow_focus(&mut self, client_id: ClientId) {
+        let mobile_tab_id = self.mobile_tabs.get(&client_id).copied();
+        for tab in self.tabs.values_mut() {
+            if Some(tab.id) == mobile_tab_id {
+                continue;
+            }
+            tab.clear_shadow_focus(client_id);
+        }
+    }
+
+    /// Apply a shadow focus marker: record `client_id` as visually
+    /// focused on `pane_id` in whichever tab owns the pane. Does not
+    /// touch `active_tab_ids` (the client stays in its mobile tab),
+    /// does not sync to the PTY thread (real input still goes through
+    /// the mobile plugin's `write_to_pane_id` path), and does not
+    /// write CSI focus-tracking events to the target terminal.
+    ///
+    /// **Idempotent / deduplicating:** if the shadow focus is already
+    /// recorded on this exact pane for this client, returns early
+    /// without re-rendering or re-emitting TabInfo. This is critical
+    /// because `log_and_report_session_state` emits TabUpdate to every
+    /// subscribed plugin (including the mobile plugin), and the mobile
+    /// plugin's TabUpdate handler calls `sync_shadow_focus` — without
+    /// dedup we would loop: server → TabUpdate → plugin →
+    /// SetMobileFocusedPane → server → ...
+    fn set_mobile_focused_pane(
+        &mut self,
+        client_id: ClientId,
+        pane_id: PaneId,
+    ) -> Result<()> {
+        // Early exit: is the shadow focus already on this pane?
+        let mobile_tab_id = self.mobile_tabs.get(&client_id).copied();
+        for tab in self.tabs.values() {
+            if Some(tab.id) == mobile_tab_id {
+                continue;
+            }
+            if tab.has_shadow_focus_on(client_id, pane_id) {
+                return Ok(());
+            }
+        }
+
+        self.clear_mobile_shadow_focus(client_id);
+        for tab in self.tabs.values_mut() {
+            if Some(tab.id) == mobile_tab_id {
+                continue;
+            }
+            if tab.set_shadow_focus(client_id, pane_id) {
+                break;
+            }
+        }
+        // Re-emit TabInfo so the tab-bar plugin learns about the
+        // shadow-focused client appearing on this tab. The pane frame
+        // cache (TerminalPane::frame) is keyed by `PaneFrame` content
+        // and includes `other_focused_clients` in its `PartialEq`
+        // derive, so the next render automatically detects the change
+        // and re-emits the affected pane's frame — no explicit
+        // `set_force_render` needed.
+        self.log_and_report_session_state()?;
+        self.render(None)
+    }
+
     /// Promote `client_id` into a fresh per-client mobile tab. The tab
     /// is created with `visible_to = Some({client_id})` and contains a
     /// single plugin pane pointing at `zellij:mobile`. The previously
@@ -1824,6 +1910,18 @@ impl Screen {
         if let Some(prior) = self.active_tab_ids.get(&client_id).copied() {
             self.mobile_previous_tab_ids.insert(client_id, prior);
         }
+
+        // Defense-in-depth: drop any pre-existing shadow-focus entry
+        // for this client. At this moment the client is typically
+        // still a `connected_clients` member of its current tab, so
+        // this is a no-op for that tab (a real focus entry is not a
+        // shadow entry). The authoritative cleanup happens later via
+        // `set_mobile_focused_pane` once the plugin sends its first
+        // `SetMobileFocusedPane` after the client has been moved off
+        // the desktop tab — at which point the lingering
+        // `active_panes` entry becomes a shadow entry and is cleared
+        // by the same helper before the new shadow is applied.
+        self.clear_mobile_shadow_focus(client_id);
 
         // Build a single-plugin layout that the existing layout-apply
         // pipeline will populate with a `zellij:mobile` plugin pane.
@@ -1937,6 +2035,14 @@ impl Screen {
             self.close_tab_by_id(mobile_tab_id)
                 .with_context(err_context)?;
         }
+
+        // Clear any shadow-focus entries the mobile session created in
+        // other tabs. `mobile_tabs.remove(client_id)` above means the
+        // helper now considers every tab (no mobile tab to skip); the
+        // destination tab is safe because the client has been added
+        // to its `connected_clients` and therefore is_shadow_focus_client
+        // returns false there.
+        self.clear_mobile_shadow_focus(client_id);
 
         Ok(())
     }
@@ -3705,6 +3811,15 @@ impl Screen {
                 }
             }
         }
+
+        // Now that the client has been removed from every tab's
+        // `connected_clients`, any leftover `active_panes` entries for
+        // this client are by definition shadow-focus entries. Clear
+        // them so the detached mobile client does not leave a stale
+        // focus marker visible to other connected clients.
+        // `mobile_tabs.remove(&client_id)` above ensures the helper
+        // considers every tab.
+        self.clear_mobile_shadow_focus(client_id);
         let previously_active_tab_id = self.active_tab_ids.get(&client_id).copied();
         if let Some(prev_tab_id) = previously_active_tab_id {
             self.global_last_active_tab_id = prev_tab_id;
@@ -3774,13 +3889,23 @@ impl Screen {
         let mut plugin_updates = vec![];
         let mut tab_infos_for_screen_state = BTreeMap::new();
         for tab in self.tabs.values() {
-            let all_focused_clients: Vec<ClientId> = self
+            let mut all_focused_clients: Vec<ClientId> = self
                 .active_tab_ids
                 .iter()
                 .filter(|(_c_id, tab_position)| **tab_position == tab.id)
                 .map(|(c_id, _)| c_id)
                 .copied()
                 .collect();
+            // Include clients shadow-focused on a pane in this tab
+            // (e.g. mobile clients whose plugin viewport is rendering a
+            // pane here). Their `active_tab_ids` points elsewhere (the
+            // mobile tab), so without this they would be invisible to
+            // the tab-bar even though they are functionally "here".
+            for s_id in tab.shadow_focus_clients() {
+                if !all_focused_clients.contains(&s_id) {
+                    all_focused_clients.push(s_id);
+                }
+            }
             let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
             let tab_viewport = tab.get_viewport();
             let tab_display_area = tab.get_display_area();
@@ -3825,14 +3950,25 @@ impl Screen {
                 let other_focused_clients: Vec<ClientId> = if self.session_is_mirrored {
                     vec![]
                 } else {
-                    self.active_tab_ids
+                    let mut clients: Vec<ClientId> = self
+                        .active_tab_ids
                         .iter()
                         .filter(|(c_id, tab_position)| {
                             **tab_position == tab.id && *c_id != client_id
                         })
                         .map(|(c_id, _)| c_id)
                         .copied()
-                        .collect()
+                        .collect();
+                    // Also surface shadow-focused clients on this tab
+                    // (their `active_tab_ids` points to the mobile tab,
+                    // not here, so the active_tab_ids filter above
+                    // misses them).
+                    for s_id in tab.shadow_focus_clients() {
+                        if s_id != *client_id && !clients.contains(&s_id) {
+                            clients.push(s_id);
+                        }
+                    }
+                    clients
                 };
                 let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
                 let tab_viewport = tab.get_viewport();
@@ -5790,13 +5926,18 @@ impl Screen {
     fn get_tab_info(&self, tab_id: usize) -> Option<TabInfo> {
         // Look up tab by its stable ID
         self.tabs.get(&tab_id).map(|tab| {
-            let all_focused_clients: Vec<ClientId> = self
+            let mut all_focused_clients: Vec<ClientId> = self
                 .active_tab_ids
                 .iter()
                 .filter(|(_c_id, active_tab_id)| **active_tab_id == tab.id)
                 .map(|(c_id, _)| c_id)
                 .copied()
                 .collect();
+            for s_id in tab.shadow_focus_clients() {
+                if !all_focused_clients.contains(&s_id) {
+                    all_focused_clients.push(s_id);
+                }
+            }
             let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
             let tab_viewport = tab.get_viewport();
             let tab_display_area = tab.get_display_area();
@@ -10644,6 +10785,9 @@ pub(crate) fn screen_thread_main(
                     let _ = os_input
                         .send_to_client(client_id, ServerToClientMsg::SetSoftKeyboard { on });
                 }
+            },
+            ScreenInstruction::SetMobileFocusedPane(client_id, pane_id) => {
+                screen.set_mobile_focused_pane(client_id, pane_id)?;
             },
         }
     }

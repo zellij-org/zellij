@@ -458,6 +458,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::UpdateFitSize { tab_id, size } => {
                         update_fit_size(env, tab_id, size)
                     },
+                    PluginCommand::SetMobileFocusedPane(pane_id) => {
+                        set_mobile_focused_pane(env, pane_id.into())
+                    },
                     PluginCommand::DumpSessionLayout { tab_index } => {
                         dump_session_layout(env, tab_index)
                     },
@@ -3925,6 +3928,28 @@ fn set_soft_keyboard(env: &PluginEnv, on: bool) {
             on,
         })
         .with_context(|| format!("failed to dispatch SetSoftKeyboard for plugin {}", env.plugin_id))
+        .non_fatal();
+}
+
+/// Mobile plugin → server: record the calling client as visually
+/// focused on `pane_id` (a "shadow focus") so other connected clients
+/// see the mobile client's focus marker on the pane the mobile plugin
+/// viewport is rendering. The mobile client remains in its mobile tab
+/// (the plugin UI stays mounted), real keystroke routing is unchanged
+/// (the plugin uses `write_to_pane_id`), and no CSI focus-tracking
+/// events are emitted to the target terminal.
+fn set_mobile_focused_pane(env: &PluginEnv, pane_id: PaneId) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetMobileFocusedPane(
+            env.client_id,
+            pane_id,
+        ))
+        .with_context(|| {
+            format!(
+                "failed to dispatch SetMobileFocusedPane for plugin {}",
+                env.plugin_id
+            )
+        })
         .non_fatal();
 }
 

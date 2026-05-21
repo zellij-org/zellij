@@ -1486,6 +1486,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 }),
                 _ => Err("Mismatched payload for UpdateFitSize"),
             },
+            Some(CommandName::SetMobileFocusedPane) => match protobuf_plugin_command.payload {
+                Some(Payload::SetMobileFocusedPanePayload(pane_id)) => {
+                    Ok(PluginCommand::SetMobileFocusedPane(pane_id.try_into()?))
+                },
+                _ => Err("Mismatched payload for SetMobileFocusedPane"),
+            },
             Some(CommandName::DumpSessionLayout) => match protobuf_plugin_command.payload {
                 Some(Payload::DumpSessionLayoutPayload(payload)) => {
                     Ok(PluginCommand::DumpSessionLayout {
@@ -3507,6 +3513,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::SendSigintToPaneId(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::SendSigintToPaneId as i32,
                 payload: Some(Payload::SendSigintToPaneIdPayload(pane_id.try_into()?)),
+            }),
+            PluginCommand::SetMobileFocusedPane(pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetMobileFocusedPane as i32,
+                payload: Some(Payload::SetMobileFocusedPanePayload(pane_id.try_into()?)),
             }),
             PluginCommand::SendSigkillToPaneId(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::SendSigkillToPaneId as i32,

@@ -16542,3 +16542,241 @@ pub fn scroll_terminal_down_nonexistent_pane_id_is_a_noop() {
     let writes = drain_pty_writer(&rx);
     assert!(writes.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Mobile shadow-focus tests
+//
+// These cover the "shadow focus" API used by the mobile plugin so other
+// connected clients see a focus marker on the pane the mobile viewport is
+// rendering, without moving the mobile client out of its mobile tab.
+//
+// Conventions used here:
+// * Real client of the tab: `client_id = 1` (inserted by `create_new_tab`).
+// * Synthetic shadow client: `client_id = 99` (never enters the tab's
+//   `connected_clients`).
+// ---------------------------------------------------------------------------
+
+#[test]
+pub fn set_shadow_focus_returns_true_when_pane_is_in_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+
+    let placed = tab.set_shadow_focus(99, PaneId::Terminal(2));
+
+    assert!(placed, "pane is in the tab — should report a successful placement");
+    assert!(
+        tab.has_shadow_focus_on(99, PaneId::Terminal(2)),
+        "shadow focus must be recorded on the target pane",
+    );
+}
+
+#[test]
+pub fn set_shadow_focus_returns_false_when_pane_not_in_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    // Pane 42 was never created in this tab.
+
+    let placed = tab.set_shadow_focus(99, PaneId::Terminal(42));
+
+    assert!(!placed, "no pane 42 in this tab — placement must fail");
+    assert!(
+        !tab.has_shadow_focus_on(99, PaneId::Terminal(42)),
+        "nothing should have been recorded",
+    );
+    assert!(
+        tab.shadow_focus_clients().is_empty(),
+        "no shadow markers should exist",
+    );
+}
+
+#[test]
+pub fn clear_shadow_focus_removes_marker_and_entry() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.set_shadow_focus(99, PaneId::Terminal(1));
+    assert_eq!(tab.shadow_focus_clients(), vec![99]);
+
+    tab.clear_shadow_focus(99);
+
+    assert!(
+        tab.shadow_focus_clients().is_empty(),
+        "marker should be gone after clear",
+    );
+    assert!(
+        !tab.has_shadow_focus_on(99, PaneId::Terminal(1)),
+        "the active_panes entry should be gone too",
+    );
+}
+
+#[test]
+pub fn clear_shadow_focus_is_a_noop_when_absent() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+
+    // Client 99 has no entry at all — must not panic, must not affect
+    // the real client 1.
+    tab.clear_shadow_focus(99);
+
+    assert!(
+        tab.tiled_panes.pane_id_is_focused(&PaneId::Terminal(1)),
+        "real client's focus on pane 1 must survive an unrelated clear",
+    );
+}
+
+#[test]
+pub fn has_shadow_focus_on_is_pane_specific() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+
+    tab.set_shadow_focus(99, PaneId::Terminal(2));
+
+    assert!(tab.has_shadow_focus_on(99, PaneId::Terminal(2)));
+    assert!(
+        !tab.has_shadow_focus_on(99, PaneId::Terminal(1)),
+        "must NOT match a different pane id",
+    );
+    assert!(
+        !tab.has_shadow_focus_on(7, PaneId::Terminal(2)),
+        "must NOT match a different client id",
+    );
+}
+
+#[test]
+pub fn has_shadow_focus_on_does_not_match_real_focus() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let tab = create_new_tab(size, true);
+
+    // Client 1 has *real* focus on pane 1 (set by `create_new_tab` /
+    // `apply_layout`), but no shadow marker. The dedup helper must
+    // return false so a SetMobileFocusedPane handler does not
+    // mistake real focus for an existing shadow.
+    assert!(
+        tab.tiled_panes.pane_id_is_focused(&PaneId::Terminal(1)),
+        "precondition: client 1 has real focus on pane 1",
+    );
+    assert!(
+        !tab.has_shadow_focus_on(1, PaneId::Terminal(1)),
+        "real focus must not register as shadow focus",
+    );
+}
+
+#[test]
+pub fn shadow_focus_clients_lists_only_marked_clients() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+
+    // Real client 1 is already focused on pane 1 (no marker).
+    // Add two shadow clients on different panes.
+    tab.set_shadow_focus(99, PaneId::Terminal(1));
+    tab.set_shadow_focus(100, PaneId::Terminal(2));
+
+    let mut clients = tab.shadow_focus_clients();
+    clients.sort_unstable();
+    assert_eq!(clients, vec![99, 100]);
+}
+
+#[test]
+pub fn real_focus_supersedes_shadow_marker() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.set_shadow_focus(99, PaneId::Terminal(1));
+    assert_eq!(tab.shadow_focus_clients(), vec![99]);
+
+    // A subsequent real focus assignment for the same client must
+    // strip the shadow marker — otherwise the client would be
+    // double-counted and the close path could mishandle them as a
+    // "shadow client" even though their focus is now genuine.
+    tab.tiled_panes
+        .focus_pane(PaneId::Terminal(1), 99);
+
+    assert!(
+        tab.shadow_focus_clients().is_empty(),
+        "real focus must clear any prior shadow marker for the same client",
+    );
+    assert!(
+        tab.tiled_panes.pane_id_is_focused(&PaneId::Terminal(1)),
+        "real focus must still be recorded",
+    );
+}
+
+#[test]
+pub fn moving_shadow_focus_updates_pane_target() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+
+    tab.set_shadow_focus(99, PaneId::Terminal(1));
+    tab.set_shadow_focus(99, PaneId::Terminal(2));
+
+    assert!(tab.has_shadow_focus_on(99, PaneId::Terminal(2)));
+    assert!(
+        !tab.has_shadow_focus_on(99, PaneId::Terminal(1)),
+        "previous shadow target must be overwritten",
+    );
+    assert_eq!(
+        tab.shadow_focus_clients(),
+        vec![99],
+        "still only one shadow client",
+    );
+}
+
+#[test]
+pub fn closing_a_pane_silently_drops_shadow_clients() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    tab.set_shadow_focus(99, PaneId::Terminal(2));
+    assert!(tab.has_shadow_focus_on(99, PaneId::Terminal(2)));
+
+    // Closing pane 2 must NOT migrate the shadow client to a
+    // replacement pane (the mobile plugin picks its own replacement
+    // via the next PaneUpdate / sync_shadow_focus). The entry should
+    // simply disappear, without writing CSI focus-tracking events to
+    // the closing pane — that latter property is the reason for the
+    // silent removal path; we assert the observable consequence:
+    // the shadow client no longer appears anywhere.
+    tab.close_pane(PaneId::Terminal(2), false, None);
+
+    assert!(
+        tab.shadow_focus_clients().is_empty(),
+        "shadow client must be dropped when its pane is closed",
+    );
+}

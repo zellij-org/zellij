@@ -3647,6 +3647,13 @@ pub enum PluginCommand {
         tab_id: usize,
         size: Size,
     },
+    /// Mobile plugin → server: record the calling client as visually
+    /// focused on `pane_id` in whichever tab owns the pane. Used by
+    /// the mobile plugin so other clients see the mobile client's
+    /// focus marker on the pane the mobile viewport is rendering,
+    /// without changing the client's actual tab (which would
+    /// dismount the plugin UI).
+    SetMobileFocusedPane(PaneId),
 }
 
 // Response type for plugin API methods that open a pane in a new tab

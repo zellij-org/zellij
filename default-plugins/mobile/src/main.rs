@@ -94,6 +94,12 @@ impl ZellijPlugin for State {
                             .map(|t| t.position);
                     }
                 }
+                // Push the shadow focus to the server now in case
+                // PaneUpdate has not yet fired (event ordering varies on
+                // first plugin load) — `sync_shadow_focus` is a no-op
+                // when `current_pane()` is None, so it is safe to call
+                // even before pane data is available.
+                sync_shadow_focus(self);
                 true
             },
             Event::PaneUpdate(manifest) => {
@@ -156,6 +162,12 @@ impl ZellijPlugin for State {
                         self.selected_pane_id = Some(state::pane_id_of(pane));
                     }
                 }
+                // Push the resolved current pane to the server as the
+                // mobile client's shadow focus so other clients see
+                // the focus marker on the pane the viewport is
+                // rendering. Covers initial setup and any pane churn
+                // (close/move) that triggers a re-pick above.
+                sync_shadow_focus(self);
                 true
             },
             Event::SessionUpdate(sessions, _) => {
@@ -595,6 +607,11 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             state.viewport_v_pan = 0;
             state.viewport_h_pan = 0;
             state.expanded = None;
+            // Notify the server so the shadow focus marker follows
+            // the viewport into the new tab. `current_pane()` falls
+            // back to the first pane in the newly-selected tab when
+            // `selected_pane_id` is None.
+            sync_shadow_focus(state);
             true
         },
         ClickAction::SelectPane { tab_position, pane_id } => {
@@ -614,6 +631,9 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             state.viewport_v_pan = 0;
             state.viewport_h_pan = 0;
             state.expanded = None;
+            // Notify the server so the shadow focus marker follows
+            // the explicit pane selection.
+            sync_shadow_focus(state);
             true
         },
         ClickAction::ToggleKeyboard => {
@@ -711,6 +731,24 @@ pub fn clear_fit_if_active(state: &mut State) {
         state.fit_pending_target = None;
         state.fit_tab_id = None;
         exit_fit_mode();
+    }
+}
+
+/// Push the mobile plugin's currently-selected pane to the server as
+/// the client's shadow focus, so other connected clients see the
+/// mobile focus marker on whatever pane the viewport is rendering.
+/// Should be called whenever `selected_pane_id` or
+/// `selected_tab_position` changes (the latter because the resolved
+/// `current_pane()` follows the selected tab when no explicit pane
+/// is picked). Safe to call on every transition — the server's
+/// handler deduplicates by clearing any prior entry before applying
+/// the new one.
+///
+/// No-op when no pane is resolvable (e.g. before the first
+/// `TabUpdate` has populated the plugin's tab list).
+pub fn sync_shadow_focus(state: &State) {
+    if let Some(pane) = state.current_pane() {
+        set_mobile_focused_pane(state::pane_id_of(&pane));
     }
 }
 

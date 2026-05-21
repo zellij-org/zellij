@@ -1711,6 +1711,20 @@ pub fn update_fit_size(tab_id: usize, rows: usize, cols: usize) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Mobile "shadow focus": record the calling client as visually
+/// focused on `pane_id` for the benefit of other connected clients'
+/// focus indicators. The calling client stays in its current tab
+/// (the mobile plugin UI stays mounted); real keystroke routing is
+/// not affected (the mobile plugin uses `write_to_pane_id`). Used by
+/// the mobile plugin to keep server-side focus aligned with whichever
+/// pane the plugin viewport is currently rendering.
+pub fn set_mobile_focused_pane(pane_id: PaneId) {
+    let plugin_command = PluginCommand::SetMobileFocusedPane(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Start watching the host folder for filesystem changes (Note: somewhat unstable at the time
 /// being)
 pub fn watch_filesystem() {

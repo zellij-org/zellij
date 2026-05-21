@@ -2704,6 +2704,53 @@ impl Tab {
     pub fn has_non_suppressed_pane_with_pid(&self, pid: &PaneId) -> bool {
         self.tiled_panes.panes_contain(pid) || self.floating_panes.panes_contain(pid)
     }
+    // Shadow focus: record a client as focused on `pane_id` for the
+    // purpose of UI focus indicators only — no PTY-thread sync, no
+    // CSI focus-tracking writes, no terminal-attribute resets. The
+    // pane container that owns `pane_id` is chosen automatically.
+    // Returns `true` when the pane was found in this tab.
+    pub fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) -> bool {
+        if self.tiled_panes.panes_contain(&pane_id) {
+            self.tiled_panes.set_shadow_focus(client_id, pane_id);
+            true
+        } else if self.floating_panes.panes_contain(&pane_id) {
+            self.floating_panes.set_shadow_focus(client_id, pane_id);
+            true
+        } else {
+            false
+        }
+    }
+    // Clear any shadow-focus entry for this client in either pane
+    // container. Safe no-op when absent.
+    pub fn clear_shadow_focus(&mut self, client_id: ClientId) {
+        if self.tiled_panes.is_shadow_focus_client(&client_id) {
+            self.tiled_panes.clear_shadow_focus(client_id);
+        }
+        if self.floating_panes.is_shadow_focus_client(&client_id) {
+            self.floating_panes.clear_shadow_focus(client_id);
+        }
+    }
+    /// All clients carrying the shadow-focus marker in this tab
+    /// (either tiled or floating). Used by TabInfo construction so
+    /// the tab-bar shows shadow-focused clients on this tab even
+    /// though they are not in this tab's `connected_clients` or
+    /// `active_tab_ids`.
+    pub fn shadow_focus_clients(&self) -> Vec<ClientId> {
+        let mut out = self.tiled_panes.shadow_focus_clients();
+        out.extend(self.floating_panes.shadow_focus_clients());
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+    /// True iff `client_id` already has the shadow-focus marker on
+    /// `pane_id` in either pane container. Used by the shadow-focus
+    /// handler to short-circuit redundant updates (preventing a
+    /// TabUpdate → sync → TabUpdate feedback loop with the mobile
+    /// plugin).
+    pub fn has_shadow_focus_on(&self, client_id: ClientId, pane_id: PaneId) -> bool {
+        self.tiled_panes.has_shadow_focus_on(client_id, pane_id)
+            || self.floating_panes.has_shadow_focus_on(client_id, pane_id)
+    }
     pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
         if self.is_pending {
             self.pending_instructions

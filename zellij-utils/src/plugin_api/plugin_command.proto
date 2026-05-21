@@ -211,6 +211,7 @@ enum CommandName {
   EnterFitMode = 216;
   ExitFitMode = 217;
   UpdateFitSize = 218;
+  SetMobileFocusedPane = 219;
 }
 
 message PluginCommand {
@@ -368,6 +369,7 @@ message PluginCommand {
     SetSoftKeyboardPayload set_soft_keyboard_payload = 164;
     EnterFitModePayload enter_fit_mode_payload = 165;
     UpdateFitSizePayload update_fit_size_payload = 166;
+    PaneId set_mobile_focused_pane_payload = 167;
   }
 }
 
