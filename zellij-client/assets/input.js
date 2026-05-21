@@ -177,6 +177,181 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
     // (≈10 px) while still feeling instant on a phone.
     const pinch_activation_threshold = 18;
 
+    // Pinch snapshot overlay. xterm.js's WebGL renderer assigns
+    // canvas.width / canvas.height inside the fontSize setter and
+    // inside term.resize, and that assignment clears the
+    // framebuffer. On mobile the next animation frame is rAF-
+    // throttled during a touch gesture, so the cleared canvas
+    // gets composited before xterm.js can repaint — the user sees
+    // a blank flash. The overlay hides that window:
+    //
+    //   1. When the gesture first crosses the pinch-activation
+    //      threshold, we snapshot the live canvas pixels onto a
+    //      <canvas>, position it absolutely on top of the xterm
+    //      canvas, and append it to <body>.
+    //   2. Underneath, applyPinchFontSize continues to drive
+    //      xterm.js / the server resize as before. Every canvas
+    //      clear caused by a fontSize or term.resize change is
+    //      hidden by the overlay.
+    //   3. Every time xterm.js paints (term.onRender) while the
+    //      overlay is up, we re-blit the now-fresh canvas content
+    //      onto the overlay. That's what lets server data that
+    //      lands mid-pinch reach the user — the snapshot tracks
+    //      the latest committed render rather than freezing at
+    //      the moment the gesture started.
+    //   4. On touchend, the overlay's removal is armed: the very
+    //      next term.onRender refreshes the overlay one last time
+    //      (so the user sees the post-commit content), defers one
+    //      extra rAF for the browser to composite, then drops the
+    //      overlay. A safety timeout guarantees removal even if
+    //      onRender doesn't fire (e.g. server unreachable).
+    let pinchOverlay = null;
+    let pinchOverlayAwaitingRender = false;
+    let pinchOverlaySafetyTimer = null;
+
+    const destroyPinchOverlay = () => {
+        if (pinchOverlay) {
+            pinchOverlay.remove();
+            pinchOverlay = null;
+        }
+        pinchOverlayAwaitingRender = false;
+        if (pinchOverlaySafetyTimer !== null) {
+            clearTimeout(pinchOverlaySafetyTimer);
+            pinchOverlaySafetyTimer = null;
+        }
+    };
+
+    const createPinchOverlay = () => {
+        destroyPinchOverlay();
+        if (!term.element) return;
+        const sourceCanvases = term.element.querySelectorAll("canvas");
+        if (sourceCanvases.length === 0) return;
+        const ref = sourceCanvases[0];
+        const rect = ref.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        const overlay = document.createElement("canvas");
+        overlay.width = ref.width;
+        overlay.height = ref.height;
+        const outer = document.getElementById("terminal");
+        const bg = outer
+            ? window.getComputedStyle(outer).backgroundColor
+            : "transparent";
+        Object.assign(overlay.style, {
+            position: "fixed",
+            left: rect.left + "px",
+            top: rect.top + "px",
+            width: rect.width + "px",
+            height: rect.height + "px",
+            zIndex: "9999",
+            pointerEvents: "none",
+            background: bg,
+        });
+
+        const ctx = overlay.getContext("2d");
+        if (ctx) {
+            // Composite every xterm.js canvas (main WebGL render +
+            // any auxiliary layers — cursor, selection, link
+            // underline) into the overlay so the snapshot matches
+            // what the user sees.
+            for (const c of sourceCanvases) {
+                try {
+                    ctx.drawImage(c, 0, 0);
+                } catch (e) {
+                    // Tainted canvases throw; skip and continue.
+                }
+            }
+        }
+
+        document.body.appendChild(overlay);
+        pinchOverlay = overlay;
+    };
+
+    // Re-draw the existing overlay element with the current xterm
+    // canvas state. Called from the term.onRender hook so server
+    // data that lands mid-pinch is exposed to the user without
+    // tearing down the overlay element (which would briefly
+    // reveal the canvas underneath at the wrong moment).
+    //
+    // Resizing the overlay's backing buffer is atomic w.r.t. the
+    // compositor: the resize-clear and the immediately-following
+    // drawImage happen inside the onRender callback (synchronous
+    // JS), so the browser never composites the cleared overlay.
+    const refreshPinchOverlay = () => {
+        if (!pinchOverlay) return;
+        if (!term.element) return;
+        const sourceCanvases = term.element.querySelectorAll("canvas");
+        if (sourceCanvases.length === 0) return;
+        const ref = sourceCanvases[0];
+        const rect = ref.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        if (pinchOverlay.width !== ref.width) {
+            pinchOverlay.width = ref.width;
+        }
+        if (pinchOverlay.height !== ref.height) {
+            pinchOverlay.height = ref.height;
+        }
+        pinchOverlay.style.left = rect.left + "px";
+        pinchOverlay.style.top = rect.top + "px";
+        pinchOverlay.style.width = rect.width + "px";
+        pinchOverlay.style.height = rect.height + "px";
+
+        const ctx = pinchOverlay.getContext("2d");
+        if (ctx) {
+            ctx.clearRect(0, 0, pinchOverlay.width, pinchOverlay.height);
+            for (const c of sourceCanvases) {
+                try {
+                    ctx.drawImage(c, 0, 0);
+                } catch (e) {
+                    // Tainted canvases throw; skip and continue.
+                }
+            }
+        }
+    };
+
+    const armPinchOverlayRemoval = () => {
+        if (!pinchOverlay) return;
+        pinchOverlayAwaitingRender = true;
+        // Safety net: if onRender doesn't fire (e.g. the server
+        // didn't actually respond), remove the overlay anyway after
+        // a bounded time. 600 ms is generous for a roundtrip + a
+        // couple of paint frames.
+        if (pinchOverlaySafetyTimer !== null) {
+            clearTimeout(pinchOverlaySafetyTimer);
+        }
+        pinchOverlaySafetyTimer = setTimeout(() => {
+            pinchOverlaySafetyTimer = null;
+            destroyPinchOverlay();
+        }, 600);
+    };
+
+    // Hook xterm.js's render callback once. Two roles:
+    //   * While the overlay is up AND a pinch is still in
+    //     progress (or the touchend-armed removal has not fired
+    //     yet), each render is a moment when the canvas
+    //     underneath has fresh content. Re-snapshot it so the
+    //     overlay tracks the latest committed state — this is
+    //     what lets server data delivered mid-pinch reach the
+    //     user instead of being hidden until touchend.
+    //   * Once removal has been armed (touchend with wasPinch),
+    //     the next render is also when the post-commit content
+    //     has landed; defer one extra rAF (so the browser has a
+    //     chance to composite the refreshed overlay) then drop
+    //     it entirely.
+    if (term && typeof term.onRender === "function") {
+        term.onRender(() => {
+            if (!pinchOverlay) return;
+            refreshPinchOverlay();
+            if (pinchOverlayAwaitingRender) {
+                pinchOverlayAwaitingRender = false;
+                requestAnimationFrame(() => {
+                    destroyPinchOverlay();
+                });
+            }
+        });
+    }
+
     const reportCoords = (clientX, clientY) =>
         term._core._mouseService.getMouseReportCoords(
             { clientX, clientY },
@@ -397,6 +572,14 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
                         pinch_activation_threshold
                 ) {
                     pinch_active = true;
+                    // Snapshot now. From this point on the user
+                    // sees the overlay rather than the xterm
+                    // canvas directly, so the canvas can
+                    // clear/repaint freely without a visible
+                    // flash. The overlay is then refreshed on
+                    // every term.onRender, so the user does see
+                    // server updates that land mid-pinch.
+                    createPinchOverlay();
                 }
                 if (pinch_active) {
                     const ratio = dist / pinch_initial_distance;
@@ -483,6 +666,15 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
                     // measurements that drive mobile-mode routing.
                     // The 2-finger-tap keyboard toggle is suppressed
                     // because the pinch is a different intent.
+                    //
+                    // Arm overlay removal: as soon as xterm.js paints
+                    // the new content (next term.onRender), the
+                    // overlay is refreshed once more and then
+                    // dropped after the next rAF. Until then the
+                    // user keeps seeing the latest committed
+                    // snapshot, so the canvas-clear that happens
+                    // during the final commit is invisible.
+                    armPinchOverlayRemoval();
                     return;
                 }
                 if (elapsed < two_finger_tap_max_ms) {
@@ -538,6 +730,12 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
             pinch_initial_distance = null;
             pinch_initial_font_size = null;
             pinch_active = false;
+            // Drop the overlay immediately on cancel — there will
+            // be no touchend to schedule the orderly removal, so
+            // we can't wait for term.onRender. The user may briefly
+            // see the canvas behind in whatever state xterm.js
+            // left it; tolerable for a cancelled gesture.
+            destroyPinchOverlay();
         },
         { passive: true }
     );

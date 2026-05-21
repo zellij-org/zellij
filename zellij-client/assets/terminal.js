@@ -5,10 +5,38 @@
 import { build_link_handler } from "./links.js";
 
 /**
+ * Force every WebGL context created on this page to enable
+ * `preserveDrawingBuffer`. The pinch overlay snapshots the
+ * xterm.js canvas via `drawImage`, which returns blank pixels on
+ * a WebGL canvas that has been composited (default behaviour).
+ * Setting the flag makes the drawing buffer survive compositing,
+ * which is what `drawImage` reads. The cost is a small perf hit
+ * because the browser can no longer discard the buffer after
+ * paint; acceptable for the use case.
+ *
+ * Must run before xterm.js's WebglAddon initialises its context.
+ * Idempotent via the global guard.
+ */
+function ensurePreserveDrawingBuffer() {
+    if (window.__zjPreserveDrawingBuffer) return;
+    window.__zjPreserveDrawingBuffer = true;
+    const orig = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type, options) {
+        if (type === "webgl" || type === "webgl2") {
+            options = Object.assign({}, options || {}, {
+                preserveDrawingBuffer: true,
+            });
+        }
+        return orig.call(this, type, options);
+    };
+}
+
+/**
  * Initialize the terminal with all required addons and configuration
  * @returns {object} Object containing term and fitAddon instances
  */
 export function initTerminal() {
+    ensurePreserveDrawingBuffer();
     const term = new Terminal({
         fontFamily: "Monospace",
         allowProposedApi: true,
