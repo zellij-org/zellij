@@ -27,7 +27,8 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
     ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetSessionListResponse,
     ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse, ProtobufKillSessionsResponse,
-    ProtobufNewTabResponse, ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
+    ProtobufNewTabResponse, ProtobufNewTabUnfocusedResponse, ProtobufNewTabsResponse,
+    ProtobufNewTiledPaneInTabResponse, ProtobufOpenCommandPaneBackgroundResponse,
     ProtobufOpenCommandPaneFloatingNearPluginResponse, ProtobufOpenCommandPaneFloatingResponse,
     ProtobufOpenCommandPaneInPlaceOfPaneIdResponse, ProtobufOpenCommandPaneInPlaceOfPluginResponse,
     ProtobufOpenCommandPaneInPlaceResponse, ProtobufOpenCommandPaneNearPluginResponse,
@@ -960,6 +961,50 @@ where
 
     let response = ProtobufNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     NewTabResponse::try_from(response).unwrap()
+}
+
+/// Open a new tab with the default layout, but **without** moving the
+/// requesting client's focus onto it (server-side
+/// `should_change_focus_to_new_tab` is forced to false). Returns the new
+/// tab's position id synchronously, or `None` on failure.
+///
+/// Used by plugins that must stay mounted in their own (per-client) tab
+/// — for example the mobile UI plugin, where a focus change would
+/// dismount the entire mobile UI by switching the client off the plugin
+/// tab.
+pub fn new_tab_unfocused<S: AsRef<str>>(name: Option<S>, cwd: Option<S>) -> Option<usize>
+where
+    S: ToString,
+{
+    let name = name.map(|s| s.to_string());
+    let cwd = cwd.map(|s| s.to_string());
+    let plugin_command = PluginCommand::NewTabUnfocused { name, cwd };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufNewTabUnfocusedResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    NewTabUnfocusedResponse::try_from(response).unwrap()
+}
+
+/// Open a new tiled terminal pane in the tab at `tab_position` (i.e. the
+/// tab's display index, matching `TabInfo::position`). Unlike
+/// `open_terminal`, which always lands the pane in the client's focused
+/// tab, this targets the tab explicitly.
+///
+/// Returns the new pane's id synchronously, or `None` on failure. Used
+/// by the mobile UI plugin so "+ New Pane" lands in the user-selected
+/// mobile tab rather than in the plugin's own per-client tab.
+pub fn new_tiled_pane_in_tab(tab_position: usize) -> Option<PaneId> {
+    let plugin_command = PluginCommand::NewTiledPaneInTab { tab_position };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufNewTiledPaneInTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    NewTiledPaneInTabResponse::try_from(response).unwrap()
 }
 
 /// Opens a new tab with a command pane running `command_to_run`.

@@ -149,6 +149,27 @@ impl ZellijPlugin for State {
                         self.tabs_in_order().first().map(|t| t.position);
                 }
 
+                // Resolve a pending "+ New Tab" auto-select. The
+                // shim returned a tab position synchronously, but the
+                // matching PaneUpdate (this event) is the first
+                // moment we have a concrete pane id for the new tab.
+                // Pick that tab's first pane and set both selection
+                // fields, then clear the pending intent.
+                if let Some(target) = self.pending_new_tab_position {
+                    let first_pane = self
+                        .panes_for_tab(target)
+                        .into_iter()
+                        .next()
+                        .map(state::pane_id_of);
+                    if let Some(id) = first_pane {
+                        self.selected_tab_position = Some(target);
+                        self.selected_pane_id = Some(id);
+                        self.viewport_v_pan = 0;
+                        self.viewport_h_pan = 0;
+                        self.expanded = None;
+                        self.pending_new_tab_position = None;
+                    }
+                }
                 // Default pane selection: the first pane in the
                 // selected tab. We deliberately do NOT prefer the
                 // `is_focused` pane — `PaneInfo.is_focused` is a global
@@ -738,6 +759,48 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
                 true
             }
         },
+        ClickAction::NewPaneInTab { tab_position } => {
+            // Synchronous round-trip to the server via the
+            // `new_tiled_pane_in_tab` shim: the host blocks here until
+            // the new pane exists and returns its id. We then update
+            // the mobile UI's selection so the embedded viewport
+            // shows the new pane. Server uses
+            // `should_change_focus_to_new_tab` semantics that do not
+            // apply to NewTiledPane — the client's real focus never
+            // changes for tiled-pane creation, so the mobile UI
+            // stays mounted on its per-client tab.
+            clear_fit_if_active(state);
+            if let Some(new_id) = new_tiled_pane_in_tab(tab_position) {
+                state.selected_tab_position = Some(tab_position);
+                state.selected_pane_id = Some(new_id);
+                state.viewport_v_pan = 0;
+                state.viewport_h_pan = 0;
+                state.expanded = None;
+                sync_shadow_focus(state);
+            }
+            // Either way (success or None) re-render: success closes
+            // the selector and shows the new pane; failure leaves the
+            // selector open so the user can retry.
+            true
+        },
+        ClickAction::NewTab => {
+            // Synchronous round-trip via `new_tab_unfocused`: the
+            // shim returns the new tab's position id but does NOT
+            // move the mobile client's focus (server dispatches with
+            // `should_change_focus_to_new_tab: false`). The new tab's
+            // first pane has not yet appeared in our local manifest,
+            // so we stash the position and resolve it in the next
+            // `PaneUpdate` arm — at which point we set both
+            // `selected_tab_position` and `selected_pane_id` and
+            // close the selector.
+            clear_fit_if_active(state);
+            if let Some(tab_position) =
+                new_tab_unfocused::<&str>(None, None)
+            {
+                state.pending_new_tab_position = Some(tab_position);
+            }
+            true
+        },
         ClickAction::Keyboard(cell) => {
             let outcome = state.keyboard.handle_tap(
                 cell,
@@ -1294,5 +1357,97 @@ mod tests {
     fn apply_v_pan_zero_lines() {
         assert_eq!(apply_v_pan(5, 100, 0, true), (5, 0));
         assert_eq!(apply_v_pan(5, 100, 0, false), (5, 0));
+    }
+
+    /// `pending_new_tab_position` is set by the "+ New Tab" dispatch
+    /// arm right after `new_tab_unfocused` returns. The matching
+    /// PaneUpdate (with the new tab's first pane) is the first moment
+    /// the plugin has a concrete pane id to point selection at.
+    /// Confirm the resolver promotes the pending position into both
+    /// `selected_tab_position` and `selected_pane_id`, closes the
+    /// open selector, and clears the pending field.
+    #[test]
+    fn pane_update_resolves_pending_new_tab() {
+        let mut state = State::default();
+        // Existing tab 0 with one pane.
+        let mut tab0 = TabInfo::default();
+        tab0.position = 0;
+        state.tabs.push(tab0);
+        let mut pane0 = PaneInfo::default();
+        pane0.id = 1;
+        pane0.is_plugin = false;
+        pane0.is_selectable = true;
+        state.panes_by_tab_position.insert(0, vec![pane0]);
+        state.selected_tab_position = Some(0);
+        state.selected_pane_id = Some(PaneId::Terminal(1));
+        // Simulate the dispatch arm's bookkeeping: selector still
+        // open, pending tab position recorded.
+        state.expanded = Some(crate::state::Selector::Panes);
+        state.pending_new_tab_position = Some(1);
+
+        // New PaneUpdate manifest including the new tab 1 with its
+        // first pane (id 7).
+        let mut new_tab = TabInfo::default();
+        new_tab.position = 1;
+        state.tabs.push(new_tab);
+        let mut new_pane = PaneInfo::default();
+        new_pane.id = 7;
+        new_pane.is_plugin = false;
+        new_pane.is_selectable = true;
+        let mut panes_map = std::collections::HashMap::new();
+        panes_map.insert(
+            0_usize,
+            vec![PaneInfo {
+                id: 1,
+                is_plugin: false,
+                is_selectable: true,
+                ..PaneInfo::default()
+            }],
+        );
+        panes_map.insert(1_usize, vec![new_pane]);
+        let manifest = PaneManifest { panes: panes_map };
+
+        state.update(Event::PaneUpdate(manifest));
+
+        assert_eq!(state.selected_tab_position, Some(1));
+        assert_eq!(state.selected_pane_id, Some(PaneId::Terminal(7)));
+        assert_eq!(state.expanded, None);
+        assert_eq!(state.pending_new_tab_position, None);
+    }
+
+    /// If the matching pane has not yet arrived in the manifest (the
+    /// server response and the broadcast PaneUpdate are independent
+    /// pipelines), the resolver must leave `pending_new_tab_position`
+    /// in place so a subsequent PaneUpdate can still pick it up.
+    #[test]
+    fn pane_update_keeps_pending_when_target_tab_empty() {
+        let mut state = State::default();
+        let mut tab0 = TabInfo::default();
+        tab0.position = 0;
+        state.tabs.push(tab0);
+        let mut pane0 = PaneInfo::default();
+        pane0.id = 1;
+        pane0.is_plugin = false;
+        pane0.is_selectable = true;
+        state.panes_by_tab_position.insert(0, vec![pane0]);
+        state.selected_tab_position = Some(0);
+        state.selected_pane_id = Some(PaneId::Terminal(1));
+        state.pending_new_tab_position = Some(5);
+
+        let mut panes_map = std::collections::HashMap::new();
+        panes_map.insert(
+            0_usize,
+            vec![PaneInfo {
+                id: 1,
+                is_plugin: false,
+                is_selectable: true,
+                ..PaneInfo::default()
+            }],
+        );
+        let manifest = PaneManifest { panes: panes_map };
+        state.update(Event::PaneUpdate(manifest));
+
+        assert_eq!(state.pending_new_tab_position, Some(5));
+        assert_eq!(state.selected_tab_position, Some(0));
     }
 }

@@ -65,6 +65,20 @@ pub enum ClickAction {
     /// selector also clears `menu_open`, and the menu render is
     /// gated on `state.expanded.is_none()`.
     ToggleMenu,
+    /// Tap on a "+ New Pane" row in the Panes selector. Calls the
+    /// `new_tiled_pane_in_tab` shim which dispatches
+    /// `Action::NewTiledPane { tab_id: Some(tab_position), .. }` on the
+    /// server and returns the new pane id synchronously. The plugin
+    /// auto-selects the new pane and closes the selector.
+    NewPaneInTab { tab_position: usize },
+    /// Tap on the "+ New Tab" row at the bottom of the Panes selector.
+    /// Calls the `new_tab_unfocused` shim which dispatches
+    /// `Action::NewTab { should_change_focus_to_new_tab: false, .. }`
+    /// on the server and returns the new tab id synchronously, so the
+    /// client never leaves its current (mobile plugin) tab. The plugin
+    /// auto-selects the new tab once its first pane shows up in the
+    /// next `PaneUpdate`.
+    NewTab,
 }
 
 /// A rectangular click target with a priority for layered scanning.
@@ -329,6 +343,14 @@ pub struct State {
     /// emitted the resize), this field reflects the new embedded
     /// area and the shim is dispatched.
     pub fit_pending_target: Option<(usize, usize)>,
+    /// Pending tab-position auto-select after a "+ New Tab" command.
+    /// `new_tab_unfocused` returns the new tab's id synchronously
+    /// before the matching `TabUpdate` and `PaneUpdate` events have
+    /// propagated to this plugin. We stash the new tab's position
+    /// here, then on the next `PaneUpdate` we resolve it to a concrete
+    /// `(tab_position, pane_id)` pair (the new tab's first pane) and
+    /// clear the field.
+    pub pending_new_tab_position: Option<usize>,
     /// Last `show_cursor` payload the plugin emitted to the host.
     /// Calling `show_cursor` is *not* idempotent on the server side:
     /// `ScreenInstruction::ShowPluginCursor` triggers a full

@@ -3377,6 +3377,24 @@ pub enum PluginCommand {
         name: Option<String>,
         cwd: Option<String>,
     },
+    /// Like `NewTab`, but the server dispatches with
+    /// `should_change_focus_to_new_tab: false`. The new tab is created
+    /// but the requesting client stays on its current tab. The shim
+    /// returns the new tab's id synchronously. Used by the mobile
+    /// plugin which must not yank the client off its per-client plugin
+    /// tab — that would dismount the mobile UI.
+    NewTabUnfocused {
+        name: Option<String>,
+        cwd: Option<String>,
+    },
+    /// Open a new tiled terminal pane in the tab at `tab_position`
+    /// rather than in the requesting client's focused tab. The shim
+    /// returns the new pane's id synchronously. Used by the mobile
+    /// plugin so "+ New Pane" lands in the tab the user has selected
+    /// in the mobile UI, not in the plugin's own per-client tab.
+    NewTiledPaneInTab {
+        tab_position: usize,
+    },
     GoToNextTab,
     GoToPreviousTab,
     Resize(Resize),
@@ -3665,6 +3683,7 @@ pub struct OpenPaneInNewTabResponse {
 
 // Response types for plugin API methods that create tabs
 pub type NewTabResponse = Option<usize>;
+pub type NewTabUnfocusedResponse = Option<usize>;
 pub type NewTabsResponse = Vec<usize>;
 pub type FocusOrCreateTabResponse = Option<usize>;
 pub type BreakPanesToNewTabResponse = Option<usize>;
@@ -3685,6 +3704,7 @@ pub type OpenTerminalInPlaceResponse = Option<PaneId>;
 pub type OpenTerminalNearPluginResponse = Option<PaneId>;
 pub type OpenTerminalFloatingNearPluginResponse = Option<PaneId>;
 pub type OpenTerminalInPlaceOfPluginResponse = Option<PaneId>;
+pub type NewTiledPaneInTabResponse = Option<PaneId>;
 
 pub type OpenCommandPaneResponse = Option<PaneId>;
 pub type OpenCommandPaneFloatingResponse = Option<PaneId>;

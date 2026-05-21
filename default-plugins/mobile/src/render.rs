@@ -690,6 +690,17 @@ enum PaneSelectorItem {
         activity: String,
         action: ClickAction,
     },
+    /// "+ New Pane" action row appended after each tab's pane list.
+    /// Tapping it dispatches `ClickAction::NewPaneInTab { tab_position }`,
+    /// which calls the `new_tiled_pane_in_tab` shim and auto-selects
+    /// the returned pane.
+    NewPaneAction { tab_position: usize },
+    /// "+ New Tab" action row appended once at the bottom of the
+    /// selector. Tapping it dispatches `ClickAction::NewTab`, which
+    /// calls the `new_tab_unfocused` shim and stashes the returned
+    /// tab id in `state.pending_new_tab_position` for resolution on
+    /// the next `PaneUpdate`.
+    NewTabAction,
 }
 
 /// Unified Change Pane selector. Panes are listed grouped by tab —
@@ -736,7 +747,17 @@ fn render_panes_menu(state: &mut State, row_start: usize, row_end: usize, cols: 
                 },
             });
         }
+        // "+ New Pane" affordance under each tab's pane list. Tap
+        // creates a tiled pane in this specific tab via the
+        // `new_tiled_pane_in_tab` shim — the returned pane id is
+        // auto-selected in the mobile UI.
+        items.push(PaneSelectorItem::NewPaneAction {
+            tab_position: tab.position,
+        });
     }
+    // One global "+ New Tab" affordance at the very bottom; it is not
+    // nested under any tab because the new tab does not yet exist.
+    items.push(PaneSelectorItem::NewTabAction);
 
     // Title at the top of the body, centered horizontally and
     // coloured emphasis-3 (matching `render_centered_selector`'s
@@ -831,6 +852,50 @@ fn render_panes_menu(state: &mut State, row_start: usize, row_end: usize, cols: 
                     0,
                     cols,
                     action.clone(),
+                ));
+            },
+            PaneSelectorItem::NewPaneAction { tab_position } => {
+                // Indented two cells to nest under the tab header,
+                // matching the `PaneRow` indent. Emphasis-3 (matches
+                // the selector title) marks it as an action row
+                // distinct from the live pane rows (emphasis-2) and
+                // the tab headers (emphasis-1).
+                let label = "+ New Pane";
+                let indent_w = 2usize;
+                let display_w = indent_w + UnicodeWidthStr::width(label);
+                let display_w = display_w.min(cols);
+                let mut row_str = String::with_capacity(display_w);
+                for _ in 0..indent_w {
+                    row_str.push(' ');
+                }
+                row_str.push_str(label);
+                let label_chars = label.chars().count();
+                let text = Text::new(&row_str)
+                    .color_range(3, indent_w..indent_w + label_chars);
+                print_text_with_coordinates(text, 0, row, Some(display_w), None);
+                state.click_regions.push(ClickRegion::tight(
+                    row,
+                    0,
+                    cols,
+                    ClickAction::NewPaneInTab {
+                        tab_position: *tab_position,
+                    },
+                ));
+            },
+            PaneSelectorItem::NewTabAction => {
+                // Top-level (no indent) since the new tab does not yet
+                // exist and therefore has no parent in the tab tree.
+                let label = "+ New Tab";
+                let label_w = UnicodeWidthStr::width(label);
+                let display_w = label_w.min(cols);
+                let label_chars = label.chars().count();
+                let text = Text::new(label).color_range(3, 0..label_chars);
+                print_text_with_coordinates(text, 0, row, Some(display_w), None);
+                state.click_regions.push(ClickRegion::tight(
+                    row,
+                    0,
+                    cols,
+                    ClickAction::NewTab,
                 ));
             },
         }
@@ -1531,6 +1596,143 @@ mod tests {
         assert_eq!(
             state.click_to_action(0, 0),
             Some(ClickAction::CollapseSelector)
+        );
+    }
+
+    /// Build a `State` carrying `tab_count` tabs each with one
+    /// terminal pane. Tabs are at positions 0..tab_count, panes use
+    /// ids 100..100+tab_count. Selected tab/pane are tab 0 / pane 100.
+    fn state_with_tabs_and_panes(tab_count: usize) -> State {
+        use zellij_tile::prelude::TabInfo;
+        let mut state = State::default();
+        for i in 0..tab_count {
+            let mut tab = TabInfo::default();
+            tab.position = i;
+            tab.name = format!("Tab {}", i);
+            state.tabs.push(tab);
+            let mut pane = PaneInfo::default();
+            pane.id = (100 + i) as u32;
+            pane.is_plugin = false;
+            pane.is_selectable = true;
+            pane.is_suppressed = false;
+            state.panes_by_tab_position.insert(i, vec![pane]);
+        }
+        state.selected_tab_position = Some(0);
+        state.selected_pane_id = Some(PaneId::Terminal(100));
+        state
+    }
+
+    /// With one tab + one pane the Panes selector lists: title row,
+    /// blank row, tab header, pane row, "+ New Pane", "+ New Tab".
+    /// `render_panes_menu` populates `state.click_regions` for the
+    /// rows it considers interactive — pane row, "+ New Pane", and
+    /// "+ New Tab" (the tab header is non-interactive).
+    #[test]
+    fn panes_menu_one_tab_emits_three_click_regions() {
+        let mut state = state_with_tabs_and_panes(1);
+        let cols = 40;
+        // Plenty of vertical space so every item is visible.
+        render_panes_menu(&mut state, 0, 20, cols);
+        // 1 PaneRow + 1 NewPaneAction + 1 NewTabAction = 3 regions.
+        assert_eq!(state.click_regions.len(), 3);
+        let actions: Vec<ClickAction> = state
+            .click_regions
+            .iter()
+            .map(|r| r.action.clone())
+            .collect();
+        assert!(matches!(
+            actions[0],
+            ClickAction::SelectPane {
+                tab_position: 0,
+                pane_id: PaneId::Terminal(100)
+            }
+        ));
+        assert!(matches!(
+            actions[1],
+            ClickAction::NewPaneInTab { tab_position: 0 }
+        ));
+        assert!(matches!(actions[2], ClickAction::NewTab));
+    }
+
+    /// Two tabs ⇒ two "+ New Pane" rows (one per tab) and exactly one
+    /// "+ New Tab" row at the bottom of the list.
+    #[test]
+    fn panes_menu_two_tabs_emits_per_tab_new_pane_rows() {
+        let mut state = state_with_tabs_and_panes(2);
+        let cols = 40;
+        render_panes_menu(&mut state, 0, 20, cols);
+        // 2 PaneRows + 2 NewPaneActions + 1 NewTabAction = 5 regions.
+        assert_eq!(state.click_regions.len(), 5);
+
+        let new_panes: Vec<usize> = state
+            .click_regions
+            .iter()
+            .filter_map(|r| match &r.action {
+                ClickAction::NewPaneInTab { tab_position } => Some(*tab_position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(new_panes, vec![0, 1]);
+
+        let new_tabs = state
+            .click_regions
+            .iter()
+            .filter(|r| matches!(r.action, ClickAction::NewTab))
+            .count();
+        assert_eq!(new_tabs, 1);
+    }
+
+    /// "+ New Tab" is the last row of the list (highest row index)
+    /// regardless of how many tabs precede it. This guarantees the
+    /// row is unambiguously the trailing global affordance, not
+    /// confusable with a per-tab "+ New Pane" sibling.
+    #[test]
+    fn new_tab_row_is_below_all_new_pane_rows() {
+        let mut state = state_with_tabs_and_panes(2);
+        render_panes_menu(&mut state, 0, 20, 40);
+        let new_tab_row = state
+            .click_regions
+            .iter()
+            .find(|r| matches!(r.action, ClickAction::NewTab))
+            .expect("expected a NewTab region")
+            .row_start;
+        let max_new_pane_row = state
+            .click_regions
+            .iter()
+            .filter(|r| matches!(r.action, ClickAction::NewPaneInTab { .. }))
+            .map(|r| r.row_start)
+            .max()
+            .expect("expected at least one NewPaneInTab region");
+        assert!(
+            new_tab_row > max_new_pane_row,
+            "NewTab row {} should be below all NewPaneInTab rows (max {})",
+            new_tab_row,
+            max_new_pane_row
+        );
+    }
+
+    /// Click dispatch round-trip: tapping the "+ New Pane" row's
+    /// column-0 cell resolves to `ClickAction::NewPaneInTab` with the
+    /// correct `tab_position`. Confirms the click region covers the
+    /// full row width (`col_start == 0`).
+    #[test]
+    fn click_on_new_pane_row_resolves_to_action() {
+        let mut state = state_with_tabs_and_panes(2);
+        render_panes_menu(&mut state, 0, 20, 40);
+        let new_pane_region = state
+            .click_regions
+            .iter()
+            .find(|r| {
+                matches!(
+                    r.action,
+                    ClickAction::NewPaneInTab { tab_position: 1 }
+                )
+            })
+            .expect("expected NewPaneInTab for tab 1")
+            .clone();
+        assert_eq!(
+            state.click_to_action(new_pane_region.row_start, 0),
+            Some(ClickAction::NewPaneInTab { tab_position: 1 })
         );
     }
 }

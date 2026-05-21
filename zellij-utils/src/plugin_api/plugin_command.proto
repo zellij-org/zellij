@@ -212,6 +212,8 @@ enum CommandName {
   ExitFitMode = 217;
   UpdateFitSize = 218;
   SetMobileFocusedPane = 219;
+  NewTabUnfocused = 220;
+  NewTiledPaneInTab = 221;
 }
 
 message PluginCommand {
@@ -370,12 +372,31 @@ message PluginCommand {
     EnterFitModePayload enter_fit_mode_payload = 165;
     UpdateFitSizePayload update_fit_size_payload = 166;
     PaneId set_mobile_focused_pane_payload = 167;
+    NewTabUnfocusedPayload new_tab_unfocused_payload = 168;
+    NewTiledPaneInTabPayload new_tiled_pane_in_tab_payload = 169;
   }
 }
 
 message NewTabPayload {
   optional string name = 1;
   optional string cwd = 2;
+}
+
+// Payload for `NewTabUnfocused` — identical shape to `NewTabPayload` but
+// the server-side handler dispatches with `should_change_focus_to_new_tab:
+// false`, so the requesting client stays on its current tab. Used by the
+// mobile plugin's "+ New Tab" command, which must not yank the client off
+// the mobile plugin tab.
+message NewTabUnfocusedPayload {
+  optional string name = 1;
+  optional string cwd = 2;
+}
+
+// Payload for `NewTiledPaneInTab` — creates a new tiled terminal pane in
+// the tab at `tab_position` rather than in the requesting client's
+// focused tab. Used by the mobile plugin's "+ New Pane" command.
+message NewTiledPaneInTabPayload {
+  uint32 tab_position = 1;
 }
 
 message DumpSessionLayoutPayload {
@@ -1064,6 +1085,21 @@ message NewTabResponse {
     uint64 tab_id = 1;
     bool none = 2;  // Indicates None
   }
+}
+
+// Response for `NewTabUnfocused` — carries the newly created tab id,
+// or none on failure.
+message NewTabUnfocusedResponse {
+  oneof result {
+    uint64 tab_id = 1;
+    bool none = 2;
+  }
+}
+
+// Response for `NewTiledPaneInTab` — carries the newly created pane id,
+// or none on failure.
+message NewTiledPaneInTabResponse {
+  optional PaneId pane_id = 1;
 }
 
 message NewTabsResponse {

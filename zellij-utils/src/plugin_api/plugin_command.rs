@@ -65,8 +65,12 @@ pub use super::generated_api::api::{
         KillSessionsResponse as ProtobufKillSessionsResponse, ListTokensResponse,
         LoadNewPluginPayload, MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload,
         MovePaneWithPaneIdPayload, MovePayload, NewPluginArgs as ProtobufNewPluginArgs,
-        NewTabPayload, NewTabResponse as ProtobufNewTabResponse,
-        NewTabsResponse as ProtobufNewTabsResponse, NewTabsWithLayoutInfoPayload,
+        NewTabPayload, NewTabResponse as ProtobufNewTabResponse, NewTabUnfocusedPayload,
+        NewTabUnfocusedResponse as ProtobufNewTabUnfocusedResponse,
+        NewTabsResponse as ProtobufNewTabsResponse,
+        NewTabsWithLayoutInfoPayload, NewTiledPaneInTabPayload,
+        NewTiledPaneInTabResponse as ProtobufNewTiledPaneInTabResponse,
+        new_tab_unfocused_response,
         OpenCommandPaneBackgroundResponse as ProtobufOpenCommandPaneBackgroundResponse,
         OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneFloatingNearPluginResponse as ProtobufOpenCommandPaneFloatingNearPluginResponse,
@@ -903,6 +907,27 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     cwd: None,
                 }),
                 _ => Err("Mismatched payload for NewTab"),
+            },
+            Some(CommandName::NewTabUnfocused) => match protobuf_plugin_command.payload {
+                Some(Payload::NewTabUnfocusedPayload(payload)) => {
+                    Ok(PluginCommand::NewTabUnfocused {
+                        name: payload.name,
+                        cwd: payload.cwd,
+                    })
+                },
+                None => Ok(PluginCommand::NewTabUnfocused {
+                    name: None,
+                    cwd: None,
+                }),
+                _ => Err("Mismatched payload for NewTabUnfocused"),
+            },
+            Some(CommandName::NewTiledPaneInTab) => match protobuf_plugin_command.payload {
+                Some(Payload::NewTiledPaneInTabPayload(payload)) => {
+                    Ok(PluginCommand::NewTiledPaneInTab {
+                        tab_position: payload.tab_position as usize,
+                    })
+                },
+                _ => Err("Mismatched payload for NewTiledPaneInTab"),
             },
             Some(CommandName::GoToNextTab) => {
                 if protobuf_plugin_command.payload.is_some() {
@@ -2934,6 +2959,19 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::NewTab as i32,
                 payload: Some(Payload::NewTabPayload(NewTabPayload { name, cwd })),
             }),
+            PluginCommand::NewTabUnfocused { name, cwd } => Ok(ProtobufPluginCommand {
+                name: CommandName::NewTabUnfocused as i32,
+                payload: Some(Payload::NewTabUnfocusedPayload(NewTabUnfocusedPayload {
+                    name,
+                    cwd,
+                })),
+            }),
+            PluginCommand::NewTiledPaneInTab { tab_position } => Ok(ProtobufPluginCommand {
+                name: CommandName::NewTiledPaneInTab as i32,
+                payload: Some(Payload::NewTiledPaneInTabPayload(NewTiledPaneInTabPayload {
+                    tab_position: tab_position as u32,
+                })),
+            }),
             PluginCommand::GoToNextTab => Ok(ProtobufPluginCommand {
                 name: CommandName::GoToNextTab as i32,
                 payload: None,
@@ -4514,7 +4552,8 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
 // Conversion implementations for tab creation response types
 use crate::data::{
     BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
-    FocusOrCreateTabResponse, NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
+    FocusOrCreateTabResponse, NewTabResponse, NewTabUnfocusedResponse, NewTabsResponse,
+    NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
     OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
     OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
@@ -4545,6 +4584,47 @@ impl From<NewTabResponse> for ProtobufNewTabResponse {
             None => ProtobufNewTabResponse {
                 result: Some(new_tab_response::Result::None(true)),
             },
+        }
+    }
+}
+
+impl TryFrom<ProtobufNewTabUnfocusedResponse> for NewTabUnfocusedResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufNewTabUnfocusedResponse) -> Result<Self, Self::Error> {
+        match protobuf.result {
+            Some(new_tab_unfocused_response::Result::TabId(id)) => Ok(Some(id as usize)),
+            Some(new_tab_unfocused_response::Result::None(_)) | None => Ok(None),
+        }
+    }
+}
+
+impl From<NewTabUnfocusedResponse> for ProtobufNewTabUnfocusedResponse {
+    fn from(response: NewTabUnfocusedResponse) -> Self {
+        match response {
+            Some(tab_id) => ProtobufNewTabUnfocusedResponse {
+                result: Some(new_tab_unfocused_response::Result::TabId(tab_id as u64)),
+            },
+            None => ProtobufNewTabUnfocusedResponse {
+                result: Some(new_tab_unfocused_response::Result::None(true)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufNewTiledPaneInTabResponse> for NewTiledPaneInTabResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufNewTiledPaneInTabResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<NewTiledPaneInTabResponse> for ProtobufNewTiledPaneInTabResponse {
+    fn from(response: NewTiledPaneInTabResponse) -> Self {
+        ProtobufNewTiledPaneInTabResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
         }
     }
 }
