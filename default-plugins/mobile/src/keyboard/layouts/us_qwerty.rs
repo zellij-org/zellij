@@ -320,69 +320,62 @@ impl UsQwerty {
         KeyRow::tall(0, build_cells(&items))
     }
 
-    /// Natural-tier Letters R2 — 9 letters with a left stagger and
-    /// the row extending to the same right edge as R1 / R3.
-    ///
-    /// The stagger is half a R1 letter cell. The 9 letters fill the
-    /// remaining `target - stagger` cols via `edge_first_widths`, so
-    /// they're as close to uniform as the math allows. Smaller cells
-    /// sit on the row edges (left and right inside the row, matching
-    /// the user's edge-first preference); bigger cells absorb the
-    /// fractional remainder near the middle. `right_pad` is zero —
-    /// R2 always reaches the right edge.
+    /// Natural-tier Letters R2 — 9 letters filling the full target
+    /// width via `edge_first_widths`. No stagger: cells are sized to
+    /// be as wide as the row allows, with smaller cells on the edges
+    /// and the bigger ones absorbing the remainder near the middle.
     fn natural_letters_r2(&self, target: u16) -> KeyRow {
-        let r1_lw = (target / 10).max(1);
-        let stagger = r1_lw / 2;
-        let r2_target = target.saturating_sub(stagger).max(9);
-        let widths = edge_first_widths(r2_target, 9);
+        let widths = edge_first_widths(target.max(9), 9);
         let items: Vec<(u16, u16)> = (0..LETTERS_R2.len() as u16)
             .zip(widths.iter())
             .map(|(i, w)| (ID_LETTERS_R2_START + i, *w))
             .collect();
-        let mut row = KeyRow::tall(stagger, build_cells(&items));
-        row.right_pad = 0;
-        row
+        KeyRow::tall(0, build_cells(&items))
     }
 
     /// Natural-tier Letters R3 — ⇧ + 7 letters + . + / + ⌫.
-    /// Letters use the R1/R2 letter width; the four anchors split the
-    /// remaining width with `⇧ ≈ ⌫ > . = /`.
+    ///
+    /// Period and slash get a fixed floor of 2 cols (never narrower);
+    /// shift and backspace also get a floor of 2 cols. When the anchor
+    /// budget can't host all four anchors at >= 2 cols (target = 20, 21
+    /// with lw=2), `.` and `/` are dropped and the row falls back to
+    /// the 9-cell ⇧ + 7 letters + ⌫ layout that the compact tier uses.
+    /// No R3 cell is ever narrower than 2 cols.
     fn natural_letters_r3(&self, target: u16) -> KeyRow {
+        const PUNCT_FLOOR: u16 = 2;
+        const BRACKET_MIN: u16 = 2;
         let lw = (target / 10).max(1);
         let letters_total = 7 * lw;
         let anchor_budget = target.saturating_sub(letters_total);
-        // Distribute the anchor budget: shift and backspace get bigger
-        // shares than `.` and `/`. Weighting:
-        //   shift  : 2
-        //   .      : 1
-        //   /      : 1
-        //   ⌫      : 2
-        // Total weight = 6.
-        let weights = [2u16, 1, 1, 2];
-        let weight_sum: u16 = weights.iter().sum();
-        let mut anchor_widths = [0u16; 4];
-        let mut allocated: u16 = 0;
-        for (i, w) in weights.iter().enumerate() {
-            anchor_widths[i] = (anchor_budget * w) / weight_sum;
-            allocated += anchor_widths[i];
-        }
-        // Spread the remainder evenly across anchors (shift/backspace first).
-        let order = [0usize, 3, 1, 2];
-        let mut remainder = anchor_budget - allocated;
-        let mut idx = 0;
-        while remainder > 0 {
-            anchor_widths[order[idx % order.len()]] += 1;
-            remainder -= 1;
-            idx += 1;
-        }
+        let needed = 2 * PUNCT_FLOOR + 2 * BRACKET_MIN;
         let mut items: Vec<(u16, u16)> = Vec::with_capacity(11);
-        items.push((ID_LETTERS_R3_SHIFT, anchor_widths[0]));
-        for i in 0..LETTERS_R3_LETTERS.len() as u16 {
-            items.push((ID_LETTERS_R3_LETTERS_START + i, lw));
+        if anchor_budget >= needed {
+            // Full 11-cell row: ⇧ + 7 letters + . + / + ⌫.
+            let punct_reserved = 2 * PUNCT_FLOOR;
+            let period_w = (punct_reserved + 1) / 2;
+            let slash_w = punct_reserved - period_w;
+            let bracket_budget = anchor_budget - punct_reserved;
+            let shift_w = (bracket_budget + 1) / 2;
+            let backspace_w = bracket_budget - shift_w;
+            items.push((ID_LETTERS_R3_SHIFT, shift_w));
+            for i in 0..LETTERS_R3_LETTERS.len() as u16 {
+                items.push((ID_LETTERS_R3_LETTERS_START + i, lw));
+            }
+            items.push((ID_LETTERS_R3_PERIOD, period_w));
+            items.push((ID_LETTERS_R3_SLASH, slash_w));
+            items.push((ID_LETTERS_R3_BACKSPACE, backspace_w));
+        } else {
+            // Drop . and /: 9-cell row (⇧ + 7 letters + ⌫). Same shape
+            // as compact-tier R3. Keeps every cell >= 2 cols wide at
+            // the narrowest natural-tier widths.
+            let shift_w = (anchor_budget + 1) / 2;
+            let backspace_w = anchor_budget - shift_w;
+            items.push((ID_LETTERS_R3_SHIFT, shift_w));
+            for i in 0..LETTERS_R3_LETTERS.len() as u16 {
+                items.push((ID_LETTERS_R3_LETTERS_START + i, lw));
+            }
+            items.push((ID_LETTERS_R3_BACKSPACE, backspace_w));
         }
-        items.push((ID_LETTERS_R3_PERIOD, anchor_widths[1]));
-        items.push((ID_LETTERS_R3_SLASH, anchor_widths[2]));
-        items.push((ID_LETTERS_R3_BACKSPACE, anchor_widths[3]));
         KeyRow::tall(0, build_cells(&items))
     }
 
@@ -1061,14 +1054,16 @@ mod tests {
         assert_eq!(layout.rows(&mods, 40).len(), 4);
     }
 
-    /// Letters row 2 carries a stagger; rows 1 and 3 do not.
+    /// All natural-tier letter rows start at column 0 — no stagger.
+    /// R2 fills the full target width so its cells are as wide as the
+    /// row allows.
     #[test]
-    fn letters_row_2_is_staggered() {
+    fn letters_rows_have_no_stagger() {
         let layout = UsQwerty::new();
         let mods = KeyboardModifiers::default();
         let rows = layout.rows(&mods, 40);
         assert_eq!(rows[1].offset_col, 0); // R1
-        assert!(rows[2].offset_col >= 1);  // R2 has a stagger
+        assert_eq!(rows[2].offset_col, 0); // R2
         assert_eq!(rows[3].offset_col, 0); // R3
     }
 
@@ -1097,6 +1092,72 @@ mod tests {
                 let extent = row.offset_col + last_end + row.right_pad;
                 assert_eq!(extent, 40, "{:?} row {} extent={}", layer, i, extent);
             }
+        }
+    }
+
+    /// Natural-tier Letters R3 never emits an anchor cell narrower
+    /// than 2 cols. Anchors are shift, period, slash, backspace.
+    /// (Letter cells inherit `lw` from R1 and may be 1 wide at very
+    /// narrow widths; that is a separate concern.)
+    #[test]
+    fn natural_letters_r3_anchors_at_least_two_wide() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        for target in 13u16..=80 {
+            let rows = layout.rows(&mods, target);
+            let r3 = &rows[3];
+            for cell in &r3.cells {
+                let is_letter = (ID_LETTERS_R3_LETTERS_START
+                    ..ID_LETTERS_R3_LETTERS_START + LETTERS_R3_LETTERS.len() as u16)
+                    .contains(&cell.id.0);
+                if is_letter {
+                    continue;
+                }
+                let w = cell.col_end - cell.col_start;
+                assert!(
+                    w >= 2,
+                    "target={} anchor id={} width={} < 2",
+                    target,
+                    cell.id.0,
+                    w,
+                );
+            }
+        }
+    }
+
+    /// At target widths where the anchor budget can't host all four
+    /// anchors at >= 2 cols (target = 20, 21 with lw=2), Letters R3
+    /// drops `.` and `/` and emits the 9-cell ⇧ + 7 letters + ⌫ row.
+    #[test]
+    fn natural_letters_r3_drops_punctuation_when_tight() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        for target in [20u16, 21] {
+            let rows = layout.rows(&mods, target);
+            let r3 = &rows[3];
+            assert_eq!(r3.cells.len(), 9, "target {target}");
+            for cell in &r3.cells {
+                assert_ne!(cell.id.0, ID_LETTERS_R3_PERIOD, "target {target}");
+                assert_ne!(cell.id.0, ID_LETTERS_R3_SLASH, "target {target}");
+            }
+        }
+    }
+
+    /// At target widths where the budget fits all four anchors at
+    /// >= 2 cols (anchor_budget >= 8), Letters R3 keeps the full
+    /// 11-cell layout with `.` and `/` present.
+    #[test]
+    fn natural_letters_r3_keeps_punctuation_when_fits() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        for target in [22u16, 25, 30, 40, 60] {
+            let rows = layout.rows(&mods, target);
+            let r3 = &rows[3];
+            assert_eq!(r3.cells.len(), 11, "target {target}");
+            let has_period = r3.cells.iter().any(|c| c.id.0 == ID_LETTERS_R3_PERIOD);
+            let has_slash = r3.cells.iter().any(|c| c.id.0 == ID_LETTERS_R3_SLASH);
+            assert!(has_period, "period absent at target {target}");
+            assert!(has_slash, "slash absent at target {target}");
         }
     }
 
