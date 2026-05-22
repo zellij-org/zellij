@@ -335,26 +335,29 @@ impl UsQwerty {
 
     /// Natural-tier Letters R3 — ⇧ + 7 letters + . + / + ⌫.
     ///
-    /// Period and slash get a fixed floor of 2 cols (never narrower);
-    /// shift and backspace also get a floor of 2 cols. When the anchor
-    /// budget can't host all four anchors at >= 2 cols (target = 20, 21
-    /// with lw=2), `.` and `/` are dropped and the row falls back to
-    /// the 9-cell ⇧ + 7 letters + ⌫ layout that the compact tier uses.
-    /// No R3 cell is ever narrower than 2 cols.
+    /// Period and slash scale with the letter width (half `lw`, rounded
+    /// up) with a hard floor of 2 cols, so they stay visually
+    /// proportionate as the keyboard grows instead of saturating at 2.
+    /// Shift and backspace also get a floor of 2 cols and absorb the
+    /// remaining anchor budget. When the budget can't host all four
+    /// anchors at >= 2 cols (target = 20, 21 with lw=2), `.` and `/`
+    /// are dropped and the row falls back to the 9-cell
+    /// ⇧ + 7 letters + ⌫ layout that the compact tier uses. No R3 cell
+    /// is ever narrower than 2 cols.
     fn natural_letters_r3(&self, target: u16) -> KeyRow {
         const PUNCT_FLOOR: u16 = 2;
         const BRACKET_MIN: u16 = 2;
         let lw = (target / 10).max(1);
         let letters_total = 7 * lw;
         let anchor_budget = target.saturating_sub(letters_total);
-        let needed = 2 * PUNCT_FLOOR + 2 * BRACKET_MIN;
+        let punct_w = ((lw + 1) / 2).max(PUNCT_FLOOR);
+        let needed = 2 * punct_w + 2 * BRACKET_MIN;
         let mut items: Vec<(u16, u16)> = Vec::with_capacity(11);
         if anchor_budget >= needed {
             // Full 11-cell row: ⇧ + 7 letters + . + / + ⌫.
-            let punct_reserved = 2 * PUNCT_FLOOR;
-            let period_w = (punct_reserved + 1) / 2;
-            let slash_w = punct_reserved - period_w;
-            let bracket_budget = anchor_budget - punct_reserved;
+            let period_w = punct_w;
+            let slash_w = punct_w;
+            let bracket_budget = anchor_budget - 2 * punct_w;
             let shift_w = (bracket_budget + 1) / 2;
             let backspace_w = bracket_budget - shift_w;
             items.push((ID_LETTERS_R3_SHIFT, shift_w));
@@ -1158,6 +1161,32 @@ mod tests {
             let has_slash = r3.cells.iter().any(|c| c.id.0 == ID_LETTERS_R3_SLASH);
             assert!(has_period, "period absent at target {target}");
             assert!(has_slash, "slash absent at target {target}");
+        }
+    }
+
+    /// Natural-tier Letters R3 period and slash scale with letter
+    /// width (half lw, rounded up), not pinned at 2. Prevents a
+    /// regression where punct cells stayed 2 cols regardless of how
+    /// wide the keyboard grew, making them visually tiny next to
+    /// letter cells on large layouts.
+    #[test]
+    fn natural_letters_r3_punct_scales_with_letter_width() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        for target in [50u16, 60, 80, 100] {
+            let rows = layout.rows(&mods, target);
+            let r3 = &rows[3];
+            assert_eq!(r3.cells.len(), 11, "target {target}");
+            let lw = (target / 10).max(1);
+            let expected = ((lw + 1) / 2).max(2);
+            for cell in &r3.cells {
+                if cell.id.0 == ID_LETTERS_R3_PERIOD
+                    || cell.id.0 == ID_LETTERS_R3_SLASH
+                {
+                    let w = cell.col_end - cell.col_start;
+                    assert_eq!(w, expected, "target={target} id={}", cell.id.0);
+                }
+            }
         }
     }
 
