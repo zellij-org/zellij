@@ -1962,8 +1962,8 @@ pub struct Options {
     pub theme_dark: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="47")]
     pub theme_light: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(enumeration="MobileModeDefault", optional, tag="48")]
-    pub mobile_mode_default: ::core::option::Option<i32>,
+    #[prost(enumeration="MobileLayout", optional, tag="48")]
+    pub mobile_layout: ::core::option::Option<i32>,
     #[prost(uint32, optional, tag="49")]
     pub mobile_threshold_cols: ::core::option::Option<u32>,
     #[prost(uint32, optional, tag="50")]
@@ -2897,32 +2897,32 @@ impl WebSharing {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
-pub enum MobileModeDefault {
+pub enum MobileLayout {
     Unspecified = 0,
-    Auto = 1,
+    Web = 1,
     Always = 2,
     Never = 3,
 }
-impl MobileModeDefault {
+impl MobileLayout {
     /// String value of the enum field names used in the ProtoBuf definition.
     ///
     /// The values are not transformed in any way and thus are considered stable
     /// (if the ProtoBuf definition does not change) and safe for programmatic use.
     pub fn as_str_name(&self) -> &'static str {
         match self {
-            MobileModeDefault::Unspecified => "MOBILE_MODE_DEFAULT_UNSPECIFIED",
-            MobileModeDefault::Auto => "MOBILE_MODE_DEFAULT_AUTO",
-            MobileModeDefault::Always => "MOBILE_MODE_DEFAULT_ALWAYS",
-            MobileModeDefault::Never => "MOBILE_MODE_DEFAULT_NEVER",
+            MobileLayout::Unspecified => "MOBILE_LAYOUT_UNSPECIFIED",
+            MobileLayout::Web => "MOBILE_LAYOUT_WEB",
+            MobileLayout::Always => "MOBILE_LAYOUT_ALWAYS",
+            MobileLayout::Never => "MOBILE_LAYOUT_NEVER",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
     pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
         match value {
-            "MOBILE_MODE_DEFAULT_UNSPECIFIED" => Some(Self::Unspecified),
-            "MOBILE_MODE_DEFAULT_AUTO" => Some(Self::Auto),
-            "MOBILE_MODE_DEFAULT_ALWAYS" => Some(Self::Always),
-            "MOBILE_MODE_DEFAULT_NEVER" => Some(Self::Never),
+            "MOBILE_LAYOUT_UNSPECIFIED" => Some(Self::Unspecified),
+            "MOBILE_LAYOUT_WEB" => Some(Self::Web),
+            "MOBILE_LAYOUT_ALWAYS" => Some(Self::Always),
+            "MOBILE_LAYOUT_NEVER" => Some(Self::Never),
             _ => None,
         }
     }

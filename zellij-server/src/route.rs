@@ -2422,7 +2422,7 @@ pub(crate) fn route_thread_main(
                                 // only chance to route a freshly-attached
                                 // phone into the mobile UI. Reads the
                                 // runtime config so that CLI-overridden
-                                // options (`--mobile-mode-default`,
+                                // options (`--mobile-layout`,
                                 // `--mobile-threshold-cols`, etc.) win over
                                 // the saved KDL config.
                                 if matches!(cause, ResizeCause::Viewport) {
@@ -2437,7 +2437,7 @@ pub(crate) fn route_thread_main(
                                                 (
                                                     config
                                                         .options
-                                                        .mobile_mode_default
+                                                        .mobile_layout
                                                         .unwrap_or_default(),
                                                     config
                                                         .options
@@ -2451,7 +2451,7 @@ pub(crate) fn route_thread_main(
                                             })
                                         });
                                     if let Some((
-                                        mobile_mode_default,
+                                        mobile_layout,
                                         threshold_cols,
                                         threshold_rows,
                                     )) = mobile_options
@@ -2461,7 +2461,7 @@ pub(crate) fn route_thread_main(
                                                 ScreenInstruction::ReevaluateMobileMode {
                                                     client_id,
                                                     new_size,
-                                                    mobile_mode_default,
+                                                    mobile_layout,
                                                     threshold_cols,
                                                     threshold_rows,
                                                 },

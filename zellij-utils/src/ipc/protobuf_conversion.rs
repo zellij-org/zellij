@@ -748,13 +748,13 @@ impl From<crate::input::options::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
-            mobile_mode_default: options.mobile_mode_default.map(|m| {
-                use crate::client_server_contract::client_server_contract::MobileModeDefault as ProtoMobileModeDefault;
-                use crate::input::options::MobileModeDefault;
+            mobile_layout: options.mobile_layout.map(|m| {
+                use crate::client_server_contract::client_server_contract::MobileLayout as ProtoMobileLayout;
+                use crate::input::options::MobileLayout;
                 match m {
-                    MobileModeDefault::Auto => ProtoMobileModeDefault::Auto as i32,
-                    MobileModeDefault::Always => ProtoMobileModeDefault::Always as i32,
-                    MobileModeDefault::Never => ProtoMobileModeDefault::Never as i32,
+                    MobileLayout::Web => ProtoMobileLayout::Web as i32,
+                    MobileLayout::Always => ProtoMobileLayout::Always as i32,
+                    MobileLayout::Never => ProtoMobileLayout::Never as i32,
                 }
             }),
             mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u32),
@@ -771,7 +771,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
         options: crate::client_server_contract::client_server_contract::Options,
     ) -> Result<Self> {
         use crate::client_server_contract::client_server_contract::{
-            Clipboard as ProtoClipboard, MobileModeDefault as ProtoMobileModeDefault,
+            Clipboard as ProtoClipboard, MobileLayout as ProtoMobileLayout,
             OnForceClose as ProtoOnForceClose, WebSharing as ProtoWebSharing,
         };
 
@@ -856,19 +856,19 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
-            mobile_mode_default: options
-                .mobile_mode_default
-                .map(|m| match ProtoMobileModeDefault::from_i32(m) {
-                    Some(ProtoMobileModeDefault::Auto) => {
-                        Ok(crate::input::options::MobileModeDefault::Auto)
+            mobile_layout: options
+                .mobile_layout
+                .map(|m| match ProtoMobileLayout::from_i32(m) {
+                    Some(ProtoMobileLayout::Web) => {
+                        Ok(crate::input::options::MobileLayout::Web)
                     },
-                    Some(ProtoMobileModeDefault::Always) => {
-                        Ok(crate::input::options::MobileModeDefault::Always)
+                    Some(ProtoMobileLayout::Always) => {
+                        Ok(crate::input::options::MobileLayout::Always)
                     },
-                    Some(ProtoMobileModeDefault::Never) => {
-                        Ok(crate::input::options::MobileModeDefault::Never)
+                    Some(ProtoMobileLayout::Never) => {
+                        Ok(crate::input::options::MobileLayout::Never)
                     },
-                    _ => Err(anyhow!("Invalid MobileModeDefault value: {}", m)),
+                    _ => Err(anyhow!("Invalid MobileLayout value: {}", m)),
                 })
                 .transpose()?,
             mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u16),

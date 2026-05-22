@@ -1181,7 +1181,7 @@ message Options {
   optional bool mouse_click_through = 45;
   optional string theme_dark = 46;
   optional string theme_light = 47;
-  optional MobileModeDefault mobile_mode_default = 48;
+  optional MobileLayout mobile_layout = 48;
   optional uint32 mobile_threshold_cols = 49;
   optional uint32 mobile_threshold_rows = 50;
 }
@@ -1211,11 +1211,11 @@ enum WebSharing {
   WEB_SHARING_DISABLED = 3;
 }
 
-enum MobileModeDefault {
-  MOBILE_MODE_DEFAULT_UNSPECIFIED = 0;
-  MOBILE_MODE_DEFAULT_AUTO = 1;
-  MOBILE_MODE_DEFAULT_ALWAYS = 2;
-  MOBILE_MODE_DEFAULT_NEVER = 3;
+enum MobileLayout {
+  MOBILE_LAYOUT_UNSPECIFIED = 0;
+  MOBILE_LAYOUT_WEB = 1;
+  MOBILE_LAYOUT_ALWAYS = 2;
+  MOBILE_LAYOUT_NEVER = 3;
 }
 
 // Pane-targeting action messages

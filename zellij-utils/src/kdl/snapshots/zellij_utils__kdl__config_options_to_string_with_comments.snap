@@ -304,16 +304,16 @@ web_sharing "disabled"
  
 // When attached clients land in the mobile UI plugin.
 // Options:
-//   - "auto" (Default — uses mobile_threshold_cols/rows)
-//   - "always"
+//   - "web" (Default — web clients only, gated on mobile_threshold_cols/rows)
+//   - "always" (any client, gated on mobile_threshold_cols/rows)
 //   - "never"
 // 
-// mobile_mode_default "auto"
+mobile_layout "always"
  
-// Column threshold for mobile_mode_default = auto.
+// Column breakpoint for mobile_layout (web/always). 0 = always match.
 // Default: 60
-// mobile_threshold_cols 60
+mobile_threshold_cols 72
  
-// Row threshold for mobile_mode_default = auto.
+// Row breakpoint for mobile_layout (web/always). 0 = always match.
 // Default: 30
-// mobile_threshold_rows 30
+mobile_threshold_rows 0

@@ -51,7 +51,7 @@ use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
-use zellij_utils::input::options::{Clipboard, MobileModeDefault};
+use zellij_utils::input::options::{Clipboard, MobileLayout};
 use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
@@ -909,7 +909,7 @@ pub enum ScreenInstruction {
     ReevaluateMobileMode {
         client_id: ClientId,
         new_size: Size,
-        mobile_mode_default: MobileModeDefault,
+        mobile_layout: MobileLayout,
         threshold_cols: u16,
         threshold_rows: u16,
     },
@@ -2054,6 +2054,53 @@ impl Screen {
         } else {
             self.enter_mobile_mode(client_id)
         }
+    }
+
+    /// Decide whether `client_id` should auto-route into/out of the
+    /// mobile UI based on the new viewport, the `mobile_layout`
+    /// config, and the per-dimension breakpoints. Auto-promotes when
+    /// the size gate flips on and the client is not already in
+    /// mobile; auto-demotes only if the original entry was itself
+    /// auto-driven (manual entries via `ToggleMobileMode` are
+    /// preserved).
+    pub fn reevaluate_mobile_mode(
+        &mut self,
+        client_id: ClientId,
+        new_size: Size,
+        mobile_layout: MobileLayout,
+        threshold_cols: u16,
+        threshold_rows: u16,
+    ) -> Result<()> {
+        let is_web_client = self
+            .connected_clients
+            .borrow()
+            .get(&client_id)
+            .copied()
+            .unwrap_or(false);
+        let should_be_mobile = mobile_layout.should_route_to_mobile(
+            is_web_client,
+            new_size.cols,
+            new_size.rows,
+            threshold_cols,
+            threshold_rows,
+        );
+        let is_mobile = self.is_in_mobile_mode(client_id);
+        let was_auto = self.mobile_auto_entered.contains(&client_id);
+        if should_be_mobile && !is_mobile {
+            // Auto-promote: small viewport just appeared (e.g. browser
+            // delivered its real size after the initial server-side
+            // fallback).
+            self.enter_mobile_mode(client_id)?;
+            self.mobile_auto_entered.insert(client_id);
+            self.render(None)?;
+        } else if !should_be_mobile && is_mobile && was_auto {
+            // Auto-demote: viewport grew back above the threshold
+            // *and* the entry was itself auto-driven. Manual entries
+            // (via `ToggleMobileMode`) are preserved.
+            self.exit_mobile_mode(client_id)?;
+            self.render(None)?;
+        }
+        Ok(())
     }
 
     /// Collects every tab visible to `client_id`, sorted by display
@@ -10759,41 +10806,17 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ReevaluateMobileMode {
                 client_id,
                 new_size,
-                mobile_mode_default,
+                mobile_layout,
                 threshold_cols,
                 threshold_rows,
             } => {
-                // Decide whether the client *should* be in mobile
-                // mode given the new viewport. The OR semantics
-                // (small in *either* dimension) catches the typical
-                // phone shapes — narrow-and-tall (portrait) and
-                // wide-and-short (landscape) — that the AND form
-                // missed.
-                let should_be_mobile = match mobile_mode_default {
-                    MobileModeDefault::Always => true,
-                    MobileModeDefault::Never => false,
-                    MobileModeDefault::Auto => {
-                        new_size.cols <= threshold_cols as usize
-                            || new_size.rows <= threshold_rows as usize
-                    },
-                };
-                let is_mobile = screen.is_in_mobile_mode(client_id);
-                let was_auto = screen.mobile_auto_entered.contains(&client_id);
-                if should_be_mobile && !is_mobile {
-                    // Auto-promote: small viewport just appeared
-                    // (e.g. browser delivered its real size after the
-                    // initial server-side fallback).
-                    screen.enter_mobile_mode(client_id)?;
-                    screen.mobile_auto_entered.insert(client_id);
-                    screen.render(None)?;
-                } else if !should_be_mobile && is_mobile && was_auto {
-                    // Auto-demote: viewport grew back above the
-                    // threshold *and* the entry was itself
-                    // auto-driven. Manual entries (via
-                    // `ToggleMobileMode`) are preserved.
-                    screen.exit_mobile_mode(client_id)?;
-                    screen.render(None)?;
-                }
+                screen.reevaluate_mobile_mode(
+                    client_id,
+                    new_size,
+                    mobile_layout,
+                    threshold_cols,
+                    threshold_rows,
+                )?;
             },
             ScreenInstruction::SetSoftKeyboard { client_id, on } => {
                 // Forward to the calling client. For web clients the

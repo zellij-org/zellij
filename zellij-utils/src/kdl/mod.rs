@@ -2831,13 +2831,13 @@ impl Options {
                 .map(|(v, _)| v);
         // Mobile config — parsed here; consumed when a client attaches
         // to decide whether to route it into a per-client mobile tab.
-        let mobile_mode_default = match kdl_property_first_arg_as_string_or_error!(
+        let mobile_layout = match kdl_property_first_arg_as_string_or_error!(
             kdl_options,
-            "mobile_mode_default"
+            "mobile_layout"
         ) {
             Some((value, entry)) => {
-                use crate::input::options::MobileModeDefault;
-                match value.parse::<MobileModeDefault>() {
+                use crate::input::options::MobileLayout;
+                match value.parse::<MobileLayout>() {
                     Ok(v) => Some(v),
                     Err(e) => return Err(kdl_parsing_error!(e, entry)),
                 }
@@ -2915,7 +2915,7 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
-            mobile_mode_default,
+            mobile_layout,
             mobile_threshold_cols,
             mobile_threshold_rows,
         })
@@ -4263,36 +4263,36 @@ impl Options {
             None
         }
     }
-    fn mobile_mode_default_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        use crate::input::options::MobileModeDefault;
+    fn mobile_layout_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        use crate::input::options::MobileLayout;
         let comment_text = format!(
             "{}\n{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// When attached clients land in the mobile UI plugin.",
             "// Options:",
-            "//   - \"auto\" (Default — uses mobile_threshold_cols/rows)",
-            "//   - \"always\"",
+            "//   - \"web\" (Default — web clients only, gated on mobile_threshold_cols/rows)",
+            "//   - \"always\" (any client, gated on mobile_threshold_cols/rows)",
             "//   - \"never\"",
             "// ",
         );
-        let create_node = |value: MobileModeDefault| -> KdlNode {
-            let mut node = KdlNode::new("mobile_mode_default");
+        let create_node = |value: MobileLayout| -> KdlNode {
+            let mut node = KdlNode::new("mobile_layout");
             let s = match value {
-                MobileModeDefault::Auto => "auto",
-                MobileModeDefault::Always => "always",
-                MobileModeDefault::Never => "never",
+                MobileLayout::Web => "web",
+                MobileLayout::Always => "always",
+                MobileLayout::Never => "never",
             };
             node.push(KdlValue::String(s.to_string()));
             node
         };
-        if let Some(value) = self.mobile_mode_default {
+        if let Some(value) = self.mobile_layout {
             let mut node = create_node(value);
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
-            let mut node = create_node(MobileModeDefault::Auto);
+            let mut node = create_node(MobileLayout::Web);
             node.set_leading(format!("{}\n// ", comment_text));
             Some(node)
         } else {
@@ -4303,7 +4303,7 @@ impl Options {
         let comment_text = format!(
             "{}\n{}\n{}",
             " ",
-            "// Column threshold for mobile_mode_default = auto.",
+            "// Column breakpoint for mobile_layout (web/always). 0 = always match.",
             "// Default: 60",
         );
         let create_node = |value: u16| -> KdlNode {
@@ -4329,7 +4329,7 @@ impl Options {
         let comment_text = format!(
             "{}\n{}\n{}",
             " ",
-            "// Row threshold for mobile_mode_default = auto.",
+            "// Row breakpoint for mobile_layout (web/always). 0 = always match.",
             "// Default: 30",
         );
         let create_node = |value: u16| -> KdlNode {
@@ -4529,8 +4529,8 @@ impl Options {
         {
             nodes.push(client_async_worker_tasks);
         }
-        if let Some(mobile_mode_default) = self.mobile_mode_default_to_kdl(add_comments) {
-            nodes.push(mobile_mode_default);
+        if let Some(mobile_layout) = self.mobile_layout_to_kdl(add_comments) {
+            nodes.push(mobile_layout);
         }
         if let Some(mobile_threshold_cols) = self.mobile_threshold_cols_to_kdl(add_comments) {
             nodes.push(mobile_threshold_cols);
@@ -7253,6 +7253,9 @@ fn config_options_to_string() {
         support_kitty_keyboard_protocol false
         web_server true
         web_sharing "disabled"
+        mobile_layout "always"
+        mobile_threshold_cols 72
+        mobile_threshold_rows 0
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();
@@ -7300,6 +7303,9 @@ fn config_options_to_string_with_comments() {
         support_kitty_keyboard_protocol false
         web_server true
         web_sharing "disabled"
+        mobile_layout "always"
+        mobile_threshold_cols 72
+        mobile_threshold_rows 0
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();
@@ -7331,6 +7337,43 @@ fn config_options_to_string_without_options() {
         "Deserialized serialized config equals original config"
     );
     insta::assert_snapshot!(fake_document.to_string());
+}
+
+#[test]
+fn mobile_layout_kdl_round_trip_for_every_variant() {
+    // Drive every `mobile_layout` variant through parse → serialize
+    // → parse so a future broken FromStr arm or writer arm fails
+    // loudly. Each loop also flips the breakpoints so the 0-sentinel
+    // round-trips too.
+    use crate::input::options::MobileLayout;
+    let cases = [
+        ("web", MobileLayout::Web, (60, 30)),
+        ("always", MobileLayout::Always, (0, 0)),
+        ("never", MobileLayout::Never, (40, 0)),
+    ];
+    for (value, expected, (cols, rows)) in cases {
+        let fake_config = format!(
+            r##"
+                mobile_layout "{value}"
+                mobile_threshold_cols {cols}
+                mobile_threshold_rows {rows}
+            "##
+        );
+        let document: KdlDocument = fake_config.parse().unwrap();
+        let parsed = Options::from_kdl(&document).unwrap();
+        assert_eq!(parsed.mobile_layout, Some(expected), "case: {value}");
+        assert_eq!(parsed.mobile_threshold_cols, Some(cols), "case: {value}");
+        assert_eq!(parsed.mobile_threshold_rows, Some(rows), "case: {value}");
+
+        let mut serialized = Options::to_kdl(&parsed, false);
+        let mut fake_document = KdlDocument::new();
+        fake_document.nodes_mut().append(&mut serialized);
+        let reparsed = Options::from_kdl(
+            &fake_document.to_string().parse::<KdlDocument>().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed, reparsed, "round-trip mismatch for {value}");
+    }
 }
 
 #[test]

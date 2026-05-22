@@ -52,7 +52,7 @@ Options {
     enforce_https_for_localhost: None,
     post_command_discovery_hook: None,
     client_async_worker_tasks: None,
-    mobile_mode_default: None,
+    mobile_layout: None,
     mobile_threshold_cols: None,
     mobile_threshold_rows: None,
 }

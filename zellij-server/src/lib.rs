@@ -67,7 +67,7 @@ use zellij_utils::{
         config::{watch_config_file_changes, watch_layout_dir_changes, Config},
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, PluginAlias, Run, RunPluginOrAlias},
-        options::{MobileModeDefault, Options},
+        options::Options,
         plugins::PluginAliases,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
@@ -1086,8 +1086,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // one-shot at startup; subsequent rotations resize the
                 // mobile tab via the per-tab sizing path but do not
                 // promote/demote the client.
-                let mobile_mode_default = runtime_config_options
-                    .mobile_mode_default
+                let mobile_layout = runtime_config_options
+                    .mobile_layout
                     .unwrap_or_default();
                 let mobile_threshold_cols = runtime_config_options
                     .mobile_threshold_cols
@@ -1096,19 +1096,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .mobile_threshold_rows
                     .unwrap_or(30);
                 let viewport = client_attributes.size;
-                let should_enter_mobile = match mobile_mode_default {
-                    MobileModeDefault::Always => true,
-                    MobileModeDefault::Never => false,
-                    MobileModeDefault::Auto => {
-                        // OR semantics: a viewport is "mobile" if it
-                        // is small in *either* dimension. Phones in
-                        // portrait have narrow cols but tall rows;
-                        // phones in landscape have wide cols but
-                        // short rows. AND semantics misses both.
-                        viewport.cols <= mobile_threshold_cols as usize
-                            || viewport.rows <= mobile_threshold_rows as usize
-                    },
-                };
+                let should_enter_mobile = mobile_layout.should_route_to_mobile(
+                    is_web_client,
+                    viewport.cols,
+                    viewport.rows,
+                    mobile_threshold_cols,
+                    mobile_threshold_rows,
+                );
                 if should_enter_mobile {
                     session_data
                         .read()
@@ -1190,13 +1184,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap();
 
                 // Decide whether the attaching client should be auto-routed
-                // into mobile mode based on `mobile_mode_default` and the
-                // viewport size thresholds. The `Auto` decision is made
+                // into mobile mode based on `mobile_layout` and the
+                // viewport size breakpoints. The `Web` decision is made
                 // once at attach time (rotating the phone afterwards
                 // resizes the existing mobile tab via the per-tab sizing
                 // path but does not toggle mobile mode).
-                let mobile_mode_default = runtime_config_options
-                    .mobile_mode_default
+                let mobile_layout = runtime_config_options
+                    .mobile_layout
                     .unwrap_or_default();
                 let mobile_threshold_cols = runtime_config_options
                     .mobile_threshold_cols
@@ -1205,19 +1199,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .mobile_threshold_rows
                     .unwrap_or(30);
                 let viewport = client_attributes.size;
-                let should_enter_mobile = match mobile_mode_default {
-                    MobileModeDefault::Always => true,
-                    MobileModeDefault::Never => false,
-                    MobileModeDefault::Auto => {
-                        // OR semantics: a viewport is "mobile" if it
-                        // is small in *either* dimension. Phones in
-                        // portrait have narrow cols but tall rows;
-                        // phones in landscape have wide cols but
-                        // short rows. AND semantics misses both.
-                        viewport.cols <= mobile_threshold_cols as usize
-                            || viewport.rows <= mobile_threshold_rows as usize
-                    },
-                };
+                let should_enter_mobile = mobile_layout.should_route_to_mobile(
+                    is_web_client,
+                    viewport.cols,
+                    viewport.rows,
+                    mobile_threshold_cols,
+                    mobile_threshold_rows,
+                );
                 if should_enter_mobile {
                     session_data
                         .senders

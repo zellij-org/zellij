@@ -10613,3 +10613,203 @@ pub fn render_report_writes_per_client_plugin_pane_contents_in_fallback() {
     );
 }
 
+// Mobile-mode integration tests. The pure decision rule is covered
+// exhaustively in `zellij-utils/src/input/options.rs`; these tests
+// pin the behaviour the pure helper does not see: the
+// `connected_clients` lookup for `is_web_client`, the
+// promote-vs-no-op-when-already-mobile branch, and the auto-demote
+// guard that protects manual entries.
+
+const MOBILE_BASE_SIZE: Size = Size { cols: 121, rows: 40 };
+const MOBILE_SMALL: Size = Size { cols: 40, rows: 20 };
+const MOBILE_LARGE: Size = Size { cols: 200, rows: 200 };
+const MOBILE_THRESHOLDS: (u16, u16) = (60, 30);
+
+fn setup_mobile_screen() -> Screen {
+    let mut screen = create_new_screen(MOBILE_BASE_SIZE, true, true);
+    // Seed a tab with client_id=1 (matches the test new_tab helper) so
+    // additional clients have a valid tab to attach to.
+    new_tab(&mut screen, 1, 0);
+    screen
+}
+
+#[test]
+fn reevaluate_mobile_routes_web_client_in_web_mode() {
+    use zellij_utils::input::options::MobileLayout;
+    let mut screen = setup_mobile_screen();
+    let client = 10;
+    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_SMALL,
+            MobileLayout::Web,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(
+        screen.is_in_mobile_mode(client),
+        "web client + small viewport in Web mode must enter mobile",
+    );
+    assert!(
+        screen.mobile_auto_entered.contains(&client),
+        "auto-entry must be marked so a later resize can auto-demote",
+    );
+}
+
+#[test]
+fn reevaluate_mobile_skips_terminal_client_in_web_mode() {
+    use zellij_utils::input::options::MobileLayout;
+    let mut screen = setup_mobile_screen();
+    let client = 11;
+    screen.add_client(client, /* is_web_client */ false).expect("TEST");
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_SMALL,
+            MobileLayout::Web,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(
+        !screen.is_in_mobile_mode(client),
+        "terminal client in Web mode must NOT enter mobile even with small viewport",
+    );
+}
+
+#[test]
+fn reevaluate_mobile_routes_terminal_client_in_always_mode() {
+    use zellij_utils::input::options::MobileLayout;
+    let mut screen = setup_mobile_screen();
+    let client = 12;
+    screen.add_client(client, /* is_web_client */ false).expect("TEST");
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_SMALL,
+            MobileLayout::Always,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(
+        screen.is_in_mobile_mode(client),
+        "Always mode must route terminal clients too on size match",
+    );
+}
+
+#[test]
+fn reevaluate_mobile_zero_threshold_forces_entry() {
+    use zellij_utils::input::options::MobileLayout;
+    let mut screen = setup_mobile_screen();
+    let client = 13;
+    screen.add_client(client, /* is_web_client */ false).expect("TEST");
+
+    // Viewport is "huge" but a 0 breakpoint makes the size gate
+    // always match; under Always this means every client goes mobile.
+    screen
+        .reevaluate_mobile_mode(client, MOBILE_LARGE, MobileLayout::Always, 0, 0)
+        .expect("TEST");
+    assert!(
+        screen.is_in_mobile_mode(client),
+        "0 breakpoint under Always must route regardless of viewport size",
+    );
+}
+
+#[test]
+fn reevaluate_mobile_never_never_routes() {
+    use zellij_utils::input::options::MobileLayout;
+    let mut screen = setup_mobile_screen();
+    let client = 14;
+    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_SMALL,
+            MobileLayout::Never,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(
+        !screen.is_in_mobile_mode(client),
+        "Never must never auto-route, even for a small web client",
+    );
+}
+
+#[test]
+fn reevaluate_mobile_auto_demotes_after_growth() {
+    use zellij_utils::input::options::MobileLayout;
+    let mut screen = setup_mobile_screen();
+    let client = 15;
+    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+
+    // Auto-promote with a small viewport...
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_SMALL,
+            MobileLayout::Web,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(screen.is_in_mobile_mode(client));
+
+    // ...then the viewport grows back: must auto-demote because the
+    // entry was auto-driven.
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_LARGE,
+            MobileLayout::Web,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(
+        !screen.is_in_mobile_mode(client),
+        "auto-entered client must auto-demote when viewport grows",
+    );
+}
+
+#[test]
+fn reevaluate_mobile_preserves_manual_entry_when_viewport_grows() {
+    use zellij_utils::input::options::MobileLayout;
+    let mut screen = setup_mobile_screen();
+    let client = 16;
+    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+
+    // Manual entry: enter_mobile_mode directly, without going through
+    // reevaluate_mobile_mode. This matches the ToggleMobileMode path
+    // and must NOT set the auto-entered marker.
+    screen.enter_mobile_mode(client).expect("TEST");
+    assert!(screen.is_in_mobile_mode(client));
+    assert!(
+        !screen.mobile_auto_entered.contains(&client),
+        "manual entry must not be marked as auto",
+    );
+
+    // Now a large-viewport re-evaluation under Web mode would normally
+    // demote — but the manual-entry guard must preserve it.
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_LARGE,
+            MobileLayout::Web,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(
+        screen.is_in_mobile_mode(client),
+        "manually-entered client must NOT be auto-demoted on resize",
+    );
+}
+
