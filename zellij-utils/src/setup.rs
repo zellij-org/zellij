@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, fmt::Write as FmtWrite, fs, io::Write, path::PathBuf, process};
 
 const CONFIG_NAME: &str = "config.kdl";
-static ARROW_SEPARATOR: &str = "";
+static ARROW_SEPARATOR: &str = "";
 
 #[cfg(not(test))]
 pub fn get_default_themes() -> Themes {
@@ -554,22 +554,81 @@ impl Setup {
             },
         };
         let mut out = std::io::stdout();
-        clap_complete::generate(shell, &mut CliArgs::command(), "zellij", &mut out);
-        // add shell dependent extra completion
-        match shell {
-            Shell::Bash => {
-                let _ = out.write_all(BASH_EXTRA_COMPLETION);
-            },
-            Shell::Elvish => {},
-            Shell::Fish => {
-                let _ = out.write_all(FISH_EXTRA_COMPLETION);
-            },
-            Shell::PowerShell => {},
-            Shell::Zsh => {
-                let _ = out.write_all(ZSH_EXTRA_COMPLETION);
-            },
-            _ => {},
-        };
+
+        if shell == Shell::Zsh {
+            // For zsh, generate into a buffer so we can post-process the output.
+            // This is needed because:
+            // 1. Dynamic completers (like __zellij_sessions) must be defined
+            //    BEFORE `_zellij "$@"` in the file, since zsh executes the
+            //    entire file as a script on first autoload — functions defined
+            //    after the invocation aren't available during that first call.
+            // 2. clap_complete only generates case patterns for canonical command
+            //    names, so short aliases (e.g. `a` for `attach`) don't route to
+            //    the correct completion handler without patching.
+            let mut buf = Vec::new();
+            clap_complete::generate(shell, &mut CliArgs::command(), "zellij", &mut buf);
+            let mut output = String::from_utf8_lossy(&buf).to_string();
+            let extra = String::from_utf8_lossy(ZSH_EXTRA_COMPLETION).to_string();
+
+            // Insert extra completion functions before `_zellij "$@"` so they
+            // are available during the first autoloaded invocation
+            if let Some(pos) = output.rfind("\n_zellij \"$@\"") {
+                output.insert_str(pos + 1, &format!("{}\n", extra));
+            } else {
+                output.push_str(&extra);
+            }
+
+            // Wire dynamic session name completion into subcommands that
+            // accept a session name argument
+            output = output.replace(
+                "'::session-name -- Name of the session to attach to:'",
+                "'::session-name -- Name of the session to attach to:__zellij_sessions'",
+            );
+            output = output.replace(
+                "'::session-name -- Name of the session to watch:'",
+                "'::session-name -- Name of the session to watch:__zellij_sessions'",
+            );
+            output = output.replace(
+                "'::target-session -- Name of target session:'",
+                "'::target-session -- Name of target session:__zellij_sessions'",
+            );
+
+            // Fix alias routing in case patterns so short aliases complete
+            // the same as their canonical commands
+            for (canonical, alias) in [
+                ("attach", "a"),
+                ("watch", "w"),
+                ("kill-session", "k"),
+                ("delete-session", "d"),
+                ("kill-all-sessions", "ka"),
+                ("delete-all-sessions", "da"),
+                ("list-sessions", "ls"),
+                ("list-aliases", "la"),
+                ("run", "r"),
+                ("plugin", "p"),
+                ("edit", "e"),
+                ("action", "ac"),
+            ] {
+                output = output.replace(
+                    &format!("\n({})\n", canonical),
+                    &format!("\n({}|{})\n", canonical, alias),
+                );
+            }
+
+            let _ = out.write_all(output.as_bytes());
+        } else {
+            clap_complete::generate(shell, &mut CliArgs::command(), "zellij", &mut out);
+            // add shell dependent extra completion
+            match shell {
+                Shell::Bash => {
+                    let _ = out.write_all(BASH_EXTRA_COMPLETION);
+                },
+                Shell::Fish => {
+                    let _ = out.write_all(FISH_EXTRA_COMPLETION);
+                },
+                _ => {},
+            };
+        }
     }
 
     fn generate_auto_start(shell: &str) {
