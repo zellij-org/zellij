@@ -4619,6 +4619,71 @@ fn pane_bracketed_paste_ignored_when_not_in_bracketed_paste_mode() {
 }
 
 #[test]
+fn pane_bracketed_paste_body_newlines_translated_to_cr_when_not_in_bracketed_paste_mode() {
+    // When the inner program has not enabled bracketed paste mode, zellij strips the
+    // begin/end markers. The body between them must additionally have \n translated to
+    // \r, matching the convention used by alacritty's non-bracketed paste path and
+    // Terminal.app, so that programs binding ^J to a command (e.g. UW pico's Justify
+    // Paragraph) don't shred multi-line pastes.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id: u16 = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
+    let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201~
+    let body = b"line one\nline two\nline three".to_vec();
+    tab.write_to_active_terminal(&None, bracketed_paste_start, false, client_id)
+        .unwrap();
+    tab.write_to_active_terminal(&None, body, false, client_id)
+        .unwrap();
+    tab.write_to_active_terminal(&None, bracketed_paste_end, false, client_id)
+        .unwrap();
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec!["", "line one\rline two\rline three", ""]
+    );
+}
+
+#[test]
+fn pane_input_newlines_left_alone_outside_bracketed_paste_window() {
+    // Outside an active bracketed-paste window, the pane must not transform `\n` bytes
+    // arriving as ordinary input — only paste body content should be translated.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id: u16 = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    tab.write_to_active_terminal(&None, b"raw\ninput".to_vec(), false, client_id)
+        .unwrap();
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(pty_instruction_bus.clone_output(), vec!["raw\ninput"]);
+}
+
+#[test]
 fn pane_faux_scrolling_in_alternate_mode() {
     let size = Size {
         cols: 121,

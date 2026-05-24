@@ -166,6 +166,15 @@ pub struct TerminalPane {
     /// remaining bytes in the queue to be drained after the host reply
     /// has been written.
     pending_pty_input: VecDeque<u8>,
+    /// `true` while a host paste is being forwarded into a pane whose inner program
+    /// has not enabled bracketed paste mode. Set when the `\x1b[200~` begin marker is
+    /// stripped, cleared by the matching `\x1b[201~` end marker. While set, `\n`
+    /// bytes in the body are translated to `\r` before reaching the inner program —
+    /// matching the convention used by Alacritty's own non-bracketed paste path and
+    /// macOS Terminal.app. Without this, inner programs that don't speak bracketed
+    /// paste (e.g. UW pico, where `^J` is bound to Justify Paragraph) interpret the
+    /// `\n` bytes as commands and mangle the paste.
+    pending_paste_passthrough: bool,
 }
 
 impl Pane for TerminalPane {
@@ -251,7 +260,7 @@ impl Pane for TerminalPane {
     fn adjust_input_to_terminal(
         &mut self,
         key_with_modifier: &Option<KeyWithModifier>,
-        raw_input_bytes: Vec<u8>,
+        mut raw_input_bytes: Vec<u8>,
         raw_input_bytes_are_kitty: bool,
         client_id: Option<ClientId>,
     ) -> Option<AdjustedInput> {
@@ -265,12 +274,34 @@ impl Pane for TerminalPane {
             // Zellij itself operates in bracketed paste mode, so the terminal sends these
             // instructions (bracketed paste start and bracketed paste end respectively)
             // when pasting input. We only need to make sure not to send them to terminal
-            // panes who do not work in this mode
+            // panes who do not work in this mode.
+            //
+            // The paste body arrives between the markers as a separate write. While the
+            // inner program isn't speaking bracketed paste, we additionally translate any
+            // `\n` (0x0a) bytes in the body to `\r` (0x0d). Single-terminal pasting
+            // conventions (Alacritty's non-bracketed paste path, macOS Terminal.app, etc.)
+            // perform the same translation so that pasted multi-line text reaches the
+            // inner program as a sequence of Enter keypresses. Without this, programs
+            // that bind `^J` to a command (e.g. UW pico's Justify Paragraph) interpret
+            // each `\n` as that command and silently mangle the paste.
             match raw_input_bytes.as_slice() {
-                BRACKETED_PASTE_BEGIN | BRACKETED_PASTE_END => {
-                    return Some(AdjustedInput::WriteBytesToTerminal(vec![]))
+                BRACKETED_PASTE_BEGIN => {
+                    self.pending_paste_passthrough = true;
+                    return Some(AdjustedInput::WriteBytesToTerminal(vec![]));
                 },
-                _ => {},
+                BRACKETED_PASTE_END => {
+                    self.pending_paste_passthrough = false;
+                    return Some(AdjustedInput::WriteBytesToTerminal(vec![]));
+                },
+                _ => {
+                    if self.pending_paste_passthrough {
+                        for byte in raw_input_bytes.iter_mut() {
+                            if *byte == b'\n' {
+                                *byte = b'\r';
+                            }
+                        }
+                    }
+                },
             }
         }
 
@@ -1140,6 +1171,7 @@ impl TerminalPane {
             notification_end,
             forward_paused: false,
             pending_pty_input: VecDeque::new(),
+            pending_paste_passthrough: false,
         }
     }
     pub fn get_x(&self) -> usize {
