@@ -75,32 +75,15 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
     }
 
     // Top bar always sits at row 0; the body fills the remaining
-    // rows. The in-plugin keyboard reserves the bottom-most rows when
-    // visible. Its row footprint scales with the plugin's `rows` so
-    // the keyboard stays at ~40% of the screen across pinch zoom —
-    // see `KEYBOARD_PCT_NUM/DEN` in `keyboard/render.rs`. When the
-    // keyboard cannot fit (very short windows) `compute_geometry`
-    // returns `None` and the viewport expands to use the full body.
+    // rows. The bottom modifier bar reserves one row at the bottom of
+    // the plugin area, just above where the OS soft keyboard surfaces.
+    // The reservation is unconditional whenever the body has at least
+    // one usable row left after the bar; on a pathologically short
+    // plugin area (1-2 rows of body) the bar is suppressed so the
+    // viewport keeps a usable row.
     let body_top = 1;
-    let keyboard_geometry = if state.keyboard.visible {
-        keyboard::compute_geometry(
-            state.keyboard.layout.as_ref(),
-            &state.keyboard.modifiers,
-            rows,
-            cols,
-        )
-    } else {
-        None
-    };
-    let keyboard_height = keyboard_geometry
-        .as_ref()
-        .map(|g| g.total_height())
-        .unwrap_or(0);
-    // Reserve at least one row for the viewport; if the keyboard is
-    // bigger than the body, suppress it for this frame.
-    let keyboard_fits = keyboard_height + 1 <= rows.saturating_sub(body_top);
-    let effective_keyboard_height = if keyboard_fits { keyboard_height } else { 0 };
-    let body_bottom = rows.saturating_sub(effective_keyboard_height);
+    let bar_height = if rows.saturating_sub(body_top) >= 2 { 1 } else { 0 };
+    let body_bottom = rows.saturating_sub(bar_height);
     let viewport_height = body_bottom.saturating_sub(body_top);
 
     // Cursor mapping only matters when the embedded viewport is
@@ -171,18 +154,14 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
         render_hamburger_menu(state, body_top, body_bottom, cols);
     }
 
-    if effective_keyboard_height > 0 {
-        if let Some(geometry) = keyboard_geometry.as_ref() {
-            keyboard::render::render_keyboard(
-                state.keyboard.layout.as_ref(),
-                &state.keyboard.modifiers,
-                &state.keyboard.press_flash,
-                geometry,
-                body_bottom,
-                cols,
-                &mut state.click_regions,
-            );
-        }
+    if bar_height > 0 {
+        keyboard::render_modifier_bar(
+            &state.keyboard.modifiers,
+            &state.keyboard.press_flash,
+            body_bottom,
+            cols,
+            &mut state.click_regions,
+        );
     }
 
     // Re-enable DECAWM. Pairs with the `\x1b[?7l` at the top of this
@@ -903,14 +882,9 @@ fn render_panes_menu(state: &mut State, row_start: usize, row_end: usize, cols: 
 }
 
 /// One row in the hamburger dropdown menu. Toggle items track the
-/// underlying state (`NativeKeyboard` mirrors `!state.keyboard.visible`,
-/// `Fit` mirrors `state.fit_active`); navigation items are stateless.
+/// underlying state (`Fit` mirrors `state.fit_active`); navigation
+/// items are stateless.
 enum HamburgerItem {
-    /// "Native Keyboard" — armed when the OS soft keyboard is showing
-    /// (which corresponds to `state.keyboard.visible == false`,
-    /// because the embedded plugin keyboard suppresses the OS one via
-    /// `set_soft_keyboard`).
-    NativeKeyboard,
     /// "Fit to Screen" — armed when `state.fit_active == true`.
     Fit,
     /// "Change Pane" — opens the unified Panes selector (panes
@@ -922,25 +896,23 @@ enum HamburgerItem {
 }
 
 /// Render the hamburger dropdown menu in the upper-right corner of
-/// the body region. Four items, one per row, starting at `row_start`
-/// and truncated to fit within `[row_start, row_end)` so menu rows
-/// never overlap the keyboard's click regions below.
+/// the body region. One row per item, starting at `row_start` and
+/// truncated to fit within `[row_start, row_end)` so menu rows never
+/// overlap the modifier bar's click regions below.
 ///
-/// Toggle items (Native Keyboard, Fit to Screen) render in the
-/// success-green palette when armed and emphasis-3 when unarmed;
-/// navigation items always render in emphasis-3. The menu reuses the
-/// existing `ToggleKeyboard`, `ToggleFit`, and `ExpandPanes /
-/// ExpandSessions` dispatch arms — toggles preserve `menu_open`
-/// (they don't touch it), and navigation closes the menu inside the
-/// `Expand*` arms themselves.
+/// The Fit toggle renders in the success-green palette when armed
+/// and emphasis-3 when unarmed; navigation items always render in
+/// emphasis-3. The menu reuses the existing `ToggleFit` and
+/// `ExpandPanes / ExpandSessions` dispatch arms — the toggle
+/// preserves `menu_open` (it doesn't touch it), and navigation closes
+/// the menu inside the `Expand*` arms themselves.
 fn render_hamburger_menu(
     state: &mut State,
     row_start: usize,
     row_end: usize,
     cols: usize,
 ) {
-    let items: [(&str, HamburgerItem); 4] = [
-        ("Native Keyboard", HamburgerItem::NativeKeyboard),
+    let items: [(&str, HamburgerItem); 3] = [
         ("Fit to Screen", HamburgerItem::Fit),
         ("Change Pane", HamburgerItem::ChangePane),
         ("Change Session", HamburgerItem::ChangeSession),
@@ -988,7 +960,6 @@ fn render_hamburger_menu(
         let label_char_end = label_char_start + label.chars().count();
 
         let armed = match item {
-            HamburgerItem::NativeKeyboard => !state.keyboard.visible,
             HamburgerItem::Fit => state.fit_active,
             _ => false,
         };
@@ -1001,7 +972,6 @@ fn render_hamburger_menu(
         print_text_with_coordinates(t, menu_x, row, Some(menu_w), None);
 
         let action = match item {
-            HamburgerItem::NativeKeyboard => ClickAction::ToggleKeyboard,
             HamburgerItem::Fit => ClickAction::ToggleFit,
             HamburgerItem::ChangePane => ClickAction::ExpandPanes,
             HamburgerItem::ChangeSession => ClickAction::ExpandSessions,

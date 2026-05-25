@@ -45,11 +45,11 @@ impl ZellijPlugin for State {
             EventType::Timer,
         ]);
 
-        // The keyboard is visible from the first frame
-        // (`KeyboardController::new` sets `visible = true`), so
-        // suppress the OS soft keyboard up front to avoid the two
-        // stacking on first focus.
-        set_soft_keyboard(false);
+        // The plugin no longer renders its own on-screen keyboard —
+        // only a one-row modifier bar at the bottom. The OS soft
+        // keyboard is the canonical text-entry surface, so enable it
+        // up front and never suppress it.
+        set_soft_keyboard(true);
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -703,17 +703,6 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             sync_shadow_focus(state);
             true
         },
-        ClickAction::ToggleKeyboard => {
-            // Flip the plugin keyboard's visibility and mirror the
-            // change to the OS soft keyboard so the two never stack.
-            // When the plugin keyboard is showing the OS keyboard is
-            // suppressed; when it's hidden the OS keyboard is re-
-            // enabled so users without a hardware keyboard still have
-            // an input affordance.
-            state.keyboard.visible = !state.keyboard.visible;
-            set_soft_keyboard(!state.keyboard.visible);
-            true
-        },
         ClickAction::ToggleFit => {
             // Round-trip the toggle through the server. On entry we
             // need (a) the focused pane, (b) its tab, (c) the most
@@ -814,9 +803,6 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
                             write_to_pane_id(bytes, state::pane_id_of(&pane));
                         }
                     }
-                },
-                TapOutcome::HideKeyboard => {
-                    set_soft_keyboard(!state.keyboard.visible);
                 },
                 TapOutcome::Toggled | TapOutcome::NoOp => {},
             }

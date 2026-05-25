@@ -405,11 +405,11 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             const baseUrl = getBaseUrl();
             window.location.href = `${baseUrl}/${encodeURIComponent(new_session_name)}`;
         } else if (msg.type === "SetSoftKeyboard") {
-            // The server (driven by the mobile plugin's ⌨ button)
+            // The server (driven by the mobile plugin's load() call)
             // wants the soft keyboard either shown or hidden. On
             // desktops `setSoftKeyboard` no-ops; on touch devices it
-            // toggles the `inputmode="none"` suppression and focuses/
-            // blurs the xterm.js textarea accordingly.
+            // focuses or blurs the dedicated capture <textarea> so
+            // the OS keyboard surfaces or dismisses.
             const { on } = msg;
             setSoftKeyboard(term, !!on);
         }

@@ -40,10 +40,10 @@ pub enum WebServerToWebClientControlMessage {
     Log { lines: Vec<String> },
     LogError { lines: Vec<String> },
     SwitchedSession { new_session_name: String },
-    /// Driven by the mobile plugin's ⌨ button. `on=true` removes the
-    /// `inputmode="none"` suppression and focuses the xterm.js textarea
-    /// so the soft keyboard slides in; `on=false` re-applies the
-    /// suppression and blurs.
+    /// Emitted by the mobile plugin's `load()` to ensure the OS soft
+    /// keyboard is the canonical text-entry surface. `on=true`
+    /// focuses the dedicated capture textarea so the soft keyboard
+    /// surfaces; `on=false` blurs it so the keyboard dismisses.
     SetSoftKeyboard { on: bool },
 }
 

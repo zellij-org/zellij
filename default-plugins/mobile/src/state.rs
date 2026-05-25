@@ -43,11 +43,6 @@ pub enum ClickAction {
         tab_position: usize,
         pane_id: PaneId,
     },
-    /// Tap on the keyboard glyph in the top bar. Toggles the plugin
-    /// keyboard's visibility (`KeyboardController::visible`) and emits
-    /// `set_soft_keyboard(true|false)` to suppress the OS soft
-    /// keyboard whenever the plugin keyboard is showing.
-    ToggleKeyboard,
     /// Tap on the fit (⛶) glyph in the top bar. Toggles a server-
     /// side per-tab override that resizes the focused pane's tab to
     /// match this plugin's embedded viewport area, fullscreening
@@ -55,9 +50,10 @@ pub enum ClickAction {
     /// (`State::fit_active`) so the next tap takes the off path.
     /// See `enter_fit_mode` / `exit_fit_mode` in the shim.
     ToggleFit,
-    /// Tap on a cell of the in-plugin keyboard. Routed through
-    /// `KeyboardController::handle_tap` which resolves to bytes,
-    /// modifier toggles, or a visibility flip.
+    /// Tap on a cell of the modifier bar at the bottom of the plugin
+    /// area. Routed through `KeyboardController::handle_tap` which
+    /// resolves to bytes (for ESC, TAB, arrows, `-`) or a modifier
+    /// flip (for CTRL, ALT).
     Keyboard(CellId),
     /// Tap on the hamburger glyph in the top bar. Flips
     /// `State::menu_open`. The dropdown menu and the selector menus

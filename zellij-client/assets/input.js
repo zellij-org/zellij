@@ -35,34 +35,31 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
     // - Paste fires `insertFromPaste` — also ignored here.
     installImeBypass(term, sendFunction);
 
-    // On mobile, the system soft keyboard's `keydown` events are
-    // unreliable (Android typically reports `keyCode 229` with
-    // `key === "Unidentified"`; autocorrect/predictive text batch and
-    // rewrite input). Install a dedicated hidden `<input>` element
-    // whose `beforeinput` events drive a sentinel-backed capture path
-    // — consistent across iOS Safari, Android Chrome, GBoard,
-    // SwiftKey, Samsung Keyboard, and Firefox Android. Scoped to
-    // coarse-pointer devices so desktops are untouched. See
-    // `mobile-keypress-capture.md`. `setSoftKeyboard` focuses this
-    // element to summon the soft keyboard; xterm.js's textarea keeps
-    // `inputmode="none"` and only takes focus when soft keyboard mode
-    // is off, preserving hardware-keyboard typing through xterm.js.
+    // On mobile, the system soft keyboard's `keydown` events on
+    // xterm.js's textarea are unreliable (Android typically reports
+    // `keyCode 229` with `key === "Unidentified"`; autocorrect /
+    // predictive text batch and rewrite input). Install a dedicated
+    // hidden `<textarea>` element whose `input`-event value-diff
+    // drives a sentinel-backed capture path — consistent across iOS
+    // Safari, Android Chrome, GBoard, SwiftKey, Samsung Keyboard,
+    // and Firefox Android, AND works in in-app browsers / older
+    // WebViews that refuse to surface the OS keyboard for a focused
+    // contenteditable element. Scoped to coarse-pointer devices so
+    // desktops are untouched. The window-level click / touchend /
+    // pointerdown listeners installed inside this function focus
+    // the textarea on every gesture, so the OS keyboard appears on
+    // the first tap.
     installSoftKeyboardCapture(term, sendFunction);
 
-    // On coarse-pointer (touch) devices, suppress the soft keyboard
-    // auto-popup. xterm.js's textarea normally summons the on-screen
-    // keyboard whenever it gains focus, and a tap inside #terminal
-    // implicitly focuses it — that obscures the mobile-mode chrome
-    // the user is trying to tap. Setting `inputmode="none"` keeps the
-    // textarea focusable for hardware keyboards but prevents the soft
-    // keyboard from sliding in. Hardware-keyboard typing (e.g. an
-    // attached Bluetooth keyboard) still flows through normally.
+    // On coarse-pointer (touch) devices, mark xterm.js's textarea
+    // `inputmode="none"` so a tap on the terminal does not summon
+    // the OS keyboard through the textarea — the textarea is the
+    // input target for hardware keyboards only. The dedicated
+    // capture <textarea> installed above is the OS-keyboard target,
+    // and its window-level focus listeners route every touch there.
+    // Hardware-keyboard typing (e.g. an attached Bluetooth keyboard)
+    // still flows through xterm.js's normal keydown handler.
     suppressSoftKeyboardOnTouch(term);
-
-    // Note: soft-keyboard text entry on mobile is handled by the
-    // mobile plugin's on-screen keyboard (see `mobile_keyboard.md`),
-    // which delivers each keystroke as an SGR mouse click through
-    // the touch handlers below. No JS-side text forwarding is needed.
 
     // Custom key event handler
     term.attachCustomKeyEventHandler((ev) => {
@@ -505,6 +502,32 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
                 return;
             }
             if (event.touches.length > 0) {
+                // Summon the OS soft keyboard *before* preventDefault.
+                // iOS/Android honour focus() as an OS-keyboard summon
+                // only when it happens inside a still-active user
+                // gesture and the gesture has not been preventDefault'd
+                // yet. The preventDefault below suppresses the
+                // synthetic mouse-event cascade (and the focus shifts
+                // it would carry), which is necessary to stop xterm.js
+                // from sending a second SGR click — but it also
+                // cancels the implicit "click brings up keyboard"
+                // behavior. Doing the focus call here, ahead of
+                // preventDefault, gives the browser a valid summon
+                // signal that survives the suppression.
+                if (
+                    window.__zjSoftKbdEnabled &&
+                    window.__zjSoftKbdCapture &&
+                    window.__zjSoftKbdCapture.element &&
+                    document.activeElement !== window.__zjSoftKbdCapture.element
+                ) {
+                    try {
+                        window.__zjSoftKbdCapture.element.focus({
+                            preventScroll: true,
+                        });
+                    } catch (_) {
+                        window.__zjSoftKbdCapture.element.focus();
+                    }
+                }
                 // Suppress the synthetic mouse events (mousedown,
                 // mouseup, click) that iOS Safari and Chrome
                 // mobile fire ~300 ms after a touch for legacy
@@ -918,26 +941,36 @@ function installSoftKeyboardCapture(term, sendFunction) {
     const CARET_OFFSET = PADDING_LEN / 2;
     const BASELINE = PADDING_CHAR.repeat(PADDING_LEN);
 
-    const div = document.createElement("div");
+    // <textarea> rather than contenteditable <div>: many mobile
+    // WebViews (especially in-app browsers and older Android
+    // WebView) refuse to surface the OS keyboard for a focused
+    // contenteditable element, while every WebView surfaces it for
+    // a focused <textarea>. The same baseline-padding +
+    // value-diff capture pattern is reused; textareas fire `input`
+    // events on value changes the same way contenteditables do on
+    // textContent mutations.
+    const div = document.createElement("textarea");
     div.id = "zj-mobile-capture";
-    div.contentEditable = "true";
     div.setAttribute("autocomplete", "off");
     div.setAttribute("autocorrect", "off");
     div.setAttribute("autocapitalize", "off");
     div.setAttribute("spellcheck", "false");
     div.setAttribute("inputmode", "text");
     div.setAttribute("aria-hidden", "true");
-    div.setAttribute("role", "textbox");
+    div.setAttribute("wrap", "off");
+    div.setAttribute("rows", "1");
+    div.setAttribute("cols", "1");
     div.tabIndex = -1;
     // CSS that preserves focusability — `display:none` and
     // `visibility:hidden` would close the soft keyboard. 1×1 px,
     // fully transparent, pointer-events disabled so touches pass
-    // through to the terminal below.
+    // through to the terminal below. `resize:none` strips the
+    // textarea's default drag-resize handle.
     div.style.cssText =
         "position:fixed;top:0;left:0;" +
         "width:1px;height:1px;" +
         "opacity:0;pointer-events:none;" +
-        "border:0;padding:0;margin:0;" +
+        "border:0;padding:0;margin:0;resize:none;" +
         "background:transparent;color:transparent;" +
         "caret-color:transparent;outline:none;" +
         "white-space:pre;overflow:hidden;" +
@@ -947,28 +980,19 @@ function installSoftKeyboardCapture(term, sendFunction) {
 
     const setCaretToMiddle = () => {
         try {
-            const textNode = div.firstChild;
-            if (!textNode || textNode.nodeType !== 3) {
-                return;
-            }
-            const range = document.createRange();
-            const pos = Math.min(CARET_OFFSET, textNode.length);
-            range.setStart(textNode, pos);
-            range.collapse(true);
-            const sel = window.getSelection();
-            sel.removeAllRanges();
-            sel.addRange(range);
+            const pos = Math.min(CARET_OFFSET, div.value.length);
+            div.setSelectionRange(pos, pos);
         } catch (_) {
-            // Selection APIs throw if the element is not yet
-            // focusable; caret position is best-effort.
+            // setSelectionRange throws if the element is not yet
+            // attached / focusable; caret position is best-effort.
         }
     };
 
     const resetBaseline = () => {
-        // Replace textContent unconditionally. Destroying the text
-        // node the IME may have been composing into typically
-        // cancels active composition, which is exactly what we want.
-        div.textContent = BASELINE;
+        // Replace `value` unconditionally. Destroying the text the
+        // IME may have been composing into typically cancels active
+        // composition, which is exactly what we want.
+        div.value = BASELINE;
         setCaretToMiddle();
     };
 
@@ -1018,19 +1042,19 @@ function installSoftKeyboardCapture(term, sendFunction) {
         return { deletedCount, inserted };
     };
 
-    // Track the last observed textContent. Each `input` event
-    // computes the diff between `lastText` and the current text,
-    // dispatches the delta, then updates `lastText`. We deliberately
-    // do NOT reset the DOM between keystrokes: that would interrupt
-    // the IME's composition state, which on Firefox Android / GBoard
+    // Track the last observed value. Each `input` event computes
+    // the diff between `lastText` and the current value, dispatches
+    // the delta, then updates `lastText`. We deliberately do NOT
+    // reset the value between keystrokes: that would interrupt the
+    // IME's composition state, which on Firefox Android / GBoard
     // causes the IME to re-assert its cumulative composition on the
     // next mutation and double-dispatch earlier characters. By
-    // leaving the DOM coherent with the IME's view, each mutation
+    // leaving the value coherent with the IME's view, each mutation
     // is a single incremental edit that diffs to a clean delta.
     let lastText = BASELINE;
 
     div.addEventListener("input", () => {
-        const current = div.textContent;
+        const current = div.value;
         if (current === lastText) {
             return;
         }
@@ -1045,19 +1069,20 @@ function installSoftKeyboardCapture(term, sendFunction) {
     });
 
     // Special keys: Enter / Tab / Escape / Arrows do not always
-    // produce observable text mutations. Intercept in keydown and
+    // produce observable value mutations. Intercept in keydown and
     // dispatch the right escape sequence directly. Backspace is
     // handled by the input-event diff via the padding fodder.
     //
-    // Enter additionally resets the div back to the padded baseline,
-    // bounding how much the div content can grow across a session
-    // and refilling backspace fodder for the next command line.
+    // Enter additionally resets the textarea back to the padded
+    // baseline, bounding how much the value can grow across a
+    // session and refilling backspace fodder for the next command
+    // line.
     div.addEventListener("keydown", (ev) => {
         switch (ev.key) {
             case "Enter":
                 ev.preventDefault();
                 state.sendFn("\r");
-                div.textContent = BASELINE;
+                div.value = BASELINE;
                 lastText = BASELINE;
                 setCaretToMiddle();
                 return;
@@ -1087,6 +1112,46 @@ function installSoftKeyboardCapture(term, sendFunction) {
                 return;
         }
     });
+
+    // Mobile browsers ignore programmatic focus() outside of a user
+    // gesture, so the plugin's startup `set_soft_keyboard(true)` call
+    // (which lands in `setSoftKeyboard` and tries `capture.focus()`)
+    // cannot actually summon the OS keyboard before the user has
+    // touched the screen even once.
+    //
+    // Hook three events to recover. `click` is the primary path: it
+    // bubbles AFTER xterm.js's mousedown-driven textarea-focus, so a
+    // capture.focus() here wins the focus race and the browser
+    // surfaces the OS keyboard inside the still-active gesture
+    // window. `touchend` covers the case where the tap never resolves
+    // to a click (long-press, scroll). `pointerdown` in capture phase
+    // is a belt-and-braces fallback for browsers that synthesize
+    // focus differently. All three are idempotent — once `div` owns
+    // focus, every handler short-circuits.
+    //
+    // Gated on `__zjSoftKbdEnabled` so a user who disabled
+    // soft-keyboard mode (2-finger gesture) is not re-summoned
+    // against their will. `passive: true` keeps us out of the
+    // scrolling/zooming gesture pipeline.
+    const ensureCaptureFocused = () => {
+        if (!window.__zjSoftKbdEnabled) {
+            return;
+        }
+        if (document.activeElement === div) {
+            return;
+        }
+        try {
+            div.focus({ preventScroll: true });
+        } catch (_) {
+            div.focus();
+        }
+    };
+    window.addEventListener("click", ensureCaptureFocused, { passive: true });
+    window.addEventListener("touchend", ensureCaptureFocused, { passive: true });
+    window.addEventListener("pointerdown", ensureCaptureFocused, {
+        capture: true,
+        passive: true,
+    });
 }
 
 /**
@@ -1109,7 +1174,13 @@ function suppressSoftKeyboardOnTouch(term) {
         return;
     }
     window.__zjSoftKbdSuppressed = true;
-    window.__zjSoftKbdEnabled = false;
+    // Default to "soft keyboard wanted" so the first-touch focus
+    // fallback in `installSoftKeyboardCapture` works even if the
+    // mobile plugin's startup `set_soft_keyboard(true)` IPC message
+    // hasn't arrived (or never arrives — e.g. plain ssh sessions
+    // attached via the web client). Users who explicitly disable via
+    // the 2-finger toggle flip this back to false.
+    window.__zjSoftKbdEnabled = true;
     // xterm.js creates the textarea asynchronously inside term.open();
     // poll briefly until it is attached, then mark it.
     const apply = () => {
@@ -1125,14 +1196,30 @@ function suppressSoftKeyboardOnTouch(term) {
 
 /**
  * Heuristic match for "this device probably has only a soft keyboard
- * available". `pointer: coarse` covers touchscreens; the UA fallback
- * handles browsers/devices with quirky media query support.
+ * available". Order matters — most permissive checks last so the
+ * cheap matchMedia hit fires first on real mobile browsers.
+ *
+ * Coverage rationale:
+ * - `pointer: coarse` — Chrome/Safari on iOS/Android, also Chrome
+ *   DevTools mobile emulation.
+ * - `maxTouchPoints > 0` — multi-touch capable surfaces; catches
+ *   WebViews and in-app browsers that don't report pointer:coarse.
+ * - `'ontouchstart' in window` — legacy touch event API; catches
+ *   older WebViews and embedded browsers that lack maxTouchPoints.
+ * - UA regex — final fallback for browsers with quirky media query
+ *   support (older WebKit, custom shells).
  */
 function isCoarsePointerDevice() {
     if (
         window.matchMedia &&
         window.matchMedia("(pointer: coarse)").matches
     ) {
+        return true;
+    }
+    if (typeof navigator !== "undefined" && navigator.maxTouchPoints > 0) {
+        return true;
+    }
+    if ("ontouchstart" in window) {
         return true;
     }
     return /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
