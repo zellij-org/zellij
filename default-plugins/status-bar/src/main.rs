@@ -55,16 +55,26 @@ pub struct HitRegion {
 
 #[derive(Clone, Debug)]
 pub enum ClickAction {
+    /// Switch to a target mode. If the target mode is already the current mode, the click
+    /// handler toggles back to the base mode instead.
     SwitchToMode(InputMode),
     Quit,
     NewPane,
     ToggleFloating,
+    /// Run an arbitrary sequence of zellij actions (used for submenu items).
+    RunActions(Vec<ZAction>),
 }
 
 impl ClickAction {
-    pub fn dispatch(&self) {
+    /// Dispatch the action. `current_mode` and `base_mode` are used to make `SwitchToMode`
+    /// behave as a toggle: clicking the ribbon for the mode you're already in returns you to
+    /// the base mode.
+    pub fn dispatch(&self, current_mode: InputMode, base_mode: InputMode) {
         match self {
-            ClickAction::SwitchToMode(m) => switch_to_input_mode(m),
+            ClickAction::SwitchToMode(target) => {
+                let dest = if *target == current_mode { base_mode } else { *target };
+                switch_to_input_mode(&dest);
+            },
             ClickAction::Quit => quit_zellij(),
             ClickAction::NewPane => run_action(
                 ZAction::NewPane {
@@ -76,6 +86,11 @@ impl ClickAction {
             ),
             ClickAction::ToggleFloating => {
                 run_action(ZAction::ToggleFloatingPanes, std::collections::BTreeMap::new())
+            },
+            ClickAction::RunActions(actions) => {
+                for a in actions {
+                    run_action(a.clone(), std::collections::BTreeMap::new());
+                }
             },
         }
     }
@@ -276,6 +291,7 @@ impl ZellijPlugin for State {
         request_permission(&[
             PermissionType::ReadApplicationState,
             PermissionType::ChangeApplicationState,
+            PermissionType::RunActionsAsUser,
         ]);
         subscribe(&[
             EventType::ModeUpdate,
@@ -341,7 +357,12 @@ impl ZellijPlugin for State {
                         .iter()
                         .find(|r| col >= r.col_start && col < r.col_end)
                     {
-                        region.action.clone().dispatch();
+                        let current_mode = self.mode_info.mode;
+                        let base_mode = self
+                            .mode_info
+                            .base_mode
+                            .unwrap_or(InputMode::Normal);
+                        region.action.clone().dispatch(current_mode, base_mode);
                     }
                 }
             },

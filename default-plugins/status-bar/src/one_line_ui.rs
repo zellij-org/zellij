@@ -1375,12 +1375,29 @@ fn full_shortcut_list(help: &ModeInfo) -> LinePart {
     }
 }
 
+fn submenu_click_action(
+    help: &ModeInfo,
+    keys: &[KeyWithModifier],
+) -> Option<ClickAction> {
+    let first = keys.first()?;
+    let km = help.get_mode_keybinds();
+    let actions = km
+        .iter()
+        .find(|(k, _)| k == first)
+        .map(|(_, actions)| actions.clone())?;
+    if actions.is_empty() {
+        return None;
+    }
+    Some(ClickAction::RunActions(actions))
+}
+
 fn full_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
     let mut line_part = LinePart::default();
     let keys_and_hints = get_keys_and_hints(help);
 
     for (long, _short, keys) in keys_and_hints.into_iter() {
-        line_part.append(&add_shortcut(help, &long, &keys.to_vec(), false, Some(2), None));
+        let click_action = submenu_click_action(help, &keys);
+        line_part.append(&add_shortcut(help, &long, &keys.to_vec(), false, Some(2), click_action));
     }
     line_part
 }
@@ -1580,7 +1597,8 @@ fn shortened_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
     let keys_and_hints = get_keys_and_hints(help);
 
     for (_, short, keys) in keys_and_hints.into_iter() {
-        line_part.append(&add_shortcut(help, &short, &keys.to_vec(), false, Some(2), None));
+        let click_action = submenu_click_action(help, &keys);
+        line_part.append(&add_shortcut(help, &short, &keys.to_vec(), false, Some(2), click_action));
     }
     line_part
 }
@@ -1597,7 +1615,8 @@ fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
     let mut line_part = LinePart::default();
     let keys_and_hints = get_keys_and_hints(help);
     for (_, short, keys) in keys_and_hints.into_iter() {
-        let shortcut = add_shortcut(help, &short, &keys.to_vec(), false, Some(2), None);
+        let click_action = submenu_click_action(help, &keys);
+        let shortcut = add_shortcut(help, &short, &keys.to_vec(), false, Some(2), click_action);
         if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
             line_part.part = format!("{}{}", line_part.part, MORE_MSG);
             line_part.len += MORE_MSG.chars().count();
