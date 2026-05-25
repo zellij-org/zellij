@@ -35,6 +35,20 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
     // - Paste fires `insertFromPaste` — also ignored here.
     installImeBypass(term, sendFunction);
 
+    // On mobile, the system soft keyboard's `keydown` events are
+    // unreliable (Android typically reports `keyCode 229` with
+    // `key === "Unidentified"`; autocorrect/predictive text batch and
+    // rewrite input). Install a dedicated hidden `<input>` element
+    // whose `beforeinput` events drive a sentinel-backed capture path
+    // — consistent across iOS Safari, Android Chrome, GBoard,
+    // SwiftKey, Samsung Keyboard, and Firefox Android. Scoped to
+    // coarse-pointer devices so desktops are untouched. See
+    // `mobile-keypress-capture.md`. `setSoftKeyboard` focuses this
+    // element to summon the soft keyboard; xterm.js's textarea keeps
+    // `inputmode="none"` and only takes focus when soft keyboard mode
+    // is off, preserving hardware-keyboard typing through xterm.js.
+    installSoftKeyboardCapture(term, sendFunction);
+
     // On coarse-pointer (touch) devices, suppress the soft keyboard
     // auto-popup. xterm.js's textarea normally summons the on-screen
     // keyboard whenever it gains focus, and a tap inside #terminal
@@ -828,6 +842,254 @@ function installImeBypass(term, sendFunction) {
 }
 
 /**
+ * Capture mobile soft-keyboard keystrokes by observing DOM mutations
+ * on a hidden contenteditable `<div>` element. The "RestoreDOM"
+ * pattern (from Slate / CodeMirror) sidesteps the long tail of
+ * `beforeinput` / `inputType` quirks that plague Android soft
+ * keyboards: instead of interpreting what the IME *says* it is doing
+ * (cumulative `insertCompositionText`, missing
+ * `deleteContentBackward` on empty inputs, ambiguous `insertText`
+ * after `compositionend`, etc.), we let the IME mutate the DOM, diff
+ * the new textContent against the previously-observed textContent on
+ * each `input` event, and dispatch the actual delta as terminal
+ * bytes. The DOM is left coherent with the IME's view across
+ * keystrokes (no per-mutation reset); resetting mid-composition was
+ * found to make the IME re-assert its cumulative state and
+ * double-dispatch earlier characters. The DOM is reset only on
+ * Enter, which bounds growth and refills backspace fodder for the
+ * next command. xterm.js itself does not implement this approach
+ * (upstream issue xtermjs/xterm.js#3600 has been "help wanted" for
+ * years).
+ *
+ * Why contenteditable rather than `<input>`:
+ *  - `MutationObserver` does not observe `<input>.value` changes
+ *    (the value is a property, not a DOM mutation). A
+ *    contenteditable element's textContent IS a DOM mutation, so
+ *    it can be observed directly.
+ *
+ * Baseline and caret: the div is seeded with a padding string of
+ * non-breaking spaces and the caret is placed in the middle. The
+ * padding gives Backspace something to delete (otherwise Firefox
+ * Android / GBoard silently no-op on an empty target; see
+ * w3c/input-events#75 and Bugzilla #1104817). The middle-of-padding
+ * caret ensures characters typed by the IME land between the padding
+ * chars so a simple prefix/suffix diff cleanly identifies them.
+ *
+ * Wire path: when soft keyboard mode is on, `setSoftKeyboard` focuses
+ * this hidden div instead of xterm.js's textarea. When soft keyboard
+ * mode is off, focus returns to xterm.js's textarea (which keeps
+ * `inputmode="none"`), preserving hardware-keyboard typing through
+ * xterm.js's normal handler.
+ *
+ * Coexists with `installImeBypass` (desktop ibus/fcitx, operates on
+ * xterm's textarea) and the mobile plugin's SGR-click on-screen
+ * keyboard (touch handlers); both are independent.
+ *
+ * Idempotent: `setupInputHandlers` runs twice (placeholder sender,
+ * then real WebSocket sender post-`initWebSockets`); subsequent calls
+ * just refresh `state.sendFn`.
+ */
+function installSoftKeyboardCapture(term, sendFunction) {
+    if (!isCoarsePointerDevice()) {
+        return;
+    }
+    if (typeof window.__zjSoftKbdCapture === "undefined") {
+        window.__zjSoftKbdCapture = {
+            installed: false,
+            sendFn: sendFunction,
+            element: null,
+        };
+    }
+    window.__zjSoftKbdCapture.sendFn = sendFunction;
+
+    if (window.__zjSoftKbdCapture.installed) {
+        return;
+    }
+    window.__zjSoftKbdCapture.installed = true;
+    const state = window.__zjSoftKbdCapture;
+
+    // Padding of non-breaking spaces (U+00A0). Length chosen so a
+    // burst of backspaces has fodder before the MutationObserver
+    // microtask runs the reset. Caret sits in the middle so chars
+    // typed by the IME land cleanly between padding chars.
+    const PADDING_CHAR =" ";
+
+    const PADDING_LEN = 8;
+    const CARET_OFFSET = PADDING_LEN / 2;
+    const BASELINE = PADDING_CHAR.repeat(PADDING_LEN);
+
+    const div = document.createElement("div");
+    div.id = "zj-mobile-capture";
+    div.contentEditable = "true";
+    div.setAttribute("autocomplete", "off");
+    div.setAttribute("autocorrect", "off");
+    div.setAttribute("autocapitalize", "off");
+    div.setAttribute("spellcheck", "false");
+    div.setAttribute("inputmode", "text");
+    div.setAttribute("aria-hidden", "true");
+    div.setAttribute("role", "textbox");
+    div.tabIndex = -1;
+    // CSS that preserves focusability — `display:none` and
+    // `visibility:hidden` would close the soft keyboard. 1×1 px,
+    // fully transparent, pointer-events disabled so touches pass
+    // through to the terminal below.
+    div.style.cssText =
+        "position:fixed;top:0;left:0;" +
+        "width:1px;height:1px;" +
+        "opacity:0;pointer-events:none;" +
+        "border:0;padding:0;margin:0;" +
+        "background:transparent;color:transparent;" +
+        "caret-color:transparent;outline:none;" +
+        "white-space:pre;overflow:hidden;" +
+        "user-select:text;-webkit-user-select:text;";
+    document.body.appendChild(div);
+    state.element = div;
+
+    const setCaretToMiddle = () => {
+        try {
+            const textNode = div.firstChild;
+            if (!textNode || textNode.nodeType !== 3) {
+                return;
+            }
+            const range = document.createRange();
+            const pos = Math.min(CARET_OFFSET, textNode.length);
+            range.setStart(textNode, pos);
+            range.collapse(true);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+        } catch (_) {
+            // Selection APIs throw if the element is not yet
+            // focusable; caret position is best-effort.
+        }
+    };
+
+    const resetBaseline = () => {
+        // Replace textContent unconditionally. Destroying the text
+        // node the IME may have been composing into typically
+        // cancels active composition, which is exactly what we want.
+        div.textContent = BASELINE;
+        setCaretToMiddle();
+    };
+
+    resetBaseline();
+
+    // Tight per-character dedupe (8 ms). Some IMEs deliver the same
+    // character via overlapping event paths within microseconds.
+    // 8 ms is well under any key-autorepeat interval (30 ms+) so it
+    // does not false-positive on held keys.
+    let lastCh = null;
+    let lastChAt = 0;
+    const DEDUPE_MS = 8;
+    const dispatchCh = (ch) => {
+        const now = performance.now();
+        if (ch === lastCh && now - lastChAt < DEDUPE_MS) {
+            return;
+        }
+        lastCh = ch;
+        lastChAt = now;
+        state.sendFn(ch);
+    };
+
+    // Diff baseline (`a`) vs post-mutation textContent (`b`).
+    // Returns the number of characters deleted from the middle of
+    // `a` and the substring inserted in the middle of `b`. Padding
+    // chars are stripped from the insertion in case the IME
+    // produced a no-op mutation that swapped padding for itself.
+    const diff = (a, b) => {
+        const minLen = Math.min(a.length, b.length);
+        let prefixLen = 0;
+        while (prefixLen < minLen && a[prefixLen] === b[prefixLen]) {
+            prefixLen++;
+        }
+        let suffixLen = 0;
+        const maxSuffix = minLen - prefixLen;
+        while (
+            suffixLen < maxSuffix &&
+            a[a.length - 1 - suffixLen] === b[b.length - 1 - suffixLen]
+        ) {
+            suffixLen++;
+        }
+        const deletedCount = a.length - prefixLen - suffixLen;
+        let inserted = b.slice(prefixLen, b.length - suffixLen);
+        if (inserted.indexOf(PADDING_CHAR) !== -1) {
+            inserted = inserted.split(PADDING_CHAR).join("");
+        }
+        return { deletedCount, inserted };
+    };
+
+    // Track the last observed textContent. Each `input` event
+    // computes the diff between `lastText` and the current text,
+    // dispatches the delta, then updates `lastText`. We deliberately
+    // do NOT reset the DOM between keystrokes: that would interrupt
+    // the IME's composition state, which on Firefox Android / GBoard
+    // causes the IME to re-assert its cumulative composition on the
+    // next mutation and double-dispatch earlier characters. By
+    // leaving the DOM coherent with the IME's view, each mutation
+    // is a single incremental edit that diffs to a clean delta.
+    let lastText = BASELINE;
+
+    div.addEventListener("input", () => {
+        const current = div.textContent;
+        if (current === lastText) {
+            return;
+        }
+        const { deletedCount, inserted } = diff(lastText, current);
+        for (let i = 0; i < deletedCount; i++) {
+            dispatchCh("\x7f");
+        }
+        for (const ch of inserted) {
+            dispatchCh(ch);
+        }
+        lastText = current;
+    });
+
+    // Special keys: Enter / Tab / Escape / Arrows do not always
+    // produce observable text mutations. Intercept in keydown and
+    // dispatch the right escape sequence directly. Backspace is
+    // handled by the input-event diff via the padding fodder.
+    //
+    // Enter additionally resets the div back to the padded baseline,
+    // bounding how much the div content can grow across a session
+    // and refilling backspace fodder for the next command line.
+    div.addEventListener("keydown", (ev) => {
+        switch (ev.key) {
+            case "Enter":
+                ev.preventDefault();
+                state.sendFn("\r");
+                div.textContent = BASELINE;
+                lastText = BASELINE;
+                setCaretToMiddle();
+                return;
+            case "Tab":
+                ev.preventDefault();
+                state.sendFn("\t");
+                return;
+            case "Escape":
+                ev.preventDefault();
+                state.sendFn("\x1b");
+                return;
+            case "ArrowUp":
+                ev.preventDefault();
+                state.sendFn("\x1b[A");
+                return;
+            case "ArrowDown":
+                ev.preventDefault();
+                state.sendFn("\x1b[B");
+                return;
+            case "ArrowRight":
+                ev.preventDefault();
+                state.sendFn("\x1b[C");
+                return;
+            case "ArrowLeft":
+                ev.preventDefault();
+                state.sendFn("\x1b[D");
+                return;
+        }
+    });
+}
+
+/**
  * Mark xterm.js's textarea `inputmode="none"` on touch devices so the
  * soft keyboard does not auto-pop on every tap inside the terminal.
  * Idempotent across the dual `setupInputHandlers` invocations from
@@ -903,12 +1165,37 @@ export function setSoftKeyboard(term, on) {
         return;
     }
     window.__zjSoftKbdEnabled = on;
+    // Mechanics: the soft keyboard is summoned by focusing an element
+    // with a text-capable `inputmode`. We route summoning through the
+    // dedicated `#zj-mobile-capture` hidden input (installed by
+    // `installSoftKeyboardCapture`) rather than xterm.js's textarea,
+    // so soft-keyboard keystrokes flow through that input's
+    // `beforeinput` listener (which is reliable on Android Firefox /
+    // GBoard, unlike `keydown` on the textarea). xterm.js's textarea
+    // keeps `inputmode="none"` permanently and only takes focus when
+    // soft keyboard mode is off, so hardware-keyboard typing still
+    // flows through xterm.js's normal handler.
+    const capture = window.__zjSoftKbdCapture && window.__zjSoftKbdCapture.element;
     if (on) {
-        ta.removeAttribute("inputmode");
-        ta.focus();
+        if (capture) {
+            capture.focus();
+        } else {
+            // Fallback if the capture input failed to install
+            // (shouldn't happen on coarse-pointer): summon via the
+            // textarea, accepting the keydown-reliability tradeoff.
+            ta.removeAttribute("inputmode");
+            ta.focus();
+        }
     } else {
+        if (capture) {
+            capture.blur();
+        }
+        // Re-focus xterm.js's textarea so attached hardware keyboards
+        // continue to drive xterm's normal keydown handler. The
+        // textarea's `inputmode="none"` (set by `suppressSoftKeyboardOnTouch`)
+        // prevents focusing it from re-summoning the soft keyboard.
         ta.setAttribute("inputmode", "none");
-        ta.blur();
+        ta.focus();
     }
 }
 
