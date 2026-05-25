@@ -17,6 +17,7 @@ use zellij_tile_utils::{palette_match, style};
 
 use first_line::first_line;
 use one_line_ui::one_line_ui;
+use zellij_tile::prelude::actions::Action as ZAction;
 use second_line::{
     floating_panes_are_visible, fullscreen_panes_to_hide, keybinds,
     locked_floating_panes_are_visible, locked_fullscreen_panes_to_hide, system_clipboard_error,
@@ -42,20 +43,91 @@ struct State {
     classic_ui: bool,
     base_mode_is_locked: bool,
     cached_keybinds: KeybindsVec,
+    hit_regions: Vec<HitRegion>,
+}
+
+#[derive(Clone, Debug)]
+pub struct HitRegion {
+    pub col_start: usize,
+    pub col_end: usize,
+    pub action: ClickAction,
+}
+
+#[derive(Clone, Debug)]
+pub enum ClickAction {
+    SwitchToMode(InputMode),
+    Quit,
+    NewPane,
+    ToggleFloating,
+}
+
+impl ClickAction {
+    pub fn dispatch(&self) {
+        match self {
+            ClickAction::SwitchToMode(m) => switch_to_input_mode(m),
+            ClickAction::Quit => quit_zellij(),
+            ClickAction::NewPane => run_action(
+                ZAction::NewPane {
+                    direction: None,
+                    pane_name: None,
+                    start_suppressed: false,
+                },
+                std::collections::BTreeMap::new(),
+            ),
+            ClickAction::ToggleFloating => {
+                run_action(ZAction::ToggleFloatingPanes, std::collections::BTreeMap::new())
+            },
+        }
+    }
+}
+
+pub fn keyaction_to_click(action: first_line::KeyAction, current_mode: InputMode) -> Option<ClickAction> {
+    use first_line::KeyAction;
+    Some(match action {
+        KeyAction::Unlock => match current_mode {
+            InputMode::Locked => ClickAction::SwitchToMode(InputMode::Normal),
+            _ => ClickAction::SwitchToMode(InputMode::Locked),
+        },
+        KeyAction::Lock => ClickAction::SwitchToMode(InputMode::Locked),
+        KeyAction::Pane => ClickAction::SwitchToMode(InputMode::Pane),
+        KeyAction::Tab => ClickAction::SwitchToMode(InputMode::Tab),
+        KeyAction::Resize => ClickAction::SwitchToMode(InputMode::Resize),
+        KeyAction::Move => ClickAction::SwitchToMode(InputMode::Move),
+        KeyAction::Search => ClickAction::SwitchToMode(InputMode::Scroll),
+        KeyAction::Session => ClickAction::SwitchToMode(InputMode::Session),
+        KeyAction::Tmux => ClickAction::SwitchToMode(InputMode::Tmux),
+        KeyAction::Quit => ClickAction::Quit,
+    })
 }
 
 register_plugin!(State);
 
 #[derive(Default)]
 pub struct LinePart {
-    part: String,
-    len: usize,
+    pub part: String,
+    pub len: usize,
+    pub regions: Vec<HitRegion>,
 }
 
 impl LinePart {
     pub fn append(&mut self, to_append: &LinePart) {
         self.part.push_str(&to_append.part);
+        let offset = self.len;
+        for r in &to_append.regions {
+            self.regions.push(HitRegion {
+                col_start: r.col_start + offset,
+                col_end: r.col_end + offset,
+                action: r.action.clone(),
+            });
+        }
         self.len += to_append.len;
+    }
+
+    pub fn shift_regions(&mut self, offset: usize) {
+        for r in &mut self.regions {
+            r.col_start += offset;
+            r.col_end += offset;
+        }
     }
 }
 
@@ -201,6 +273,10 @@ impl ZellijPlugin for State {
             .map(|c| c == "true")
             .unwrap_or(false);
         set_selectable(false);
+        request_permission(&[
+            PermissionType::ReadApplicationState,
+            PermissionType::ChangeApplicationState,
+        ]);
         subscribe(&[
             EventType::ModeUpdate,
             EventType::TabUpdate,
@@ -209,6 +285,7 @@ impl ZellijPlugin for State {
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
             EventType::InitialKeybinds,
+            EventType::Mouse,
         ]);
     }
 
@@ -257,6 +334,17 @@ impl ZellijPlugin for State {
                 should_render = true;
                 self.display_system_clipboard_failure = true;
             },
+            Event::Mouse(Mouse::LeftClick(line, col)) => {
+                if line == 0 {
+                    if let Some(region) = self
+                        .hit_regions
+                        .iter()
+                        .find(|r| col >= r.col_start && col < r.col_end)
+                    {
+                        region.action.clone().dispatch();
+                    }
+                }
+            },
             Event::InputReceived => {
                 if self.text_copy_destination.is_some()
                     || self.display_system_clipboard_failure == true
@@ -287,21 +375,21 @@ impl ZellijPlugin for State {
                 PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
             };
             let active_tab = self.tabs.iter().find(|t| t.active);
-            print!(
-                "{}{}",
-                one_line_ui(
-                    &self.mode_info,
-                    active_tab,
-                    cols,
-                    separator,
-                    self.base_mode_is_locked,
-                    self.text_copy_destination,
-                    self.display_system_clipboard_failure,
-                ),
-                fill_bg,
+            let line = one_line_ui(
+                &self.mode_info,
+                active_tab,
+                cols,
+                separator,
+                self.base_mode_is_locked,
+                self.text_copy_destination,
+                self.display_system_clipboard_failure,
             );
+            self.hit_regions = line.regions.clone();
+            print!("{}{}", line, fill_bg);
             return;
         }
+        // Two-row UI: not tappable.
+        self.hit_regions.clear();
 
         //TODO: Switch to UI components here
         let active_tab = self.tabs.iter().find(|t| t.active);

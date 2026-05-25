@@ -17,6 +17,7 @@ macro_rules! strings {
         LinePart {
             part: format!("{}", ansi_strings),
             len: unstyled_len(&ansi_strings),
+        regions: vec![],
         }
     }};
 }
