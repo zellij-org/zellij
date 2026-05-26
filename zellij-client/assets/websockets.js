@@ -278,6 +278,22 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             if (cursor_inactive_style !== "undefined") {
                 term.options.cursorInactiveStyle = cursor_inactive_style;
             }
+            // The soft-keyboard capture (installed by `input.js`) takes
+            // focus on every tap, so xterm.js renders the cursor with
+            // `cursorInactiveStyle` rather than `cursorStyle` on mobile.
+            // After a user-config update has potentially changed
+            // `cursorStyle`, re-mirror it into the inactive slot so the
+            // cursor stays visible. The sync function is installed only
+            // on coarse-pointer devices, so this is a no-op on desktop.
+            // Runs after both branches above so an explicit
+            // `cursor_inactive_style` from the SetConfig payload is
+            // overridden — the soft-keyboard's focus dance makes the
+            // "inactive" rendering unavoidable on touch, and the only
+            // way to honour the user's intent for a visible cursor is
+            // to ignore an explicit inactive-style preference here.
+            if (typeof window.__zjSyncInactiveCursorStyle === "function") {
+                window.__zjSyncInactiveCursorStyle();
+            }
             // Font size: explicit config wins, otherwise pick a default
             // suited to the device. Mobile heuristic: coarse pointer
             // (touch) AND a narrow viewport, OR a UA string that

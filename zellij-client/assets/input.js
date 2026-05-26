@@ -1021,6 +1021,27 @@ function installSoftKeyboardCapture(term, sendFunction) {
     window.__zjSoftKbdCapture.installed = true;
     const state = window.__zjSoftKbdCapture;
 
+    // xterm.js considers the terminal "unfocused" whenever its
+    // textarea loses focus to a different DOM element. The soft-
+    // keyboard capture installed below takes focus on every tap
+    // (the OS keyboard refuses to surface otherwise), so xterm.js
+    // would render the cursor with `cursorInactiveStyle` (default
+    // `"outline"`) instead of `cursorStyle` — and on a small mobile
+    // viewport an outline-only rectangle reads as "no cursor at
+    // all". Mirror the active style into the inactive slot so the
+    // embedded pane's cursor stays visible while typing through the
+    // capture input. Scoped to coarse-pointer devices (this whole
+    // function is), so desktop's "click elsewhere → outline cursor"
+    // affordance is preserved. Exposed on `window` so
+    // `websockets.js`'s `SetConfig` handler can re-mirror after
+    // user-config updates change `cursorStyle`.
+    const syncInactiveCursorStyle = () => {
+        const active = term.options.cursorStyle || "block";
+        term.options.cursorInactiveStyle = active;
+    };
+    syncInactiveCursorStyle();
+    window.__zjSyncInactiveCursorStyle = syncInactiveCursorStyle;
+
     // Padding of non-breaking spaces (U+00A0). The caret sits in
     // the middle of the padding run so a single typed character
     // lands cleanly between padding chars and produces a "delete
