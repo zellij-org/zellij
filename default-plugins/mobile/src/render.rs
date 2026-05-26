@@ -161,9 +161,17 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
     }
 
     if bar_height > 0 {
+        // `state.ctrl_held` / `state.alt_held` are the canonical
+        // one-shot modifier flags — `Event::Key` (hardware keyboard)
+        // clears them without touching the controller's internal
+        // `modifiers` mirror, so reading directly from State avoids a
+        // stale-armed-emphasis bug after `arm-then-hardware-key` flows.
+        let armed = keyboard::KeyboardModifiers {
+            ctrl_armed: state.ctrl_held,
+            alt_armed: state.alt_held,
+        };
         keyboard::render_modifier_bar(
-            &state.keyboard.modifiers,
-            &state.keyboard.press_flash,
+            &armed,
             body_bottom,
             cols,
             &mut state.click_regions,
