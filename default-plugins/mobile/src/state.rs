@@ -358,10 +358,12 @@ pub struct State {
     pub last_emitted_cursor: LastEmittedCursor,
     /// Current OS soft-keyboard visibility on the attached web
     /// client, as last reported by the browser via
-    /// `Event::SoftKeyboardVisibilityChanged`. Defaults to `true` so
-    /// the modifier bar renders from the first frame on devices that
-    /// will summon the keyboard on first tap — the very next visibility
-    /// event corrects it down to `false` if the user has it dismissed.
+    /// `Event::SoftKeyboardVisibilityChanged`. Defaults to `false`
+    /// so the modifier bar stays hidden until the OS keyboard is
+    /// actually on screen — otherwise the bar would float above an
+    /// empty bottom row on the first frame, before the user has
+    /// tapped the terminal to summon the keyboard. The first
+    /// visibility event after the user taps lifts this to `true`.
     /// Drives `render::render` to suppress the modifier bar when the
     /// keyboard is hidden so the bottom row of the plugin area frees
     /// up for content.

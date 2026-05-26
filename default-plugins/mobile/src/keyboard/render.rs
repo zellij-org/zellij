@@ -192,23 +192,30 @@ pub fn render_modifier_bar(
     let sep_total = n.saturating_sub(1) * sep_w;
     let content_cols = cols - sep_total;
     // Natural cell-widths for each visible label under the chosen
-    // mode. `distribute_widths` guarantees each cell gets *at least*
+    // mode. `compute_bar_layout` guarantees each cell gets *at least*
     // its natural width, so e.g. CTRL (4 cells wide) never gets
-    // squeezed down to 3 cells and rendered as "CTR".
+    // squeezed down to 3 cells and rendered as "CTR". Each cell also
+    // gets identical symmetric padding (left == right == `pad`); any
+    // slack that cannot be split evenly across every cell becomes
+    // outer margin, centering the cells as a group rather than
+    // producing asymmetric per-cell padding.
     let naturals: Vec<usize> = indices
         .iter()
         .map(|&i| UnicodeWidthStr::width(label_mode.label_for(&BAR[i])))
         .collect();
-    let widths = distribute_widths(content_cols, &naturals);
+    let layout = compute_bar_layout(content_cols, &naturals);
+    let widths = &layout.widths;
 
     // Build the bar as one combined string. Track:
     // - char-indexed ranges for each label (used by `color_range`,
     //   which is char-indexed)
     // - char-indexed ranges for each separator (so pipes also paint
     //   in emphasis-3 rather than inheriting the selected-bar fg)
-    // - cell-indexed boundaries for click region tiling (each cell's
-    //   region includes its trailing separator, so the bar has no
-    //   dead pixels).
+    // - cell-indexed boundaries for click region tiling. The first
+    //   cell's region absorbs `left_margin` (its col_start is 0); the
+    //   last cell's region absorbs `right_margin` (its col_end is
+    //   `cols`). The bar still has no dead pixels within its visible
+    //   span.
     let mut bar = String::with_capacity(cols);
     let mut label_ranges: Vec<(std::ops::Range<usize>, bool)> = Vec::with_capacity(n);
     let mut sep_ranges: Vec<std::ops::Range<usize>> = Vec::with_capacity(n.saturating_sub(1));
@@ -217,6 +224,15 @@ pub fn render_modifier_bar(
     let mut chars_cursor: usize = 0;
     let mut cells_cursor: usize = 0;
     cell_boundaries.push(0);
+
+    // Leading outer margin — selected-style spaces so the ribbon
+    // still spans the full row, but the cells themselves are pushed
+    // inward to centre as a group.
+    for _ in 0..layout.left_margin {
+        bar.push(' ');
+    }
+    chars_cursor += layout.left_margin;
+    cells_cursor += layout.left_margin;
 
     for (slot, &cell_idx) in indices.iter().enumerate() {
         let cell = &BAR[cell_idx];
@@ -229,6 +245,8 @@ pub fn render_modifier_bar(
             truncate_to_width(label, width)
         };
         let visible_w = UnicodeWidthStr::width(visible.as_str());
+        // `compute_bar_layout` produces `width == nat + 2*pad`, so
+        // `width - visible_w` is always even and the two pads match.
         let left_pad = (width - visible_w) / 2;
         let right_pad = width - visible_w - left_pad;
 
@@ -259,10 +277,21 @@ pub fn render_modifier_bar(
             chars_cursor += sep_str.chars().count();
             sep_ranges.push(sep_chars_start..chars_cursor);
             cells_cursor += sep_w;
+            cell_boundaries.push(cells_cursor);
         }
-
-        cell_boundaries.push(cells_cursor);
     }
+
+    // Trailing outer margin, mirrored from the leading margin.
+    for _ in 0..layout.right_margin {
+        bar.push(' ');
+    }
+    chars_cursor += layout.right_margin;
+    cells_cursor += layout.right_margin;
+    // Last cell's region runs to the end of the row, absorbing
+    // `right_margin`.
+    cell_boundaries.push(cells_cursor);
+    // Unused after this point; explicitly drop the warning.
+    let _ = chars_cursor;
 
     // Disjoint ranges by construction: labels never overlap
     // separators, and per-cell emphasis is chosen by the armed flag
@@ -287,25 +316,59 @@ pub fn render_modifier_bar(
     }
 }
 
-/// Split `cols` into widths whose sum equals `cols`, with each cell
-/// receiving *at least* its natural label width (so e.g. CTRL is
-/// never squeezed below 4 cells and rendered as "CTR"). Surplus
-/// cells beyond `sum(naturals)` are distributed evenly, with the
-/// remainder loaded onto the left-most slots.
+/// Bar layout: per-cell widths plus the outer margins centred
+/// around them. The contract is:
+///   - every cell width equals `natural + 2 * pad` for the same
+///     `pad`, so each label receives identical symmetric padding
+///     (left and right always match);
+///   - any slack that cannot be split evenly across every cell
+///     spills into `left_margin` / `right_margin` rather than
+///     inflating arbitrary cells.
+///
+/// `widths.iter().sum::<usize>() + left_margin + right_margin`
+/// equals the `cols` argument passed to `compute_bar_layout`.
+struct BarLayout {
+    widths: Vec<usize>,
+    left_margin: usize,
+    right_margin: usize,
+}
+
+/// Compute per-cell widths and outer margins for the modifier bar.
+///
+/// Each cell receives *at least* its natural label width (so CTRL is
+/// never squeezed below 4 cells and rendered as "CTR") plus an
+/// identical pair of padding columns on either side. Any leftover
+/// slack — at most `2n - 1` columns — is split between `left_margin`
+/// and `right_margin`, centring the cells as a group. This keeps
+/// per-cell padding strictly symmetric: padding is either there on
+/// both sides or not there at all.
 ///
 /// Precondition: `cols >= sum(naturals)`. `choose_config` enforces
 /// this; widths saturate to the natural minimum on violation.
-fn distribute_widths(cols: usize, naturals: &[usize]) -> Vec<usize> {
+fn compute_bar_layout(cols: usize, naturals: &[usize]) -> BarLayout {
     let n = naturals.len();
+    if n == 0 {
+        return BarLayout {
+            widths: Vec::new(),
+            left_margin: cols,
+            right_margin: 0,
+        };
+    }
     let natural_sum: usize = naturals.iter().sum();
-    let extra = cols.saturating_sub(natural_sum);
-    let base = if n > 0 { extra / n } else { 0 };
-    let remainder = if n > 0 { extra % n } else { 0 };
-    naturals
-        .iter()
-        .enumerate()
-        .map(|(i, &nat)| nat + base + if i < remainder { 1 } else { 0 })
-        .collect()
+    let slack = cols.saturating_sub(natural_sum);
+    // Largest `pad` such that every cell can take `+2 * pad` columns
+    // without overflowing the slack.
+    let pad = slack / (2 * n);
+    let widths: Vec<usize> = naturals.iter().map(|&nat| nat + 2 * pad).collect();
+    let used: usize = widths.iter().sum();
+    let outer = cols.saturating_sub(used);
+    let left_margin = outer / 2;
+    let right_margin = outer - left_margin;
+    BarLayout {
+        widths,
+        left_margin,
+        right_margin,
+    }
 }
 
 /// Truncate `label` so its cell-width is at most `max_w`. Drops
@@ -332,36 +395,81 @@ mod tests {
     use super::*;
 
     #[test]
-    fn distribute_widths_sums_to_cols() {
+    fn bar_layout_totals_to_cols() {
         let naturals = vec![1usize; BAR_CELL_COUNT];
         for cols in [9, 10, 20, 80, 137] {
-            let widths = distribute_widths(cols, &naturals);
-            assert_eq!(widths.iter().sum::<usize>(), cols);
-            assert_eq!(widths.len(), BAR_CELL_COUNT);
+            let layout = compute_bar_layout(cols, &naturals);
+            let total: usize = layout.widths.iter().sum::<usize>()
+                + layout.left_margin
+                + layout.right_margin;
+            assert_eq!(total, cols, "cols={}", cols);
+            assert_eq!(layout.widths.len(), BAR_CELL_COUNT);
         }
     }
 
     #[test]
-    fn distribute_widths_left_loaded_remainder() {
-        // 10 cols across 9 cells whose naturals are all 1 — extra = 1,
-        // left-most slot picks it up.
-        let naturals = vec![1usize; 9];
-        let widths = distribute_widths(10, &naturals);
-        assert_eq!(widths, vec![2, 1, 1, 1, 1, 1, 1, 1, 1]);
-    }
-
-    #[test]
-    fn distribute_widths_respects_label_minimums() {
-        // Full-label naturals: ESC, TAB, CTRL, ALT, ←↓↑→, -.
+    fn bar_layout_every_cell_has_identical_symmetric_padding() {
+        // For any input, each cell's width must equal `nat + 2 * pad`
+        // for the same `pad` — i.e. the per-cell padding is identical
+        // and symmetric. Leftover slack lives in the outer margins,
+        // not in inflated cells.
         let naturals = vec![3, 3, 4, 3, 1, 1, 1, 1, 1];
-        // 27 = 18 (sum of naturals) + 9 extra → every cell +1.
-        let widths = distribute_widths(27, &naturals);
-        for (i, (&w, &nat)) in widths.iter().zip(naturals.iter()).enumerate() {
-            assert!(w >= nat, "cell {} got width {} < natural {}", i, w, nat);
+        for cols in [18, 19, 20, 26, 27, 50, 80, 137] {
+            let layout = compute_bar_layout(cols, &naturals);
+            let pads: Vec<usize> = layout
+                .widths
+                .iter()
+                .zip(naturals.iter())
+                .map(|(&w, &nat)| {
+                    assert!(
+                        w >= nat,
+                        "cols={} cell width {} < natural {}",
+                        cols,
+                        w,
+                        nat
+                    );
+                    let p2 = w - nat;
+                    assert_eq!(p2 % 2, 0, "cols={} cell padding {} not even", cols, p2);
+                    p2 / 2
+                })
+                .collect();
+            let first = pads[0];
+            for (i, &p) in pads.iter().enumerate() {
+                assert_eq!(p, first, "cols={} cell {} pad={} (expected {})", cols, i, p, first);
+            }
+            // Outer margin can be at most 2n - 1 — anything larger
+            // would have fit another full padding round.
+            assert!(
+                layout.left_margin + layout.right_margin < 2 * naturals.len(),
+                "cols={} outer margin overflow",
+                cols
+            );
+            // Margins balanced to within one column (centred).
+            let diff = layout.left_margin.abs_diff(layout.right_margin);
+            assert!(diff <= 1, "cols={} margins {}/{} not centred", cols, layout.left_margin, layout.right_margin);
         }
-        // CTRL slot must stay at >=4 so "CTRL" is not truncated to "CTR".
-        assert!(widths[2] >= 4);
-        assert_eq!(widths.iter().sum::<usize>(), 27);
+    }
+
+    #[test]
+    fn bar_layout_no_padding_when_slack_too_small() {
+        // 19 cols across naturals summing to 18 — only 1 slack column,
+        // not enough for a symmetric +1 on every cell. Every cell
+        // therefore keeps its natural width, and the single column
+        // becomes outer margin.
+        let naturals = vec![3, 3, 4, 3, 1, 1, 1, 1, 1];
+        let layout = compute_bar_layout(19, &naturals);
+        assert_eq!(layout.widths, naturals);
+        assert_eq!(layout.left_margin + layout.right_margin, 1);
+    }
+
+    #[test]
+    fn bar_layout_uses_padding_when_slack_permits() {
+        // 18 + 2*9 = 36 cols → pad=1 on every cell, no outer margin.
+        let naturals = vec![3, 3, 4, 3, 1, 1, 1, 1, 1];
+        let layout = compute_bar_layout(36, &naturals);
+        assert_eq!(layout.widths, vec![5, 5, 6, 5, 3, 3, 3, 3, 3]);
+        assert_eq!(layout.left_margin, 0);
+        assert_eq!(layout.right_margin, 0);
     }
 
     #[test]

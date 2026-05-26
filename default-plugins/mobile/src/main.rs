@@ -51,11 +51,14 @@ impl ZellijPlugin for State {
             EventType::SoftKeyboardVisibilityChanged,
         ]);
 
-        // Optimistic default: the OS keyboard surfaces on first tap,
-        // so paint the modifier bar from the first frame. The next
-        // `SoftKeyboardVisibilityChanged` event corrects this down to
-        // `false` if the user already had the keyboard dismissed.
-        self.soft_keyboard_visible = true;
+        // Modifier bar stays hidden on first render — it only
+        // appears once `Event::SoftKeyboardVisibilityChanged(true)`
+        // confirms the OS keyboard is actually on screen (i.e. the
+        // user has tapped the terminal element). Showing it before
+        // that point left the bar floating above an empty bottom
+        // row on first paint. `soft_keyboard_visible` already
+        // defaults to `false` via the struct's `#[derive(Default)]`
+        // so no explicit assignment is needed here.
 
         // The plugin no longer renders its own on-screen keyboard —
         // only a one-row modifier bar at the bottom. The OS soft
