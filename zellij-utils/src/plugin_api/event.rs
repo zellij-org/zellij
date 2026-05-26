@@ -12,6 +12,7 @@ pub use super::generated_api::api::{
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
         EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
         HostTerminalThemeChangedPayload as ProtobufHostTerminalThemeChangedPayload,
+        SoftKeyboardVisibilityChangedPayload as ProtobufSoftKeyboardVisibilityChangedPayload,
         HostTerminalThemeIndication as ProtobufHostTerminalThemeIndication,
         InputModeKeybinds as ProtobufInputModeKeybinds, KdlError as ProtobufKdlError,
         KdlErrorVariant as ProtobufKdlErrorVariant, KeyBind as ProtobufKeyBind,
@@ -588,6 +589,14 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for HostTerminalThemeChanged Event"),
             },
+            Some(ProtobufEventType::SoftKeyboardVisibilityChanged) => {
+                match protobuf_event.payload {
+                    Some(ProtobufEventPayload::SoftKeyboardVisibilityChangedPayload(p)) => {
+                        Ok(Event::SoftKeyboardVisibilityChanged(p.visible))
+                    },
+                    _ => Err("Malformed payload for SoftKeyboardVisibilityChanged Event"),
+                }
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -1127,6 +1136,15 @@ impl TryFrom<Event> for ProtobufEvent {
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::HostTerminalThemeChanged as i32,
                     payload: Some(event::Payload::HostTerminalThemeChangedPayload(payload)),
+                })
+            },
+            Event::SoftKeyboardVisibilityChanged(visible) => {
+                let payload = ProtobufSoftKeyboardVisibilityChangedPayload { visible };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::SoftKeyboardVisibilityChanged as i32,
+                    payload: Some(event::Payload::SoftKeyboardVisibilityChangedPayload(
+                        payload,
+                    )),
                 })
             },
             Event::InitialKeybinds(keybinds) => {
@@ -2106,6 +2124,9 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::HighlightClicked => EventType::HighlightClicked,
             ProtobufEventType::InitialKeybinds => EventType::InitialKeybinds,
             ProtobufEventType::HostTerminalThemeChanged => EventType::HostTerminalThemeChanged,
+            ProtobufEventType::SoftKeyboardVisibilityChanged => {
+                EventType::SoftKeyboardVisibilityChanged
+            },
         })
     }
 }
@@ -2160,6 +2181,9 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::HighlightClicked => ProtobufEventType::HighlightClicked,
             EventType::InitialKeybinds => ProtobufEventType::InitialKeybinds,
             EventType::HostTerminalThemeChanged => ProtobufEventType::HostTerminalThemeChanged,
+            EventType::SoftKeyboardVisibilityChanged => {
+                ProtobufEventType::SoftKeyboardVisibilityChanged
+            },
         })
     }
 }

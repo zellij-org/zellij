@@ -25,6 +25,7 @@ message ClientToServerMsg {
     DesktopNotificationResponseMsg desktop_notification_response = 18;
     ForwardedReplyFromHostMsg forwarded_reply_from_host = 19;
     HostTerminalThemeChangedMsg host_terminal_theme_changed = 20;
+    SoftKeyboardVisibilityChangedMsg soft_keyboard_visibility_changed = 21;
   }
 }
 
@@ -139,4 +140,8 @@ message HostTerminalThemeChangedMsg {
 enum HostTerminalThemeIndication {
   HOST_TERMINAL_THEME_INDICATION_DARK = 0;
   HOST_TERMINAL_THEME_INDICATION_LIGHT = 1;
+}
+
+message SoftKeyboardVisibilityChangedMsg {
+  bool visible = 1;
 }

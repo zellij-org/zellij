@@ -22,6 +22,14 @@ pub enum WebClientToWebServerControlMessagePayload {
     /// itself has not changed.
     TerminalResizeRendering(Size),
     TerminalMetrics(TerminalMetricsPayload),
+    /// The OS soft keyboard's actual visibility changed (detected
+    /// via `window.visualViewport.height` swings). The server
+    /// forwards this to subscribed plugins as
+    /// `Event::SoftKeyboardVisibilityChanged(visible)` so a plugin
+    /// like the mobile UI can show/hide its modifier bar in lockstep
+    /// with the OS keyboard. Fires for both user toggles (2-finger
+    /// gesture) and external dismissals (Android back button).
+    SoftKeyboardVisibilityChanged { visible: bool },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

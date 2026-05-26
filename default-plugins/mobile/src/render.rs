@@ -77,12 +77,18 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
     // Top bar always sits at row 0; the body fills the remaining
     // rows. The bottom modifier bar reserves one row at the bottom of
     // the plugin area, just above where the OS soft keyboard surfaces.
-    // The reservation is unconditional whenever the body has at least
-    // one usable row left after the bar; on a pathologically short
-    // plugin area (1-2 rows of body) the bar is suppressed so the
-    // viewport keeps a usable row.
+    // The reservation is gated on the OS keyboard being visible —
+    // when the user dismisses the keyboard (Android back button,
+    // 2-finger toggle, etc.) the bar disappears and its row is freed
+    // for viewport content. On a pathologically short plugin area
+    // (1-2 rows of body) the bar is suppressed so the viewport keeps
+    // a usable row.
     let body_top = 1;
-    let bar_height = if rows.saturating_sub(body_top) >= 2 { 1 } else { 0 };
+    let bar_height = if state.soft_keyboard_visible && rows.saturating_sub(body_top) >= 2 {
+        1
+    } else {
+        0
+    };
     let body_bottom = rows.saturating_sub(bar_height);
     let viewport_height = body_bottom.saturating_sub(body_top);
 

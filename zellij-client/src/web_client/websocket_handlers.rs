@@ -93,6 +93,9 @@ async fn handle_ws_control(
             WebClientToWebServerControlMessagePayload::TerminalMetrics(metrics) => {
                 terminal_metrics_to_ipc(metrics)
             },
+            WebClientToWebServerControlMessagePayload::SoftKeyboardVisibilityChanged {
+                visible,
+            } => ClientToServerMsg::SoftKeyboardVisibilityChanged { visible },
         };
 
         let _ = client_connection.send_to_server(client_msg);

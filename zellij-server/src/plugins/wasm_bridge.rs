@@ -2100,6 +2100,7 @@ fn check_event_permission(
         | Event::AvailableLayoutInfo(..)
         | Event::PluginConfigurationChanged(..)
         | Event::HighlightClicked { .. }
+        | Event::SoftKeyboardVisibilityChanged(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) | Event::PaneRenderReportWithAnsi(..) => {

@@ -8,6 +8,7 @@ use crate::{
         ForegroundColorMsg, ForwardQueryToHostMsg, ForwardedReplyFromHostMsg,
         HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
+        SoftKeyboardVisibilityChangedMsg,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
         LogErrorMsg, LogMsg, PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
         QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
@@ -147,6 +148,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     HostTerminalThemeChangedMsg {
                         mode: proto_mode as i32,
                     },
+                )
+            },
+            ClientToServerMsg::SoftKeyboardVisibilityChanged { visible } => {
+                client_to_server_msg::Message::SoftKeyboardVisibilityChanged(
+                    SoftKeyboardVisibilityChangedMsg { visible },
                 )
             },
         };
@@ -295,6 +301,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     .ok_or_else(|| anyhow!("Unknown HostTerminalThemeIndication: {}", msg.mode))?;
                 Ok(ClientToServerMsg::HostTerminalThemeChanged {
                     mode: proto_mode.into(),
+                })
+            },
+            Some(client_to_server_msg::Message::SoftKeyboardVisibilityChanged(msg)) => {
+                Ok(ClientToServerMsg::SoftKeyboardVisibilityChanged {
+                    visible: msg.visible,
                 })
             },
             None => Err(anyhow!("Empty ClientToServerMsg message")),

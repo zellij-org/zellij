@@ -529,4 +529,92 @@ export function setupResizeHandler(
     // would push the mobile client past the threshold and
     // auto-demote it out of the mobile layout.
     addEventListener("zellij:rendering-resize", scheduleRenderingResize);
+
+    setupSoftKeyboardVisibilityTracker(getWsControl, getOwnWebClientId);
+}
+
+/**
+ * Watch `window.visualViewport.height` for shrink/grow swings and
+ * report OS soft-keyboard visibility changes to the server over the
+ * control WebSocket. The server forwards each report to subscribed
+ * plugins as `Event::SoftKeyboardVisibilityChanged(visible)` so the
+ * mobile plugin can show/hide its modifier bar in lockstep with the
+ * OS keyboard.
+ *
+ * Heuristic: a one-shot delta of more than 150 px between consecutive
+ * resize events is treated as keyboard show (shrink) or dismiss
+ * (grow). 150 px sits above typical mobile URL-bar shrink (~50–100
+ * px) and well below typical soft-keyboard heights (~250–400 px), so
+ * routine address-bar transitions do not false-trigger.
+ *
+ * Device rotation can spuriously trip the threshold once, but the
+ * follow-up gesture (re-tap to summon the keyboard, or the user
+ * dismissing) corrects the state. False positives are self-healing.
+ *
+ * Also: on dismiss-detection we blur the dedicated capture textarea
+ * so the next user tap goes through a fresh focus() that re-summons
+ * the OS keyboard. Without this, the textarea stays focused after an
+ * external dismissal (Android back button on Firefox / Chrome), and
+ * a plain focus() on an already-focused element is a no-op for OS
+ * keyboard summon. `input.js` also handles this defensively inside
+ * `ensureCaptureFocused` (blur+focus on each gesture), so the two
+ * mechanisms reinforce each other.
+ *
+ * No-op on devices without `visualViewport`.
+ */
+function setupSoftKeyboardVisibilityTracker(getWsControl, getOwnWebClientId) {
+    if (!window.visualViewport) {
+        return;
+    }
+    const VIEWPORT_DELTA_THRESHOLD_PX = 150;
+    let lastViewportHeight = window.visualViewport.height;
+    let kbdVisible = false;
+
+    const onResize = () => {
+        const newHeight = window.visualViewport.height;
+        const delta = newHeight - lastViewportHeight;
+        let newKbdVisible = kbdVisible;
+        if (delta < -VIEWPORT_DELTA_THRESHOLD_PX) {
+            newKbdVisible = true;
+        } else if (delta > VIEWPORT_DELTA_THRESHOLD_PX) {
+            newKbdVisible = false;
+        }
+        lastViewportHeight = newHeight;
+        if (newKbdVisible === kbdVisible) {
+            return;
+        }
+        kbdVisible = newKbdVisible;
+
+        // Blur the capture input on external dismiss so the next
+        // user tap can re-focus it and re-summon the OS keyboard.
+        // The capture lives inside a closed shadow root, so
+        // `document.activeElement` always returns the shadow host
+        // when focus is "inside" — we rely on the mirrored
+        // `isFocused` flag installed by installSoftKeyboardCapture.
+        if (!kbdVisible) {
+            const capture =
+                window.__zjSoftKbdCapture &&
+                window.__zjSoftKbdCapture.element;
+            if (capture && window.__zjSoftKbdCapture.isFocused) {
+                capture.blur();
+            }
+        }
+
+        const wsControl = getWsControl();
+        const ownWebClientId = getOwnWebClientId();
+        if (!wsControl || ownWebClientId === "") {
+            return;
+        }
+        wsControl.send(
+            JSON.stringify({
+                web_client_id: ownWebClientId,
+                payload: {
+                    type: "SoftKeyboardVisibilityChanged",
+                    visible: kbdVisible,
+                },
+            })
+        );
+    };
+
+    window.visualViewport.addEventListener("resize", onResize);
 }

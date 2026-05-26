@@ -1034,6 +1034,13 @@ pub enum Event {
     InitialKeybinds(KeybindsVec),
     /// The host terminal indicated its color palette theme mode (CSI 2031 / DSR 997).
     HostTerminalThemeChanged(HostTerminalThemeMode),
+    /// The OS soft keyboard's actual visibility changed on a web
+    /// client. Fired by the server in response to a
+    /// `ClientToServerMsg::SoftKeyboardVisibilityChanged` dispatched
+    /// by the browser whenever `window.visualViewport.height`
+    /// crosses the keyboard-up/down threshold. Scoped to plugins
+    /// for the originating client.
+    SoftKeyboardVisibilityChanged(bool),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

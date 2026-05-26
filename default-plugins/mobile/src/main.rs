@@ -43,7 +43,19 @@ impl ZellijPlugin for State {
             // `Event::Timer` clears the expired entry so the cell
             // returns to its resting colour.
             EventType::Timer,
+            // Drives `soft_keyboard_visible`, which gates the modifier
+            // bar so the bar appears and disappears in lockstep with
+            // the browser's OS keyboard. Fired by the client whenever
+            // `window.visualViewport.height` crosses the keyboard
+            // show/hide threshold.
+            EventType::SoftKeyboardVisibilityChanged,
         ]);
+
+        // Optimistic default: the OS keyboard surfaces on first tap,
+        // so paint the modifier bar from the first frame. The next
+        // `SoftKeyboardVisibilityChanged` event corrects this down to
+        // `false` if the user already had the keyboard dismissed.
+        self.soft_keyboard_visible = true;
 
         // The plugin no longer renders its own on-screen keyboard —
         // only a one-row modifier bar at the bottom. The OS soft
@@ -385,6 +397,16 @@ impl ZellijPlugin for State {
                 // least one entry expired — which is the signal to
                 // redraw so the cell returns to its resting colour.
                 self.keyboard.sweep_flash(Instant::now())
+            },
+            Event::SoftKeyboardVisibilityChanged(visible) => {
+                if self.soft_keyboard_visible == visible {
+                    return false;
+                }
+                self.soft_keyboard_visible = visible;
+                // Modifier bar visibility is gated on this flag in
+                // `render::render`; a redraw is required to add/remove
+                // the bottom row.
+                true
             },
             _ => false,
         }

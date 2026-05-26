@@ -39,23 +39,24 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
     // xterm.js's textarea are unreliable (Android typically reports
     // `keyCode 229` with `key === "Unidentified"`; autocorrect /
     // predictive text batch and rewrite input). Install a dedicated
-    // hidden `<textarea>` element whose `input`-event value-diff
-    // drives a sentinel-backed capture path — consistent across iOS
-    // Safari, Android Chrome, GBoard, SwiftKey, Samsung Keyboard,
-    // and Firefox Android, AND works in in-app browsers / older
-    // WebViews that refuse to surface the OS keyboard for a focused
-    // contenteditable element. Scoped to coarse-pointer devices so
-    // desktops are untouched. The window-level click / touchend /
-    // pointerdown listeners installed inside this function focus
-    // the textarea on every gesture, so the OS keyboard appears on
-    // the first tap.
+    // hidden `<input type="password">` (housed inside a closed shadow
+    // root) whose `input`-event value-diff drives a sentinel-backed
+    // capture path — consistent across iOS Safari, Android Chrome,
+    // GBoard, SwiftKey, Samsung Keyboard, and Firefox Android, AND
+    // works in in-app browsers / older WebViews. See
+    // `installSoftKeyboardCapture`'s docstring for the full rationale
+    // behind the password-input + closed-shadow-root design.
+    // Scoped to coarse-pointer devices so desktops are untouched.
+    // The window-level click / touchend / pointerdown listeners
+    // installed inside this function focus the capture on every
+    // gesture, so the OS keyboard appears on the first tap.
     installSoftKeyboardCapture(term, sendFunction);
 
     // On coarse-pointer (touch) devices, mark xterm.js's textarea
     // `inputmode="none"` so a tap on the terminal does not summon
     // the OS keyboard through the textarea — the textarea is the
     // input target for hardware keyboards only. The dedicated
-    // capture <textarea> installed above is the OS-keyboard target,
+    // capture `<input>` installed above is the OS-keyboard target,
     // and its window-level focus listeners route every touch there.
     // Hardware-keyboard typing (e.g. an attached Bluetooth keyboard)
     // still flows through xterm.js's normal keydown handler.
@@ -518,7 +519,7 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
                     window.__zjSoftKbdEnabled &&
                     window.__zjSoftKbdCapture &&
                     window.__zjSoftKbdCapture.element &&
-                    document.activeElement !== window.__zjSoftKbdCapture.element
+                    !window.__zjSoftKbdCapture.isFocused
                 ) {
                     try {
                         window.__zjSoftKbdCapture.element.focus({
@@ -865,52 +866,134 @@ function installImeBypass(term, sendFunction) {
 }
 
 /**
- * Capture mobile soft-keyboard keystrokes by observing DOM mutations
- * on a hidden contenteditable `<div>` element. The "RestoreDOM"
- * pattern (from Slate / CodeMirror) sidesteps the long tail of
- * `beforeinput` / `inputType` quirks that plague Android soft
- * keyboards: instead of interpreting what the IME *says* it is doing
- * (cumulative `insertCompositionText`, missing
- * `deleteContentBackward` on empty inputs, ambiguous `insertText`
- * after `compositionend`, etc.), we let the IME mutate the DOM, diff
- * the new textContent against the previously-observed textContent on
- * each `input` event, and dispatch the actual delta as terminal
- * bytes. The DOM is left coherent with the IME's view across
- * keystrokes (no per-mutation reset); resetting mid-composition was
- * found to make the IME re-assert its cumulative state and
- * double-dispatch earlier characters. The DOM is reset only on
- * Enter, which bounds growth and refills backspace fodder for the
- * next command. xterm.js itself does not implement this approach
- * (upstream issue xtermjs/xterm.js#3600 has been "help wanted" for
- * years).
+ * Capture mobile soft-keyboard keystrokes for the terminal.
  *
- * Why contenteditable rather than `<input>`:
- *  - `MutationObserver` does not observe `<input>.value` changes
- *    (the value is a property, not a DOM mutation). A
- *    contenteditable element's textContent IS a DOM mutation, so
- *    it can be observed directly.
+ * ## The problem
  *
- * Baseline and caret: the div is seeded with a padding string of
- * non-breaking spaces and the caret is placed in the middle. The
- * padding gives Backspace something to delete (otherwise Firefox
- * Android / GBoard silently no-op on an empty target; see
- * w3c/input-events#75 and Bugzilla #1104817). The middle-of-padding
- * caret ensures characters typed by the IME land between the padding
- * chars so a simple prefix/suffix diff cleanly identifies them.
+ * The OS soft keyboard refuses to send keystrokes anywhere except into a
+ * text-input element it owns, and once it owns one it insists on running
+ * its own predictive / autocorrect / composition engine on top of every
+ * keystroke — an engine that holds invisible state, batches characters,
+ * replaces them after the fact, and re-flushes them at moments of its own
+ * choosing. None of that is what a terminal wants. The user expects each
+ * tap to deliver one byte to the shell, immediately and exactly once.
  *
- * Wire path: when soft keyboard mode is on, `setSoftKeyboard` focuses
- * this hidden div instead of xterm.js's textarea. When soft keyboard
- * mode is off, focus returns to xterm.js's textarea (which keeps
- * `inputmode="none"`), preserving hardware-keyboard typing through
- * xterm.js's normal handler.
+ * ## The hack: three independent layers stacked
  *
- * Coexists with `installImeBypass` (desktop ibus/fcitx, operates on
- * xterm's textarea) and the mobile plugin's SGR-click on-screen
- * keyboard (touch handlers); both are independent.
+ * This function keeps the OS keyboard happy ("yes, I am pointed at a real
+ * text input, please send me keystrokes") while neutralizing everything
+ * the keyboard tries to do on top of those keystrokes. Three independent
+ * mechanisms are stacked, each addressing a constraint imposed by the
+ * layer below it:
  *
- * Idempotent: `setupInputHandlers` runs twice (placeholder sender,
- * then real WebSocket sender post-`initWebSockets`); subsequent calls
- * just refresh `state.sendFn`.
+ *   1. **A hidden text-input element** exists so the OS keyboard has a
+ *      target. 1×1 px, fully transparent, `pointer-events:none`,
+ *      fixed-positioned at (0,0). Invisible to the user but focusable —
+ *      `display:none` and `visibility:hidden` would close the keyboard.
+ *
+ *   2. **The input is `type="password"`** so the keyboard's predictive
+ *      engine is disabled. Every mobile keyboard vendor (GBoard, SwiftKey,
+ *      Samsung, iOS, Firefox Android) exempts password fields from
+ *      prediction, autocorrect, autosuggest, cross-keystroke composition,
+ *      and "learn this word" history — by policy, because a keyboard that
+ *      predicted bank passwords would be a security incident. Every tap
+ *      becomes a single character, dispatched immediately, never revisited.
+ *      The hidden composition buffer that was the source of the original
+ *      Tab+Enter doubling bug (typing "ser" → tab-complete to "zellij-server"
+ *      → Enter would submit "zellij-serverser" because the IME re-flushed
+ *      the stale "ser" prefix when its composition state lost coherence
+ *      with the shell's view of the line) simply does not exist for
+ *      password fields. `.value` still exposes typed characters as plain
+ *      text, so the diff pipeline below works unchanged; the "dot
+ *      rendering" is irrelevant because the element is invisible anyway.
+ *
+ *   3. **The input lives inside a closed shadow root** so password managers
+ *      (1Password, LastPass, Bitwarden, Dashlane, browser built-ins) cannot
+ *      find it. Their content scripts detect targets via
+ *      `document.querySelectorAll('input[type="password"]')`, which does
+ *      not pierce closed shadow trees. The reference to the shadow root
+ *      is held privately in this function and never exposed; even
+ *      `host.shadowRoot` returns `null` because the shadow was created
+ *      with `mode:"closed"`. Events fired from inside the shadow tree
+ *      bubble out *retargeted* at the shadow host (a plain `<div>`), so
+ *      extension listeners that key off global `input` events see activity
+ *      on a `<div>` and cannot classify it as a password field either.
+ *
+ * Each layer addresses one constraint imposed by the layer below it:
+ * the keyboard wants a text input (layer 1); the text input wants to be
+ * smart (defeated by layer 2); the smart-input watchers want to be helpful
+ * (defeated by layer 3).
+ *
+ * ## DOM picture
+ *
+ * ```
+ * document.body
+ *   └─ host <div>     ← 1×1 px transparent, aria-hidden
+ *        └─ #shadow-root (closed)     ← invisible to extension queries
+ *             └─ <input type="password" value=BASELINE>
+ *                  ↑
+ *                  OS keyboard delivers keystrokes here.
+ *                  Each `input` event → diff(lastText, value) → pty bytes.
+ * ```
+ *
+ * ## Keystroke pipeline (the "RestoreDOM" pattern, from Slate / CodeMirror)
+ *
+ * Mobile keyboards do not reliably fire `keydown` for soft keys (Android
+ * typically reports `keyCode 229` with `key === "Unidentified"`;
+ * autocorrect rewrites the field after the fact, batching changes). So we
+ * do not listen to `keydown` for characters — we let the keyboard mutate
+ * the input's `.value`, then compute what changed.
+ *
+ * The element is seeded with `BASELINE`: eight non-breaking-space padding
+ * characters with the caret in the middle. On every `input` event we diff
+ * the new value against `lastText` using a prefix-suffix match: the longest
+ * common prefix and suffix are identified, and the differing middle is
+ * "N characters deleted, M characters inserted". Those translate to N
+ * `\x7f` bytes followed by the M inserted characters, dispatched to the
+ * pty. The middle-of-padding caret causes a single typed character to land
+ * cleanly between padding chars and produce a "delete 0, insert 1" diff.
+ * The padding around the caret also gives Backspace something to delete on
+ * an "empty" line, so the next `input` event reports a deletion that we
+ * can dispatch as `\x7f` — without padding, Firefox Android / GBoard
+ * silently no-op a backspace on empty content (w3c/input-events#75,
+ * Bugzilla #1104817).
+ *
+ * The value is reset to BASELINE on Enter to bound growth and refill
+ * backspace fodder for the next command.
+ *
+ * ## Consequence elsewhere: `document.activeElement` lies
+ *
+ * One side-effect of the closed shadow root: `document.activeElement`
+ * returns the shadow *host* (not the input inside) when focus is "inside"
+ * the shadow tree. This is a privacy property of closed shadow roots and
+ * cannot be bypassed without exposing the shadow root reference. Three
+ * call sites that previously asked "is the capture focused?" via
+ * `document.activeElement === capture` would silently always evaluate to
+ * false. They now read a mirrored `state.isFocused` flag that this
+ * function keeps in sync via `focus` and `blur` listeners on the input.
+ *
+ * ## Wire path
+ *
+ * When soft keyboard mode is on (`__zjSoftKbdEnabled === true`),
+ * `setSoftKeyboard` focuses this hidden input instead of xterm.js's
+ * textarea. When soft keyboard mode is off, focus returns to xterm.js's
+ * textarea (which keeps `inputmode="none"`), preserving hardware-keyboard
+ * typing through xterm.js's normal `keydown` handler.
+ *
+ * ## Coexistence
+ *
+ *  - `installImeBypass` (desktop ibus/fcitx) operates on xterm.js's
+ *    textarea, independent of this path.
+ *  - The mobile plugin's modifier-bar cells (TAB, ESC, CTRL, ALT, arrows)
+ *    are SGR mouse clicks on the terminal, routed to the plugin
+ *    server-side, and write directly to the pane's pty — they do not
+ *    touch the capture input.
+ *
+ * ## Idempotency
+ *
+ * `setupInputHandlers` runs twice (placeholder sender, then real WebSocket
+ * sender post-`initWebSockets`); subsequent calls just refresh
+ * `state.sendFn`.
  */
 function installSoftKeyboardCapture(term, sendFunction) {
     if (!isCoarsePointerDevice()) {
@@ -921,6 +1004,13 @@ function installSoftKeyboardCapture(term, sendFunction) {
             installed: false,
             sendFn: sendFunction,
             element: null,
+            // Mirrors the input's focus state. `document.activeElement`
+            // returns the shadow host (not the input inside) when the
+            // input lives in a closed shadow root, so identity-based
+            // focus checks against `element` can't work directly. The
+            // `focus`/`blur` listeners installed below keep this flag
+            // in sync; all `is the capture focused?` checks read it.
+            isFocused: false,
         };
     }
     window.__zjSoftKbdCapture.sendFn = sendFunction;
@@ -931,52 +1021,97 @@ function installSoftKeyboardCapture(term, sendFunction) {
     window.__zjSoftKbdCapture.installed = true;
     const state = window.__zjSoftKbdCapture;
 
-    // Padding of non-breaking spaces (U+00A0). Length chosen so a
-    // burst of backspaces has fodder before the MutationObserver
-    // microtask runs the reset. Caret sits in the middle so chars
-    // typed by the IME land cleanly between padding chars.
+    // Padding of non-breaking spaces (U+00A0). The caret sits in
+    // the middle of the padding run so a single typed character
+    // lands cleanly between padding chars and produces a "delete
+    // 0, insert 1" diff. The padding around the caret also gives
+    // backspace something to delete on an "empty" line so the
+    // next `input` event reports a deletion we can dispatch as
+    // `\x7f` (see the function docstring for the Firefox Android
+    // / GBoard no-op-on-empty bug this works around). 8 padding
+    // chars is comfortable headroom for any plausible backspace
+    // burst between two `input` events.
     const PADDING_CHAR =" ";
 
     const PADDING_LEN = 8;
     const CARET_OFFSET = PADDING_LEN / 2;
     const BASELINE = PADDING_CHAR.repeat(PADDING_LEN);
 
-    // <textarea> rather than contenteditable <div>: many mobile
-    // WebViews (especially in-app browsers and older Android
-    // WebView) refuse to surface the OS keyboard for a focused
-    // contenteditable element, while every WebView surfaces it for
-    // a focused <textarea>. The same baseline-padding +
-    // value-diff capture pattern is reused; textareas fire `input`
-    // events on value changes the same way contenteditables do on
-    // textContent mutations.
-    const div = document.createElement("textarea");
+    // Build the capture element. See the function docstring for
+    // the full architectural reasoning; the short version is
+    // three stacked tricks:
+    //
+    //   1. Hidden text input — so the OS keyboard has a target.
+    //   2. `type="password"` — so the keyboard does not run its
+    //      smart layer (prediction / autocorrect / composition)
+    //      on top.
+    //   3. Closed shadow root — so password managers cannot find
+    //      the field via `querySelectorAll('input[type=password]')`.
+    //
+    // Construction order: host → shadow → input. The host carries
+    // the 1×1 transparent positioning so any popover the OS or an
+    // extension still tries to anchor has nothing visible to
+    // attach to. `mode:"closed"` means `host.shadowRoot` returns
+    // `null` from outside; the only reference is `captureShadow`
+    // below, held inside this closure.
+    const captureHost = document.createElement("div");
+    captureHost.id = "zj-mobile-capture-host";
+    // Same 1×1 transparent positioning as the input itself, so the
+    // host has no visible footprint and cannot be the target of
+    // any autofill popover the manager might still try to anchor.
+    captureHost.style.cssText =
+        "position:fixed;top:0;left:0;" +
+        "width:1px;height:1px;" +
+        "opacity:0;pointer-events:none;" +
+        "overflow:hidden;";
+    captureHost.setAttribute("aria-hidden", "true");
+    document.body.appendChild(captureHost);
+    // `mode: "closed"` — the returned shadow root is the only way
+    // to reach inside, and we hold that reference privately.
+    // Extension content scripts have no way to obtain it.
+    const captureShadow = captureHost.attachShadow({ mode: "closed" });
+
+    const div = document.createElement("input");
     div.id = "zj-mobile-capture";
-    div.setAttribute("autocomplete", "off");
+    div.type = "password";
+    div.setAttribute("autocomplete", "new-password");
     div.setAttribute("autocorrect", "off");
     div.setAttribute("autocapitalize", "off");
     div.setAttribute("spellcheck", "false");
     div.setAttribute("inputmode", "text");
     div.setAttribute("aria-hidden", "true");
-    div.setAttribute("wrap", "off");
-    div.setAttribute("rows", "1");
-    div.setAttribute("cols", "1");
+    // Belt-and-braces opt-outs for managers that *do* pierce
+    // shadow roots (some enterprise / niche forks) — cheap to add.
+    div.setAttribute("data-1p-ignore", "true");
+    div.setAttribute("data-lpignore", "true");
+    div.setAttribute("data-bwignore", "true");
+    div.setAttribute("data-form-type", "other");
+    div.setAttribute("data-dashlane-ignore", "true");
     div.tabIndex = -1;
     // CSS that preserves focusability — `display:none` and
     // `visibility:hidden` would close the soft keyboard. 1×1 px,
     // fully transparent, pointer-events disabled so touches pass
-    // through to the terminal below. `resize:none` strips the
-    // textarea's default drag-resize handle.
+    // through to the terminal below.
     div.style.cssText =
         "position:fixed;top:0;left:0;" +
         "width:1px;height:1px;" +
         "opacity:0;pointer-events:none;" +
-        "border:0;padding:0;margin:0;resize:none;" +
+        "border:0;padding:0;margin:0;" +
         "background:transparent;color:transparent;" +
         "caret-color:transparent;outline:none;" +
         "white-space:pre;overflow:hidden;" +
         "user-select:text;-webkit-user-select:text;";
-    document.body.appendChild(div);
+    captureShadow.appendChild(div);
     state.element = div;
+
+    // Mirror focus state into the shared global so other call
+    // sites (touchstart focus-on-first-tap, ensureCaptureFocused)
+    // can answer "is the capture currently focused?" without
+    // relying on `document.activeElement` — which, with the
+    // closed shadow root above, always returns the host, never
+    // the input.
+    div.addEventListener("focus", () => { state.isFocused = true; });
+    div.addEventListener("blur", () => { state.isFocused = false; });
 
     const setCaretToMiddle = () => {
         try {
@@ -989,9 +1124,12 @@ function installSoftKeyboardCapture(term, sendFunction) {
     };
 
     const resetBaseline = () => {
-        // Replace `value` unconditionally. Destroying the text the
-        // IME may have been composing into typically cancels active
-        // composition, which is exactly what we want.
+        // Restore the padding-around-caret invariant. Called at
+        // install time (initial seed) and on Enter (bound growth +
+        // refill backspace fodder for the next command line). With
+        // `type="password"` there is no IME composition state to
+        // interrupt, so the assignment is a simple overwrite with
+        // no observable side effects beyond the value change.
         div.value = BASELINE;
         setCaretToMiddle();
     };
@@ -1015,11 +1153,15 @@ function installSoftKeyboardCapture(term, sendFunction) {
         state.sendFn(ch);
     };
 
-    // Diff baseline (`a`) vs post-mutation textContent (`b`).
-    // Returns the number of characters deleted from the middle of
-    // `a` and the substring inserted in the middle of `b`. Padding
-    // chars are stripped from the insertion in case the IME
-    // produced a no-op mutation that swapped padding for itself.
+    // Diff previous value (`a`) vs the post-mutation value (`b`).
+    // Both are `.value` strings on the capture `<input>`. Returns
+    // the number of characters deleted from the middle of `a` and
+    // the substring inserted in the middle of `b`, by walking the
+    // longest common prefix and then the longest common suffix
+    // (in the remaining span). Padding chars are stripped from the
+    // insertion in the rare case the IME produces a no-op mutation
+    // that swaps padding for itself — without the strip we would
+    // dispatch the padding character as if the user had typed it.
     const diff = (a, b) => {
         const minLen = Math.min(a.length, b.length);
         let prefixLen = 0;
@@ -1042,15 +1184,16 @@ function installSoftKeyboardCapture(term, sendFunction) {
         return { deletedCount, inserted };
     };
 
-    // Track the last observed value. Each `input` event computes
-    // the diff between `lastText` and the current value, dispatches
-    // the delta, then updates `lastText`. We deliberately do NOT
-    // reset the value between keystrokes: that would interrupt the
-    // IME's composition state, which on Firefox Android / GBoard
-    // causes the IME to re-assert its cumulative composition on the
-    // next mutation and double-dispatch earlier characters. By
-    // leaving the value coherent with the IME's view, each mutation
-    // is a single incremental edit that diffs to a clean delta.
+    // Track the last observed value so the next `input` event can
+    // compute the delta. With `type="password"` the keyboard does
+    // not run a composition / prediction engine on top of the
+    // field (see the function docstring for why), so each `input`
+    // event represents one user-driven mutation — either a single
+    // character insertion, a single backspace deletion, or a paste.
+    // The value accumulates across keystrokes until Enter resets
+    // it; that is harmless because there is no IME state on the
+    // keyboard side that could later re-flush the accumulated
+    // contents back into the dispatch path.
     let lastText = BASELINE;
 
     div.addEventListener("input", () => {
@@ -1137,8 +1280,21 @@ function installSoftKeyboardCapture(term, sendFunction) {
         if (!window.__zjSoftKbdEnabled) {
             return;
         }
-        if (document.activeElement === div) {
-            return;
+        // If the capture already has focus but the OS keyboard was
+        // dismissed externally (Android back button on Firefox /
+        // Chrome typically hides the keyboard without blurring the
+        // focused element), a plain focus() is a no-op and the
+        // keyboard stays hidden. A blur+focus sequence inside the
+        // user gesture forces the browser to re-evaluate the focus
+        // and re-summon the keyboard. Cheap; no observable side-
+        // effects on the value-diff capture path (lastText, value,
+        // and input listener all survive the blur/focus pair).
+        // `state.isFocused` is used in place of an `activeElement`
+        // identity check because the closed shadow root above
+        // means `document.activeElement` always returns the host,
+        // not the input inside.
+        if (state.isFocused) {
+            div.blur();
         }
         try {
             div.focus({ preventScroll: true });
@@ -1254,14 +1410,15 @@ export function setSoftKeyboard(term, on) {
     window.__zjSoftKbdEnabled = on;
     // Mechanics: the soft keyboard is summoned by focusing an element
     // with a text-capable `inputmode`. We route summoning through the
-    // dedicated `#zj-mobile-capture` hidden input (installed by
-    // `installSoftKeyboardCapture`) rather than xterm.js's textarea,
-    // so soft-keyboard keystrokes flow through that input's
-    // `beforeinput` listener (which is reliable on Android Firefox /
-    // GBoard, unlike `keydown` on the textarea). xterm.js's textarea
-    // keeps `inputmode="none"` permanently and only takes focus when
-    // soft keyboard mode is off, so hardware-keyboard typing still
-    // flows through xterm.js's normal handler.
+    // dedicated hidden capture `<input type="password">` (installed
+    // by `installSoftKeyboardCapture`) rather than xterm.js's
+    // textarea, so soft-keyboard keystrokes flow through the
+    // value-diff capture path (see that function's docstring for why
+    // the field is a password input wrapped in a closed shadow root).
+    // xterm.js's textarea keeps `inputmode="none"` permanently and
+    // only takes focus when soft keyboard mode is off, so
+    // hardware-keyboard typing still flows through xterm.js's normal
+    // keydown handler.
     const capture = window.__zjSoftKbdCapture && window.__zjSoftKbdCapture.element;
     if (on) {
         if (capture) {

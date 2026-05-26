@@ -197,6 +197,17 @@ pub enum ClientToServerMsg {
     HostTerminalThemeChanged {
         mode: HostTerminalThemeMode,
     },
+    /// The OS soft keyboard's actual visibility changed on a web
+    /// client. Dispatched by the browser via the web-control
+    /// WebSocket whenever `window.visualViewport.height` crosses
+    /// the keyboard-up/down threshold. The server forwards this
+    /// to subscribed plugins for the originating client as
+    /// `Event::SoftKeyboardVisibilityChanged(visible)` so a plugin
+    /// like the mobile UI can show/hide its modifier bar in lockstep
+    /// with the OS keyboard.
+    SoftKeyboardVisibilityChanged {
+        visible: bool,
+    },
 }
 
 // Types of messages sent from the server to the client

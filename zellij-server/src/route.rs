@@ -2689,6 +2689,23 @@ pub(crate) fn route_thread_main(
                                 retry_queue
                             );
                         },
+                        ClientToServerMsg::SoftKeyboardVisibilityChanged { visible } => {
+                            // Broadcast to plugins for this client so
+                            // any plugin tracking OS-keyboard state
+                            // (e.g. the mobile UI's modifier bar) can
+                            // react. Scoped via Some(client_id) so the
+                            // event only reaches plugins owned by the
+                            // originating client.
+                            if let Some(senders) = senders.as_ref() {
+                                let _ = senders.send_to_plugin(
+                                    PluginInstruction::Update(vec![(
+                                        None,
+                                        Some(client_id),
+                                        Event::SoftKeyboardVisibilityChanged(visible),
+                                    )]),
+                                );
+                            }
+                        },
                     }
                     Ok(should_break)
                 };
