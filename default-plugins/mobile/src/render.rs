@@ -12,7 +12,7 @@
 //! The renderer also rebuilds `state.click_regions` so the input
 //! handler can dispatch a `Mouse::LeftClick` to the right action.
 
-use crate::keyboard;
+use crate::modifier_bar;
 use crate::unix_now;
 use crate::state::{
     pane_id_of, ClickAction, ClickRegion, LastEmittedCursor, Selector, State,
@@ -166,11 +166,11 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
         // clears them without touching the controller's internal
         // `modifiers` mirror, so reading directly from State avoids a
         // stale-armed-emphasis bug after `arm-then-hardware-key` flows.
-        let armed = keyboard::KeyboardModifiers {
+        let armed = modifier_bar::KeyboardModifiers {
             ctrl_armed: state.ctrl_held,
             alt_armed: state.alt_held,
         };
-        keyboard::render_modifier_bar(
+        modifier_bar::render_modifier_bar(
             &armed,
             body_bottom,
             cols,

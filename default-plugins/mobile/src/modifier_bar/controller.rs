@@ -49,12 +49,12 @@ pub enum TapOutcome {
 }
 
 #[derive(Default)]
-pub struct KeyboardController {
+pub struct ModifierBarController {
     pub modifiers: KeyboardModifiers,
     pub press_flash: HashMap<CellId, Instant>,
 }
 
-impl KeyboardController {
+impl ModifierBarController {
     pub fn new() -> Self {
         Self::default()
     }

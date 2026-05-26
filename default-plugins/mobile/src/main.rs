@@ -6,7 +6,7 @@
 //! standard `TabUpdate` / `PaneUpdate` / `ModeUpdate` / `Mouse` /
 //! `Key` events for selection and action dispatch.
 
-mod keyboard;
+mod modifier_bar;
 mod keys;
 mod render;
 mod state;
@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 use zellij_tile::prelude::*;
 
-use crate::keyboard::TapOutcome;
+use crate::modifier_bar::TapOutcome;
 use crate::state::{ClickAction, Selector, State};
 
 register_plugin!(State);
@@ -399,7 +399,7 @@ impl ZellijPlugin for State {
                 // press-flash decay. `sweep_flash` returns true iff at
                 // least one entry expired — which is the signal to
                 // redraw so the cell returns to its resting colour.
-                self.keyboard.sweep_flash(Instant::now())
+                self.modifier_bar.sweep_flash(Instant::now())
             },
             Event::SoftKeyboardVisibilityChanged(visible) => {
                 if self.soft_keyboard_visible == visible {
@@ -816,7 +816,7 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             true
         },
         ClickAction::Keyboard(cell) => {
-            let outcome = state.keyboard.handle_tap(
+            let outcome = state.modifier_bar.handle_tap(
                 cell,
                 &mut state.ctrl_held,
                 &mut state.alt_held,
@@ -833,7 +833,7 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             }
             // Schedule the press-flash decay sweep. `KEY_FEEDBACK_MS`
             // is in milliseconds; `set_timeout` takes seconds.
-            set_timeout(keyboard::KEY_FEEDBACK_MS as f64 / 1000.0);
+            set_timeout(modifier_bar::KEY_FEEDBACK_MS as f64 / 1000.0);
             true
         },
     }

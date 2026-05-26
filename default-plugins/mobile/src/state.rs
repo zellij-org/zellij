@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use zellij_tile::prelude::*;
 
-use crate::keyboard::{CellId, KeyboardController};
+use crate::modifier_bar::{CellId, ModifierBarController};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selector {
@@ -51,7 +51,7 @@ pub enum ClickAction {
     /// See `enter_fit_mode` / `exit_fit_mode` in the shim.
     ToggleFit,
     /// Tap on a cell of the modifier bar at the bottom of the plugin
-    /// area. Routed through `KeyboardController::handle_tap` which
+    /// area. Routed through `ModifierBarController::handle_tap` which
     /// resolves to bytes (for ESC, TAB, arrows, `-`) or a modifier
     /// flip (for CTRL, ALT).
     Keyboard(CellId),
@@ -263,7 +263,7 @@ pub struct State {
     /// sticky toggles), press-flash timestamps and visibility.
     /// Visible by default — the corresponding OS soft-keyboard
     /// suppression is emitted from `load()`.
-    pub keyboard: KeyboardController,
+    pub modifier_bar: ModifierBarController,
     /// Click regions produced by the most recent render. The renderer
     /// rebuilds this on every `render` call; mouse events look up the
     /// hit region by (row, col).
@@ -280,10 +280,10 @@ pub struct State {
     /// `latest_pane_contents` when a pane disappears from the
     /// authoritative `PaneUpdate` manifest.
     pub pane_last_activity: HashMap<PaneId, u64>,
-    /// Sticky-Ctrl flag. Aliased to `KeyboardController::modifiers
-    /// .ctrl_armed` — the keyboard's tap handler reads/writes it
+    /// Sticky-Ctrl flag. Aliased to `ModifierBarController::modifiers
+    /// .ctrl_armed` — the bar's tap handler reads/writes it
     /// through a `&mut` reference so the hardware-key passthrough
-    /// path and the plugin keyboard share the same one-shot state.
+    /// path and the modifier bar share the same one-shot state.
     /// Consumed by the next non-modifier key from either path.
     pub ctrl_held: bool,
     /// Sticky-Alt flag. Same semantics as `ctrl_held`.
@@ -625,7 +625,7 @@ mod tests {
     //! from the keyboard layout space; the dispatcher does not
     //! interpret them so any u16 works.
     use super::*;
-    use crate::keyboard::CellId;
+    use crate::modifier_bar::CellId;
 
     fn kb(id: u16) -> ClickAction {
         ClickAction::Keyboard(CellId(id))

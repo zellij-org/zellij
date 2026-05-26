@@ -12,7 +12,7 @@ pub mod layout;
 pub mod modifiers;
 pub mod render;
 
-pub use controller::{KeyboardController, TapOutcome, KEY_FEEDBACK_MS};
+pub use controller::{ModifierBarController, TapOutcome, KEY_FEEDBACK_MS};
 pub use layout::CellId;
 #[allow(unused_imports)]
 pub use layout::KeyAction;
