@@ -100,14 +100,17 @@ impl ActionType {
             Action::Resize {
                 resize: Resize::Increase,
                 direction: Some(_),
+                ..
             } => ActionType::ResizeIncrease,
             Action::Resize {
                 resize: Resize::Decrease,
                 direction: Some(_),
+                ..
             } => ActionType::ResizeDecrease,
             Action::Resize {
                 resize: _,
                 direction: None,
+                ..
             } => ActionType::ResizeAny,
             Action::Search { .. } => ActionType::Search,
             Action::NewPane {

@@ -1023,7 +1023,7 @@ fn increase_tiled_pane_sizes_with_stacked_resizes() {
 
     // first we increase until fullscreen and once more to make sure we don't increase beyond it
     for _ in 0..=6 {
-        tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+        tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None), None)
             .unwrap();
         tab.render(&mut output, None).unwrap();
         let snapshot = take_snapshot(
@@ -1037,7 +1037,7 @@ fn increase_tiled_pane_sizes_with_stacked_resizes() {
 
     // then we decrease until the original position
     for _ in 0..=5 {
-        tab.resize(client_id, ResizeStrategy::new(Resize::Decrease, None))
+        tab.resize(client_id, ResizeStrategy::new(Resize::Decrease, None), None)
             .unwrap();
         tab.render(&mut output, None).unwrap();
         let snapshot = take_snapshot(
@@ -1085,7 +1085,7 @@ fn increase_tiled_pane_sizes_with_stacked_resizes_into_uneven_panes() {
     // increase twice, once to add the short pane into the stack and shorten the larger one, and
     // once to add the remaining two panes (the one we shortened and the extra one near it)
     for _ in 0..2 {
-        tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+        tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None), None)
             .unwrap();
         tab.render(&mut output, None).unwrap();
         let snapshot = take_snapshot(
@@ -1099,7 +1099,7 @@ fn increase_tiled_pane_sizes_with_stacked_resizes_into_uneven_panes() {
 
     // then we decrease until the original position
     for _ in 0..2 {
-        tab.resize(client_id, ResizeStrategy::new(Resize::Decrease, None))
+        tab.resize(client_id, ResizeStrategy::new(Resize::Decrease, None), None)
             .unwrap();
         tab.render(&mut output, None).unwrap();
         let snapshot = take_snapshot(
@@ -1136,9 +1136,9 @@ fn split_stack_vertically() {
         .unwrap();
     }
     // the below resizes will end up stacking the panes
-    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None), None)
         .unwrap();
-    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None), None)
         .unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, client_id, None, None)
         .unwrap();
@@ -1177,9 +1177,9 @@ fn split_stack_horizontally() {
         .unwrap();
     }
     // the below resizes will end up stacking the panes
-    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None), None)
         .unwrap();
-    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None), None)
         .unwrap();
     tab.horizontal_split(PaneId::Terminal(4), None, client_id, None, None)
         .unwrap();
@@ -1220,9 +1220,9 @@ fn render_stacks_without_pane_frames() {
         .unwrap();
     }
     // the below resizes will end up stacking the panes
-    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None), None)
         .unwrap();
-    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None), None)
         .unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, client_id, None, None)
         .unwrap();
@@ -1273,6 +1273,7 @@ fn render_stacks_without_pane_frames() {
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Right)),
+        None,
     )
     .unwrap();
     let _ = tab.focus_pane_with_id(PaneId::Terminal(7), false, false, client_id);
@@ -1683,7 +1684,7 @@ fn increase_floating_pane_size() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None), None)
         .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -1723,7 +1724,7 @@ fn decrease_floating_pane_size() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.resize(client_id, ResizeStrategy::new(Resize::Decrease, None))
+    tab.resize(client_id, ResizeStrategy::new(Resize::Decrease, None), None)
         .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -1766,6 +1767,7 @@ fn resize_floating_pane_left() {
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Left)),
+        None,
     )
     .unwrap();
     tab.render(&mut output, None).unwrap();
@@ -1809,6 +1811,7 @@ fn resize_floating_pane_right() {
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Right)),
+        None,
     )
     .unwrap();
     tab.render(&mut output, None).unwrap();
@@ -1852,6 +1855,7 @@ fn resize_floating_pane_up() {
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Up)),
+        None,
     )
     .unwrap();
     tab.render(&mut output, None).unwrap();
@@ -1895,6 +1899,7 @@ fn resize_floating_pane_down() {
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
+        None,
     )
     .unwrap();
     tab.render(&mut output, None).unwrap();
@@ -5092,7 +5097,7 @@ fn swapping_layouts_after_resize_snaps_to_current_layout() {
     )
     .unwrap();
     tab.next_swap_layout().unwrap();
-    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None), None)
         .unwrap();
     tab.next_swap_layout().unwrap();
     tab.render(&mut output, None).unwrap();
@@ -6294,6 +6299,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Left)),
+        None,
     )
     .unwrap();
     tab.render(&mut output, None).unwrap();
@@ -6405,6 +6411,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
+        None,
     )
     .unwrap();
     tab.render(&mut output, None).unwrap();
@@ -6513,7 +6520,7 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
     )
     .unwrap();
     let _ = tab.move_focus_right(client_id);
-    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None), None)
         .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -6621,6 +6628,7 @@ fn can_increase_size_into_pane_stack_horizontally() {
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Right)),
+        None,
     )
     .unwrap();
     tab.render(&mut output, None).unwrap();
@@ -6733,6 +6741,7 @@ fn can_increase_size_into_pane_stack_vertically() {
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Up)),
+        None,
     )
     .unwrap();
     tab.render(&mut output, None).unwrap();
@@ -6841,7 +6850,7 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         None,
     )
     .unwrap();
-    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None), None)
         .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -7170,6 +7179,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
         tab.resize(
             client_id,
             ResizeStrategy::new(Resize::Increase, Some(Direction::Up)),
+            None,
         )
         .unwrap();
     }
@@ -8666,6 +8676,7 @@ fn when_swapping_tiled_layouts_in_a_damaged_state_layout_and_pane_focus_are_unch
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
+        None,
     )
     .unwrap();
     tab.next_swap_layout().unwrap();
@@ -9615,6 +9626,7 @@ fn when_swapping_floating_layouts_in_a_damaged_state_layout_and_pane_focus_are_u
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
+        None,
     )
     .unwrap();
     tab.next_swap_layout().unwrap();

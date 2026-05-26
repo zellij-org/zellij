@@ -2823,6 +2823,7 @@ fn resize(env: &PluginEnv, resize: Resize) {
     let action = Action::Resize {
         resize,
         direction: None,
+        resize_percent: None,
     };
     apply_action!(action, error_msg, env);
 }
@@ -2832,6 +2833,7 @@ fn resize_with_direction(env: &PluginEnv, resize: ResizeStrategy) {
     let action = Action::Resize {
         resize: resize.resize,
         direction: resize.direction,
+        resize_percent: None,
     };
     apply_action!(action, error_msg, env);
 }

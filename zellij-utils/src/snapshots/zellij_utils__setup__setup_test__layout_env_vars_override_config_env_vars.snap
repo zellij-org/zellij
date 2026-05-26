@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 762
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -56,6 +57,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -69,6 +71,7 @@ Config {
                 Resize {
                     resize: Decrease,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -82,6 +85,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -352,6 +356,7 @@ Config {
                     direction: Some(
                         Left,
                     ),
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -373,6 +378,7 @@ Config {
                     direction: Some(
                         Down,
                     ),
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -394,6 +400,7 @@ Config {
                     direction: Some(
                         Up,
                     ),
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -415,6 +422,7 @@ Config {
                     direction: Some(
                         Right,
                     ),
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -436,6 +444,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -449,6 +458,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -460,6 +470,7 @@ Config {
                 Resize {
                     resize: Decrease,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -473,6 +484,7 @@ Config {
                 Resize {
                     resize: Decrease,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -484,6 +496,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -497,6 +510,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -510,6 +524,7 @@ Config {
                     direction: Some(
                         Left,
                     ),
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -523,6 +538,7 @@ Config {
                     direction: Some(
                         Down,
                     ),
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -536,6 +552,7 @@ Config {
                     direction: Some(
                         Up,
                     ),
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -549,6 +566,7 @@ Config {
                     direction: Some(
                         Right,
                     ),
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -616,6 +634,7 @@ Config {
                     direction: Some(
                         Left,
                     ),
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -665,6 +684,7 @@ Config {
                     direction: Some(
                         Down,
                     ),
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -690,6 +710,7 @@ Config {
                     direction: Some(
                         Up,
                     ),
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -715,6 +736,7 @@ Config {
                     direction: Some(
                         Right,
                     ),
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -947,6 +969,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -960,6 +983,7 @@ Config {
                 Resize {
                     resize: Decrease,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -973,6 +997,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -1505,6 +1530,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -1518,6 +1544,7 @@ Config {
                 Resize {
                     resize: Decrease,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -1648,6 +1675,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -2127,6 +2155,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -2140,6 +2169,7 @@ Config {
                 Resize {
                     resize: Decrease,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -2153,6 +2183,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -2564,6 +2595,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -2577,6 +2609,7 @@ Config {
                 Resize {
                     resize: Decrease,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -2590,6 +2623,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -2952,6 +2986,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -2965,6 +3000,7 @@ Config {
                 Resize {
                     resize: Decrease,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -2978,6 +3014,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -3411,6 +3448,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -3424,6 +3462,7 @@ Config {
                 Resize {
                     resize: Decrease,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -3437,6 +3476,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -3764,6 +3804,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -3777,6 +3818,7 @@ Config {
                 Resize {
                     resize: Decrease,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -3790,6 +3832,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -4117,6 +4160,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -4130,6 +4174,7 @@ Config {
                 Resize {
                     resize: Decrease,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -4143,6 +4188,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -4691,6 +4737,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -4704,6 +4751,7 @@ Config {
                 Resize {
                     resize: Decrease,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -4717,6 +4765,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -5105,6 +5154,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -5118,6 +5168,7 @@ Config {
                 Resize {
                     resize: Decrease,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -5131,6 +5182,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -5531,6 +5583,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -5554,6 +5607,7 @@ Config {
                 Resize {
                     resize: Decrease,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {
@@ -5567,6 +5621,7 @@ Config {
                 Resize {
                     resize: Increase,
                     direction: None,
+                    resize_percent: None,
                 },
             ],
             KeyWithModifier {

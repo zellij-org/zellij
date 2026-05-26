@@ -156,6 +156,7 @@ impl TryFrom<ProtobufAction> for Action {
                     Ok(Action::Resize {
                         resize: resize_strategy.resize,
                         direction: resize_strategy.direction,
+                        resize_percent: None,
                     })
                 },
                 _ => Err("Wrong payload for Action::Resize"),
@@ -1154,7 +1155,9 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
-            Action::Resize { resize, direction } => {
+            Action::Resize {
+                resize, direction, ..
+            } => {
                 let mut resize: ProtobufResize = resize.try_into()?;
                 resize.direction = direction.and_then(|d| {
                     let resize_direction: ProtobufResizeDirection = d.try_into().ok()?;

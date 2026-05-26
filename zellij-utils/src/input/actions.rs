@@ -154,6 +154,7 @@ pub enum Action {
     Resize {
         resize: Resize,
         direction: Option<Direction>,
+        resize_percent: Option<usize>,
     },
     /// Switch focus to next pane in specified direction.
     FocusNextPane,
@@ -816,7 +817,11 @@ impl Action {
                         direction,
                     }])
                 },
-                None => Ok(vec![Action::Resize { resize, direction }]),
+                None => Ok(vec![Action::Resize {
+                    resize,
+                    direction,
+                    resize_percent: None,
+                }]),
             },
             CliAction::FocusNextPane => Ok(vec![Action::FocusNextPane]),
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
@@ -2672,7 +2677,11 @@ mod tests {
         let actions = result.unwrap();
         assert_eq!(actions.len(), 1);
         match &actions[0] {
-            Action::Resize { resize, direction } => {
+            Action::Resize {
+                resize,
+                direction,
+                resize_percent: None,
+            } => {
                 assert!(matches!(resize, Resize::Increase));
                 assert!(matches!(direction, Some(Direction::Left)));
             },

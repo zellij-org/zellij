@@ -1027,12 +1027,12 @@ impl From<crate::input::actions::Action>
                     input_mode: input_mode_to_proto_i32(input_mode),
                 })
             },
-            crate::input::actions::Action::Resize { resize, direction } => {
-                ActionType::Resize(ResizeAction {
-                    resize: resize_to_proto_i32(resize),
-                    direction: direction.map(|d| direction_to_proto_i32(d)),
-                })
-            },
+            crate::input::actions::Action::Resize {
+                resize, direction, ..
+            } => ActionType::Resize(ResizeAction {
+                resize: resize_to_proto_i32(resize),
+                direction: direction.map(|d| direction_to_proto_i32(d)),
+            }),
             crate::input::actions::Action::FocusNextPane => {
                 ActionType::FocusNextPane(FocusNextPaneAction {})
             },
@@ -1902,6 +1902,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .direction
                     .map(|d| proto_i32_to_direction(d))
                     .transpose()?,
+                resize_percent: None,
             }),
             ActionType::FocusNextPane(_) => Ok(crate::input::actions::Action::FocusNextPane),
             ActionType::FocusPreviousPane(_) => {
