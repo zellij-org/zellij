@@ -292,19 +292,31 @@ fn append_segment(
 /// those pad cells still toggle the menu.
 const HAMBURGER_SLOP_CELLS: usize = 3;
 
-/// Collapsed top bar: `"Zellij <pane>"` left-aligned, `☰` right-
-/// aligned. The pane title truncates with `…` when the natural width
-/// exceeds the available cells; the hamburger always stays visible
-/// with a slop halo on its left so the tap target is generous.
+/// Collapsed top bar: `"Zellij <session> <pane>"` left-aligned, `☰`
+/// right-aligned. The session segment is painted with emphasis-0 and
+/// the pane segment with emphasis-2; the `"Zellij "` prefix is
+/// chrome (no `color_range`). Truncation is applied in priority
+/// order:
+/// 1. Natural widths fit → render `"Zellij <session> <pane>"`.
+/// 2. Natural widths overflow → drop the `"Zellij "` prefix and try
+///    `"<session> <pane>"` at natural widths.
+/// 3. Still overflows → keep both names visible but split the
+///    available cells. Each side gets at least half; if one name is
+///    shorter than half, the other absorbs the slack.
+/// When no session name is known the bar falls back to
+/// `"Zellij <pane>"` (original behaviour).
+///
+/// The hamburger always stays visible with a slop halo on its left
+/// so the tap target is generous.
 ///
 /// Click behaviour depends on whether a selector is currently open:
-/// - **Collapsed (no selector)**: tap on the prefix/pane title opens
-///   the Panes selector (`ExpandPanes`).
-/// - **In a selector**: tap on the prefix/pane title collapses the
-///   selector and returns to the viewport (`CollapseSelector`) —
-///   matches the existing selector escape-tap gesture so the
-///   identical-looking top bar offers a one-tap way home from
-///   Change Pane / Change Session.
+/// - **Collapsed (no selector)**: tap on the prefix/session/pane
+///   title opens the Panes selector (`ExpandPanes`).
+/// - **In a selector**: tap on the prefix/session/pane title
+///   collapses the selector and returns to the viewport
+///   (`CollapseSelector`) — matches the existing selector escape-tap
+///   gesture so the identical-looking top bar offers a one-tap way
+///   home from Change Pane / Change Session.
 ///
 /// The hamburger glyph itself (tight) and the pad to its left
 /// (slop) always toggle the dropdown menu in either state.
@@ -319,37 +331,94 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
             }
         })
         .unwrap_or_else(|| "—".to_string());
+    let session_name = state.session_name.clone();
 
     let prefix = "Zellij ";
     let hamburger = "\u{2630}"; // ☰
 
-    // Layout reserves prefix + HAMBURGER_SLOP_CELLS pad cells +
-    // hamburger glyph. The pad cells double as both visible spacing
-    // and the hamburger's slop halo.
     let prefix_w = UnicodeWidthStr::width(prefix);
     let hamburger_w = UnicodeWidthStr::width(hamburger);
-    let reserved = prefix_w + HAMBURGER_SLOP_CELLS + hamburger_w;
-    let pane_max = cols.saturating_sub(reserved);
+    // Total cells available to the left of the hamburger glyph and
+    // its mandatory slop halo.
+    let content_max = cols.saturating_sub(HAMBURGER_SLOP_CELLS + hamburger_w);
+
+    let session_w_natural = session_name
+        .as_ref()
+        .map(|s| UnicodeWidthStr::width(s.as_str()))
+        .unwrap_or(0);
     let pane_w_natural = UnicodeWidthStr::width(pane_name.as_str());
-    let target_pane = pane_w_natural.min(pane_max);
-    let pane_display = pad_or_truncate(&pane_name, target_pane);
+
+    // Pick a layout. Priority: "Zellij <session> <pane>" at natural
+    // widths → "<session> <pane>" at natural widths → split the
+    // content area between the two names, with a single separator
+    // cell. With no session_name, fall back to "Zellij <pane>" —
+    // the original behaviour.
+    let sep_w: usize = 1;
+    let (show_prefix, session_target, pane_target): (bool, usize, usize) =
+        if session_name.is_some() {
+            let with_prefix_w = prefix_w + session_w_natural + sep_w + pane_w_natural;
+            if with_prefix_w <= content_max {
+                (true, session_w_natural, pane_w_natural)
+            } else {
+                let without_prefix_w = session_w_natural + sep_w + pane_w_natural;
+                if without_prefix_w <= content_max {
+                    (false, session_w_natural, pane_w_natural)
+                } else {
+                    let available = content_max.saturating_sub(sep_w);
+                    let half = available / 2;
+                    let (s_t, p_t) = if session_w_natural <= half {
+                        (session_w_natural, available.saturating_sub(session_w_natural))
+                    } else if pane_w_natural <= half {
+                        (available.saturating_sub(pane_w_natural), pane_w_natural)
+                    } else {
+                        (half, available.saturating_sub(half))
+                    };
+                    (false, s_t, p_t)
+                }
+            }
+        } else {
+            let pane_max = content_max.saturating_sub(prefix_w);
+            (true, 0, pane_w_natural.min(pane_max))
+        };
 
     let mut bar = String::with_capacity(cols + 16);
     let mut chars: usize = 0;
     let mut cells: usize = 0;
 
-    append_segment(&mut bar, &mut chars, &mut cells, prefix);
+    if show_prefix {
+        append_segment(&mut bar, &mut chars, &mut cells, prefix);
+    }
+
+    let (session_chars_s, session_chars_e, session_cells_range) =
+        if let (Some(session), true) = (session_name.as_ref(), session_target > 0) {
+            let session_display = pad_or_truncate(session, session_target);
+            let (cs, ce, cell_s, cell_e) =
+                append_segment(&mut bar, &mut chars, &mut cells, &session_display);
+            // Separator cell between session and pane. The session
+            // click region intentionally stops at the end of the
+            // session text — the separator space falls into the pane
+            // region so the click target boundaries line up with what
+            // the user sees as session text vs. pane text.
+            append_segment(&mut bar, &mut chars, &mut cells, " ");
+            (cs, ce, Some((cell_s, cell_e)))
+        } else {
+            (0, 0, None)
+        };
+
+    let pane_display = pad_or_truncate(&pane_name, pane_target);
     let (pane_chars_s, pane_chars_e, _, _) =
         append_segment(&mut bar, &mut chars, &mut cells, &pane_display);
     // The pane tight click region ends here — at the right edge of
-    // the rendered prefix + title text. Anything to the right is
-    // either pad (slop catches it) or the hamburger glyph itself.
+    // the rendered prefix + session + pane text. Anything to the
+    // right is either pad (slop catches it) or the hamburger glyph
+    // itself.
     let pane_tight_end_cell = cells;
 
     // Pad with spaces so the hamburger sits at the right edge. The
-    // `pane_max` reservation guarantees at least HAMBURGER_SLOP_CELLS
-    // pad cells when the title is at max width; shorter titles
-    // produce more pad, which expands the slop halo.
+    // `content_max` reservation guarantees at least
+    // HAMBURGER_SLOP_CELLS pad cells when the names are at max
+    // width; shorter names produce more pad, which expands the slop
+    // halo.
     let pad_cells = cols
         .saturating_sub(cells + hamburger_w)
         .max(HAMBURGER_SLOP_CELLS);
@@ -365,22 +434,26 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
 
     // Compose the styled bar. The "Zellij " prefix takes no
     // color_range — it inherits the selected-bar foreground so it
-    // reads as chrome rather than data. The pane title uses
-    // emphasis-2 (matching the colour the old layout used for the
-    // pane segment), and the hamburger uses emphasis-3.
-    let text = Text::new(&bar)
+    // reads as chrome rather than data. The session name uses
+    // emphasis-0, the pane title uses emphasis-2, and the hamburger
+    // uses emphasis-3.
+    let mut text = Text::new(&bar)
         .selected()
         .color_range(2, pane_chars_s..pane_chars_e)
         .color_range(3, hamburger_chars_s..hamburger_chars_e);
+    if session_chars_e > session_chars_s {
+        text = text.color_range(0, session_chars_s..session_chars_e);
+    }
     print_text_with_coordinates(text, 0, row, Some(cols), None);
 
-    // Context-sensitive pane action: in selector mode the prefix/
-    // pane segment is the escape hatch back to the viewport; in
-    // collapsed mode it opens the Panes selector.
-    let pane_action = if state.expanded.is_some() {
-        ClickAction::CollapseSelector
+    // Context-sensitive actions: in selector mode both the pane and
+    // the session sub-regions act as escape hatches back to the
+    // viewport. In collapsed mode each opens its respective
+    // selector.
+    let (pane_action, session_action) = if state.expanded.is_some() {
+        (ClickAction::CollapseSelector, ClickAction::CollapseSelector)
     } else {
-        ClickAction::ExpandPanes
+        (ClickAction::ExpandPanes, ClickAction::ExpandSessions)
     };
 
     for region in top_bar_collapsed_click_regions(
@@ -389,6 +462,8 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
         pane_tight_end_cell,
         hamburger_start_cell,
         pane_action,
+        session_cells_range,
+        session_action,
     ) {
         state.click_regions.push(region);
     }
@@ -396,11 +471,16 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
 
 /// Compute the click regions for the simplified collapsed top bar.
 ///
-/// Three regions total:
-/// - **Tight pane** `[0, pane_tight_end)` — exact extent of the
-///   rendered prefix + pane title. Fires `pane_action` (either
-///   `ExpandPanes` in collapsed mode or `CollapseSelector` in
-///   selector mode).
+/// The left content area `[0, pane_tight_end)` is partitioned into
+/// up to three tight sub-regions:
+/// - When `session_cells = Some((s, e))` the area splits into
+///   `[0, s)` → `pane_action`, `[s, e)` → `session_action`,
+///   `[e, pane_tight_end)` → `pane_action`. Zero-width slices are
+///   skipped.
+/// - When `session_cells = None` the entire `[0, pane_tight_end)`
+///   range is a single `pane_action` region (original behaviour).
+///
+/// Additionally:
 /// - **Tight hamburger** `[hamburger_tight_start, cols)` — just the
 ///   visible glyph. Fires `ToggleMenu`.
 /// - **Slop hamburger** `[pane_tight_end, cols)` priority 1, centered
@@ -408,6 +488,11 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
 ///   glyph. Tapping any of these cells (which look like empty
 ///   spacing) also fires `ToggleMenu`, giving the small one-cell
 ///   glyph a generous tap halo.
+///
+/// `pane_action`/`session_action` are typically `ExpandPanes` /
+/// `ExpandSessions` in collapsed mode and both `CollapseSelector`
+/// in selector mode — matching the legacy "tap the top bar to
+/// escape any open selector" gesture.
 ///
 /// The slop region overlaps the tight hamburger region, but tight
 /// wins on pass 1, so the overlap is harmless: cells in
@@ -421,22 +506,58 @@ pub fn top_bar_collapsed_click_regions(
     pane_tight_end: usize,
     hamburger_tight_start: usize,
     pane_action: ClickAction,
+    session_cells: Option<(usize, usize)>,
+    session_action: ClickAction,
 ) -> Vec<ClickRegion> {
     let hamburger_center = (
         hamburger_tight_start.min(cols.saturating_sub(1)),
         row,
     );
-    vec![
-        ClickRegion::tight(row, 0, pane_tight_end, pane_action),
-        ClickRegion::tight(row, hamburger_tight_start, cols, ClickAction::ToggleMenu),
-        ClickRegion::slop(
-            row,
-            pane_tight_end,
-            cols,
-            ClickAction::ToggleMenu,
-            hamburger_center,
-        ),
-    ]
+
+    let mut regions: Vec<ClickRegion> = Vec::with_capacity(5);
+
+    // Partition the left content area. The optional session split
+    // carves out a middle range; otherwise the entire span is a
+    // single pane region. Zero-width slices are filtered out so the
+    // hit tester never sees empty ranges.
+    if let Some((s, e)) = session_cells {
+        let s = s.min(pane_tight_end);
+        let e = e.min(pane_tight_end);
+        if s < e {
+            if s > 0 {
+                regions.push(ClickRegion::tight(row, 0, s, pane_action.clone()));
+            }
+            regions.push(ClickRegion::tight(row, s, e, session_action));
+            if e < pane_tight_end {
+                regions.push(ClickRegion::tight(
+                    row,
+                    e,
+                    pane_tight_end,
+                    pane_action.clone(),
+                ));
+            }
+        } else if pane_tight_end > 0 {
+            regions.push(ClickRegion::tight(row, 0, pane_tight_end, pane_action.clone()));
+        }
+    } else if pane_tight_end > 0 {
+        regions.push(ClickRegion::tight(row, 0, pane_tight_end, pane_action.clone()));
+    }
+
+    regions.push(ClickRegion::tight(
+        row,
+        hamburger_tight_start,
+        cols,
+        ClickAction::ToggleMenu,
+    ));
+    regions.push(ClickRegion::slop(
+        row,
+        pane_tight_end,
+        cols,
+        ClickAction::ToggleMenu,
+        hamburger_center,
+    ));
+
+    regions
 }
 
 /// One pre-styled cell paired with its visible width. Width is
@@ -1594,12 +1715,12 @@ mod tests {
         assert_eq!(visible(&sliced), "ab中");
     }
 
-    /// The collapsed top bar emits three regions: a tight pane
-    /// region for the rendered text, a tight hamburger region for
-    /// the glyph cell, and a slop region covering the pad between
-    /// them so the small one-cell glyph has a generous tap halo.
-    /// Verifies the partition, the slop fallback, and the context-
-    /// sensitive pane action.
+    /// The collapsed top bar emits three regions when there's no
+    /// session segment: a tight pane region for the rendered text,
+    /// a tight hamburger region for the glyph cell, and a slop
+    /// region covering the pad between them so the small one-cell
+    /// glyph has a generous tap halo. Verifies the partition, the
+    /// slop fallback, and the context-sensitive pane action.
     #[test]
     fn collapsed_top_bar_partition_with_slop() {
         // 80-col bar: pane text fills cells 0..40, pad spans 40..79,
@@ -1613,6 +1734,8 @@ mod tests {
             pane_tight_end,
             hamburger_start,
             ClickAction::ExpandPanes,
+            None,
+            ClickAction::ExpandSessions,
         );
 
         assert_eq!(regions.len(), 3);
@@ -1663,6 +1786,8 @@ mod tests {
             40,
             79,
             ClickAction::CollapseSelector,
+            None,
+            ClickAction::CollapseSelector,
         );
         assert!(matches!(regions[0].action, ClickAction::CollapseSelector));
         let mut state = State::default();
@@ -1671,6 +1796,94 @@ mod tests {
             state.click_to_action(0, 0),
             Some(ClickAction::CollapseSelector)
         );
+    }
+
+    /// When a session segment is present, the left content area is
+    /// split into three tight sub-regions: prefix → `pane_action`,
+    /// session text → `session_action`, separator + pane title →
+    /// `pane_action`. Verified by dispatching a click into each
+    /// sub-range plus the hamburger glyph.
+    #[test]
+    fn collapsed_top_bar_session_sub_region_dispatches_expand_sessions() {
+        // Layout: prefix "Zellij " = cells 0..7, session "demo" =
+        // cells 7..11, separator " " = cells 11..12, pane "shell" =
+        // cells 12..17, pad 17..79, hamburger at 79.
+        let cols = 80;
+        let pane_tight_end = 17;
+        let hamburger_start = 79;
+        let session_cells = (7usize, 11usize);
+        let regions = top_bar_collapsed_click_regions(
+            0,
+            cols,
+            pane_tight_end,
+            hamburger_start,
+            ClickAction::ExpandPanes,
+            Some(session_cells),
+            ClickAction::ExpandSessions,
+        );
+
+        // Three left-side tight regions + tight hamburger + slop = 5.
+        assert_eq!(regions.len(), 5);
+        // [0, 7) → pane action.
+        assert_eq!(regions[0].col_start, 0);
+        assert_eq!(regions[0].col_end, 7);
+        assert!(matches!(regions[0].action, ClickAction::ExpandPanes));
+        // [7, 11) → session action.
+        assert_eq!(regions[1].col_start, 7);
+        assert_eq!(regions[1].col_end, 11);
+        assert!(matches!(regions[1].action, ClickAction::ExpandSessions));
+        // [11, 17) → pane action (separator + pane title).
+        assert_eq!(regions[2].col_start, 11);
+        assert_eq!(regions[2].col_end, 17);
+        assert!(matches!(regions[2].action, ClickAction::ExpandPanes));
+
+        let mut state = State::default();
+        state.click_regions = regions;
+        // Prefix cell → ExpandPanes.
+        assert_eq!(state.click_to_action(0, 3), Some(ClickAction::ExpandPanes));
+        // Session cell → ExpandSessions.
+        assert_eq!(
+            state.click_to_action(0, 9),
+            Some(ClickAction::ExpandSessions),
+        );
+        // Separator cell → ExpandPanes.
+        assert_eq!(state.click_to_action(0, 11), Some(ClickAction::ExpandPanes));
+        // Pane title cell → ExpandPanes.
+        assert_eq!(state.click_to_action(0, 14), Some(ClickAction::ExpandPanes));
+        // Pad → slop hamburger.
+        assert_eq!(state.click_to_action(0, 30), Some(ClickAction::ToggleMenu));
+        // Hamburger glyph → tight hamburger.
+        assert_eq!(state.click_to_action(0, 79), Some(ClickAction::ToggleMenu));
+    }
+
+    /// When `show_prefix` is false (the prefix was dropped to make
+    /// room) the session range starts at column 0, so no zero-width
+    /// `[0, 0)` pane region should be emitted ahead of it.
+    #[test]
+    fn collapsed_top_bar_session_at_left_edge_skips_empty_prefix_region() {
+        let cols = 40;
+        let pane_tight_end = 11;
+        let hamburger_start = 39;
+        let session_cells = (0usize, 4usize);
+        let regions = top_bar_collapsed_click_regions(
+            0,
+            cols,
+            pane_tight_end,
+            hamburger_start,
+            ClickAction::ExpandPanes,
+            Some(session_cells),
+            ClickAction::ExpandSessions,
+        );
+
+        // 2 left-side tight regions (session + pane) + hamburger +
+        // slop = 4 — the prefix region is omitted as zero-width.
+        assert_eq!(regions.len(), 4);
+        assert_eq!(regions[0].col_start, 0);
+        assert_eq!(regions[0].col_end, 4);
+        assert!(matches!(regions[0].action, ClickAction::ExpandSessions));
+        assert_eq!(regions[1].col_start, 4);
+        assert_eq!(regions[1].col_end, pane_tight_end);
+        assert!(matches!(regions[1].action, ClickAction::ExpandPanes));
     }
 
     /// Build a `State` carrying `tab_count` tabs each with one
