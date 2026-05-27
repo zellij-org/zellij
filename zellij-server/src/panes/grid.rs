@@ -432,6 +432,12 @@ pub fn parse_osc7_path(raw: &[u8]) -> Option<std::path::PathBuf> {
         }
     }
     let decoded = String::from_utf8(out).ok()?;
+    #[cfg(windows)]
+    let decoded = decoded
+        .strip_prefix('/')
+        .filter(|path| path.as_bytes().get(1) == Some(&b':'))
+        .map(str::to_owned)
+        .unwrap_or(decoded);
     Some(std::path::PathBuf::from(decoded))
 }
 
@@ -5609,5 +5615,15 @@ mod osc7_parser_tests {
     fn osc7_parser_rejects_non_utf8_input() {
         let raw = &[0xFFu8, 0xFE, 0xFD];
         assert_eq!(parse_osc7_path(raw), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn osc7_parser_normalizes_windows_drive_path() {
+        let raw = b"file://host/C:/Users/user/project";
+        assert_eq!(
+            parse_osc7_path(raw),
+            Some(PathBuf::from("C:/Users/user/project"))
+        );
     }
 }
