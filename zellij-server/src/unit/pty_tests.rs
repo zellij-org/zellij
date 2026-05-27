@@ -692,3 +692,19 @@ fn default_shell_request_starts_the_default_shell_in_its_folder() {
         other => panic!("Expected the default shell, got {:?}", other),
     }
 }
+
+#[test]
+fn preferred_terminal_cwd_uses_osc7_before_os_cwd() {
+    let mock = MockOsApi::new();
+    let child_pid = 100;
+    mock.set_cwd(child_pid, PathBuf::from("/from-proc"));
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
+    set_active_terminal(&mut pty, 1, child_pid);
+    pty.terminals_with_shell_cwd.insert(1);
+    pty.terminal_cwds.insert(1, PathBuf::from("/from-osc7"));
+
+    assert_eq!(
+        pty.preferred_terminal_cwd(&1),
+        Some(PathBuf::from("/from-osc7"))
+    );
+}
