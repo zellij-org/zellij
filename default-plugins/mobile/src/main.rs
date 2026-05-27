@@ -210,13 +210,17 @@ impl ZellijPlugin for State {
                 // Capture this client's session name for the top bar
                 // *and* the full session list for the session
                 // selector. A fresh `SessionUpdate` arrives every time
-                // session metadata changes.
+                // session metadata changes — including the broadcast
+                // that follows our own `get_session_list()` call in
+                // `ClickAction::ExpandSessions`, so the filter applied
+                // there is replicated here to keep the list stable
+                // across both write paths.
                 if let Some(current) =
                     sessions.iter().find(|s| s.is_current_session)
                 {
                     self.session_name = Some(current.name.clone());
                 }
-                self.sessions = sessions;
+                self.sessions = filter_sessions_for_client(sessions, self);
                 true
             },
             Event::PaneRenderReportWithAnsi(map) => {
@@ -356,6 +360,48 @@ impl ZellijPlugin for State {
                 false
             },
             Event::Key(key) => {
+                // While the "+ New Session" prompt is open, the plugin
+                // captures keys for its own text-entry buffer instead
+                // of forwarding them to the embedded pane. Every key
+                // is consumed here (returning true) so a typo never
+                // leaks through to the pane below the prompt. Sticky
+                // ctrl/alt state is left untouched: the prompt does
+                // not interpret modifiers, and clearing them here
+                // would surprise the user after dismissing the prompt.
+                if self.expanded == Some(Selector::NewSessionPrompt) {
+                    match key.bare_key {
+                        BareKey::Esc => {
+                            self.pending_session_name.clear();
+                            self.expanded = None;
+                        },
+                        BareKey::Enter => {
+                            // Move (not clone) the buffer into the
+                            // shim argument. `None` triggers the
+                            // host's auto-name path (see
+                            // `switch_session` in zellij-tile's shim);
+                            // a non-empty buffer asks for a specific
+                            // name. Either way the host will switch
+                            // the client into the new session, after
+                            // which this plugin dismounts.
+                            let name = std::mem::take(&mut self.pending_session_name);
+                            let arg = if name.is_empty() { None } else { Some(name.as_str()) };
+                            switch_session(arg);
+                            self.expanded = None;
+                        },
+                        BareKey::Backspace => {
+                            self.pending_session_name.pop();
+                        },
+                        BareKey::Char(c) => {
+                            self.pending_session_name.push(c);
+                        },
+                        // Every other key (arrows, function keys,
+                        // Tab, …) is swallowed silently — the prompt
+                        // is intentionally minimal and forwarding
+                        // these to the pane would defeat the capture.
+                        _ => {},
+                    }
+                    return true;
+                }
                 // Esc always returns to the main view: closes any
                 // open selector and dismisses the dropdown menu in a
                 // single press. The selector/menu have hidden (or
@@ -657,6 +703,23 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             // of where the previous session in this selector landed.
             state.menu_open = false;
             state.selector_scroll_offset = 0;
+            // Kick the server's peer-session scan and adopt the
+            // resulting snapshot directly. Without this the plugin
+            // only ever sees the *current* session — the standing
+            // `Event::SessionUpdate` payload contains nothing but
+            // `peer_sessions_cache`, which on the server is only
+            // populated after a plugin explicitly triggers a scan via
+            // this shim (the session-manager plugin does the same on
+            // every refresh: see
+            // `default-plugins/session-manager/src/main.rs:1204`).
+            // The shim returns the snapshot synchronously so we can
+            // populate `state.sessions` in the same tick rather than
+            // waiting for the broadcast `SessionUpdate` event that
+            // the shim also triggers.
+            if let Ok(snapshot) = get_session_list() {
+                state.sessions =
+                    filter_sessions_for_client(snapshot.live_sessions, state);
+            }
             state.expanded = Some(Selector::Sessions);
             true
         },
@@ -698,6 +761,16 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             // session (if any) will take over from here.
             switch_session(Some(&name));
             state.expanded = None;
+            true
+        },
+        ClickAction::OpenNewSessionPrompt => {
+            // Swap the sessions selector for the in-plugin name-entry
+            // overlay. The buffer is cleared on entry so a previously
+            // cancelled attempt never leaks back into a fresh prompt.
+            // No host call here — the actual session creation happens
+            // in the prompt's Enter handler (see `Event::Key`).
+            state.pending_session_name.clear();
+            state.expanded = Some(Selector::NewSessionPrompt);
             true
         },
         ClickAction::SelectPane { tab_position, pane_id } => {
@@ -844,6 +917,32 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
 /// at every plugin-driven focus change (tab/pane switch, focused
 /// pane disappearing) so the server's `FitState` doesn't outlive
 /// the pane it was bound to.
+/// Restrict the session list to entries this client is allowed to
+/// see. When the mobile plugin is driven by a web client (reported via
+/// `ModeInfo::is_web_client`), sessions whose
+/// `SessionInfo::web_clients_allowed` is `false` are hidden — joining
+/// one from a browser would fail server-side, so showing it in the
+/// switcher is misleading. Terminal-client sessions are unaffected.
+/// Matches the gate the session-manager plugin applies in
+/// `default-plugins/session-manager/src/main.rs:1241`.
+fn filter_sessions_for_client(
+    sessions: Vec<SessionInfo>,
+    state: &State,
+) -> Vec<SessionInfo> {
+    let is_web_client = state
+        .mode_info
+        .as_ref()
+        .and_then(|m| m.is_web_client)
+        .unwrap_or(false);
+    if !is_web_client {
+        return sessions;
+    }
+    sessions
+        .into_iter()
+        .filter(|s| s.web_clients_allowed)
+        .collect()
+}
+
 pub fn clear_fit_if_active(state: &mut State) {
     if state.fit_active {
         state.fit_active = false;

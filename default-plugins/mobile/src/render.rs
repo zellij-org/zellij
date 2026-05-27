@@ -143,6 +143,9 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
                 render_sessions_menu(state, body_top, body_bottom, cols)
             },
             Some(Selector::Panes) => render_panes_menu(state, body_top, body_bottom, cols),
+            Some(Selector::NewSessionPrompt) => {
+                render_new_session_prompt(state, body_top, body_bottom, cols)
+            },
         }
     }
 
@@ -642,7 +645,7 @@ fn render_sessions_menu(state: &mut State, row_start: usize, row_end: usize, col
         .collect();
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let rows: Vec<SelectorRow> = entries
+    let mut rows: Vec<SelectorRow> = entries
         .into_iter()
         .map(|(name, tabs, panes, is_current)| {
             let name_label = if is_current {
@@ -666,7 +669,94 @@ fn render_sessions_menu(state: &mut State, row_start: usize, row_end: usize, col
         })
         .collect();
 
+    // "+ New Session" affordance pinned at the bottom of the list.
+    // Three-cell shape keeps the table column count consistent with
+    // the session rows above (see `render_centered_selector`'s
+    // `n_cols` derivation) so the layout maths does not have to
+    // special-case a single-cell row. The trailing two cells render
+    // as blank — the action label sits in the name column. Emphasis-3
+    // matches the colour used for `NewPaneAction` / `NewTabAction`
+    // rows in the Panes selector for visual continuity across
+    // "+ New …" affordances.
+    rows.push(SelectorRow {
+        cells: vec![
+            named_cell("+ New Session".to_string(), 3),
+            SelectorCell { text: Text::new(""), width: 0 },
+            SelectorCell { text: Text::new(""), width: 0 },
+        ],
+        action: ClickAction::OpenNewSessionPrompt,
+    });
+
     render_centered_selector(state, row_start, row_end, cols, "Switch Session", rows);
+}
+
+/// In-plugin name-entry overlay for "+ New Session". Drawn centered
+/// in the body region. Keyboard-driven only — no click regions are
+/// registered (the prompt is dismissed by Esc, submitted by Enter,
+/// edited by character keys / Backspace; all handled in `main.rs`'s
+/// `Event::Key` arm while `state.expanded == Some(NewSessionPrompt)`).
+///
+/// Block layout (top to bottom, each row a single terminal line):
+///   1. Title  — "New Session" in emphasis-3.
+///   2. blank.
+///   3. Input  — "Name: <buffer>_" with `_` as a static cursor glyph,
+///      mirroring the session-manager plugin's name prompt. A static
+///      glyph avoids fighting with the plugin's `emit_cursor` gating
+///      which is wired for the embedded viewport.
+///   4. blank.
+///   5. Hint   — "Enter: create  ·  Esc: cancel" in unbold.
+///
+/// Centered both horizontally (per row, against `cols`) and vertically
+/// (block of 5 rows within `[row_start, row_end)`). If the body is too
+/// short to fit the full block, the renderer falls back to top-anchored
+/// rendering and clips overflow.
+fn render_new_session_prompt(
+    state: &mut State,
+    row_start: usize,
+    row_end: usize,
+    cols: usize,
+) {
+    let body_height = row_end.saturating_sub(row_start);
+    if body_height == 0 || cols == 0 {
+        return;
+    }
+
+    let title = "New Session";
+    let input = format!("Name: {}_", state.pending_session_name);
+    let hint = "Enter: create  \u{00B7}  Esc: cancel";
+
+    const BLOCK_ROWS: usize = 5;
+    let top = if body_height >= BLOCK_ROWS {
+        row_start + (body_height - BLOCK_ROWS) / 2
+    } else {
+        row_start
+    };
+
+    // Each row is centered independently against `cols` (not against
+    // the widest of the three) so the title sits on the screen's
+    // vertical axis the same way `render_centered_selector`'s title
+    // does, even when the input line happens to be much wider.
+    let print_centered = |text: Text, w: usize, row: usize| {
+        let x = cols.saturating_sub(w) / 2;
+        print_text_with_coordinates(text, x, row, None, None);
+    };
+
+    let row_title = top;
+    let row_input = top + 2;
+    let row_hint = top + 4;
+
+    if row_title < row_end {
+        let w = UnicodeWidthStr::width(title);
+        print_centered(Text::new(title).color_range(3, ..), w, row_title);
+    }
+    if row_input < row_end {
+        let w = UnicodeWidthStr::width(input.as_str());
+        print_centered(Text::new(&input), w, row_input);
+    }
+    if row_hint < row_end {
+        let w = UnicodeWidthStr::width(hint);
+        print_centered(Text::new(hint).unbold_all(), w, row_hint);
+    }
 }
 
 /// One row in the unified Change Pane navigator. Tab headers are

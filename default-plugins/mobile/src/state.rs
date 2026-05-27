@@ -19,6 +19,15 @@ pub enum Selector {
     /// clickable — selecting one updates the embedded viewport. The
     /// header rows are visual nesting and carry no action.
     Panes,
+    /// In-plugin name-entry overlay for creating a new session.
+    /// Submitting (Enter) calls `switch_session(Some(buf))` — or
+    /// `switch_session(None)` when the buffer is empty, mirroring the
+    /// session-manager plugin's "leave name empty for auto-name"
+    /// behaviour. Esc dismisses without creating a session. While this
+    /// variant is active, the `Event::Key` handler intercepts every
+    /// key (character/Backspace/Enter/Esc) instead of forwarding it
+    /// to the embedded pane.
+    NewSessionPrompt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +84,14 @@ pub enum ClickAction {
     /// auto-selects the new tab once its first pane shows up in the
     /// next `PaneUpdate`.
     NewTab,
+    /// Tap on the "+ New Session" row at the bottom of the Sessions
+    /// selector. Switches `state.expanded` to
+    /// `Selector::NewSessionPrompt` and clears
+    /// `state.pending_session_name` so the overlay starts with an
+    /// empty buffer regardless of any previously-cancelled attempt.
+    /// No host call is made here — the actual `switch_session` is
+    /// dispatched from the prompt's Enter handler in `Event::Key`.
+    OpenNewSessionPrompt,
 }
 
 /// A rectangular click target with a priority for layered scanning.
@@ -356,6 +373,15 @@ pub struct State {
     /// therefore cache the last value sent and only re-emit when the
     /// target position would actually change.
     pub last_emitted_cursor: LastEmittedCursor,
+    /// In-progress text buffer for the "+ New Session" name-entry
+    /// overlay. Empty while the prompt is not open (or has been
+    /// cancelled / submitted). The prompt's key handler pushes
+    /// characters onto this string and the renderer draws it next to
+    /// the `Name: ` label with a trailing cursor glyph. Reset to
+    /// `String::new()` whenever the prompt opens and after a
+    /// successful Enter submit (the buffer is `mem::take`-n into the
+    /// `switch_session` argument).
+    pub pending_session_name: String,
     /// Current OS soft-keyboard visibility on the attached web
     /// client, as last reported by the browser via
     /// `Event::SoftKeyboardVisibilityChanged`. Defaults to `false`
