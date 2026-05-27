@@ -3721,6 +3721,25 @@ impl Screen {
             None
         };
 
+        // Pre-populate the shared `connected_clients` map BEFORE
+        // `tab.update_input_modes()` runs inside the apply_layout
+        // chain below. That helper looks up `is_web_client` from
+        // this map when building the `Event::ModeUpdate` for each
+        // plugin in the new tab; a missing entry leaves
+        // `mode_info.is_web_client = None`, which causes plugins
+        // that branch on the flag (e.g. session-manager's web-client
+        // session filter on the welcome screen) to see `None` on the
+        // very first ModeUpdate and stay misconfigured. The full
+        // `self.add_client(...)` bookkeeping (active_tab_ids,
+        // tab_history, follow id, tab.add_client) still runs at its
+        // existing position below — this insert is idempotent and
+        // gets reaffirmed there.
+        if !self.active_tab_ids.contains_key(&client_id) {
+            self.connected_clients
+                .borrow_mut()
+                .insert(client_id, is_web_client);
+        }
+
         // apply the layout to the new tab
         self.tabs
             .get_mut(&tab_id)

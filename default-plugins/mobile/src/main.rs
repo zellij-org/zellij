@@ -337,17 +337,49 @@ impl ZellijPlugin for State {
                             self.menu_open = false;
                             return true;
                         }
-                        // No chrome region matched. Synthesize an SGR
-                        // mouse press+release at the equivalent cell
-                        // of the underlying pane so taps inside the
-                        // embedded viewport reach the program below.
+                        // No chrome region matched. Forward the
+                        // click to the embedded pane so the program
+                        // below receives the tap.
+                        //
+                        // Terminal panes: synthesize an SGR mouse
+                        // press+release at the equivalent cell — the
+                        // termwiz input parser used by the host
+                        // converts these bytes into terminal mouse
+                        // events that the underlying program reads
+                        // from its pty.
+                        //
+                        // Plugin panes: SGR sequences are useless —
+                        // the host's `parse_keys` (called via
+                        // `write_to_pane_id` → `AdjustedInput::Write
+                        // BytesToTerminal` → `parse_keys`) filters
+                        // for `InputEvent::Key` only and drops
+                        // `InputEvent::Mouse`, so the embedded
+                        // plugin never sees the click. Pipe a
+                        // structured "mobile_viewport_click" message
+                        // instead, addressed to the destination
+                        // plugin id. Plugins that opt in
+                        // (session-manager's mobile welcome path
+                        // does) can dispatch the tap by row;
+                        // plugins that don't care silently ignore
+                        // the message.
                         if let Some((pane_row, pane_col)) =
                             self.click_in_viewport(line, col)
                         {
                             if let Some(pane) = self.current_pane() {
                                 let pane_id = state::pane_id_of(&pane);
-                                let bytes = sgr_left_click(pane_row, pane_col);
-                                write_to_pane_id(bytes, pane_id);
+                                if pane.is_plugin {
+                                    let mut args = BTreeMap::new();
+                                    args.insert("row".to_string(), pane_row.to_string());
+                                    args.insert("col".to_string(), pane_col.to_string());
+                                    let message =
+                                        MessageToPlugin::new("mobile_viewport_click")
+                                            .with_destination_plugin_id(pane.id)
+                                            .with_args(args);
+                                    pipe_message_to_plugin(message);
+                                } else {
+                                    let bytes = sgr_left_click(pane_row, pane_col);
+                                    write_to_pane_id(bytes, pane_id);
+                                }
                                 // No re-render: the pane will emit a
                                 // fresh PaneRenderReportWithAnsi and
                                 // the regular event path will refresh

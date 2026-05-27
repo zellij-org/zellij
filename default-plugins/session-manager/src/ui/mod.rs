@@ -1,4 +1,5 @@
 pub mod components;
+pub mod mobile_welcome;
 pub mod welcome_screen;
 use std::time::Duration;
 use zellij_tile::prelude::*;
