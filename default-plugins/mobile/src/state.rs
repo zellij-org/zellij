@@ -92,6 +92,12 @@ pub enum ClickAction {
     /// No host call is made here — the actual `switch_session` is
     /// dispatched from the prompt's Enter handler in `Event::Key`.
     OpenNewSessionPrompt,
+    /// Tap on the "Switch to Desktop" hamburger menu row. Calls the
+    /// `exit_mobile_mode` shim, which tears down this client's
+    /// mobile tab server-side. The mobile UI dismounts as the tab
+    /// closes; re-entry is via reconnect / refresh (which
+    /// re-triggers the server's auto-mobile-mode detection).
+    ExitMobileMode,
 }
 
 /// A rectangular click target with a priority for layered scanning.

@@ -888,6 +888,13 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             }
             true
         },
+        ClickAction::ExitMobileMode => {
+            // One-way: tell the server to tear down this client's
+            // mobile tab. The mobile UI dismounts as the tab closes;
+            // re-entry is via reconnect / refresh (auto-detection).
+            exit_mobile_mode();
+            true
+        },
         ClickAction::Keyboard(cell) => {
             let outcome = state.modifier_bar.handle_tap(
                 cell,
@@ -1257,6 +1264,7 @@ mod tests {
             "update_fit_size",
             "enter_fit_mode",
             "exit_fit_mode",
+            "exit_mobile_mode",
             "set_soft_keyboard",
             "switch_session",
             "write_to_pane_id",

@@ -3679,6 +3679,11 @@ pub enum PluginCommand {
     /// without changing the client's actual tab (which would
     /// dismount the plugin UI).
     SetMobileFocusedPane(PaneId),
+    /// Mobile plugin → server: exit mobile mode for the calling
+    /// client. Tears down the client's mobile tab and switches it
+    /// back to a normal session tab. One-way; the client re-enters
+    /// mobile mode only by reconnecting (auto-detection).
+    ExitMobileMode,
 }
 
 // Response type for plugin API methods that open a pane in a new tab

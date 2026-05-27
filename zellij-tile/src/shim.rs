@@ -1737,6 +1737,18 @@ pub fn exit_fit_mode() {
     unsafe { host_run_plugin_command() };
 }
 
+/// Mobile mode — exit (one-way). Tears down this client's mobile
+/// tab and switches it back to a normal session tab. The mobile
+/// plugin invokes this from the "Switch to Desktop" menu item;
+/// re-entry is via reconnect / refresh, which re-triggers the
+/// server's auto-mobile-mode detection.
+pub fn exit_mobile_mode() {
+    let plugin_command = PluginCommand::ExitMobileMode;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Mobile "Fit" — update the active fit's target size. Intended
 /// for after-render diff: the plugin recomputes the desired tab
 /// size whenever the embedded viewport area changes (e.g. keyboard

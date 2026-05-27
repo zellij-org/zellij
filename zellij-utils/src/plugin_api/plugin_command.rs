@@ -1501,6 +1501,10 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(_) => Err("ExitFitMode should have no payload, found a payload"),
                 None => Ok(PluginCommand::ExitFitMode),
             },
+            Some(CommandName::ExitMobileMode) => match protobuf_plugin_command.payload {
+                Some(_) => Err("ExitMobileMode should have no payload, found a payload"),
+                None => Ok(PluginCommand::ExitMobileMode),
+            },
             Some(CommandName::UpdateFitSize) => match protobuf_plugin_command.payload {
                 Some(Payload::UpdateFitSizePayload(payload)) => Ok(PluginCommand::UpdateFitSize {
                     tab_id: payload.tab_id as usize,
@@ -3418,6 +3422,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::ExitFitMode => Ok(ProtobufPluginCommand {
                 name: CommandName::ExitFitMode as i32,
+                payload: None,
+            }),
+            PluginCommand::ExitMobileMode => Ok(ProtobufPluginCommand {
+                name: CommandName::ExitMobileMode as i32,
                 payload: None,
             }),
             PluginCommand::UpdateFitSize { tab_id, size } => Ok(ProtobufPluginCommand {

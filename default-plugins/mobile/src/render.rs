@@ -1118,6 +1118,19 @@ enum HamburgerItem {
     /// "Change Session" — opens the Sessions selector and closes the
     /// menu.
     ChangeSession,
+    /// "Switch to Desktop" — exits mobile mode (one-way). Tears down
+    /// the client's mobile tab; re-entry requires a reconnect.
+    SwitchToDesktop,
+}
+
+/// One row in the hamburger dropdown. Either an interactive
+/// `Item` that registers a click region, or a non-interactive
+/// `Separator` that visually divides item groups. Separators
+/// consume a row but never push a click region, so taps on a
+/// separator row fall through (resolving to no action).
+enum HamburgerEntry {
+    Item(&'static str, HamburgerItem),
+    Separator,
 }
 
 /// Render the hamburger dropdown menu in the upper-right corner of
@@ -1137,15 +1150,25 @@ fn render_hamburger_menu(
     row_end: usize,
     cols: usize,
 ) {
-    let items: [(&str, HamburgerItem); 3] = [
-        ("Fit to Screen", HamburgerItem::Fit),
-        ("Change Pane", HamburgerItem::ChangePane),
-        ("Change Session", HamburgerItem::ChangeSession),
+    // A `Separator` between "Change Session" and "Switch to
+    // Desktop" guards against an accidental tap on the destructive
+    // (one-way) Switch-to-Desktop row: separators do not register
+    // click regions, so they also create a column of dead pixels
+    // between the two interactive groups.
+    let entries: [HamburgerEntry; 5] = [
+        HamburgerEntry::Item("Fit to Screen", HamburgerItem::Fit),
+        HamburgerEntry::Item("Change Pane", HamburgerItem::ChangePane),
+        HamburgerEntry::Item("Change Session", HamburgerItem::ChangeSession),
+        HamburgerEntry::Separator,
+        HamburgerEntry::Item("Switch to Desktop", HamburgerItem::SwitchToDesktop),
     ];
 
-    let label_max = items
+    let label_max = entries
         .iter()
-        .map(|(l, _)| UnicodeWidthStr::width(*l))
+        .filter_map(|e| match e {
+            HamburgerEntry::Item(label, _) => Some(UnicodeWidthStr::width(*label)),
+            HamburgerEntry::Separator => None,
+        })
         .max()
         .unwrap_or(0);
     // 1 cell of left padding + label_max + 1 cell of right padding.
@@ -1156,57 +1179,78 @@ fn render_hamburger_menu(
     let menu_x = cols - menu_w;
 
     // Truncate to fit vertically. A short body (e.g. plugin keyboard
-    // takes most of the screen) clips menu items rather than
+    // takes most of the screen) clips trailing entries rather than
     // overlapping the keyboard cells below.
     let max_visible = row_end.saturating_sub(row_start);
-    let visible_items = items.len().min(max_visible);
+    let visible_entries = entries.len().min(max_visible);
 
-    for (i, (label, item)) in items.iter().take(visible_items).enumerate() {
+    for (i, entry) in entries.iter().take(visible_entries).enumerate() {
         let row = row_start + i;
-        let label_w = UnicodeWidthStr::width(*label);
-        let trailing_pad = label_max - label_w;
+        match entry {
+            HamburgerEntry::Item(label, item) => {
+                let label_w = UnicodeWidthStr::width(*label);
+                let trailing_pad = label_max - label_w;
 
-        // Build " <label><trailing-pad> ": one cell left pad,
-        // label_max cells of label-plus-trailing-pad, one cell right
-        // pad. Constant `menu_w` cells total so click regions are
-        // uniform across rows.
-        let mut text_str = String::with_capacity(menu_w);
-        text_str.push(' ');
-        text_str.push_str(label);
-        for _ in 0..trailing_pad {
-            text_str.push(' ');
+                // Build " <label><trailing-pad> ": one cell left pad,
+                // label_max cells of label-plus-trailing-pad, one cell
+                // right pad. Constant `menu_w` cells total so click
+                // regions are uniform across rows.
+                let mut text_str = String::with_capacity(menu_w);
+                text_str.push(' ');
+                text_str.push_str(label);
+                for _ in 0..trailing_pad {
+                    text_str.push(' ');
+                }
+                text_str.push(' ');
+
+                // `color_range` is character-indexed (not cell-indexed).
+                // The leading space is one char; the label starts
+                // immediately after.
+                let label_char_start = 1;
+                let label_char_end = label_char_start + label.chars().count();
+
+                let armed = match item {
+                    HamburgerItem::Fit => state.fit_active,
+                    _ => false,
+                };
+                let mut t = Text::new(&text_str).selected();
+                t = if armed {
+                    t.success_color_range(label_char_start..label_char_end)
+                } else {
+                    t.color_range(3, label_char_start..label_char_end)
+                };
+                print_text_with_coordinates(t, menu_x, row, Some(menu_w), None);
+
+                let action = match item {
+                    HamburgerItem::Fit => ClickAction::ToggleFit,
+                    HamburgerItem::ChangePane => ClickAction::ExpandPanes,
+                    HamburgerItem::ChangeSession => ClickAction::ExpandSessions,
+                    HamburgerItem::SwitchToDesktop => ClickAction::ExitMobileMode,
+                };
+                state.click_regions.push(ClickRegion::tight(
+                    row,
+                    menu_x,
+                    menu_x + menu_w,
+                    action,
+                ));
+            },
+            HamburgerEntry::Separator => {
+                // Same `menu_w` width as items so the row's
+                // background painting stays uniform. Filled with the
+                // light-horizontal box-drawing char so the divider
+                // reads visually as a rule rather than a blank gap.
+                // No click region is pushed: taps here fall through
+                // and resolve to no action.
+                let mut text_str = String::with_capacity(menu_w);
+                text_str.push(' ');
+                for _ in 0..label_max {
+                    text_str.push('\u{2500}'); // ─
+                }
+                text_str.push(' ');
+                let t = Text::new(&text_str).selected();
+                print_text_with_coordinates(t, menu_x, row, Some(menu_w), None);
+            },
         }
-        text_str.push(' ');
-
-        // `color_range` is character-indexed (not cell-indexed). The
-        // leading space is one char; the label starts immediately
-        // after.
-        let label_char_start = 1;
-        let label_char_end = label_char_start + label.chars().count();
-
-        let armed = match item {
-            HamburgerItem::Fit => state.fit_active,
-            _ => false,
-        };
-        let mut t = Text::new(&text_str).selected();
-        t = if armed {
-            t.success_color_range(label_char_start..label_char_end)
-        } else {
-            t.color_range(3, label_char_start..label_char_end)
-        };
-        print_text_with_coordinates(t, menu_x, row, Some(menu_w), None);
-
-        let action = match item {
-            HamburgerItem::Fit => ClickAction::ToggleFit,
-            HamburgerItem::ChangePane => ClickAction::ExpandPanes,
-            HamburgerItem::ChangeSession => ClickAction::ExpandSessions,
-        };
-        state.click_regions.push(ClickRegion::tight(
-            row,
-            menu_x,
-            menu_x + menu_w,
-            action,
-        ));
     }
 }
 
@@ -1907,6 +1951,53 @@ mod tests {
         state.selected_tab_position = Some(0);
         state.selected_pane_id = Some(PaneId::Terminal(100));
         state
+    }
+
+    /// The hamburger dropdown emits one click region per visible
+    /// item, in declaration order: Fit (row 0), Change Pane (row 1),
+    /// Change Session (row 2), separator (row 3, no region), Switch
+    /// to Desktop (row 4). The separator row must not dispatch any
+    /// action — that gap is the guard against accidental taps on
+    /// the destructive Switch-to-Desktop row.
+    #[test]
+    fn hamburger_menu_emits_four_click_regions_with_separator_above_exit() {
+        let mut state = State::default();
+        let cols = 40;
+        // Plenty of vertical space so every entry is visible.
+        render_hamburger_menu(&mut state, 0, 20, cols);
+
+        assert_eq!(state.click_regions.len(), 4);
+        let actions: Vec<ClickAction> = state
+            .click_regions
+            .iter()
+            .map(|r| r.action.clone())
+            .collect();
+        assert!(matches!(actions[0], ClickAction::ToggleFit));
+        assert!(matches!(actions[1], ClickAction::ExpandPanes));
+        assert!(matches!(actions[2], ClickAction::ExpandSessions));
+        assert!(matches!(actions[3], ClickAction::ExitMobileMode));
+
+        // The interactive rows must occupy 0, 1, 2, 4 — skipping
+        // row 3 (the separator). Use the row span to confirm the
+        // gap is exactly where expected.
+        let rows: Vec<usize> = state
+            .click_regions
+            .iter()
+            .map(|r| r.row_start)
+            .collect();
+        assert_eq!(rows, vec![0, 1, 2, 4]);
+
+        // Tapping the separator row at any column inside the menu
+        // width must resolve to no action.
+        let menu_x = state.click_regions[0].col_start;
+        let menu_end = state.click_regions[0].col_end;
+        for c in menu_x..menu_end {
+            assert_eq!(
+                state.click_to_action(3, c),
+                None,
+                "separator row should be non-interactive at col {c}",
+            );
+        }
     }
 
     /// With one tab + one pane the Panes selector lists: title row,

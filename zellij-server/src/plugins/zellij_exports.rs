@@ -462,6 +462,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         size,
                     } => enter_fit_mode(env, tab_id, pane_id.into(), size),
                     PluginCommand::ExitFitMode => exit_fit_mode(env),
+                    PluginCommand::ExitMobileMode => exit_mobile_mode(env),
                     PluginCommand::UpdateFitSize { tab_id, size } => {
                         update_fit_size(env, tab_id, size)
                     },
@@ -4059,6 +4060,22 @@ fn exit_fit_mode(env: &PluginEnv) {
         .non_fatal();
 }
 
+/// Exit mobile mode for the calling client. Forwarded to the
+/// screen thread, which tears down the client's mobile tab and
+/// switches it back to a normal tab. No-op if the client is not
+/// currently in mobile mode (server is authoritative).
+fn exit_mobile_mode(env: &PluginEnv) {
+    env.senders
+        .send_to_screen(ScreenInstruction::ExitMobileMode(env.client_id, None))
+        .with_context(|| {
+            format!(
+                "failed to dispatch ExitMobileMode for plugin {}",
+                env.plugin_id
+            )
+        })
+        .non_fatal();
+}
+
 /// Mobile "Fit" — update the active fit's target size. Sent on
 /// every render where the embedded viewport area changes (keyboard
 /// toggle, rotation, etc.). The plugin diffs locally to avoid
@@ -5609,7 +5626,8 @@ fn check_command_permission(
         | PluginCommand::SetSoftKeyboard(..)
         | PluginCommand::EnterFitMode { .. }
         | PluginCommand::ExitFitMode
-        | PluginCommand::UpdateFitSize { .. } => PermissionType::ChangeApplicationState,
+        | PluginCommand::UpdateFitSize { .. }
+        | PluginCommand::ExitMobileMode => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
