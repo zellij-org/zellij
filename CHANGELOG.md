@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* feat: allow tabs to have different sizes if clients aren't focused on the same one (https://github.com/zellij-org/zellij/pull/5133)
+
+## [0.44.3] - 2026-05-13
+* fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)
+* fix: deadlock with --blocking panes (https://github.com/zellij-org/zellij/pull/5152)
+* fix: occasional stall before prompt/program-run (https://github.com/zellij-org/zellij/pull/5149, https://github.com/zellij-org/zellij/pull/5156 and https://github.com/zellij-org/zellij/pull/5163)
+* fix: regression with ESC+mouse hold (https://github.com/zellij-org/zellij/pull/5157)
+* fix: close session-manager instead of hiding to avoid confusion (https://github.com/zellij-org/zellij/pull/5055)
+* fix: tighten permissions around the `OpenCommandInNewTab` and `OpenEditorPaneInNewTab` plugin commands (https://github.com/zellij-org/zellij/pull/5143)
+* fix: UI feedback for deleting sessions through the session-manager (https://github.com/zellij-org/zellij/pull/5160)
+* fix: clear bell notification also when focusing pane with the mouse (https://github.com/zellij-org/zellij/pull/5161)
+
+## [0.44.2] - 2026-05-05
 * fix: idle CPU + disk i/o, CommandChanged plugin Event, GetSessionList plugin command (https://github.com/zellij-org/zellij/pull/5063)
 * fix: occasional dropped characters in web client (https://github.com/zellij-org/zellij/pull/5080)
 * fix: restore kitty keyboard mode on error, handle DECRPM 2026 state 3, clean up client terminal teardown sequences (https://github.com/zellij-org/zellij/pull/5058)
@@ -13,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: support `CSI 2031` + dark/light mode theme switching (https://github.com/zellij-org/zellij/pull/5105, https://github.com/zellij-org/zellij/pull/5111 and https://github.com/zellij-org/zellij/pull/5113)
 * fix: incorrect interpretation of unicode characters in KKP STDIN (https://github.com/zellij-org/zellij/pull/5110)
 * fix: some issues regarding the interaction of fullscreen panes with resize/scrollback-editing (https://github.com/zellij-org/zellij/pull/5117)
+* fix: allow releasing from non-main branches in our build system (https://github.com/zellij-org/zellij/pull/5127)
 
 ## [0.44.1] - 2026-04-07
 * fix: don't display default ports as offline in `share` plugin (https://github.com/zellij-org/zellij/pull/4908)

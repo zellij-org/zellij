@@ -9,7 +9,6 @@ use tempfile::tempdir;
 use wasmi::Engine;
 use zellij_utils::data::{
     BareKey, Event, InputMode, KeyWithModifier, ModeInfo, PermissionStatus, PermissionType,
-    PluginCapabilities,
 };
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::actions::Action;
@@ -19,7 +18,6 @@ use zellij_utils::input::layout::{
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::input::plugins::PluginAliases;
-use zellij_utils::ipc::ClientAttributes;
 use zellij_utils::pane_size::Size;
 
 use crate::background_jobs::BackgroundJob;
@@ -343,8 +341,6 @@ fn create_plugin_thread(
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let layout_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
-    let plugin_capabilities = PluginCapabilities::default();
-    let client_attributes = ClientAttributes::default();
     let default_shell_action = None; // TODO: change me
     let mut plugin_aliases = PluginAliases::default();
     plugin_aliases.aliases.insert(
@@ -372,8 +368,6 @@ fn create_plugin_thread(
                 default_shell,
                 zellij_cwd,
                 session_env_vars,
-                plugin_capabilities,
-                client_attributes,
                 default_shell_action,
                 plugin_aliases,
                 InputMode::Normal,
@@ -445,8 +439,6 @@ fn create_plugin_thread_with_server_receiver(
     let engine = Engine::new(&config);
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
-    let plugin_capabilities = PluginCapabilities::default();
-    let client_attributes = ClientAttributes::default();
     let default_shell_action = None; // TODO: change me
     let initiating_client_id = 1;
     let plugin_thread = std::thread::Builder::new()
@@ -464,8 +456,6 @@ fn create_plugin_thread_with_server_receiver(
                 default_shell,
                 zellij_cwd,
                 session_env_vars,
-                plugin_capabilities,
-                client_attributes,
                 default_shell_action,
                 PluginAliases::default(),
                 InputMode::Normal,
@@ -545,8 +535,6 @@ fn create_plugin_thread_with_pty_receiver(
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let layout_dir = layout_dir.unwrap_or_else(|| PathBuf::from(tempdir().unwrap().path()));
     let default_shell = PathBuf::from(".");
-    let plugin_capabilities = PluginCapabilities::default();
-    let client_attributes = ClientAttributes::default();
     let default_shell_action = None; // TODO: change me
     let initiating_client_id = 1;
     let plugin_thread = std::thread::Builder::new()
@@ -564,8 +552,6 @@ fn create_plugin_thread_with_pty_receiver(
                 default_shell,
                 zellij_cwd,
                 session_env_vars,
-                plugin_capabilities,
-                client_attributes,
                 default_shell_action,
                 PluginAliases::default(),
                 InputMode::Normal,
@@ -638,8 +624,6 @@ fn create_plugin_thread_with_background_jobs_receiver(
     let engine = Engine::new(&config);
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
-    let plugin_capabilities = PluginCapabilities::default();
-    let client_attributes = ClientAttributes::default();
     let default_shell_action = None; // TODO: change me
     let initiating_client_id = 1;
     let plugin_thread = std::thread::Builder::new()
@@ -657,8 +641,6 @@ fn create_plugin_thread_with_background_jobs_receiver(
                 default_shell,
                 zellij_cwd,
                 session_env_vars,
-                plugin_capabilities,
-                client_attributes,
                 default_shell_action,
                 PluginAliases::default(),
                 InputMode::Normal,

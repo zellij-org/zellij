@@ -464,6 +464,199 @@ mod web_client_tests {
 
     #[tokio::test]
     #[serial]
+    async fn test_terminal_metrics_translates_to_pixel_dimensions() {
+        // Simulates a browser sending a TerminalMetrics control message
+        // (the payload our websockets.js sendTerminalMetrics() helper
+        // produces) and verifies the web server translates it into
+        // ClientToServerMsg::TerminalPixelDimensions with field-for-field
+        // accuracy. This guards the wire-format contract end-to-end
+        // through serde + the match arm in websocket_handlers.rs.
+        let _ = delete_db();
+
+        let test_token_name = "test_token_terminal_metrics";
+        let read_only = false;
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let factory_for_verification = client_os_api_factory.clone();
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(session_manager),
+                Some(client_os_api_factory),
+                addr.ip(),
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        let login_url = format!("http://127.0.0.1:{}/command/login", port);
+        let login_payload = serde_json::json!({
+            "auth_token": auth_token,
+            "remember_me": true,
+        });
+        let login_response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || {
+                isahc::Request::post(&login_url)
+                    .header("Content-Type", "application/json")
+                    .body(login_payload.to_string())
+                    .unwrap()
+                    .send()
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        assert!(login_response.status().is_success());
+
+        let set_cookie_header = login_response.headers().get("set-cookie");
+        let cookie_value = set_cookie_header.unwrap().to_str().unwrap();
+        let session_token = cookie_value
+            .split(';')
+            .next()
+            .and_then(|part| part.split('=').nth(1))
+            .unwrap();
+
+        let session_url = format!("http://127.0.0.1:{}/session", port);
+        let mut client_response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking({
+                let session_token = session_token.to_string();
+                move || {
+                    isahc::Request::post(&session_url)
+                        .header("Cookie", format!("session_token={}", session_token))
+                        .header("Content-Type", "application/json")
+                        .body("{}")
+                        .unwrap()
+                        .send()
+                }
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        assert!(client_response.status().is_success());
+
+        let client_data: serde_json::Value =
+            serde_json::from_str(&client_response.text().unwrap()).unwrap();
+        let web_client_id = client_data["web_client_id"].as_str().unwrap().to_string();
+
+        // Open the control WebSocket and consume the initial SetConfig.
+        let control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
+        let (control_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&control_ws_url, session_token),
+        )
+        .await
+        .expect("Control WebSocket connection timed out")
+        .expect("Failed to connect to control WebSocket");
+        let (mut control_sink, mut control_stream) = control_ws.split();
+        let _ = timeout(Duration::from_secs(2), control_stream.next())
+            .await
+            .expect("Timeout waiting for initial control message");
+
+        // The control channel only registers the client_id after the
+        // first inbound message. Send a TerminalResize first to mirror
+        // what the browser does at startup, then the TerminalMetrics.
+        let resize_msg = WebClientToWebServerControlMessage {
+            web_client_id: web_client_id.clone(),
+            payload: WebClientToWebServerControlMessagePayload::TerminalResize(Size {
+                rows: 24,
+                cols: 80,
+            }),
+        };
+        control_sink
+            .send(Message::Text(
+                serde_json::to_string(&resize_msg).unwrap().into(),
+            ))
+            .await
+            .expect("Failed to send TerminalResize");
+
+        // Send the actual TerminalMetrics payload — this is what the
+        // browser-side sendTerminalMetrics() helper writes onto the wire.
+        // Hand-construct the JSON to lock in the exact field names the
+        // browser uses, rather than going through the serde Serialize
+        // impl (which would mask any rename mismatch).
+        let metrics_json = serde_json::json!({
+            "web_client_id": web_client_id,
+            "payload": {
+                "type": "TerminalMetrics",
+                "cell_pixel_width": 9,
+                "cell_pixel_height": 18,
+                "text_area_pixel_width": 720,
+                "text_area_pixel_height": 432,
+            },
+        });
+        control_sink
+            .send(Message::Text(metrics_json.to_string().into()))
+            .await
+            .expect("Failed to send TerminalMetrics");
+
+        // Give the server a moment to process both messages.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Inspect the captured ClientToServerMsg traffic on the mock OS
+        // API for this web client.
+        let mock_apis = factory_for_verification.mock_apis.lock().unwrap();
+        let mut found_pixel_dims: Option<ClientToServerMsg> = None;
+        for (_, mock_api) in mock_apis.iter() {
+            for msg in mock_api.get_sent_messages() {
+                if matches!(msg, ClientToServerMsg::TerminalPixelDimensions { .. }) {
+                    found_pixel_dims = Some(msg);
+                    break;
+                }
+            }
+        }
+        let pixel_dims = found_pixel_dims
+            .expect("TerminalMetrics did not reach the server as TerminalPixelDimensions");
+        match pixel_dims {
+            ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions } => {
+                let cell = pixel_dimensions
+                    .character_cell_size
+                    .expect("character_cell_size missing");
+                let area = pixel_dimensions
+                    .text_area_size
+                    .expect("text_area_size missing");
+                assert_eq!(cell.width, 9);
+                assert_eq!(cell.height, 18);
+                assert_eq!(area.width, 720);
+                assert_eq!(area.height, 432);
+            },
+            other => panic!("unexpected msg variant: {:?}", other),
+        }
+
+        drop(mock_apis);
+        let _ = control_sink.close().await;
+        server_handle.abort();
+
+        revoke_token(test_token_name).expect("Failed to revoke test token");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn test_unauthorized_access_without_session() {
         let _ = delete_db();
 

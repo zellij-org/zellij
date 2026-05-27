@@ -1,6 +1,6 @@
 use crate::web_client::authentication::SessionTokenHash;
 use crate::web_client::control_message::{
-    SetConfigPayload, WebClientToWebServerControlMessage,
+    SetConfigPayload, TerminalMetricsPayload, WebClientToWebServerControlMessage,
     WebClientToWebServerControlMessagePayload, WebServerToWebClientControlMessage,
 };
 use crate::web_client::message_handlers::{
@@ -19,7 +19,11 @@ use axum::{
 use futures::StreamExt;
 use std::sync::{atomic::AtomicBool, Arc};
 use tokio_util::sync::CancellationToken;
-use zellij_utils::{input::mouse::MouseEvent, ipc::ClientToServerMsg};
+use zellij_utils::{
+    input::mouse::MouseEvent,
+    ipc::{ClientToServerMsg, PixelDimensions},
+    pane_size::SizeInPixels,
+};
 
 pub async fn ws_handler_control(
     ws: WebSocketUpgrade,
@@ -73,6 +77,9 @@ async fn handle_ws_control(
         let client_msg = match deserialized_msg.payload {
             WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
                 ClientToServerMsg::TerminalResize { new_size: size }
+            },
+            WebClientToWebServerControlMessagePayload::TerminalMetrics(metrics) => {
+                terminal_metrics_to_ipc(metrics)
             },
         };
 
@@ -313,4 +320,101 @@ async fn handle_ws_terminal(
         }
     }
     os_input.send_to_server(ClientToServerMsg::ClientExited);
+}
+
+fn terminal_metrics_to_ipc(metrics: TerminalMetricsPayload) -> ClientToServerMsg {
+    ClientToServerMsg::TerminalPixelDimensions {
+        pixel_dimensions: PixelDimensions {
+            text_area_size: Some(SizeInPixels {
+                width: metrics.text_area_pixel_width,
+                height: metrics.text_area_pixel_height,
+            }),
+            character_cell_size: Some(SizeInPixels {
+                width: metrics.cell_pixel_width,
+                height: metrics.cell_pixel_height,
+            }),
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn terminal_metrics_to_ipc_preserves_all_dimensions() {
+        let metrics = TerminalMetricsPayload {
+            cell_pixel_width: 9,
+            cell_pixel_height: 18,
+            text_area_pixel_width: 80 * 9,
+            text_area_pixel_height: 24 * 18,
+        };
+        let msg = terminal_metrics_to_ipc(metrics);
+        match msg {
+            ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions } => {
+                let cell = pixel_dimensions
+                    .character_cell_size
+                    .expect("cell size missing");
+                let area = pixel_dimensions
+                    .text_area_size
+                    .expect("text area size missing");
+                assert_eq!(cell.width, 9);
+                assert_eq!(cell.height, 18);
+                assert_eq!(area.width, 720);
+                assert_eq!(area.height, 432);
+            },
+            other => panic!("expected TerminalPixelDimensions, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn terminal_metrics_round_trips_through_json_payload() {
+        // The browser sends this message as JSON over the control
+        // socket. Verify that the on-wire shape deserializes into the
+        // variant we route into terminal_metrics_to_ipc.
+        let raw = serde_json::json!({
+            "web_client_id": "abc",
+            "payload": {
+                "type": "TerminalMetrics",
+                "cell_pixel_width": 7,
+                "cell_pixel_height": 14,
+                "text_area_pixel_width": 560,
+                "text_area_pixel_height": 336,
+            }
+        });
+        let parsed: WebClientToWebServerControlMessage =
+            serde_json::from_value(raw).expect("parse");
+        let metrics = match parsed.payload {
+            WebClientToWebServerControlMessagePayload::TerminalMetrics(m) => m,
+            other => panic!("expected TerminalMetrics, got {:?}", other),
+        };
+        assert_eq!(metrics.cell_pixel_width, 7);
+        assert_eq!(metrics.cell_pixel_height, 14);
+        assert_eq!(metrics.text_area_pixel_width, 560);
+        assert_eq!(metrics.text_area_pixel_height, 336);
+    }
+
+    #[test]
+    fn terminal_resize_still_deserializes_after_adding_variant() {
+        // Regression guard for the new enum variant: the existing
+        // TerminalResize wire shape must continue to parse unchanged
+        // (no `type` rename, no required-field changes).
+        let raw = serde_json::json!({
+            "web_client_id": "abc",
+            "payload": {
+                "type": "TerminalResize",
+                "rows": 24,
+                "cols": 80,
+            }
+        });
+        let parsed: WebClientToWebServerControlMessage =
+            serde_json::from_value(raw).expect("parse");
+        match parsed.payload {
+            WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
+                assert_eq!(size.rows, 24);
+                assert_eq!(size.cols, 80);
+            },
+            other => panic!("expected TerminalResize, got {:?}", other),
+        }
+    }
 }

@@ -359,7 +359,10 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
         } else if flags.no_push {
             println!("Skipping push due to no-push");
         } else {
-            cmd!(sh, "git push --atomic {remote} main v{version}")
+            let branch = cmd!(sh, "git rev-parse --abbrev-ref HEAD")
+                .read()
+                .context(err_context)?;
+            cmd!(sh, "git push --atomic {remote} {branch} v{version}")
                 .run()
                 .context(err_context)?;
         }

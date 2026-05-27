@@ -56,8 +56,8 @@ use zellij_utils::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
     data::{
-        ConnectToSession, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError,
-        PluginCapabilities, Style, WebSharing,
+        ConnectToSession, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError, Style,
+        WebSharing,
     },
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
@@ -65,7 +65,6 @@ use zellij_utils::{
         actions::Action,
         command::{RunCommand, TerminalAction},
         config::{watch_config_file_changes, watch_layout_dir_changes, Config},
-        get_mode_info,
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, PluginAlias, Run, RunPluginOrAlias},
         options::Options,
@@ -322,10 +321,7 @@ impl SessionConfiguration {
 
 pub(crate) struct SessionMetaData {
     pub senders: ThreadSenders,
-    pub capabilities: PluginCapabilities,
-    pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
-    pub layout: Box<Layout>,
     pub current_input_modes: HashMap<ClientId, InputMode>,
     pub session_configuration: SessionConfiguration,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
@@ -641,34 +637,6 @@ impl SessionState {
     }
     pub fn set_client_data(&mut self, client_id: ClientId, size: Size, is_web_client: bool) {
         self.clients.insert(client_id, Some((size, is_web_client)));
-    }
-    pub fn min_client_terminal_size(&self) -> Option<Size> {
-        // None if there are no client sizes
-        let mut rows: Vec<usize> = self
-            .clients
-            .values()
-            .filter_map(|size_and_is_web_client| {
-                size_and_is_web_client.map(|(size, _is_web_client)| size.rows)
-            })
-            .collect();
-        rows.sort_unstable();
-        let mut cols: Vec<usize> = self
-            .clients
-            .values()
-            .filter_map(|size_and_is_web_client| {
-                size_and_is_web_client.map(|(size, _is_web_client)| size.cols)
-            })
-            .collect();
-        cols.sort_unstable();
-        let min_rows = rows.first();
-        let min_cols = cols.first();
-        match (min_rows, min_cols) {
-            (Some(min_rows), Some(min_cols)) => Some(Size {
-                rows: *min_rows,
-                cols: *min_cols,
-            }),
-            _ => None,
-        }
     }
     pub fn client_ids(&self) -> Vec<ClientId> {
         self.clients.keys().copied().collect()
@@ -1066,8 +1034,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             floating_panes_layout.clone(),
                             tab_name,
                             (
-                                layout.swap_tiled_layouts.clone(),
-                                layout.swap_floating_layouts.clone(),
+                                Some(layout.swap_tiled_layouts.clone()),
+                                Some(layout.swap_floating_layouts.clone()),
                             ),
                             should_focus_tab,
                         );
@@ -1098,8 +1066,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         floating_panes,
                         None,
                         (
-                            layout.swap_tiled_layouts.clone(),
-                            layout.swap_floating_layouts.clone(),
+                            Some(layout.swap_tiled_layouts.clone()),
+                            Some(layout.swap_floating_layouts.clone()),
                         ),
                         true,
                     );
@@ -1155,20 +1123,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     client_attributes.size,
                     is_web_client,
                 );
-                let min_size = session_state
-                    .read()
-                    .unwrap()
-                    .min_client_terminal_size()
-                    .unwrap();
-                session_data
-                    .senders
-                    .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                    .unwrap();
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::AddClient(
                         client_id,
                         is_web_client,
+                        client_attributes.size,
                         tab_position_to_focus,
                         pane_id_to_focus,
                     ))
@@ -1178,20 +1138,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
                 let default_mode = config.options.default_mode.unwrap_or_default();
-                let mode_info = get_mode_info(
-                    default_mode,
-                    &client_attributes,
-                    session_data.capabilities,
-                    &session_data
-                        .session_configuration
-                        .get_client_keybinds(&client_id),
-                    Some(default_mode),
-                );
                 // ModeUpdate broadcast is handled by the screen thread via
                 // change_mode() -> update_input_modes()
                 session_data
                     .senders
-                    .send_to_screen(ScreenInstruction::ChangeMode(mode_info, client_id, None))
+                    .send_to_screen(ScreenInstruction::ChangeMode(
+                        default_mode,
+                        Some(default_mode),
+                        client_id,
+                        None,
+                    ))
                     .unwrap();
             },
             ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client) => {
@@ -1319,17 +1275,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state, session_data);
                     drop(completion_tx); // prevent deadlock with route thread
-                    if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
-                    {
-                        session_data
-                            .write()
-                            .unwrap()
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                            .unwrap();
-                    }
                     session_data
                         .write()
                         .unwrap()
@@ -1393,17 +1338,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 } else {
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state, session_data);
-                    if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
-                    {
-                        session_data
-                            .write()
-                            .unwrap()
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                            .unwrap();
-                    }
                     session_data
                         .write()
                         .unwrap()
@@ -1430,16 +1364,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     },
                 );
                 remove_client!(client_id, os_input, session_state, session_data);
-                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                        .unwrap();
-                }
             },
             ServerInstruction::KillSession => {
                 let client_ids = session_state.read().unwrap().client_ids();
@@ -1488,17 +1412,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                      // by us having to wait for session_data to send cleanup
                                      // signals to the various threads
                 for client_id in client_ids {
-                    if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
-                    {
-                        session_data
-                            .write()
-                            .unwrap()
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                            .unwrap();
-                    }
                     session_data
                         .write()
                         .unwrap()
@@ -1643,17 +1556,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     remove_client!(client_id, os_input, session_state, session_data);
                     drop(completion_tx); // do not deadlock with route thread
 
-                    if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
-                    {
-                        session_data
-                            .write()
-                            .unwrap()
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                            .unwrap();
-                    }
                     session_data
                         .write()
                         .unwrap()
@@ -1990,10 +1892,6 @@ fn init_session(
     // Determine and initialize the data directory
     let data_dir = cli_assets.data_dir.unwrap_or_else(get_default_data_dir);
 
-    let capabilities = PluginCapabilities {
-        arrow_fonts: config_options.simplified_ui.unwrap_or_default(),
-    };
-
     let serialization_interval = config_options.serialization_interval;
     let disable_session_metadata = config_options.disable_session_metadata.unwrap_or(false);
     let web_server_ip = config_options
@@ -2098,9 +1996,7 @@ fn init_session(
             let engine = get_engine();
 
             let layout = layout.clone();
-            let client_attributes = client_attributes.clone();
             let default_shell = default_shell.clone();
-            let capabilities = capabilities.clone();
             let layout_dir = config_options
                 .layout_dir
                 .clone()
@@ -2119,8 +2015,6 @@ fn init_session(
                     path_to_default_shell,
                     zellij_cwd,
                     session_env_vars,
-                    capabilities,
-                    client_attributes,
                     default_shell,
                     plugin_aliases,
                     default_mode,
@@ -2211,10 +2105,7 @@ fn init_session(
             to_server: Some(to_server),
             should_silently_fail: false,
         },
-        capabilities,
         default_shell,
-        client_attributes,
-        layout,
         session_configuration: Default::default(),
         current_input_modes: HashMap::new(),
         screen_thread: Some(screen_thread),

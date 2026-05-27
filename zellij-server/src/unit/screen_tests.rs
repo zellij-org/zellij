@@ -39,10 +39,7 @@ use zellij_utils::ipc::PixelDimensions;
 use interprocess::local_socket::Stream as LocalSocketStream;
 use zellij_utils::{
     channels::{self, ChannelWithContext, Receiver},
-    data::{
-        Direction, FloatingPaneCoordinates, InputMode, ModeInfo, NewPanePlacement, Palette,
-        PluginCapabilities,
-    },
+    data::{Direction, FloatingPaneCoordinates, InputMode, ModeInfo, NewPanePlacement, Palette},
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
 
@@ -128,20 +125,13 @@ fn send_cli_action_to_server(
     let get_current_dir = || PathBuf::from(".");
     let actions = Action::actions_from_cli(cli_action, Box::new(get_current_dir), None).unwrap();
     let senders = session_metadata.senders.clone();
-    let capabilities = PluginCapabilities::default();
-    let client_attributes = ClientAttributes::default();
     let default_shell = None;
-    let default_layout = Box::new(Layout::default());
     let default_mode = session_metadata
         .session_configuration
         .get_client_configuration(&client_id)
         .options
         .default_mode
         .unwrap_or(InputMode::Normal);
-    let client_keybinds = session_metadata
-        .session_configuration
-        .get_client_keybinds(&client_id)
-        .clone();
     for action in actions {
         route_action(
             action,
@@ -149,12 +139,8 @@ fn send_cli_action_to_server(
             None,
             None,
             senders.clone(),
-            capabilities,
-            client_attributes.clone(),
             default_shell.clone(),
-            &default_layout,
             None,
-            &client_keybinds,
             default_mode,
             None,
         )
@@ -424,8 +410,8 @@ impl MockScreen {
             Some(pane_layout.clone()),
             initial_floating_panes_layout.clone(),
             tab_name,
-            (vec![], vec![]), // swap layouts
-            None,             // initial_panes
+            (Some(vec![]), Some(vec![])), // swap layouts (None would fall back to Screen::default_layout)
+            None,                         // initial_panes
             false,
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
@@ -517,8 +503,8 @@ impl MockScreen {
             Some(pane_layout.clone()),
             initial_floating_panes_layout.clone(),
             tab_name,
-            (vec![], vec![]), // swap layouts
-            None,             // initial_panes
+            (Some(vec![]), Some(vec![])), // swap layouts (None would fall back to Screen::default_layout)
+            None,                         // initial_panes
             false,
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
@@ -556,8 +542,8 @@ impl MockScreen {
             Some(tab_layout.clone()),
             vec![], // floating_panes_layout
             tab_name,
-            (vec![], vec![]), // swap layouts
-            None,             // initial_panes
+            (Some(vec![]), Some(vec![])), // swap layouts (None would fall back to Screen::default_layout)
+            None,                         // initial_panes
             false,
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
@@ -604,8 +590,8 @@ impl MockScreen {
             Some(tab_layout.clone()),
             vec![], // floating_panes_layout
             tab_name,
-            (vec![], vec![]), // swap layouts
-            None,             // initial_panes
+            (Some(vec![]), Some(vec![])), // swap layouts (None would fall back to Screen::default_layout)
+            None,                         // initial_panes
             false,
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
@@ -638,11 +624,8 @@ impl MockScreen {
     }
     pub fn clone_session_metadata(&self) -> SessionMetaData {
         // hack that only clones the clonable parts of SessionMetaData
-        let layout = Box::new(Layout::default()); // this is not actually correct!!
         SessionMetaData {
             senders: self.session_metadata.senders.clone(),
-            capabilities: self.session_metadata.capabilities.clone(),
-            client_attributes: self.session_metadata.client_attributes.clone(),
             default_shell: self.session_metadata.default_shell.clone(),
             screen_thread: None,
             pty_thread: None,
@@ -650,7 +633,6 @@ impl MockScreen {
             pty_writer_thread: None,
             background_jobs_thread: None,
             session_configuration: self.session_metadata.session_configuration.clone(),
-            layout,
             current_input_modes: self.session_metadata.current_input_modes.clone(),
             web_sharing: WebSharing::Off,
             config_file_path: self.session_metadata.config_file_path.clone(),
@@ -686,11 +668,7 @@ impl MockScreen {
             size,
             ..Default::default()
         };
-        let capabilities = PluginCapabilities {
-            arrow_fonts: Default::default(),
-        };
 
-        let layout = Box::new(Layout::default()); // this is not actually correct!!
         let session_metadata = SessionMetaData {
             senders: ThreadSenders {
                 to_screen: Some(to_screen.clone()),
@@ -701,15 +679,12 @@ impl MockScreen {
                 to_server: Some(to_server.clone()),
                 should_silently_fail: true,
             },
-            capabilities,
             default_shell: None,
-            client_attributes: client_attributes.clone(),
             screen_thread: None,
             pty_thread: None,
             plugin_thread: None,
             pty_writer_thread: None,
             background_jobs_thread: None,
-            layout,
             session_configuration: Default::default(),
             current_input_modes: HashMap::new(),
             web_sharing: WebSharing::Off,
@@ -1995,6 +1970,65 @@ fn group_panes_with_mouse() {
             .get(&client_id),
         Some(&vec![]),
         "Pane Id removed from client's pane group"
+    );
+}
+
+#[test]
+fn mouse_focus_clears_bell_on_focused_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+
+    new_tab(&mut screen, 1, 0);
+
+    let new_pane_id = PaneId::Terminal(2);
+    {
+        let active_tab = screen.get_active_tab_mut(client_id).unwrap();
+        // Split horizontally: pane 1 on top, pane 2 on bottom; focus moves to pane 2
+        active_tab
+            .horizontal_split(new_pane_id, None, client_id, None, None)
+            .unwrap();
+        // Move focus back up to pane 1 so pane 2 is unfocused
+        active_tab.move_focus_up(client_id).unwrap();
+        // Plant a bell on the unfocused pane 2
+        active_tab.handle_pty_bytes(2, vec![7u8]).unwrap();
+        active_tab.check_and_handle_bell_notifications(false);
+        assert!(
+            active_tab.panes_with_pending_bell.contains(&new_pane_id),
+            "Pane 2 should have a pending bell before the click"
+        );
+        assert!(
+            active_tab.tab_has_pending_bell,
+            "Tab should have a pending bell before the click"
+        );
+    }
+
+    // Click somewhere in pane 2 (bottom half of the screen)
+    screen.handle_mouse_event(
+        MouseEvent::new_left_press_event(Position::new(15, 60)),
+        client_id,
+    );
+    screen.handle_mouse_event(
+        MouseEvent::new_left_release_event(Position::new(15, 60)),
+        client_id,
+    );
+
+    let active_tab = screen.get_active_tab(client_id).unwrap();
+    assert_eq!(
+        active_tab.get_active_pane_id(client_id),
+        Some(new_pane_id),
+        "Mouse click should have focused pane 2"
+    );
+    assert!(
+        !active_tab.panes_with_pending_bell.contains(&new_pane_id),
+        "Bell on pane 2 should be cleared after mouse focus"
+    );
+    assert!(
+        !active_tab.tab_has_pending_bell,
+        "Tab bell should be cleared after the last pane bell is cleared"
     );
 }
 
@@ -4277,12 +4311,9 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
-        Default::default(),
-        1,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Default::default(), 1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
@@ -4338,12 +4369,9 @@ pub fn screen_cannot_break_last_selectable_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
-        Default::default(),
-        1,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Default::default(), 1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
@@ -4382,12 +4410,9 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
-        Default::default(),
-        1,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Default::default(), 1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
@@ -4547,12 +4572,9 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
-        Default::default(),
-        1,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Default::default(), 1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
@@ -4623,12 +4645,9 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
-        Default::default(),
-        1,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Default::default(), 1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
@@ -4691,12 +4710,9 @@ pub fn screen_can_move_pane_to_a_new_tab_right() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
-        Default::default(),
-        1,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Default::default(), 1, None));
 
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
@@ -4754,12 +4770,9 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
-        Default::default(),
-        1,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Default::default(), 1, None));
     let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
         TiledPaneLayout::default(),
         Default::default(),
@@ -9453,5 +9466,394 @@ fn empty_reply_with_paused_pane_drains_buffer_without_phantom_write() {
     assert!(
         pane.drain_pending_pty_input().is_empty(),
         "queue fully consumed by post-resume processing"
+    );
+}
+
+// --- per-tab viewport sizing (Stage 1 of mobile_view_plan.md) -------------
+
+// All five tests below exercise `Screen::recompute_tab_size`, which the
+// production code invokes from `ScreenInstruction::AddClient`,
+// `ScreenInstruction::RecomputeTabSize` (runtime resize), `remove_client`,
+// and `switch_active_tab`. Tests drive the helper directly so the assertions
+// don't depend on instruction-bus plumbing.
+
+/// Variant of `create_new_screen` with `session_is_mirrored = false`. The
+/// payoff of per-tab sizing only shows up when clients can sit on different
+/// tabs; mirrored mode forces every client to share the active tab.
+fn create_non_mirrored_screen(size: Size) -> Screen {
+    let mut bus: Bus<ScreenInstruction> = Bus::empty();
+    let fake_os_input = FakeInputOutput::default();
+    bus.os_input = Some(Box::new(fake_os_input));
+    let client_attributes = ClientAttributes {
+        size,
+        ..Default::default()
+    };
+    let mut mode_info = ModeInfo::default();
+    mode_info.session_name = Some("zellij-test".into());
+    Screen::new(
+        bus,
+        &client_attributes,
+        None, // max_panes
+        mode_info,
+        false, // draw_pane_frames
+        true,  // auto_layout
+        false, // session_is_mirrored
+        CopyOptions::default(),
+        false, // debug
+        Box::new(Layout::default()),
+        None, // default_layout_name
+        PathBuf::from("my_default_shell"),
+        true,  // session_serialization
+        false, // serialize_pane_viewport
+        None,  // scrollback_lines_to_serialize
+        true,  // styled_underlines
+        true,  // osc8_hyperlinks
+        true,  // arrow_fonts
+        None,  // layout_dir
+        false, // explicitly_disable_kitty_keyboard_protocol
+        true,  // stacked_resize
+        None,
+        false,
+        WebSharing::Off,
+        true,  // advanced_mouse_actions
+        true,  // mouse_hover_effects
+        true,  // visual_bell
+        false, // focus_follows_mouse
+        false, // mouse_click_through
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+        8080,
+    )
+}
+
+#[test]
+fn recompute_tab_size_uses_lone_viewer_size() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+
+    let client_id = 1;
+    let client_size = Size { cols: 80, rows: 24 };
+    screen.set_client_size(client_id, client_size);
+    screen.recompute_tab_size(0).expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        client_size,
+        "Tab adopts its lone viewer's size"
+    );
+}
+
+#[test]
+fn recompute_tab_size_takes_independent_min_across_axes() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    // Drop the second client onto the same tab as client 1.
+    screen.add_client(2, false).expect("TEST");
+
+    // Wide-but-short and narrow-but-tall: rows and cols must min independently,
+    // not be paired by client.
+    screen.set_client_size(
+        1,
+        Size {
+            cols: 200,
+            rows: 24,
+        },
+    );
+    screen.set_client_size(2, Size { cols: 80, rows: 60 });
+    screen.recompute_tab_size(0).expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Tab size = (min cols across viewers, min rows across viewers)"
+    );
+}
+
+#[test]
+fn recompute_tab_size_isolates_tabs_with_different_viewers() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    // Non-mirrored: per-tab sizing's whole point is letting clients sit on
+    // different tabs without one dragging the other's grid.
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    // Client 1 is on tab 1 (the most recent). Pull client 2 onto tab 0 so
+    // tabs have one viewer each.
+    screen.add_client(2, false).expect("TEST");
+    screen.set_client_size(1, Size { cols: 80, rows: 24 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Tab 1 sized to its lone viewer (client 1)"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "Tab 0 sized to its lone viewer (client 2), unaffected by client 1's smaller viewport"
+    );
+}
+
+#[test]
+fn switching_tabs_recomputes_source_and_destination() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.add_client(2, false).expect("TEST");
+
+    // Both clients start on tab 1 (most recently created). Give them
+    // different sizes; the smaller wins on tab 1.
+    screen.set_client_size(1, Size { cols: 80, rows: 24 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    screen.recompute_tab_size(1).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Both clients on tab 1 → it sizes to the smaller"
+    );
+
+    // Move the smaller client to tab 0. Tab 1 must grow back to fit its
+    // remaining viewer; tab 0 must shrink to fit the arriving one.
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "Source tab grows back to fit its remaining viewer"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Destination tab shrinks to fit the arriving smaller viewer"
+    );
+}
+
+#[test]
+fn break_pane_to_new_tab_recomputes_source_and_destination() {
+    // `break_pane_to_new_tab` extracts the active pane and switches the
+    // requesting client to an adjacent tab via `switch_tab_next`/`prev`. That
+    // routes through `switch_active_tab`, so per-tab sizing must follow the
+    // moving client.
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.add_client(2, false).expect("TEST");
+
+    // Park each client on its own tab with its own viewport.
+    screen.set_client_size(1, Size { cols: 80, rows: 24 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    // After new_tab(2), client 1 is on tab id=1 (the new one). Pull it back
+    // onto tab id=0 so the two clients are split across the two tabs.
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Pre-condition: tab 0 sized to client 1"
+    );
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "Pre-condition: tab 1 sized to client 2"
+    );
+
+    // Give tab 0 a second pane so break_pane_to_new_tab has something to
+    // extract — but the per-tab sizing assertions are about clients, not
+    // panes; the second pane is just to satisfy the function's preconditions.
+    {
+        let active_tab = screen.get_active_tab_mut(1).unwrap();
+        active_tab
+            .new_pane(
+                PaneId::Terminal(99),
+                None,
+                None,
+                false,
+                true,
+                NewPanePlacement::default(),
+                Some(1),
+                None,
+            )
+            .unwrap();
+    }
+
+    // Move client 1's active pane rightward into tab 1. The function
+    // synchronously calls switch_tab_next → switch_active_tab(client 1, tab 1).
+    screen
+        .break_pane_to_new_tab(Direction::Right, 1)
+        .expect("TEST");
+
+    // Tab 1 now has both clients → recomputes to the smaller viewport.
+    // Tab 0 has no viewers → its size is left untouched.
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Destination tab shrinks to fit the arriving smaller viewer"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Source tab is empty — recompute is a no-op, last viewer-derived size is preserved"
+    );
+}
+
+#[test]
+fn moving_panes_between_tabs_with_focus_change_recomputes_both() {
+    // `break_multiple_panes_to_tab_with_index` with `should_change_focus = true`
+    // calls `go_to_tab` on the requesting client. That hits `switch_active_tab`,
+    // so the source tab grows back and the destination shrinks to fit.
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.add_client(2, false).expect("TEST");
+
+    // Both clients on tab 1 (the most recent), small client wins.
+    screen.set_client_size(1, Size { cols: 80, rows: 24 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    // Park client 2 alone on tab 0 so the two tabs are differently sized.
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "Pre-condition: tab 0 sized to client 2"
+    );
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Pre-condition: tab 1 sized to client 1"
+    );
+
+    // Add a movable pane on tab 1 (where client 1 lives).
+    let pane_to_move = PaneId::Terminal(42);
+    {
+        let active_tab = screen.get_active_tab_mut(1).unwrap();
+        active_tab
+            .new_pane(
+                pane_to_move,
+                None,
+                None,
+                false,
+                true,
+                NewPanePlacement::default(),
+                Some(1),
+                None,
+            )
+            .unwrap();
+    }
+
+    // Move the pane onto tab at position 0 AND switch client 1's focus there.
+    // Client 1 leaves tab 1 → tab 1 grows back to client 2's size... wait,
+    // client 2 already left tab 1 above. Tab 1 will be empty, so it keeps its
+    // last size. Tab 0 gains client 1 alongside client 2 → recomputes to the
+    // smaller of the two viewports.
+    screen
+        .break_multiple_panes_to_tab_with_index(vec![pane_to_move], 0, true, 1)
+        .expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Destination tab shrinks to min(viewers) once the smaller client arrives"
+    );
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Source tab is empty — last viewer-derived size is preserved"
+    );
+}
+
+#[test]
+fn detaching_client_grows_vacated_tab_back() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+
+    // Tab 0 has both clients; the smaller one defines its size.
+    screen.set_client_size(
+        1,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    screen.set_client_size(2, Size { cols: 80, rows: 24 });
+    screen.recompute_tab_size(0).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Smaller viewer wins while both clients are on the tab"
+    );
+
+    // The smaller client leaves; the tab must grow to fit the remaining one.
+    screen.remove_client(2).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "Tab grows back to fit the remaining viewer after the smaller one detaches"
     );
 }
