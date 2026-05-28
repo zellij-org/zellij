@@ -75,10 +75,11 @@ pub const MOBILE_MAX_ROWS: usize = 30;
 /// controls, and overlays. The caller must early-return after this
 /// so the desktop rendering path does not also draw.
 pub fn render(state: &mut State, rows: usize, cols: usize) {
-    // Each render rebuilds the click-target list. Cleared up-front
-    // so an early-return path (overlay, blank viewport) leaves no
-    // stale targets behind that a stray click could match against.
-    state.mobile_click_targets.clear();
+    // `mobile_click_targets` was cleared at the top of `State::render`
+    // before dispatch — see the matching comment there. Early-return
+    // paths below (overlay, blank viewport, rename overlay) therefore
+    // leave the list empty, which is the correct state for those
+    // frames.
 
     if rows == 0 || cols == 0 {
         return;

@@ -245,6 +245,18 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
+        // Per-render reset: the mobile welcome path populates
+        // `mobile_click_targets` with row coordinates that only make
+        // sense for that specific frame. If the viewport grows past
+        // the mobile threshold between renders (e.g. user resizes a
+        // small browser window up), the desktop branch below would
+        // otherwise leave the previous mobile frame's targets in
+        // place — and a desktop click landing on one of those rows
+        // would route through `mobile_welcome::handle_click` and
+        // attach to whichever session that row pointed to. Clearing
+        // here is the single source of truth; the mobile path
+        // re-populates after this point.
+        self.mobile_click_targets.clear();
         // Mobile-friendly path: at small viewports the welcome
         // screen's desktop layout (banner + boundaries + 90-col
         // centred content) does not fit. The thresholds match
