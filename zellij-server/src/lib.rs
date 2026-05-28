@@ -1103,7 +1103,22 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     mobile_threshold_cols,
                     mobile_threshold_rows,
                 );
-                if should_enter_mobile {
+                // Web clients connect with the `Size { rows: 24, cols: 80 }`
+                // fallback from `get_terminal_size()` (see
+                // `zellij-client/src/os_input_output.rs:79`) before the
+                // browser reports its real dimensions. That fallback's 24
+                // rows trips the default 30-row mobile threshold, so an
+                // immediate decision here would transiently enter mobile
+                // mode and then auto-demote ~150ms later when the real
+                // viewport arrives — leaving any teardown the mobile
+                // entry triggered (e.g. the mobile plugin closing the
+                // welcome pane) without a corresponding rebuild and
+                // forcing the client to disconnect/reconnect. Defer the
+                // decision to the first `TerminalResize` for web clients;
+                // terminal clients keep the eager path because
+                // `crossterm::terminal::size()` returns their real size
+                // synchronously.
+                if should_enter_mobile && !is_web_client {
                     session_data
                         .read()
                         .unwrap()
@@ -1206,7 +1221,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     mobile_threshold_cols,
                     mobile_threshold_rows,
                 );
-                if should_enter_mobile {
+                // Same web-client fallback caveat as the
+                // FirstClientConnected arm above — defer the mobile
+                // decision to the first `TerminalResize` rather than
+                // acting on the 80x24 placeholder.
+                if should_enter_mobile && !is_web_client {
                     session_data
                         .senders
                         .send_to_screen(ScreenInstruction::EnterMobileMode(client_id, None))
