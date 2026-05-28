@@ -400,6 +400,15 @@ pub struct State {
     /// keyboard is hidden so the bottom row of the plugin area frees
     /// up for content.
     pub soft_keyboard_visible: bool,
+    /// Sticky flag: once we've auto-expanded the Sessions selector
+    /// because the underlying pane is the welcome screen (session-
+    /// manager in welcome mode), we never re-auto-expand. This means
+    /// the user can close the selector and see the embedded welcome
+    /// content if they wish; they just get the cleaner selector view
+    /// by default. Reset is never needed — when the welcome session
+    /// ends (user attaches / creates), the mobile plugin's whole tab
+    /// is torn down and state is discarded.
+    pub welcome_auto_expand_done: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -521,6 +530,24 @@ impl State {
         let region = self.viewport_region?;
         let embed_height = region.row_end.saturating_sub(region.row_start);
         Some(self.current_pane_viewport_len().saturating_sub(embed_height))
+    }
+
+    /// True when the currently-selected pane is the session-manager
+    /// plugin launched via the `welcome-screen` alias (i.e. the
+    /// welcome layout's only pane). Identified by
+    /// `PaneInfo.plugin_url`, which carries the alias name
+    /// `"welcome-screen"` for panes spawned from the alias — see
+    /// `RunPluginOrAlias::location_string` in
+    /// `zellij-utils/src/input/layout.rs`. Plain session-manager
+    /// invocations (e.g. opened mid-session via keybinding) report a
+    /// different `plugin_url`, so this check does not catch them.
+    pub fn current_pane_is_welcome(&self) -> bool {
+        self.current_pane()
+            .map(|p| {
+                p.is_plugin
+                    && p.plugin_url.as_deref() == Some("welcome-screen")
+            })
+            .unwrap_or(false)
     }
 
     /// Currently-selected pane info, falling back to the first pane in

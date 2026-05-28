@@ -204,6 +204,43 @@ impl ZellijPlugin for State {
                 // rendering. Covers initial setup and any pane churn
                 // (close/move) that triggers a re-pick above.
                 sync_shadow_focus(self);
+                // Welcome-screen UX: on first detection that the
+                // underlying pane is the session-manager welcome
+                // plugin, close that pane and take over the welcome
+                // experience natively. The session-manager renders
+                // at the underlying pane's width (typically full
+                // screen) and would otherwise require horizontal
+                // panning to read; running the welcome flow in this
+                // plugin's own UI fits the phone width naturally and
+                // lets the Sessions selector scroll under sticky
+                // chrome. The welcome tab auto-closes after its only
+                // pane is gone (no selectable panes → screen render
+                // loop marks the tab for closure); this plugin's own
+                // tab keeps the session alive.
+                if !self.welcome_auto_expand_done
+                    && self.expanded.is_none()
+                    && self.current_pane_is_welcome()
+                {
+                    if let Some(pane) = self.current_pane() {
+                        close_plugin_pane(pane.id);
+                    }
+                    self.expanded = Some(Selector::Sessions);
+                    self.selector_scroll_offset = 0;
+                    self.menu_open = false;
+                    self.welcome_auto_expand_done = true;
+                    // Pull the authoritative session snapshot, same
+                    // path as `ClickAction::ExpandSessions`. The
+                    // standing `Event::SessionUpdate` payload only
+                    // contains the current session's metadata until
+                    // a scan is requested via this shim — so without
+                    // this call the selector would render empty on
+                    // first show.
+                    if let Ok(snapshot) = get_session_list() {
+                        self.sessions = filter_sessions_for_client(
+                            snapshot.live_sessions, self,
+                        );
+                    }
+                }
                 true
             },
             Event::SessionUpdate(sessions, _) => {
