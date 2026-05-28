@@ -1001,6 +1001,13 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
 /// switcher is misleading. Terminal-client sessions are unaffected.
 /// Matches the gate the session-manager plugin applies in
 /// `default-plugins/session-manager/src/main.rs:1241`.
+///
+/// Welcome-screen sessions are always dropped — every browser tab
+/// that hits the base URL spins up its own welcome session, so they
+/// pile up quickly and attaching to one is meaningless (the welcome
+/// flow exists to *leave* that session, not to be a destination).
+/// Identified by any pane with `plugin_url == "welcome-screen"`,
+/// the same alias the welcome.kdl layout uses.
 fn filter_sessions_for_client(
     sessions: Vec<SessionInfo>,
     state: &State,
@@ -1010,13 +1017,24 @@ fn filter_sessions_for_client(
         .as_ref()
         .and_then(|m| m.is_web_client)
         .unwrap_or(false);
-    if !is_web_client {
-        return sessions;
-    }
     sessions
         .into_iter()
-        .filter(|s| s.web_clients_allowed)
+        .filter(|s| !is_welcome_session(s))
+        .filter(|s| !is_web_client || s.web_clients_allowed)
         .collect()
+}
+
+/// True if any pane inside the session is running the welcome-screen
+/// plugin alias. Welcome sessions are created automatically for every
+/// browser tab landing on the base URL and are not meaningful attach
+/// targets.
+fn is_welcome_session(session: &SessionInfo) -> bool {
+    session
+        .panes
+        .panes
+        .values()
+        .flatten()
+        .any(|p| p.is_plugin && p.plugin_url.as_deref() == Some("welcome-screen"))
 }
 
 pub fn clear_fit_if_active(state: &mut State) {

@@ -64,6 +64,14 @@ impl MobileLayout {
     /// setting either or both to `0` turns the size gate into a
     /// no-op (`Web` then promotes every web client unconditionally;
     /// `Always` promotes every client unconditionally).
+    ///
+    /// A *viewport* value of `0`, however, is treated as "no info
+    /// yet" rather than as a match: web clients connect with
+    /// `Size::default()` (`rows: 0, cols: 0`) before the browser's
+    /// JS has reported real dimensions, and routing to mobile based
+    /// on that placeholder would cause a transient mobile-mode entry
+    /// that subsequent code paths (e.g. the mobile plugin closing the
+    /// welcome pane) cannot safely roll back.
     pub fn should_route_to_mobile(
         self,
         is_web_client: bool,
@@ -72,8 +80,12 @@ impl MobileLayout {
         threshold_cols: u16,
         threshold_rows: u16,
     ) -> bool {
-        let cols_match = threshold_cols == 0 || viewport_cols <= threshold_cols as usize;
-        let rows_match = threshold_rows == 0 || viewport_rows <= threshold_rows as usize;
+        // viewport_* == 0 means "unknown" (initial Size::default()
+        // before the real size arrives) — do not treat as a match.
+        let cols_match = viewport_cols > 0
+            && (threshold_cols == 0 || viewport_cols <= threshold_cols as usize);
+        let rows_match = viewport_rows > 0
+            && (threshold_rows == 0 || viewport_rows <= threshold_rows as usize);
         // OR semantics: phones in portrait have narrow cols but tall
         // rows; phones in landscape have wide cols but short rows.
         let size_match = cols_match || rows_match;
@@ -765,6 +777,27 @@ mod tests {
         // And under Web mode the gate still requires a web client.
         assert!(route(MobileLayout::Web, true, LARGE, (0, 0)));
         assert!(!route(MobileLayout::Web, false, LARGE, (0, 0)));
+    }
+
+    #[test]
+    fn zero_viewport_is_treated_as_unknown() {
+        // Web clients connect with `Size::default()` (0, 0) before the
+        // browser reports real dimensions. That placeholder must not
+        // be treated as a size match — otherwise the client would
+        // transiently route into mobile mode and back out as soon as
+        // the real viewport arrives, with no clean way to roll back
+        // any state the mobile path created in between.
+        assert!(!route(MobileLayout::Always, true, (0, 0), (60, 30)));
+        assert!(!route(MobileLayout::Web, true, (0, 0), (60, 30)));
+        // Even with thresholds set to "always match" (0, 0), a (0, 0)
+        // viewport still means we have no info yet — both axes must
+        // independently confirm they have a real measurement.
+        assert!(!route(MobileLayout::Always, true, (0, 0), (0, 0)));
+        // One real axis is enough — OR semantics still hold so a
+        // genuine narrow-cols (or narrow-rows) report routes even if
+        // the other axis hasn't reported yet.
+        assert!(route(MobileLayout::Always, true, (40, 0), (60, 30)));
+        assert!(route(MobileLayout::Always, true, (0, 20), (60, 30)));
     }
 
     #[test]
