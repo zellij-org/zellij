@@ -440,8 +440,14 @@ impl ZellijPlugin for State {
                 if self.expanded == Some(Selector::NewSessionPrompt) {
                     match key.bare_key {
                         BareKey::Esc => {
+                            // Return to the Sessions selector (the
+                            // welcome screen in welcome mode, the
+                            // regular session list otherwise). Mirrors
+                            // the [Cancel] button dispatch.
                             self.pending_session_name.clear();
-                            self.expanded = None;
+                            self.new_session_view_offset = 0;
+                            self.new_session_content_w = 0;
+                            self.expanded = Some(Selector::Sessions);
                         },
                         BareKey::Enter => {
                             // Move (not clone) the buffer into the
@@ -455,6 +461,8 @@ impl ZellijPlugin for State {
                             let name = std::mem::take(&mut self.pending_session_name);
                             let arg = if name.is_empty() { None } else { Some(name.as_str()) };
                             switch_session(arg);
+                            self.new_session_view_offset = 0;
+                            self.new_session_content_w = 0;
                             self.expanded = None;
                         },
                         BareKey::Backspace => {
@@ -467,6 +475,48 @@ impl ZellijPlugin for State {
                         // Tab, …) is swallowed silently — the prompt
                         // is intentionally minimal and forwarding
                         // these to the pane would defeat the capture.
+                        _ => {},
+                    }
+                    return true;
+                }
+                // Welcome-flow Sessions selector: capture keys for the
+                // "Session:" fuzzy-search prompt. Mirrors the session-
+                // manager welcome screen's input model — Char/Backspace
+                // edit the buffer, Enter attaches to the highest-scored
+                // match, Esc clears the buffer (or is a no-op when the
+                // buffer is already empty — there is no "back" target
+                // in the welcome flow). Keys are never forwarded to
+                // the embedded pane because there is no embedded pane:
+                // the welcome-screen plugin pane was closed during
+                // auto-expand and the welcome session is the very
+                // session this plugin is hosting.
+                if self.welcome_auto_expand_done
+                    && self.expanded == Some(Selector::Sessions)
+                {
+                    match key.bare_key {
+                        BareKey::Esc => {
+                            if !self.welcome_search.is_empty() {
+                                self.welcome_search.clear();
+                                self.selector_scroll_offset = 0;
+                            }
+                        },
+                        BareKey::Enter => {
+                            if let Some(name) = self.welcome_top_match_name() {
+                                switch_session(Some(&name));
+                                self.expanded = None;
+                            }
+                        },
+                        BareKey::Backspace => {
+                            self.welcome_search.pop();
+                            // Reset scroll so a freshly-shrunken list
+                            // re-anchors at the top instead of opening
+                            // mid-page.
+                            self.selector_scroll_offset = 0;
+                        },
+                        BareKey::Char(c) => {
+                            self.welcome_search.push(c);
+                            self.selector_scroll_offset = 0;
+                        },
                         _ => {},
                     }
                     return true;
@@ -601,12 +651,31 @@ fn apply_v_pan(
 /// the renderer clamps against the actual item count on the next
 /// frame so the offset never sticks past the last visible row.
 /// Returns `true` whenever the offset moved so the host re-renders.
+///
+/// In welcome mode the per-event delta is capped at
+/// `max(1, last_welcome_visible_count - 1)` so the last visible card
+/// before the scroll stays in the new window — at least one card of
+/// overlap is always preserved. A fast swipe (large `lines`) is
+/// flattened to that cap, which prevents the list from "page-flipping"
+/// past the user's reading position.
 fn handle_selector_scroll(state: &mut State, lines: usize, up: bool) -> bool {
+    let effective_lines = if state.welcome_auto_expand_done
+        && state.expanded == Some(Selector::Sessions)
+        && state.last_welcome_visible_count > 0
+    {
+        // visible - 1 keeps one card of overlap. Floor at 1 so a
+        // 1-card window can still scroll (no overlap possible there
+        // — the cap simply has no effect).
+        let cap = state.last_welcome_visible_count.saturating_sub(1).max(1);
+        lines.min(cap)
+    } else {
+        lines
+    };
     let old = state.selector_scroll_offset;
     state.selector_scroll_offset = if up {
-        old.saturating_sub(lines)
+        old.saturating_sub(effective_lines)
     } else {
-        old.saturating_add(lines)
+        old.saturating_add(effective_lines)
     };
     state.selector_scroll_offset != old
 }
@@ -836,10 +905,42 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             // Swap the sessions selector for the in-plugin name-entry
             // overlay. The buffer is cleared on entry so a previously
             // cancelled attempt never leaks back into a fresh prompt.
+            // Reset the view/box anchors too so the prompt starts at
+            // the default size rather than inheriting an old session's
+            // expanded box.
             // No host call here — the actual session creation happens
             // in the prompt's Enter handler (see `Event::Key`).
             state.pending_session_name.clear();
+            state.new_session_view_offset = 0;
+            state.new_session_content_w = 0;
             state.expanded = Some(Selector::NewSessionPrompt);
+            true
+        },
+        ClickAction::CancelNewSessionPrompt => {
+            // Same effect as Esc in the NewSessionPrompt key handler:
+            // discard the buffer and return to the Sessions selector
+            // (the screen the user was on when they tapped the
+            // "+ New Session" affordance). In welcome mode this is
+            // the welcome screen the user just left; outside welcome
+            // mode it is the regular Sessions selector — same
+            // back-target either way.
+            state.pending_session_name.clear();
+            state.new_session_view_offset = 0;
+            state.new_session_content_w = 0;
+            state.expanded = Some(Selector::Sessions);
+            true
+        },
+        ClickAction::AcceptNewSessionPrompt => {
+            // Same effect as Enter in the NewSessionPrompt key handler:
+            // hand the buffer to `switch_session` (None → host picks an
+            // auto-name) and close the prompt. The client is moved to
+            // the new session by the host, which dismounts this plugin.
+            let name = std::mem::take(&mut state.pending_session_name);
+            let arg = if name.is_empty() { None } else { Some(name.as_str()) };
+            switch_session(arg);
+            state.new_session_view_offset = 0;
+            state.new_session_content_w = 0;
+            state.expanded = None;
             true
         },
         ClickAction::SelectPane { tab_position, pane_id } => {

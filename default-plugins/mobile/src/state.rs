@@ -3,6 +3,8 @@
 //! map produced by the renderer for mouse-event dispatch.
 
 use std::collections::HashMap;
+use fuzzy_matcher::skim::SkimMatcherV2;
+use fuzzy_matcher::FuzzyMatcher;
 use zellij_tile::prelude::*;
 
 use crate::modifier_bar::{CellId, ModifierBarController};
@@ -92,6 +94,19 @@ pub enum ClickAction {
     /// No host call is made here — the actual `switch_session` is
     /// dispatched from the prompt's Enter handler in `Event::Key`.
     OpenNewSessionPrompt,
+    /// Tap on the "[Cancel]" button in the New Session prompt.
+    /// Mirrors the prompt's Esc key handler: clears the pending
+    /// buffer and closes the prompt without calling the host. Kept
+    /// distinct from `CollapseSelector` because the latter does not
+    /// clear the buffer (and a stale buffer leaking into a future
+    /// open would surprise the user).
+    CancelNewSessionPrompt,
+    /// Tap on the "[Accept]" button in the New Session prompt.
+    /// Mirrors the prompt's Enter key handler: hands the buffer to
+    /// `switch_session` (empty buffer → host picks an auto-name) and
+    /// closes the prompt. The mobile plugin then dismounts as the
+    /// host swaps the client into the new session.
+    AcceptNewSessionPrompt,
     /// Tap on the "Switch to Desktop" hamburger menu row. Calls the
     /// `exit_mobile_mode` shim, which tears down this client's
     /// mobile tab server-side. The mobile UI dismounts as the tab
@@ -388,6 +403,41 @@ pub struct State {
     /// successful Enter submit (the buffer is `mem::take`-n into the
     /// `switch_session` argument).
     pub pending_session_name: String,
+    /// Sticky scroll offset into `pending_session_name` for the New
+    /// Session prompt's input row. Counts characters (not bytes)
+    /// hidden behind the leading `…` indicator when the typed name is
+    /// too long to fit on one row.
+    ///
+    /// The offset only ever *advances* in response to typing — when
+    /// the cursor would otherwise spill past the right edge, the
+    /// renderer pushes the offset forward enough to bring the cursor
+    /// back. Backspace leaves it put, so the displayed text actually
+    /// shrinks one cell per press (the cursor `_` moves left, the
+    /// rightmost typed character disappears). Once the buffer is
+    /// short enough to fit without truncation the renderer resets it
+    /// back to 0.
+    ///
+    /// Without this, the truncation logic re-derived the offset on
+    /// every render to "show the last N chars", which kept the
+    /// displayed width constant on backspace and made the prompt look
+    /// frozen.
+    pub new_session_view_offset: usize,
+    /// High-water-mark of the New Session prompt's content area
+    /// width (everything inside the box's horizontal padding). The
+    /// box never *shrinks* during a single prompt session — it grows
+    /// to fit the typed name and then stays at that size while the
+    /// user backspaces.
+    ///
+    /// Without this anchor, recentering the box after each backspace
+    /// (`box_x = (cols - box_w) / 2`) flips by one column on alternate
+    /// presses thanks to integer division, which cancels the cursor's
+    /// leftward movement and makes backspace appear to "skip" cells
+    /// — the original bug the user reported.
+    ///
+    /// Reset to 0 on every prompt entry (the next render then snaps
+    /// it back to the default width) so an old session's expanded
+    /// box does not leak into a fresh prompt.
+    pub new_session_content_w: usize,
     /// Current OS soft-keyboard visibility on the attached web
     /// client, as last reported by the browser via
     /// `Event::SoftKeyboardVisibilityChanged`. Defaults to `false`
@@ -409,6 +459,29 @@ pub struct State {
     /// ends (user attaches / creates), the mobile plugin's whole tab
     /// is torn down and state is discarded.
     pub welcome_auto_expand_done: bool,
+    /// Number of welcome-screen session cards that fit on screen the
+    /// last time the renderer ran. Used by the scroll handler to cap
+    /// the per-event scroll delta so the last visible card before a
+    /// scroll remains visible after it — guaranteeing at least one
+    /// card of overlap so the user does not lose their place.
+    /// Set by `render_welcome_sessions`; consumed by
+    /// `handle_selector_scroll` while in welcome mode. Defaults to 0
+    /// (no cap applied) before the first welcome render.
+    pub last_welcome_visible_count: usize,
+    /// Fuzzy-search buffer for the welcome screen's "Session:" prompt.
+    /// Empty when the prompt has no input. The render layer filters
+    /// the visible session list against this string via `fuzzy_matcher`
+    /// — sessions whose names fuzzy-match are kept; the rest are
+    /// hidden. Cleared when the welcome flow tears down (plugin
+    /// lifetime ends).
+    pub welcome_search: String,
+    /// Cached `SkimMatcherV2` for welcome-screen fuzzy matching.
+    /// Lazily initialised on first keystroke (with `use_cache(true)`)
+    /// so the matcher's internal score cache survives across renders.
+    /// Wrapped in `Option` because `SkimMatcherV2` does not implement
+    /// `Default` — matches the pattern in `default-plugins/session-
+    /// manager/src/single_screen.rs`.
+    pub welcome_fuzzy_matcher: Option<SkimMatcherV2>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -548,6 +621,46 @@ impl State {
                     && p.plugin_url.as_deref() == Some("welcome-screen")
             })
             .unwrap_or(false)
+    }
+
+    /// Pick the highest-scoring non-current session for the welcome
+    /// screen's prompt — what `Enter` should attach to. With an empty
+    /// search term, returns the alphabetically first non-current
+    /// session. Returns `None` only when no non-current sessions
+    /// exist.
+    ///
+    /// The fuzzy matcher is the same `SkimMatcherV2` instance the
+    /// renderer uses, so the score it computes here matches the
+    /// rendered order: the visually-topmost card is what Enter picks.
+    pub fn welcome_top_match_name(&mut self) -> Option<String> {
+        let search = self.welcome_search.clone();
+        if search.is_empty() {
+            return self
+                .sessions
+                .iter()
+                .filter(|s| !s.is_current_session)
+                .map(|s| s.name.clone())
+                .min();
+        }
+        let matcher = self
+            .welcome_fuzzy_matcher
+            .get_or_insert_with(|| SkimMatcherV2::default().use_cache(true));
+        let mut best: Option<(i64, String)> = None;
+        for s in self.sessions.iter() {
+            if s.is_current_session {
+                continue;
+            }
+            if let Some((score, _)) = matcher.fuzzy_indices(&s.name, &search) {
+                let take = match &best {
+                    None => true,
+                    Some((bs, bn)) => score > *bs || (score == *bs && &s.name < bn),
+                };
+                if take {
+                    best = Some((score, s.name.clone()));
+                }
+            }
+        }
+        best.map(|(_, name)| name)
     }
 
     /// Currently-selected pane info, falling back to the first pane in

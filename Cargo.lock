@@ -2190,6 +2190,7 @@ name = "mobile"
 version = "0.1.0"
 dependencies = [
  "ansi_term",
+ "fuzzy-matcher",
  "unicode-width 0.1.10",
  "zellij-tile",
 ]

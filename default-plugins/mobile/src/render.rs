@@ -18,6 +18,8 @@ use crate::state::{
     pane_id_of, ClickAction, ClickRegion, LastEmittedCursor, Selector, State,
     ViewportRegion,
 };
+use fuzzy_matcher::skim::SkimMatcherV2;
+use fuzzy_matcher::FuzzyMatcher;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
@@ -74,7 +76,7 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
         return;
     }
 
-    // Top bar always sits at row 0; the body fills the remaining
+    // Top bar normally sits at row 0; the body fills the remaining
     // rows. The bottom modifier bar reserves one row at the bottom of
     // the plugin area, just above where the OS soft keyboard surfaces.
     // The reservation is gated on the OS keyboard being visible —
@@ -83,7 +85,16 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
     // for viewport content. On a pathologically short plugin area
     // (1-2 rows of body) the bar is suppressed so the viewport keeps
     // a usable row.
-    let body_top = 1;
+    //
+    // Welcome flow: while the mobile plugin is hosting the welcome
+    // experience (`welcome_auto_expand_done` is sticky and stays true
+    // for the lifetime of the welcome session), the top bar is
+    // suppressed entirely so the centered welcome UI uses the full
+    // plugin height. The session this plugin hosts is going away the
+    // moment the user attaches/creates, so there's no useful pane/tab
+    // chrome to expose anyway.
+    let in_welcome_flow = state.welcome_auto_expand_done;
+    let body_top = if in_welcome_flow { 0 } else { 1 };
     let bar_height = if state.soft_keyboard_visible && rows.saturating_sub(body_top) >= 2 {
         1
     } else {
@@ -134,7 +145,9 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
     // visible area and we rewrite each region from (0, 0).
     print!("{}\x1b[2J", RESET);
 
-    render_top_bar(state, 0, cols);
+    if !in_welcome_flow {
+        render_top_bar(state, 0, cols);
+    }
 
     if body_bottom > body_top {
         match state.expanded {
@@ -740,7 +753,26 @@ fn named_cell(text: String, color: usize) -> SelectorCell {
 /// (digits in color 1), pane count (digits in color 2). Per the
 /// spec only the digits are coloured — the trailing word stays in
 /// the table-cell base colour.
+///
+/// When the mobile plugin is hosting the welcome flow, the rendering
+/// switches to `render_welcome_sessions` which uses a custom layout:
+/// an unstyled "Hi from Zellij!" title at the top, two-line session
+/// cards (name + tabs/panes/clients counts), and a "+ New Session"
+/// affordance pinned at the bottom — outside the scrollable list so
+/// it stays visible regardless of session count or scroll position.
+///
+/// Welcome mode is detected via `state.welcome_auto_expand_done`
+/// rather than `state.current_pane_is_welcome()`: the welcome pane
+/// is closed by `Event::PaneUpdate` immediately after auto-expand
+/// (see `main.rs`), so the `current_pane` check flips to `false`
+/// within a frame or two, while the sticky `welcome_auto_expand_done`
+/// flag stays true for the lifetime of the mobile plugin's host
+/// session — which is exactly the welcome-flow lifetime.
 fn render_sessions_menu(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
+    if state.welcome_auto_expand_done {
+        render_welcome_sessions(state, row_start, row_end, cols);
+        return;
+    }
     let mut entries: Vec<(String, usize, usize, bool)> = state
         .sessions
         .iter()
@@ -811,26 +843,426 @@ fn render_sessions_menu(state: &mut State, row_start: usize, row_end: usize, col
     render_centered_selector(state, row_start, row_end, cols, "Switch Session", rows);
 }
 
-/// In-plugin name-entry overlay for "+ New Session". Drawn centered
-/// in the body region. Keyboard-driven only — no click regions are
-/// registered (the prompt is dismissed by Esc, submitted by Enter,
-/// edited by character keys / Backspace; all handled in `main.rs`'s
-/// `Event::Key` arm while `state.expanded == Some(NewSessionPrompt)`).
+/// Welcome-screen variant of the Sessions selector. Used while the
+/// mobile plugin is hosting the welcome flow — detected via
+/// `state.welcome_auto_expand_done`, which is set when the
+/// session-manager welcome pane is auto-closed on first
+/// `PaneUpdate` and stays true for the lifetime of this plugin
+/// instance (the host session ends when the user attaches to /
+/// creates another).
+///
+/// The whole block — title, prompt, sessions, "+ New Session" — is
+/// vertically centered in the body region. The footer always leaves
+/// one row of breathing room above the bottom edge (modifier bar or
+/// screen edge) so the affordance never sits flush against the
+/// chrome below. Layout (no padding between sessions):
+///
+///   title row                (unstyled, "Hi from Zellij!")
+///   blank
+///   "Session: <buffer>_"     ("Session:" unstyled; buffer + cursor emphasis-3)
+///   blank (or "↑ [+N]" emphasis-1 when scrolled up)
+///   session 1 name           (emphasis-0, fuzzy matches in emphasis-3)
+///   session 1 counts         (digits in colors 1 / 2 / 2)
+///   ...
+///   session N name
+///   session N counts
+///   blank (or "↓ [+M]" emphasis-1 when scrolled down)
+///   "+ New Session"          (emphasis-3)
+///
+/// The "Session:" prompt is left-aligned with the leftmost edge of
+/// the visible session column (falling back to the footer's centered
+/// x when no sessions are visible) instead of being independently
+/// centered, so it visually anchors to the same column as the
+/// session names below it.
+///
+/// Block height with N visible sessions: `6 + 2N` for `N > 0`,
+/// otherwise `5` (title + blank + prompt + blank + new_session). The
+/// visible-card count is whatever fits in `body_height`; remaining
+/// cards scroll via `state.selector_scroll_offset`. When the list
+/// exceeds the visible window, scroll indicators painted in
+/// emphasis-1 (`↑ [+N]` / `↓ [+M]`) replace the blank rows that flank
+/// the session list, telling the user how many cards are hidden in
+/// each direction.
+///
+/// Fuzzy matching uses `SkimMatcherV2` (same matcher the session-
+/// manager welcome screen uses) keyed off `state.welcome_search`.
+/// When the search term is empty, every non-current session is
+/// shown in alphabetical order; otherwise only matches are shown,
+/// sorted by score descending and tie-broken alphabetically. The
+/// matched-character indices come back from the matcher and are
+/// painted in emphasis-3 on the session-name row so the user can
+/// see *why* a row matched.
+///
+/// The current session is filtered out — the welcome session itself
+/// is what the user is leaving, so listing it as an attach target
+/// would be confusing. (Filtering by `is_current_session` is still
+/// needed here even though `filter_sessions_for_client` drops
+/// welcome sessions upstream: after we close the welcome-screen
+/// pane via `close_plugin_pane`, the host session no longer matches
+/// `is_welcome_session` and would otherwise reappear.)
+fn render_welcome_sessions(
+    state: &mut State,
+    row_start: usize,
+    row_end: usize,
+    cols: usize,
+) {
+    // Reserve one row at the bottom of the body so "+ New Session"
+    // never sits flush against the modifier bar (when the soft
+    // keyboard is up) or the screen edge (when it is not). Shadowing
+    // the parameter keeps every downstream `< row_end` check honouring
+    // the reservation without scattering the `- 1` across the body.
+    let row_end = row_end.saturating_sub(1);
+    let body_height = row_end.saturating_sub(row_start);
+    if body_height == 0 || cols == 0 {
+        return;
+    }
+
+    let title = "Hi from Zellij!";
+    let new_session_label = "+ New Session";
+
+    struct Card {
+        name_label: String,
+        counts_label: String,
+        action: ClickAction,
+        tab_range: std::ops::Range<usize>,
+        pane_range: std::ops::Range<usize>,
+        client_range: std::ops::Range<usize>,
+        /// Char indices into `name_label` that matched the fuzzy
+        /// search term — painted with emphasis-3 on the name row.
+        /// Empty when the search term itself is empty.
+        name_indices: Vec<usize>,
+    }
+
+    // Snapshot the search term so we can borrow it freely without
+    // tangling with the matcher's `&mut` field borrow below. Small
+    // string clone; happens once per frame.
+    let search = state.welcome_search.clone();
+
+    // Build the ordered (session_index, name_indices) list. The two
+    // branches differ in sort key and in whether the matcher runs at
+    // all — empty search means "show everything, alpha order".
+    let order: Vec<(usize, Vec<usize>)> = if search.is_empty() {
+        let mut indexed: Vec<(usize, &str)> = state
+            .sessions
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| !s.is_current_session)
+            .map(|(i, s)| (i, s.name.as_str()))
+            .collect();
+        indexed.sort_by(|a, b| a.1.cmp(b.1));
+        indexed.into_iter().map(|(i, _)| (i, Vec::new())).collect()
+    } else {
+        let matcher = state
+            .welcome_fuzzy_matcher
+            .get_or_insert_with(|| SkimMatcherV2::default().use_cache(true));
+        let mut scored: Vec<(usize, i64, Vec<usize>)> = state
+            .sessions
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| !s.is_current_session)
+            .filter_map(|(i, s)| {
+                matcher
+                    .fuzzy_indices(&s.name, &search)
+                    .map(|(score, indices)| (i, score, indices))
+            })
+            .collect();
+        // Score desc, then alphabetical tiebreak. `b.cmp(&a)` keeps
+        // the higher-scoring row first; `state.sessions[i].name`
+        // resolves the tiebreaker against the same source data.
+        scored.sort_by(|a, b| {
+            b.1.cmp(&a.1).then_with(|| {
+                state.sessions[a.0]
+                    .name
+                    .cmp(&state.sessions[b.0].name)
+            })
+        });
+        scored.into_iter().map(|(i, _, indices)| (i, indices)).collect()
+    };
+
+    let cards: Vec<Card> = order
+        .into_iter()
+        .map(|(session_idx, indices)| {
+            let s = &state.sessions[session_idx];
+            let pane_count: usize = s
+                .panes
+                .panes
+                .values()
+                .map(|panes| {
+                    panes
+                        .iter()
+                        .filter(|p| p.is_selectable && !p.is_suppressed)
+                        .count()
+                })
+                .sum();
+            let name = s.name.clone();
+            let tab_str = format!("{}", s.tabs.len());
+            let pane_str = format!("{}", pane_count);
+            let conn_str = format!("{}", s.connected_clients);
+            let client_word = if s.connected_clients == 1 {
+                "client"
+            } else {
+                "clients"
+            };
+            let counts_label = format!(
+                "{} tabs, {} panes, {} {}",
+                tab_str, pane_str, conn_str, client_word
+            );
+            // Byte-offset color ranges mirror the session-manager
+            // welcome screen (`UnifiedResultsRenderCache::rebuild`):
+            // tab count in color 1; pane and client counts in color 2.
+            // Digits are ASCII so byte offsets equal column offsets.
+            let tab_end = tab_str.len();
+            let pane_offset = tab_str.len() + " tabs, ".len();
+            let pane_end = pane_offset + pane_str.len();
+            let conn_offset = pane_end + " panes, ".len();
+            let conn_end = conn_offset + conn_str.len();
+            Card {
+                name_label: name.clone(),
+                counts_label,
+                action: ClickAction::SelectSession(name),
+                tab_range: 0..tab_end,
+                pane_range: pane_offset..pane_end,
+                client_range: conn_offset..conn_end,
+                name_indices: indices,
+            }
+        })
+        .collect();
+
+    // Decide how many cards fit. With N > 0 the block needs
+    // `6 + 2N` rows (title + blank + prompt + blank + 2N + blank +
+    // new_session); the empty-state block needs `5` (title + blank +
+    // prompt + blank + new_session). Solving `6 + 2N <= body_height`
+    // for the maximum N gives `(body_height - 6) / 2` — saturating-
+    // subtracted to handle pathologically short bodies where no card
+    // fits.
+    let total_cards = cards.len();
+    let max_visible_cards = body_height.saturating_sub(6) / 2;
+    let max_visible_cards = max_visible_cards.min(total_cards);
+
+    let max_offset = total_cards.saturating_sub(max_visible_cards);
+    let offset = state.selector_scroll_offset.min(max_offset);
+    state.selector_scroll_offset = offset;
+    let visible_count = total_cards.saturating_sub(offset).min(max_visible_cards);
+    // Publish the count so the scroll handler can cap its per-event
+    // delta and preserve at least one card of overlap across scrolls.
+    state.last_welcome_visible_count = visible_count;
+
+    let block_height = if visible_count == 0 {
+        5.min(body_height)
+    } else {
+        (6 + 2 * visible_count).min(body_height)
+    };
+
+    // Vertically center the block within the body.
+    let top_y = row_start + body_height.saturating_sub(block_height) / 2;
+
+    let visible_slice: Vec<&Card> = cards.iter().skip(offset).take(visible_count).collect();
+    // Card column: name and counts left-align under each other across
+    // every visible card. The block is centered on `cols` using the
+    // widest of name/counts widths seen.
+    let card_w = visible_slice
+        .iter()
+        .map(|c| {
+            UnicodeWidthStr::width(c.name_label.as_str())
+                .max(UnicodeWidthStr::width(c.counts_label.as_str()))
+        })
+        .max()
+        .unwrap_or(0);
+    let card_x = cols.saturating_sub(card_w) / 2;
+
+    // Title — unstyled, centered horizontally on `cols` (not on the
+    // card column) so it sits on the screen's vertical axis even when
+    // the card column is narrow.
+    let title_w = UnicodeWidthStr::width(title);
+    let title_x = cols.saturating_sub(title_w) / 2;
+    let title_y = top_y;
+    if title_y < row_end {
+        print_text_with_coordinates(Text::new(title), title_x, title_y, None, None);
+    }
+
+    // "Session: <buffer>_" prompt. "Session: " is rendered unstyled;
+    // the user-typed buffer plus the trailing underscore cursor glyph
+    // are emphasis-3 so the active input area visually pops. A static
+    // underscore stands in for the cursor (same approach as the new-
+    // session prompt — avoids fighting host cursor gating).
+    //
+    // The prompt is left-aligned with the leftmost edge of the visible
+    // content rather than centered on its own width: when sessions are
+    // visible, it aligns with the leftmost session-card column
+    // (`card_x`); otherwise it aligns with the footer's centered x
+    // (the only other rendered chunk). This anchors the prompt to the
+    // same column the user is scanning below it instead of letting it
+    // drift left and right with every keystroke.
+    let prompt_label = "Session: ";
+    let prompt_body = format!("{}_", search);
+    let prompt_full = format!("{}{}", prompt_label, prompt_body);
+    let new_session_w = UnicodeWidthStr::width(new_session_label);
+    let new_session_x = cols.saturating_sub(new_session_w) / 2;
+    let prompt_x = if visible_count > 0 {
+        card_x
+    } else {
+        new_session_x
+    };
+    let prompt_y = top_y + 2;
+    if prompt_y < row_end {
+        let label_chars = prompt_label.chars().count();
+        let total_chars = prompt_full.chars().count();
+        let prompt_text =
+            Text::new(&prompt_full).color_range(3, label_chars..total_chars);
+        print_text_with_coordinates(prompt_text, prompt_x, prompt_y, None, None);
+    }
+
+    // Scroll indicators: when the list is scrolled, paint
+    // "↑ [+N]" / "↓ [+M]" in the blank rows that flank the session
+    // list. The blanks are otherwise just dead space — repurposing
+    // them avoids growing the block. Emphasis-1 distinguishes them
+    // from the prompt (3) and the session-name highlights (3),
+    // keeping the visual hierarchy intact.
+    //
+    // Centered on `cols` so the indicators sit on the screen's
+    // vertical axis regardless of card-column width.
+    let hidden_above = offset;
+    let hidden_below = total_cards.saturating_sub(offset + visible_count);
+    let indicator_x = |label_w: usize| -> usize {
+        cols.saturating_sub(label_w) / 2
+    };
+    if visible_count > 0 && hidden_above > 0 {
+        let top_indicator_y = top_y + 3;
+        if top_indicator_y < row_end {
+            let label = format!("\u{2191} [+{}]", hidden_above);
+            let label_w = UnicodeWidthStr::width(label.as_str());
+            print_text_with_coordinates(
+                Text::new(&label).color_range(1, ..),
+                indicator_x(label_w),
+                top_indicator_y,
+                None,
+                None,
+            );
+        }
+    }
+    if visible_count > 0 && hidden_below > 0 {
+        let bottom_indicator_y = top_y + 4 + 2 * visible_count;
+        if bottom_indicator_y < row_end {
+            let label = format!("\u{2193} [+{}]", hidden_below);
+            let label_w = UnicodeWidthStr::width(label.as_str());
+            print_text_with_coordinates(
+                Text::new(&label).color_range(1, ..),
+                indicator_x(label_w),
+                bottom_indicator_y,
+                None,
+                None,
+            );
+        }
+    }
+
+    // Sessions — each one occupies two rows immediately under the
+    // previous (no inter-card padding per spec). Two rows of padding
+    // (blank + prompt + blank) above shift the first session card to
+    // `top_y + 4`.
+    let sessions_start_y = top_y + 4;
+    for (i, c) in visible_slice.iter().enumerate() {
+        let row_name = sessions_start_y + i * 2;
+        let row_counts = row_name + 1;
+        if row_name >= row_end {
+            break;
+        }
+        // Base name in emphasis-0; matched indices in emphasis-3.
+        // `color_indices` indices are char positions, which is what
+        // `fuzzy_indices` returns (verified against session-manager's
+        // index handling in `ui/components.rs`).
+        let mut name_text = Text::new(&c.name_label).color_range(0, ..);
+        if !c.name_indices.is_empty() {
+            name_text = name_text.color_indices(3, c.name_indices.clone());
+        }
+        print_text_with_coordinates(name_text, card_x, row_name, None, None);
+        if row_counts < row_end {
+            let counts_text = Text::new(&c.counts_label)
+                .color_range(1, c.tab_range.clone())
+                .color_range(2, c.pane_range.clone())
+                .color_range(2, c.client_range.clone());
+            print_text_with_coordinates(counts_text, card_x, row_counts, None, None);
+        }
+        let click_w = UnicodeWidthStr::width(c.name_label.as_str())
+            .max(UnicodeWidthStr::width(c.counts_label.as_str()));
+        state.click_regions.push(ClickRegion::tight_range(
+            row_name,
+            row_counts + 1,
+            card_x,
+            card_x + click_w,
+            c.action.clone(),
+        ));
+    }
+
+    // "+ New Session" — one blank row below the last visible session,
+    // or directly under the blank-after-prompt when no sessions are
+    // visible. `new_session_x` / `new_session_w` were already computed
+    // above (for the prompt's fallback x).
+    let new_session_y = top_y + block_height.saturating_sub(1);
+    if new_session_y < row_end {
+        print_text_with_coordinates(
+            Text::new(new_session_label).color_range(3, ..),
+            new_session_x,
+            new_session_y,
+            None,
+            None,
+        );
+        state.click_regions.push(ClickRegion::tight(
+            new_session_y,
+            new_session_x,
+            new_session_x + new_session_w,
+            ClickAction::OpenNewSessionPrompt,
+        ));
+    }
+}
+
+/// In-plugin name-entry overlay for "+ New Session". Drawn vertically
+/// centered within `[row_start, row_end)`. Keyboard and mouse driven —
+/// Esc/Enter and the [Cancel]/[Accept] tap targets are equivalent.
 ///
 /// Block layout (top to bottom, each row a single terminal line):
-///   1. Title  — "New Session" in emphasis-3.
+///   1. Title   — "New Session" in emphasis-3, centered horizontally
+///      against `cols`.
 ///   2. blank.
-///   3. Input  — "Name: <buffer>_" with `_` as a static cursor glyph,
-///      mirroring the session-manager plugin's name prompt. A static
+///   3. Input   — "Name: <buffer>_" with `_` as a static cursor glyph
+///      (mirrors the session-manager plugin's name prompt; a static
 ///      glyph avoids fighting with the plugin's `emit_cursor` gating
-///      which is wired for the embedded viewport.
+///      which is wired for the embedded viewport). Anchored to the
+///      same left x as the [Cancel] button below it.
 ///   4. blank.
-///   5. Hint   — "Enter: create  ·  Esc: cancel" in unbold.
+///   5. Buttons — "[Cancel]      [Accept]". Cancel renders in the
+///      error palette, Accept in the success palette (host theme
+///      colours from the Text API). Both are click targets dispatching
+///      `CancelNewSessionPrompt` / `AcceptNewSessionPrompt`, which the
+///      action handler routes through the same paths the Esc / Enter
+///      key handlers use.
 ///
-/// Centered both horizontally (per row, against `cols`) and vertically
-/// (block of 5 rows within `[row_start, row_end)`). If the body is too
-/// short to fit the full block, the renderer falls back to top-anchored
-/// rendering and clips overflow.
+/// Horizontal layout: the prompt is treated as a centered rectangular
+/// box with `H_PAD` cells of internal padding on each side. The box's
+/// content width is `max(default_content_w, visible_input_w)`, where
+/// `default_content_w` reserves room for a reasonable session name
+/// (~20 chars) and never falls below the buttons row's natural width.
+/// The box is centered against `cols`.
+///
+/// Inside the box:
+///   - Title: centered within the content area (each side has equal
+///     padding to the content edges).
+///   - "Name:" row: anchored to the left edge of the content area
+///     (`content_x`), so it sits directly above [Cancel].
+///   - Buttons: [Cancel] pinned to the left edge of the content area,
+///     [Accept] pinned to the right edge. The gap between them is
+///     synthesised from spaces so the buttons row always spans the
+///     full content width. When the box widens (e.g., the typed name
+///     overflows the default size), the gap widens with it — Cancel
+///     stays put, Accept follows the right edge outward.
+///
+/// Truncation: when the typed name plus chrome would exceed the
+/// screen, the buffer is truncated *from the beginning* and a leading
+/// "…" indicator is prepended so the cursor stays visible at the
+/// right edge and the user can see that content is hidden. Standard
+/// shell-style trailing-edge prompt behaviour.
+///
+/// If the body is too short to fit the full block, the renderer falls
+/// back to top-anchored rendering and clips overflow.
 fn render_new_session_prompt(
     state: &mut State,
     row_start: usize,
@@ -843,8 +1275,111 @@ fn render_new_session_prompt(
     }
 
     let title = "New Session";
-    let input = format!("Name: {}_", state.pending_session_name);
-    let hint = "Enter: create  \u{00B7}  Esc: cancel";
+
+    let cancel_label = "[Cancel]";
+    let accept_label = "[Accept]";
+
+    // Box model: equal horizontal padding around the content area.
+    // `H_PAD = 1` is the minimum visible breathing room between the
+    // content edges and the (implicit) box border. The box grows as
+    // the typed name grows; the centering preserves equal left/right
+    // padding to the screen edges at every size.
+    const H_PAD: usize = 1;
+    // Reserved name field: the box never gets narrower than what's
+    // needed to display a "reasonable" session name. 20 chars covers
+    // most names; longer names expand the box smoothly. Bumping this
+    // widens the default gap between [Cancel] and [Accept].
+    const RESERVED_INPUT_CHARS: usize = 20;
+    // Leading indicator prepended to the buffer when characters have
+    // been dropped from the front. `\u{2026}` is the single-cell
+    // horizontal ellipsis.
+    const ELLIPSIS: &str = "\u{2026}";
+
+    let title_w = UnicodeWidthStr::width(title);
+    let cancel_w = UnicodeWidthStr::width(cancel_label);
+    let accept_w = UnicodeWidthStr::width(accept_label);
+    let input_label_w = "Name: ".len();
+
+    // Buffer rendering with sticky leading-ellipsis truncation. The
+    // available room for the buffer is the screen width minus the
+    // box padding, the "Name: " label, and the trailing cursor.
+    //
+    // `state.new_session_view_offset` is the count of characters
+    // currently hidden behind the leading "…". It only *advances*
+    // when typing would push the cursor past the right edge of the
+    // input area; backspace leaves it put. The result: each keystroke
+    // visibly changes the input row — typing extends it (or scrolls
+    // the leading chars off if it would overflow), backspace shrinks
+    // it (the cursor `_` moves left and the rightmost char drops).
+    // The offset is reset to 0 once the buffer is short enough to fit
+    // without an ellipsis, so the user gets the full text back as
+    // soon as it can be shown in one line.
+    let buffer_chars = state.pending_session_name.chars().count();
+    let max_input_total_w = cols.saturating_sub(2 * H_PAD);
+    let max_chars_no_ellipsis = max_input_total_w
+        .saturating_sub(input_label_w)
+        .saturating_sub(1);
+    let ellipsis_w = UnicodeWidthStr::width(ELLIPSIS);
+    // -ellipsis_w from the cap because the leading "…" itself
+    // occupies a cell.
+    let max_chars_with_ellipsis = max_chars_no_ellipsis.saturating_sub(ellipsis_w);
+
+    let view_offset = if buffer_chars > max_chars_no_ellipsis {
+        // Truncation needed. Floor: advance enough so the cursor sits
+        // inside the input area. Cap: never exceed `buffer_chars`
+        // (would index past the end).
+        let min_offset = buffer_chars.saturating_sub(max_chars_with_ellipsis);
+        state
+            .new_session_view_offset
+            .max(min_offset)
+            .min(buffer_chars)
+    } else {
+        // Buffer fits without truncation — reveal everything.
+        0
+    };
+    state.new_session_view_offset = view_offset;
+
+    let visible_buffer: String = state
+        .pending_session_name
+        .chars()
+        .skip(view_offset)
+        .collect();
+    let input = if view_offset > 0 {
+        format!("Name: {}{}_", ELLIPSIS, visible_buffer)
+    } else {
+        format!("Name: {}_", visible_buffer)
+    };
+    let visible_input_w = UnicodeWidthStr::width(input.as_str());
+
+    // Default content width: must accommodate the title, the buttons
+    // (Cancel + a comfortable gap + Accept), and a reasonable typing
+    // area. The buttons' natural width (`cancel_w + DEFAULT_GAP +
+    // accept_w`) acts as the floor so [Cancel] and [Accept] never
+    // collide on first render; the reserved input width (`input_label_w
+    // + RESERVED_INPUT_CHARS + 1`) typically wins for any reasonable
+    // RESERVED value.
+    const DEFAULT_BUTTON_GAP: usize = 6;
+    let default_buttons_w = cancel_w + DEFAULT_BUTTON_GAP + accept_w;
+    let default_input_w = input_label_w + RESERVED_INPUT_CHARS + 1;
+    let default_content_w = title_w.max(default_input_w).max(default_buttons_w);
+
+    // High-water-mark content width. The box only ever *grows* during
+    // a single prompt session — typing past the current width expands
+    // it, backspacing keeps it put. This anchor is what makes the
+    // cursor's leftward movement visible on every backspace: without
+    // it, `box_x` flips by one column on alternate presses (integer
+    // division of `cols - box_w` parity) and cancels the cursor
+    // motion. The mark resets to 0 when the prompt closes / reopens,
+    // so a fresh prompt starts at the default width.
+    let target_content_w = default_content_w.max(visible_input_w);
+    let content_w = state.new_session_content_w.max(target_content_w);
+    state.new_session_content_w = content_w;
+    // `min(cols)` clamps pathologically wide content (e.g. very narrow
+    // screen, very long content) so the box never overflows the screen.
+    let box_w = (content_w + 2 * H_PAD).min(cols);
+    let box_x = cols.saturating_sub(box_w) / 2;
+    let content_x = box_x + H_PAD;
+    let content_w_effective = box_w.saturating_sub(2 * H_PAD);
 
     const BLOCK_ROWS: usize = 5;
     let top = if body_height >= BLOCK_ROWS {
@@ -853,30 +1388,65 @@ fn render_new_session_prompt(
         row_start
     };
 
-    // Each row is centered independently against `cols` (not against
-    // the widest of the three) so the title sits on the screen's
-    // vertical axis the same way `render_centered_selector`'s title
-    // does, even when the input line happens to be much wider.
-    let print_centered = |text: Text, w: usize, row: usize| {
-        let x = cols.saturating_sub(w) / 2;
-        print_text_with_coordinates(text, x, row, None, None);
-    };
-
     let row_title = top;
     let row_input = top + 2;
-    let row_hint = top + 4;
+    let row_buttons = top + 4;
 
+    // Title: centered within the content area (equal padding to both
+    // content edges). When the box grows due to a long name, the title
+    // shifts with it to stay visually centered.
     if row_title < row_end {
-        let w = UnicodeWidthStr::width(title);
-        print_centered(Text::new(title).color_range(3, ..), w, row_title);
+        let title_x = content_x + content_w_effective.saturating_sub(title_w) / 2;
+        print_text_with_coordinates(
+            Text::new(title).color_range(3, ..),
+            title_x,
+            row_title,
+            None,
+            None,
+        );
     }
+
+    // Name row: left-anchored to the content area (`content_x`) so it
+    // sits directly above [Cancel]. The truncation above already
+    // capped its visible width to fit inside the box, so no further
+    // clipping is needed here.
     if row_input < row_end {
-        let w = UnicodeWidthStr::width(input.as_str());
-        print_centered(Text::new(&input), w, row_input);
+        print_text_with_coordinates(Text::new(&input), content_x, row_input, None, None);
     }
-    if row_hint < row_end {
-        let w = UnicodeWidthStr::width(hint);
-        print_centered(Text::new(hint).unbold_all(), w, row_hint);
+
+    if row_buttons < row_end {
+        // [Cancel] pinned to the content area's left edge; [Accept]
+        // pinned to its right edge. The gap between them is synthesised
+        // as a run of spaces so the buttons row always spans the full
+        // content width — this is what makes the whole box "stretch"
+        // when the name overflows the default size: the gap grows
+        // along with the box.
+        let cancel_x = content_x;
+        let accept_x =
+            content_x + content_w_effective.saturating_sub(accept_w);
+        let gap_w = accept_x.saturating_sub(cancel_x + cancel_w);
+        let gap: String = " ".repeat(gap_w);
+        let buttons = format!("{}{}{}", cancel_label, gap, accept_label);
+        let buttons_text = Text::new(&buttons)
+            .error_color_substring(cancel_label)
+            .success_color_substring(accept_label);
+        print_text_with_coordinates(buttons_text, cancel_x, row_buttons, None, None);
+
+        // Register tap targets directly from the rendered positions
+        // (`cancel_x` / `accept_x`). ASCII labels → byte len == char
+        // count == display width.
+        state.click_regions.push(ClickRegion::tight(
+            row_buttons,
+            cancel_x,
+            cancel_x + cancel_w,
+            ClickAction::CancelNewSessionPrompt,
+        ));
+        state.click_regions.push(ClickRegion::tight(
+            row_buttons,
+            accept_x,
+            accept_x + accept_w,
+            ClickAction::AcceptNewSessionPrompt,
+        ));
     }
 }
 
