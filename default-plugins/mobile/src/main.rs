@@ -479,25 +479,29 @@ impl ZellijPlugin for State {
                     }
                     return true;
                 }
-                // Welcome-flow Sessions selector: capture keys for the
-                // "Session:" fuzzy-search prompt. Mirrors the session-
-                // manager welcome screen's input model — Char/Backspace
-                // edit the buffer, Enter attaches to the highest-scored
-                // match, Esc clears the buffer (or is a no-op when the
-                // buffer is already empty — there is no "back" target
-                // in the welcome flow). Keys are never forwarded to
-                // the embedded pane because there is no embedded pane:
-                // the welcome-screen plugin pane was closed during
-                // auto-expand and the welcome session is the very
-                // session this plugin is hosting.
-                if self.welcome_auto_expand_done
-                    && self.expanded == Some(Selector::Sessions)
-                {
+                // Sessions selector: capture keys for the "Session:"
+                // fuzzy-search prompt. Mirrors the session-manager
+                // welcome screen's input model — Char/Backspace edit
+                // the buffer, Enter attaches to the highest-scored
+                // match, Esc clears the buffer first and only closes
+                // the selector once the buffer is already empty.
+                //
+                // Active for both the welcome flow and the in-mobile
+                // "Change Session" view (the renderer paints the same
+                // welcome-style layout in both — see
+                // `render_welcome_sessions`). In the welcome flow the
+                // "close" branch is suppressed because there is no
+                // embedded pane to return to (the welcome session is
+                // the one this plugin is hosting); in the non-welcome
+                // path empty-buffer Esc mirrors the "[← BACK]" tap.
+                if self.expanded == Some(Selector::Sessions) {
                     match key.bare_key {
                         BareKey::Esc => {
                             if !self.welcome_search.is_empty() {
                                 self.welcome_search.clear();
                                 self.selector_scroll_offset = 0;
+                            } else if !self.welcome_auto_expand_done {
+                                self.expanded = None;
                             }
                         },
                         BareKey::Enter => {
@@ -838,9 +842,14 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             // direct top-bar tap) clears the menu state. Harmless when
             // the menu was already closed. Reset scroll so each entry
             // into the selector starts anchored at the top regardless
-            // of where the previous session in this selector landed.
+            // of where the previous session in this selector landed,
+            // and clear the fuzzy-search buffer so a freshly-opened
+            // selector starts on an empty prompt (the in-mobile
+            // "Change Session" view shares the welcome-style layout
+            // and matcher state — see `render_welcome_sessions`).
             state.menu_open = false;
             state.selector_scroll_offset = 0;
+            state.welcome_search.clear();
             // Kick the server's peer-session scan and adopt the
             // resulting snapshot directly. Without this the plugin
             // only ever sees the *current* session — the standing
@@ -890,7 +899,15 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             true
         },
         ClickAction::CollapseSelector => {
+            // Clear the welcome-style fuzzy-search buffer and reset
+            // scroll alongside the close so a future reopen of the
+            // Sessions selector (welcome or "Change Session") never
+            // inherits stale prompt state. Both fields are no-ops for
+            // the Panes selector close path — they are owned by the
+            // Sessions selector exclusively.
             state.expanded = None;
+            state.welcome_search.clear();
+            state.selector_scroll_offset = 0;
             true
         },
         ClickAction::SelectSession(name) => {

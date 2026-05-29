@@ -93,8 +93,18 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
     // plugin height. The session this plugin hosts is going away the
     // moment the user attaches/creates, so there's no useful pane/tab
     // chrome to expose anyway.
+    //
+    // Switch-session view: the in-mobile Sessions selector reuses the
+    // welcome-style centered layout (see `render_welcome_sessions`),
+    // which paints its own "[← BACK]" affordance at the top-left as
+    // the return-to-viewport target. The regular top bar would
+    // duplicate that role and waste the row, so it is suppressed
+    // alongside the welcome-flow case whenever the Sessions selector
+    // is the active body.
     let in_welcome_flow = state.welcome_auto_expand_done;
-    let body_top = if in_welcome_flow { 0 } else { 1 };
+    let in_sessions_selector = state.expanded == Some(Selector::Sessions);
+    let suppress_top_bar = in_welcome_flow || in_sessions_selector;
+    let body_top = if suppress_top_bar { 0 } else { 1 };
     let bar_height = if state.soft_keyboard_visible && rows.saturating_sub(body_top) >= 2 {
         1
     } else {
@@ -145,7 +155,7 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
     // visible area and we rewrite each region from (0, 0).
     print!("{}\x1b[2J", RESET);
 
-    if !in_welcome_flow {
+    if !suppress_top_bar {
         render_top_bar(state, 0, cols);
     }
 
@@ -573,193 +583,17 @@ pub fn top_bar_collapsed_click_regions(
     regions
 }
 
-/// One pre-styled cell paired with its visible width. Width is
-/// tracked separately because `Text` only exposes the fully-encoded
-/// content stream, and the centering logic needs the plain
-/// cell-width for column sizing.
-struct SelectorCell {
-    text: Text,
-    width: usize,
-}
-
-/// One row in a centered selector table. Holds an arbitrary number
-/// of cells so each menu can pick its own column count (Sessions has
-/// 2, Tabs has 3, Panes has 3).
-struct SelectorRow {
-    cells: Vec<SelectorCell>,
-    action: ClickAction,
-}
-
-/// Render the title + table block centered within
-/// `row_start..row_end`. The title is a single-line `Text` coloured
-/// with emphasis 3 (per the user-facing spec for switch menus). The
-/// table sits one blank row below the title and uses the
-/// `print_table_with_coordinates` primitive — each row index `i`
-/// (where `i = 0` is the empty header convention used by other
-/// built-in plugins) maps deterministically to terminal row
-/// `table_y + i`, which is what `register_row_clicks` relies on.
-fn render_centered_selector(
-    state: &mut State,
-    row_start: usize,
-    row_end: usize,
-    cols: usize,
-    title: &str,
-    rows: Vec<SelectorRow>,
-) {
-    let body_height = row_end.saturating_sub(row_start);
-    if body_height == 0 || cols == 0 {
-        return;
-    }
-
-    if rows.is_empty() {
-        // Empty list — render only the title, centered vertically and
-        // horizontally. Avoids drawing a degenerate one-row table.
-        let title_w = UnicodeWidthStr::width(title);
-        let title_x = cols.saturating_sub(title_w) / 2;
-        let title_y = row_start + body_height.saturating_sub(1) / 2;
-        print_text_with_coordinates(
-            Text::new(title).color_range(3, ..),
-            title_x,
-            title_y,
-            None,
-            None,
-        );
-        return;
-    }
-
-    // Column widths drive both the table-width parameter passed to
-    // `print_table_with_coordinates` and the click-region span. The
-    // host's table component pads each cell to the column-max and
-    // inserts a single space between columns (see
-    // `zellij-server/src/ui/components/table.rs`).
-    //
-    // Quirk: `stringify_table_rows` adds `max_column_width + 1` to its
-    // running width for *every* column — including the last — and
-    // breaks out the moment that running width exceeds the
-    // coordinates' `width`. The actual rendered row, however, omits
-    // the trailing pad after the final column. Net: the layout
-    // reservation is `sum(col_w) + n_cols`, while the visible row is
-    // `sum(col_w) + (n_cols - 1)`. Pass the bigger value so the last
-    // column doesn't get clipped; center on the smaller value so the
-    // visible row really is centered.
-    let n_cols = rows.iter().map(|r| r.cells.len()).max().unwrap_or(0);
-    let mut col_widths = vec![0usize; n_cols];
-    for row in &rows {
-        for (i, cell) in row.cells.iter().enumerate() {
-            if cell.width > col_widths[i] {
-                col_widths[i] = cell.width;
-            }
-        }
-    }
-    let sum_col_w: usize = col_widths.iter().sum();
-    let table_layout_w = (sum_col_w + n_cols).min(cols);
-    let table_visual_w = (sum_col_w + n_cols.saturating_sub(1)).min(cols);
-
-    // Block layout: title + 1 empty header row + visible data rows.
-    // Once the list outgrows the body the block anchors at the top
-    // (no vertical centering) so scrolling has a stable reference;
-    // shorter lists keep the original vertical centering for the
-    // empty-screen feel.
-    let max_data_rows = body_height.saturating_sub(2);
-    let max_offset = rows.len().saturating_sub(max_data_rows);
-    let offset = state.selector_scroll_offset.min(max_offset);
-    state.selector_scroll_offset = offset;
-
-    let visible_data_rows = rows.len().saturating_sub(offset).min(max_data_rows);
-    let needs_scroll = rows.len() > max_data_rows;
-    let title_y = if needs_scroll {
-        row_start
-    } else {
-        let block_height = 2 + visible_data_rows;
-        let leftover = body_height.saturating_sub(block_height);
-        row_start + leftover / 2
-    };
-    let table_y = title_y + 1;
-
-    // Title — coloured uniformly with emphasis 3, centered to `cols`
-    // (not to the table) so the title sits on the screen's vertical
-    // axis even if the table is narrow.
-    let title_w = UnicodeWidthStr::width(title);
-    let title_x = cols.saturating_sub(title_w) / 2;
-    print_text_with_coordinates(
-        Text::new(title).color_range(3, ..),
-        title_x,
-        title_y,
-        None,
-        None,
-    );
-
-    let table_x = cols.saturating_sub(table_visual_w) / 2;
-
-    // Convention from the other built-in plugins: row 0 is an empty
-    // header row that the host renders with the table-title style.
-    // We use it to absorb that styling so our data rows render with
-    // the regular cell colours.
-    let header_row: Vec<Text> = (0..n_cols).map(|_| Text::new(" ")).collect();
-    let mut table = Table::new().add_styled_row(header_row);
-
-    let visible_rows: Vec<&SelectorRow> =
-        rows.iter().skip(offset).take(visible_data_rows).collect();
-    for row in &visible_rows {
-        let cells: Vec<Text> = row.cells.iter().map(|c| c.text.clone()).collect();
-        table = table.add_styled_row(cells);
-    }
-
-    print_table_with_coordinates(
-        table,
-        table_x,
-        table_y,
-        Some(table_layout_w),
-        Some(visible_data_rows + 1),
-    );
-
-    // Click region per visible item. The header sits at `table_y`;
-    // item `i` lands at `table_y + 1 + i`. Spans the visible table
-    // width so a tap anywhere on the row hits.
-    for (i, row) in visible_rows.iter().enumerate() {
-        state.click_regions.push(ClickRegion::tight(
-            table_y + 1 + i,
-            table_x,
-            table_x + table_visual_w,
-            row.action.clone(),
-        ));
-    }
-}
-
-/// Build a `SelectorCell` whose text is `text` and whose only
-/// emphasis is the digit run starting at `digits_start` of length
-/// `digit_count` painted at `digit_color`. The rest of the cell
-/// renders with the table's default cell foreground (no emphasis
-/// level applied), which keeps surrounding labels (e.g. "panes",
-/// "tabs") visually neutral while the count itself stays vivid.
-fn count_cell(text: String, digits_start: usize, digit_count: usize, digit_color: usize) -> SelectorCell {
-    let width = UnicodeWidthStr::width(text.as_str());
-    let mut t = Text::new(&text);
-    if digit_count > 0 {
-        t = t.color_range(digit_color, digits_start..digits_start + digit_count);
-    }
-    SelectorCell { text: t, width }
-}
-
-/// Cell carrying a plain entity name in the supplied emphasis
-/// colour. Used for session name cells in the Sessions selector.
-fn named_cell(text: String, color: usize) -> SelectorCell {
-    let width = UnicodeWidthStr::width(text.as_str());
-    let t = Text::new(&text).color_range(color, ..);
-    SelectorCell { text: t, width }
-}
-
-/// Sessions selector. Three rows total: name (color 0), tab count
-/// (digits in color 1), pane count (digits in color 2). Per the
-/// spec only the digits are coloured — the trailing word stays in
-/// the table-cell base colour.
+/// Sessions selector. Always renders the welcome-style centered
+/// layout via `render_welcome_sessions`, parameterised by title and
+/// whether to paint the top-left "[← BACK]" affordance:
 ///
-/// When the mobile plugin is hosting the welcome flow, the rendering
-/// switches to `render_welcome_sessions` which uses a custom layout:
-/// an unstyled "Hi from Zellij!" title at the top, two-line session
-/// cards (name + tabs/panes/clients counts), and a "+ New Session"
-/// affordance pinned at the bottom — outside the scrollable list so
-/// it stays visible regardless of session count or scroll position.
+///   * Welcome flow (`state.welcome_auto_expand_done` is true): title
+///     "Hi from Zellij!", no back button — the welcome session is
+///     going away as soon as the user attaches, so there is nothing
+///     to return to.
+///   * Switch-session view (reached from the hamburger menu in normal
+///     mobile mode): title "Switch Session", back button enabled so a
+///     tap on "[← BACK]" returns the user to the embedded viewport.
 ///
 /// Welcome mode is detected via `state.welcome_auto_expand_done`
 /// rather than `state.current_pane_is_welcome()`: the welcome pane
@@ -769,87 +603,24 @@ fn named_cell(text: String, color: usize) -> SelectorCell {
 /// flag stays true for the lifetime of the mobile plugin's host
 /// session — which is exactly the welcome-flow lifetime.
 fn render_sessions_menu(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
-    if state.welcome_auto_expand_done {
-        render_welcome_sessions(state, row_start, row_end, cols);
-        return;
-    }
-    let mut entries: Vec<(String, usize, usize, bool)> = state
-        .sessions
-        .iter()
-        .map(|s| {
-            let pane_count: usize = s
-                .panes
-                .panes
-                .values()
-                .map(|panes| {
-                    panes
-                        .iter()
-                        .filter(|p| p.is_selectable && !p.is_suppressed)
-                        .count()
-                })
-                .sum();
-            (
-                s.name.clone(),
-                s.tabs.len(),
-                pane_count,
-                s.is_current_session,
-            )
-        })
-        .collect();
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
-
-    let mut rows: Vec<SelectorRow> = entries
-        .into_iter()
-        .map(|(name, tabs, panes, is_current)| {
-            let name_label = if is_current {
-                format!("{} (current)", name)
-            } else {
-                name.clone()
-            };
-
-            let tabs_text = format!("{} tabs", tabs);
-            let tabs_digits = tabs.to_string().chars().count();
-            let tabs_cell = count_cell(tabs_text, 0, tabs_digits, 1);
-
-            let panes_text = format!("{} panes", panes);
-            let panes_digits = panes.to_string().chars().count();
-            let panes_cell = count_cell(panes_text, 0, panes_digits, 2);
-
-            SelectorRow {
-                cells: vec![named_cell(name_label, 0), tabs_cell, panes_cell],
-                action: ClickAction::SelectSession(name),
-            }
-        })
-        .collect();
-
-    // "+ New Session" affordance pinned at the bottom of the list.
-    // Three-cell shape keeps the table column count consistent with
-    // the session rows above (see `render_centered_selector`'s
-    // `n_cols` derivation) so the layout maths does not have to
-    // special-case a single-cell row. The trailing two cells render
-    // as blank — the action label sits in the name column. Emphasis-3
-    // matches the colour used for `NewPaneAction` / `NewTabAction`
-    // rows in the Panes selector for visual continuity across
-    // "+ New …" affordances.
-    rows.push(SelectorRow {
-        cells: vec![
-            named_cell("+ New Session".to_string(), 3),
-            SelectorCell { text: Text::new(""), width: 0 },
-            SelectorCell { text: Text::new(""), width: 0 },
-        ],
-        action: ClickAction::OpenNewSessionPrompt,
-    });
-
-    render_centered_selector(state, row_start, row_end, cols, "Switch Session", rows);
+    let (title, show_back_button) = if state.welcome_auto_expand_done {
+        ("Hi from Zellij!", false)
+    } else {
+        ("Switch Session", true)
+    };
+    render_welcome_sessions(state, row_start, row_end, cols, title, show_back_button);
 }
 
-/// Welcome-screen variant of the Sessions selector. Used while the
-/// mobile plugin is hosting the welcome flow — detected via
-/// `state.welcome_auto_expand_done`, which is set when the
-/// session-manager welcome pane is auto-closed on first
-/// `PaneUpdate` and stays true for the lifetime of this plugin
-/// instance (the host session ends when the user attaches to /
-/// creates another).
+/// Welcome-style Sessions selector. Used both for the welcome flow
+/// (detected via `state.welcome_auto_expand_done`, set when the
+/// session-manager welcome pane is auto-closed on first `PaneUpdate`
+/// and sticky for the plugin's lifetime) and for the in-mobile
+/// "Change Session" view reached via the hamburger menu. The two
+/// callers parameterise the title and whether to paint the top-left
+/// "[← BACK]" affordance; the welcome flow has nowhere to go back to
+/// (its host session is the welcome session itself, going away on
+/// attach), so it suppresses the button and uses the "Hi from Zellij!"
+/// greeting in place of an action title.
 ///
 /// The whole block — title, prompt, sessions, "+ New Session" — is
 /// vertically centered in the body region. The footer always leaves
@@ -857,7 +628,7 @@ fn render_sessions_menu(state: &mut State, row_start: usize, row_end: usize, col
 /// screen edge) so the affordance never sits flush against the
 /// chrome below. Layout (no padding between sessions):
 ///
-///   title row                (unstyled, "Hi from Zellij!")
+///   title row                (unstyled, "Hi from Zellij!" / "Switch Session")
 ///   blank
 ///   "Session: <buffer>_"     ("Session:" unstyled; buffer + cursor emphasis-3)
 ///   blank (or "↑ [+N]" emphasis-1 when scrolled up)
@@ -868,6 +639,13 @@ fn render_sessions_menu(state: &mut State, row_start: usize, row_end: usize, col
 ///   session N counts
 ///   blank (or "↓ [+M]" emphasis-1 when scrolled down)
 ///   "+ New Session"          (emphasis-3)
+///
+/// When `show_back_button` is true, the original `row_start` row is
+/// reserved for the "[← BACK]" affordance (emphasis-3, pinned at
+/// column 0 with a tight click region dispatching `CollapseSelector`)
+/// and the centered block is computed against `row_start + 1`. This
+/// keeps the back-button row out of the centered-block geometry so
+/// the title can never overlap it on narrow screens.
 ///
 /// The "Session:" prompt is left-aligned with the leftmost edge of
 /// the visible session column (falling back to the footer's centered
@@ -905,7 +683,40 @@ fn render_welcome_sessions(
     row_start: usize,
     row_end: usize,
     cols: usize,
+    title: &str,
+    show_back_button: bool,
 ) {
+    // Back-button row: painted at the original `row_start` so it sits
+    // at the very top of the body region the render dispatch handed
+    // us. The centered block below is then computed against
+    // `row_start + 1` so its geometry can never collide with the
+    // affordance on a narrow screen (the title would otherwise center
+    // through column 0). `CollapseSelector` is the same action the
+    // top-bar tap dispatches in selector mode — single source of
+    // truth for "leave the selector, return to the viewport".
+    if show_back_button && row_start < row_end {
+        let back_label = "[← BACK]";
+        let back_w = UnicodeWidthStr::width(back_label);
+        print_text_with_coordinates(
+            Text::new(back_label).color_range(3, ..),
+            0,
+            row_start,
+            None,
+            None,
+        );
+        state.click_regions.push(ClickRegion::tight(
+            row_start,
+            0,
+            back_w,
+            ClickAction::CollapseSelector,
+        ));
+    }
+    let row_start = if show_back_button {
+        row_start.saturating_add(1)
+    } else {
+        row_start
+    };
+
     // Reserve one row at the bottom of the body so "+ New Session"
     // never sits flush against the modifier bar (when the soft
     // keyboard is up) or the screen edge (when it is not). Shadowing
@@ -917,7 +728,6 @@ fn render_welcome_sessions(
         return;
     }
 
-    let title = "Hi from Zellij!";
     let new_session_label = "+ New Session";
 
     struct Card {
@@ -1534,9 +1344,7 @@ fn render_panes_menu(state: &mut State, row_start: usize, row_end: usize, cols: 
     items.push(PaneSelectorItem::NewTabAction);
 
     // Title at the top of the body, centered horizontally and
-    // coloured emphasis-3 (matching `render_centered_selector`'s
-    // title styling for visual continuity with the Sessions
-    // selector).
+    // coloured emphasis-3.
     let title = "Switch Pane";
     let title_w = UnicodeWidthStr::width(title);
     let title_x = cols.saturating_sub(title_w) / 2;
