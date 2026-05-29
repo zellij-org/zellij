@@ -1161,6 +1161,20 @@ function installSoftKeyboardCapture(term, sendFunction) {
     // character via overlapping event paths within microseconds.
     // 8 ms is well under any key-autorepeat interval (30 ms+) so it
     // does not false-positive on held keys.
+    //
+    // This *also* catches the IME's composition-active backspace
+    // pair: a single user tap on backspace with composition state
+    // active fires TWO `deleteContentBackward` input events ~5 ms
+    // apart — one clears the 1-char composition selection, the other
+    // performs the deletion before the caret. The dedupe collapses
+    // them to a single `\x7f`, so the plugin sees one backspace per
+    // user tap. The matching value-refill in the `input` handler
+    // below (search for "Refill backspace fodder") keeps the hidden
+    // input's NBSP padding topped up so the value never runs out of
+    // chars for the IME to delete — without that refill, ~PADDING_LEN/2
+    // taps drained the value to empty, the browser stopped firing
+    // input events, and the buffer was left stuck partway through
+    // deletion.
     let lastCh = null;
     let lastChAt = 0;
     const DEDUPE_MS = 8;
@@ -1217,7 +1231,7 @@ function installSoftKeyboardCapture(term, sendFunction) {
     // contents back into the dispatch path.
     let lastText = BASELINE;
 
-    div.addEventListener("input", () => {
+    div.addEventListener("input", (ev) => {
         const current = div.value;
         if (current === lastText) {
             return;
@@ -1230,6 +1244,32 @@ function installSoftKeyboardCapture(term, sendFunction) {
             dispatchCh(ch);
         }
         lastText = current;
+
+        // Refill backspace fodder after each deletion. The IME's
+        // composition-active backspace tap fires TWO
+        // `deleteContentBackward` input events ~5 ms apart per single
+        // user tap — one clears the 1-char composition selection, the
+        // other performs the actual backspace. Both consume a real
+        // cell of `div.value`. The dispatch dedupe collapses the pair
+        // to a single `\x7f` so the plugin sees one delete per tap,
+        // but the value still drains at 2x the plugin's rate. Without
+        // this refill the NBSP padding ran out after ~PADDING_LEN/2
+        // taps, the browser stopped firing input events because there
+        // was nothing left to delete, and the plugin buffer was left
+        // stuck partway through (the original "New Session prompt
+        // backspace leaves N chars unkillable" bug).
+        //
+        // Reset to BASELINE after every delete keeps the IME's
+        // deletion fodder topped up indefinitely. We do not refill on
+        // pure inserts: those don't drain the padding, and resetting
+        // mid-typing could disturb whatever composition state the IME
+        // is in for the next char. Programmatic value assignment does
+        // not fire `input`, so this does not re-enter the listener.
+        if (ev.inputType === "deleteContentBackward") {
+            div.value = BASELINE;
+            lastText = BASELINE;
+            setCaretToMiddle();
+        }
     });
 
     // Special keys: Enter / Tab / Escape / Arrows do not always
