@@ -1,4 +1,5 @@
 mod kdl_layout_parser;
+use crate::consts::DEFAULT_TAB_NAME_FORMAT;
 use crate::data::{
     BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo,
     LayoutMetadata, MultiplayerColors, Palette, PaletteColor, PaneId, PaneInfo, PaneManifest,
@@ -2671,6 +2672,9 @@ impl Options {
                 .map(|(string, _entry)| PathBuf::from(string));
         let default_cwd = kdl_property_first_arg_as_string_or_error!(kdl_options, "default_cwd")
             .map(|(string, _entry)| PathBuf::from(string));
+        let default_tab_name_format =
+            kdl_property_first_arg_as_string_or_error!(kdl_options, "default_tab_name_format")
+                .map(|(string, _entry)| string.to_string());
         let pane_frames =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "pane_frames").map(|(v, _)| v);
         let auto_layout =
@@ -2833,6 +2837,7 @@ impl Options {
             default_mode,
             default_shell,
             default_cwd,
+            default_tab_name_format,
             default_layout,
             layout_dir,
             theme_dir,
@@ -3097,6 +3102,35 @@ impl Options {
             Some(node)
         } else if add_comments {
             let mut node = create_node("/tmp");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn default_tab_name_format_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Choose the default name format for new unnamed tabs.",
+            "// Supports `{index}` as the generated one-based tab number.",
+            "// Default: Tab #{index}",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("default_tab_name_format");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(default_tab_name_format) = &self.default_tab_name_format {
+            let mut node = create_node(default_tab_name_format);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(DEFAULT_TAB_NAME_FORMAT);
             node.set_leading(format!("{}\n// ", comment_text));
             Some(node)
         } else {
@@ -4269,6 +4303,9 @@ impl Options {
         }
         if let Some(default_cwd) = self.default_cwd_to_kdl(add_comments) {
             nodes.push(default_cwd);
+        }
+        if let Some(default_tab_name_format) = self.default_tab_name_format_to_kdl(add_comments) {
+            nodes.push(default_tab_name_format);
         }
         if let Some(default_layout) = self.default_layout_to_kdl(add_comments) {
             nodes.push(default_layout);

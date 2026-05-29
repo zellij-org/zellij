@@ -297,6 +297,7 @@ fn create_new_screen(
         default_layout,
         default_layout_name,
         default_shell,
+        zellij_utils::consts::DEFAULT_TAB_NAME_FORMAT.to_owned(),
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
@@ -833,6 +834,20 @@ fn open_new_tab() {
         1,
         "Active tab switched to new tab"
     );
+}
+
+#[test]
+fn unnamed_tab_uses_configured_default_name_format() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    screen.default_tab_name_format = "Workspace {index}".to_owned();
+
+    new_tab(&mut screen, 1, 0);
+
+    assert_eq!(screen.tabs.get(&0).unwrap().name, "Workspace 1");
 }
 
 #[test]
@@ -5360,6 +5375,7 @@ fn create_new_screen_with_message_capture(
         default_layout,
         default_layout_name,
         default_shell,
+        zellij_utils::consts::DEFAULT_TAB_NAME_FORMAT.to_owned(),
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
@@ -8430,6 +8446,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         default_layout,
         default_layout_name,
         default_shell,
+        zellij_utils::consts::DEFAULT_TAB_NAME_FORMAT.to_owned(),
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
@@ -9013,6 +9030,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         default_layout,
         None,
         default_shell,
+        zellij_utils::consts::DEFAULT_TAB_NAME_FORMAT.to_owned(),
         true,
         false,
         None,

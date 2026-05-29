@@ -655,6 +655,7 @@ mod config_test {
             default_mode "locked"
             default_shell "/path/to/my/shell"
             default_cwd "/path"
+            default_tab_name_format "workspace-{index}"
             default_layout "/path/to/my/layout.kdl"
             layout_dir "/path/to/my/layout-dir"
             theme_dir "/path/to/my/theme-dir"
@@ -694,6 +695,11 @@ mod config_test {
         assert_eq!(
             config.options.default_cwd,
             Some(PathBuf::from("/path")),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.default_tab_name_format,
+            Some(String::from("workspace-{index}")),
             "Option set in config"
         );
         assert_eq!(

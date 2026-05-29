@@ -435,6 +435,7 @@ fn test_client_messages() {
                 theme: Some("theme".to_owned()),
                 theme_dark: Some("theme_dark".to_owned()),
                 theme_light: Some("theme_light".to_owned()),
+                default_tab_name_format: Some("Tab #{index}".to_owned()),
                 default_mode: Some(InputMode::Normal),
                 default_shell: Some(PathBuf::from("default_shell")),
                 default_cwd: Some(PathBuf::from("default_cwd")),
