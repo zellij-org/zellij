@@ -14596,6 +14596,125 @@ fn osc99_grid_parses_and_stores_notification() {
     );
 }
 
+fn fresh_grid_for_legacy_osc_test() -> crate::panes::grid::Grid {
+    use crate::panes::grid::Grid;
+    use crate::panes::link_handler::LinkHandler;
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
+    Grid::new(
+        24,
+        80,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    )
+}
+
+fn feed_bytes(grid: &mut crate::panes::grid::Grid, bytes: &[u8]) {
+    let mut vte_parser = vte::Parser::new();
+    for &byte in bytes {
+        vte_parser.advance(grid, byte);
+    }
+}
+
+#[test]
+fn osc9_grid_parses_and_stores_notification() {
+    use crate::panes::grid::LegacyDesktopNotification;
+    let mut grid = fresh_grid_for_legacy_osc_test();
+    feed_bytes(&mut grid, b"\x1b]9;hello world\x07");
+    assert_eq!(grid.pending_legacy_desktop_notifications.len(), 1);
+    match grid.pending_legacy_desktop_notifications.first().unwrap() {
+        LegacyDesktopNotification::Osc9 { text } => assert_eq!(text, "hello world"),
+        other => panic!("expected Osc9, got {:?}", other),
+    }
+}
+
+#[test]
+fn osc777_notify_grid_parses_and_stores_notification() {
+    use crate::panes::grid::LegacyDesktopNotification;
+    let mut grid = fresh_grid_for_legacy_osc_test();
+    feed_bytes(&mut grid, b"\x1b]777;notify;Title;Body\x07");
+    assert_eq!(grid.pending_legacy_desktop_notifications.len(), 1);
+    match grid.pending_legacy_desktop_notifications.first().unwrap() {
+        LegacyDesktopNotification::Osc777Notify { title, body } => {
+            assert_eq!(title, "Title");
+            assert_eq!(body, "Body");
+        },
+        other => panic!("expected Osc777Notify, got {:?}", other),
+    }
+}
+
+#[test]
+fn osc777_non_notify_subcommand_is_dropped() {
+    let mut grid = fresh_grid_for_legacy_osc_test();
+    feed_bytes(&mut grid, b"\x1b]777;preexec;some command\x07");
+    feed_bytes(&mut grid, b"\x1b]777;precmd;more data\x07");
+    feed_bytes(&mut grid, b"\x1b]777;cwd;/tmp\x07");
+    assert!(grid.pending_legacy_desktop_notifications.is_empty());
+}
+
+#[test]
+fn osc9_strips_control_chars_from_text() {
+    // Direct unit-level check on the sanitizer: any control char that
+    // sneaks into a payload (whether via partial VTE parse, malformed
+    // input, or simply embedded C0/DEL/C1 bytes) must not survive into
+    // what we re-emit. This guards the property that the host terminal
+    // receives only printable text.
+    use crate::panes::grid::sanitize_legacy_notification_field;
+    let dirty = "before\x01\x07\x1b\x7fmid\u{0085}after";
+    let clean = sanitize_legacy_notification_field(dirty);
+    assert_eq!(clean, "beforemidafter");
+}
+
+#[test]
+fn legacy_notification_field_preserves_unicode_and_tab() {
+    use crate::panes::grid::sanitize_legacy_notification_field;
+    let s = "안녕\thello \u{1F600}";
+    assert_eq!(sanitize_legacy_notification_field(s), s);
+}
+
+#[test]
+fn legacy_notification_field_is_length_capped() {
+    use crate::panes::grid::{LegacyDesktopNotification, LEGACY_NOTIFICATION_FIELD_MAX_LEN};
+    let mut grid = fresh_grid_for_legacy_osc_test();
+    let mut bytes = b"\x1b]9;".to_vec();
+    bytes.extend(std::iter::repeat(b'a').take(LEGACY_NOTIFICATION_FIELD_MAX_LEN + 500));
+    bytes.push(0x07);
+    feed_bytes(&mut grid, &bytes);
+    match grid.pending_legacy_desktop_notifications.first().unwrap() {
+        LegacyDesktopNotification::Osc9 { text } => {
+            assert_eq!(text.chars().count(), LEGACY_NOTIFICATION_FIELD_MAX_LEN);
+        },
+        other => panic!("expected Osc9, got {:?}", other),
+    }
+}
+
+#[test]
+fn legacy_notification_canonical_emit_uses_bel_and_fixed_template() {
+    use crate::panes::grid::LegacyDesktopNotification;
+    let osc9 = LegacyDesktopNotification::Osc9 {
+        text: "x".to_string(),
+    };
+    assert_eq!(osc9.to_canonical_bytes(), b"\x1b]9;x\x07");
+    let osc777 = LegacyDesktopNotification::Osc777Notify {
+        title: "T".to_string(),
+        body: "B".to_string(),
+    };
+    assert_eq!(osc777.to_canonical_bytes(), b"\x1b]777;notify;T;B\x07");
+}
+
 #[test]
 fn osc99_namespace_denormalize_roundtrip() {
     // Test that namespace_notification_id and denormalize_notification_response
