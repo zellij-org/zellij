@@ -298,9 +298,9 @@ pub struct State {
     pub sessions: Vec<SessionInfo>,
     /// In-plugin on-screen keyboard. Owns the active layout, modifier
     /// flags (Shift/Ctrl/Alt — one-shot — plus Fn and Layer123 as
-    /// sticky toggles), press-flash timestamps and visibility.
-    /// Visible by default — the corresponding OS soft-keyboard
-    /// suppression is emitted from `load()`.
+    /// sticky toggles) and visibility. Visible by default — the
+    /// corresponding OS soft-keyboard suppression is emitted from
+    /// `load()`.
     pub modifier_bar: ModifierBarController,
     /// Click regions produced by the most recent render. The renderer
     /// rebuilds this on every `render` call; mouse events look up the

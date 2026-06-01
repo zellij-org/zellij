@@ -1,26 +1,16 @@
 //! State machine behind the bottom modifier bar.
 //!
-//! Owns the one-shot modifier flags and the per-cell press-flash
-//! timestamps. `handle_tap` is the single entry point — the
-//! dispatcher routes every bar click here and acts on the returned
-//! `TapOutcome`.
+//! Owns the one-shot modifier flags. `handle_tap` is the single entry
+//! point — the dispatcher routes every bar click here and acts on the
+//! returned `TapOutcome`.
 
 use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::time::Instant;
 
 use zellij_tile::prelude::*;
 
 use super::layout::{CellId, KeyAction};
 use super::modifiers::{KeyboardModifiers, Modifier};
 use crate::keys;
-
-/// Duration of the inverted-cell flash painted after every tap.
-/// Kept short (50 ms) so the highlight registers as instantaneous
-/// haptic-style feedback rather than a lingering flash. Caller
-/// schedules a Timer at this delay so `sweep_flash` can drop the
-/// entry.
-pub const KEY_FEEDBACK_MS: u128 = 50;
 
 // Cell identifiers for the nine bar cells. The renderer assigns
 // these positions left-to-right; the controller's `cell_action`
@@ -51,7 +41,6 @@ pub enum TapOutcome {
 #[derive(Default)]
 pub struct ModifierBarController {
     pub modifiers: KeyboardModifiers,
-    pub press_flash: HashMap<CellId, Instant>,
 }
 
 impl ModifierBarController {
@@ -76,11 +65,6 @@ impl ModifierBarController {
         self.modifiers.alt_armed = *alt_held;
 
         let action = cell_action(cell);
-
-        // Visual feedback fires for *every* tap, including modifier
-        // toggles and NoOps. Cheap (one HashMap entry) and gives the
-        // user confirmation that the click landed.
-        self.press_flash.insert(cell, Instant::now());
 
         match action {
             KeyAction::ToggleModifier(m) => {
@@ -110,16 +94,6 @@ impl ModifierBarController {
             },
             KeyAction::NoOp => TapOutcome::NoOp,
         }
-    }
-
-    /// Drop press-flash entries older than `KEY_FEEDBACK_MS`. Returns
-    /// `true` if at least one entry expired (caller redraws so the
-    /// flash visually clears).
-    pub fn sweep_flash(&mut self, now: Instant) -> bool {
-        let len_before = self.press_flash.len();
-        self.press_flash
-            .retain(|_, t| now.saturating_duration_since(*t).as_millis() < KEY_FEEDBACK_MS);
-        len_before != self.press_flash.len()
     }
 }
 

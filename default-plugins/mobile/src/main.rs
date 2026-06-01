@@ -12,7 +12,6 @@ mod render;
 mod state;
 
 use std::collections::BTreeMap;
-use std::time::Instant;
 use zellij_tile::prelude::*;
 
 use crate::modifier_bar::TapOutcome;
@@ -38,11 +37,6 @@ impl ZellijPlugin for State {
             EventType::Mouse,
             EventType::PaneRenderReportWithAnsi,
             EventType::SessionUpdate,
-            // Press-flash sweep: every tap on the in-plugin keyboard
-            // schedules a Timer at `KEY_FEEDBACK_MS`, and the resulting
-            // `Event::Timer` clears the expired entry so the cell
-            // returns to its resting colour.
-            EventType::Timer,
             // Drives `soft_keyboard_visible`, which gates the modifier
             // bar so the bar appears and disappears in lockstep with
             // the browser's OS keyboard. Fired by the client whenever
@@ -589,13 +583,6 @@ impl ZellijPlugin for State {
                 self.alt_held = false;
                 consumed
             },
-            Event::Timer(_) => {
-                // The only timer the plugin schedules drives keyboard
-                // press-flash decay. `sweep_flash` returns true iff at
-                // least one entry expired — which is the signal to
-                // redraw so the cell returns to its resting colour.
-                self.modifier_bar.sweep_flash(Instant::now())
-            },
             Event::SoftKeyboardVisibilityChanged(visible) => {
                 if self.soft_keyboard_visible == visible {
                     return false;
@@ -1121,9 +1108,6 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
                 },
                 TapOutcome::Toggled | TapOutcome::NoOp => {},
             }
-            // Schedule the press-flash decay sweep. `KEY_FEEDBACK_MS`
-            // is in milliseconds; `set_timeout` takes seconds.
-            set_timeout(modifier_bar::KEY_FEEDBACK_MS as f64 / 1000.0);
             true
         },
     }
