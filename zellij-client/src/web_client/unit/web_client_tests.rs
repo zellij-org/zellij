@@ -2907,7 +2907,10 @@ mod web_client_tests {
             .get("icons")
             .and_then(|v| v.as_array())
             .expect("manifest must declare a non-empty `icons` array");
-        assert!(!icons.is_empty(), "icons array must contain at least one icon");
+        assert!(
+            !icons.is_empty(),
+            "icons array must contain at least one icon"
+        );
         assert!(
             manifest.get("display").is_some() || manifest.get("display_override").is_some(),
             "manifest must declare `display` or `display_override`"
@@ -2934,7 +2937,9 @@ mod web_client_tests {
 
         let is_relative = |v: &serde_json::Value| -> bool {
             v.as_str()
-                .map(|s| !s.starts_with('/') && !s.starts_with("http://") && !s.starts_with("https://"))
+                .map(|s| {
+                    !s.starts_with('/') && !s.starts_with("http://") && !s.starts_with("https://")
+                })
                 .unwrap_or(false)
         };
 
@@ -2946,7 +2951,11 @@ mod web_client_tests {
             );
         }
         if let Some(scope) = manifest.get("scope") {
-            assert!(is_relative(scope), "scope must be relative, got {:?}", scope);
+            assert!(
+                is_relative(scope),
+                "scope must be relative, got {:?}",
+                scope
+            );
         }
         let icons = manifest
             .get("icons")
@@ -2954,11 +2963,7 @@ mod web_client_tests {
             .expect("icons array required");
         for icon in icons {
             let src = icon.get("src").expect("each icon must have src");
-            assert!(
-                is_relative(src),
-                "icon src must be relative, got {:?}",
-                src
-            );
+            assert!(is_relative(src), "icon src must be relative, got {:?}", src);
         }
 
         server_handle.abort();
@@ -3045,7 +3050,9 @@ mod web_client_tests {
             let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
             let url = format!("http://127.0.0.1:{}/assets/manifest.webmanifest", port);
             let mut response = fetch_url(url).await;
-            let body = response.text().expect("Failed to read default-base manifest");
+            let body = response
+                .text()
+                .expect("Failed to read default-base manifest");
             server_handle.abort();
             tokio::time::sleep(Duration::from_millis(100)).await;
             body
@@ -3057,7 +3064,9 @@ mod web_client_tests {
             let (port, server_handle) = spawn_test_server_with_config(config).await;
             let url = format!("http://127.0.0.1:{}/assets/manifest.webmanifest", port);
             let mut response = fetch_url(url).await;
-            let body = response.text().expect("Failed to read prefixed-base manifest");
+            let body = response
+                .text()
+                .expect("Failed to read prefixed-base manifest");
             server_handle.abort();
             tokio::time::sleep(Duration::from_millis(100)).await;
             body
