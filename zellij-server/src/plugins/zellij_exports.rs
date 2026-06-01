@@ -52,7 +52,7 @@ use zellij_utils::web_authentication_tokens::{
 use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
-use zellij_utils::pane_size::Size;
+use zellij_utils::pane_size::Insets;
 use kdl::KdlDocument;
 
 use prost::Message;
@@ -459,12 +459,12 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::EnterFitMode {
                         tab_id,
                         pane_id,
-                        size,
-                    } => enter_fit_mode(env, tab_id, pane_id.into(), size),
+                        insets,
+                    } => enter_fit_mode(env, tab_id, pane_id.into(), insets),
                     PluginCommand::ExitFitMode => exit_fit_mode(env),
                     PluginCommand::ExitMobileMode => exit_mobile_mode(env),
-                    PluginCommand::UpdateFitSize { tab_id, size } => {
-                        update_fit_size(env, tab_id, size)
+                    PluginCommand::UpdateFitInsets { tab_id, insets } => {
+                        update_fit_insets(env, tab_id, insets)
                     },
                     PluginCommand::SetMobileFocusedPane(pane_id) => {
                         set_mobile_focused_pane(env, pane_id.into())
@@ -4036,13 +4036,13 @@ fn set_mobile_focused_pane(env: &PluginEnv, pane_id: PaneId) {
 /// recomputes the tab. Per-client; the screen thread tags the
 /// resulting `FitState` with `env.client_id` so disconnect cleanup
 /// can find and revert it.
-fn enter_fit_mode(env: &PluginEnv, tab_id: usize, pane_id: PaneId, size: Size) {
+fn enter_fit_mode(env: &PluginEnv, tab_id: usize, pane_id: PaneId, insets: Insets) {
     env.senders
         .send_to_screen(ScreenInstruction::EnterFitMode {
             client_id: env.client_id,
             tab_id,
             pane_id,
-            size,
+            insets,
         })
         .with_context(|| format!("failed to dispatch EnterFitMode for plugin {}", env.plugin_id))
         .non_fatal();
@@ -4076,20 +4076,26 @@ fn exit_mobile_mode(env: &PluginEnv) {
         .non_fatal();
 }
 
-/// Mobile "Fit" — update the active fit's target size. Sent on
-/// every render where the embedded viewport area changes (keyboard
-/// toggle, rotation, etc.). The plugin diffs locally to avoid
-/// spamming. `tab_id` identifies the override directly so a
-/// displaced client (its prior fit overwritten by a colliding one)
-/// can reclaim ownership server-side on the next push.
-fn update_fit_size(env: &PluginEnv, tab_id: usize, size: Size) {
+/// Mobile "Fit" — report updated insets for the active fit. Sent when
+/// the plugin's own insets change (soft-keyboard or selector toggle);
+/// the server recomputes the target tab size from the live
+/// plugin-pane geometry minus these insets. `tab_id` identifies the
+/// override directly so a displaced client (its prior fit overwritten
+/// by a colliding one) can reclaim ownership server-side on the next
+/// push.
+fn update_fit_insets(env: &PluginEnv, tab_id: usize, insets: Insets) {
     env.senders
-        .send_to_screen(ScreenInstruction::UpdateFitSize {
+        .send_to_screen(ScreenInstruction::UpdateFitInsets {
             client_id: env.client_id,
             tab_id,
-            size,
+            insets,
         })
-        .with_context(|| format!("failed to dispatch UpdateFitSize for plugin {}", env.plugin_id))
+        .with_context(|| {
+            format!(
+                "failed to dispatch UpdateFitInsets for plugin {}",
+                env.plugin_id
+            )
+        })
         .non_fatal();
 }
 
@@ -5626,7 +5632,7 @@ fn check_command_permission(
         | PluginCommand::SetSoftKeyboard(..)
         | PluginCommand::EnterFitMode { .. }
         | PluginCommand::ExitFitMode
-        | PluginCommand::UpdateFitSize { .. }
+        | PluginCommand::UpdateFitInsets { .. }
         | PluginCommand::ExitMobileMode => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)

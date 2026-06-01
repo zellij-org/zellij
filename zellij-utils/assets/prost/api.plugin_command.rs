@@ -314,7 +314,7 @@ pub mod plugin_command {
         #[prost(message, tag="165")]
         EnterFitModePayload(super::EnterFitModePayload),
         #[prost(message, tag="166")]
-        UpdateFitSizePayload(super::UpdateFitSizePayload),
+        UpdateFitInsetsPayload(super::UpdateFitInsetsPayload),
         #[prost(message, tag="167")]
         SetMobileFocusedPanePayload(super::PaneId),
         #[prost(message, tag="168")]
@@ -2024,28 +2024,36 @@ pub struct SetSoftKeyboardPayload {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Insets {
+    #[prost(uint32, tag="1")]
+    pub top: u32,
+    #[prost(uint32, tag="2")]
+    pub bottom: u32,
+    #[prost(uint32, tag="3")]
+    pub left: u32,
+    #[prost(uint32, tag="4")]
+    pub right: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EnterFitModePayload {
     #[prost(uint32, tag="1")]
     pub tab_id: u32,
     #[prost(message, optional, tag="2")]
     pub pane_id: ::core::option::Option<PaneId>,
-    #[prost(uint32, tag="3")]
-    pub rows: u32,
-    #[prost(uint32, tag="4")]
-    pub cols: u32,
+    #[prost(message, optional, tag="3")]
+    pub insets: ::core::option::Option<Insets>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct UpdateFitSizePayload {
-    #[prost(uint32, tag="1")]
-    pub rows: u32,
-    #[prost(uint32, tag="2")]
-    pub cols: u32,
+pub struct UpdateFitInsetsPayload {
+    #[prost(message, optional, tag="1")]
+    pub insets: ::core::option::Option<Insets>,
     /// Tab the fit is bound to. The server uses this to look up the
     /// override entry directly so a displaced client (whose entry was
     /// overwritten by a colliding fit) can reclaim ownership on its
     /// next push.
-    #[prost(uint32, tag="3")]
+    #[prost(uint32, tag="2")]
     pub tab_id: u32,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
@@ -2248,7 +2256,7 @@ pub enum CommandName {
     SetSoftKeyboard = 215,
     EnterFitMode = 216,
     ExitFitMode = 217,
-    UpdateFitSize = 218,
+    UpdateFitInsets = 218,
     SetMobileFocusedPane = 219,
     NewTabUnfocused = 220,
     NewTiledPaneInTab = 221,
@@ -2458,7 +2466,7 @@ impl CommandName {
             CommandName::SetSoftKeyboard => "SetSoftKeyboard",
             CommandName::EnterFitMode => "EnterFitMode",
             CommandName::ExitFitMode => "ExitFitMode",
-            CommandName::UpdateFitSize => "UpdateFitSize",
+            CommandName::UpdateFitInsets => "UpdateFitInsets",
             CommandName::SetMobileFocusedPane => "SetMobileFocusedPane",
             CommandName::NewTabUnfocused => "NewTabUnfocused",
             CommandName::NewTiledPaneInTab => "NewTiledPaneInTab",
@@ -2665,7 +2673,7 @@ impl CommandName {
             "SetSoftKeyboard" => Some(Self::SetSoftKeyboard),
             "EnterFitMode" => Some(Self::EnterFitMode),
             "ExitFitMode" => Some(Self::ExitFitMode),
-            "UpdateFitSize" => Some(Self::UpdateFitSize),
+            "UpdateFitInsets" => Some(Self::UpdateFitInsets),
             "SetMobileFocusedPane" => Some(Self::SetMobileFocusedPane),
             "NewTabUnfocused" => Some(Self::NewTabUnfocused),
             "NewTiledPaneInTab" => Some(Self::NewTiledPaneInTab),

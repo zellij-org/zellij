@@ -349,34 +349,17 @@ pub struct State {
     pub fit_active: bool,
     /// The tab the local fit is bound to. Set when `EnterFitMode` is
     /// sent; cleared by every path that clears `fit_active`. Threaded
-    /// through `UpdateFitSize` so the server can look up the override
+    /// through `UpdateFitInsets` so the server can look up the override
     /// entry by tab_id (rather than by owning_client), which is what
     /// lets a displaced client (whose entry was overwritten by a
     /// colliding fit on the same tab) reclaim ownership on its next
-    /// push.
+    /// push. The plugin no longer computes or mirrors the target size:
+    /// it reports its chrome insets (top bar, soft-keyboard bar) via
+    /// `enter_fit_mode` / `update_fit_insets` and the server derives the
+    /// size from live geometry. Insets depend only on semantic UI state,
+    /// all mutated in `update()`, so they are emitted inline from the
+    /// arm that changes them — no render-stash-then-flush is needed.
     pub fit_tab_id: Option<usize>,
-    /// The (rows, cols) most recently sent to the server via
-    /// `enter_fit_mode` or `update_fit_size`. Diffed against
-    /// `fit_pending_target` in `update()` so we only re-send when
-    /// the embedded viewport has actually moved.
-    pub fit_last_sent_size: Option<(usize, usize)>,
-    /// The target tab size last computed by `render_embedded_viewport`
-    /// based on the most recent embedded-viewport area + cached pane
-    /// /tab geometry. Set during render but the matching shim call
-    /// is deferred to `update()` — calling `update_fit_size` from
-    /// inside render corrupts `print!` output because
-    /// `host_run_plugin_command` drains the entire plugin stdout
-    /// pipe via `read_to_end` (see `wasi_read_bytes` /
-    /// `host_run_plugin_command` in `zellij_exports.rs`), so any
-    /// rendered bytes already written would be consumed and the
-    /// JSON-decode of the protobuf would fail on the mixed payload.
-    /// `update()` runs with a clean stdout, so calling the shim
-    /// from there is safe. The compare/send happens on every event
-    /// — by the time the next event fires after a pinch (TabUpdate
-    /// or PaneUpdate from the same RecomputeTabSize handler that
-    /// emitted the resize), this field reflects the new embedded
-    /// area and the shim is dispatched.
-    pub fit_pending_target: Option<(usize, usize)>,
     /// Pending tab-position auto-select after a "+ New Tab" command.
     /// `new_tab_unfocused` returns the new tab's id synchronously
     /// before the matching `TabUpdate` and `PaneUpdate` events have
@@ -933,20 +916,15 @@ mod tests {
     }
 
     /// Manually arm fit state (as the `ToggleFit` ON path would) then
-    /// exercise the OFF path via `clear_fit_if_active`. All four fit
-    /// fields must reset to their default off-state values regardless
-    /// of which subset was set on entry.
+    /// exercise the OFF path via `clear_fit_if_active`. Both fit fields
+    /// must reset to their default off-state values.
     #[test]
     fn toggle_fit_field_round_trip() {
         let mut s = State::default();
         s.fit_active = true;
-        s.fit_last_sent_size = Some((10, 40));
-        s.fit_pending_target = Some((10, 40));
         s.fit_tab_id = Some(7);
         crate::clear_fit_if_active(&mut s);
         assert!(!s.fit_active);
-        assert_eq!(s.fit_last_sent_size, None);
-        assert_eq!(s.fit_pending_target, None);
         assert_eq!(s.fit_tab_id, None);
 
         // Calling clear again while inactive is a no-op (no panic, no
@@ -954,8 +932,6 @@ mod tests {
         // unconditionally on tab/pane switch.
         crate::clear_fit_if_active(&mut s);
         assert!(!s.fit_active);
-        assert_eq!(s.fit_last_sent_size, None);
-        assert_eq!(s.fit_pending_target, None);
         assert_eq!(s.fit_tab_id, None);
     }
 

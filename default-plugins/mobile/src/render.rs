@@ -2115,28 +2115,12 @@ fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize,
         h_offset,
     });
 
-    // If Fit is active, the server's tab-size override should track
-    // the embedded viewport area: keyboard toggles, rotation, and
-    // pinch-zoom all change the embedded area's dimensions, and the
-    // pane must follow or the user is back to panning. We can't
-    // call `update_fit_size` directly here — see the doc on
-    // `fit_pending_target`. Instead, stash the target for the next
-    // `update()` to flush. The diff against `fit_last_sent_size`
-    // (also done in update) avoids a feedback loop where the
-    // server's resize triggers a fresh `PaneRenderReportWithAnsi`,
-    // which triggers another render, which would re-send the same
-    // size, ad infinitum.
-    if state.fit_active {
-        if let (Some(pane), Some(tab)) =
-            (state.current_pane(), state.current_tab().cloned())
-        {
-            let region = state.viewport_region.unwrap(); // just assigned
-            let target = crate::fit_target_tab_size(&pane, &tab, &region);
-            state.fit_pending_target = Some(target);
-        }
-    } else {
-        state.fit_pending_target = None;
-    }
+    // Fit-mode size tracking lives entirely on the server now: it
+    // re-derives the target tab size from this plugin pane's live
+    // geometry minus the chrome insets the plugin reports via
+    // `enter_fit_mode` / `update_fit_insets`. Render touches no fit
+    // state — keeping the host shims out of render (which would corrupt
+    // the in-flight frame on stdout).
 
     // Disable autowrap (DECAWM, `\x1b[?7l`) for the duration of the
     // viewport emit. The cached viewport lines come from the

@@ -5,7 +5,7 @@ use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
-use crate::pane_size::{PaneGeom, Size};
+use crate::pane_size::{Insets, PaneGeom};
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
 use clap::ArgEnum;
@@ -3657,20 +3657,22 @@ pub enum PluginCommand {
     EnterFitMode {
         tab_id: usize,
         pane_id: PaneId,
-        size: Size,
+        insets: Insets,
     },
     /// Mobile "Fit" — exit (per-client). Reverts the size override
     /// and any fit-induced fullscreen. No-op if no active fit.
     ExitFitMode,
-    /// Mobile "Fit" — update the active fit's target size (e.g.
-    /// after keyboard toggle or device rotation). The server looks
-    /// up the override entry by `tab_id` and reattributes ownership
-    /// to the calling client, so a displaced client (whose entry was
-    /// overwritten by a colliding fit on the same tab) reclaims the
-    /// override on its next push. No-op if no fit exists for `tab_id`.
-    UpdateFitSize {
+    /// Mobile "Fit" — report the plugin's current insets for an
+    /// active fit (e.g. after a soft-keyboard or selector toggle). The
+    /// server recomputes the target tab size from the live plugin-pane
+    /// geometry minus these insets. It looks up the override entry by
+    /// `tab_id` and reattributes ownership to the calling client, so a
+    /// displaced client (whose entry was overwritten by a colliding fit
+    /// on the same tab) reclaims the override on its next push. No-op if
+    /// no fit exists for `tab_id`.
+    UpdateFitInsets {
         tab_id: usize,
-        size: Size,
+        insets: Insets,
     },
     /// Mobile plugin → server: record the calling client as visually
     /// focused on `pane_id` in whichever tab owns the pane. Used by

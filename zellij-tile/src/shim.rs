@@ -7,7 +7,7 @@ use std::{
 use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
-use zellij_utils::pane_size::Size;
+use zellij_utils::pane_size::Insets;
 pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::generated_api::api::plugin_command::{
@@ -1713,14 +1713,17 @@ pub fn set_soft_keyboard(on: bool) {
 
 /// Mobile "Fit" — enter. Tells the server to fullscreen `pane_id` in
 /// tab `tab_id` (capturing whether fullscreen was already on so the
-/// state can be reverted) and to size the tab to `rows`×`cols`. The
+/// state can be reverted) and installs a fit override. `insets` are
+/// the cells the caller draws around its embedded viewport on each
+/// edge; the server subtracts them from the live plugin-pane size and
+/// computes the target tab size itself. The
 /// override persists until `exit_fit_mode()` is called or this
 /// client disconnects, whichever comes first.
-pub fn enter_fit_mode(tab_id: usize, pane_id: PaneId, rows: usize, cols: usize) {
+pub fn enter_fit_mode(tab_id: usize, pane_id: PaneId, insets: Insets) {
     let plugin_command = PluginCommand::EnterFitMode {
         tab_id,
         pane_id,
-        size: Size { rows, cols },
+        insets,
     };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
@@ -1749,20 +1752,17 @@ pub fn exit_mobile_mode() {
     unsafe { host_run_plugin_command() };
 }
 
-/// Mobile "Fit" — update the active fit's target size. Intended
-/// for after-render diff: the plugin recomputes the desired tab
-/// size whenever the embedded viewport area changes (e.g. keyboard
-/// toggle) and forwards it. `tab_id` identifies the override the
-/// caller installed via `enter_fit_mode` and lets the server
-/// reattribute the entry on the way through — a displaced caller
-/// whose entry was overwritten by a colliding fit on the same tab
-/// reclaims ownership here. No-op server-side if no fit exists on
-/// `tab_id`.
-pub fn update_fit_size(tab_id: usize, rows: usize, cols: usize) {
-    let plugin_command = PluginCommand::UpdateFitSize {
-        tab_id,
-        size: Size { rows, cols },
-    };
+/// Mobile "Fit" — report the caller's current insets for the
+/// active fit. The plugin calls this whenever its own insets change
+/// (e.g. soft-keyboard or selector toggle); the server recomputes the
+/// target tab size from the live plugin-pane geometry minus these
+/// insets. `tab_id` identifies the override the caller installed via
+/// `enter_fit_mode` and lets the server reattribute the entry on the
+/// way through — a displaced caller whose entry was overwritten by a
+/// colliding fit on the same tab reclaims ownership here. No-op
+/// server-side if no fit exists on `tab_id`.
+pub fn update_fit_insets(tab_id: usize, insets: Insets) {
+    let plugin_command = PluginCommand::UpdateFitInsets { tab_id, insets };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

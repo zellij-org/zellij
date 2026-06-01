@@ -51,34 +51,10 @@ impl ZellijPlugin for State {
             EventType::SoftKeyboardVisibilityChanged,
         ]);
 
-        // Modifier bar stays hidden on first render — it only
-        // appears once `Event::SoftKeyboardVisibilityChanged(true)`
-        // confirms the OS keyboard is actually on screen (i.e. the
-        // user has tapped the terminal element). Showing it before
-        // that point left the bar floating above an empty bottom
-        // row on first paint. `soft_keyboard_visible` already
-        // defaults to `false` via the struct's `#[derive(Default)]`
-        // so no explicit assignment is needed here.
-
-        // The plugin no longer renders its own on-screen keyboard —
-        // only a one-row modifier bar at the bottom. The OS soft
-        // keyboard is the canonical text-entry surface, so enable it
-        // up front and never suppress it.
         set_soft_keyboard(true);
     }
 
     fn update(&mut self, event: Event) -> bool {
-        // Flush any pending fit-size update accumulated by the last
-        // render. The shim call MUST happen here (in update) and not
-        // in render — `host_run_plugin_command` drains the plugin's
-        // stdout pipe via `read_to_end`, so calling it mid-render
-        // would consume the already-written `print!` output and the
-        // host would receive an empty frame. By the time this fires
-        // there is always a fresh event in flight (TabUpdate /
-        // PaneUpdate from the same `RecomputeTabSize` handler that
-        // resized the mobile tab), so the deferral adds at most one
-        // event-loop tick before the server sees the new target.
-        flush_pending_fit_size(self);
 
         match event {
             Event::ModeUpdate(mode_info) => {
@@ -625,6 +601,12 @@ impl ZellijPlugin for State {
                     return false;
                 }
                 self.soft_keyboard_visible = visible;
+                // The soft-keyboard bar is part of the plugin's chrome,
+                // so toggling it changes the embedded-viewport area an
+                // active fit must track. Report the new chrome insets to
+                // the server inline (insets depend only on this semantic
+                // state, available right here in `update()`).
+                notify_fit_chrome(self);
                 // Modifier bar visibility is gated on this flag in
                 // `render::render`; a redraw is required to add/remove
                 // the bottom row.
@@ -1044,16 +1026,14 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             true
         },
         ClickAction::ToggleFit => {
-            // Round-trip the toggle through the server. On entry we
-            // need (a) the focused pane, (b) its tab, (c) the most
-            // recent embedded viewport region (to compute the target
-            // tab size including chrome compensation). If any of
-            // those are missing we silently bail rather than send a
-            // malformed command.
+            // Round-trip the toggle through the server. On entry we need
+            // the focused pane (the pane to fit) and its tab; if either
+            // is missing we silently bail rather than send a malformed
+            // command. The target tab size itself is computed server-side
+            // from the plugin's chrome insets — the plugin no longer
+            // mirrors the size.
             if state.fit_active {
                 state.fit_active = false;
-                state.fit_last_sent_size = None;
-                state.fit_pending_target = None;
                 state.fit_tab_id = None;
                 exit_fit_mode();
                 true
@@ -1064,26 +1044,14 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
                 let Some(tab) = state.current_tab().cloned() else {
                     return false;
                 };
-                let Some(region) = state.viewport_region else {
-                    return false;
-                };
-                let target = fit_target_tab_size(&pane, &tab, &region);
                 state.fit_active = true;
-                // Seed all four fields so the first render+update
-                // after entering fit doesn't immediately re-send the
-                // same size: render's `fit_pending_target` will equal
-                // the value we just sent, and the diff in
-                // `flush_pending_fit_size` short-circuits. `fit_tab_id`
-                // is what subsequent `update_fit_size` calls use to
-                // address the server-side entry by tab.
-                state.fit_last_sent_size = Some((target.0, target.1));
-                state.fit_pending_target = Some((target.0, target.1));
+                // `fit_tab_id` is what subsequent `update_fit_insets`
+                // calls use to address the server-side entry by tab.
                 state.fit_tab_id = Some(tab.tab_id);
                 enter_fit_mode(
                     tab.tab_id,
                     state::pane_id_of(&pane),
-                    target.0,
-                    target.1,
+                    fit_chrome_insets(state),
                 );
                 true
             }
@@ -1213,8 +1181,6 @@ fn is_welcome_session(session: &SessionInfo) -> bool {
 pub fn clear_fit_if_active(state: &mut State) {
     if state.fit_active {
         state.fit_active = false;
-        state.fit_last_sent_size = None;
-        state.fit_pending_target = None;
         state.fit_tab_id = None;
         exit_fit_mode();
     }
@@ -1238,70 +1204,42 @@ pub fn sync_shadow_focus(state: &State) {
     }
 }
 
-/// If render() stashed a new fit target on `fit_pending_target` and
-/// it differs from what we last sent, forward it to the server. The
-/// diff is what prevents a render-resize loop: the server's resize
-/// triggers a fresh PaneRenderReportWithAnsi → render → which
-/// recomputes the *same* target → no new send. See the doc on
-/// `State::fit_pending_target` for why this can't live inside
-/// render itself.
-pub fn flush_pending_fit_size(state: &mut State) {
+/// The plugin's chrome insets around its embedded viewport, derived
+/// purely from semantic UI state (no render dimensions). The server
+/// subtracts these from the live plugin-pane size to recover the
+/// embedded area, then adds the target tab/pane chrome itself.
+///
+/// `top` is the title bar (1 row unless suppressed by the welcome flow
+/// or the open Sessions selector — mirrors `body_top` in
+/// `render::render`). `bottom` is the soft-keyboard modifier bar (1 row
+/// while the soft keyboard is visible). There is no horizontal chrome,
+/// so `left`/`right` are 0. The server applies any small-screen clamp
+/// (it knows the live row count); the plugin reports intent only.
+pub fn fit_chrome_insets(state: &State) -> Insets {
+    let suppress_top_bar =
+        state.welcome_auto_expand_done || state.expanded == Some(Selector::Sessions);
+    Insets {
+        top: if suppress_top_bar { 0 } else { 1 },
+        bottom: if state.soft_keyboard_visible { 1 } else { 0 },
+        left: 0,
+        right: 0,
+    }
+}
+
+/// Report the current chrome insets to the server for an active fit.
+/// Called inline from each `update()` arm that changes a contributing
+/// input (soft-keyboard toggle, Sessions-selector / welcome top-bar
+/// transitions). The server re-derives the target tab size from live
+/// geometry minus these insets, so the plugin never mirrors a size.
+/// No-op when fit is inactive or `fit_tab_id` is unset.
+pub fn notify_fit_chrome(state: &State) {
     if !state.fit_active {
         return;
     }
-    let Some(target) = state.fit_pending_target else {
-        return;
-    };
     let Some(tab_id) = state.fit_tab_id else {
-        // `fit_active` without a `fit_tab_id` is a programming error
-        // — every ON path seeds both. Bail rather than send a
-        // malformed UpdateFitSize against tab_id 0.
         return;
     };
-    if state.fit_last_sent_size == Some(target) {
-        return;
-    }
-    state.fit_last_sent_size = Some(target);
-    update_fit_size(tab_id, target.0, target.1);
-}
-
-/// Compute the tab size the server should set so that the focused
-/// pane's *content area* fills this plugin's embedded viewport area
-/// exactly.
-///
-/// `viewport_rows`/`viewport_columns` on `TabInfo` are the bounds of
-/// the selectable-pane area (status bar / tab bar already subtracted
-/// from `display_area_*`). `pane_rows`/`pane_content_rows` on
-/// `PaneInfo` reflect the current frame draw — non-zero deltas
-/// indicate pane chrome (borders / pane frames).
-///
-/// Heuristic: scale up the embedded dimensions by both deltas so the
-/// resulting tab, after chrome and frame are re-applied server-side,
-/// leaves a pane-content rectangle that matches the embedded area.
-/// Layouts with asymmetric chrome (no bottom bar; floating panes
-/// dominant) may leave one row of slack — still strictly better than
-/// the panning fallback.
-pub fn fit_target_tab_size(
-    pane: &PaneInfo,
-    tab: &TabInfo,
-    region: &state::ViewportRegion,
-) -> (usize, usize) {
-    let embedded_rows = region.row_end.saturating_sub(region.row_start);
-    let embedded_cols = region.cols;
-    let chrome_rows = tab
-        .display_area_rows
-        .saturating_sub(tab.viewport_rows);
-    let chrome_cols = tab
-        .display_area_columns
-        .saturating_sub(tab.viewport_columns);
-    let frame_rows = pane.pane_rows.saturating_sub(pane.pane_content_rows);
-    let frame_cols = pane
-        .pane_columns
-        .saturating_sub(pane.pane_content_columns);
-    (
-        embedded_rows + chrome_rows + frame_rows,
-        embedded_cols + chrome_cols + frame_cols,
-    )
+    update_fit_insets(tab_id, fit_chrome_insets(state));
 }
 
 /// Wall-clock seconds since the unix epoch, as returned by the
@@ -1353,140 +1291,84 @@ pub fn refresh_pane_titles(state: &mut State) {
 
 #[cfg(test)]
 mod tests {
-    //! Unit tests for the pure-math helper `fit_target_tab_size` and
-    //! the gating logic of `flush_pending_fit_size`. Shim calls inside
+    //! Unit tests for the chrome-inset helper `fit_chrome_insets` (the
+    //! plugin's remaining fit logic — the size math itself now lives on
+    //! the server) and the `ToggleFit` dispatch path. Shim calls inside
     //! these functions resolve to the native-build stub of
     //! `host_run_plugin_command` (see `zellij-tile/src/shim.rs`), so
     //! the tests observe state mutation only; the shim's effect on
     //! the (non-existent) host is irrelevant.
     use super::*;
-    use crate::state::{State, ViewportRegion};
+    use crate::state::State;
     use zellij_tile::prelude::{PaneInfo, TabInfo};
 
-    fn region(row_start: usize, row_end: usize, cols: usize) -> ViewportRegion {
-        ViewportRegion {
-            row_start,
-            row_end,
-            cols,
-            skip: 0,
-            h_offset: 0,
-        }
+    /// Resting state: the title bar is shown (`top = 1`), no soft
+    /// keyboard, no horizontal chrome.
+    #[test]
+    fn insets_default_top_bar_only() {
+        let state = State::default();
+        assert_eq!(
+            fit_chrome_insets(&state),
+            Insets {
+                top: 1,
+                bottom: 0,
+                left: 0,
+                right: 0
+            }
+        );
     }
 
-    /// Embedded viewport of (11 rows, 80 cols) inside a tab with two
-    /// rows of chrome (tab + status bars) and a pane with a 1-cell
-    /// border on every side. Target = embedded + chrome + frame =
-    /// (15, 82).
+    /// Soft keyboard visible adds the modifier-bar row as `bottom`.
     #[test]
-    fn adds_chrome_and_frame_to_embedded() {
-        let mut tab = TabInfo::default();
-        tab.display_area_rows = 24;
-        tab.display_area_columns = 80;
-        tab.viewport_rows = 22;
-        tab.viewport_columns = 80;
-        let mut pane = PaneInfo::default();
-        pane.pane_rows = 22;
-        pane.pane_columns = 80;
-        pane.pane_content_rows = 20;
-        pane.pane_content_columns = 78;
-        let r = region(0, 11, 80);
-        let target = fit_target_tab_size(&pane, &tab, &r);
-        assert_eq!(target, (15, 82));
+    fn insets_soft_keyboard_adds_bottom() {
+        let mut state = State::default();
+        state.soft_keyboard_visible = true;
+        assert_eq!(fit_chrome_insets(&state).bottom, 1);
+        assert_eq!(fit_chrome_insets(&state).top, 1);
     }
 
-    /// Borderless pane in a tab with no surrounding chrome — the
-    /// target equals the embedded area exactly.
+    /// The open Sessions selector suppresses the title bar (`top = 0`),
+    /// mirroring `body_top` in `render::render`.
     #[test]
-    fn zero_chrome_zero_frame_passes_through() {
-        let mut tab = TabInfo::default();
-        tab.display_area_rows = 20;
-        tab.display_area_columns = 60;
-        tab.viewport_rows = 20;
-        tab.viewport_columns = 60;
-        let mut pane = PaneInfo::default();
-        pane.pane_rows = 20;
-        pane.pane_columns = 60;
-        pane.pane_content_rows = 20;
-        pane.pane_content_columns = 60;
-        let r = region(0, 10, 40);
-        let target = fit_target_tab_size(&pane, &tab, &r);
-        assert_eq!(target, (10, 40));
+    fn insets_sessions_selector_suppresses_top() {
+        let mut state = State::default();
+        state.expanded = Some(Selector::Sessions);
+        assert_eq!(fit_chrome_insets(&state).top, 0);
     }
 
-    /// Pathological inputs where `viewport_*` exceeds `display_area_*`
-    /// must not panic. `saturating_sub` collapses chrome to 0 and the
-    /// result remains sensible.
+    /// A non-Sessions selector (e.g. Panes) does NOT suppress the title
+    /// bar — only the Sessions selector reuses the welcome layout.
     #[test]
-    fn saturating_subtraction_on_inverted_inputs() {
-        let mut tab = TabInfo::default();
-        tab.display_area_rows = 10;
-        tab.display_area_columns = 40;
-        tab.viewport_rows = 20;
-        tab.viewport_columns = 80;
-        let mut pane = PaneInfo::default();
-        pane.pane_rows = 5;
-        pane.pane_columns = 30;
-        pane.pane_content_rows = 10;
-        pane.pane_content_columns = 50;
-        let r = region(0, 8, 32);
-        let target = fit_target_tab_size(&pane, &tab, &r);
-        assert_eq!(target, (8, 32));
+    fn insets_other_selector_keeps_top() {
+        let mut state = State::default();
+        state.expanded = Some(Selector::Panes);
+        assert_eq!(fit_chrome_insets(&state).top, 1);
     }
 
-    /// Inactive fit must not mutate `fit_last_sent_size` even if a
-    /// pending target is set. Observed via the side-effect proxy
-    /// because the shim's host stub on native builds is a no-op.
+    /// The welcome flow suppresses the title bar for the lifetime of the
+    /// welcome session.
     #[test]
-    fn flush_skips_when_inactive() {
+    fn insets_welcome_flow_suppresses_top() {
+        let mut state = State::default();
+        state.welcome_auto_expand_done = true;
+        assert_eq!(fit_chrome_insets(&state).top, 0);
+    }
+
+    /// `notify_fit_chrome` is a no-op when fit is inactive or
+    /// `fit_tab_id` is unset (the shim must not be addressed without a
+    /// target tab). Asserted indirectly: the call must not panic and
+    /// leaves state untouched.
+    #[test]
+    fn notify_fit_chrome_gated_off() {
         let mut state = State::default();
         state.fit_active = false;
-        state.fit_pending_target = Some((10, 40));
-        state.fit_last_sent_size = None;
         state.fit_tab_id = Some(7);
-        flush_pending_fit_size(&mut state);
-        assert_eq!(state.fit_last_sent_size, None);
-    }
-
-    /// When the pending target equals what was already sent, the diff
-    /// short-circuits and `fit_last_sent_size` stays untouched.
-    #[test]
-    fn flush_skips_when_already_sent() {
-        let mut state = State::default();
+        notify_fit_chrome(&state);
+        // active but no tab id
         state.fit_active = true;
-        state.fit_pending_target = Some((10, 40));
-        state.fit_last_sent_size = Some((10, 40));
-        state.fit_tab_id = Some(7);
-        flush_pending_fit_size(&mut state);
-        assert_eq!(state.fit_last_sent_size, Some((10, 40)));
-    }
-
-    /// A pending target that differs from the last sent size updates
-    /// `fit_last_sent_size` to the new value (the shim itself fires
-    /// but resolves to a host-stub no-op on native builds).
-    #[test]
-    fn flush_updates_on_pending_change() {
-        let mut state = State::default();
-        state.fit_active = true;
-        state.fit_pending_target = Some((9, 36));
-        state.fit_last_sent_size = Some((10, 40));
-        state.fit_tab_id = Some(7);
-        flush_pending_fit_size(&mut state);
-        assert_eq!(state.fit_last_sent_size, Some((9, 36)));
-    }
-
-    /// `flush_pending_fit_size` must bail when `fit_tab_id` is unset:
-    /// without it the server can't address the override entry and we'd
-    /// send an UpdateFitSize against tab_id 0. Belt-and-braces guard
-    /// against a future ON path that forgets to seed `fit_tab_id`.
-    #[test]
-    fn flush_skips_when_tab_id_unset() {
-        let mut state = State::default();
-        state.fit_active = true;
-        state.fit_pending_target = Some((10, 40));
-        state.fit_last_sent_size = None;
         state.fit_tab_id = None;
-        flush_pending_fit_size(&mut state);
-        assert_eq!(state.fit_last_sent_size, None);
+        notify_fit_chrome(&state);
+        assert!(state.fit_active);
     }
 
     /// Static canary: `render.rs` must not invoke any host shim.
@@ -1497,13 +1379,12 @@ mod tests {
     /// already written to stdout is consumed by the host as the
     /// (malformed) protobuf reply payload and the rendered frame the
     /// user actually sees is empty. The fix is to defer the shim call
-    /// to `update()` (see `State::fit_pending_target` and
-    /// `flush_pending_fit_size`). This test is the canary that would
-    /// have caught the original pinch-zoom regression and prevents the
-    /// same shape of bug from recurring on a different shim.
+    /// to `update()`. This test is the canary that would have caught
+    /// the original pinch-zoom regression and prevents the same shape
+    /// of bug from recurring on a different shim.
     ///
-    /// Comment-only lines are skipped so the existing doc reference to
-    /// `update_fit_size` in `render.rs` remains legal.
+    /// Comment-only lines are skipped so any doc reference to a shim
+    /// name in `render.rs` remains legal.
     ///
     /// Located here (rather than under `tests/`) because the `mobile`
     /// crate is a wasm-only bin: a regular integration test would
@@ -1521,7 +1402,7 @@ mod tests {
         // prevents is a separate hazard from the
         // stdout-drain-during-render hazard this test guards against.
         const FORBIDDEN_SHIMS: &[&str] = &[
-            "update_fit_size",
+            "update_fit_insets",
             "enter_fit_mode",
             "exit_fit_mode",
             "exit_mobile_mode",
@@ -1553,10 +1434,10 @@ mod tests {
         );
     }
 
-    /// Build a `State` seeded with one tab + one pane + a viewport
-    /// region — the minimum surface required for the `ToggleFit`
-    /// dispatch path to reach `fit_target_tab_size`. Returns the
-    /// `State` ready to receive `dispatch_click(&mut state, ...)`.
+    /// Build a `State` seeded with one tab + one pane — the minimum
+    /// surface required for the `ToggleFit` dispatch path (it resolves
+    /// `current_pane()` and `current_tab()`). Returns the `State` ready
+    /// to receive `dispatch_click(&mut state, ...)`.
     fn fit_ready_state() -> State {
         let mut state = State::default();
         let tab = TabInfo {
@@ -1593,14 +1474,10 @@ mod tests {
         state
     }
 
-    /// `dispatch_click(ToggleFit)` from the OFF state seeds all four
-    /// fit fields. The shim itself fires (its native stub no-ops) —
-    /// the test asserts on the visible state mutation that gates the
-    /// later `flush_pending_fit_size`. Target value matches what
-    /// `fit_target_tab_size` would compute for the seeded surface:
-    /// embedded (11, 80) + chrome (2, 0) + frame (2, 2) = (15, 82).
-    /// `fit_tab_id` is what subsequent `update_fit_size` calls use to
-    /// address the server-side entry.
+    /// `dispatch_click(ToggleFit)` from the OFF state arms fit and
+    /// records the bound tab. The shim itself fires (its native stub
+    /// no-ops); `fit_tab_id` is what subsequent `update_fit_insets`
+    /// calls use to address the server-side entry.
     #[test]
     fn dispatch_toggle_fit_on_path_seeds_fields() {
         let mut state = fit_ready_state();
@@ -1610,8 +1487,6 @@ mod tests {
 
         assert!(consumed);
         assert!(state.fit_active);
-        assert_eq!(state.fit_last_sent_size, Some((15, 82)));
-        assert_eq!(state.fit_pending_target, Some((15, 82)));
         assert_eq!(
             state.fit_tab_id,
             Some(7),
@@ -1619,24 +1494,19 @@ mod tests {
         );
     }
 
-    /// `dispatch_click(ToggleFit)` from the ON state clears every fit
-    /// field. The state is fully reset regardless of which subset was
-    /// set when the toggle was tripped — guards the symmetric path
-    /// against future drift between the ON and OFF branches.
+    /// `dispatch_click(ToggleFit)` from the ON state clears both fit
+    /// fields — guards the symmetric path against future drift between
+    /// the ON and OFF branches.
     #[test]
     fn dispatch_toggle_fit_off_path_clears_fields() {
         let mut state = fit_ready_state();
         state.fit_active = true;
-        state.fit_last_sent_size = Some((15, 82));
-        state.fit_pending_target = Some((15, 82));
         state.fit_tab_id = Some(7);
 
         let consumed = dispatch_click(&mut state, ClickAction::ToggleFit);
 
         assert!(consumed);
         assert!(!state.fit_active);
-        assert_eq!(state.fit_last_sent_size, None);
-        assert_eq!(state.fit_pending_target, None);
         assert_eq!(state.fit_tab_id, None);
     }
 
@@ -1649,8 +1519,6 @@ mod tests {
     fn pane_update_clears_fit_when_selected_pane_disappears() {
         let mut state = fit_ready_state();
         state.fit_active = true;
-        state.fit_last_sent_size = Some((15, 82));
-        state.fit_pending_target = Some((15, 82));
         state.fit_tab_id = Some(7);
 
         // Manifest with the same tab but pane 3 (the selected one)
@@ -1669,8 +1537,6 @@ mod tests {
         state.update(Event::PaneUpdate(manifest));
 
         assert!(!state.fit_active, "Local fit mirror cleared");
-        assert_eq!(state.fit_last_sent_size, None);
-        assert_eq!(state.fit_pending_target, None);
         assert_eq!(state.fit_tab_id, None);
     }
 

@@ -124,7 +124,8 @@ pub use super::generated_api::api::{
         SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
         SetPaneBorderlessPayload, SetPaneColorPayload, SetPaneRegexHighlightsPayload,
         SetSelfMouseSelectionSupportPayload,
-        EnterFitModePayload as ProtobufEnterFitModePayload, UpdateFitSizePayload as ProtobufUpdateFitSizePayload,
+        EnterFitModePayload as ProtobufEnterFitModePayload, UpdateFitInsetsPayload as ProtobufUpdateFitInsetsPayload,
+        Insets as ProtobufInsets,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
         ShowCursorPayload,
         ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
@@ -148,11 +149,29 @@ use crate::data::{
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
-use crate::pane_size::Size;
+use crate::pane_size::Insets;
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::path::PathBuf;
+
+fn insets_from_protobuf(insets: ProtobufInsets) -> Insets {
+    Insets {
+        top: insets.top as usize,
+        bottom: insets.bottom as usize,
+        left: insets.left as usize,
+        right: insets.right as usize,
+    }
+}
+
+fn insets_to_protobuf(insets: Insets) -> ProtobufInsets {
+    ProtobufInsets {
+        top: insets.top as u32,
+        bottom: insets.bottom as u32,
+        left: insets.left as u32,
+        right: insets.right as u32,
+    }
+}
 
 impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
     fn into(self) -> FloatingPaneCoordinates {
@@ -1488,10 +1507,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     Some(pane_id) => Ok(PluginCommand::EnterFitMode {
                         tab_id: payload.tab_id as usize,
                         pane_id: pane_id.try_into()?,
-                        size: Size {
-                            rows: payload.rows as usize,
-                            cols: payload.cols as usize,
-                        },
+                        insets: payload.insets.map(insets_from_protobuf).unwrap_or_default(),
                     }),
                     _ => Err("Malformed enter_fit_mode_payload payload"),
                 },
@@ -1505,15 +1521,14 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(_) => Err("ExitMobileMode should have no payload, found a payload"),
                 None => Ok(PluginCommand::ExitMobileMode),
             },
-            Some(CommandName::UpdateFitSize) => match protobuf_plugin_command.payload {
-                Some(Payload::UpdateFitSizePayload(payload)) => Ok(PluginCommand::UpdateFitSize {
-                    tab_id: payload.tab_id as usize,
-                    size: Size {
-                        rows: payload.rows as usize,
-                        cols: payload.cols as usize,
-                    },
-                }),
-                _ => Err("Mismatched payload for UpdateFitSize"),
+            Some(CommandName::UpdateFitInsets) => match protobuf_plugin_command.payload {
+                Some(Payload::UpdateFitInsetsPayload(payload)) => {
+                    Ok(PluginCommand::UpdateFitInsets {
+                        tab_id: payload.tab_id as usize,
+                        insets: payload.insets.map(insets_from_protobuf).unwrap_or_default(),
+                    })
+                },
+                _ => Err("Mismatched payload for UpdateFitInsets"),
             },
             Some(CommandName::SetMobileFocusedPane) => match protobuf_plugin_command.payload {
                 Some(Payload::SetMobileFocusedPanePayload(pane_id)) => {
@@ -3410,14 +3425,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::EnterFitMode {
                 tab_id,
                 pane_id,
-                size,
+                insets,
             } => Ok(ProtobufPluginCommand {
                 name: CommandName::EnterFitMode as i32,
                 payload: Some(Payload::EnterFitModePayload(ProtobufEnterFitModePayload {
                     tab_id: tab_id as u32,
                     pane_id: Some(pane_id.try_into()?),
-                    rows: size.rows as u32,
-                    cols: size.cols as u32,
+                    insets: Some(insets_to_protobuf(insets)),
                 })),
             }),
             PluginCommand::ExitFitMode => Ok(ProtobufPluginCommand {
@@ -3428,12 +3442,11 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ExitMobileMode as i32,
                 payload: None,
             }),
-            PluginCommand::UpdateFitSize { tab_id, size } => Ok(ProtobufPluginCommand {
-                name: CommandName::UpdateFitSize as i32,
-                payload: Some(Payload::UpdateFitSizePayload(
-                    ProtobufUpdateFitSizePayload {
-                        rows: size.rows as u32,
-                        cols: size.cols as u32,
+            PluginCommand::UpdateFitInsets { tab_id, insets } => Ok(ProtobufPluginCommand {
+                name: CommandName::UpdateFitInsets as i32,
+                payload: Some(Payload::UpdateFitInsetsPayload(
+                    ProtobufUpdateFitInsetsPayload {
+                        insets: Some(insets_to_protobuf(insets)),
                         tab_id: tab_id as u32,
                     },
                 )),
@@ -5234,16 +5247,18 @@ mod tests {
     //! `PartialEq`, so the decoded value is destructured by pattern.
     use super::*;
     use crate::data::{PaneId, PluginCommand};
-    use crate::pane_size::Size;
+    use crate::pane_size::Insets;
 
     #[test]
     fn enter_fit_mode_protobuf_round_trip() {
         let original = PluginCommand::EnterFitMode {
             tab_id: 7,
             pane_id: PaneId::Terminal(3),
-            size: Size {
-                rows: 11,
-                cols: 42,
+            insets: Insets {
+                top: 1,
+                bottom: 2,
+                left: 0,
+                right: 0,
             },
         };
         let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
@@ -5252,11 +5267,19 @@ mod tests {
             PluginCommand::EnterFitMode {
                 tab_id,
                 pane_id,
-                size,
+                insets,
             } => {
                 assert_eq!(tab_id, 7);
                 assert_eq!(pane_id, PaneId::Terminal(3));
-                assert_eq!(size, Size { rows: 11, cols: 42 });
+                assert_eq!(
+                    insets,
+                    Insets {
+                        top: 1,
+                        bottom: 2,
+                        left: 0,
+                        right: 0
+                    }
+                );
             },
             other => panic!("expected EnterFitMode, got {:?}", other),
         }
@@ -5274,22 +5297,32 @@ mod tests {
     }
 
     #[test]
-    fn update_fit_mode_protobuf_round_trip() {
-        let original = PluginCommand::UpdateFitSize {
+    fn update_fit_insets_protobuf_round_trip() {
+        let original = PluginCommand::UpdateFitInsets {
             tab_id: 7,
-            size: Size {
-                rows: 11,
-                cols: 42,
+            insets: Insets {
+                top: 1,
+                bottom: 1,
+                left: 0,
+                right: 0,
             },
         };
         let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
         let decoded: PluginCommand = protobuf.try_into().expect("decode");
         match decoded {
-            PluginCommand::UpdateFitSize { tab_id, size } => {
+            PluginCommand::UpdateFitInsets { tab_id, insets } => {
                 assert_eq!(tab_id, 7);
-                assert_eq!(size, Size { rows: 11, cols: 42 });
+                assert_eq!(
+                    insets,
+                    Insets {
+                        top: 1,
+                        bottom: 1,
+                        left: 0,
+                        right: 0
+                    }
+                );
             },
-            other => panic!("expected UpdateFitSize, got {:?}", other),
+            other => panic!("expected UpdateFitInsets, got {:?}", other),
         }
     }
 }

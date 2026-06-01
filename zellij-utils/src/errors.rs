@@ -401,7 +401,7 @@ pub enum ScreenContext {
     TogglePaneIdFullscreen,
     EnterFitMode,
     ExitFitMode,
-    UpdateFitSize,
+    UpdateFitInsets,
     TogglePaneEmbedOrEjectForPaneId,
     CloseTabWithIndex,
     BreakPanesToNewTab,

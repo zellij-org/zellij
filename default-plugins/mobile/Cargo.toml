@@ -5,7 +5,6 @@ authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition.workspace = true
 
 [dependencies]
-ansi_term = "0.12.1"
 zellij-tile = { path = "../../zellij-tile" }
 fuzzy-matcher = "0.3.7"
 unicode-width = "0.1.10"

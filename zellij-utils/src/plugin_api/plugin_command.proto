@@ -210,7 +210,7 @@ enum CommandName {
   SetSoftKeyboard = 215;
   EnterFitMode = 216;
   ExitFitMode = 217;
-  UpdateFitSize = 218;
+  UpdateFitInsets = 218;
   SetMobileFocusedPane = 219;
   NewTabUnfocused = 220;
   NewTiledPaneInTab = 221;
@@ -371,7 +371,7 @@ message PluginCommand {
     string delete_dead_session_and_reply_payload = 163;
     SetSoftKeyboardPayload set_soft_keyboard_payload = 164;
     EnterFitModePayload enter_fit_mode_payload = 165;
-    UpdateFitSizePayload update_fit_size_payload = 166;
+    UpdateFitInsetsPayload update_fit_insets_payload = 166;
     PaneId set_mobile_focused_pane_payload = 167;
     NewTabUnfocusedPayload new_tab_unfocused_payload = 168;
     NewTiledPaneInTabPayload new_tiled_pane_in_tab_payload = 169;
@@ -1379,19 +1379,24 @@ message SetSoftKeyboardPayload {
   bool on = 1;
 }
 
+message Insets {
+  uint32 top = 1;
+  uint32 bottom = 2;
+  uint32 left = 3;
+  uint32 right = 4;
+}
+
 message EnterFitModePayload {
   uint32 tab_id = 1;
   PaneId pane_id = 2;
-  uint32 rows = 3;
-  uint32 cols = 4;
+  Insets insets = 3;
 }
 
-message UpdateFitSizePayload {
-  uint32 rows = 1;
-  uint32 cols = 2;
+message UpdateFitInsetsPayload {
+  Insets insets = 1;
   // Tab the fit is bound to. The server uses this to look up the
   // override entry directly so a displaced client (whose entry was
   // overwritten by a colliding fit) can reclaim ownership on its
   // next push.
-  uint32 tab_id = 3;
+  uint32 tab_id = 2;
 }
