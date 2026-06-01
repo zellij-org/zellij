@@ -359,7 +359,12 @@ pub enum ScreenInstruction {
         Option<NotificationEnd>,
     ), // bool ->
     // is_kitty_keyboard_protocol
-    Resize(ClientId, ResizeStrategy, Option<NotificationEnd>),
+    Resize(
+        ClientId,
+        ResizeStrategy,
+        Option<(f64, f64)>,
+        Option<NotificationEnd>,
+    ),
     SwitchFocus(ClientId, Option<NotificationEnd>),
     FocusNextPane(ClientId, Option<NotificationEnd>),
     FocusPreviousPane(ClientId, Option<NotificationEnd>),
@@ -892,7 +897,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::AreFloatingPanesVisible
             },
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
-            ScreenInstruction::Resize(.., strategy, _) => match strategy {
+            ScreenInstruction::Resize(_, strategy, ..) => match strategy {
                 ResizeStrategy {
                     resize: Resize::Increase,
                     direction,
@@ -6142,13 +6147,16 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::Resize(
                 client_id,
                 strategy,
+                resize_percent,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.resize(client_id, strategy),
+                    |tab: &mut Tab, client_id: ClientId| {
+                        tab.resize(client_id, strategy, resize_percent)
+                    },
                     ?
                 );
                 screen.render(None)?;

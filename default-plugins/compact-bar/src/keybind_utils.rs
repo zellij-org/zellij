@@ -514,7 +514,8 @@ impl KeybindProcessor {
                             action,
                             Action::Resize {
                                 resize: Resize::Increase,
-                                direction: None
+                                direction: None,
+                                ..
                             }
                         )
                     },
@@ -523,7 +524,8 @@ impl KeybindProcessor {
                             action,
                             Action::Resize {
                                 resize: Resize::Decrease,
-                                direction: None
+                                direction: None,
+                                ..
                             }
                         )
                     },
@@ -532,7 +534,8 @@ impl KeybindProcessor {
                             action,
                             Action::Resize {
                                 resize: Resize::Increase,
-                                direction: Some(Direction::Left)
+                                direction: Some(Direction::Left),
+                                ..
                             }
                         )
                     },
@@ -541,7 +544,8 @@ impl KeybindProcessor {
                             action,
                             Action::Resize {
                                 resize: Resize::Increase,
-                                direction: Some(Direction::Down)
+                                direction: Some(Direction::Down),
+                                ..
                             }
                         )
                     },
@@ -550,7 +554,8 @@ impl KeybindProcessor {
                             action,
                             Action::Resize {
                                 resize: Resize::Increase,
-                                direction: Some(Direction::Up)
+                                direction: Some(Direction::Up),
+                                ..
                             }
                         )
                     },
@@ -559,7 +564,8 @@ impl KeybindProcessor {
                             action,
                             Action::Resize {
                                 resize: Resize::Increase,
-                                direction: Some(Direction::Right)
+                                direction: Some(Direction::Right),
+                                ..
                             }
                         )
                     },
@@ -568,7 +574,8 @@ impl KeybindProcessor {
                             action,
                             Action::Resize {
                                 resize: Resize::Decrease,
-                                direction: Some(Direction::Left)
+                                direction: Some(Direction::Left),
+                                ..
                             }
                         )
                     },
@@ -577,7 +584,8 @@ impl KeybindProcessor {
                             action,
                             Action::Resize {
                                 resize: Resize::Decrease,
-                                direction: Some(Direction::Down)
+                                direction: Some(Direction::Down),
+                                ..
                             }
                         )
                     },
@@ -586,7 +594,8 @@ impl KeybindProcessor {
                             action,
                             Action::Resize {
                                 resize: Resize::Decrease,
-                                direction: Some(Direction::Up)
+                                direction: Some(Direction::Up),
+                                ..
                             }
                         )
                     },
@@ -595,7 +604,8 @@ impl KeybindProcessor {
                             action,
                             Action::Resize {
                                 resize: Resize::Decrease,
-                                direction: Some(Direction::Right)
+                                direction: Some(Direction::Right),
+                                ..
                             }
                         )
                     },

@@ -82,10 +82,12 @@ fn add_keybinds<'a>(help: &'a ModeInfo) -> Keygroups<'a> {
             &[Action::Resize {
                 resize: Resize::Increase,
                 direction: None,
+                resize_percent: None,
             }],
             &[Action::Resize {
                 resize: Resize::Decrease,
                 direction: None,
+                resize_percent: None,
             }],
         ],
     );

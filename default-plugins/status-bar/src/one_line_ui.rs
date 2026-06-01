@@ -794,6 +794,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
         &[Action::Resize {
             resize: Resize::Increase,
             direction: None,
+            resize_percent: None,
         }],
     );
     let resize_increase_key = resize_increase_action_key
@@ -805,6 +806,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
         &[Action::Resize {
             resize: Resize::Decrease,
             direction: None,
+            resize_percent: None,
         }],
     );
     let resize_decrease_key = resize_decrease_action_key
@@ -1432,20 +1434,60 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
     ]} else if mi.mode == IM::Resize { vec![
         (s("Increase/Decrease size"), s("Increase/Decrease"),
             action_key_group(&km, &[
-                &[A::Resize{resize: Resize::Increase, direction: None}],
-                &[A::Resize{resize: Resize::Decrease, direction: None}]
+                &[A::Resize {
+                    resize: Resize::Increase,
+                    direction: None,
+                    resize_percent: None,
+                }],
+                &[A::Resize {
+                    resize: Resize::Decrease,
+                    direction: None,
+                    resize_percent: None,
+                }]
             ])),
         (s("Increase to"), s("Increase"), action_key_group(&km, &[
-            &[A::Resize{resize: Resize::Increase, direction: Some(Dir::Left)}],
-            &[A::Resize{resize: Resize::Increase, direction: Some(Dir::Down)}],
-            &[A::Resize{resize: Resize::Increase, direction: Some(Dir::Up)}],
-            &[A::Resize{resize: Resize::Increase, direction: Some(Dir::Right)}]
+            &[A::Resize {
+                    resize: Resize::Increase,
+                    direction: Some(Dir::Left),
+                    resize_percent: None,
+                }],
+            &[A::Resize {
+                    resize: Resize::Increase,
+                    direction: Some(Dir::Down),
+                    resize_percent: None,
+                }],
+            &[A::Resize {
+                    resize: Resize::Increase,
+                    direction: Some(Dir::Up),
+                    resize_percent: None,
+                }],
+            &[A::Resize {
+                    resize: Resize::Increase,
+                    direction: Some(Dir::Right),
+                    resize_percent: None,
+                }]
             ])),
         (s("Decrease from"), s("Decrease"), action_key_group(&km, &[
-            &[A::Resize{resize: Resize::Decrease, direction: Some(Dir::Left)}],
-            &[A::Resize{resize: Resize::Decrease, direction: Some(Dir::Down)}],
-            &[A::Resize{resize: Resize::Decrease, direction: Some(Dir::Up)}],
-            &[A::Resize{resize: Resize::Decrease, direction: Some(Dir::Right)}]
+            &[A::Resize {
+                    resize: Resize::Decrease,
+                    direction: Some(Dir::Left),
+                    resize_percent: None,
+                }],
+            &[A::Resize {
+                    resize: Resize::Decrease,
+                    direction: Some(Dir::Down),
+                    resize_percent: None,
+                }],
+            &[A::Resize {
+                    resize: Resize::Decrease,
+                    direction: Some(Dir::Up),
+                    resize_percent: None,
+                }],
+            &[A::Resize {
+                    resize: Resize::Decrease,
+                    direction: Some(Dir::Right),
+                    resize_percent: None,
+                }]
             ])),
         (s("Select pane"), s("Select"), to_basemode_key),
     ]} else if mi.mode == IM::Move { vec![
