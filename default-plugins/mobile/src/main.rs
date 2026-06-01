@@ -525,6 +525,56 @@ impl ZellijPlugin for State {
                     }
                     return true;
                 }
+                // Panes selector: same input model as the Sessions
+                // path above, applied to `panes_search`. Enter selects
+                // the highest-scoring pane (or the first pane in
+                // display order when the buffer is empty). Esc with a
+                // non-empty buffer clears it; an empty Esc closes the
+                // selector — mirroring the "[← BACK]" tap.
+                if self.expanded == Some(Selector::Panes) {
+                    match key.bare_key {
+                        BareKey::Esc => {
+                            if !self.panes_search.is_empty() {
+                                self.panes_search.clear();
+                                self.selector_scroll_offset = 0;
+                            } else {
+                                self.expanded = None;
+                            }
+                        },
+                        BareKey::Enter => {
+                            // Dispatch through `SelectPane` so the
+                            // Enter path picks up every side effect a
+                            // click on the card would (fit clear,
+                            // viewport pan reset, shadow-focus sync,
+                            // ...). Going through the ClickAction
+                            // keeps the keyboard and pointer paths
+                            // sharing one source of truth.
+                            if let Some((tab_position, pane_id)) =
+                                self.panes_top_match()
+                            {
+                                self.panes_search.clear();
+                                self.selector_scroll_offset = 0;
+                                dispatch_click(
+                                    self,
+                                    ClickAction::SelectPane {
+                                        tab_position,
+                                        pane_id,
+                                    },
+                                );
+                            }
+                        },
+                        BareKey::Backspace => {
+                            self.panes_search.pop();
+                            self.selector_scroll_offset = 0;
+                        },
+                        BareKey::Char(c) => {
+                            self.panes_search.push(c);
+                            self.selector_scroll_offset = 0;
+                        },
+                        _ => {},
+                    }
+                    return true;
+                }
                 // Esc always returns to the main view: closes any
                 // open selector and dismisses the dropdown menu in a
                 // single press. The selector/menu have hidden (or
@@ -873,6 +923,10 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
         ClickAction::ExpandPanes => {
             state.menu_open = false;
             state.selector_scroll_offset = 0;
+            // Clear the fuzzy-search buffer so a freshly-opened
+            // Switch Pane view starts on an empty "Pane:" prompt —
+            // mirrors `ExpandSessions` clearing `welcome_search`.
+            state.panes_search.clear();
             // Refresh titles once on open so the menu doesn't show
             // the stale `Pane #N` placeholder when the shell has
             // already emitted OSC 2 before this click. Subsequent
@@ -899,14 +953,15 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             true
         },
         ClickAction::CollapseSelector => {
-            // Clear the welcome-style fuzzy-search buffer and reset
-            // scroll alongside the close so a future reopen of the
-            // Sessions selector (welcome or "Change Session") never
-            // inherits stale prompt state. Both fields are no-ops for
-            // the Panes selector close path — they are owned by the
-            // Sessions selector exclusively.
+            // Clear both selectors' fuzzy-search buffers and reset
+            // scroll alongside the close so a future reopen never
+            // inherits stale prompt state. Each buffer is owned by
+            // its own selector — `welcome_search` by Sessions,
+            // `panes_search` by Panes — and clearing the inactive
+            // one is a no-op.
             state.expanded = None;
             state.welcome_search.clear();
+            state.panes_search.clear();
             state.selector_scroll_offset = 0;
             true
         },

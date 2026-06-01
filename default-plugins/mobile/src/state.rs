@@ -475,13 +475,26 @@ pub struct State {
     /// hidden. Cleared when the welcome flow tears down (plugin
     /// lifetime ends).
     pub welcome_search: String,
-    /// Cached `SkimMatcherV2` for welcome-screen fuzzy matching.
+    /// Cached `SkimMatcherV2` for fuzzy matching across selectors.
     /// Lazily initialised on first keystroke (with `use_cache(true)`)
     /// so the matcher's internal score cache survives across renders.
     /// Wrapped in `Option` because `SkimMatcherV2` does not implement
     /// `Default` — matches the pattern in `default-plugins/session-
-    /// manager/src/single_screen.rs`.
+    /// manager/src/single_screen.rs`. Shared by the Sessions selector
+    /// (against session names) and the Panes selector (against pane
+    /// titles): only one selector is open at a time, so they never
+    /// contend, and the matcher is keyed by `(haystack, needle)`
+    /// internally so a pane-title cache entry cannot be mistaken for
+    /// a session-name one.
     pub welcome_fuzzy_matcher: Option<SkimMatcherV2>,
+    /// Fuzzy-search buffer for the Switch Pane view's "Pane:" prompt.
+    /// Empty when the prompt has no input. The render layer filters
+    /// the visible pane list against this string via `fuzzy_matcher`
+    /// — panes whose titles fuzzy-match are kept; the rest are
+    /// hidden. Cleared on `ExpandPanes` and `CollapseSelector` so
+    /// each open starts on an empty prompt (mirrors `welcome_search`
+    /// in the Sessions selector).
+    pub panes_search: String,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -661,6 +674,60 @@ impl State {
             }
         }
         best.map(|(_, name)| name)
+    }
+
+    /// Pick the highest-scoring pane for the Switch Pane prompt —
+    /// what `Enter` should select. With an empty search term, returns
+    /// the first pane in tab/display order (which is also the first
+    /// card the user sees in the unfiltered list). Returns `None`
+    /// only when no panes are visible at all.
+    ///
+    /// The fuzzy matcher is the same `SkimMatcherV2` instance the
+    /// renderer uses, so the score it computes here matches the
+    /// rendered order: the visually-topmost card is what Enter picks.
+    /// Matching is against pane titles (falling back to `#<id>` when
+    /// the title is empty), mirroring what the renderer displays on
+    /// the card's first row.
+    pub fn panes_top_match(&mut self) -> Option<(usize, PaneId)> {
+        let tabs: Vec<TabInfo> = self.tabs_in_order().into_iter().cloned().collect();
+        let mut entries: Vec<(String, usize, PaneId)> = Vec::new();
+        for tab in &tabs {
+            for pane in self.panes_for_tab(tab.position) {
+                let id = pane_id_of(pane);
+                let title = if pane.title.is_empty() {
+                    format!("#{}", pane.id)
+                } else {
+                    pane.title.clone()
+                };
+                entries.push((title, tab.position, id));
+            }
+        }
+        if entries.is_empty() {
+            return None;
+        }
+        let search = self.panes_search.clone();
+        if search.is_empty() {
+            // Tab/display-order winner — `entries` already follows
+            // the order the renderer paints in.
+            let first = entries.into_iter().next()?;
+            return Some((first.1, first.2));
+        }
+        let matcher = self
+            .welcome_fuzzy_matcher
+            .get_or_insert_with(|| SkimMatcherV2::default().use_cache(true));
+        let mut best: Option<(i64, String, usize, PaneId)> = None;
+        for (title, tab_pos, pane_id) in entries.into_iter() {
+            if let Some((score, _)) = matcher.fuzzy_indices(&title, &search) {
+                let take = match &best {
+                    None => true,
+                    Some((bs, bn, _, _)) => score > *bs || (score == *bs && &title < bn),
+                };
+                if take {
+                    best = Some((score, title, tab_pos, pane_id));
+                }
+            }
+        }
+        best.map(|(_, _, tab_pos, pane_id)| (tab_pos, pane_id))
     }
 
     /// Currently-selected pane info, falling back to the first pane in
