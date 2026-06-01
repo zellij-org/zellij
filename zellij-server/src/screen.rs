@@ -56,7 +56,7 @@ use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use zellij_utils::{
-    consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
+    consts::{session_info_folder_for_session, DEFAULT_TAB_NAME_FORMAT, ZELLIJ_SOCK_DIR},
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
@@ -745,6 +745,7 @@ pub enum ScreenInstruction {
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
+        default_tab_name_format: String,
     },
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -1399,6 +1400,7 @@ pub(crate) struct Screen {
     // duration is its creation time
     default_layout: Box<Layout>,
     default_shell: PathBuf,
+    default_tab_name_format: String,
     styled_underlines: bool,
     osc8_hyperlinks: bool,
     arrow_fonts: bool,
@@ -1527,6 +1529,7 @@ impl Screen {
         default_layout: Box<Layout>,
         default_layout_name: Option<String>,
         default_shell: PathBuf,
+        default_tab_name_format: String,
         session_serialization: bool,
         serialize_pane_viewport: bool,
         scrollback_lines_to_serialize: Option<usize>,
@@ -1583,6 +1586,7 @@ impl Screen {
             default_layout,
             default_layout_name,
             default_shell,
+            default_tab_name_format,
             session_serialization,
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
@@ -2923,6 +2927,7 @@ impl Screen {
             tab_id,
             position,
             tab_name,
+            self.default_tab_name_format.clone(),
             self.size,
             self.character_cell_size.clone(),
             self.stacked_resize.clone(),
@@ -4565,6 +4570,7 @@ impl Screen {
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
+        default_tab_name_format: String,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -4588,6 +4594,7 @@ impl Screen {
         self.mouse_hover_effects = mouse_hover_effects;
         self.visual_bell = visual_bell;
         self.focus_follows_mouse = focus_follows_mouse;
+        self.default_tab_name_format = default_tab_name_format;
         self.mouse_click_through = mouse_click_through;
         self.default_mode_info
             .update_arrow_fonts(should_support_arrow_fonts);
@@ -5695,6 +5702,9 @@ pub(crate) fn screen_thread_main(
         .scrollback_editor
         .clone()
         .or_else(|| get_default_editor());
+    let default_tab_name_format = config_options
+        .default_tab_name_format
+        .unwrap_or_else(|| DEFAULT_TAB_NAME_FORMAT.to_owned());
     let default_layout_name = config_options
         .default_layout
         .map(|l| format!("{}", l.display()));
@@ -5751,6 +5761,7 @@ pub(crate) fn screen_thread_main(
         default_layout,
         default_layout_name,
         default_shell,
+        default_tab_name_format,
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
@@ -8827,6 +8838,7 @@ pub(crate) fn screen_thread_main(
                 visual_bell,
                 focus_follows_mouse,
                 mouse_click_through,
+                default_tab_name_format,
             } => {
                 screen.host_theme_dark_styling = host_theme_dark;
                 screen.host_theme_light_styling = host_theme_light;
@@ -8851,6 +8863,7 @@ pub(crate) fn screen_thread_main(
                         visual_bell,
                         focus_follows_mouse,
                         mouse_click_through,
+                        default_tab_name_format,
                         client_id,
                     )
                     .non_fatal();

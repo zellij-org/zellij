@@ -53,7 +53,8 @@ use route::{route_thread_main, NotificationEnd};
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{
-        DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
+        DEFAULT_SCROLL_BUFFER_SIZE, DEFAULT_TAB_NAME_FORMAT, SCROLL_BUFFER_SIZE,
+        ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
     data::{
         ConnectToSession, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError, Style,
@@ -433,6 +434,10 @@ impl SessionMetaData {
                     visual_bell: new_config.options.visual_bell.unwrap_or(true),
                     focus_follows_mouse: new_config.options.focus_follows_mouse.unwrap_or(false),
                     mouse_click_through: new_config.options.mouse_click_through.unwrap_or(false),
+                    default_tab_name_format: new_config
+                        .options
+                        .default_tab_name_format
+                        .unwrap_or_else(|| DEFAULT_TAB_NAME_FORMAT.to_owned()),
                 })
                 .unwrap();
             self.senders

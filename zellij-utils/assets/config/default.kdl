@@ -276,6 +276,12 @@ load_plugins {
 //
 // default_cwd ""
 
+// Choose the default name format for new unnamed tabs
+// Supports `{index}` as the generated one-based tab number
+// Default: Tab #{index}
+//
+// default_tab_name_format "Tab #{index}"
+
 // Toggle between having pane frames around the panes
 // Options:
 //   - true (default)

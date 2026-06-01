@@ -721,6 +721,11 @@ pub fn get_next_terminal_position(
     tiled_panes_count + floating_panes_count + 1
 }
 
+fn format_default_tab_name(default_tab_name_format: &str, id: usize) -> String {
+    // Preserve the previous default numbering behavior, which used the stable tab id + 1.
+    default_tab_name_format.replace("{index}", &(id + 1).to_string())
+}
+
 impl Tab {
     // FIXME: Still too many arguments for clippy to be happy...
     #[allow(clippy::too_many_arguments)]
@@ -728,6 +733,7 @@ impl Tab {
         id: usize,
         position: usize,
         name: String,
+        default_tab_name_format: String,
         display_area: Size,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         stacked_resize: Rc<RefCell<bool>>,
@@ -765,7 +771,7 @@ impl Tab {
         web_server_port: u16,
     ) -> Self {
         let name = if name.is_empty() {
-            format!("Tab #{}", id + 1)
+            format_default_tab_name(&default_tab_name_format, id)
         } else {
             name
         };

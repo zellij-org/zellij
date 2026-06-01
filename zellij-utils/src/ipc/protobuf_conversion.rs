@@ -669,6 +669,7 @@ impl From<crate::input::options::Options>
             theme: options.theme,
             theme_dark: options.theme_dark,
             theme_light: options.theme_light,
+            default_tab_name_format: options.default_tab_name_format,
             default_mode: options.default_mode.map(|m| input_mode_to_proto_i32(m)),
             default_shell: options
                 .default_shell
@@ -753,6 +754,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             theme: options.theme,
             theme_dark: options.theme_dark,
             theme_light: options.theme_light,
+            default_tab_name_format: options.default_tab_name_format,
             default_mode: options
                 .default_mode
                 .map(|m| proto_i32_to_input_mode(m))

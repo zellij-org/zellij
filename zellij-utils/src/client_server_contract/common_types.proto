@@ -1174,6 +1174,7 @@ message Options {
   optional bool mouse_click_through = 45;
   optional string theme_dark = 46;
   optional string theme_light = 47;
+  optional string default_tab_name_format = 48;
 }
 
 enum OnForceClose {

@@ -1,4 +1,4 @@
-use super::Tab;
+use super::{format_default_tab_name, Tab};
 use crate::pane_groups::PaneGroups;
 use crate::panes::sixel::SixelImageStore;
 use crate::screen::CopyOptions;
@@ -22,6 +22,15 @@ use zellij_utils::{
     input::command::{RunCommand, TerminalAction},
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
+
+#[test]
+fn default_tab_name_format_replaces_index_placeholder() {
+    assert_eq!(
+        format_default_tab_name("Workspace {index}", 2),
+        "Workspace 3"
+    );
+    assert_eq!(format_default_tab_name("Static tab", 2), "Static tab");
+}
 
 #[derive(Clone)]
 struct FakeInputOutput {}
@@ -182,6 +191,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         index,
         position,
         name,
+        zellij_utils::consts::DEFAULT_TAB_NAME_FORMAT.to_owned(),
         size,
         character_cell_info,
         stacked_resize,
@@ -268,6 +278,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         index,
         position,
         name,
+        zellij_utils::consts::DEFAULT_TAB_NAME_FORMAT.to_owned(),
         size,
         character_cell_info,
         stacked_resize,
@@ -360,6 +371,7 @@ fn create_new_tab_with_cell_size(
         index,
         position,
         name,
+        zellij_utils::consts::DEFAULT_TAB_NAME_FORMAT.to_owned(),
         size,
         character_cell_size,
         stacked_resize,

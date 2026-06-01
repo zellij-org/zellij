@@ -67,6 +67,9 @@ pub struct Options {
     /// Set the default cwd
     #[clap(long, value_parser)]
     pub default_cwd: Option<PathBuf>,
+    /// Set the default name format for unnamed tabs. Supports `{index}` as the generated one-based tab number.
+    #[clap(long, value_parser)]
+    pub default_tab_name_format: Option<String>,
     /// Set the default layout
     #[clap(long, value_parser)]
     pub default_layout: Option<PathBuf>,
@@ -325,6 +328,9 @@ impl Options {
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
         let default_cwd = other.default_cwd.or_else(|| self.default_cwd.clone());
+        let default_tab_name_format = other
+            .default_tab_name_format
+            .or_else(|| self.default_tab_name_format.clone());
         let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
@@ -393,6 +399,7 @@ impl Options {
             default_mode,
             default_shell,
             default_cwd,
+            default_tab_name_format,
             default_layout,
             layout_dir,
             theme_dir,
@@ -464,6 +471,9 @@ impl Options {
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
         let default_cwd = other.default_cwd.or_else(|| self.default_cwd.clone());
+        let default_tab_name_format = other
+            .default_tab_name_format
+            .or_else(|| self.default_tab_name_format.clone());
         let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
@@ -528,6 +538,7 @@ impl Options {
             default_mode,
             default_shell,
             default_cwd,
+            default_tab_name_format,
             default_layout,
             layout_dir,
             theme_dir,
