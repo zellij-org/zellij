@@ -9914,7 +9914,7 @@ fn fit_override_resizes_tab() {
         Size { cols: 40, rows: 10 },
         "Tab adopts the fit override size"
     );
-    let fit = screen.fit_states.get(&0).expect("fit installed");
+    let fit = screen.mobile_state.fit_states.get(&0).expect("fit installed");
     assert_eq!(fit.owning_client, mobile_client);
     assert_eq!(fit.pane_id, PaneId::Terminal(1));
     assert_eq!(fit.size, Size { cols: 40, rows: 10 });
@@ -9949,6 +9949,7 @@ fn fit_override_captures_fullscreen_state() {
         .expect("TEST");
     assert!(
         screen
+            .mobile_state
             .fit_states
             .get(&0)
             .expect("fit installed")
@@ -9974,6 +9975,7 @@ fn fit_override_captures_fullscreen_state() {
         .expect("TEST");
     assert!(
         !screen
+            .mobile_state
             .fit_states
             .get(&0)
             .expect("fit installed")
@@ -10016,7 +10018,7 @@ fn exit_fit_reverts_size_and_fullscreen() {
 
     assert!(screen.exit_fit_mode(1).expect("TEST"));
 
-    assert!(screen.fit_states.is_empty(), "Override cleared");
+    assert!(screen.mobile_state.fit_states.is_empty(), "Override cleared");
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
         Size { cols: 80, rows: 20 },
@@ -10051,7 +10053,7 @@ fn exit_fit_preserves_pre_fit_fullscreen() {
 
     screen.exit_fit_mode(1).expect("TEST");
 
-    assert!(screen.fit_states.is_empty(), "Override cleared");
+    assert!(screen.mobile_state.fit_states.is_empty(), "Override cleared");
     assert!(
         screen.tabs.get(&0).unwrap().is_fullscreen_active(),
         "Pre-existing fullscreen preserved across exit"
@@ -10085,7 +10087,7 @@ fn update_fit_size_changes_tab_size() {
         Size { cols: 36, rows: 8 }
     );
     assert_eq!(
-        screen.fit_states.get(&0).unwrap().size,
+        screen.mobile_state.fit_states.get(&0).unwrap().size,
         Size { cols: 36, rows: 8 }
     );
 }
@@ -10105,7 +10107,7 @@ fn update_fit_size_no_active_fit_is_noop() {
         .expect("TEST");
 
     assert!(!did_something, "No fit on tab → no-op");
-    assert!(screen.fit_states.is_empty());
+    assert!(screen.mobile_state.fit_states.is_empty());
 }
 
 /// On disconnect, every `fit_states` entry owned by the leaving client
@@ -10138,7 +10140,7 @@ fn disconnect_clears_fit_for_owning_client() {
     screen.remove_client(1).expect("TEST");
 
     assert!(
-        screen.fit_states.is_empty(),
+        screen.mobile_state.fit_states.is_empty(),
         "Override owned by the leaving client cleared"
     );
     assert_eq!(
@@ -10177,10 +10179,11 @@ fn disconnect_only_clears_own_fits() {
     screen.remove_client(1).expect("TEST");
 
     assert!(
-        screen.fit_states.get(&0).is_none(),
+        screen.mobile_state.fit_states.get(&0).is_none(),
         "Disconnecting client's entry cleared"
     );
     let other = screen
+        .mobile_state
         .fit_states
         .get(&1)
         .expect("Other client's entry survives");
@@ -10288,7 +10291,7 @@ fn fit_collision_last_writer_wins() {
         .enter_fit_mode(2, 0, PaneId::Terminal(2), Size { cols: 30, rows: 8 })
         .expect("TEST");
 
-    let fit = screen.fit_states.get(&0).expect("fit present");
+    let fit = screen.mobile_state.fit_states.get(&0).expect("fit present");
     assert_eq!(fit.owning_client, 2, "Second writer owns the entry");
     assert_eq!(fit.pane_id, PaneId::Terminal(2));
     assert_eq!(fit.size, Size { cols: 30, rows: 8 });
@@ -10321,7 +10324,7 @@ fn fit_update_after_collision_reclaims_ownership() {
         .enter_fit_mode(2, 0, PaneId::Terminal(2), Size { cols: 30, rows: 8 })
         .expect("TEST");
     assert_eq!(
-        screen.fit_states.get(&0).unwrap().owning_client,
+        screen.mobile_state.fit_states.get(&0).unwrap().owning_client,
         2,
         "Pre-condition: client 2 displaced client 1"
     );
@@ -10334,7 +10337,7 @@ fn fit_update_after_collision_reclaims_ownership() {
         .expect("TEST");
 
     assert!(mutated, "Reclaim must mutate the entry");
-    let fit = screen.fit_states.get(&0).unwrap();
+    let fit = screen.mobile_state.fit_states.get(&0).unwrap();
     assert_eq!(fit.owning_client, 1, "Ownership reattributed to caller");
     assert_eq!(fit.size, Size { cols: 20, rows: 6 });
     assert_eq!(
@@ -10347,12 +10350,12 @@ fn fit_update_after_collision_reclaims_ownership() {
     // Client 2 disconnecting first must NOT clear the override.
     screen.remove_client(2).expect("TEST");
     assert!(
-        screen.fit_states.contains_key(&0),
+        screen.mobile_state.fit_states.contains_key(&0),
         "Override survives the original (now non-owning) client's disconnect"
     );
     screen.remove_client(1).expect("TEST");
     assert!(
-        screen.fit_states.is_empty(),
+        screen.mobile_state.fit_states.is_empty(),
         "Override clears when the reclaim-owner disconnects"
     );
 }
@@ -10370,12 +10373,12 @@ fn fit_tab_close_cleans_state() {
     screen
         .enter_fit_mode(1, 0, PaneId::Terminal(1), Size { cols: 40, rows: 10 })
         .expect("TEST");
-    assert!(screen.fit_states.contains_key(&0), "Pre-condition: fit installed");
+    assert!(screen.mobile_state.fit_states.contains_key(&0), "Pre-condition: fit installed");
 
     screen.close_tab_by_id(0).expect("TEST");
 
     assert!(
-        !screen.fit_states.contains_key(&0),
+        !screen.mobile_state.fit_states.contains_key(&0),
         "fit_states entry removed when its tab is closed"
     );
     assert!(
@@ -10411,7 +10414,7 @@ fn fit_pane_close_keeps_state_and_disconnect_is_safe() {
         tab.close_pane(PaneId::Terminal(1), false, None);
     }
     assert!(
-        screen.fit_states.contains_key(&0),
+        screen.mobile_state.fit_states.contains_key(&0),
         "Server-side entry survives external pane close; \
          cleanup is the plugin's responsibility"
     );
@@ -10421,7 +10424,7 @@ fn fit_pane_close_keeps_state_and_disconnect_is_safe() {
     // this would panic or toggle fullscreen on a missing pane.
     screen.remove_client(1).expect("Disconnect must not panic on dead pane_id");
     assert!(
-        screen.fit_states.is_empty(),
+        screen.mobile_state.fit_states.is_empty(),
         "Disconnect cleanup eventually clears the orphan"
     );
 }
@@ -10457,12 +10460,12 @@ fn fit_three_viewers_override_persists() {
         Size { cols: 40, rows: 10 },
         "Override survives non-owner disconnect"
     );
-    assert!(screen.fit_states.contains_key(&0));
+    assert!(screen.mobile_state.fit_states.contains_key(&0));
 
     // The owning client leaves — override is cleared and the tab
     // grows back to the remaining viewer.
     screen.remove_client(1).expect("TEST");
-    assert!(screen.fit_states.is_empty());
+    assert!(screen.mobile_state.fit_states.is_empty());
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
         Size { cols: 200, rows: 60 },
@@ -10635,7 +10638,7 @@ fn setup_mobile_screen() -> Screen {
 
 #[test]
 fn reevaluate_mobile_routes_web_client_in_web_mode() {
-    use zellij_utils::input::options::MobileLayout;
+    use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 10;
     screen.add_client(client, /* is_web_client */ true).expect("TEST");
@@ -10644,7 +10647,7 @@ fn reevaluate_mobile_routes_web_client_in_web_mode() {
         .reevaluate_mobile_mode(
             client,
             MOBILE_SMALL,
-            MobileLayout::Web,
+            MobileLayoutConfiguration::Web,
             MOBILE_THRESHOLDS.0,
             MOBILE_THRESHOLDS.1,
         )
@@ -10654,14 +10657,14 @@ fn reevaluate_mobile_routes_web_client_in_web_mode() {
         "web client + small viewport in Web mode must enter mobile",
     );
     assert!(
-        screen.mobile_auto_entered.contains(&client),
+        screen.mobile_state.auto_entered.contains(&client),
         "auto-entry must be marked so a later resize can auto-demote",
     );
 }
 
 #[test]
 fn reevaluate_mobile_skips_terminal_client_in_web_mode() {
-    use zellij_utils::input::options::MobileLayout;
+    use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 11;
     screen.add_client(client, /* is_web_client */ false).expect("TEST");
@@ -10670,7 +10673,7 @@ fn reevaluate_mobile_skips_terminal_client_in_web_mode() {
         .reevaluate_mobile_mode(
             client,
             MOBILE_SMALL,
-            MobileLayout::Web,
+            MobileLayoutConfiguration::Web,
             MOBILE_THRESHOLDS.0,
             MOBILE_THRESHOLDS.1,
         )
@@ -10683,7 +10686,7 @@ fn reevaluate_mobile_skips_terminal_client_in_web_mode() {
 
 #[test]
 fn reevaluate_mobile_routes_terminal_client_in_always_mode() {
-    use zellij_utils::input::options::MobileLayout;
+    use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 12;
     screen.add_client(client, /* is_web_client */ false).expect("TEST");
@@ -10692,7 +10695,7 @@ fn reevaluate_mobile_routes_terminal_client_in_always_mode() {
         .reevaluate_mobile_mode(
             client,
             MOBILE_SMALL,
-            MobileLayout::Always,
+            MobileLayoutConfiguration::Always,
             MOBILE_THRESHOLDS.0,
             MOBILE_THRESHOLDS.1,
         )
@@ -10705,7 +10708,7 @@ fn reevaluate_mobile_routes_terminal_client_in_always_mode() {
 
 #[test]
 fn reevaluate_mobile_zero_threshold_forces_entry() {
-    use zellij_utils::input::options::MobileLayout;
+    use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 13;
     screen.add_client(client, /* is_web_client */ false).expect("TEST");
@@ -10713,7 +10716,7 @@ fn reevaluate_mobile_zero_threshold_forces_entry() {
     // Viewport is "huge" but a 0 breakpoint makes the size gate
     // always match; under Always this means every client goes mobile.
     screen
-        .reevaluate_mobile_mode(client, MOBILE_LARGE, MobileLayout::Always, 0, 0)
+        .reevaluate_mobile_mode(client, MOBILE_LARGE, MobileLayoutConfiguration::Always, 0, 0)
         .expect("TEST");
     assert!(
         screen.is_in_mobile_mode(client),
@@ -10723,7 +10726,7 @@ fn reevaluate_mobile_zero_threshold_forces_entry() {
 
 #[test]
 fn reevaluate_mobile_never_never_routes() {
-    use zellij_utils::input::options::MobileLayout;
+    use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 14;
     screen.add_client(client, /* is_web_client */ true).expect("TEST");
@@ -10732,7 +10735,7 @@ fn reevaluate_mobile_never_never_routes() {
         .reevaluate_mobile_mode(
             client,
             MOBILE_SMALL,
-            MobileLayout::Never,
+            MobileLayoutConfiguration::Never,
             MOBILE_THRESHOLDS.0,
             MOBILE_THRESHOLDS.1,
         )
@@ -10745,7 +10748,7 @@ fn reevaluate_mobile_never_never_routes() {
 
 #[test]
 fn reevaluate_mobile_auto_demotes_after_growth() {
-    use zellij_utils::input::options::MobileLayout;
+    use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 15;
     screen.add_client(client, /* is_web_client */ true).expect("TEST");
@@ -10755,7 +10758,7 @@ fn reevaluate_mobile_auto_demotes_after_growth() {
         .reevaluate_mobile_mode(
             client,
             MOBILE_SMALL,
-            MobileLayout::Web,
+            MobileLayoutConfiguration::Web,
             MOBILE_THRESHOLDS.0,
             MOBILE_THRESHOLDS.1,
         )
@@ -10768,7 +10771,7 @@ fn reevaluate_mobile_auto_demotes_after_growth() {
         .reevaluate_mobile_mode(
             client,
             MOBILE_LARGE,
-            MobileLayout::Web,
+            MobileLayoutConfiguration::Web,
             MOBILE_THRESHOLDS.0,
             MOBILE_THRESHOLDS.1,
         )
@@ -10781,7 +10784,7 @@ fn reevaluate_mobile_auto_demotes_after_growth() {
 
 #[test]
 fn reevaluate_mobile_preserves_manual_entry_when_viewport_grows() {
-    use zellij_utils::input::options::MobileLayout;
+    use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 16;
     screen.add_client(client, /* is_web_client */ true).expect("TEST");
@@ -10792,7 +10795,7 @@ fn reevaluate_mobile_preserves_manual_entry_when_viewport_grows() {
     screen.enter_mobile_mode(client).expect("TEST");
     assert!(screen.is_in_mobile_mode(client));
     assert!(
-        !screen.mobile_auto_entered.contains(&client),
+        !screen.mobile_state.auto_entered.contains(&client),
         "manual entry must not be marked as auto",
     );
 
@@ -10802,7 +10805,7 @@ fn reevaluate_mobile_preserves_manual_entry_when_viewport_grows() {
         .reevaluate_mobile_mode(
             client,
             MOBILE_LARGE,
-            MobileLayout::Web,
+            MobileLayoutConfiguration::Web,
             MOBILE_THRESHOLDS.0,
             MOBILE_THRESHOLDS.1,
         )
@@ -10810,6 +10813,158 @@ fn reevaluate_mobile_preserves_manual_entry_when_viewport_grows() {
     assert!(
         screen.is_in_mobile_mode(client),
         "manually-entered client must NOT be auto-demoted on resize",
+    );
+}
+
+#[test]
+fn enter_mobile_mode_populates_consolidated_state() {
+    // Entering mobile mode must register the client's dedicated mobile
+    // tab in `mobile_state.tabs` and stash the prior active tab in
+    // `mobile_state.previous_tab_ids` so a later exit can return there.
+    let mut screen = setup_mobile_screen();
+    let client = 20;
+    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+
+    screen.enter_mobile_mode(client).expect("TEST");
+
+    assert!(
+        screen.mobile_state.tabs.contains_key(&client),
+        "entering mobile mode must record the client's mobile tab",
+    );
+    assert_eq!(
+        screen.mobile_state.previous_tab_ids.get(&client).copied(),
+        Some(0),
+        "the seeded tab 0 must be stashed as the prior tab",
+    );
+    assert!(
+        screen.is_in_mobile_mode(client),
+        "is_in_mobile_mode must reflect the new mobile_state.tabs entry",
+    );
+    // A manual entry must NOT set the auto-entered marker.
+    assert!(
+        !screen.mobile_state.auto_entered.contains(&client),
+        "manual enter_mobile_mode must not mark the client as auto-entered",
+    );
+}
+
+#[test]
+fn exit_mobile_mode_clears_all_consolidated_state() {
+    // Exiting must drop the client from every mobile_state map it could
+    // appear in: tabs, previous_tab_ids, and auto_entered. Auto-enter
+    // first (via reevaluate) so the auto_entered marker is set and we
+    // can confirm exit clears it too.
+    use zellij_utils::input::options::MobileLayoutConfiguration;
+    let mut screen = setup_mobile_screen();
+    let client = 21;
+    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_SMALL,
+            MobileLayoutConfiguration::Web,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(screen.mobile_state.tabs.contains_key(&client));
+    assert!(screen.mobile_state.auto_entered.contains(&client));
+
+    screen.exit_mobile_mode(client).expect("TEST");
+
+    assert!(
+        !screen.mobile_state.tabs.contains_key(&client),
+        "exit must remove the client's mobile tab entry",
+    );
+    assert!(
+        !screen.mobile_state.previous_tab_ids.contains_key(&client),
+        "exit must drop the stashed prior-tab entry",
+    );
+    assert!(
+        !screen.mobile_state.auto_entered.contains(&client),
+        "exit must clear the auto-entered marker",
+    );
+    assert!(
+        !screen.is_in_mobile_mode(client),
+        "client must no longer be in mobile mode after exit",
+    );
+}
+
+#[test]
+fn remove_client_clears_all_consolidated_state() {
+    // A disconnecting client must leave behind no mobile_state entries.
+    use zellij_utils::input::options::MobileLayoutConfiguration;
+    let mut screen = setup_mobile_screen();
+    let client = 22;
+    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_SMALL,
+            MobileLayoutConfiguration::Web,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(screen.mobile_state.tabs.contains_key(&client));
+    assert!(screen.mobile_state.auto_entered.contains(&client));
+
+    screen.remove_client(client).expect("TEST");
+
+    assert!(
+        !screen.mobile_state.tabs.contains_key(&client),
+        "disconnect must remove the client's mobile tab entry",
+    );
+    assert!(
+        !screen.mobile_state.previous_tab_ids.contains_key(&client),
+        "disconnect must drop the stashed prior-tab entry",
+    );
+    assert!(
+        !screen.mobile_state.auto_entered.contains(&client),
+        "disconnect must clear the auto-entered marker",
+    );
+}
+
+#[test]
+fn mobile_state_tracks_clients_independently() {
+    // Each mobile client gets its own dedicated tab tracked separately
+    // in mobile_state.tabs; removing one client must not disturb another.
+    let mut screen = setup_mobile_screen();
+    let client_a = 23;
+    let client_b = 24;
+    screen.add_client(client_a, /* is_web_client */ true).expect("TEST");
+    screen.add_client(client_b, /* is_web_client */ true).expect("TEST");
+
+    screen.enter_mobile_mode(client_a).expect("TEST");
+    screen.enter_mobile_mode(client_b).expect("TEST");
+
+    let tab_a = screen
+        .mobile_state
+        .tabs
+        .get(&client_a)
+        .copied()
+        .expect("client A must have a mobile tab");
+    let tab_b = screen
+        .mobile_state
+        .tabs
+        .get(&client_b)
+        .copied()
+        .expect("client B must have a mobile tab");
+    assert_ne!(
+        tab_a, tab_b,
+        "each mobile client must get its own dedicated tab",
+    );
+
+    screen.remove_client(client_a).expect("TEST");
+
+    assert!(
+        !screen.mobile_state.tabs.contains_key(&client_a),
+        "removed client's entry must be gone",
+    );
+    assert!(
+        screen.mobile_state.tabs.contains_key(&client_b),
+        "the other client's mobile state must be untouched",
     );
 }
 

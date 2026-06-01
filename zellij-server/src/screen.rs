@@ -51,7 +51,7 @@ use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
-use zellij_utils::input::options::{Clipboard, MobileLayout};
+use zellij_utils::input::options::{Clipboard, MobileLayoutConfiguration};
 use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
@@ -909,7 +909,7 @@ pub enum ScreenInstruction {
     ReevaluateMobileMode {
         client_id: ClientId,
         new_size: Size,
-        mobile_layout: MobileLayout,
+        mobile_layout: MobileLayoutConfiguration,
         threshold_cols: u16,
         threshold_rows: u16,
     },
@@ -1534,25 +1534,41 @@ pub(crate) struct Screen {
     /// Resolved styling to apply when `host_terminal_theme_mode == Light`.
     /// `None` disables auto-switch. Refreshed on each reconfigure.
     host_theme_light_styling: Option<Styling>,
+    /// Consolidated per-screen mobile-mode bookkeeping (tab tracking,
+    /// prior-tab memory, auto-entry markers, and per-tab fit overrides).
+    /// See `MobileState`.
+    mobile_state: MobileState,
+}
+
+/// Consolidated per-screen mobile-mode bookkeeping. Groups the four
+/// collections that together track which clients are in mobile mode,
+/// where they came from, whether their entry was auto-driven, and any
+/// per-tab fit overrides. The mobile-mode lifecycle helpers on `Screen`
+/// (`enter_mobile_mode`, `exit_mobile_mode`, `toggle_mobile_mode`,
+/// `reevaluate_mobile_mode`, and the fit-mode helpers) read and mutate
+/// these fields; they remain `Screen` methods because they also touch
+/// tabs, the plugin bus, and shadow-focus state.
+#[derive(Debug, Default)]
+struct MobileState {
     /// Per-client mobile tab tracking. Maps each client that is currently
     /// in mobile mode to its dedicated mobile tab id. Mobile tabs are
     /// `visible_to = Some({client_id})` so other clients never see them,
     /// and they are torn down when the client exits mobile mode or
     /// detaches.
-    mobile_tabs: HashMap<ClientId, usize>,
+    tabs: HashMap<ClientId, usize>,
     /// The tab id each client was on immediately before being routed
     /// into mobile mode. Used by `exit_mobile_mode` to send the client
     /// back to where it came from. Falls back to the first visible
     /// non-mobile tab if the prior tab has since been closed.
-    mobile_previous_tab_ids: HashMap<ClientId, usize>,
+    previous_tab_ids: HashMap<ClientId, usize>,
     /// Clients whose current mobile-mode entry was driven by the
     /// auto-routing path (initial-attach threshold or
     /// `ReevaluateMobileMode` from a `TerminalResize`). Tracked
-    /// separately from `mobile_tabs` because only auto-promoted
+    /// separately from `tabs` because only auto-promoted
     /// clients should ever be auto-demoted on a subsequent resize —
     /// a client that explicitly entered mobile via
     /// `Action::ToggleMobileMode` stays put until they toggle back.
-    mobile_auto_entered: HashSet<ClientId>,
+    auto_entered: HashSet<ClientId>,
     /// Per-tab "fit mode" override installed by the mobile plugin's
     /// Fit button. When present, `recompute_tab_size` returns
     /// `FitState::size` for that tab instead of taking the min of all
@@ -1569,7 +1585,7 @@ pub(crate) struct Screen {
     fit_states: HashMap<usize, FitState>,
 }
 
-/// Per-tab fit-mode bookkeeping. See `Screen::fit_states`.
+/// Per-tab fit-mode bookkeeping. See `MobileState::fit_states`.
 #[derive(Debug, Clone, Copy)]
 struct FitState {
     /// Mobile client that installed this fit. `remove_client` for
@@ -1739,10 +1755,7 @@ impl Screen {
             host_terminal_theme_mode: None,
             host_theme_dark_styling: None,
             host_theme_light_styling: None,
-            mobile_tabs: HashMap::new(),
-            mobile_previous_tab_ids: HashMap::new(),
-            mobile_auto_entered: HashSet::new(),
-            fit_states: HashMap::new(),
+            mobile_state: MobileState::default(),
         }
     }
 
@@ -1811,9 +1824,9 @@ impl Screen {
     }
 
     /// Returns true if `client_id` is currently in mobile mode (i.e.
-    /// has a tracked mobile tab in `mobile_tabs`).
+    /// has a tracked mobile tab in `mobile_state.tabs`).
     pub fn is_in_mobile_mode(&self, client_id: ClientId) -> bool {
-        self.mobile_tabs.contains_key(&client_id)
+        self.mobile_state.tabs.contains_key(&client_id)
     }
 
     /// Remove every shadow-focus entry for `client_id` across all tabs
@@ -1831,7 +1844,7 @@ impl Screen {
     /// - The client exits mobile mode (`exit_mobile_mode`).
     /// - The client disconnects (`remove_client`).
     fn clear_mobile_shadow_focus(&mut self, client_id: ClientId) {
-        let mobile_tab_id = self.mobile_tabs.get(&client_id).copied();
+        let mobile_tab_id = self.mobile_state.tabs.get(&client_id).copied();
         for tab in self.tabs.values_mut() {
             if Some(tab.id) == mobile_tab_id {
                 continue;
@@ -1861,7 +1874,7 @@ impl Screen {
         pane_id: PaneId,
     ) -> Result<()> {
         // Early exit: is the shadow focus already on this pane?
-        let mobile_tab_id = self.mobile_tabs.get(&client_id).copied();
+        let mobile_tab_id = self.mobile_state.tabs.get(&client_id).copied();
         for tab in self.tabs.values() {
             if Some(tab.id) == mobile_tab_id {
                 continue;
@@ -1894,12 +1907,12 @@ impl Screen {
     /// Promote `client_id` into a fresh per-client mobile tab. The tab
     /// is created with `visible_to = Some({client_id})` and contains a
     /// single plugin pane pointing at `zellij:mobile`. The previously
-    /// active tab (if any) is recorded in `mobile_previous_tab_ids` so
+    /// active tab (if any) is recorded in `mobile_state.previous_tab_ids` so
     /// `exit_mobile_mode` can return there. Idempotent.
     pub fn enter_mobile_mode(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to enter mobile mode for client {client_id}");
 
-        if self.mobile_tabs.contains_key(&client_id) {
+        if self.mobile_state.tabs.contains_key(&client_id) {
             // Already in mobile mode — nothing to do.
             return Ok(());
         }
@@ -1908,7 +1921,7 @@ impl Screen {
         // back to it. Falls back to the first visible non-mobile tab on
         // exit if this id is no longer valid.
         if let Some(prior) = self.active_tab_ids.get(&client_id).copied() {
-            self.mobile_previous_tab_ids.insert(client_id, prior);
+            self.mobile_state.previous_tab_ids.insert(client_id, prior);
         }
 
         // Defense-in-depth: drop any pre-existing shadow-focus entry
@@ -1946,7 +1959,7 @@ impl Screen {
             set.insert(client_id);
             tab.visible_to = Some(set);
         }
-        self.mobile_tabs.insert(client_id, tab_id);
+        self.mobile_state.tabs.insert(client_id, tab_id);
 
         // Look up whether this client is a web client so the plugin
         // pipeline routes the right capabilities.
@@ -1987,24 +2000,24 @@ impl Screen {
     pub fn exit_mobile_mode(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to exit mobile mode for client {client_id}");
 
-        let mobile_tab_id = match self.mobile_tabs.remove(&client_id) {
+        let mobile_tab_id = match self.mobile_state.tabs.remove(&client_id) {
             Some(id) => id,
             None => return Ok(()),
         };
         // Exiting always clears the auto-entered marker — the client's
         // mobile-mode state is now off, so any future re-entry
         // (whether auto or manual) starts from a clean slate.
-        self.mobile_auto_entered.remove(&client_id);
+        self.mobile_state.auto_entered.remove(&client_id);
 
         // Resolve the destination tab. Prefer the recorded prior tab;
         // if it's gone, pick the lowest-position tab visible to this
         // client that is not someone else's mobile tab.
-        let prior_tab_id = self.mobile_previous_tab_ids.remove(&client_id);
+        let prior_tab_id = self.mobile_state.previous_tab_ids.remove(&client_id);
         let destination = prior_tab_id
             .filter(|id| self.tabs.contains_key(id) && self.tab_visible_to(client_id, *id))
             .or_else(|| {
                 let mobile_tab_ids: HashSet<usize> =
-                    self.mobile_tabs.values().copied().collect();
+                    self.mobile_state.tabs.values().copied().collect();
                 self.tabs
                     .values()
                     .filter(|t| {
@@ -2037,7 +2050,7 @@ impl Screen {
         }
 
         // Clear any shadow-focus entries the mobile session created in
-        // other tabs. `mobile_tabs.remove(client_id)` above means the
+        // other tabs. `mobile_state.tabs.remove(client_id)` above means the
         // helper now considers every tab (no mobile tab to skip); the
         // destination tab is safe because the client has been added
         // to its `connected_clients` and therefore is_shadow_focus_client
@@ -2067,7 +2080,7 @@ impl Screen {
         &mut self,
         client_id: ClientId,
         new_size: Size,
-        mobile_layout: MobileLayout,
+        mobile_layout: MobileLayoutConfiguration,
         threshold_cols: u16,
         threshold_rows: u16,
     ) -> Result<()> {
@@ -2085,13 +2098,13 @@ impl Screen {
             threshold_rows,
         );
         let is_mobile = self.is_in_mobile_mode(client_id);
-        let was_auto = self.mobile_auto_entered.contains(&client_id);
+        let was_auto = self.mobile_state.auto_entered.contains(&client_id);
         if should_be_mobile && !is_mobile {
             // Auto-promote: small viewport just appeared (e.g. browser
             // delivered its real size after the initial server-side
             // fallback).
             self.enter_mobile_mode(client_id)?;
-            self.mobile_auto_entered.insert(client_id);
+            self.mobile_state.auto_entered.insert(client_id);
             self.render(None)?;
         } else if !should_be_mobile && is_mobile && was_auto {
             // Auto-demote: viewport grew back above the threshold
@@ -2466,11 +2479,11 @@ impl Screen {
         let mut tab_to_close = self.tabs.remove(&tab_id).with_context(err_context)?;
         // Drop any fit override pinned to this tab. The tab + pane are
         // gone; `recompute_tab_size(tab_id)` would no-op against the
-        // missing tab, but leaving the entry behind grows `fit_states`
+        // missing tab, but leaving the entry behind grows `mobile_state.fit_states`
         // unboundedly across repeated open/close cycles. No fullscreen
         // revert needed: the pane it was pinned to went away with the
         // tab.
-        self.fit_states.remove(&tab_id);
+        self.mobile_state.fit_states.remove(&tab_id);
         let mut pane_ids = tab_to_close.get_all_pane_ids();
 
         // here we extract the suppressed panes (these are background panes that don't care which
@@ -2604,7 +2617,7 @@ impl Screen {
         // emits `\x1b[2J` to every connected client on the next
         // tab render so they start from a clean canvas. Idempotent
         // and one-shot — the flag clears itself after the first use.
-        if let Some(fit) = self.fit_states.get(&tab_id).copied() {
+        if let Some(fit) = self.mobile_state.fit_states.get(&tab_id).copied() {
             if let Some(tab) = self.tabs.get_mut(&tab_id) {
                 if tab.size != fit.size {
                     tab.resize_whole_tab(fit.size).with_context(err_context)?;
@@ -2676,8 +2689,8 @@ impl Screen {
         // Last-writer-wins insert. A prior fit by another client on the
         // same tab is silently overwritten; that client's plugin still
         // thinks fit is on and will reclaim the override on its next
-        // UpdateFitSize (see the collision note on `Screen::fit_states`).
-        self.fit_states.insert(
+        // UpdateFitSize (see the collision note on `MobileState::fit_states`).
+        self.mobile_state.fit_states.insert(
             tab_id,
             FitState {
                 owning_client: client_id,
@@ -2698,6 +2711,7 @@ impl Screen {
         // lookup iterates because the map is keyed by tab_id for the
         // recompute hot path.
         let owned_tab = self
+            .mobile_state
             .fit_states
             .iter()
             .find(|(_, f)| f.owning_client == client_id)
@@ -2705,7 +2719,7 @@ impl Screen {
         let Some(tab_id) = owned_tab else {
             return Ok(false);
         };
-        let Some(fit) = self.fit_states.remove(&tab_id) else {
+        let Some(fit) = self.mobile_state.fit_states.remove(&tab_id) else {
             return Ok(false);
         };
         if !fit.was_fullscreen_before {
@@ -2733,7 +2747,7 @@ impl Screen {
         tab_id: usize,
         size: Size,
     ) -> Result<bool> {
-        let Some(fit) = self.fit_states.get_mut(&tab_id) else {
+        let Some(fit) = self.mobile_state.fit_states.get_mut(&tab_id) else {
             return Ok(false);
         };
         fit.size = size;
@@ -3584,7 +3598,7 @@ impl Screen {
         });
 
         let tab_name = tab_name.unwrap_or_else(|| String::new());
-        let mobile_tab_count = self.mobile_tabs.len();
+        let mobile_tab_count = self.mobile_state.tabs.len();
 
         let position = self.tabs.len();
         let mut tab = Tab::new(
@@ -3851,9 +3865,9 @@ impl Screen {
         // Detach also drops any mobile-mode bookkeeping for this client
         // — the mobile tab itself is collected via the `visible_to`
         // emptiness check below.
-        self.mobile_tabs.remove(&client_id);
-        self.mobile_previous_tab_ids.remove(&client_id);
-        self.mobile_auto_entered.remove(&client_id);
+        self.mobile_state.tabs.remove(&client_id);
+        self.mobile_state.previous_tab_ids.remove(&client_id);
+        self.mobile_state.auto_entered.remove(&client_id);
 
         // Fit-mode cleanup: drop every fit_states entry owned by the
         // disconnecting client. For each, revert fullscreen if it
@@ -3862,13 +3876,14 @@ impl Screen {
         // the visibility/garbage-collect loop below so the recompute
         // sees the cleared override.
         let to_clean: Vec<(usize, FitState)> = self
+            .mobile_state
             .fit_states
             .iter()
             .filter(|(_, f)| f.owning_client == client_id)
             .map(|(&t, f)| (t, *f))
             .collect();
         for (tab_id, fit) in to_clean {
-            self.fit_states.remove(&tab_id);
+            self.mobile_state.fit_states.remove(&tab_id);
             if !fit.was_fullscreen_before {
                 if let Some(tab) = self.tabs.get_mut(&tab_id) {
                     if tab.has_pane_with_pid(&fit.pane_id) {
@@ -3902,7 +3917,7 @@ impl Screen {
         // this client are by definition shadow-focus entries. Clear
         // them so the detached mobile client does not leave a stale
         // focus marker visible to other connected clients.
-        // `mobile_tabs.remove(&client_id)` above ensures the helper
+        // `mobile_state.tabs.remove(&client_id)` above ensures the helper
         // considers every tab.
         self.clear_mobile_shadow_focus(client_id);
         let previously_active_tab_id = self.active_tab_ids.get(&client_id).copied();
@@ -10802,7 +10817,7 @@ pub(crate) fn screen_thread_main(
                 // arm to demote it later if the viewport grows back
                 // above the threshold.
                 screen.enter_mobile_mode(client_id)?;
-                screen.mobile_auto_entered.insert(client_id);
+                screen.mobile_state.auto_entered.insert(client_id);
                 screen.render(None)?;
             },
             ScreenInstruction::ExitMobileMode(client_id, _completion_tx) => {
@@ -10814,7 +10829,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ToggleMobileMode(client_id, _completion_tx) => {
                 // Toggle is a *manual* operation. `toggle_mobile_mode`
                 // routes through the low-level enter/exit helpers
-                // which do not touch `mobile_auto_entered`, so a
+                // which do not touch `mobile_state.auto_entered`, so a
                 // toggle-to-enter leaves the client unmarked
                 // (preventing auto-demotion on a later resize), and a
                 // toggle-to-exit clears the marker via

@@ -2836,8 +2836,8 @@ impl Options {
             "mobile_layout"
         ) {
             Some((value, entry)) => {
-                use crate::input::options::MobileLayout;
-                match value.parse::<MobileLayout>() {
+                use crate::input::options::MobileLayoutConfiguration;
+                match value.parse::<MobileLayoutConfiguration>() {
                     Ok(v) => Some(v),
                     Err(e) => return Err(kdl_parsing_error!(e, entry)),
                 }
@@ -4264,7 +4264,7 @@ impl Options {
         }
     }
     fn mobile_layout_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        use crate::input::options::MobileLayout;
+        use crate::input::options::MobileLayoutConfiguration;
         let comment_text = format!(
             "{}\n{}\n{}\n{}\n{}\n{}\n{}",
             " ",
@@ -4275,12 +4275,12 @@ impl Options {
             "//   - \"never\"",
             "// ",
         );
-        let create_node = |value: MobileLayout| -> KdlNode {
+        let create_node = |value: MobileLayoutConfiguration| -> KdlNode {
             let mut node = KdlNode::new("mobile_layout");
             let s = match value {
-                MobileLayout::Web => "web",
-                MobileLayout::Always => "always",
-                MobileLayout::Never => "never",
+                MobileLayoutConfiguration::Web => "web",
+                MobileLayoutConfiguration::Always => "always",
+                MobileLayoutConfiguration::Never => "never",
             };
             node.push(KdlValue::String(s.to_string()));
             node
@@ -4292,7 +4292,7 @@ impl Options {
             }
             Some(node)
         } else if add_comments {
-            let mut node = create_node(MobileLayout::Web);
+            let mut node = create_node(MobileLayoutConfiguration::Web);
             node.set_leading(format!("{}\n// ", comment_text));
             Some(node)
         } else {
@@ -7345,11 +7345,11 @@ fn mobile_layout_kdl_round_trip_for_every_variant() {
     // → parse so a future broken FromStr arm or writer arm fails
     // loudly. Each loop also flips the breakpoints so the 0-sentinel
     // round-trips too.
-    use crate::input::options::MobileLayout;
+    use crate::input::options::MobileLayoutConfiguration;
     let cases = [
-        ("web", MobileLayout::Web, (60, 30)),
-        ("always", MobileLayout::Always, (0, 0)),
-        ("never", MobileLayout::Never, (40, 0)),
+        ("web", MobileLayoutConfiguration::Web, (60, 30)),
+        ("always", MobileLayoutConfiguration::Always, (0, 0)),
+        ("never", MobileLayoutConfiguration::Never, (40, 0)),
     ];
     for (value, expected, (cols, rows)) in cases {
         let fake_config = format!(

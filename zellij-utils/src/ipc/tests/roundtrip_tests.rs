@@ -13,7 +13,7 @@ use crate::input::layout::{
     TiledPaneLayout,
 };
 use crate::input::mouse::{MouseEvent, MouseEventType};
-use crate::input::options::{Clipboard, MobileLayout, OnForceClose, Options};
+use crate::input::options::{Clipboard, MobileLayoutConfiguration, OnForceClose, Options};
 use crate::ipc::{
     ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ResizeCause,
     ServerToClientMsg,
@@ -485,7 +485,7 @@ fn test_client_messages() {
                 visual_bell: Some(true),
                 focus_follows_mouse: Some(false),
                 mouse_click_through: Some(false),
-                mobile_layout: Some(MobileLayout::Always),
+                mobile_layout: Some(MobileLayoutConfiguration::Always),
                 mobile_threshold_cols: Some(72),
                 mobile_threshold_rows: Some(40),
             }),

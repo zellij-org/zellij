@@ -29,7 +29,7 @@ pub enum OnForceClose {
 /// `Web` with a 0 breakpoint forces every web client into mobile, and
 /// `Always` with a 0 breakpoint forces every client into mobile.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ArgEnum)]
-pub enum MobileLayout {
+pub enum MobileLayoutConfiguration {
     #[serde(alias = "web")]
     Web,
     #[serde(alias = "always")]
@@ -38,13 +38,13 @@ pub enum MobileLayout {
     Never,
 }
 
-impl Default for MobileLayout {
+impl Default for MobileLayoutConfiguration {
     fn default() -> Self {
         Self::Web
     }
 }
 
-impl FromStr for MobileLayout {
+impl FromStr for MobileLayoutConfiguration {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -56,7 +56,7 @@ impl FromStr for MobileLayout {
     }
 }
 
-impl MobileLayout {
+impl MobileLayoutConfiguration {
     /// Decide whether an attaching/resizing client should be routed
     /// into the mobile UI plugin.
     ///
@@ -90,9 +90,9 @@ impl MobileLayout {
         // rows; phones in landscape have wide cols but short rows.
         let size_match = cols_match || rows_match;
         match self {
-            MobileLayout::Always => size_match,
-            MobileLayout::Never => false,
-            MobileLayout::Web => is_web_client && size_match,
+            MobileLayoutConfiguration::Always => size_match,
+            MobileLayoutConfiguration::Never => false,
+            MobileLayoutConfiguration::Web => is_web_client && size_match,
         }
     }
 }
@@ -366,7 +366,7 @@ pub struct Options {
     /// breakpoints; `Web` additionally requires a web client.
     #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
     #[serde(default)]
-    pub mobile_layout: Option<MobileLayout>,
+    pub mobile_layout: Option<MobileLayoutConfiguration>,
 
     /// Column breakpoint for `mobile_layout` (used in both `web` and
     /// `always` modes). A client whose viewport has at most this many
@@ -711,7 +711,7 @@ mod tests {
     const LARGE: (usize, usize) = (200, 200);
 
     fn route(
-        layout: MobileLayout,
+        layout: MobileLayoutConfiguration,
         is_web: bool,
         viewport: (usize, usize),
         thresholds: (u16, u16),
@@ -731,7 +731,7 @@ mod tests {
             for &viewport in &[SMALL, WIDE_SHORT, TALL_NARROW, LARGE] {
                 for &thresholds in &[(60, 30), (0, 0), (0, 30), (60, 0)] {
                     assert!(
-                        !route(MobileLayout::Never, is_web, viewport, thresholds),
+                        !route(MobileLayoutConfiguration::Never, is_web, viewport, thresholds),
                         "Never must never route (is_web={is_web} viewport={viewport:?} thresholds={thresholds:?})",
                     );
                 }
@@ -743,27 +743,27 @@ mod tests {
     fn web_requires_web_client() {
         // Same small viewport, default breakpoints: only the web
         // client gets routed.
-        assert!(route(MobileLayout::Web, true, SMALL, (60, 30)));
-        assert!(!route(MobileLayout::Web, false, SMALL, (60, 30)));
+        assert!(route(MobileLayoutConfiguration::Web, true, SMALL, (60, 30)));
+        assert!(!route(MobileLayoutConfiguration::Web, false, SMALL, (60, 30)));
     }
 
     #[test]
     fn web_respects_size_in_either_dimension() {
         // OR semantics: matching only cols, or only rows, is enough.
-        assert!(route(MobileLayout::Web, true, TALL_NARROW, (60, 30)));
-        assert!(route(MobileLayout::Web, true, WIDE_SHORT, (60, 30)));
+        assert!(route(MobileLayoutConfiguration::Web, true, TALL_NARROW, (60, 30)));
+        assert!(route(MobileLayoutConfiguration::Web, true, WIDE_SHORT, (60, 30)));
         // Neither dimension small enough → no route.
-        assert!(!route(MobileLayout::Web, true, LARGE, (60, 30)));
+        assert!(!route(MobileLayoutConfiguration::Web, true, LARGE, (60, 30)));
     }
 
     #[test]
     fn always_routes_any_client_on_size_match() {
         // "Always" used to mean unconditional; now it is "Web minus
         // the is_web_client gate" — still respects breakpoints.
-        assert!(route(MobileLayout::Always, true, SMALL, (60, 30)));
-        assert!(route(MobileLayout::Always, false, SMALL, (60, 30)));
-        assert!(!route(MobileLayout::Always, true, LARGE, (60, 30)));
-        assert!(!route(MobileLayout::Always, false, LARGE, (60, 30)));
+        assert!(route(MobileLayoutConfiguration::Always, true, SMALL, (60, 30)));
+        assert!(route(MobileLayoutConfiguration::Always, false, SMALL, (60, 30)));
+        assert!(!route(MobileLayoutConfiguration::Always, true, LARGE, (60, 30)));
+        assert!(!route(MobileLayoutConfiguration::Always, false, LARGE, (60, 30)));
     }
 
     #[test]
@@ -771,12 +771,12 @@ mod tests {
         // With cols breakpoint = 0, the cols side of the OR is
         // always true, so size_match is always true regardless of
         // viewport.
-        assert!(route(MobileLayout::Always, false, LARGE, (0, 30)));
-        assert!(route(MobileLayout::Always, false, LARGE, (60, 0)));
-        assert!(route(MobileLayout::Always, false, LARGE, (0, 0)));
+        assert!(route(MobileLayoutConfiguration::Always, false, LARGE, (0, 30)));
+        assert!(route(MobileLayoutConfiguration::Always, false, LARGE, (60, 0)));
+        assert!(route(MobileLayoutConfiguration::Always, false, LARGE, (0, 0)));
         // And under Web mode the gate still requires a web client.
-        assert!(route(MobileLayout::Web, true, LARGE, (0, 0)));
-        assert!(!route(MobileLayout::Web, false, LARGE, (0, 0)));
+        assert!(route(MobileLayoutConfiguration::Web, true, LARGE, (0, 0)));
+        assert!(!route(MobileLayoutConfiguration::Web, false, LARGE, (0, 0)));
     }
 
     #[test]
@@ -787,40 +787,40 @@ mod tests {
         // transiently route into mobile mode and back out as soon as
         // the real viewport arrives, with no clean way to roll back
         // any state the mobile path created in between.
-        assert!(!route(MobileLayout::Always, true, (0, 0), (60, 30)));
-        assert!(!route(MobileLayout::Web, true, (0, 0), (60, 30)));
+        assert!(!route(MobileLayoutConfiguration::Always, true, (0, 0), (60, 30)));
+        assert!(!route(MobileLayoutConfiguration::Web, true, (0, 0), (60, 30)));
         // Even with thresholds set to "always match" (0, 0), a (0, 0)
         // viewport still means we have no info yet — both axes must
         // independently confirm they have a real measurement.
-        assert!(!route(MobileLayout::Always, true, (0, 0), (0, 0)));
+        assert!(!route(MobileLayoutConfiguration::Always, true, (0, 0), (0, 0)));
         // One real axis is enough — OR semantics still hold so a
         // genuine narrow-cols (or narrow-rows) report routes even if
         // the other axis hasn't reported yet.
-        assert!(route(MobileLayout::Always, true, (40, 0), (60, 30)));
-        assert!(route(MobileLayout::Always, true, (0, 20), (60, 30)));
+        assert!(route(MobileLayoutConfiguration::Always, true, (40, 0), (60, 30)));
+        assert!(route(MobileLayoutConfiguration::Always, true, (0, 20), (60, 30)));
     }
 
     #[test]
     fn boundary_inclusive_at_threshold() {
         // The check is `viewport <= threshold` — exactly hitting the
         // breakpoint counts as a match.
-        assert!(route(MobileLayout::Always, false, (60, 200), (60, 30)));
-        assert!(route(MobileLayout::Always, false, (200, 30), (60, 30)));
+        assert!(route(MobileLayoutConfiguration::Always, false, (60, 200), (60, 30)));
+        assert!(route(MobileLayoutConfiguration::Always, false, (200, 30), (60, 30)));
         // One above is no match.
-        assert!(!route(MobileLayout::Always, false, (61, 31), (60, 30)));
+        assert!(!route(MobileLayoutConfiguration::Always, false, (61, 31), (60, 30)));
     }
 
     #[test]
     fn from_str_accepts_canonical_and_lowercase() {
-        assert_eq!("web".parse::<MobileLayout>(), Ok(MobileLayout::Web));
-        assert_eq!("Web".parse::<MobileLayout>(), Ok(MobileLayout::Web));
-        assert_eq!("always".parse::<MobileLayout>(), Ok(MobileLayout::Always));
-        assert_eq!("never".parse::<MobileLayout>(), Ok(MobileLayout::Never));
-        assert!("auto".parse::<MobileLayout>().is_err());
+        assert_eq!("web".parse::<MobileLayoutConfiguration>(), Ok(MobileLayoutConfiguration::Web));
+        assert_eq!("Web".parse::<MobileLayoutConfiguration>(), Ok(MobileLayoutConfiguration::Web));
+        assert_eq!("always".parse::<MobileLayoutConfiguration>(), Ok(MobileLayoutConfiguration::Always));
+        assert_eq!("never".parse::<MobileLayoutConfiguration>(), Ok(MobileLayoutConfiguration::Never));
+        assert!("auto".parse::<MobileLayoutConfiguration>().is_err());
     }
 
     #[test]
     fn default_is_web() {
-        assert_eq!(MobileLayout::default(), MobileLayout::Web);
+        assert_eq!(MobileLayoutConfiguration::default(), MobileLayoutConfiguration::Web);
     }
 }

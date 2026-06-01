@@ -761,11 +761,11 @@ impl From<crate::input::options::Options>
             mouse_click_through: options.mouse_click_through,
             mobile_layout: options.mobile_layout.map(|m| {
                 use crate::client_server_contract::client_server_contract::MobileLayout as ProtoMobileLayout;
-                use crate::input::options::MobileLayout;
+                use crate::input::options::MobileLayoutConfiguration;
                 match m {
-                    MobileLayout::Web => ProtoMobileLayout::Web as i32,
-                    MobileLayout::Always => ProtoMobileLayout::Always as i32,
-                    MobileLayout::Never => ProtoMobileLayout::Never as i32,
+                    MobileLayoutConfiguration::Web => ProtoMobileLayout::Web as i32,
+                    MobileLayoutConfiguration::Always => ProtoMobileLayout::Always as i32,
+                    MobileLayoutConfiguration::Never => ProtoMobileLayout::Never as i32,
                 }
             }),
             mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u32),
@@ -871,13 +871,13 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 .mobile_layout
                 .map(|m| match ProtoMobileLayout::from_i32(m) {
                     Some(ProtoMobileLayout::Web) => {
-                        Ok(crate::input::options::MobileLayout::Web)
+                        Ok(crate::input::options::MobileLayoutConfiguration::Web)
                     },
                     Some(ProtoMobileLayout::Always) => {
-                        Ok(crate::input::options::MobileLayout::Always)
+                        Ok(crate::input::options::MobileLayoutConfiguration::Always)
                     },
                     Some(ProtoMobileLayout::Never) => {
-                        Ok(crate::input::options::MobileLayout::Never)
+                        Ok(crate::input::options::MobileLayoutConfiguration::Never)
                     },
                     _ => Err(anyhow!("Invalid MobileLayout value: {}", m)),
                 })
