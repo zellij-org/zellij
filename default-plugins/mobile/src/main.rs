@@ -44,8 +44,6 @@ impl ZellijPlugin for State {
             // show/hide threshold.
             EventType::SoftKeyboardVisibilityChanged,
         ]);
-
-        set_soft_keyboard(true);
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -79,21 +77,11 @@ impl ZellijPlugin for State {
                             .map(|t| t.position);
                     }
                 }
-                // Push the shadow focus to the server now in case
-                // PaneUpdate has not yet fired (event ordering varies on
-                // first plugin load) — `sync_shadow_focus` is a no-op
-                // when `current_pane()` is None, so it is safe to call
-                // even before pane data is available.
                 sync_shadow_focus(self);
                 true
             },
             Event::PaneUpdate(manifest) => {
                 self.panes_by_tab_position = manifest.panes;
-                // Drop cached viewports for panes that no longer exist
-                // in the manifest. `PaneRenderReportWithAnsi` carries
-                // changed panes only (see `get_changed_panes_per_client`
-                // in `wasm_bridge.rs`), so without this prune the cache
-                // would grow unbounded as panes close.
                 let live_pane_ids: std::collections::HashSet<PaneId> = self
                     .panes_by_tab_position
                     .values()
@@ -103,10 +91,6 @@ impl ZellijPlugin for State {
                     .retain(|id, _| live_pane_ids.contains(id));
                 self.pane_last_activity
                     .retain(|id, _| live_pane_ids.contains(id));
-                // If the pane that was being "fit" disappeared (closed
-                // by the user from another client, layout change),
-                // the server's fit entry is now stuck on a dead pane
-                // id. Clear locally + tell the server to revert.
                 if let Some(selected) = self.selected_pane_id {
                     if !live_pane_ids.contains(&selected) {
                         clear_fit_if_active(self);
