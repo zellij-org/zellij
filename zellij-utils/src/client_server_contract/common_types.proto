@@ -1174,6 +1174,21 @@ message Options {
   optional bool mouse_click_through = 45;
   optional string theme_dark = 46;
   optional string theme_light = 47;
+  optional bool osc1337_passthrough = 48;
+  optional bool osc1337_inline_images = 49;
+  optional bool osc1337_set_mark = 50;
+  optional bool osc1337_current_dir = 51;
+  optional bool osc1337_highlight_cursor_line = 52;
+  optional bool osc1337_unicode_version = 53;
+  optional bool osc1337_set_user_var = 54;
+  optional bool osc1337_set_profile = 55;
+  optional bool osc1337_set_badge_format = 56;
+  optional bool osc1337_clear_scrollback = 57;
+  optional bool osc1337_clipboard_copy = 58;
+  optional bool osc1337_steal_focus = 59;
+  optional bool osc1337_request_attention = 60;
+  optional bool osc1337_remote_host = 61;
+  optional bool osc1337_shell_integration_version = 62;
 }
 
 enum OnForceClose {

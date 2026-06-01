@@ -123,6 +123,99 @@ pub struct Options {
     #[serde(default)]
     pub osc8_hyperlinks: Option<bool>,
 
+    /// OSC 1337 (WezTerm/iTerm2) master switch. When `false`, no OSC 1337
+    /// sub-command is forwarded to the host terminal regardless of the
+    /// per-sub-command toggles below. (default: true)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_passthrough: Option<bool>,
+
+    /// Forward OSC 1337 `File=` inline image sequences (`inline=1` only;
+    /// `inline=0` host-side downloads are always blocked). (default: true)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_inline_images: Option<bool>,
+
+    /// Forward OSC 1337 `SetMark` (records a scrollback mark in the host
+    /// terminal). (default: true)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_set_mark: Option<bool>,
+
+    /// Forward OSC 1337 `CurrentDir=` (host terminal shell-integration
+    /// breadcrumbs). (default: true)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_current_dir: Option<bool>,
+
+    /// Forward OSC 1337 `HighlightCursorLine=`. (default: true)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_highlight_cursor_line: Option<bool>,
+
+    /// Forward OSC 1337 `UnicodeVersion=`. (default: true)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_unicode_version: Option<bool>,
+
+    /// Forward OSC 1337 `SetUserVar=` (fires Lua callbacks in WezTerm).
+    /// Off by default because the host terminal's user-var handlers may
+    /// trigger arbitrary actions. (default: false)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_set_user_var: Option<bool>,
+
+    /// Forward OSC 1337 `SetProfile=` (mutates host terminal profile —
+    /// keybindings, colors, font). Off by default. (default: false)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_set_profile: Option<bool>,
+
+    /// Forward OSC 1337 `SetBadgeFormat=` (host terminal badge UI). Off
+    /// by default. (default: false)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_set_badge_format: Option<bool>,
+
+    /// Forward OSC 1337 `ClearScrollback` (erases the host terminal's
+    /// scrollback, not just the pane's). Off by default. (default: false)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_clear_scrollback: Option<bool>,
+
+    /// Forward OSC 1337 `Copy=` / `CopyToClipboard=` / `EndCopy` (direct
+    /// clipboard write). Off by default — clipboard injection is a known
+    /// vector for malicious remote processes. (default: false)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_clipboard_copy: Option<bool>,
+
+    /// Forward OSC 1337 `StealFocus` (forces host terminal window to
+    /// foreground). Off by default. (default: false)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_steal_focus: Option<bool>,
+
+    /// Forward OSC 1337 `RequestAttention=yes|once|no|fireworks` (host
+    /// terminal dock-bouncing / window highlighting). Off by default —
+    /// same risk class as `StealFocus`. (default: false)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_request_attention: Option<bool>,
+
+    /// Forward OSC 1337 `RemoteHost=user@host` (shell-integration login
+    /// metadata). Pure metadata, on by default. (default: true)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_remote_host: Option<bool>,
+
+    /// Forward OSC 1337 `ShellIntegrationVersion=<version>[;<shell>]`
+    /// (shell-integration version advertisement). Pure metadata, on by
+    /// default. (default: true)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc1337_shell_integration_version: Option<bool>,
+
     /// Explicit full path to open the scrollback editor (default is $EDITOR or $VISUAL)
     #[clap(long, value_parser)]
     pub scrollback_editor: Option<PathBuf>,
@@ -337,6 +430,33 @@ impl Options {
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
         let osc8_hyperlinks = other.osc8_hyperlinks.or(self.osc8_hyperlinks);
+        let osc1337_passthrough = other.osc1337_passthrough.or(self.osc1337_passthrough);
+        let osc1337_inline_images = other.osc1337_inline_images.or(self.osc1337_inline_images);
+        let osc1337_set_mark = other.osc1337_set_mark.or(self.osc1337_set_mark);
+        let osc1337_current_dir = other.osc1337_current_dir.or(self.osc1337_current_dir);
+        let osc1337_highlight_cursor_line = other
+            .osc1337_highlight_cursor_line
+            .or(self.osc1337_highlight_cursor_line);
+        let osc1337_unicode_version = other
+            .osc1337_unicode_version
+            .or(self.osc1337_unicode_version);
+        let osc1337_set_user_var = other.osc1337_set_user_var.or(self.osc1337_set_user_var);
+        let osc1337_set_profile = other.osc1337_set_profile.or(self.osc1337_set_profile);
+        let osc1337_set_badge_format = other
+            .osc1337_set_badge_format
+            .or(self.osc1337_set_badge_format);
+        let osc1337_clear_scrollback = other
+            .osc1337_clear_scrollback
+            .or(self.osc1337_clear_scrollback);
+        let osc1337_clipboard_copy = other.osc1337_clipboard_copy.or(self.osc1337_clipboard_copy);
+        let osc1337_steal_focus = other.osc1337_steal_focus.or(self.osc1337_steal_focus);
+        let osc1337_request_attention = other
+            .osc1337_request_attention
+            .or(self.osc1337_request_attention);
+        let osc1337_remote_host = other.osc1337_remote_host.or(self.osc1337_remote_host);
+        let osc1337_shell_integration_version = other
+            .osc1337_shell_integration_version
+            .or(self.osc1337_shell_integration_version);
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
@@ -405,6 +525,21 @@ impl Options {
             copy_clipboard,
             copy_on_select,
             osc8_hyperlinks,
+            osc1337_passthrough,
+            osc1337_inline_images,
+            osc1337_set_mark,
+            osc1337_current_dir,
+            osc1337_highlight_cursor_line,
+            osc1337_unicode_version,
+            osc1337_set_user_var,
+            osc1337_set_profile,
+            osc1337_set_badge_format,
+            osc1337_clear_scrollback,
+            osc1337_clipboard_copy,
+            osc1337_steal_focus,
+            osc1337_request_attention,
+            osc1337_remote_host,
+            osc1337_shell_integration_version,
             scrollback_editor,
             session_name,
             attach_to_session,
@@ -476,6 +611,40 @@ impl Options {
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
         let osc8_hyperlinks = other.osc8_hyperlinks.or(self.osc8_hyperlinks);
+        let osc1337_passthrough = merge_bool(other.osc1337_passthrough, self.osc1337_passthrough);
+        let osc1337_inline_images =
+            merge_bool(other.osc1337_inline_images, self.osc1337_inline_images);
+        let osc1337_set_mark = merge_bool(other.osc1337_set_mark, self.osc1337_set_mark);
+        let osc1337_current_dir = merge_bool(other.osc1337_current_dir, self.osc1337_current_dir);
+        let osc1337_highlight_cursor_line = merge_bool(
+            other.osc1337_highlight_cursor_line,
+            self.osc1337_highlight_cursor_line,
+        );
+        let osc1337_unicode_version =
+            merge_bool(other.osc1337_unicode_version, self.osc1337_unicode_version);
+        let osc1337_set_user_var =
+            merge_bool(other.osc1337_set_user_var, self.osc1337_set_user_var);
+        let osc1337_set_profile = merge_bool(other.osc1337_set_profile, self.osc1337_set_profile);
+        let osc1337_set_badge_format = merge_bool(
+            other.osc1337_set_badge_format,
+            self.osc1337_set_badge_format,
+        );
+        let osc1337_clear_scrollback = merge_bool(
+            other.osc1337_clear_scrollback,
+            self.osc1337_clear_scrollback,
+        );
+        let osc1337_clipboard_copy =
+            merge_bool(other.osc1337_clipboard_copy, self.osc1337_clipboard_copy);
+        let osc1337_steal_focus = merge_bool(other.osc1337_steal_focus, self.osc1337_steal_focus);
+        let osc1337_request_attention = merge_bool(
+            other.osc1337_request_attention,
+            self.osc1337_request_attention,
+        );
+        let osc1337_remote_host = merge_bool(other.osc1337_remote_host, self.osc1337_remote_host);
+        let osc1337_shell_integration_version = merge_bool(
+            other.osc1337_shell_integration_version,
+            self.osc1337_shell_integration_version,
+        );
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
@@ -540,6 +709,21 @@ impl Options {
             copy_clipboard,
             copy_on_select,
             osc8_hyperlinks,
+            osc1337_passthrough,
+            osc1337_inline_images,
+            osc1337_set_mark,
+            osc1337_current_dir,
+            osc1337_highlight_cursor_line,
+            osc1337_unicode_version,
+            osc1337_set_user_var,
+            osc1337_set_profile,
+            osc1337_set_badge_format,
+            osc1337_clear_scrollback,
+            osc1337_clipboard_copy,
+            osc1337_steal_focus,
+            osc1337_request_attention,
+            osc1337_remote_host,
+            osc1337_shell_integration_version,
             scrollback_editor,
             session_name,
             attach_to_session,

@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: incorrect interpretation of unicode characters in KKP STDIN (https://github.com/zellij-org/zellij/pull/5110)
 * fix: some issues regarding the interaction of fullscreen panes with resize/scrollback-editing (https://github.com/zellij-org/zellij/pull/5117)
 * fix: allow releasing from non-main branches in our build system (https://github.com/zellij-org/zellij/pull/5127)
+* feat(grid): WezTerm/iTerm2 OSC 1337 sub-command passthrough — inline images (`File=`), `SetMark`, `CurrentDir=`, `HighlightCursorLine=`, `UnicodeVersion=`, `SetUserVar=`, `SetProfile=`, `SetBadgeFormat=`, `ClearScrollback`, `Copy=` / `CopyToClipboard=` / `EndCopy`, `StealFocus`, `RequestAttention=`, `RemoteHost=`, `ShellIntegrationVersion=`. Per-sub-command toggles plus a master `osc1337_passthrough` switch in `Options`; defaults are conservative (display-only and shell-integration metadata on, clipboard / focus / attention / state-mutation off). All payloads are parsed, sanitized, and rebuilt from a fixed template before emission so user bytes never reach the host terminal as part of an unescaped sequence; `File=` with `inline=0` (host download) is always blocked, `RequestAttention=` is whitelisted to `yes|once|no|fireworks`, `RemoteHost=` requires `user@host`.
 
 ## [0.44.1] - 2026-04-07
 * fix: don't display default ports as offline in `share` plugin (https://github.com/zellij-org/zellij/pull/4908)

@@ -233,6 +233,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let arrow_fonts = true;
     let styled_underlines = true;
     let osc8_hyperlinks = true;
+    let osc1337_config = crate::panes::grid::Osc1337Config::default();
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
@@ -265,6 +266,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         arrow_fonts,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
@@ -320,6 +322,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
     let arrow_fonts = true;
     let styled_underlines = true;
     let osc8_hyperlinks = true;
+    let osc1337_config = crate::panes::grid::Osc1337Config::default();
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
@@ -352,6 +355,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         arrow_fonts,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
@@ -422,6 +426,7 @@ fn create_new_tab_with_swap_layouts(
     let arrow_fonts = true;
     let styled_underlines = true;
     let osc8_hyperlinks = true;
+    let osc1337_config = crate::panes::grid::Osc1337Config::default();
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
@@ -454,6 +459,7 @@ fn create_new_tab_with_swap_layouts(
         arrow_fonts,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
@@ -525,6 +531,7 @@ fn create_new_tab_with_os_api(
     let arrow_fonts = true;
     let styled_underlines = true;
     let osc8_hyperlinks = true;
+    let osc1337_config = crate::panes::grid::Osc1337Config::default();
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
@@ -557,6 +564,7 @@ fn create_new_tab_with_os_api(
         arrow_fonts,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
@@ -614,6 +622,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let arrow_fonts = true;
     let styled_underlines = true;
     let osc8_hyperlinks = true;
+    let osc1337_config = crate::panes::grid::Osc1337Config::default();
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
@@ -646,6 +655,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         arrow_fonts,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
@@ -717,6 +727,7 @@ fn create_new_tab_with_mock_pty_writer(
     let arrow_fonts = true;
     let styled_underlines = true;
     let osc8_hyperlinks = true;
+    let osc1337_config = crate::panes::grid::Osc1337Config::default();
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
@@ -749,6 +760,7 @@ fn create_new_tab_with_mock_pty_writer(
         arrow_fonts,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
@@ -811,6 +823,7 @@ fn create_new_tab_with_sixel_support(
     let arrow_fonts = true;
     let styled_underlines = true;
     let osc8_hyperlinks = true;
+    let osc1337_config = crate::panes::grid::Osc1337Config::default();
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
@@ -843,6 +856,7 @@ fn create_new_tab_with_sixel_support(
         arrow_fonts,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
@@ -12518,6 +12532,7 @@ fn create_new_tab_with_plugin_receiver(
     let arrow_fonts = true;
     let styled_underlines = true;
     let osc8_hyperlinks = true;
+    let osc1337_config = crate::panes::grid::Osc1337Config::default();
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
@@ -12550,6 +12565,7 @@ fn create_new_tab_with_plugin_receiver(
         arrow_fonts,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
@@ -14330,11 +14346,12 @@ fn create_new_tab_with_server_receiver(
         terminal_emulator_color_codes,
         (vec![], vec![]),
         PathBuf::from("my_default_shell"),
-        false, // debug
-        true,  // arrow_fonts
-        true,  // styled_underlines
-        true,  // osc8_hyperlinks
-        false, // explicitly_disable_kitty_keyboard_protocol
+        false,                                        // debug
+        true,                                         // arrow_fonts
+        true,                                         // styled_underlines
+        true,                                         // osc8_hyperlinks
+        crate::panes::grid::Osc1337Config::default(), // osc1337_config
+        false,                                        // explicitly_disable_kitty_keyboard_protocol
         None,
         false,
         WebSharing::Off,
@@ -14844,4 +14861,386 @@ fn hidden_cursor_still_emits_cup_for_host_terminal_positioning() {
         !client_output.contains("\u{1b}[?25h"),
         "Show-cursor sequence must not be present when app has hidden the cursor"
     );
+}
+
+// ─── OSC 1337 (WezTerm/iTerm2) passthrough ───────────────────────────────
+
+fn fresh_grid_for_osc1337_test() -> crate::panes::grid::Grid {
+    use crate::panes::grid::Grid;
+    use crate::panes::link_handler::LinkHandler;
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
+    Grid::new(
+        24,
+        80,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    )
+}
+
+fn feed_bytes_osc1337(grid: &mut crate::panes::grid::Grid, bytes: &[u8]) {
+    let mut vte_parser = vte::Parser::new();
+    for &byte in bytes {
+        vte_parser.advance(grid, byte);
+    }
+}
+
+#[test]
+fn osc1337_setmark_parses_with_no_value() {
+    use crate::panes::grid::Osc1337Command;
+    let mut grid = fresh_grid_for_osc1337_test();
+    feed_bytes_osc1337(&mut grid, b"\x1b]1337;SetMark\x07");
+    assert_eq!(grid.pending_osc1337_commands.len(), 1);
+    assert_eq!(grid.pending_osc1337_commands[0], Osc1337Command::SetMark);
+}
+
+#[test]
+fn osc1337_clearscrollback_endcopy_stealfocus_parse() {
+    use crate::panes::grid::Osc1337Command;
+    let mut grid = fresh_grid_for_osc1337_test();
+    feed_bytes_osc1337(
+        &mut grid,
+        b"\x1b]1337;ClearScrollback\x07\x1b]1337;EndCopy\x07\x1b]1337;StealFocus\x07",
+    );
+    assert_eq!(grid.pending_osc1337_commands.len(), 3);
+    assert_eq!(
+        grid.pending_osc1337_commands[0],
+        Osc1337Command::ClearScrollback
+    );
+    assert_eq!(grid.pending_osc1337_commands[1], Osc1337Command::EndCopy);
+    assert_eq!(grid.pending_osc1337_commands[2], Osc1337Command::StealFocus);
+}
+
+#[test]
+fn osc1337_inline_image_parses_and_canonicalizes() {
+    use crate::panes::grid::Osc1337Command;
+    let mut grid = fresh_grid_for_osc1337_test();
+    // base64 of "PNGdata"
+    feed_bytes_osc1337(
+        &mut grid,
+        b"\x1b]1337;File=name=Zm9v;inline=1;width=auto:UE5HZGF0YQ==\x07",
+    );
+    assert_eq!(grid.pending_osc1337_commands.len(), 1);
+    match &grid.pending_osc1337_commands[0] {
+        Osc1337Command::File { args, payload } => {
+            assert!(args.contains("name=Zm9v"));
+            assert!(args.contains("inline=1"));
+            assert!(args.contains("width=auto"));
+            assert_eq!(payload, "UE5HZGF0YQ==");
+        },
+        other => panic!("expected File variant, got {:?}", other),
+    }
+    // Canonical re-emission has the BEL terminator and the 1337;File= envelope.
+    let bytes = grid.pending_osc1337_commands[0].to_canonical_bytes();
+    let s = String::from_utf8(bytes).unwrap();
+    assert!(s.starts_with("\x1b]1337;File="));
+    assert!(s.ends_with("\x07"));
+    assert!(s.contains(":UE5HZGF0YQ=="));
+}
+
+#[test]
+fn osc1337_file_inline_zero_is_rejected() {
+    let mut grid = fresh_grid_for_osc1337_test();
+    feed_bytes_osc1337(
+        &mut grid,
+        b"\x1b]1337;File=name=Zm9v;inline=0:UE5HZGF0YQ==\x07",
+    );
+    assert!(
+        grid.pending_osc1337_commands.is_empty(),
+        "inline=0 (host download) must not be forwarded"
+    );
+}
+
+#[test]
+fn osc1337_setuservar_extracts_key_and_base64_value() {
+    use crate::panes::grid::Osc1337Command;
+    let mut grid = fresh_grid_for_osc1337_test();
+    // "hello" base64 = aGVsbG8=
+    feed_bytes_osc1337(&mut grid, b"\x1b]1337;SetUserVar=greeting=aGVsbG8=\x07");
+    assert_eq!(grid.pending_osc1337_commands.len(), 1);
+    match &grid.pending_osc1337_commands[0] {
+        Osc1337Command::SetUserVar { key, value_b64 } => {
+            assert_eq!(key, "greeting");
+            assert_eq!(value_b64, "aGVsbG8=");
+        },
+        other => panic!("expected SetUserVar, got {:?}", other),
+    }
+}
+
+#[test]
+fn osc1337_currentdir_strips_control_chars() {
+    use crate::panes::grid::Osc1337Command;
+    let mut grid = fresh_grid_for_osc1337_test();
+    // Embedded ESC, BEL, and CR must be stripped from the path.
+    feed_bytes_osc1337(&mut grid, b"\x1b]1337;CurrentDir=/home/u\x1bser\rname\x07");
+    assert_eq!(grid.pending_osc1337_commands.len(), 1);
+    match &grid.pending_osc1337_commands[0] {
+        Osc1337Command::CurrentDir(p) => {
+            assert!(!p.contains('\x1b'));
+            assert!(!p.contains('\r'));
+            // Path itself should still contain valid chars
+            assert!(p.contains("/home/u"));
+        },
+        other => panic!("expected CurrentDir, got {:?}", other),
+    }
+}
+
+#[test]
+fn osc1337_highlight_cursor_line_yes_no() {
+    use crate::panes::grid::Osc1337Command;
+    let mut grid = fresh_grid_for_osc1337_test();
+    feed_bytes_osc1337(
+        &mut grid,
+        b"\x1b]1337;HighlightCursorLine=yes\x07\x1b]1337;HighlightCursorLine=no\x07",
+    );
+    assert_eq!(grid.pending_osc1337_commands.len(), 2);
+    assert_eq!(
+        grid.pending_osc1337_commands[0],
+        Osc1337Command::HighlightCursorLine(true)
+    );
+    assert_eq!(
+        grid.pending_osc1337_commands[1],
+        Osc1337Command::HighlightCursorLine(false)
+    );
+}
+
+#[test]
+fn osc1337_unknown_subcommand_dropped() {
+    let mut grid = fresh_grid_for_osc1337_test();
+    feed_bytes_osc1337(&mut grid, b"\x1b]1337;ThisIsNotAThing=blah\x07");
+    assert!(grid.pending_osc1337_commands.is_empty());
+}
+
+#[test]
+fn osc1337_st_terminator_accepted() {
+    use crate::panes::grid::Osc1337Command;
+    let mut grid = fresh_grid_for_osc1337_test();
+    feed_bytes_osc1337(&mut grid, b"\x1b]1337;SetMark\x1b\\");
+    assert_eq!(grid.pending_osc1337_commands.len(), 1);
+    assert_eq!(grid.pending_osc1337_commands[0], Osc1337Command::SetMark);
+}
+
+#[test]
+fn osc1337_canonical_emit_is_bel_and_fixed_template() {
+    use crate::panes::grid::Osc1337Command;
+    assert_eq!(
+        Osc1337Command::SetMark.to_canonical_bytes(),
+        b"\x1b]1337;SetMark\x07".to_vec()
+    );
+    assert_eq!(
+        Osc1337Command::EndCopy.to_canonical_bytes(),
+        b"\x1b]1337;EndCopy\x07".to_vec()
+    );
+    assert_eq!(
+        Osc1337Command::StealFocus.to_canonical_bytes(),
+        b"\x1b]1337;StealFocus\x07".to_vec()
+    );
+    assert_eq!(
+        Osc1337Command::CurrentDir("/tmp".to_string()).to_canonical_bytes(),
+        b"\x1b]1337;CurrentDir=/tmp\x07".to_vec()
+    );
+    assert_eq!(
+        Osc1337Command::HighlightCursorLine(true).to_canonical_bytes(),
+        b"\x1b]1337;HighlightCursorLine=yes\x07".to_vec()
+    );
+    assert_eq!(
+        Osc1337Command::HighlightCursorLine(false).to_canonical_bytes(),
+        b"\x1b]1337;HighlightCursorLine=no\x07".to_vec()
+    );
+    assert_eq!(
+        Osc1337Command::Copy("aGk=".to_string()).to_canonical_bytes(),
+        b"\x1b]1337;Copy=:aGk=\x07".to_vec()
+    );
+    assert_eq!(
+        Osc1337Command::SetUserVar {
+            key: "k".to_string(),
+            value_b64: "djE=".to_string(),
+        }
+        .to_canonical_bytes(),
+        b"\x1b]1337;SetUserVar=k=djE=\x07".to_vec()
+    );
+}
+
+#[test]
+fn osc1337_config_default_allows_safe_blocks_unsafe() {
+    use crate::panes::grid::{Osc1337Command, Osc1337Config};
+    let cfg = Osc1337Config::default();
+    // Group A — safe by default
+    assert!(cfg.allows(&Osc1337Command::SetMark));
+    assert!(cfg.allows(&Osc1337Command::CurrentDir("/x".into())));
+    assert!(cfg.allows(&Osc1337Command::HighlightCursorLine(true)));
+    assert!(cfg.allows(&Osc1337Command::UnicodeVersion("9".into())));
+    assert!(cfg.allows(&Osc1337Command::File {
+        args: "inline=1".into(),
+        payload: "AA==".into(),
+    }));
+    // Group B/C — blocked by default
+    assert!(!cfg.allows(&Osc1337Command::SetUserVar {
+        key: "k".into(),
+        value_b64: "AA==".into(),
+    }));
+    assert!(!cfg.allows(&Osc1337Command::SetProfile("p".into())));
+    assert!(!cfg.allows(&Osc1337Command::SetBadgeFormat("AA==".into())));
+    assert!(!cfg.allows(&Osc1337Command::ClearScrollback));
+    assert!(!cfg.allows(&Osc1337Command::Copy("AA==".into())));
+    assert!(!cfg.allows(&Osc1337Command::CopyToClipboard("rule".into())));
+    assert!(!cfg.allows(&Osc1337Command::EndCopy));
+    assert!(!cfg.allows(&Osc1337Command::StealFocus));
+}
+
+#[test]
+fn osc1337_config_master_passthrough_off_blocks_everything() {
+    use crate::panes::grid::{Osc1337Command, Osc1337Config};
+    let mut cfg = Osc1337Config::default();
+    cfg.passthrough = false;
+    // Even sub-commands that are individually enabled are blocked.
+    cfg.set_mark = true;
+    cfg.inline_images = true;
+    assert!(!cfg.allows(&Osc1337Command::SetMark));
+    assert!(!cfg.allows(&Osc1337Command::File {
+        args: String::new(),
+        payload: "AA==".into(),
+    }));
+}
+
+#[test]
+fn osc1337_text_field_sanitizer_strips_controls_and_caps_length() {
+    use crate::panes::grid::{sanitize_osc1337_text_field, OSC1337_TEXT_FIELD_MAX_LEN};
+    let dirty = "a\x1bb\x07c\x1b]1337;evil\x07d";
+    let clean = sanitize_osc1337_text_field(dirty);
+    assert!(!clean.contains('\x1b'));
+    assert!(!clean.contains('\x07'));
+    assert!(!clean.contains(';'));
+    assert!(!clean.contains(':'));
+    assert!(!clean.contains('='));
+    let huge: String = "x".repeat(OSC1337_TEXT_FIELD_MAX_LEN + 500);
+    assert_eq!(
+        sanitize_osc1337_text_field(&huge).chars().count(),
+        OSC1337_TEXT_FIELD_MAX_LEN
+    );
+}
+
+#[test]
+fn osc1337_request_attention_accepts_only_whitelisted_values() {
+    use crate::panes::grid::Osc1337Command;
+    let mut grid = fresh_grid_for_osc1337_test();
+    feed_bytes_osc1337(
+        &mut grid,
+        b"\x1b]1337;RequestAttention=yes\x07\
+          \x1b]1337;RequestAttention=once\x07\
+          \x1b]1337;RequestAttention=no\x07\
+          \x1b]1337;RequestAttention=fireworks\x07\
+          \x1b]1337;RequestAttention=evil\x07",
+    );
+    // Four valid + one rejected
+    assert_eq!(grid.pending_osc1337_commands.len(), 4);
+    assert_eq!(
+        grid.pending_osc1337_commands[0],
+        Osc1337Command::RequestAttention("yes".to_string())
+    );
+    assert_eq!(
+        grid.pending_osc1337_commands[3],
+        Osc1337Command::RequestAttention("fireworks".to_string())
+    );
+}
+
+#[test]
+fn osc1337_remote_host_requires_user_at_host() {
+    use crate::panes::grid::Osc1337Command;
+    let mut grid = fresh_grid_for_osc1337_test();
+    feed_bytes_osc1337(
+        &mut grid,
+        b"\x1b]1337;RemoteHost=alice@server.example\x07\
+          \x1b]1337;RemoteHost=missingathost\x07\
+          \x1b]1337;RemoteHost=@onlyhost\x07\
+          \x1b]1337;RemoteHost=onlyuser@\x07",
+    );
+    assert_eq!(grid.pending_osc1337_commands.len(), 1);
+    assert_eq!(
+        grid.pending_osc1337_commands[0],
+        Osc1337Command::RemoteHost("alice@server.example".to_string())
+    );
+}
+
+#[test]
+fn osc1337_shell_integration_version_handles_both_forms() {
+    use crate::panes::grid::Osc1337Command;
+    let mut grid = fresh_grid_for_osc1337_test();
+    feed_bytes_osc1337(
+        &mut grid,
+        b"\x1b]1337;ShellIntegrationVersion=42;bash\x07\
+          \x1b]1337;ShellIntegrationVersion=7\x07\
+          \x1b]1337;ShellIntegrationVersion=\x07",
+    );
+    assert_eq!(grid.pending_osc1337_commands.len(), 2);
+    assert_eq!(
+        grid.pending_osc1337_commands[0],
+        Osc1337Command::ShellIntegrationVersion {
+            version: "42".to_string(),
+            shell: "bash".to_string(),
+        }
+    );
+    assert_eq!(
+        grid.pending_osc1337_commands[1],
+        Osc1337Command::ShellIntegrationVersion {
+            version: "7".to_string(),
+            shell: String::new(),
+        }
+    );
+}
+
+#[test]
+fn osc1337_new_subcommands_canonical_emit() {
+    use crate::panes::grid::Osc1337Command;
+    assert_eq!(
+        Osc1337Command::RequestAttention("once".to_string()).to_canonical_bytes(),
+        b"\x1b]1337;RequestAttention=once\x07"
+    );
+    assert_eq!(
+        Osc1337Command::RemoteHost("u@h".to_string()).to_canonical_bytes(),
+        b"\x1b]1337;RemoteHost=u@h\x07"
+    );
+    assert_eq!(
+        Osc1337Command::ShellIntegrationVersion {
+            version: "12".to_string(),
+            shell: "zsh".to_string()
+        }
+        .to_canonical_bytes(),
+        b"\x1b]1337;ShellIntegrationVersion=12;zsh\x07"
+    );
+    assert_eq!(
+        Osc1337Command::ShellIntegrationVersion {
+            version: "5".to_string(),
+            shell: String::new()
+        }
+        .to_canonical_bytes(),
+        b"\x1b]1337;ShellIntegrationVersion=5\x07"
+    );
+}
+
+#[test]
+fn osc1337_new_subcommand_default_toggles() {
+    use crate::panes::grid::{Osc1337Command, Osc1337Config};
+    let cfg = Osc1337Config::default();
+    // RemoteHost + ShellIntegrationVersion: ON by default
+    assert!(cfg.allows(&Osc1337Command::RemoteHost("u@h".to_string())));
+    assert!(cfg.allows(&Osc1337Command::ShellIntegrationVersion {
+        version: "1".to_string(),
+        shell: "bash".to_string(),
+    }));
+    // RequestAttention: OFF by default
+    assert!(!cfg.allows(&Osc1337Command::RequestAttention("yes".to_string())));
 }
