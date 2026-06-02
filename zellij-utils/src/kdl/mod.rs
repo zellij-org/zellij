@@ -2905,6 +2905,9 @@ impl Options {
                 },
                 None => None,
             };
+        let allow_osc_passthrough =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "allow_osc_passthrough")
+                .map(|(v, _)| v);
 
         Ok(Options {
             simplified_ui,
@@ -2949,6 +2952,7 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            allow_osc_passthrough,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -4284,6 +4288,35 @@ impl Options {
             None
         }
     }
+    fn allow_osc_passthrough_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Forward OSC 9 (iTerm2) and OSC 777 (rxvt) desktop-notification",
+            "// sequences from panes to the host terminal. When false, the visual",
+            "// indicator still fires but the OSC bytes are not forwarded.",
+            "// default is true",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("allow_osc_passthrough");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(allow_osc_passthrough) = self.allow_osc_passthrough {
+            let mut node = create_node(allow_osc_passthrough);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(true);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn web_server_ip_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -4626,6 +4659,9 @@ impl Options {
         }
         if let Some(mouse_click_through) = self.mouse_click_through_to_kdl(add_comments) {
             nodes.push(mouse_click_through);
+        }
+        if let Some(allow_osc_passthrough) = self.allow_osc_passthrough_to_kdl(add_comments) {
+            nodes.push(allow_osc_passthrough);
         }
         if let Some(web_server_ip) = self.web_server_ip_to_kdl(add_comments) {
             nodes.push(web_server_ip);
