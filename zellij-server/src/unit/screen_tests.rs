@@ -20,7 +20,7 @@ use zellij_utils::input::layout::{
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
-use zellij_utils::pane_size::{Insets, Size, SizeInPixels};
+use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
 
 use crate::background_jobs::BackgroundJob;
@@ -9861,20 +9861,18 @@ fn detaching_client_grows_vacated_tab_back() {
 // ----------------------------------------------------------------------
 // Fit mode (mobile plugin "Fit" toggle) — integration tests.
 //
-// Each test drives the same screen methods the
-// `ScreenInstruction::EnterFitMode`/`ExitFitMode`/`UpdateFitInsets`
-// handlers dispatch to. The fit feature has been shipped with two
-// regressions (display-clear on shrink, deferred shim send for pinch
-// zoom); the tests below are the safety net described in
-// `fit_tests.md`.
+// Each test drives the same screen method the
+// `ScreenInstruction::SetTabFit` handler dispatches to. The fit feature
+// has been shipped with two regressions (display-clear on shrink,
+// deferred shim send for pinch zoom); the tests below are the safety
+// net described in `fit_tests.md`.
 //
-// Server-side fit geometry: `enter_fit_mode`/`update_fit_insets` take
-// `Insets` (the cells the mobile plugin draws around its embedded
-// viewport). The server derives the target tab size from LIVE geometry
-// via `compute_fit_size`, which reads the owning client's mobile-plugin
-// pane content size. Therefore every test that expects a fit to resize
-// the target tab must first give the owning client a mobile tab with a
-// plugin pane registered in `mobile_state.tabs` — see `setup_mobile_fit`.
+// Server-side fit geometry: `set_tab_fit` takes the embedded content
+// `Size` the mobile plugin draws into; `compute_fit_size` grows it by
+// the target tab's bars + the target pane's frame. `setup_mobile_fit`
+// still gives the owning client a mobile tab + plugin pane so the
+// `owning_client`/disconnect bookkeeping has a realistic topology,
+// though the fit size no longer derives from the plugin pane.
 // ----------------------------------------------------------------------
 
 /// `toggle_pane_fullscreen` no-ops on a tab with a single pane (there
@@ -9901,8 +9899,10 @@ fn add_second_pane_to_active_tab(screen: &mut Screen, pid: u32) {
 
 /// Give `client` a mobile tab (created at tab index `mobile_tab_idx`)
 /// containing a single borderless plugin pane, registered in
-/// `mobile_state.tabs`, so `compute_fit_size` can read the embedded
-/// area. `plugin_id` is the plugin pane's id.
+/// `mobile_state.tabs`. `plugin_id` is the plugin pane's id. (The fit
+/// size no longer derives from this pane — the plugin sends an explicit
+/// `Size` — but the realistic topology keeps the owning-client and
+/// disconnect-cleanup paths under test.)
 fn setup_mobile_fit(screen: &mut Screen, client: ClientId, mobile_tab_idx: usize, plugin_id: u32) {
     let run = RunPluginOrAlias::from_url("zellij:mobile", &None, None, None).unwrap();
     // The test bus is built with `Bus::empty()`, whose `to_plugin`
@@ -9950,7 +9950,7 @@ fn setup_mobile_fit(screen: &mut Screen, client: ClientId, mobile_tab_idx: usize
 }
 
 /// Mobile client fitting tab 0 — the tab adopts the server-derived fit
-/// size and `fit_states` records the owning client and its insets.
+/// size and `fit_states` records the owning client and its size.
 #[test]
 fn fit_override_resizes_tab() {
     let initial_size = Size { cols: 80, rows: 20 };
@@ -9959,14 +9959,9 @@ fn fit_override_resizes_tab() {
 
     let mobile_client = 1;
     setup_mobile_fit(&mut screen, mobile_client, 9, 100);
-    let insets = Insets {
-        top: 1,
-        bottom: 0,
-        left: 0,
-        right: 0,
-    };
+    let size = Size { rows: 12, cols: 60 };
     screen
-        .enter_fit_mode(mobile_client, 0, PaneId::Terminal(1), insets)
+        .set_tab_fit(mobile_client, 0, PaneId::Terminal(1), size)
         .expect("TEST");
 
     assert_eq!(
@@ -9977,7 +9972,7 @@ fn fit_override_resizes_tab() {
     let fit = screen.mobile_state.fit_states.get(&0).expect("fit installed");
     assert_eq!(fit.owning_client, mobile_client);
     assert_eq!(fit.pane_id, PaneId::Terminal(1));
-    assert_eq!(fit.insets, insets);
+    assert_eq!(fit.size, size);
 }
 
 /// Closing the fit's target pane tears the override down server-side
@@ -9993,14 +9988,8 @@ fn fit_cleared_when_target_pane_closes() {
 
     let mobile_client = 1;
     setup_mobile_fit(&mut screen, mobile_client, 9, 100);
-    let insets = Insets {
-        top: 1,
-        bottom: 0,
-        left: 0,
-        right: 0,
-    };
     screen
-        .enter_fit_mode(mobile_client, 0, PaneId::Terminal(1), insets)
+        .set_tab_fit(mobile_client, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
     assert!(
         screen.mobile_state.fit_states.contains_key(&0),
@@ -10061,17 +10050,7 @@ fn fit_override_captures_fullscreen_state() {
         assert!(tab.is_fullscreen_active());
     }
     screen
-        .enter_fit_mode(
-            1,
-            0,
-            PaneId::Terminal(1),
-            Insets {
-                top: 1,
-                bottom: 0,
-                left: 0,
-                right: 0,
-            },
-        )
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
     assert!(
         screen
@@ -10093,17 +10072,7 @@ fn fit_override_captures_fullscreen_state() {
         "Pre-condition: no fullscreen"
     );
     screen
-        .enter_fit_mode(
-            1,
-            0,
-            PaneId::Terminal(1),
-            Insets {
-                top: 1,
-                bottom: 0,
-                left: 0,
-                right: 0,
-            },
-        )
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
     assert!(
         !screen
@@ -10135,17 +10104,7 @@ fn exit_fit_reverts_size_and_fullscreen() {
     setup_mobile_fit(&mut screen, 1, 9, 100);
 
     screen
-        .enter_fit_mode(
-            1,
-            0,
-            PaneId::Terminal(1),
-            Insets {
-                top: 1,
-                bottom: 0,
-                left: 0,
-                right: 0,
-            },
-        )
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
@@ -10182,17 +10141,7 @@ fn exit_fit_preserves_pre_fit_fullscreen() {
         tab.toggle_pane_fullscreen(PaneId::Terminal(1));
     }
     screen
-        .enter_fit_mode(
-            1,
-            0,
-            PaneId::Terminal(1),
-            Insets {
-                top: 1,
-                bottom: 0,
-                left: 0,
-                right: 0,
-            },
-        )
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
 
     screen.exit_fit_mode(1).expect("TEST");
@@ -10204,79 +10153,39 @@ fn exit_fit_preserves_pre_fit_fullscreen() {
     );
 }
 
-/// Inset-following: a subsequent `UpdateFitInsets` rewrites both the
-/// tab's size (server re-derives it from the new insets) and the
-/// entry's bookkeeping. Pinch-zoom and the keyboard toggle both ride
-/// this path. Growing the bottom inset by one shrinks the embedded
-/// area by a row, so the target tab loses exactly one row.
+/// Size-following: re-sending `set_tab_fit` for the same tab with a
+/// smaller embedded `Size` rewrites both the tab's size (server
+/// re-derives it) and the entry's stored size — without re-toggling
+/// fullscreen. Pinch-zoom and the keyboard toggle both ride this path.
+/// Dropping one embedded row shrinks the target tab by exactly one row.
 #[test]
-fn update_fit_insets_changes_tab_size() {
+fn set_tab_fit_update_changes_tab_size() {
     let initial_size = Size { cols: 80, rows: 20 };
     let mut screen = create_new_screen(initial_size, true, true);
     new_tab(&mut screen, 1, 0);
     setup_mobile_fit(&mut screen, 1, 9, 100);
 
     screen
-        .enter_fit_mode(
-            1,
-            0,
-            PaneId::Terminal(1),
-            Insets {
-                top: 1,
-                bottom: 0,
-                left: 0,
-                right: 0,
-            },
-        )
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
     let before = screen.tabs.get(&0).unwrap().size;
 
-    let new_insets = Insets {
-        top: 1,
-        bottom: 1,
-        left: 0,
-        right: 0,
-    };
-    assert!(screen.update_fit_insets(1, 0, new_insets).expect("TEST"));
+    let new_size = Size { rows: 11, cols: 60 };
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), new_size)
+        .expect("TEST");
 
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
         screen.compute_fit_size(0).unwrap(),
-        "Tab tracks the server-derived size for the new insets"
+        "Tab tracks the server-derived size for the new embedded size"
     );
     assert_eq!(
         screen.tabs.get(&0).unwrap().size.rows,
         before.rows - 1,
-        "One extra row of bottom inset shrinks the target tab by one row"
+        "One fewer embedded row shrinks the target tab by one row"
     );
-    assert_eq!(screen.mobile_state.fit_states.get(&0).unwrap().insets, new_insets);
-}
-
-/// `UpdateFitInsets` without an active fit is a silent no-op — no panic,
-/// no `fit_states` mutation. Important because the plugin will sometimes
-/// call this on stale state (e.g. tab/pane switch races with an
-/// in-flight shim).
-#[test]
-fn update_fit_insets_no_active_fit_is_noop() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-
-    let did_something = screen
-        .update_fit_insets(
-            1,
-            0,
-            Insets {
-                top: 1,
-                bottom: 1,
-                left: 0,
-                right: 0,
-            },
-        )
-        .expect("TEST");
-
-    assert!(!did_something, "No fit on tab → no-op");
-    assert!(screen.mobile_state.fit_states.is_empty());
+    assert_eq!(screen.mobile_state.fit_states.get(&0).unwrap().size, new_size);
 }
 
 /// On disconnect, every `fit_states` entry owned by the leaving client
@@ -10295,17 +10204,7 @@ fn disconnect_clears_fit_for_owning_client() {
 
     // Client 1 (the mobile one) installs the fit.
     screen
-        .enter_fit_mode(
-            1,
-            0,
-            PaneId::Terminal(1),
-            Insets {
-                top: 1,
-                bottom: 0,
-                left: 0,
-                right: 0,
-            },
-        )
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
@@ -10347,17 +10246,12 @@ fn disconnect_only_clears_own_fits() {
     // Distinct mobile tabs / plugin ids for each owning client.
     setup_mobile_fit(&mut screen, 1, 8, 100);
     setup_mobile_fit(&mut screen, 2, 9, 101);
-    let insets = Insets {
-        top: 1,
-        bottom: 0,
-        left: 0,
-        right: 0,
-    };
+    let size = Size { rows: 12, cols: 60 };
     screen
-        .enter_fit_mode(1, 0, PaneId::Terminal(1), insets)
+        .set_tab_fit(1, 0, PaneId::Terminal(1), size)
         .expect("TEST");
     screen
-        .enter_fit_mode(2, 1, PaneId::Terminal(2), insets)
+        .set_tab_fit(2, 1, PaneId::Terminal(2), size)
         .expect("TEST");
     let surviving_size = screen.compute_fit_size(1).unwrap();
 
@@ -10373,7 +10267,7 @@ fn disconnect_only_clears_own_fits() {
         .get(&1)
         .expect("Other client's entry survives");
     assert_eq!(other.owning_client, 2);
-    assert_eq!(other.insets, insets);
+    assert_eq!(other.size, size);
     assert_eq!(
         screen.tabs.get(&1).unwrap().size,
         surviving_size,
@@ -10397,17 +10291,7 @@ fn override_emits_display_clear() {
     setup_mobile_fit(&mut screen, 1, 9, 100);
 
     screen
-        .enter_fit_mode(
-            1,
-            0,
-            PaneId::Terminal(1),
-            Insets {
-                top: 1,
-                bottom: 0,
-                left: 0,
-                right: 0,
-            },
-        )
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
 
     assert!(
@@ -10435,17 +10319,7 @@ fn recompute_tab_size_short_circuit() {
     setup_mobile_fit(&mut screen, 1, 9, 100);
 
     screen
-        .enter_fit_mode(
-            1,
-            0,
-            PaneId::Terminal(1),
-            Insets {
-                top: 1,
-                bottom: 0,
-                left: 0,
-                right: 0,
-            },
-        )
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
     let override_size = screen.compute_fit_size(0).unwrap();
     assert_eq!(
@@ -10477,7 +10351,7 @@ fn recompute_tab_size_short_circuit() {
 }
 
 /// Last-writer-wins collision. Two mobile clients targeting the same
-/// tab: the second `enter_fit_mode` overwrites the first. Documented
+/// tab: the second `set_tab_fit` overwrites the first. Documented
 /// behaviour on `Screen::fit_states` — verifying it here so the
 /// invariant survives any future re-key of that map.
 #[test]
@@ -10490,29 +10364,19 @@ fn fit_collision_last_writer_wins() {
     setup_mobile_fit(&mut screen, 1, 8, 100);
     setup_mobile_fit(&mut screen, 2, 9, 101);
 
-    let insets_a = Insets {
-        top: 1,
-        bottom: 0,
-        left: 0,
-        right: 0,
-    };
-    let insets_b = Insets {
-        top: 1,
-        bottom: 1,
-        left: 1,
-        right: 1,
-    };
+    let size_a = Size { rows: 12, cols: 60 };
+    let size_b = Size { rows: 10, cols: 50 };
     screen
-        .enter_fit_mode(1, 0, PaneId::Terminal(1), insets_a)
+        .set_tab_fit(1, 0, PaneId::Terminal(1), size_a)
         .expect("TEST");
     screen
-        .enter_fit_mode(2, 0, PaneId::Terminal(2), insets_b)
+        .set_tab_fit(2, 0, PaneId::Terminal(2), size_b)
         .expect("TEST");
 
     let fit = screen.mobile_state.fit_states.get(&0).expect("fit present");
     assert_eq!(fit.owning_client, 2, "Second writer owns the entry");
     assert_eq!(fit.pane_id, PaneId::Terminal(2));
-    assert_eq!(fit.insets, insets_b);
+    assert_eq!(fit.size, size_b);
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
         screen.compute_fit_size(0).unwrap(),
@@ -10521,12 +10385,11 @@ fn fit_collision_last_writer_wins() {
 }
 
 /// A displaced client (whose entry was overwritten by a colliding
-/// fit on the same tab) reclaims ownership on its next
-/// `update_fit_insets` push. Server-side lookup is keyed by `tab_id`
-/// (not `owning_client`), so the displaced client's call finds the
-/// entry and rewrites both `insets` and `owning_client`. Subsequent
-/// `exit_fit_mode` / disconnect cleanup correctly attribute the
-/// override to the reclaiming client.
+/// fit on the same tab) reclaims ownership on its next `set_tab_fit`
+/// push. Server-side lookup is keyed by `tab_id` (not `owning_client`),
+/// so the displaced client's call finds the entry and rewrites both
+/// `size` and `owning_client`. Subsequent clear / disconnect cleanup
+/// correctly attribute the override to the reclaiming client.
 #[test]
 fn fit_update_after_collision_reclaims_ownership() {
     let initial_size = Size { cols: 80, rows: 20 };
@@ -10537,17 +10400,12 @@ fn fit_update_after_collision_reclaims_ownership() {
     setup_mobile_fit(&mut screen, 1, 8, 100);
     setup_mobile_fit(&mut screen, 2, 9, 101);
 
-    let insets = Insets {
-        top: 1,
-        bottom: 0,
-        left: 0,
-        right: 0,
-    };
+    let size = Size { rows: 12, cols: 60 };
     screen
-        .enter_fit_mode(1, 0, PaneId::Terminal(1), insets)
+        .set_tab_fit(1, 0, PaneId::Terminal(1), size)
         .expect("TEST");
     screen
-        .enter_fit_mode(2, 0, PaneId::Terminal(2), insets)
+        .set_tab_fit(2, 0, PaneId::Terminal(2), size)
         .expect("TEST");
     assert_eq!(
         screen.mobile_state.fit_states.get(&0).unwrap().owning_client,
@@ -10558,20 +10416,14 @@ fn fit_update_after_collision_reclaims_ownership() {
     // Displaced client 1's plugin keeps believing fit is active and
     // pushes its target. The server finds the entry by tab_id and
     // reattributes it.
-    let reclaim_insets = Insets {
-        top: 2,
-        bottom: 1,
-        left: 0,
-        right: 0,
-    };
-    let mutated = screen
-        .update_fit_insets(1, 0, reclaim_insets)
+    let reclaim_size = Size { rows: 9, cols: 40 };
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), reclaim_size)
         .expect("TEST");
 
-    assert!(mutated, "Reclaim must mutate the entry");
     let fit = screen.mobile_state.fit_states.get(&0).unwrap();
     assert_eq!(fit.owning_client, 1, "Ownership reattributed to caller");
-    assert_eq!(fit.insets, reclaim_insets);
+    assert_eq!(fit.size, reclaim_size);
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
         screen.compute_fit_size(0).unwrap(),
@@ -10604,17 +10456,7 @@ fn fit_tab_close_cleans_state() {
     new_tab(&mut screen, 2, 1); // need a second tab so close_tab_by_id isn't on the last tab
     setup_mobile_fit(&mut screen, 1, 9, 100);
     screen
-        .enter_fit_mode(
-            1,
-            0,
-            PaneId::Terminal(1),
-            Insets {
-                top: 1,
-                bottom: 0,
-                left: 0,
-                right: 0,
-            },
-        )
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
     assert!(screen.mobile_state.fit_states.contains_key(&0), "Pre-condition: fit installed");
 
@@ -10644,17 +10486,7 @@ fn disconnect_safe_with_orphan_fit() {
     add_second_pane_to_active_tab(&mut screen, 2);
     setup_mobile_fit(&mut screen, 1, 9, 100);
     screen
-        .enter_fit_mode(
-            1,
-            0,
-            PaneId::Terminal(1),
-            Insets {
-                top: 1,
-                bottom: 0,
-                left: 0,
-                right: 0,
-            },
-        )
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
 
     // Close the fit-owning pane directly on the tab WITHOUT running the
@@ -10705,17 +10537,7 @@ fn fit_three_viewers_override_persists() {
         .expect("TEST");
 
     screen
-        .enter_fit_mode(
-            1,
-            0,
-            PaneId::Terminal(1),
-            Insets {
-                top: 1,
-                bottom: 0,
-                left: 0,
-                right: 0,
-            },
-        )
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
     let override_size = screen.compute_fit_size(0).unwrap();
     assert_eq!(
@@ -10752,154 +10574,44 @@ fn fit_three_viewers_override_persists() {
     );
 }
 
-/// The fit size tracks the owning client's *live* mobile-plugin-pane
-/// geometry: when that client's embedded viewport changes (rotation /
-/// pinch / browser resize), `recompute_fits_owned_by` re-derives the
-/// target tab size from the new plugin-pane content area.
-///
-/// We drive the mobile pane's size change directly via the mobile tab's
-/// `resize_whole_tab` — the same API `recompute_tab_size` uses — because
-/// the synchronous test harness has no plugin thread to mediate a real
-/// client resize. The point under test is that `recompute_fits_owned_by`
-/// re-reads the (now smaller) plugin-pane content and resizes the target
-/// tab to match `compute_fit_size`.
+/// A fit-size re-push updates the override: sending a smaller embedded
+/// `Size` for the same tab shrinks the target tab by exactly that much
+/// (and keeps it tracking `compute_fit_size`). This is the rotation /
+/// pinch / soft-keyboard path — the plugin re-sends its new embedded
+/// `Size` from `update()` and the server re-derives the tab.
 #[test]
-fn fit_recomputes_on_mobile_client_resize() {
+fn fit_resize_repush_updates_tab() {
     let initial_size = Size { cols: 80, rows: 20 };
     let mut screen = create_new_screen(initial_size, true, true);
     new_tab(&mut screen, 1, 0);
     setup_mobile_fit(&mut screen, 1, 9, 100);
 
     screen
-        .enter_fit_mode(
-            1,
-            0,
-            PaneId::Terminal(1),
-            Insets {
-                top: 1,
-                bottom: 0,
-                left: 0,
-                right: 0,
-            },
-        )
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
     let before = screen.tabs.get(&0).unwrap().size;
 
-    // The mobile client's embedded viewport shrinks (its plugin pane
-    // gets fewer content rows/cols).
+    // The mobile client's embedded viewport loses one row; the plugin
+    // re-pushes the smaller size.
     screen
-        .tabs
-        .get_mut(&9)
-        .unwrap()
-        .resize_whole_tab(Size { cols: 40, rows: 10 })
-        .expect("TEST");
-    screen.recompute_fits_owned_by(1).expect("TEST");
-
-    let after = screen.tabs.get(&0).unwrap().size;
-    assert_eq!(
-        after,
-        screen.compute_fit_size(0).unwrap(),
-        "Target tab tracks the re-derived fit size after the mobile resize"
-    );
-    assert_ne!(
-        after, before,
-        "Shrinking the mobile plugin pane changed the target tab size"
-    );
-    assert!(
-        after.rows < before.rows || after.cols < before.cols,
-        "Target tab shrank with the mobile viewport"
-    );
-}
-
-/// Inset change recompute: growing the bottom inset by one removes
-/// exactly one embedded row, so the target tab loses exactly one row
-/// (and tracks `compute_fit_size`).
-#[test]
-fn fit_recomputes_on_inset_change() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    setup_mobile_fit(&mut screen, 1, 9, 100);
-
-    screen
-        .enter_fit_mode(
-            1,
-            0,
-            PaneId::Terminal(1),
-            Insets {
-                top: 1,
-                bottom: 0,
-                left: 0,
-                right: 0,
-            },
-        )
-        .expect("TEST");
-    let before = screen.tabs.get(&0).unwrap().size;
-
-    screen
-        .update_fit_insets(
-            1,
-            0,
-            Insets {
-                top: 1,
-                bottom: 1,
-                left: 0,
-                right: 0,
-            },
-        )
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 11, cols: 60 })
         .expect("TEST");
 
     let after = screen.tabs.get(&0).unwrap().size;
     assert_eq!(
         after,
         screen.compute_fit_size(0).unwrap(),
-        "Target tab tracks the re-derived fit size after the inset change"
+        "Target tab tracks the re-derived fit size after the re-push"
     );
     assert_eq!(
         after.rows,
         before.rows - 1,
-        "One extra bottom inset row shrinks the target tab by exactly one row"
+        "One fewer embedded row shrinks the target tab by exactly one row"
     );
-}
-
-/// Insets larger than the live plugin pane must not panic and must
-/// saturate: the embedded area floors at zero, so the target tab size
-/// is just the target tab bars + pane frame (a small, sane size).
-#[test]
-fn fit_insets_saturate_when_larger_than_pane() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    setup_mobile_fit(&mut screen, 1, 9, 100);
-
-    // Insets far larger than the plugin pane's content area on every
-    // edge — the saturating subtraction in `compute_fit_size` must floor
-    // the embedded area at zero rather than underflow.
-    screen
-        .enter_fit_mode(
-            1,
-            0,
-            PaneId::Terminal(1),
-            Insets {
-                top: 9999,
-                bottom: 9999,
-                left: 9999,
-                right: 9999,
-            },
-        )
-        .expect("TEST");
-
-    let size = screen.compute_fit_size(0).unwrap();
     assert_eq!(
-        screen.tabs.get(&0).unwrap().size,
-        size,
-        "Tab adopts the saturated fit size without panicking"
-    );
-    // Embedded area floored at 0 ⇒ only target tab bars + pane frame
-    // remain, a small sane size (well under the initial 80x20 screen).
-    assert!(
-        size.rows < 20 && size.cols < 80,
-        "Saturated fit size is small and sane: {size:?}"
+        screen.mobile_state.fit_states.get(&0).unwrap().size,
+        Size { rows: 11, cols: 60 },
+        "Stored embedded size follows the re-push"
     );
 }
 

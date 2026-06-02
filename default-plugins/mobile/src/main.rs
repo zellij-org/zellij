@@ -47,8 +47,7 @@ impl ZellijPlugin for State {
     }
 
     fn update(&mut self, event: Event) -> bool {
-
-        match event {
+        let should_render = match event {
             Event::ModeUpdate(mode_info) => {
                 self.mode_info = Some(mode_info);
                 true
@@ -97,10 +96,11 @@ impl ZellijPlugin for State {
                         // the target pane closes (see
                         // `clear_fit_for_closed_pane`); only the plugin's
                         // local mirror needs resetting so the Fit button
-                        // reflects reality. No `exit_fit_mode()` — the
-                        // server already dropped the entry.
+                        // reflects reality. No `set_tab_fit(.., None)` —
+                        // the server already dropped the entry.
                         self.fit_active = false;
                         self.fit_tab_id = None;
+                        self.last_sent_fit_size = None;
                     }
                 }
                 // Re-evaluate the tab default in case TabUpdate arrived
@@ -580,18 +580,27 @@ impl ZellijPlugin for State {
                 }
                 self.soft_keyboard_visible = visible;
                 // The soft-keyboard bar is part of the plugin's chrome,
-                // so toggling it changes the embedded-viewport area an
-                // active fit must track. Report the new chrome insets to
-                // the server inline (insets depend only on this semantic
-                // state, available right here in `update()`).
-                notify_fit_chrome(self);
-                // Modifier bar visibility is gated on this flag in
-                // `render::render`; a redraw is required to add/remove
-                // the bottom row.
+                // so toggling it changes the embedded area an active fit
+                // must track — the end-of-update reconcile below pushes
+                // the new size. Modifier bar visibility is gated on this
+                // flag in `render::render`; a redraw is required to
+                // add/remove the bottom row.
                 true
             },
             _ => false,
+        };
+        // Single fit reconcile point. Any event that changed the
+        // embedded area — soft-keyboard / selector / welcome chrome, or
+        // the plugin pane resizing (the post-resize
+        // `PaneRenderReportWithAnsi` carries the fresh cached dims) —
+        // pushes the new `Size` here, deduped against the last push.
+        // Shim calls are forbidden in `render()`, so `update()` is the
+        // only place this can happen; the dims used are from the most
+        // recent render, giving at most one frame of lag.
+        if self.fit_active {
+            notify_fit_size(self);
         }
+        should_render
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
@@ -1007,13 +1016,17 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             // Round-trip the toggle through the server. On entry we need
             // the focused pane (the pane to fit) and its tab; if either
             // is missing we silently bail rather than send a malformed
-            // command. The target tab size itself is computed server-side
-            // from the plugin's chrome insets — the plugin no longer
-            // mirrors the size.
+            // command. The plugin sends the exact embedded content
+            // `Size` it draws into (from cached render dims); the server
+            // grows it by the tab bars + pane frame and fullscreens.
             if state.fit_active {
+                // `tab_id` is ignored by the server's clear path (it
+                // looks the fit up by client), but pass the real one.
+                let tab_id = state.fit_tab_id.unwrap_or_default();
                 state.fit_active = false;
                 state.fit_tab_id = None;
-                exit_fit_mode();
+                state.last_sent_fit_size = None;
+                set_tab_fit(tab_id, None);
                 true
             } else {
                 let Some(pane) = state.current_pane() else {
@@ -1023,14 +1036,12 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
                     return false;
                 };
                 state.fit_active = true;
-                // `fit_tab_id` is what subsequent `update_fit_insets`
-                // calls use to address the server-side entry by tab.
+                // `fit_tab_id` is what subsequent `set_tab_fit` calls
+                // use to address the server-side entry by tab.
                 state.fit_tab_id = Some(tab.tab_id);
-                enter_fit_mode(
-                    tab.tab_id,
-                    state::pane_id_of(&pane),
-                    fit_chrome_insets(state),
-                );
+                let size = embedded_size(state);
+                set_tab_fit(tab.tab_id, Some((state::pane_id_of(&pane), size)));
+                state.last_sent_fit_size = Some(size);
                 true
             }
         },
@@ -1153,11 +1164,20 @@ fn is_welcome_session(session: &SessionInfo) -> bool {
         .any(|p| p.is_plugin && p.plugin_url.as_deref() == Some("welcome-screen"))
 }
 
+/// Clear an armed fit, telling the server to drop the override (and
+/// revert any fit-induced fullscreen). Used by the flows that
+/// invalidate a fit but where the server is NOT already tearing it
+/// down on its own — explicit pane/tab selection and new-pane/new-tab
+/// creation. (The target-pane-closed case is handled inline in the
+/// `PaneUpdate` arm with a local-only reset, since the server already
+/// clears the override there.)
 pub fn clear_fit_if_active(state: &mut State) {
     if state.fit_active {
+        let tab_id = state.fit_tab_id.unwrap_or_default();
         state.fit_active = false;
         state.fit_tab_id = None;
-        exit_fit_mode();
+        state.last_sent_fit_size = None;
+        set_tab_fit(tab_id, None);
     }
 }
 
@@ -1179,42 +1199,55 @@ pub fn sync_shadow_focus(state: &State) {
     }
 }
 
-/// The plugin's chrome insets around its embedded viewport, derived
-/// purely from semantic UI state (no render dimensions). The server
-/// subtracts these from the live plugin-pane size to recover the
-/// embedded area, then adds the target tab/pane chrome itself.
-///
-/// `top` is the title bar (1 row unless suppressed by the welcome flow
-/// or the open Sessions selector — mirrors `body_top` in
-/// `render::render`). `bottom` is the soft-keyboard modifier bar (1 row
-/// while the soft keyboard is visible). There is no horizontal chrome,
-/// so `left`/`right` are 0. The server applies any small-screen clamp
-/// (it knows the live row count); the plugin reports intent only.
-pub fn fit_chrome_insets(state: &State) -> Insets {
+/// The exact embedded content `Size` the plugin draws the pane into:
+/// the cached plugin-pane dims minus the vertical chrome (top bar +
+/// soft-keyboard bar). The server grows this by the target tab's bars
+/// and the target pane's frame so the pane content rectangle matches
+/// it exactly. Shares `render::chrome_offsets` with the renderer so
+/// the reported area can never drift from what is actually drawn.
+/// Uses `last_render_rows`/`cols` because the size must be computed in
+/// `update()` (shim calls are forbidden in `render()`).
+pub fn embedded_size(state: &State) -> Size {
     let suppress_top_bar =
         state.welcome_auto_expand_done || state.expanded == Some(Selector::Sessions);
-    Insets {
-        top: if suppress_top_bar { 0 } else { 1 },
-        bottom: if state.soft_keyboard_visible { 1 } else { 0 },
-        left: 0,
-        right: 0,
+    let (body_top, bar_height) = render::chrome_offsets(
+        state.last_render_rows,
+        suppress_top_bar,
+        state.soft_keyboard_visible,
+    );
+    Size {
+        rows: state
+            .last_render_rows
+            .saturating_sub(bar_height)
+            .saturating_sub(body_top),
+        cols: state.last_render_cols,
     }
 }
 
-/// Report the current chrome insets to the server for an active fit.
-/// Called inline from each `update()` arm that changes a contributing
-/// input (soft-keyboard toggle, Sessions-selector / welcome top-bar
-/// transitions). The server re-derives the target tab size from live
-/// geometry minus these insets, so the plugin never mirrors a size.
-/// No-op when fit is inactive or `fit_tab_id` is unset.
-pub fn notify_fit_chrome(state: &State) {
+/// Push the current embedded `Size` to the server for the active fit,
+/// deduped against the last push. Called from a single reconcile point
+/// at the end of `update()`, so it covers every cause of a size change
+/// — soft-keyboard / selector / welcome transitions *and* the plugin
+/// pane resizing (rotation / pinch), whose post-resize
+/// `PaneRenderReportWithAnsi` update carries the fresh cached dims.
+/// No-op when fit is inactive, `fit_tab_id` is unset, no pane resolves,
+/// or the size is unchanged.
+pub fn notify_fit_size(state: &mut State) {
     if !state.fit_active {
         return;
     }
     let Some(tab_id) = state.fit_tab_id else {
         return;
     };
-    update_fit_insets(tab_id, fit_chrome_insets(state));
+    let Some(pane) = state.current_pane() else {
+        return;
+    };
+    let size = embedded_size(state);
+    if state.last_sent_fit_size == Some(size) {
+        return;
+    }
+    set_tab_fit(tab_id, Some((state::pane_id_of(&pane), size)));
+    state.last_sent_fit_size = Some(size);
 }
 
 /// Wall-clock seconds since the unix epoch, as returned by the
@@ -1266,7 +1299,7 @@ pub fn refresh_pane_titles(state: &mut State) {
 
 #[cfg(test)]
 mod tests {
-    //! Unit tests for the chrome-inset helper `fit_chrome_insets` (the
+    //! Unit tests for the embedded-size helper `embedded_size` (the
     //! plugin's remaining fit logic — the size math itself now lives on
     //! the server) and the `ToggleFit` dispatch path. Shim calls inside
     //! these functions resolve to the native-build stub of
@@ -1277,73 +1310,78 @@ mod tests {
     use crate::state::State;
     use zellij_tile::prelude::{PaneInfo, TabInfo};
 
-    /// Resting state: the title bar is shown (`top = 1`), no soft
-    /// keyboard, no horizontal chrome.
-    #[test]
-    fn insets_default_top_bar_only() {
-        let state = State::default();
-        assert_eq!(
-            fit_chrome_insets(&state),
-            Insets {
-                top: 1,
-                bottom: 0,
-                left: 0,
-                right: 0
-            }
-        );
+    /// Seed the cached render dims `embedded_size` reads.
+    fn with_dims(state: &mut State, rows: usize, cols: usize) {
+        state.last_render_rows = rows;
+        state.last_render_cols = cols;
     }
 
-    /// Soft keyboard visible adds the modifier-bar row as `bottom`.
+    /// Resting state: the title bar takes one row, no soft keyboard, no
+    /// horizontal chrome — embedded area is the pane minus the top row.
     #[test]
-    fn insets_soft_keyboard_adds_bottom() {
+    fn embedded_size_default_top_bar_only() {
         let mut state = State::default();
+        with_dims(&mut state, 20, 80);
+        assert_eq!(embedded_size(&state), Size { rows: 19, cols: 80 });
+    }
+
+    /// Soft keyboard visible reserves the modifier-bar row at the bottom.
+    #[test]
+    fn embedded_size_soft_keyboard_adds_bottom() {
+        let mut state = State::default();
+        with_dims(&mut state, 20, 80);
         state.soft_keyboard_visible = true;
-        assert_eq!(fit_chrome_insets(&state).bottom, 1);
-        assert_eq!(fit_chrome_insets(&state).top, 1);
+        assert_eq!(embedded_size(&state), Size { rows: 18, cols: 80 });
     }
 
-    /// The open Sessions selector suppresses the title bar (`top = 0`),
-    /// mirroring `body_top` in `render::render`.
+    /// The open Sessions selector suppresses the title bar, mirroring
+    /// `body_top` in `render::render`.
     #[test]
-    fn insets_sessions_selector_suppresses_top() {
+    fn embedded_size_sessions_selector_suppresses_top() {
         let mut state = State::default();
+        with_dims(&mut state, 20, 80);
         state.expanded = Some(Selector::Sessions);
-        assert_eq!(fit_chrome_insets(&state).top, 0);
+        assert_eq!(embedded_size(&state), Size { rows: 20, cols: 80 });
     }
 
     /// A non-Sessions selector (e.g. Panes) does NOT suppress the title
     /// bar — only the Sessions selector reuses the welcome layout.
     #[test]
-    fn insets_other_selector_keeps_top() {
+    fn embedded_size_other_selector_keeps_top() {
         let mut state = State::default();
+        with_dims(&mut state, 20, 80);
         state.expanded = Some(Selector::Panes);
-        assert_eq!(fit_chrome_insets(&state).top, 1);
+        assert_eq!(embedded_size(&state), Size { rows: 19, cols: 80 });
     }
 
     /// The welcome flow suppresses the title bar for the lifetime of the
     /// welcome session.
     #[test]
-    fn insets_welcome_flow_suppresses_top() {
+    fn embedded_size_welcome_flow_suppresses_top() {
         let mut state = State::default();
+        with_dims(&mut state, 20, 80);
         state.welcome_auto_expand_done = true;
-        assert_eq!(fit_chrome_insets(&state).top, 0);
+        assert_eq!(embedded_size(&state), Size { rows: 20, cols: 80 });
     }
 
-    /// `notify_fit_chrome` is a no-op when fit is inactive or
-    /// `fit_tab_id` is unset (the shim must not be addressed without a
-    /// target tab). Asserted indirectly: the call must not panic and
-    /// leaves state untouched.
+    /// `notify_fit_size` is a no-op when fit is inactive or `fit_tab_id`
+    /// is unset (the shim must not be addressed without a target tab).
+    /// Asserted indirectly: the call must not panic and pushes nothing
+    /// (`last_sent_fit_size` stays `None`).
     #[test]
-    fn notify_fit_chrome_gated_off() {
+    fn notify_fit_size_gated_off() {
         let mut state = State::default();
+        with_dims(&mut state, 20, 80);
         state.fit_active = false;
         state.fit_tab_id = Some(7);
-        notify_fit_chrome(&state);
+        notify_fit_size(&mut state);
+        assert_eq!(state.last_sent_fit_size, None);
         // active but no tab id
         state.fit_active = true;
         state.fit_tab_id = None;
-        notify_fit_chrome(&state);
+        notify_fit_size(&mut state);
         assert!(state.fit_active);
+        assert_eq!(state.last_sent_fit_size, None);
     }
 
     /// Static canary: `render.rs` must not invoke any host shim.
@@ -1377,9 +1415,7 @@ mod tests {
         // prevents is a separate hazard from the
         // stdout-drain-during-render hazard this test guards against.
         const FORBIDDEN_SHIMS: &[&str] = &[
-            "update_fit_insets",
-            "enter_fit_mode",
-            "exit_fit_mode",
+            "set_tab_fit",
             "exit_mobile_mode",
             "set_soft_keyboard",
             "switch_session",
@@ -1451,8 +1487,8 @@ mod tests {
 
     /// `dispatch_click(ToggleFit)` from the OFF state arms fit and
     /// records the bound tab. The shim itself fires (its native stub
-    /// no-ops); `fit_tab_id` is what subsequent `update_fit_insets`
-    /// calls use to address the server-side entry.
+    /// no-ops); `fit_tab_id` is what subsequent `set_tab_fit` calls use
+    /// to address the server-side entry.
     #[test]
     fn dispatch_toggle_fit_on_path_seeds_fields() {
         let mut state = fit_ready_state();
@@ -1490,7 +1526,8 @@ mod tests {
     /// tears down the authoritative fit override when the target pane
     /// closes (`clear_fit_for_closed_pane`); this resets the plugin's
     /// local mirror so the Fit button stops showing "fit armed" against
-    /// a dead pane id. No `exit_fit_mode()` shim is sent on this path.
+    /// a dead pane id. No `set_tab_fit(.., None)` shim is sent on this
+    /// path.
     #[test]
     fn pane_update_clears_fit_when_selected_pane_disappears() {
         let mut state = fit_ready_state();

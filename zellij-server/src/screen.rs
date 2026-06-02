@@ -53,7 +53,7 @@ use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::options::{Clipboard, MobileLayoutConfiguration};
 use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
-use zellij_utils::pane_size::{Insets, PaneGeom, Size, SizeInPixels};
+use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use zellij_utils::{
     consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
@@ -775,27 +775,17 @@ pub enum ScreenInstruction {
     PageScrollUpInPaneId(PaneId),
     PageScrollDownInPaneId(PaneId),
     TogglePaneIdFullscreen(PaneId),
-    /// Mobile-plugin "Fit" — enter. See `Action::EnterFitMode`.
-    EnterFitMode {
-        client_id: ClientId,
-        tab_id: usize,
-        pane_id: PaneId,
-        insets: Insets,
-    },
-    /// Mobile-plugin "Fit" — exit (per-client).
-    ExitFitMode {
-        client_id: ClientId,
-    },
-    /// Mobile-plugin "Fit" — report updated insets for an
-    /// active fit. The server recomputes the target tab size from the
-    /// live plugin-pane geometry minus these insets. `tab_id`
+    /// Mobile-plugin "Fit" (per-client). `Some((pane_id, size))`
+    /// enters or updates a fit: it sizes the tab so `pane_id`'s
+    /// content is exactly `size` (adding the tab bars + pane frame),
+    /// fullscreening the pane on first install. `None` clears the
+    /// client's fit and reverts any fit-induced fullscreen. `tab_id`
     /// identifies the override directly so a displaced client can
-    /// reclaim ownership; `client_id` becomes the new `owning_client`
-    /// on the reclaimed entry.
-    UpdateFitInsets {
+    /// reclaim ownership; `client_id` becomes the new `owning_client`.
+    SetTabFit {
         client_id: ClientId,
         tab_id: usize,
-        insets: Insets,
+        fit: Option<(PaneId, Size)>,
     },
     TogglePaneEmbedOrEjectForPaneId(PaneId),
     CloseTabWithIndex(usize),
@@ -1167,9 +1157,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PageScrollUpInPaneId(..) => ScreenContext::PageScrollUpInPaneId,
             ScreenInstruction::PageScrollDownInPaneId(..) => ScreenContext::PageScrollDownInPaneId,
             ScreenInstruction::TogglePaneIdFullscreen(..) => ScreenContext::TogglePaneIdFullscreen,
-            ScreenInstruction::EnterFitMode { .. } => ScreenContext::EnterFitMode,
-            ScreenInstruction::ExitFitMode { .. } => ScreenContext::ExitFitMode,
-            ScreenInstruction::UpdateFitInsets { .. } => ScreenContext::UpdateFitInsets,
+            ScreenInstruction::SetTabFit { .. } => ScreenContext::SetTabFit,
             ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(..) => {
                 ScreenContext::TogglePaneEmbedOrEjectForPaneId
             },
@@ -1573,19 +1561,17 @@ struct MobileState {
     auto_entered: HashSet<ClientId>,
     /// Per-tab "fit mode" override installed by the mobile plugin's
     /// Fit button. When present, `recompute_tab_size` sizes the tab to
-    /// `compute_fit_size` (the live plugin-pane area minus the plugin's
-    /// reported `insets`, plus the target tab's bars and the target
-    /// pane's frame) for that tab instead of taking the min of all
-    /// viewers' viewports.
+    /// `compute_fit_size` (the plugin-reported embedded `size`, plus the
+    /// target tab's bars and the target pane's frame) for that tab
+    /// instead of taking the min of all viewers' viewports.
     /// Keyed by tab id so the recompute hot path is a single O(1)
-    /// lookup; per-client cleanup paths (`ExitFitMode`,
-    /// `UpdateFitInsets`, `remove_client`) iterate to find the entry by
-    /// `owning_client`.
+    /// lookup; per-client cleanup paths (`SetTabFit { fit: None }`,
+    /// `remove_client`) iterate to find the entry by `owning_client`.
     ///
     /// Collision: if a second mobile client targets the same tab,
     /// `insert` overwrites — last writer wins. The first client's
-    /// plugin still thinks fit is on locally; its next
-    /// `UpdateFitInsets` will reclaim the override.
+    /// plugin still thinks fit is on locally; its next `SetTabFit`
+    /// push will reclaim the override.
     fit_states: HashMap<usize, FitState>,
 }
 
@@ -1593,22 +1579,21 @@ struct MobileState {
 #[derive(Debug, Clone, Copy)]
 struct FitState {
     /// Mobile client that installed this fit. `remove_client` for
-    /// this id removes the override + reverts fullscreen. Also names
-    /// the client whose mobile-tab plugin pane supplies the live
-    /// embedded-area size in `compute_fit_size`.
+    /// this id removes the override + reverts fullscreen.
     owning_client: ClientId,
     /// Pane that was fullscreened. Needed for the disconnect cleanup
     /// to call `toggle_pane_fullscreen` on the correct pane, and as
     /// the target pane whose frame `compute_fit_size` compensates for.
     pane_id: PaneId,
-    /// The plugin's insets around its embedded viewport (e.g. its top
-    /// bar and soft-keyboard bar). Subtracted from the live plugin-pane
-    /// content size by `compute_fit_size`; treated opaquely here. The
-    /// plugin re-reports these via `UpdateFitInsets` whenever they change.
-    insets: Insets,
+    /// Embedded content size the plugin wants the target pane's content
+    /// to be (the area inside the plugin's own chrome). `compute_fit_size`
+    /// grows it by the target tab's bars + the target pane's frame. The
+    /// plugin re-sends this via `SetTabFit` whenever it changes (its own
+    /// resize, soft-keyboard / selector toggle).
+    size: Size,
     /// True iff the pane was *already* fullscreen when fit was
-    /// entered. Determines whether disconnect cleanup or
-    /// `ExitFitMode` should toggle fullscreen back off.
+    /// entered. Determines whether disconnect cleanup or a clearing
+    /// `SetTabFit { fit: None }` should toggle fullscreen back off.
     was_fullscreen_before: bool,
 }
 
@@ -2617,9 +2602,10 @@ impl Screen {
         let err_context = || format!("failed to recompute size for tab {tab_id}");
 
         // Fit override short-circuits the min-of-viewers computation.
-        // Installed by the mobile plugin's Fit button via
-        // `EnterFitMode`; cleared by `ExitFitMode` or by
-        // `remove_client` when the owning mobile client disconnects.
+        // Installed by the mobile plugin's Fit button via `SetTabFit`;
+        // cleared by a `SetTabFit { fit: None }` push, by the target
+        // pane closing, or by `remove_client` when the owning mobile
+        // client disconnects.
         // While present, other viewers' sizes are ignored — per the
         // user-confirmed decision, a fit by one client shrinks the
         // tab for every viewer.
@@ -2687,35 +2673,20 @@ impl Screen {
         Ok(())
     }
 
-    /// Compute the tab size a fit override should resize `tab_id` to,
-    /// from live geometry. Reproduces the math the mobile plugin used to
-    /// do client-side: the embedded viewport area (the owning client's
-    /// mobile plugin-pane content size, minus the plugin's reported
-    /// `insets`) grown by the target tab's bars
-    /// (`display_area − viewport`) and the target pane's frame
-    /// (`pane − content`), so that after the server re-applies those bars
-    /// and frame the pane content rectangle matches the embedded area.
+    /// Compute the tab size a fit override should resize `tab_id` to.
+    /// The plugin sends the exact embedded content `size` it wants the
+    /// target pane's content to be; this grows it by the target tab's
+    /// bars (`display_area − viewport`) and the target pane's frame
+    /// (`pane − content`), so that after the server re-applies those
+    /// bars and frame the pane content rectangle matches the embedded
+    /// area exactly.
     ///
-    /// Returns `None` (→ no resize) if the fit, the owning client's
-    /// mobile tab, its plugin pane, or the target pane can't be resolved.
+    /// Returns `None` (→ no resize) if the fit or the target tab can't
+    /// be resolved.
     pub(crate) fn compute_fit_size(&self, tab_id: usize) -> Option<Size> {
         let fit = self.mobile_state.fit_states.get(&tab_id)?;
-
-        // Live embedded-area size = the owning client's mobile plugin
-        // pane content size (exactly the rows/cols its `render()` sees).
-        let mobile_tab_id = self.mobile_state.tabs.get(&fit.owning_client)?;
-        let mobile_tab = self.tabs.get(mobile_tab_id)?;
-        let plugin_pane_id = mobile_tab
-            .get_all_pane_ids()
-            .into_iter()
-            .find(|p| matches!(p, PaneId::Plugin(_)))?;
-        let plugin_pane = mobile_tab.get_pane_with_id(plugin_pane_id)?;
-        let embedded_rows = plugin_pane
-            .get_content_rows()
-            .saturating_sub(fit.insets.top + fit.insets.bottom);
-        let embedded_cols = plugin_pane
-            .get_content_columns()
-            .saturating_sub(fit.insets.left + fit.insets.right);
+        let embedded_rows = fit.size.rows;
+        let embedded_cols = fit.size.cols;
 
         // Target tab bars (tab bar / status bar) and target pane frame.
         let target_tab = self.tabs.get(&tab_id)?;
@@ -2739,41 +2710,34 @@ impl Screen {
         })
     }
 
-    /// Recompute every fit-override tab owned by `client_id`. Called
-    /// when the client's own viewport changes (rotation / pinch /
-    /// browser resize): the fit's embedded area is derived from that
-    /// client's mobile plugin pane, but the override lives on a
-    /// *different* tab whose `recompute_tab_size` is not otherwise
-    /// triggered by the client's resize.
-    pub fn recompute_fits_owned_by(&mut self, client_id: ClientId) -> Result<()> {
-        let owned: Vec<usize> = self
-            .mobile_state
-            .fit_states
-            .iter()
-            .filter(|(_, f)| f.owning_client == client_id)
-            .map(|(&t, _)| t)
-            .collect();
-        for tab_id in owned {
-            self.recompute_tab_size(tab_id)?;
-        }
-        Ok(())
-    }
-
-    /// Install a fit-mode override for `tab_id`, toggling fullscreen
-    /// on `pane_id` if it isn't already, and recompute the tab size.
-    /// Extracted from the `ScreenInstruction::EnterFitMode` handler so
-    /// integration tests can drive the same code path without a
-    /// running screen thread.
-    pub fn enter_fit_mode(
+    /// Enter or update a fit override for `tab_id` (per calling client),
+    /// sizing the tab so `pane_id`'s content is exactly `size`. On the
+    /// first install it captures pre-fit fullscreen state and toggles
+    /// the pane fullscreen; a re-push for an existing entry just updates
+    /// the stored `size` (and reclaims ownership), leaving fullscreen
+    /// untouched. Recomputes the tab afterwards. Extracted so
+    /// integration tests can drive the same path without a running
+    /// screen thread.
+    pub fn set_tab_fit(
         &mut self,
         client_id: ClientId,
         tab_id: usize,
         pane_id: PaneId,
-        insets: Insets,
+        size: Size,
     ) -> Result<()> {
-        // Capture pre-fit fullscreen state for the target pane.
-        // `was_fullscreen_before` is true iff fullscreen is active on
-        // the tab AND it's specifically THIS pane that's fullscreen.
+        if let Some(fit) = self.mobile_state.fit_states.get_mut(&tab_id) {
+            // Update path: the fit already exists. Only the embedded
+            // size (and owner, for collision reclaim) changes; do NOT
+            // re-toggle fullscreen.
+            fit.size = size;
+            fit.owning_client = client_id;
+            fit.pane_id = pane_id;
+            return self.recompute_tab_size(tab_id);
+        }
+
+        // Install path. Capture pre-fit fullscreen state for the target
+        // pane: `was_fullscreen_before` is true iff fullscreen is active
+        // on the tab AND it's specifically THIS pane that's fullscreen.
         // The cleanup paths (`exit_fit_mode`, `remove_client`) consult
         // this so they only toggle fullscreen back off when fit itself
         // turned it on.
@@ -2789,16 +2753,12 @@ impl Screen {
                 }
             }
         }
-        // Last-writer-wins insert. A prior fit by another client on the
-        // same tab is silently overwritten; that client's plugin still
-        // thinks fit is on and will reclaim the override on its next
-        // UpdateFitInsets (see the collision note on `MobileState::fit_states`).
         self.mobile_state.fit_states.insert(
             tab_id,
             FitState {
                 owning_client: client_id,
                 pane_id,
-                insets,
+                size,
                 was_fullscreen_before,
             },
         );
@@ -2858,29 +2818,6 @@ impl Screen {
         Ok(true)
     }
 
-    /// Update the insets of the fit override on `tab_id` and
-    /// recompute the tab (the server re-derives the size from live
-    /// geometry minus the new insets). Looking up by `tab_id` rather
-    /// than by owning_client lets a displaced client (whose entry was
-    /// overwritten by a colliding fit on the same tab) reclaim ownership
-    /// on its next push — the entry's `owning_client` is rewritten to
-    /// the caller so subsequent `ExitFitMode` / disconnect cleanup
-    /// correctly attribute it. Returns `true` iff a matching fit was
-    /// found (i.e. caller should re-render).
-    pub fn update_fit_insets(
-        &mut self,
-        client_id: ClientId,
-        tab_id: usize,
-        insets: Insets,
-    ) -> Result<bool> {
-        let Some(fit) = self.mobile_state.fit_states.get_mut(&tab_id) else {
-            return Ok(false);
-        };
-        fit.insets = insets;
-        fit.owning_client = client_id;
-        self.recompute_tab_size(tab_id)?;
-        Ok(true)
-    }
 
     pub fn update_pixel_dimensions(&mut self, pixel_dimensions: PixelDimensions) {
         self.pixel_dimensions.merge(pixel_dimensions);
@@ -8270,13 +8207,11 @@ pub(crate) fn screen_thread_main(
                 let active_tab_id = screen.active_tab_ids.get(&client_id).copied();
                 if let Some(tab_id) = active_tab_id {
                     screen.recompute_tab_size(tab_id)?;
-                    // If this client owns a fit (e.g. a mobile client
-                    // whose viewport just rotated/resized), its embedded
-                    // area changed — re-derive the override on the target
-                    // tab(s), which `recompute_tab_size(active_tab)` above
-                    // does not cover (the override lives on a different
-                    // tab than the mobile client's active tab).
-                    screen.recompute_fits_owned_by(client_id)?;
+                    // A mobile client whose viewport rotated/resized
+                    // re-pushes its fit's new embedded `size` via
+                    // `SetTabFit` from its own `update()` (the resize
+                    // reflows the embedded pane → `PaneRenderReportWithAnsi`
+                    // → update), so the server does not re-derive fits here.
                     screen.log_and_report_session_state()?;
                     screen.render(None)?;
                 }
@@ -10044,26 +9979,19 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
-            ScreenInstruction::EnterFitMode {
+            ScreenInstruction::SetTabFit {
                 client_id,
                 tab_id,
-                pane_id,
-                insets,
+                fit,
             } => {
-                screen.enter_fit_mode(client_id, tab_id, pane_id, insets)?;
-                screen.render(None)?;
-            },
-            ScreenInstruction::ExitFitMode { client_id } => {
-                if screen.exit_fit_mode(client_id)? {
-                    screen.render(None)?;
-                }
-            },
-            ScreenInstruction::UpdateFitInsets {
-                client_id,
-                tab_id,
-                insets,
-            } => {
-                if screen.update_fit_insets(client_id, tab_id, insets)? {
+                let changed = match fit {
+                    Some((pane_id, size)) => {
+                        screen.set_tab_fit(client_id, tab_id, pane_id, size)?;
+                        true
+                    },
+                    None => screen.exit_fit_mode(client_id)?,
+                };
+                if changed {
                     screen.render(None)?;
                 }
             },

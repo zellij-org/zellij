@@ -59,7 +59,7 @@ pub enum ClickAction {
     /// match this plugin's embedded viewport area, fullscreening
     /// the pane in the process. The plugin keeps a mirror
     /// (`State::fit_active`) so the next tap takes the off path.
-    /// See `enter_fit_mode` / `exit_fit_mode` in the shim.
+    /// See `set_tab_fit` in the shim.
     ToggleFit,
     /// Tap on a cell of the modifier bar at the bottom of the plugin
     /// area. Routed through `ModifierBarController::handle_tap` which
@@ -347,19 +347,27 @@ pub struct State {
     /// Reset to `false` when the user picks a different tab or pane,
     /// or when the previously-selected pane disappears.
     pub fit_active: bool,
-    /// The tab the local fit is bound to. Set when `EnterFitMode` is
-    /// sent; cleared by every path that clears `fit_active`. Threaded
-    /// through `UpdateFitInsets` so the server can look up the override
-    /// entry by tab_id (rather than by owning_client), which is what
-    /// lets a displaced client (whose entry was overwritten by a
-    /// colliding fit on the same tab) reclaim ownership on its next
-    /// push. The plugin no longer computes or mirrors the target size:
-    /// it reports its chrome insets (top bar, soft-keyboard bar) via
-    /// `enter_fit_mode` / `update_fit_insets` and the server derives the
-    /// size from live geometry. Insets depend only on semantic UI state,
-    /// all mutated in `update()`, so they are emitted inline from the
-    /// arm that changes them — no render-stash-then-flush is needed.
+    /// The tab the local fit is bound to. Set when a fit is armed;
+    /// cleared by every path that clears `fit_active`. Threaded through
+    /// `set_tab_fit` so the server can look up the override entry by
+    /// tab_id (rather than by owning_client), which is what lets a
+    /// displaced client (whose entry was overwritten by a colliding fit
+    /// on the same tab) reclaim ownership on its next push. The plugin
+    /// computes the exact embedded content `Size` it wants the fitted
+    /// pane to be (from its cached render dims minus its chrome — see
+    /// `embedded_size`) and the server adds the tab bars + pane frame.
     pub fit_tab_id: Option<usize>,
+    /// Dims `render()` was last called with — the plugin pane's content
+    /// size, the source of the embedded area reported to the server.
+    /// Cached because the embedded `Size` must be computed in
+    /// `update()` (shim calls are forbidden in `render()`), which has no
+    /// dimensions of its own.
+    pub last_render_rows: usize,
+    pub last_render_cols: usize,
+    /// The embedded `Size` most recently pushed to the server for the
+    /// active fit. Lets `notify_fit_size` dedupe redundant pushes when
+    /// `update()` reconciles on every event.
+    pub last_sent_fit_size: Option<Size>,
     /// Pending tab-position auto-select after a "+ New Tab" command.
     /// `new_tab_unfocused` returns the new tab's id synchronously
     /// before the matching `TabUpdate` and `PaneUpdate` events have

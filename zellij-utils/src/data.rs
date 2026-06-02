@@ -5,7 +5,7 @@ use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
-use crate::pane_size::{Insets, PaneGeom};
+use crate::pane_size::{PaneGeom, Size};
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
 use clap::ArgEnum;
@@ -3649,30 +3649,17 @@ pub enum PluginCommand {
     /// Mobile-only: show or hide the soft keyboard on the calling
     /// client's browser. No-op on non-web clients. Fire-and-forget.
     SetSoftKeyboard(bool),
-    /// Mobile "Fit" — enter. Captures pre-fit fullscreen state,
-    /// toggles fullscreen on if needed, and installs a tab-size
-    /// override so the tab matches the mobile plugin's embedded
-    /// viewport area. Per-client; auto-reverted by `ExitFitMode` or
-    /// client disconnect.
-    EnterFitMode {
+    /// Mobile "Fit" (per calling client). `Some((pane_id, size))`
+    /// fullscreens `pane_id` in `tab_id` and sizes the tab so the
+    /// pane's content is exactly `size`; re-send to update the size
+    /// (idempotent — enters on first call, updates thereafter).
+    /// `None` clears the calling client's fit and reverts any
+    /// fit-induced fullscreen. Size + fullscreen apply atomically;
+    /// auto-cleared on the target pane's close, tab close, or client
+    /// disconnect.
+    SetTabFit {
         tab_id: usize,
-        pane_id: PaneId,
-        insets: Insets,
-    },
-    /// Mobile "Fit" — exit (per-client). Reverts the size override
-    /// and any fit-induced fullscreen. No-op if no active fit.
-    ExitFitMode,
-    /// Mobile "Fit" — report the plugin's current insets for an
-    /// active fit (e.g. after a soft-keyboard or selector toggle). The
-    /// server recomputes the target tab size from the live plugin-pane
-    /// geometry minus these insets. It looks up the override entry by
-    /// `tab_id` and reattributes ownership to the calling client, so a
-    /// displaced client (whose entry was overwritten by a colliding fit
-    /// on the same tab) reclaims the override on its next push. No-op if
-    /// no fit exists for `tab_id`.
-    UpdateFitInsets {
-        tab_id: usize,
-        insets: Insets,
+        fit: Option<(PaneId, Size)>,
     },
     /// Mobile plugin → server: record the calling client as visually
     /// focused on `pane_id` in whichever tab owns the pane. Used by

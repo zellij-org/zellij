@@ -64,9 +64,34 @@ fn emit_cursor(state: &mut State, new_pos: Option<(usize, usize)>) {
 /// (collapsed) or one of the selector menus (expanded). Selectors
 /// *replace* the viewport rather than push it down — when the user
 /// is browsing tabs / panes / sessions the live viewport is hidden.
+/// The two vertical chrome offsets the body layout depends on, given
+/// the plugin pane's `rows`: `(body_top, bar_height)`. `body_top` is
+/// the top bar (1 row unless suppressed by the welcome flow or the open
+/// Sessions selector); `bar_height` is the soft-keyboard modifier bar
+/// (1 row while the keyboard is visible, suppressed on a pathologically
+/// short body). Single source of truth shared by `render` and the
+/// plugin's `embedded_size`, so the embedded area reported to the
+/// server can never drift from what is actually drawn. There is no
+/// horizontal chrome, so the embedded width is always `cols`.
+pub fn chrome_offsets(
+    rows: usize,
+    suppress_top_bar: bool,
+    soft_keyboard_visible: bool,
+) -> (usize, usize) {
+    let body_top = if suppress_top_bar { 0 } else { 1 };
+    let bar_height = if soft_keyboard_visible && rows.saturating_sub(body_top) >= 2 {
+        1
+    } else {
+        0
+    };
+    (body_top, bar_height)
+}
+
 pub fn render(state: &mut State, rows: usize, cols: usize) {
     state.click_regions.clear();
     state.viewport_region = None;
+    state.last_render_rows = rows;
+    state.last_render_cols = cols;
 
     if rows < 4 || cols < 8 {
         // No room for a meaningful UI — degrade to the stub. Hide the
@@ -104,12 +129,8 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
     let in_welcome_flow = state.welcome_auto_expand_done;
     let in_sessions_selector = state.expanded == Some(Selector::Sessions);
     let suppress_top_bar = in_welcome_flow || in_sessions_selector;
-    let body_top = if suppress_top_bar { 0 } else { 1 };
-    let bar_height = if state.soft_keyboard_visible && rows.saturating_sub(body_top) >= 2 {
-        1
-    } else {
-        0
-    };
+    let (body_top, bar_height) =
+        chrome_offsets(rows, suppress_top_bar, state.soft_keyboard_visible);
     let body_bottom = rows.saturating_sub(bar_height);
     let viewport_height = body_bottom.saturating_sub(body_top);
 
@@ -2115,12 +2136,11 @@ fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize,
         h_offset,
     });
 
-    // Fit-mode size tracking lives entirely on the server now: it
-    // re-derives the target tab size from this plugin pane's live
-    // geometry minus the chrome insets the plugin reports via
-    // `enter_fit_mode` / `update_fit_insets`. Render touches no fit
-    // state — keeping the host shims out of render (which would corrupt
-    // the in-flight frame on stdout).
+    // Render only caches the pane dims (`last_render_rows`/`cols`, set
+    // at the top of `render`); the embedded `Size` is computed and
+    // pushed to the server from `update()` via `notify_fit_size`.
+    // Render itself touches no fit state and issues no host shims (which
+    // would corrupt the in-flight frame on stdout).
 
     // Disable autowrap (DECAWM, `\x1b[?7l`) for the duration of the
     // viewport emit. The cached viewport lines come from the

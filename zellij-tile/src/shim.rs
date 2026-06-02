@@ -7,7 +7,7 @@ use std::{
 use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
-use zellij_utils::pane_size::Insets;
+use zellij_utils::pane_size::Size;
 pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::generated_api::api::plugin_command::{
@@ -1711,30 +1711,17 @@ pub fn set_soft_keyboard(on: bool) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Mobile "Fit" — enter. Tells the server to fullscreen `pane_id` in
-/// tab `tab_id` (capturing whether fullscreen was already on so the
-/// state can be reverted) and installs a fit override. `insets` are
-/// the cells the caller draws around its embedded viewport on each
-/// edge; the server subtracts them from the live plugin-pane size and
-/// computes the target tab size itself. The
-/// override persists until `exit_fit_mode()` is called or this
-/// client disconnects, whichever comes first.
-pub fn enter_fit_mode(tab_id: usize, pane_id: PaneId, insets: Insets) {
-    let plugin_command = PluginCommand::EnterFitMode {
-        tab_id,
-        pane_id,
-        insets,
-    };
-    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
-    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
-    unsafe { host_run_plugin_command() };
-}
-
-/// Mobile "Fit" — exit. No-op if the calling client has no active
-/// fit (the server is authoritative; harmless to call when the
-/// plugin's mirror state is uncertain).
-pub fn exit_fit_mode() {
-    let plugin_command = PluginCommand::ExitFitMode;
+/// Mobile "Fit" (per calling client). `Some((pane_id, size))`
+/// fullscreens `pane_id` in tab `tab_id` (capturing whether fullscreen
+/// was already on so it can be reverted) and sizes the tab so the
+/// pane's content is exactly `size` — the embedded content area the
+/// caller draws into. Re-send to update the size (idempotent: enters
+/// on the first call, updates thereafter). `None` clears the caller's
+/// fit and reverts any fit-induced fullscreen. The override otherwise
+/// persists until the target pane closes or the client disconnects.
+/// No-op server-side for a clear with no active fit.
+pub fn set_tab_fit(tab_id: usize, fit: Option<(PaneId, Size)>) {
+    let plugin_command = PluginCommand::SetTabFit { tab_id, fit };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -1747,22 +1734,6 @@ pub fn exit_fit_mode() {
 /// server's auto-mobile-mode detection.
 pub fn exit_mobile_mode() {
     let plugin_command = PluginCommand::ExitMobileMode;
-    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
-    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
-    unsafe { host_run_plugin_command() };
-}
-
-/// Mobile "Fit" — report the caller's current insets for the
-/// active fit. The plugin calls this whenever its own insets change
-/// (e.g. soft-keyboard or selector toggle); the server recomputes the
-/// target tab size from the live plugin-pane geometry minus these
-/// insets. `tab_id` identifies the override the caller installed via
-/// `enter_fit_mode` and lets the server reattribute the entry on the
-/// way through — a displaced caller whose entry was overwritten by a
-/// colliding fit on the same tab reclaims ownership here. No-op
-/// server-side if no fit exists on `tab_id`.
-pub fn update_fit_insets(tab_id: usize, insets: Insets) {
-    let plugin_command = PluginCommand::UpdateFitInsets { tab_id, insets };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

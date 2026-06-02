@@ -52,7 +52,7 @@ use zellij_utils::web_authentication_tokens::{
 use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
-use zellij_utils::pane_size::Insets;
+use zellij_utils::pane_size::Size;
 use kdl::KdlDocument;
 
 use prost::Message;
@@ -456,16 +456,10 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ListWindowsVolumes => list_windows_volumes(env),
                     PluginCommand::GetSessionList => get_session_list(env),
                     PluginCommand::SetSoftKeyboard(on) => set_soft_keyboard(env, on),
-                    PluginCommand::EnterFitMode {
-                        tab_id,
-                        pane_id,
-                        insets,
-                    } => enter_fit_mode(env, tab_id, pane_id.into(), insets),
-                    PluginCommand::ExitFitMode => exit_fit_mode(env),
-                    PluginCommand::ExitMobileMode => exit_mobile_mode(env),
-                    PluginCommand::UpdateFitInsets { tab_id, insets } => {
-                        update_fit_insets(env, tab_id, insets)
+                    PluginCommand::SetTabFit { tab_id, fit } => {
+                        set_tab_fit(env, tab_id, fit.map(|(pane_id, size)| (pane_id.into(), size)))
                     },
+                    PluginCommand::ExitMobileMode => exit_mobile_mode(env),
                     PluginCommand::SetMobileFocusedPane(pane_id) => {
                         set_mobile_focused_pane(env, pane_id.into())
                     },
@@ -4030,33 +4024,22 @@ fn set_mobile_focused_pane(env: &PluginEnv, pane_id: PaneId) {
         .non_fatal();
 }
 
-/// Mobile "Fit" — enter. Forwarded straight to the screen thread,
-/// which atomically captures pre-fit fullscreen state, toggles
-/// fullscreen if needed, installs the tab-size override, and
-/// recomputes the tab. Per-client; the screen thread tags the
-/// resulting `FitState` with `env.client_id` so disconnect cleanup
-/// can find and revert it.
-fn enter_fit_mode(env: &PluginEnv, tab_id: usize, pane_id: PaneId, insets: Insets) {
+/// Mobile "Fit". `Some((pane_id, size))` forwards an enter-or-update
+/// to the screen thread, which atomically (on first call) captures
+/// pre-fit fullscreen state, toggles fullscreen, installs the
+/// tab-size override, and recomputes the tab — or (on later calls)
+/// updates the stored size. `None` clears the calling client's fit
+/// and reverts any fit-induced fullscreen; no-op if no active fit.
+/// Per-client; the screen thread tags the `FitState` with
+/// `env.client_id` so disconnect cleanup can find and revert it.
+fn set_tab_fit(env: &PluginEnv, tab_id: usize, fit: Option<(PaneId, Size)>) {
     env.senders
-        .send_to_screen(ScreenInstruction::EnterFitMode {
+        .send_to_screen(ScreenInstruction::SetTabFit {
             client_id: env.client_id,
             tab_id,
-            pane_id,
-            insets,
+            fit,
         })
-        .with_context(|| format!("failed to dispatch EnterFitMode for plugin {}", env.plugin_id))
-        .non_fatal();
-}
-
-/// Mobile "Fit" — exit. No-op if the calling client has no active
-/// fit (e.g. the plugin's mirror state drifted; the server is
-/// authoritative).
-fn exit_fit_mode(env: &PluginEnv) {
-    env.senders
-        .send_to_screen(ScreenInstruction::ExitFitMode {
-            client_id: env.client_id,
-        })
-        .with_context(|| format!("failed to dispatch ExitFitMode for plugin {}", env.plugin_id))
+        .with_context(|| format!("failed to dispatch SetTabFit for plugin {}", env.plugin_id))
         .non_fatal();
 }
 
@@ -4070,29 +4053,6 @@ fn exit_mobile_mode(env: &PluginEnv) {
         .with_context(|| {
             format!(
                 "failed to dispatch ExitMobileMode for plugin {}",
-                env.plugin_id
-            )
-        })
-        .non_fatal();
-}
-
-/// Mobile "Fit" — report updated insets for the active fit. Sent when
-/// the plugin's own insets change (soft-keyboard or selector toggle);
-/// the server recomputes the target tab size from the live
-/// plugin-pane geometry minus these insets. `tab_id` identifies the
-/// override directly so a displaced client (its prior fit overwritten
-/// by a colliding one) can reclaim ownership server-side on the next
-/// push.
-fn update_fit_insets(env: &PluginEnv, tab_id: usize, insets: Insets) {
-    env.senders
-        .send_to_screen(ScreenInstruction::UpdateFitInsets {
-            client_id: env.client_id,
-            tab_id,
-            insets,
-        })
-        .with_context(|| {
-            format!(
-                "failed to dispatch UpdateFitInsets for plugin {}",
                 env.plugin_id
             )
         })
@@ -5630,9 +5590,7 @@ fn check_command_permission(
         | PluginCommand::SetPaneRegexHighlights(..)
         | PluginCommand::ClearPaneHighlights(..)
         | PluginCommand::SetSoftKeyboard(..)
-        | PluginCommand::EnterFitMode { .. }
-        | PluginCommand::ExitFitMode
-        | PluginCommand::UpdateFitInsets { .. }
+        | PluginCommand::SetTabFit { .. }
         | PluginCommand::ExitMobileMode => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
