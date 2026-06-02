@@ -2272,6 +2272,9 @@ pub struct TabInfo {
     pub has_bell_notification: bool,
     /// Whether this tab is currently flashing its bell (transient 400ms state)
     pub is_flashing_bell: bool,
+    /// Whether this tab is being renamed with its existing (non-default) name
+    /// pre-filled as the editable starting point, rather than from an empty buffer.
+    pub is_editing_existing_name: bool,
 }
 
 /// The `PaneManifest` contains a dictionary of panes, indexed by the tab position (0 indexed).

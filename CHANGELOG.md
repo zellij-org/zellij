@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* feat: renaming a tab that already has a custom name now keeps the existing name (with an edit cursor) instead of clearing it; default-named tabs ("Tab #1") still start from an empty buffer
 * feat: allow tabs to have different sizes if clients aren't focused on the same one (https://github.com/zellij-org/zellij/pull/5133)
 * feat: PWA support for the web client (manifest + icons + iOS meta tags) so the page can be installed as a standalone app (https://github.com/zellij-org/zellij/pull/5184)
 

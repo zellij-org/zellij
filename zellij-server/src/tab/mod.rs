@@ -158,6 +158,10 @@ pub(crate) struct Tab {
     pub position: usize,
     pub name: String,
     pub prev_name: String,
+    /// Whether this tab is currently being renamed with its existing (non-default) name
+    /// pre-filled as the editable starting point, rather than from an empty buffer. Only
+    /// meaningful while the active client is in `RenameTab` mode.
+    pub is_editing_existing_name: bool,
     /// The tab's current viewport size, computed as `min(rows)` and `min(cols)`
     /// independently across the clients whose `active_tab_id` equals this tab.
     /// When the tab has no viewers it retains its most recent value (the
@@ -765,7 +769,7 @@ impl Tab {
         web_server_port: u16,
     ) -> Self {
         let name = if name.is_empty() {
-            format!("Tab #{}", id + 1)
+            Tab::default_name(id)
         } else {
             name
         };
@@ -879,6 +883,7 @@ impl Tab {
             tab_has_pending_bell: false,
             tab_bell_flash: false,
             tab_bell_ring: false,
+            is_editing_existing_name: false,
         }
     }
 
@@ -1059,6 +1064,17 @@ impl Tab {
                 (None, false)
             }
         }
+    }
+
+    /// The templated name a tab is auto-assigned at creation when no explicit name is given.
+    fn default_name(id: usize) -> String {
+        format!("Tab #{}", id + 1)
+    }
+
+    /// Whether this tab still carries its auto-assigned templated name, as opposed
+    /// to a name the user has explicitly set.
+    pub fn has_default_name(&self) -> bool {
+        self.name == Tab::default_name(self.id)
     }
     fn relayout_floating_panes(&mut self, search_backwards: bool) -> Result<()> {
         if let Some(layout_candidate) = self
