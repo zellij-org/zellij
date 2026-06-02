@@ -630,6 +630,14 @@ pub struct Grid {
     pub is_scrolled: bool,
     pub link_handler: Rc<RefCell<LinkHandler>>,
     pub ring_bell: bool,
+    /// Visual-only bell signal: set by OSC 9 / OSC 777 dispatch to drive
+    /// the in-Zellij pane/tab/folded-stacked-pane indicators **without**
+    /// forwarding an ANSI BEL byte to the host terminal. The desktop
+    /// notification itself is the audible/visible alert; layering an
+    /// audio BEL on top would be a double-notification, and ST-terminated
+    /// OSC sequences carry no BEL in the input at all so synthesizing one
+    /// is surprising. Consumed by `Tab::check_and_handle_bell_notifications`.
+    pub pending_visual_bell: bool,
     scrollback_buffer_lines: usize,
     pub mouse_mode: MouseMode,
     pub mouse_tracking: MouseTracking,
@@ -959,6 +967,7 @@ impl Grid {
             is_scrolled: false,
             link_handler,
             ring_bell: false,
+            pending_visual_bell: false,
             scrollback_buffer_lines: 0,
             mouse_mode: MouseMode::default(),
             mouse_tracking: MouseTracking::default(),
@@ -3781,6 +3790,60 @@ impl Perform for Grid {
                         // Store raw payload and terminator; namespacing applied at Tab level
                         self.pending_desktop_notifications
                             .push((payload, terminator.to_string()));
+                    }
+                }
+            },
+
+            // OSC 9 (iTerm2 desktop notification): ESC ] 9 ; <body> ST
+            // Unidirectional, no metadata, no response. Trigger the in-Zellij
+            // visual indicator (pane/tab frame flash + [!] suffix) but
+            // explicitly NOT an audio bell: the desktop notification IS the
+            // alert, and synthesizing an ANSI BEL byte to the host on top of
+            // it would be a double-notification (and a non-sequitur for
+            // ST-terminated OSC 9 which has no BEL in the input at all). The
+            // distinction between `ring_bell` and `pending_visual_bell` lets
+            // Tab/Screen drive the visual pipeline without forwarding `\u{7}`
+            // to the host terminal. Payload is prefixed with the OSC code so
+            // the Tab-level forwarder can disambiguate from OSC 99 / OSC 777
+            // and skip namespacing.
+            b"9" => {
+                self.pending_visual_bell = true;
+                if params.len() > 1 {
+                    let body = params
+                        .get(1..)
+                        .unwrap_or_default()
+                        .iter()
+                        .flat_map(|x| str::from_utf8(x))
+                        .collect::<Vec<&str>>()
+                        .join(";");
+                    if !body.is_empty() {
+                        self.pending_desktop_notifications
+                            .push((format!("9;{}", body), terminator.to_string()));
+                    }
+                }
+            },
+
+            // OSC 777 (rxvt-style desktop notification): ESC ] 777 ; notify ; <title> ; <body> ST
+            // Only the `notify` sub-command is in scope; other sub-commands
+            // are silently ignored (no visual indicator, no passthrough).
+            // See the OSC 9 arm above for the `pending_visual_bell` vs
+            // `ring_bell` rationale.
+            b"777" => {
+                if params.len() >= 2 && params[1] == b"notify" {
+                    self.pending_visual_bell = true;
+                    if params.len() >= 3 {
+                        let title = str::from_utf8(params[2]).unwrap_or("");
+                        let body = params
+                            .get(3..)
+                            .unwrap_or_default()
+                            .iter()
+                            .flat_map(|x| str::from_utf8(x))
+                            .collect::<Vec<&str>>()
+                            .join(";");
+                        self.pending_desktop_notifications.push((
+                            format!("777;notify;{};{}", title, body),
+                            terminator.to_string(),
+                        ));
                     }
                 }
             },

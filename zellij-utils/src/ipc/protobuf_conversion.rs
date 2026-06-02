@@ -773,6 +773,7 @@ impl From<crate::input::options::Options>
                 crate::input::options::PaneFrameStyle::Titles => "titles".to_owned(),
                 crate::input::options::PaneFrameStyle::None => "none".to_owned(),
             }),
+            allow_osc_passthrough: options.allow_osc_passthrough,
         }
     }
 }
@@ -893,6 +894,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 .transpose()?,
             mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u16),
             mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u16),
+            allow_osc_passthrough: options.allow_osc_passthrough,
         })
     }
 }
