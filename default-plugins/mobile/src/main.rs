@@ -93,7 +93,14 @@ impl ZellijPlugin for State {
                     .retain(|id, _| live_pane_ids.contains(id));
                 if let Some(selected) = self.selected_pane_id {
                     if !live_pane_ids.contains(&selected) {
-                        clear_fit_if_active(self);
+                        // The server clears the fit override itself when
+                        // the target pane closes (see
+                        // `clear_fit_for_closed_pane`); only the plugin's
+                        // local mirror needs resetting so the Fit button
+                        // reflects reality. No `exit_fit_mode()` — the
+                        // server already dropped the entry.
+                        self.fit_active = false;
+                        self.fit_tab_id = None;
                     }
                 }
                 // Re-evaluate the tab default in case TabUpdate arrived
@@ -1479,10 +1486,11 @@ mod tests {
     }
 
     /// `PaneUpdate` whose manifest no longer contains the
-    /// selected pane clears the local fit mirror. This is the auto-
-    /// recovery path when the fit pane is closed externally — without
-    /// it, the plugin would keep showing "fit armed" against a dead
-    /// pane id.
+    /// selected pane resets the local fit mirror. The server already
+    /// tears down the authoritative fit override when the target pane
+    /// closes (`clear_fit_for_closed_pane`); this resets the plugin's
+    /// local mirror so the Fit button stops showing "fit armed" against
+    /// a dead pane id. No `exit_fit_mode()` shim is sent on this path.
     #[test]
     fn pane_update_clears_fit_when_selected_pane_disappears() {
         let mut state = fit_ready_state();
@@ -1490,8 +1498,8 @@ mod tests {
         state.fit_tab_id = Some(7);
 
         // Manifest with the same tab but pane 3 (the selected one)
-        // removed — only pane 99 survives. `clear_fit_if_active`
-        // should fire from the `PaneUpdate` handler.
+        // removed — only pane 99 survives. The `PaneUpdate` handler's
+        // local-only mirror reset should fire.
         let replacement_pane = PaneInfo {
             id: 99,
             is_plugin: false,

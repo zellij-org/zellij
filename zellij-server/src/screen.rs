@@ -2836,6 +2836,28 @@ impl Screen {
         Ok(true)
     }
 
+    /// Drop any fit override whose target pane just closed, then grow the
+    /// tab back to the min-of-viewers size. Called from the universal
+    /// pane-close signal (`notify_pane_closed_to_subscribers`) so a fit no
+    /// longer outlives its pane without the mobile plugin's assistance.
+    /// No fullscreen revert: `Tab::close_pane` already unset fullscreen
+    /// when it removed the pane, and the pane is gone regardless (cf. the
+    /// `close_tab_by_id` cleanup). Returns `true` iff an entry was cleared.
+    pub(crate) fn clear_fit_for_closed_pane(&mut self, pane_id: PaneId) -> Result<bool> {
+        let tab_id = self
+            .mobile_state
+            .fit_states
+            .iter()
+            .find(|(_, f)| f.pane_id == pane_id)
+            .map(|(&t, _)| t);
+        let Some(tab_id) = tab_id else {
+            return Ok(false);
+        };
+        self.mobile_state.fit_states.remove(&tab_id);
+        self.recompute_tab_size(tab_id)?;
+        Ok(true)
+    }
+
     /// Update the insets of the fit override on `tab_id` and
     /// recompute the tab (the server re-derives the size from live
     /// geometry minus the new insets). Looking up by `tab_id` rather
@@ -10425,6 +10447,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::NotifyPaneClosedToSubscribers { pane_id } => {
                 screen.notify_pane_closed_to_subscribers(pane_id);
+                screen.clear_fit_for_closed_pane(pane_id.into())?;
             },
             ScreenInstruction::PluginSubscribedToAnsiPaneContents(has_subscribers) => {
                 let previously_subscribed = screen.plugins_need_ansi_pane_contents;

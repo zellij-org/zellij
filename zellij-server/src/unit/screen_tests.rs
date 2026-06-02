@@ -9980,6 +9980,66 @@ fn fit_override_resizes_tab() {
     assert_eq!(fit.insets, insets);
 }
 
+/// Closing the fit's target pane tears the override down server-side
+/// (`clear_fit_for_closed_pane`), so a fit no longer outlives its pane
+/// without the mobile plugin's assistance. Closing a *different* pane
+/// leaves the override untouched.
+#[test]
+fn fit_cleared_when_target_pane_closes() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+
+    let mobile_client = 1;
+    setup_mobile_fit(&mut screen, mobile_client, 9, 100);
+    let insets = Insets {
+        top: 1,
+        bottom: 0,
+        left: 0,
+        right: 0,
+    };
+    screen
+        .enter_fit_mode(mobile_client, 0, PaneId::Terminal(1), insets)
+        .expect("TEST");
+    assert!(
+        screen.mobile_state.fit_states.contains_key(&0),
+        "Pre-condition: fit installed on tab 0"
+    );
+
+    // Closing a non-target pane is a no-op: the override targets
+    // pane 1, not pane 2.
+    assert!(
+        !screen
+            .clear_fit_for_closed_pane(PaneId::Terminal(2))
+            .expect("TEST"),
+        "Closing a non-target pane does not clear the fit"
+    );
+    assert!(
+        screen.mobile_state.fit_states.contains_key(&0),
+        "Fit survives an unrelated pane close"
+    );
+
+    // Close the target pane (as `Tab::close_pane` would before
+    // emitting the universal pane-close signal), then run the
+    // server-side cleanup the signal handler invokes.
+    screen
+        .tabs
+        .get_mut(&0)
+        .unwrap()
+        .close_pane(PaneId::Terminal(1), false, None);
+    assert!(
+        screen
+            .clear_fit_for_closed_pane(PaneId::Terminal(1))
+            .expect("TEST"),
+        "Closing the target pane clears the fit"
+    );
+    assert!(
+        !screen.mobile_state.fit_states.contains_key(&0),
+        "Fit override is dropped once its target pane is gone"
+    );
+}
+
 /// Pre-fit fullscreen state is captured into `FitState`. When the pane
 /// was already fullscreen on entry, `was_fullscreen_before` is true so
 /// the cleanup paths know not to toggle it back off. A second pane is
@@ -10570,16 +10630,14 @@ fn fit_tab_close_cleans_state() {
     );
 }
 
-/// Closing the fit-owning pane (e.g. from another client, or because
-/// the underlying process exited) does NOT clean `fit_states`
-/// server-side — the mobile plugin owns that path: it observes the
-/// pane disappear via `PaneUpdate` and sends `ExitFitMode`. The
-/// server's invariant is that a stale pane_id is harmless: the
-/// disconnect cleanup guards every fullscreen-revert with
-/// `tab.has_pane_with_pid(&fit.pane_id)`. This test pins both
-/// behaviours.
+/// `remove_client` must safely skip a fit whose `pane_id` is already
+/// dead — every fullscreen-revert in the disconnect cleanup is guarded
+/// by `tab.has_pane_with_pid(&fit.pane_id)`. A target-pane close
+/// normally tears the fit down first (`clear_fit_for_closed_pane`, see
+/// `fit_cleared_when_target_pane_closes`); this pins the defensive
+/// guard for any path that still leaves an orphan entry behind.
 #[test]
-fn fit_pane_close_keeps_state_and_disconnect_is_safe() {
+fn disconnect_safe_with_orphan_fit() {
     let initial_size = Size { cols: 80, rows: 20 };
     let mut screen = create_new_screen(initial_size, true, true);
     new_tab(&mut screen, 1, 0);
@@ -10599,18 +10657,16 @@ fn fit_pane_close_keeps_state_and_disconnect_is_safe() {
         )
         .expect("TEST");
 
-    // Close the fit-owning pane directly on the tab — the path another
-    // client (or a pty exit) would drive. `fit_states` retains the
-    // entry; clean-up is the plugin's responsibility on the next
-    // PaneUpdate.
+    // Close the fit-owning pane directly on the tab WITHOUT running the
+    // pane-close cleanup, leaving an orphan entry whose `pane_id` is now
+    // dead — the exact state the disconnect guard must tolerate.
     {
         let tab = screen.get_active_tab_mut(1).unwrap();
         tab.close_pane(PaneId::Terminal(1), false, None);
     }
     assert!(
         screen.mobile_state.fit_states.contains_key(&0),
-        "Server-side entry survives external pane close; \
-         cleanup is the plugin's responsibility"
+        "Pre-condition: orphan entry present (cleanup deliberately skipped)"
     );
 
     // The disconnect path must safely skip the now-dead pane id.
@@ -10619,7 +10675,7 @@ fn fit_pane_close_keeps_state_and_disconnect_is_safe() {
     screen.remove_client(1).expect("Disconnect must not panic on dead pane_id");
     assert!(
         screen.mobile_state.fit_states.is_empty(),
-        "Disconnect cleanup eventually clears the orphan"
+        "Disconnect cleanup clears the orphan"
     );
 }
 
