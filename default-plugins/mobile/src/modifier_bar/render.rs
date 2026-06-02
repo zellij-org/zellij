@@ -29,7 +29,7 @@
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
-use crate::state::{ClickAction, ClickRegion};
+use crate::click::{ClickAction, ClickRegion};
 
 use super::controller::{
     BAR_CELL_COUNT, CELL_ALT, CELL_CTRL, CELL_DOWN, CELL_ESC, CELL_LEFT, CELL_MINUS, CELL_RIGHT,
