@@ -90,13 +90,14 @@ fn serialize_tab(
     floating_panes: &Vec<PaneLayoutManifest>,
     pane_contents: &mut BTreeMap<String, String>,
 ) -> Option<KdlNode> {
+    let has_tiled_panes = !tiled_panes.is_empty();
     let mut serialized_tab = KdlNode::new("tab");
     let mut serialized_tab_children = KdlDocument::new();
     match get_tiled_panes_layout_from_panegeoms(tiled_panes, None) {
         Some(tiled_panes_layout) => {
             let floating_panes_layout = get_floating_panes_layout_from_panegeoms(floating_panes);
-            let tiled_panes = if &tiled_panes_layout.children_split_direction
-                != &SplitDirection::default()
+            let tiled_panes = if (tiled_panes_layout.children.is_empty() && has_tiled_panes)
+                || &tiled_panes_layout.children_split_direction != &SplitDirection::default()
                 || tiled_panes_layout.children_are_stacked
             {
                 vec![tiled_panes_layout]
@@ -2198,6 +2199,233 @@ mod tests {
         };
         let kdl = serialize_session_layout(global_layout_manifest).unwrap();
         assert_snapshot!(kdl.0);
+    }
+
+    #[test]
+    fn single_pane_tab_is_not_serialized_as_empty() {
+        // Regression test: a tab with exactly one tiled pane must serialize that
+        // pane instead of producing an empty tab body.
+        let tab_layout_manifest = TabLayoutManifest {
+            tiled_panes: vec![PaneLayoutManifest {
+                geom: PaneGeom {
+                    x: 0,
+                    y: 0,
+                    rows: Dimension::percent(100.0),
+                    cols: Dimension::percent(100.0),
+                    stacked: None,
+                    is_pinned: false,
+                    logical_position: None,
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
+            ..Default::default()
+        };
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let output = kdl.0;
+        // The tab body must contain a `pane` node — not be empty
+        assert!(
+            output.contains("pane"),
+            "single-pane tab was serialized as empty:\n{output}"
+        );
+    }
+
+    #[test]
+    fn single_plugin_pane_tab_is_not_serialized_as_empty() {
+        // A tab containing only a borderless plugin pane (e.g. zjstatus) must
+        // preserve the plugin definition after serialization.
+        use crate::input::layout::RunPlugin;
+        let tab_layout_manifest = TabLayoutManifest {
+            tiled_panes: vec![PaneLayoutManifest {
+                geom: PaneGeom {
+                    x: 0,
+                    y: 0,
+                    rows: Dimension::fixed(1),
+                    cols: Dimension::percent(100.0),
+                    stacked: None,
+                    is_pinned: false,
+                    logical_position: None,
+                },
+                run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(
+                    RunPlugin::from_url("file:/path/to/plugin.wasm").unwrap(),
+                ))),
+                is_borderless: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
+            ..Default::default()
+        };
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let output = kdl.0;
+        assert!(
+            output.contains("plugin"),
+            "single-plugin-pane tab lost its plugin:\n{output}"
+        );
+    }
+
+    #[test]
+    fn terminal_plus_plugin_status_bar_tab_serialization() {
+        // Typical zjstatus layout: one terminal pane + one size=1 borderless
+        // plugin pane at the bottom.  Both must survive serialization.
+        use crate::input::layout::RunPlugin;
+
+        let mut terminal_rows = Dimension::percent(100.0);
+        terminal_rows.set_inner(81);
+        let mut terminal_cols = Dimension::percent(100.0);
+        terminal_cols.set_inner(214);
+        let mut plugin_cols = Dimension::percent(100.0);
+        plugin_cols.set_inner(214);
+
+        let tab_layout_manifest = TabLayoutManifest {
+            tiled_panes: vec![
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 0,
+                        y: 0,
+                        rows: terminal_rows,
+                        cols: terminal_cols,
+                        stacked: None,
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 0,
+                        y: 81,
+                        rows: Dimension::fixed(1),
+                        cols: plugin_cols,
+                        stacked: None,
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(
+                        RunPlugin::from_url("file:/path/to/zjstatus.wasm").unwrap(),
+                    ))),
+                    is_borderless: true,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![("main".to_owned(), tab_layout_manifest)],
+            ..Default::default()
+        };
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let output = kdl.0;
+        assert!(
+            output.contains("pane") && output.contains("plugin"),
+            "terminal+plugin tab lost content:\n{output}"
+        );
+    }
+
+    #[test]
+    fn multi_tab_with_single_and_multi_pane_tabs() {
+        // Verify that in a multi-tab session, single-pane tabs are serialized
+        // correctly alongside multi-pane tabs.
+        use crate::input::layout::RunPlugin;
+
+        let mut terminal_rows = Dimension::percent(100.0);
+        terminal_rows.set_inner(81);
+        let mut full_cols = Dimension::percent(100.0);
+        full_cols.set_inner(214);
+
+        // Tab 1: terminal + zjstatus (2 panes)
+        let tab_1 = TabLayoutManifest {
+            tiled_panes: vec![
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 0,
+                        y: 0,
+                        rows: terminal_rows,
+                        cols: full_cols,
+                        stacked: None,
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    ..Default::default()
+                },
+                PaneLayoutManifest {
+                    geom: PaneGeom {
+                        x: 0,
+                        y: 81,
+                        rows: Dimension::fixed(1),
+                        cols: full_cols,
+                        stacked: None,
+                        is_pinned: false,
+                        logical_position: None,
+                    },
+                    run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(
+                        RunPlugin::from_url("file:/path/to/zjstatus.wasm").unwrap(),
+                    ))),
+                    is_borderless: true,
+                    ..Default::default()
+                },
+            ],
+            is_focused: true,
+            ..Default::default()
+        };
+
+        // Tab 2: single terminal pane (the problematic case after resurrection)
+        let tab_2 = TabLayoutManifest {
+            tiled_panes: vec![PaneLayoutManifest {
+                geom: PaneGeom {
+                    x: 0,
+                    y: 0,
+                    rows: Dimension::percent(100.0),
+                    cols: Dimension::percent(100.0),
+                    stacked: None,
+                    is_pinned: false,
+                    logical_position: None,
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        // Tab 3: empty (no panes — should remain empty)
+        let tab_3 = TabLayoutManifest::default();
+
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![
+                ("main".to_owned(), tab_1),
+                ("work".to_owned(), tab_2),
+                ("empty".to_owned(), tab_3),
+            ],
+            ..Default::default()
+        };
+
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let output = kdl.0;
+
+        // Tab "main" must have plugin
+        assert!(
+            output.contains("zjstatus"),
+            "focused tab lost plugin:\n{output}"
+        );
+
+        // Split the output by tab to check "work" tab individually
+        let work_tab_start = output
+            .find("name=\"work\"")
+            .expect("Tab 'work' missing from output");
+        let after_work = &output[work_tab_start..];
+        let work_tab_body = if let Some(next_tab) = after_work[1..].find("\n    tab ") {
+            &after_work[..next_tab + 1]
+        } else {
+            after_work
+        };
+        assert!(
+            work_tab_body.contains("pane"),
+            "single-pane tab 'work' was serialized as empty:\n{work_tab_body}"
+        );
     }
 
     // utility functions
