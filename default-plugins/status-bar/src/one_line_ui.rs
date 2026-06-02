@@ -11,7 +11,7 @@ use zellij_tile_utils::palette_match;
 use crate::first_line::{to_char, KeyAction, KeyMode, KeyShortcut};
 use crate::second_line::{system_clipboard_error, text_copied_hint};
 use crate::{action_key, action_key_group, color_elements, MORE_MSG, TO_NORMAL};
-use crate::{ColoredElements, LinePart};
+use crate::{keyaction_to_click, ClickAction, ColoredElements, HitRegion, LinePart};
 use unicode_width::UnicodeWidthStr;
 
 pub fn one_line_ui(
@@ -575,6 +575,7 @@ fn full_inline_keys_modes_shortcut_list(
     let mut full_shortcut_list = LinePart::default();
     for key in keys_without_common_modifiers {
         let is_selected = key.is_selected();
+        let click_action = keyaction_to_click(key.get_action(), help.mode);
         let shortcut = add_shortcut_with_inline_key(
             help,
             &key.full_text(),
@@ -583,6 +584,7 @@ fn full_inline_keys_modes_shortcut_list(
                 .map(|k| vec![k.clone()])
                 .unwrap_or_else(|| vec![]),
             is_selected,
+            click_action,
         );
         full_shortcut_list.append(&shortcut);
     }
@@ -596,6 +598,7 @@ fn shortened_inline_keys_modes_shortcut_list(
     let mut shortened_shortcut_list = LinePart::default();
     for key in keys_without_common_modifiers {
         let is_selected = key.is_selected();
+        let click_action = keyaction_to_click(key.get_action(), help.mode);
         let shortcut = add_shortcut_with_key_only(
             help,
             key.key
@@ -603,6 +606,7 @@ fn shortened_inline_keys_modes_shortcut_list(
                 .map(|k| vec![k.clone()])
                 .unwrap_or_else(|| vec![]),
             is_selected,
+            click_action,
         );
         shortened_shortcut_list.append(&shortcut);
     }
@@ -613,6 +617,7 @@ fn full_modes_shortcut_list(default_keys: &Vec<KeyShortcut>, help: &ModeInfo) ->
     let mut full_shortcut_list = LinePart::default();
     for key in default_keys {
         let is_selected = key.is_selected();
+        let click_action = keyaction_to_click(key.get_action(), help.mode);
         full_shortcut_list.append(&add_shortcut(
             help,
             &key.full_text(),
@@ -622,6 +627,7 @@ fn full_modes_shortcut_list(default_keys: &Vec<KeyShortcut>, help: &ModeInfo) ->
                 .unwrap_or_else(|| vec![]),
             is_selected,
             Some(3),
+            click_action,
         ));
     }
     full_shortcut_list
@@ -631,6 +637,7 @@ fn shortened_modes_shortcut_list(default_keys: &Vec<KeyShortcut>, help: &ModeInf
     let mut shortened_shortcut_list = LinePart::default();
     for key in default_keys {
         let is_selected = key.is_selected();
+        let click_action = keyaction_to_click(key.get_action(), help.mode);
         shortened_shortcut_list.append(&add_shortcut(
             help,
             &key.short_text(),
@@ -640,6 +647,7 @@ fn shortened_modes_shortcut_list(default_keys: &Vec<KeyShortcut>, help: &ModeInf
                 .unwrap_or_else(|| vec![]),
             is_selected,
             Some(3),
+            click_action,
         ));
     }
     shortened_shortcut_list
@@ -743,6 +751,7 @@ fn render_secondary_info(
         padding.push_str(&ANSIStrings(&[colored_elements.superkey_prefix.paint(" ")]).to_string());
         padding_len += 1;
     }
+    secondary_info.shift_regions(padding_len);
     secondary_info.part = format!("{}{}", padding, secondary_info.part);
     secondary_info.len += padding_len;
     if secondary_info.len <= max_len {
@@ -914,6 +923,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             &new_pane_key_to_display,
             false,
             Some(0),
+            Some(ClickAction::NewPane),
         ));
         if should_show_focus_and_resize_shortcuts {
             secondary_info.append(&add_shortcut(
@@ -922,6 +932,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 &move_focus_shortcuts,
                 false,
                 Some(0),
+                None,
             ));
             secondary_info.append(&add_shortcut(
                 help,
@@ -929,6 +940,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 &resize_shortcuts,
                 false,
                 Some(0),
+                None,
             ));
         }
         secondary_info.append(&add_shortcut(
@@ -937,6 +949,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             &toggle_floating_key_to_display,
             are_floating_panes_visible,
             Some(0),
+            Some(ClickAction::ToggleFloating),
         ));
     } else {
         let modifier_str = text_as_line_part_with_emphasis(
@@ -972,6 +985,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             "New Pane",
             new_pane_key_to_display,
             false,
+            Some(ClickAction::NewPane),
         ));
         if should_show_focus_and_resize_shortcuts {
             secondary_info.append(&add_shortcut_with_inline_key(
@@ -979,12 +993,14 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 "Change Focus",
                 move_focus_shortcuts,
                 false,
+                None,
             ));
             secondary_info.append(&add_shortcut_with_inline_key(
                 help,
                 "Resize",
                 resize_shortcuts,
                 false,
+                None,
             ));
         }
         secondary_info.append(&add_shortcut_with_inline_key(
@@ -992,6 +1008,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             "Floating",
             toggle_floating_key_to_display,
             are_floating_panes_visible,
+            Some(ClickAction::ToggleFloating),
         ));
     }
 
@@ -1006,6 +1023,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 &new_pane_key_to_display,
                 false,
                 Some(0),
+                Some(ClickAction::NewPane),
             ));
             if should_show_focus_and_resize_shortcuts {
                 short_line.append(&add_shortcut(
@@ -1014,6 +1032,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                     &move_focus_shortcuts,
                     false,
                     Some(0),
+                    None,
                 ));
                 short_line.append(&add_shortcut(
                     help,
@@ -1021,6 +1040,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                     &resize_shortcuts,
                     false,
                     Some(0),
+                    None,
                 ));
             }
             short_line.append(&add_shortcut(
@@ -1029,6 +1049,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 &toggle_floating_key_to_display,
                 are_floating_panes_visible,
                 Some(0),
+                Some(ClickAction::ToggleFloating),
             ));
         } else {
             let modifier_str = text_as_line_part_with_emphasis(
@@ -1065,6 +1086,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 "New",
                 new_pane_key_to_display,
                 false,
+                Some(ClickAction::NewPane),
             ));
             if should_show_focus_and_resize_shortcuts {
                 short_line.append(&add_shortcut_with_inline_key(
@@ -1072,12 +1094,14 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                     "Focus",
                     move_focus_shortcuts,
                     false,
+                    None,
                 ));
                 short_line.append(&add_shortcut_with_inline_key(
                     help,
                     "Resize",
                     resize_shortcuts,
                     false,
+                    None,
                 ));
             }
             short_line.append(&add_shortcut_with_inline_key(
@@ -1085,6 +1109,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 "Floating",
                 toggle_floating_key_to_display,
                 are_floating_panes_visible,
+                Some(ClickAction::ToggleFloating),
             ));
         }
         if short_line.len <= max_len {
@@ -1096,11 +1121,13 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                     .opaque(),
             );
             let len = max_len;
-            LinePart { part, len }
+            LinePart { part, len,
+ regions: vec![], }
         } else {
             LinePart {
                 part: "".to_owned(),
                 len: 0,
+            regions: vec![],
             }
         }
     }
@@ -1111,6 +1138,7 @@ fn text_as_line_part_with_emphasis(text: String, emphases_index: usize) -> LineP
     LinePart {
         part,
         len: text.width(),
+    regions: vec![],
     }
 }
 
@@ -1132,6 +1160,7 @@ fn add_shortcut(
     keys: &Vec<KeyWithModifier>,
     selected: bool,
     key_color_index: Option<usize>,
+    click_action: Option<ClickAction>,
 ) -> LinePart {
     let mut ret = LinePart::default();
     if keys.is_empty() {
@@ -1152,6 +1181,13 @@ fn add_shortcut(
     } else {
         text.width() + 2 // padding
     };
+    if let Some(action) = click_action {
+        ret.regions.push(HitRegion {
+            col_start: 0,
+            col_end: ret.len,
+            action,
+        });
+    }
     ret
 }
 
@@ -1160,6 +1196,7 @@ fn add_shortcut_with_inline_key(
     text: &str,
     key: Vec<KeyWithModifier>,
     is_selected: bool,
+    click_action: Option<ClickAction>,
 ) -> LinePart {
     let capabilities = help.capabilities;
 
@@ -1212,6 +1249,13 @@ fn add_shortcut_with_inline_key(
     } else {
         text.width() + key_string.width() + 5 // padding and group boundaries
     };
+    if let Some(action) = click_action {
+        ret.regions.push(HitRegion {
+            col_start: 0,
+            col_end: ret.len,
+            action,
+        });
+    }
 
     ret
 }
@@ -1220,6 +1264,7 @@ fn add_shortcut_with_key_only(
     help: &ModeInfo,
     key: Vec<KeyWithModifier>,
     is_selected: bool,
+    click_action: Option<ClickAction>,
 ) -> LinePart {
     let mut ret = LinePart::default();
     if key.is_empty() {
@@ -1250,6 +1295,13 @@ fn add_shortcut_with_key_only(
     } else {
         key_string.width() + 2 // 2 => padding
     };
+    if let Some(action) = click_action {
+        ret.regions.push(HitRegion {
+            col_start: 0,
+            col_end: ret.len,
+            action,
+        });
+    }
     ret
 }
 
@@ -1323,12 +1375,29 @@ fn full_shortcut_list(help: &ModeInfo) -> LinePart {
     }
 }
 
+fn submenu_click_action(
+    help: &ModeInfo,
+    keys: &[KeyWithModifier],
+) -> Option<ClickAction> {
+    let first = keys.first()?;
+    let km = help.get_mode_keybinds();
+    let actions = km
+        .iter()
+        .find(|(k, _)| k == first)
+        .map(|(_, actions)| actions.clone())?;
+    if actions.is_empty() {
+        return None;
+    }
+    Some(ClickAction::RunActions(actions))
+}
+
 fn full_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
     let mut line_part = LinePart::default();
     let keys_and_hints = get_keys_and_hints(help);
 
     for (long, _short, keys) in keys_and_hints.into_iter() {
-        line_part.append(&add_shortcut(help, &long, &keys.to_vec(), false, Some(2)));
+        let click_action = submenu_click_action(help, &keys);
+        line_part.append(&add_shortcut(help, &long, &keys.to_vec(), false, Some(2), click_action));
     }
     line_part
 }
@@ -1528,7 +1597,8 @@ fn shortened_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
     let keys_and_hints = get_keys_and_hints(help);
 
     for (_, short, keys) in keys_and_hints.into_iter() {
-        line_part.append(&add_shortcut(help, &short, &keys.to_vec(), false, Some(2)));
+        let click_action = submenu_click_action(help, &keys);
+        line_part.append(&add_shortcut(help, &short, &keys.to_vec(), false, Some(2), click_action));
     }
     line_part
 }
@@ -1545,7 +1615,8 @@ fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
     let mut line_part = LinePart::default();
     let keys_and_hints = get_keys_and_hints(help);
     for (_, short, keys) in keys_and_hints.into_iter() {
-        let shortcut = add_shortcut(help, &short, &keys.to_vec(), false, Some(2));
+        let click_action = submenu_click_action(help, &keys);
+        let shortcut = add_shortcut(help, &short, &keys.to_vec(), false, Some(2), click_action);
         if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
             line_part.part = format!("{}{}", line_part.part, MORE_MSG);
             line_part.len += MORE_MSG.chars().count();
@@ -1739,6 +1810,7 @@ fn style_key_with_modifier(keyvec: &[KeyWithModifier], color_index: Option<usize
         LinePart {
             part: serialize_text(&text),
             len: key_string_text.width(),
+        regions: vec![],
         }
     } else {
         let key_string_without_modifier = format!("{}", key.join(key_separator));
@@ -1758,6 +1830,7 @@ fn style_key_with_modifier(keyvec: &[KeyWithModifier], color_index: Option<usize
         LinePart {
             part: serialize_text(&text),
             len: key_string_text.width(),
+        regions: vec![],
         }
     }
 }
