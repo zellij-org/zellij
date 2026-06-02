@@ -896,6 +896,8 @@ impl fmt::Display for ResizeStrategy {
 pub enum Mouse {
     ScrollUp(usize),          // number of lines
     ScrollDown(usize),        // number of lines
+    ScrollLeft(usize),        // number of lines
+    ScrollRight(usize),       // number of lines
     LeftClick(isize, usize),  // line and column
     RightClick(isize, usize), // line and column
     Hold(isize, usize),       // line and column
