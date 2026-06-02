@@ -8,6 +8,7 @@
 
 mod modifier_bar;
 mod keys;
+mod pane_sync;
 mod render;
 mod state;
 
@@ -80,133 +81,17 @@ impl ZellijPlugin for State {
                 true
             },
             Event::PaneUpdate(manifest) => {
-                self.panes_by_tab_position = manifest.panes;
-                let live_pane_ids: std::collections::HashSet<PaneId> = self
-                    .panes_by_tab_position
-                    .values()
-                    .flat_map(|panes| panes.iter().map(state::pane_id_of))
-                    .collect();
-                self.latest_pane_contents
-                    .retain(|id, _| live_pane_ids.contains(id));
-                self.pane_last_activity
-                    .retain(|id, _| live_pane_ids.contains(id));
-                if let Some(selected) = self.selected_pane_id {
-                    if !live_pane_ids.contains(&selected) {
-                        // The server clears the fit override itself when
-                        // the target pane closes (see
-                        // `clear_fit_for_closed_pane`); only the plugin's
-                        // local mirror needs resetting so the Fit button
-                        // reflects reality. No `set_tab_fit(.., None)` —
-                        // the server already dropped the entry.
-                        self.fit_active = false;
-                        self.fit_tab_id = None;
-                        self.last_sent_fit_size = None;
-                    }
-                }
-                // Re-evaluate the tab default in case TabUpdate arrived
-                // before any PaneUpdate — `tab_is_self_only` depends on
-                // pane data and may have classified everything as
-                // visible during the first tick.
-                if let Some(pos) = self.selected_tab_position {
-                    let still_visible =
-                        self.tabs_in_order().iter().any(|t| t.position == pos);
-                    if !still_visible {
-                        // Selected tab vanished — fit was bound to
-                        // its tab_id, so the server's entry is now
-                        // useless. Tell it to clear before we lose
-                        // the tab reference.
-                        clear_fit_if_active(self);
-                        self.selected_tab_position =
-                            self.tabs_in_order().first().map(|t| t.position);
-                        self.selected_pane_id = None;
-                    }
-                } else {
-                    self.selected_tab_position =
-                        self.tabs_in_order().first().map(|t| t.position);
-                }
-
-                // Resolve a pending "+ New Tab" auto-select. The
-                // shim returned a tab position synchronously, but the
-                // matching PaneUpdate (this event) is the first
-                // moment we have a concrete pane id for the new tab.
-                // Pick that tab's first pane and set both selection
-                // fields, then clear the pending intent.
-                if let Some(target) = self.pending_new_tab_position {
-                    let first_pane = self
-                        .panes_for_tab(target)
-                        .into_iter()
-                        .next()
-                        .map(state::pane_id_of);
-                    if let Some(id) = first_pane {
-                        self.selected_tab_position = Some(target);
-                        self.selected_pane_id = Some(id);
-                        self.viewport_v_pan = 0;
-                        self.viewport_h_pan = 0;
-                        self.expanded = None;
-                        self.pending_new_tab_position = None;
-                    }
-                }
-                // Default pane selection: the first pane in the
-                // selected tab. We deliberately do NOT prefer the
-                // `is_focused` pane — `PaneInfo.is_focused` is a global
-                // flag (true if any client focuses the pane), so
-                // initialising from it would make the mobile view start
-                // out tracking another connected client's focused pane.
-                // The user can pick a different pane via the panes
-                // selector; once they do, `selected_pane_id` is sticky.
-                if self.selected_pane_id.is_none() {
-                    if let Some(pane) = self.current_tab_panes().into_iter().next() {
-                        self.selected_pane_id = Some(state::pane_id_of(pane));
-                    }
-                }
-                // Push the resolved current pane to the server as the
-                // mobile client's shadow focus so other clients see
-                // the focus marker on the pane the viewport is
-                // rendering. Covers initial setup and any pane churn
-                // (close/move) that triggers a re-pick above.
+                pane_sync::refresh_pane_manifest(self, manifest);
+                pane_sync::reconcile_selected_tab(self);
+                pane_sync::resolve_pending_new_tab(self);
+                pane_sync::ensure_pane_selected(self);
                 sync_shadow_focus(self);
-                // Welcome-screen UX: on first detection that the
-                // underlying pane is the session-manager welcome
-                // plugin, close that pane and take over the welcome
-                // experience natively. The session-manager renders
-                // at the underlying pane's width (typically full
-                // screen) and would otherwise require horizontal
-                // panning to read; running the welcome flow in this
-                // plugin's own UI fits the phone width naturally and
-                // lets the Sessions selector scroll under sticky
-                // chrome. The welcome tab auto-closes after its only
-                // pane is gone (no selectable panes → screen render
-                // loop marks the tab for closure); this plugin's own
-                // tab keeps the session alive.
-                if !self.welcome_auto_expand_done
-                    && self.expanded.is_none()
-                    && self.current_pane_is_welcome()
-                {
-                    if let Some(pane) = self.current_pane() {
-                        close_plugin_pane(pane.id);
-                    }
-                    self.expanded = Some(Selector::Sessions);
-                    self.selector_scroll_offset = 0;
-                    self.menu_open = false;
-                    self.welcome_auto_expand_done = true;
-                    // Pull the authoritative session snapshot, same
-                    // path as `ClickAction::ExpandSessions`. The
-                    // standing `Event::SessionUpdate` payload only
-                    // contains the current session's metadata until
-                    // a scan is requested via this shim — so without
-                    // this call the selector would render empty on
-                    // first show.
-                    if let Ok(snapshot) = get_session_list() {
-                        self.sessions = filter_sessions_for_client(
-                            snapshot.live_sessions, self,
-                        );
-                    }
-                }
+                pane_sync::maybe_take_over_welcome(self);
                 true
             },
             Event::SessionUpdate(sessions, _) => {
                 // Capture this client's session name for the top bar
-                // *and* the full session list for the session
+                // and the full session list for the session
                 // selector. A fresh `SessionUpdate` arrives every time
                 // session metadata changes — including the broadcast
                 // that follows our own `get_session_list()` call in
@@ -222,35 +107,12 @@ impl ZellijPlugin for State {
                 true
             },
             Event::PaneRenderReportWithAnsi(map) => {
-                // Merge — the server emits *changed* panes only after
-                // the first report (see `get_changed_panes_per_client`
-                // in `zellij-server/src/plugins/wasm_bridge.rs`). A
-                // wholesale replace would wipe every static pane's
-                // viewport whenever any other pane changes (e.g. when
-                // a desktop client opens a new pane), leaving the
-                // mobile embedded viewport empty. Pane closures are
-                // handled in the `PaneUpdate` arm above, which prunes
-                // entries against the authoritative pane manifest.
-                //
-                // Receipt of a delta for a pane *is* the activity
-                // signal — `PaneContents` itself carries no
-                // server-side timestamp, so we stamp `now()` for
-                // every pane mentioned in this report. The Panes
-                // selector renders that stamp as `<time> ago`.
                 let now = unix_now();
                 for id in map.keys() {
                     self.pane_last_activity.insert(*id, now);
                 }
+                // extend because we only get changed panes
                 self.latest_pane_contents.extend(map);
-                // While the Panes selector is open, the same delta
-                // that signals "this pane's content changed" is the
-                // best moment to also refresh its title — OSC 2
-                // sequences land in the same byte stream that drives
-                // these reports. We do this here (in `update`) and
-                // not in `render` because shim calls write to the
-                // plugin's stdout for their response, and `render`'s
-                // own output capture would be corrupted by an
-                // interleaved shim reply.
                 if matches!(self.expanded, Some(Selector::Panes)) {
                     refresh_pane_titles(self);
                 }
@@ -1135,7 +997,7 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
 /// flow exists to *leave* that session, not to be a destination).
 /// Identified by any pane with `plugin_url == "welcome-screen"`,
 /// the same alias the welcome.kdl layout uses.
-fn filter_sessions_for_client(
+pub fn filter_sessions_for_client(
     sessions: Vec<SessionInfo>,
     state: &State,
 ) -> Vec<SessionInfo> {
