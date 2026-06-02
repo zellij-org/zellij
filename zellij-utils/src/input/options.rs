@@ -259,6 +259,15 @@ pub struct Options {
     #[serde(default)]
     pub mouse_click_through: Option<bool>,
 
+    /// Whether to forward OSC 9 (iTerm2) and OSC 777 (rxvt) desktop-notification
+    /// sequences from panes to the host terminal. When false, the visual indicator
+    /// (pane/tab frame flash + [!] suffix) still fires, but the OSC bytes are not
+    /// forwarded. Does not affect OSC 99, which has its own established passthrough
+    /// behavior. Default: true.
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub allow_osc_passthrough: Option<bool>,
+
     // these are intentionally excluded from the CLI options as they must be specified in the
     // configuration file
     pub web_server_ip: Option<IpAddr>,
@@ -369,6 +378,7 @@ impl Options {
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = other.focus_follows_mouse.or(self.focus_follows_mouse);
         let mouse_click_through = other.mouse_click_through.or(self.mouse_click_through);
+        let allow_osc_passthrough = other.allow_osc_passthrough.or(self.allow_osc_passthrough);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -426,6 +436,7 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            allow_osc_passthrough,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -504,6 +515,8 @@ impl Options {
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = merge_bool(other.focus_follows_mouse, self.focus_follows_mouse);
         let mouse_click_through = merge_bool(other.mouse_click_through, self.mouse_click_through);
+        let allow_osc_passthrough =
+            merge_bool(other.allow_osc_passthrough, self.allow_osc_passthrough);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -561,6 +574,7 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            allow_osc_passthrough,
             web_server_ip,
             web_server_port,
             web_server_cert,
