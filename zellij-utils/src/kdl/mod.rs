@@ -5871,6 +5871,7 @@ impl TabInfo {
             tab_id,
             has_bell_notification: false,
             is_flashing_bell: false,
+            is_editing_existing_name: false,
         })
     }
     pub fn encode_to_kdl(&self) -> KdlDocument {
@@ -6310,6 +6311,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 tab_id: 0,
                 is_flashing_bell: false,
                 has_bell_notification: false,
+                is_editing_existing_name: false,
             },
             TabInfo {
                 position: 1,
@@ -6331,6 +6333,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 tab_id: 1,
                 is_flashing_bell: false,
                 has_bell_notification: false,
+                is_editing_existing_name: false,
             },
         ],
         panes: PaneManifest { panes },

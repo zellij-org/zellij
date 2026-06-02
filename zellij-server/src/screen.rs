@@ -3257,6 +3257,7 @@ impl Screen {
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
                 is_flashing_bell: tab.tab_bell_flash
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
+                is_editing_existing_name: tab.is_editing_existing_name,
             };
             tab_infos_for_screen_state.insert(tab.position, tab_info_for_screen);
         }
@@ -3300,6 +3301,7 @@ impl Screen {
                     tab_id: tab.id,
                     has_bell_notification: tab.tab_has_pending_bell && *active_tab_index != tab.id,
                     is_flashing_bell: tab.tab_bell_flash && *active_tab_index != tab.id,
+                    is_editing_existing_name: tab.is_editing_existing_name,
                 };
                 plugin_tab_updates.push(tab_info_for_plugins);
             }
@@ -3561,7 +3563,11 @@ impl Screen {
                     Ok(active_tab) => {
                         match s {
                             "\0" => {
-                                active_tab.name = String::new();
+                                // A default-templated name is wiped so the user starts fresh; a name the
+                                // user has set is kept in place so they can edit it (see `change_mode`).
+                                if active_tab.has_default_name() {
+                                    active_tab.name = String::new();
+                                }
                             },
                             "\u{007F}" | "\u{0008}" => {
                                 // delete and backspace keys
@@ -3798,6 +3804,13 @@ impl Screen {
         if mode_info.mode == InputMode::RenameTab {
             if let Ok(active_tab) = self.get_active_tab_mut(client_id) {
                 active_tab.prev_name = active_tab.name.clone();
+                active_tab.is_editing_existing_name = !active_tab.has_default_name();
+            }
+        }
+
+        if previous_mode == InputMode::RenameTab && mode_info.mode != InputMode::RenameTab {
+            if let Ok(active_tab) = self.get_active_tab_mut(client_id) {
+                active_tab.is_editing_existing_name = false;
             }
         }
 
@@ -5266,6 +5279,7 @@ impl Screen {
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
                 is_flashing_bell: tab.tab_bell_flash
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
+                is_editing_existing_name: tab.is_editing_existing_name,
             }
         })
     }

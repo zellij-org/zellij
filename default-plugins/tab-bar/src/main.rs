@@ -125,8 +125,12 @@ impl ZellijPlugin for State {
         let mut is_alternate_tab = false;
         for t in &mut self.tabs {
             let mut tabname = t.name.clone();
+            let mut show_rename_cursor = false;
             if t.active && self.mode_info.mode == InputMode::RenameTab {
-                if tabname.is_empty() {
+                if t.is_editing_existing_name {
+                    // editing an existing name in place: keep it and mark the edit point
+                    show_rename_cursor = true;
+                } else if tabname.is_empty() {
                     tabname = String::from("Enter name...");
                 }
                 active_tab_index = t.position;
@@ -139,6 +143,7 @@ impl ZellijPlugin for State {
                 is_alternate_tab,
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
+                show_rename_cursor,
             );
             is_alternate_tab = !is_alternate_tab;
             all_tabs.push(tab);

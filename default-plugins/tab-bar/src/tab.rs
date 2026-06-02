@@ -26,6 +26,7 @@ pub fn render_tab(
     is_alternate_tab: bool,
     palette: Styling,
     separator: &str,
+    show_rename_cursor: bool,
 ) -> LinePart {
     let focused_clients = tab.other_focused_clients.as_slice();
     let separator_width = separator.width();
@@ -57,9 +58,24 @@ pub fn render_tab(
     let separator_fill_color = palette.text_unselected.background;
     let left_separator = style!(separator_fill_color, background_color).paint(separator);
     let mut tab_text_len = text.width() + (separator_width * 2) + 2; // +2 for padding
-    let tab_styled_text = style!(foreground_color, background_color)
-        .bold()
-        .paint(format!(" {} ", text));
+
+    // The padded, styled tab label. While renaming an existing name in place we
+    // insert a reverse-video block cursor (swapped fg/bg) at the editable end of
+    // the name, themed from the current colors.
+    let tab_label = if show_rename_cursor {
+        tab_text_len += 1; // the cursor cell
+        let name = style!(foreground_color, background_color)
+            .bold()
+            .paint(format!(" {}", text));
+        let cursor = style!(background_color, foreground_color).bold().paint(" ");
+        let trailing_pad = style!(foreground_color, background_color).bold().paint(" ");
+        format!("{}{}{}", name, cursor, trailing_pad)
+    } else {
+        style!(foreground_color, background_color)
+            .bold()
+            .paint(format!(" {} ", text))
+            .to_string()
+    };
 
     let right_separator = style!(background_color, separator_fill_color).paint(separator);
     let tab_styled_text = if !focused_clients.is_empty() {
@@ -77,14 +93,14 @@ pub fn render_tab(
             .paint("]")
             .to_string();
         s.push_str(&left_separator.to_string());
-        s.push_str(&tab_styled_text.to_string());
+        s.push_str(&tab_label);
         s.push_str(&cursor_beginning);
         s.push_str(&cursor_section);
         s.push_str(&cursor_end);
         s.push_str(&right_separator.to_string());
         s
     } else {
-        ANSIStrings(&[left_separator, tab_styled_text, right_separator]).to_string()
+        format!("{}{}{}", left_separator, tab_label, right_separator)
     };
 
     LinePart {
@@ -100,6 +116,7 @@ pub fn tab_style(
     mut is_alternate_tab: bool,
     palette: Styling,
     capabilities: PluginCapabilities,
+    show_rename_cursor: bool,
 ) -> LinePart {
     let separator = tab_separator(capabilities);
 
@@ -116,7 +133,14 @@ pub fn tab_style(
         is_alternate_tab = false;
     }
 
-    render_tab(tabname, tab, is_alternate_tab, palette, separator)
+    render_tab(
+        tabname,
+        tab,
+        is_alternate_tab,
+        palette,
+        separator,
+        show_rename_cursor,
+    )
 }
 
 pub(crate) fn get_tab_to_focus(

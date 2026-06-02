@@ -5022,6 +5022,177 @@ pub fn rename_tab_by_id_verifies_screen_state() {
 }
 
 #[test]
+fn null_clear_wipes_default_named_tab_but_keeps_custom() {
+    // The core of the sticky-rename feature: the `\0` reset (sent when entering
+    // rename mode) clears the buffer only for a default-templated name; a name the
+    // user has set is kept in place so it can be edited.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0); // ID 0 -> "Tab #1" (default)
+    let client_id = 1;
+
+    assert!(screen.get_active_tab(client_id).unwrap().has_default_name());
+    screen.update_active_tab_name(vec![0], client_id).unwrap();
+    assert_eq!(
+        screen.get_active_tab(client_id).unwrap().name,
+        "",
+        "a default-named tab is wiped to an empty buffer"
+    );
+
+    screen.get_tab_by_id_mut(0).unwrap().name = "staging".to_string();
+    screen.update_active_tab_name(vec![0], client_id).unwrap();
+    assert_eq!(
+        screen.get_active_tab(client_id).unwrap().name,
+        "staging",
+        "a custom-named tab is left untouched"
+    );
+}
+
+#[test]
+fn editing_existing_name_flag_tracks_mode_transitions() {
+    // The render hint is snapshotted on entering RenameTab and cleared on leaving it.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    let client_id = 1;
+
+    // Default name -> not editing an existing name.
+    screen
+        .change_mode(InputMode::RenameTab, None, client_id)
+        .unwrap();
+    assert!(
+        !screen
+            .get_active_tab(client_id)
+            .unwrap()
+            .is_editing_existing_name
+    );
+    screen
+        .change_mode(InputMode::Normal, None, client_id)
+        .unwrap();
+    assert!(
+        !screen
+            .get_active_tab(client_id)
+            .unwrap()
+            .is_editing_existing_name
+    );
+
+    // Custom name -> editing an existing name on entry, cleared on exit.
+    screen.get_tab_by_id_mut(0).unwrap().name = "db".to_string();
+    screen
+        .change_mode(InputMode::RenameTab, None, client_id)
+        .unwrap();
+    assert!(
+        screen
+            .get_active_tab(client_id)
+            .unwrap()
+            .is_editing_existing_name
+    );
+    screen
+        .change_mode(InputMode::Normal, None, client_id)
+        .unwrap();
+    assert!(
+        !screen
+            .get_active_tab(client_id)
+            .unwrap()
+            .is_editing_existing_name
+    );
+}
+
+#[test]
+fn undo_rename_of_custom_named_tab_restores_original() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    let client_id = 1;
+
+    screen.get_tab_by_id_mut(0).unwrap().name = "production".to_string();
+
+    // Entering rename snapshots the name and keeps it in place for editing.
+    screen
+        .change_mode(InputMode::RenameTab, None, client_id)
+        .unwrap();
+    assert_eq!(screen.get_active_tab(client_id).unwrap().name, "production");
+
+    screen
+        .update_active_tab_name(" v2".as_bytes().to_vec(), client_id)
+        .unwrap();
+    assert_eq!(
+        screen.get_active_tab(client_id).unwrap().name,
+        "production v2"
+    );
+
+    screen.undo_active_rename_tab(client_id).unwrap();
+    assert_eq!(screen.get_active_tab(client_id).unwrap().name, "production");
+}
+
+#[test]
+fn name_typed_to_match_template_is_treated_as_default() {
+    // `has_default_name` is a string-equality oracle: a name that exactly equals the
+    // template is intentionally indistinguishable from an auto-assigned one.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0); // ID 0 -> template "Tab #1"
+    let client_id = 1;
+
+    screen.get_tab_by_id_mut(0).unwrap().name = "Tab #1".to_string();
+
+    screen
+        .change_mode(InputMode::RenameTab, None, client_id)
+        .unwrap();
+    assert!(
+        !screen
+            .get_active_tab(client_id)
+            .unwrap()
+            .is_editing_existing_name,
+        "a name equal to the template is treated as default"
+    );
+    screen.update_active_tab_name(vec![0], client_id).unwrap();
+    assert_eq!(screen.get_active_tab(client_id).unwrap().name, "");
+}
+
+#[test]
+fn undo_rename_of_default_named_tab_restores_template() {
+    // The common case: the buffer is wiped on entry, so undo must restore the
+    // original template name rather than the emptied/half-typed buffer.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0); // ID 0 -> "Tab #1" (default)
+    let client_id = 1;
+
+    assert!(screen.get_active_tab(client_id).unwrap().has_default_name());
+
+    // Entering rename snapshots prev_name; the client then sends `\0` to wipe.
+    screen
+        .change_mode(InputMode::RenameTab, None, client_id)
+        .unwrap();
+    screen.update_active_tab_name(vec![0], client_id).unwrap();
+    assert_eq!(screen.get_active_tab(client_id).unwrap().name, "");
+
+    screen
+        .update_active_tab_name("scratch".as_bytes().to_vec(), client_id)
+        .unwrap();
+    assert_eq!(screen.get_active_tab(client_id).unwrap().name, "scratch");
+
+    screen.undo_active_rename_tab(client_id).unwrap();
+    assert_eq!(screen.get_active_tab(client_id).unwrap().name, "Tab #1");
+}
+
+#[test]
 pub fn send_cli_rename_tab_by_id_action() {
     let size = Size {
         cols: 121,

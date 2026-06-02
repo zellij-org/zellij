@@ -539,6 +539,9 @@ impl State {
 
         for tab in &self.tabs {
             let tab_name = self.get_tab_display_name(tab);
+            let show_rename_cursor = tab.active
+                && self.mode_info.mode == InputMode::RenameTab
+                && tab.is_editing_existing_name;
 
             if tab.active {
                 active_tab_index = tab.position;
@@ -554,6 +557,7 @@ impl State {
                 is_alternate_tab,
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
+                show_rename_cursor,
             );
 
             is_alternate_tab = !is_alternate_tab;
