@@ -16670,7 +16670,7 @@ pub fn has_shadow_focus_on_does_not_match_real_focus() {
 
     // Client 1 has *real* focus on pane 1 (set by `create_new_tab` /
     // `apply_layout`), but no shadow marker. The dedup helper must
-    // return false so a SetMobileFocusedPane handler does not
+    // return false so a SetShadowFocus handler does not
     // mistake real focus for an existing shadow.
     assert!(
         tab.tiled_panes.pane_id_is_focused(&PaneId::Terminal(1)),

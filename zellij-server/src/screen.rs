@@ -922,7 +922,7 @@ pub enum ScreenInstruction {
     /// thread (keystroke routing for the mobile client continues to
     /// go through `write_to_pane_id`, not the PTY thread's
     /// `active_panes`).
-    SetMobileFocusedPane(ClientId, PaneId),
+    SetShadowFocus(ClientId, PaneId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -1286,7 +1286,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleMobileMode(..) => ScreenContext::ToggleMobileMode,
             ScreenInstruction::ReevaluateMobileMode { .. } => ScreenContext::ReevaluateMobileMode,
             ScreenInstruction::SetSoftKeyboard { .. } => ScreenContext::SetSoftKeyboard,
-            ScreenInstruction::SetMobileFocusedPane(..) => ScreenContext::SetMobileFocusedPane,
+            ScreenInstruction::SetShadowFocus(..) => ScreenContext::SetShadowFocus,
         }
     }
 }
@@ -1838,7 +1838,7 @@ impl Screen {
     ///
     /// Called when:
     /// - The mobile plugin reports a new viewport pane via
-    ///   `SetMobileFocusedPane` (before applying the new entry).
+    ///   `SetShadowFocus` (before applying the new entry).
     /// - The client enters mobile mode (`enter_mobile_mode`), to
     ///   purge any pre-existing real-focus entry that would otherwise
     ///   show the mobile client focused on a desktop pane.
@@ -1868,8 +1868,8 @@ impl Screen {
     /// subscribed plugin (including the mobile plugin), and the mobile
     /// plugin's TabUpdate handler calls `sync_shadow_focus` — without
     /// dedup we would loop: server → TabUpdate → plugin →
-    /// SetMobileFocusedPane → server → ...
-    fn set_mobile_focused_pane(
+    /// SetShadowFocus → server → ...
+    fn set_shadow_focus(
         &mut self,
         client_id: ClientId,
         pane_id: PaneId,
@@ -1930,8 +1930,8 @@ impl Screen {
         // still a `connected_clients` member of its current tab, so
         // this is a no-op for that tab (a real focus entry is not a
         // shadow entry). The authoritative cleanup happens later via
-        // `set_mobile_focused_pane` once the plugin sends its first
-        // `SetMobileFocusedPane` after the client has been moved off
+        // `set_shadow_focus` once the plugin sends its first
+        // `SetShadowFocus` after the client has been moved off
         // the desktop tab — at which point the lingering
         // `active_panes` entry becomes a shadow entry and is cleared
         // by the same helper before the new shadow is applied.
@@ -10924,8 +10924,8 @@ pub(crate) fn screen_thread_main(
                         .send_to_client(client_id, ServerToClientMsg::SetSoftKeyboard { on });
                 }
             },
-            ScreenInstruction::SetMobileFocusedPane(client_id, pane_id) => {
-                screen.set_mobile_focused_pane(client_id, pane_id)?;
+            ScreenInstruction::SetShadowFocus(client_id, pane_id) => {
+                screen.set_shadow_focus(client_id, pane_id)?;
             },
         }
     }

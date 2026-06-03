@@ -468,7 +468,7 @@ pub enum ScreenContext {
     ToggleMobileMode,
     ReevaluateMobileMode,
     SetSoftKeyboard,
-    SetMobileFocusedPane,
+    SetShadowFocus,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

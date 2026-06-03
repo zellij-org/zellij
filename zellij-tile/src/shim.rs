@@ -1746,8 +1746,8 @@ pub fn exit_mobile_mode() {
 /// not affected (the mobile plugin uses `write_to_pane_id`). Used by
 /// the mobile plugin to keep server-side focus aligned with whichever
 /// pane the plugin viewport is currently rendering.
-pub fn set_mobile_focused_pane(pane_id: PaneId) {
-    let plugin_command = PluginCommand::SetMobileFocusedPane(pane_id);
+pub fn set_shadow_focus(pane_id: PaneId) {
+    let plugin_command = PluginCommand::SetShadowFocus(pane_id);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

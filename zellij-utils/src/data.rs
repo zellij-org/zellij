@@ -3667,7 +3667,7 @@ pub enum PluginCommand {
     /// focus marker on the pane the mobile viewport is rendering,
     /// without changing the client's actual tab (which would
     /// dismount the plugin UI).
-    SetMobileFocusedPane(PaneId),
+    SetShadowFocus(PaneId),
     /// Mobile plugin → server: exit mobile mode for the calling
     /// client. Tears down the client's mobile tab and switches it
     /// back to a normal session tab. One-way; the client re-enters

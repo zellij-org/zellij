@@ -374,7 +374,7 @@ fn is_welcome_session(session: &SessionInfo) -> bool {
 /// focus marker. No-op when no pane is resolvable.
 pub fn sync_shadow_focus(state: &State) {
     if let Some(pane) = state.workspace.current_pane() {
-        set_mobile_focused_pane(pane_id_of(&pane));
+        set_shadow_focus(pane_id_of(&pane));
     }
 }
 

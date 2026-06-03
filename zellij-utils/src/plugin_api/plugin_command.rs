@@ -1517,11 +1517,11 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(_) => Err("ExitMobileMode should have no payload, found a payload"),
                 None => Ok(PluginCommand::ExitMobileMode),
             },
-            Some(CommandName::SetMobileFocusedPane) => match protobuf_plugin_command.payload {
-                Some(Payload::SetMobileFocusedPanePayload(pane_id)) => {
-                    Ok(PluginCommand::SetMobileFocusedPane(pane_id.try_into()?))
+            Some(CommandName::SetShadowFocus) => match protobuf_plugin_command.payload {
+                Some(Payload::SetShadowFocusPayload(pane_id)) => {
+                    Ok(PluginCommand::SetShadowFocus(pane_id.try_into()?))
                 },
-                _ => Err("Mismatched payload for SetMobileFocusedPane"),
+                _ => Err("Mismatched payload for SetShadowFocus"),
             },
             Some(CommandName::DumpSessionLayout) => match protobuf_plugin_command.payload {
                 Some(Payload::DumpSessionLayoutPayload(payload)) => {
@@ -3551,9 +3551,9 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::SendSigintToPaneId as i32,
                 payload: Some(Payload::SendSigintToPaneIdPayload(pane_id.try_into()?)),
             }),
-            PluginCommand::SetMobileFocusedPane(pane_id) => Ok(ProtobufPluginCommand {
-                name: CommandName::SetMobileFocusedPane as i32,
-                payload: Some(Payload::SetMobileFocusedPanePayload(pane_id.try_into()?)),
+            PluginCommand::SetShadowFocus(pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetShadowFocus as i32,
+                payload: Some(Payload::SetShadowFocusPayload(pane_id.try_into()?)),
             }),
             PluginCommand::SendSigkillToPaneId(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::SendSigkillToPaneId as i32,

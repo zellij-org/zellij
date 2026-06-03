@@ -314,7 +314,7 @@ pub mod plugin_command {
         #[prost(message, tag="165")]
         SetTabFitPayload(super::SetTabFitPayload),
         #[prost(message, tag="167")]
-        SetMobileFocusedPanePayload(super::PaneId),
+        SetShadowFocusPayload(super::PaneId),
         #[prost(message, tag="168")]
         NewTabUnfocusedPayload(super::NewTabUnfocusedPayload),
         #[prost(message, tag="169")]
@@ -2241,7 +2241,7 @@ pub enum CommandName {
     DeleteAllDeadSessionsAndReply = 214,
     SetSoftKeyboard = 215,
     SetTabFit = 216,
-    SetMobileFocusedPane = 219,
+    SetShadowFocus = 219,
     NewTabUnfocused = 220,
     NewTiledPaneInTab = 221,
     ExitMobileMode = 222,
@@ -2449,7 +2449,7 @@ impl CommandName {
             CommandName::DeleteAllDeadSessionsAndReply => "DeleteAllDeadSessionsAndReply",
             CommandName::SetSoftKeyboard => "SetSoftKeyboard",
             CommandName::SetTabFit => "SetTabFit",
-            CommandName::SetMobileFocusedPane => "SetMobileFocusedPane",
+            CommandName::SetShadowFocus => "SetShadowFocus",
             CommandName::NewTabUnfocused => "NewTabUnfocused",
             CommandName::NewTiledPaneInTab => "NewTiledPaneInTab",
             CommandName::ExitMobileMode => "ExitMobileMode",
@@ -2654,7 +2654,7 @@ impl CommandName {
             "DeleteAllDeadSessionsAndReply" => Some(Self::DeleteAllDeadSessionsAndReply),
             "SetSoftKeyboard" => Some(Self::SetSoftKeyboard),
             "SetTabFit" => Some(Self::SetTabFit),
-            "SetMobileFocusedPane" => Some(Self::SetMobileFocusedPane),
+            "SetShadowFocus" => Some(Self::SetShadowFocus),
             "NewTabUnfocused" => Some(Self::NewTabUnfocused),
             "NewTiledPaneInTab" => Some(Self::NewTiledPaneInTab),
             "ExitMobileMode" => Some(Self::ExitMobileMode),

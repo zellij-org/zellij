@@ -460,8 +460,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         set_tab_fit(env, tab_id, fit.map(|(pane_id, size)| (pane_id.into(), size)))
                     },
                     PluginCommand::ExitMobileMode => exit_mobile_mode(env),
-                    PluginCommand::SetMobileFocusedPane(pane_id) => {
-                        set_mobile_focused_pane(env, pane_id.into())
+                    PluginCommand::SetShadowFocus(pane_id) => {
+                        set_shadow_focus(env, pane_id.into())
                     },
                     PluginCommand::DumpSessionLayout { tab_index } => {
                         dump_session_layout(env, tab_index)
@@ -3987,11 +3987,6 @@ fn list_windows_volumes(_env: &PluginEnv) {
 }
 
 /// Show or hide the soft keyboard on the calling client's browser.
-/// Fire-and-forget: routes through the screen thread so that the
-/// existing `bus.os_input.send_to_client` plumbing handles dispatch.
-/// On non-web clients the resulting `ServerToClientMsg::SetSoftKeyboard`
-/// is swallowed in `ClientInstruction::from`, so this is harmless even
-/// when the calling client is a terminal.
 fn set_soft_keyboard(env: &PluginEnv, on: bool) {
     env.senders
         .send_to_screen(ScreenInstruction::SetSoftKeyboard {
@@ -4009,15 +4004,15 @@ fn set_soft_keyboard(env: &PluginEnv, on: bool) {
 /// (the plugin UI stays mounted), real keystroke routing is unchanged
 /// (the plugin uses `write_to_pane_id`), and no CSI focus-tracking
 /// events are emitted to the target terminal.
-fn set_mobile_focused_pane(env: &PluginEnv, pane_id: PaneId) {
+fn set_shadow_focus(env: &PluginEnv, pane_id: PaneId) {
     env.senders
-        .send_to_screen(ScreenInstruction::SetMobileFocusedPane(
+        .send_to_screen(ScreenInstruction::SetShadowFocus(
             env.client_id,
             pane_id,
         ))
         .with_context(|| {
             format!(
-                "failed to dispatch SetMobileFocusedPane for plugin {}",
+                "failed to dispatch SetShadowFocus for plugin {}",
                 env.plugin_id
             )
         })
