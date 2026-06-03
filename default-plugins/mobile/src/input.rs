@@ -1,6 +1,6 @@
 use zellij_tile::prelude::*;
 
-use crate::modifier_bar::{CellId, ModifierBarController, TapOutcome};
+use crate::components::modifier_bar::{CellId, ModifierBarController, TapOutcome};
 
 #[derive(Default)]
 pub struct Input {

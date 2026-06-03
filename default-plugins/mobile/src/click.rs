@@ -13,7 +13,7 @@ pub enum ClickAction {
         pane_id: PaneId,
     },
     ToggleFit,
-    Keyboard(crate::modifier_bar::CellId),
+    Keyboard(crate::components::modifier_bar::CellId),
     ToggleMenu,
     NewPaneInTab { tab_position: usize },
     NewTab,

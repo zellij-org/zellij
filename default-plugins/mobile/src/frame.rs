@@ -96,7 +96,7 @@ pub fn chrome_offsets(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modifier_bar::CellId;
+    use crate::components::modifier_bar::CellId;
 
     fn kb(id: u16) -> ClickAction {
         ClickAction::Keyboard(CellId(id))

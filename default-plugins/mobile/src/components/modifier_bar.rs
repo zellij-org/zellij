@@ -1,42 +1,246 @@
-//! Bottom modifier bar renderer.
+//! Bottom modifier bar. A single-row strip of nine fixed cells
+//! (ESC, TAB, CTRL, ALT, ←, ↓, ↑, →, -) painted at the bottom of the
+//! plugin area, just above where the OS soft keyboard surfaces.
 //!
-//! One terminal row anchored at the bottom of the plugin area, just
-//! above where the OS soft keyboard surfaces. Up to nine labels
-//! separated by padded `" | "` pipes: ESC | TAB | CTRL | ALT | ← | ↓
-//! | ↑ | → | -.
+//! The bar provides the keys the native mobile keyboard does not —
+//! everything else (letters, digits, punctuation) is typed on the
+//! native keyboard and routed straight to the focused pane via
+//! `installSoftKeyboardCapture()` in `zellij-client/assets/input.js`.
 //!
-//! Painted via the host-decoded `Text` API so colours follow the
-//! user's palette. The whole row uses `.selected()` for a coherent
-//! ribbon; every label and pipe defaults to emphasis-3, and armed
-//! CTRL / ALT cells override their label to emphasis-2 so the
-//! one-shot modifier state stands out. Only CTRL and ALT are ever
-//! shown as active.
-//!
-//! The bar is responsive: when `cols` is too narrow for the full
-//! layout, three degradation axes apply in priority order
-//! (separator → labels → cells):
-//!   1. shrink the separator from `" | "` (3 cells) to `"|"` (1 cell);
-//!   2. shrink the text labels (ESC→ES, TAB→TB, CTRL→CTL, ALT→AL —
-//!      arrows and `-` cannot shrink further);
-//!   3. drop low-priority cells (first `-`, then `TAB`).
-//! `choose_config` walks all 12 (drop × labels × sep) combinations
-//! and picks the most-preferred one whose required width fits. When
-//! even the most-degraded layout cannot fit, the bar silently
-//! no-ops. Each rendered cell pushes one `ClickRegion::tight`; the
-//! trailing separator after cell N belongs to cell N's click region,
-//! so the bar has no dead pixels within its visible span.
+//! This file owns the whole component: the one-shot modifier state
+//! (`KeyboardModifiers`), the cell/action tokens (`CellId` / `KeyAction`),
+//! the tap state machine (`ModifierBarController`), and the responsive
+//! renderer (`render_modifier_bar`).
+
+use std::collections::BTreeSet;
 
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
 use crate::click::{ClickAction, ClickRegion};
+use crate::keys;
 
-use super::controller::{
-    BAR_CELL_COUNT, CELL_ALT, CELL_CTRL, CELL_DOWN, CELL_ESC, CELL_LEFT, CELL_MINUS, CELL_RIGHT,
-    CELL_TAB, CELL_UP,
-};
-use super::layout::CellId;
-use super::modifiers::{KeyboardModifiers, Modifier};
+// ===========================================================================
+// Modifier state
+// ===========================================================================
+//
+// Ctrl / Alt are **one-shot** sticky modifiers — tapping the modifier
+// cell arms the flag, the next `SendKey` consumes it. The controller
+// calls `consume_one_shots` after every emitted key.
+//
+// Shift is intentionally absent — the bar has no shift key. The native
+// OS keyboard handles letter case directly via its own shift glyph.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Modifier {
+    Ctrl,
+    Alt,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct KeyboardModifiers {
+    /// One-shot. Aliased to `State::ctrl_held` so hardware-key
+    /// passthrough and the modifier bar share the same armed state —
+    /// arming Ctrl on the bar carries through to a hardware-tapped
+    /// follow-up, and vice versa.
+    pub ctrl_armed: bool,
+    /// One-shot. Aliased to `State::alt_held` (see `ctrl_armed`).
+    pub alt_armed: bool,
+}
+
+impl KeyboardModifiers {
+    /// Drop the one-shot mods. Called by the controller after
+    /// emitting a `SendKey`, so a `Ctrl Right` sequence sends
+    /// `Ctrl+Right` and the next tap goes through with no modifier.
+    pub fn consume_one_shots(&mut self) {
+        self.ctrl_armed = false;
+        self.alt_armed = false;
+    }
+
+    pub fn is_armed(&self, m: Modifier) -> bool {
+        match m {
+            Modifier::Ctrl => self.ctrl_armed,
+            Modifier::Alt => self.alt_armed,
+        }
+    }
+
+    pub fn toggle(&mut self, m: Modifier) {
+        match m {
+            Modifier::Ctrl => self.ctrl_armed = !self.ctrl_armed,
+            Modifier::Alt => self.alt_armed = !self.alt_armed,
+        }
+    }
+}
+
+// ===========================================================================
+// Cell + action tokens
+// ===========================================================================
+//
+// `CellId` is an opaque per-cell token round-tripped through the
+// click-region map. `KeyAction` is what `ModifierBarController::handle_tap`
+// produces after looking up the cell — the dispatcher acts on it.
+
+/// Opaque cell identifier. The renderer assigns these to bar cells;
+/// the controller maps each back to a `KeyAction` in `handle_tap`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CellId(pub u16);
+
+/// What a tap on a cell resolves to.
+#[derive(Debug, Clone)]
+pub enum KeyAction {
+    SendKey(KeyWithModifier),
+    ToggleModifier(Modifier),
+    NoOp,
+}
+
+// ===========================================================================
+// Tap controller
+// ===========================================================================
+//
+// Owns the one-shot modifier flags. `handle_tap` is the single entry
+// point — the dispatcher routes every bar click here and acts on the
+// returned `TapOutcome`.
+
+// Cell identifiers for the nine bar cells. The renderer assigns
+// these positions left-to-right; the controller's `cell_action`
+// match maps each back to the action it represents.
+pub const CELL_ESC: CellId = CellId(0);
+pub const CELL_TAB: CellId = CellId(1);
+pub const CELL_CTRL: CellId = CellId(2);
+pub const CELL_ALT: CellId = CellId(3);
+pub const CELL_LEFT: CellId = CellId(4);
+pub const CELL_DOWN: CellId = CellId(5);
+pub const CELL_UP: CellId = CellId(6);
+pub const CELL_RIGHT: CellId = CellId(7);
+pub const CELL_MINUS: CellId = CellId(8);
+pub const BAR_CELL_COUNT: usize = 9;
+
+/// What the dispatcher should do after a tap. The controller never
+/// performs IO itself — the caller wires the outcome up to
+/// `write_to_pane_id`, `set_timeout`, …
+pub enum TapOutcome {
+    /// Bytes for the underlying pane's pty. Caller does the write.
+    SendBytes(Vec<u8>),
+    /// Modifier (Ctrl/Alt) flipped — just a redraw needed.
+    Toggled,
+    /// Inert decorative cell, or no resolvable action.
+    NoOp,
+}
+
+#[derive(Default)]
+pub struct ModifierBarController {
+    pub modifiers: KeyboardModifiers,
+}
+
+impl ModifierBarController {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Translate a tap on `cell` into the bytes / modifier flip it
+    /// represents. `ctrl_held` / `alt_held` are `&mut` references to
+    /// the corresponding `State` fields so the hardware-key passthrough
+    /// path and this controller share the same one-shot modifier flags.
+    pub fn handle_tap(
+        &mut self,
+        cell: CellId,
+        ctrl_held: &mut bool,
+        alt_held: &mut bool,
+    ) -> TapOutcome {
+        // Sync `State.ctrl_held`/`alt_held` into the modifier struct
+        // before resolving the action, so a hardware-tap that armed
+        // Ctrl is honoured by the next bar tap (and vice versa).
+        self.modifiers.ctrl_armed = *ctrl_held;
+        self.modifiers.alt_armed = *alt_held;
+
+        let action = cell_action(cell);
+
+        match action {
+            KeyAction::ToggleModifier(m) => {
+                self.modifiers.toggle(m);
+                // Write Ctrl/Alt back through the shared `State` refs
+                // so the hardware-key path agrees.
+                match m {
+                    Modifier::Ctrl => *ctrl_held = self.modifiers.ctrl_armed,
+                    Modifier::Alt => *alt_held = self.modifiers.alt_armed,
+                }
+                TapOutcome::Toggled
+            },
+            KeyAction::SendKey(mut kwm) => {
+                // Fold in any Ctrl/Alt that was armed so a tap on `→`
+                // while ⌃ is armed produces exactly Ctrl+Right.
+                if self.modifiers.ctrl_armed {
+                    kwm.key_modifiers.insert(KeyModifier::Ctrl);
+                }
+                if self.modifiers.alt_armed {
+                    kwm.key_modifiers.insert(KeyModifier::Alt);
+                }
+                let bytes = keys::serialize_key(&kwm);
+                self.modifiers.consume_one_shots();
+                *ctrl_held = false;
+                *alt_held = false;
+                TapOutcome::SendBytes(bytes)
+            },
+            KeyAction::NoOp => TapOutcome::NoOp,
+        }
+    }
+}
+
+/// Build a bare `KeyWithModifier` (no modifiers) from a `BareKey`.
+/// The controller folds armed Ctrl/Alt in afterward.
+fn bare(k: BareKey) -> KeyWithModifier {
+    KeyWithModifier {
+        bare_key: k,
+        key_modifiers: BTreeSet::new(),
+    }
+}
+
+/// Resolve a cell to its action. Hard-coded for the nine bar cells —
+/// any unknown id resolves to `NoOp`.
+fn cell_action(cell: CellId) -> KeyAction {
+    match cell {
+        CELL_ESC => KeyAction::SendKey(bare(BareKey::Esc)),
+        CELL_TAB => KeyAction::SendKey(bare(BareKey::Tab)),
+        CELL_CTRL => KeyAction::ToggleModifier(Modifier::Ctrl),
+        CELL_ALT => KeyAction::ToggleModifier(Modifier::Alt),
+        CELL_LEFT => KeyAction::SendKey(bare(BareKey::Left)),
+        CELL_DOWN => KeyAction::SendKey(bare(BareKey::Down)),
+        CELL_UP => KeyAction::SendKey(bare(BareKey::Up)),
+        CELL_RIGHT => KeyAction::SendKey(bare(BareKey::Right)),
+        CELL_MINUS => KeyAction::SendKey(bare(BareKey::Char('-'))),
+        _ => KeyAction::NoOp,
+    }
+}
+
+// ===========================================================================
+// Renderer
+// ===========================================================================
+//
+// One terminal row anchored at the bottom of the plugin area, just
+// above where the OS soft keyboard surfaces. Up to nine labels
+// separated by padded `" | "` pipes: ESC | TAB | CTRL | ALT | ← | ↓
+// | ↑ | → | -.
+//
+// Painted via the host-decoded `Text` API so colours follow the
+// user's palette. The whole row uses `.selected()` for a coherent
+// ribbon; every label and pipe defaults to emphasis-3, and armed
+// CTRL / ALT cells override their label to emphasis-2 so the
+// one-shot modifier state stands out. Only CTRL and ALT are ever
+// shown as active.
+//
+// The bar is responsive: when `cols` is too narrow for the full
+// layout, three degradation axes apply in priority order
+// (separator → labels → cells):
+//   1. shrink the separator from `" | "` (3 cells) to `"|"` (1 cell);
+//   2. shrink the text labels (ESC→ES, TAB→TB, CTRL→CTL, ALT→AL —
+//      arrows and `-` cannot shrink further);
+//   3. drop low-priority cells (first `-`, then `TAB`).
+// `choose_config` walks all 12 (drop × labels × sep) combinations
+// and picks the most-preferred one whose required width fits. When
+// even the most-degraded layout cannot fit, the bar silently
+// no-ops. Each rendered cell pushes one `ClickRegion::tight`; the
+// trailing separator after cell N belongs to cell N's click region,
+// so the bar has no dead pixels within its visible span.
 
 /// Per-cell static metadata.
 struct BarCell {
@@ -393,6 +597,31 @@ fn truncate_to_width(label: &str, max_w: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- modifier state -----------------------------------------------------
+
+    #[test]
+    fn consume_one_shots_clears_modifiers() {
+        let mut m = KeyboardModifiers {
+            ctrl_armed: true,
+            alt_armed: true,
+        };
+        m.consume_one_shots();
+        assert!(!m.ctrl_armed);
+        assert!(!m.alt_armed);
+    }
+
+    #[test]
+    fn toggle_flips_modifier_state() {
+        let mut m = KeyboardModifiers::default();
+        assert!(!m.is_armed(Modifier::Ctrl));
+        m.toggle(Modifier::Ctrl);
+        assert!(m.is_armed(Modifier::Ctrl));
+        m.toggle(Modifier::Ctrl);
+        assert!(!m.is_armed(Modifier::Ctrl));
+    }
+
+    // --- renderer -----------------------------------------------------------
 
     #[test]
     fn bar_layout_totals_to_cols() {

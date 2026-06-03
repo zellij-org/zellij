@@ -7,31 +7,31 @@
 //! events for selection and action dispatch.
 //!
 //! Architecture: the plugin is split into shared modules (`workspace`,
-//! `fit`, `frame`, `input`, `navigation`) and one struct per screen
-//! (`screens/`). `State` aggregates them; dispatch is a plain `match`
-//! over `State::active`. Cross-module orchestration that no single
-//! screen can own lives in the `impl State` block below.
+//! `fit`, `frame`, `input`, `navigation`), reusable chrome widgets
+//! (`components/` — the top bar and modifier bar), and one struct per
+//! screen (`screens/`). `State` aggregates them; dispatch is a plain
+//! `match` over `State::active`. Cross-module orchestration that no
+//! single screen can own lives in the `impl State` block below.
 
 mod ansi;
 mod click;
+mod components;
 mod fit;
 mod frame;
 mod input;
 mod keys;
-mod modifier_bar;
 mod mouse;
 mod navigation;
 mod pane_sync;
 mod render;
 mod screens;
 mod state;
-mod top_bar;
 mod workspace;
 
 use std::collections::BTreeMap;
 use zellij_tile::prelude::*;
 
-use crate::modifier_bar::{CellId, TapOutcome};
+use crate::components::modifier_bar::{CellId, TapOutcome};
 use crate::screens::ActiveScreen;
 use crate::state::State;
 use crate::workspace::pane_id_of;

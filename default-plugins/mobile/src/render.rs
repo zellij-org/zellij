@@ -1,14 +1,9 @@
-//! Rendering shell for the mobile plugin: clears the frame, lays out the
-//! chrome rows, and dispatches the body to the active screen. The top
-//! bar lives in `top_bar`, the per-screen bodies in `screens/`, and the
-//! pure text helpers in `ansi`.
 
 use crate::ansi::{move_to, RESET};
+use crate::components::{modifier_bar, top_bar};
 use crate::frame::chrome_offsets;
-use crate::modifier_bar;
 use crate::screens::ActiveScreen;
 use crate::state::State;
-use crate::top_bar;
 
 /// Fallback for the very first frame, before any state has arrived.
 pub fn render_stub(state: &mut State, rows: usize, cols: usize) {
@@ -57,15 +52,10 @@ fn render_too_small(state: &mut State, rows: usize, cols: usize) {
     print!("{}\x1b[2J{}mobile {}x{}", RESET, move_to(0, 0), rows, cols);
 }
 
-/// The welcome-style body draws its own "[← BACK]" affordance, so the
-/// shared top bar is hidden there.
 fn top_bar_suppressed(state: &State) -> bool {
     state.sessions.is_welcome_screen || state.active == ActiveScreen::Sessions
 }
 
-/// Where the embedded pane's cursor sits, or `None` when a selector is
-/// open (the host cursor is hidden so it does not blink behind chrome).
-/// The `skip` / `h_offset` here MUST match `ViewportScreen::render`.
 fn viewport_cursor(
     state: &State,
     body_top: usize,
@@ -106,8 +96,6 @@ fn render_active_screen(state: &mut State, body_top: usize, body_bottom: usize, 
     }
 }
 
-/// The menu overlays the viewport's right edge, so it paints after the
-/// body and only over the viewport screen.
 fn render_menu_overlay(state: &mut State, body_top: usize, body_bottom: usize, cols: usize) {
     if state.menu.open && state.active == ActiveScreen::Viewport {
         state.menu.render(&state.fit, &mut state.frame, body_top, body_bottom, cols);
