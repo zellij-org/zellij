@@ -1,25 +1,5 @@
-//! Key serialization for the mobile plugin's typing-mode.
-//!
-//! Plugins run in wasm, so the `serialize_kitty` / `serialize_non_kitty`
-//! helpers on `KeyWithModifier` (gated to `not(target_family = "wasm")`
-//! because they pull in the termwiz vendored encoder) are not
-//! available. This module provides a small, hand-rolled subset for
-//! typing-mode passthrough: enough to forward plain characters,
-//! Ctrl-letter combos, Alt-letter combos, and the common navigation
-//! keys an interactive program (vim, less, REPLs) cares about.
-//!
-//! The encoding follows the legacy xterm convention (no kitty
-//! disambiguation, no modifyOtherKeys), which is what the receiving
-//! pty's terminal emulator already speaks by default.
-//!
-//! When a key cannot be sensibly serialized (e.g. a pure modifier
-//! release, an F-key with an unsupported index), an empty `Vec` is
-//! returned and the caller swallows it.
-
 use zellij_tile::prelude::*;
 
-/// Translate a `KeyWithModifier` arriving from the Zellij key event
-/// stream into the bytes that should be written to the pane's pty.
 pub fn serialize_key(key: &KeyWithModifier) -> Vec<u8> {
     let ctrl = key.key_modifiers.contains(&KeyModifier::Ctrl);
     let alt = key.key_modifiers.contains(&KeyModifier::Alt);
@@ -77,9 +57,6 @@ fn serialize_char(c: char, ctrl: bool, alt: bool, _shift: bool) -> Vec<u8> {
     prefix_alt(alt, encoded)
 }
 
-/// Standard xterm Ctrl-letter mapping. `Ctrl+a` → 0x01 … `Ctrl+z` →
-/// 0x1a. A handful of punctuation keys also map (Ctrl+@, Ctrl+[, …)
-/// per the legacy encoding.
 fn ctrl_byte(c: char) -> Option<u8> {
     let lower = c.to_ascii_lowercase();
     match lower {
@@ -94,8 +71,6 @@ fn ctrl_byte(c: char) -> Option<u8> {
     }
 }
 
-/// CSI A/B/C/D/H/F arrow/home/end serialization. With any modifier
-/// active, emit the modified `CSI 1 ; <mods> <ch>` form.
 fn arrow_or_modified(letter: u8, ctrl: bool, alt: bool, shift: bool) -> Vec<u8> {
     if ctrl || shift {
         let modifier = encode_modifiers(ctrl, alt, shift);
@@ -107,8 +82,6 @@ fn arrow_or_modified(letter: u8, ctrl: bool, alt: bool, shift: bool) -> Vec<u8> 
     }
 }
 
-/// `CSI <n> ~` form for Insert/Delete/PageUp/PageDown. With modifiers
-/// emit `CSI <n> ; <mods> ~`.
 fn tilde_or_modified(n: u8, ctrl: bool, alt: bool, shift: bool) -> Vec<u8> {
     if ctrl || shift {
         let modifier = encode_modifiers(ctrl, alt, shift);
@@ -118,8 +91,6 @@ fn tilde_or_modified(n: u8, ctrl: bool, alt: bool, shift: bool) -> Vec<u8> {
     }
 }
 
-/// Function keys. F1..F4 use the SS3 (`ESC O P/Q/R/S`) form; F5+ use
-/// `CSI <n> ~`. Modifier-encoded forms follow xterm.
 fn serialize_function_key(n: u8, ctrl: bool, alt: bool, shift: bool) -> Vec<u8> {
     let any_mod = ctrl || shift;
     match n {
@@ -159,8 +130,6 @@ fn format_tilde_fkey(n: u8, ctrl: bool, alt: bool, shift: bool) -> Vec<u8> {
     }
 }
 
-/// xterm modifier byte: `1 + (shift) + 2*(alt) + 4*(ctrl)`. Only used
-/// in the modified CSI forms.
 fn encode_modifiers(ctrl: bool, alt: bool, shift: bool) -> u8 {
     let mut m = 1u8;
     if shift {
@@ -175,9 +144,6 @@ fn encode_modifiers(ctrl: bool, alt: bool, shift: bool) -> u8 {
     m
 }
 
-/// Prepend ESC for Alt-prefixed sequences. Most terminals interpret
-/// `ESC <ch>` as Alt+<ch> regardless of whether `<ch>` is itself an
-/// escape sequence, so this is safe to apply uniformly.
 fn prefix_alt(alt: bool, body: &[u8]) -> Vec<u8> {
     if alt {
         let mut out = Vec::with_capacity(body.len() + 1);
@@ -191,8 +157,6 @@ fn prefix_alt(alt: bool, body: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    //! Sanity checks confirming `serialize_key` covers everything the
-    //! in-plugin keyboard emits — F-keys and Ctrl/Alt-letter combos.
     use super::*;
     use std::collections::BTreeSet;
 
