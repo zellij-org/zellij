@@ -13,15 +13,8 @@ pub struct SessionsScreen {
     /// Fuzzy-search buffer for the "Session:" prompt. Empty when the
     /// prompt has no input. Cleared when the selector closes.
     pub welcome_search: String,
-    /// Sticky flag: once the Sessions selector has been auto-expanded
-    /// because the underlying pane was the welcome screen, never
-    /// re-auto-expand. Stays true for the lifetime of the welcome
-    /// session.
+    /// does this session function as the mobile version of the welcome screen
     pub is_welcome_screen: bool,
-    /// Number of welcome-screen session cards that fit on screen the
-    /// last time the renderer ran. Used by the scroll handler to cap
-    /// the per-event delta so at least one card of overlap is kept.
-    pub last_welcome_visible_count: usize,
 }
 
 impl SessionsScreen {
@@ -254,7 +247,6 @@ impl SessionsScreen {
         let offset = nav.selector_scroll_offset.min(max_offset);
         nav.selector_scroll_offset = offset;
         let visible_count = total_cards.saturating_sub(offset).min(max_visible_cards);
-        self.last_welcome_visible_count = visible_count;
 
         let block_height = if visible_count == 0 {
             5.min(body_height)

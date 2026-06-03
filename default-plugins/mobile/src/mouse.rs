@@ -102,28 +102,16 @@ fn apply_v_pan(old_pan: usize, max_pan: usize, lines: usize, up: bool) -> (usize
     }
 }
 
-/// Scroll the currently-open selector's row list. In welcome mode the
-/// per-event delta is capped so the last visible card before the scroll
-/// stays in the new window — at least one card of overlap is preserved.
+/// Scroll the currently-open selector's row list. Selectors advance one
+/// card block per scroll event, independent of the gesture's line count,
+/// so swiping moves the list one session/pane at a time.
 fn handle_selector_scroll(state: &mut State, lines: usize, up: bool) -> bool {
-    let effective_lines = if state.sessions.is_welcome_screen
-        && state.active == ActiveScreen::Sessions
-        && state.sessions.last_welcome_visible_count > 0
-    {
-        let cap = state
-            .sessions
-            .last_welcome_visible_count
-            .saturating_sub(1)
-            .max(1);
-        lines.min(cap)
-    } else {
-        lines
-    };
+    let step = lines.min(1);
     let old = state.navigation.selector_scroll_offset;
     state.navigation.selector_scroll_offset = if up {
-        old.saturating_sub(effective_lines)
+        old.saturating_sub(step)
     } else {
-        old.saturating_add(effective_lines)
+        old.saturating_add(step)
     };
     state.navigation.selector_scroll_offset != old
 }
