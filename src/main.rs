@@ -3,15 +3,16 @@ mod commands;
 mod tests;
 
 use clap::Parser;
+#[cfg(feature = "web_server_capability")]
+use zellij_utils::{consts::VERSION, shared::web_server_base_url_from_config};
 use zellij_utils::{
     cli::{CliAction, CliArgs, Command, Sessions},
-    consts::{create_config_and_cache_folders, VERSION},
+    consts::create_config_and_cache_folders,
     data::UnblockCondition,
     envs,
     input::config::Config,
     logging::*,
     setup::Setup,
-    shared::web_server_base_url_from_config,
 };
 
 fn main() {
@@ -294,124 +295,132 @@ fn main() {
         opts.new_session_with_layout = None;
         opts.layout = Some(layout_for_new_session.clone());
         commands::start_client(opts);
-    } else if let Some(Command::Web(web_opts)) = &opts.command {
-        if web_opts.get_start() {
-            let daemonize = web_opts.daemonize;
-            commands::start_web_server(
-                opts.clone(),
-                daemonize,
-                web_opts.ip,
-                web_opts.port,
-                web_opts.cert.clone(),
-                web_opts.key.clone(),
-                web_opts.server_startup_timeout,
-            );
-        } else if web_opts.stop {
-            match commands::stop_web_server() {
-                Ok(()) => {
-                    println!("Stopped web server.");
-                },
-                Err(e) => {
-                    eprintln!("Failed to stop web server: {}", e);
-                    std::process::exit(2)
-                },
-            }
-        } else if web_opts.status {
-            let mut config_options = commands::get_config_options_from_cli_args(&opts)
-                .expect("Can't find config options");
-            if let Some(ip) = web_opts.ip {
-                config_options.web_server_ip = Some(ip);
-            }
-            if let Some(port) = web_opts.port {
-                config_options.web_server_port = Some(port);
-            }
-            let web_server_base_url = web_server_base_url_from_config(config_options);
-            match commands::web_server_status(&web_server_base_url, web_opts.timeout) {
-                Ok(version) => {
-                    let version = version.trim();
-                    println!(
-                        "Web server online with version: {}. Checked: {}",
-                        version, web_server_base_url
-                    );
-                    if version != VERSION {
-                        println!("");
-                        println!(
-                            "Note: this version differs from the current Zellij version: {}.",
-                            VERSION
-                        );
-                        println!("Consider stopping the server with: zellij web --stop");
-                        println!("And then restarting it with: zellij web --start");
-                    }
-                },
-                Err(_e) => {
-                    println!("Web server is offline, checked: {}", web_server_base_url);
-                },
-            }
-        } else if web_opts.create_token {
-            let read_only = false;
-            match commands::create_auth_token(web_opts.token_name.clone(), read_only) {
-                Ok(token_and_name) => {
-                    println!("Created token successfully");
-                    println!("");
-                    println!("{}", token_and_name);
-                },
-                Err(e) => {
-                    eprintln!("Failed to create token: {}", e);
-                    std::process::exit(2)
-                },
-            }
-        } else if web_opts.create_read_only_token {
-            let read_only = true;
-            match commands::create_auth_token(web_opts.token_name.clone(), read_only) {
-                Ok(token_and_name) => {
-                    println!("Created token successfully");
-                    println!("");
-                    println!("{}", token_and_name);
-                },
-                Err(e) => {
-                    eprintln!("Failed to create token: {}", e);
-                    std::process::exit(2)
-                },
-            }
-        } else if let Some(token_name_to_revoke) = &web_opts.revoke_token {
-            match commands::revoke_auth_token(token_name_to_revoke) {
-                Ok(revoked) => {
-                    if revoked {
-                        println!("Successfully revoked token.");
-                    } else {
-                        eprintln!("Token by that name does not exist.");
-                        std::process::exit(2)
-                    }
-                },
-                Err(e) => {
-                    eprintln!("Failed to revoke token: {}", e);
-                    std::process::exit(2)
-                },
-            }
-        } else if web_opts.revoke_all_tokens {
-            match commands::revoke_all_auth_tokens() {
-                Ok(_) => {
-                    println!("Successfully revoked all auth tokens");
-                },
-                Err(e) => {
-                    eprintln!("Failed to revoke all auth tokens: {}", e);
-                    std::process::exit(2)
-                },
-            }
-        } else if web_opts.list_tokens {
-            match commands::list_auth_tokens() {
-                Ok(token_list) => {
-                    for item in token_list {
-                        println!("{}", item);
-                    }
-                },
-                Err(e) => {
-                    eprintln!("Failed to list tokens: {}", e);
-                    std::process::exit(2)
-                },
-            }
-        }
     } else {
+        #[cfg(feature = "web_server_capability")]
+        if let Some(Command::Web(web_opts)) = &opts.command {
+            handle_web_command(&opts, web_opts);
+            return;
+        }
         commands::start_client(opts);
+    }
+}
+
+#[cfg(feature = "web_server_capability")]
+fn handle_web_command(opts: &CliArgs, web_opts: &zellij_utils::cli::WebCli) {
+    if web_opts.get_start() {
+        let daemonize = web_opts.daemonize;
+        commands::start_web_server(
+            opts.clone(),
+            daemonize,
+            web_opts.ip,
+            web_opts.port,
+            web_opts.cert.clone(),
+            web_opts.key.clone(),
+            web_opts.server_startup_timeout,
+        );
+    } else if web_opts.stop {
+        match commands::stop_web_server() {
+            Ok(()) => {
+                println!("Stopped web server.");
+            },
+            Err(e) => {
+                eprintln!("Failed to stop web server: {}", e);
+                std::process::exit(2)
+            },
+        }
+    } else if web_opts.status {
+        let mut config_options = commands::get_config_options_from_cli_args(opts)
+            .expect("Can't find config options");
+        if let Some(ip) = web_opts.ip {
+            config_options.web_server_ip = Some(ip);
+        }
+        if let Some(port) = web_opts.port {
+            config_options.web_server_port = Some(port);
+        }
+        let web_server_base_url = web_server_base_url_from_config(config_options);
+        match commands::web_server_status(&web_server_base_url, web_opts.timeout) {
+            Ok(version) => {
+                let version = version.trim();
+                println!(
+                    "Web server online with version: {}. Checked: {}",
+                    version, web_server_base_url
+                );
+                if version != VERSION {
+                    println!("");
+                    println!(
+                        "Note: this version differs from the current Zellij version: {}.",
+                        VERSION
+                    );
+                    println!("Consider stopping the server with: zellij web --stop");
+                    println!("And then restarting it with: zellij web --start");
+                }
+            },
+            Err(_e) => {
+                println!("Web server is offline, checked: {}", web_server_base_url);
+            },
+        }
+    } else if web_opts.create_token {
+        let read_only = false;
+        match commands::create_auth_token(web_opts.token_name.clone(), read_only) {
+            Ok(token_and_name) => {
+                println!("Created token successfully");
+                println!("");
+                println!("{}", token_and_name);
+            },
+            Err(e) => {
+                eprintln!("Failed to create token: {}", e);
+                std::process::exit(2)
+            },
+        }
+    } else if web_opts.create_read_only_token {
+        let read_only = true;
+        match commands::create_auth_token(web_opts.token_name.clone(), read_only) {
+            Ok(token_and_name) => {
+                println!("Created token successfully");
+                println!("");
+                println!("{}", token_and_name);
+            },
+            Err(e) => {
+                eprintln!("Failed to create token: {}", e);
+                std::process::exit(2)
+            },
+        }
+    } else if let Some(token_name_to_revoke) = &web_opts.revoke_token {
+        match commands::revoke_auth_token(token_name_to_revoke) {
+            Ok(revoked) => {
+                if revoked {
+                    println!("Successfully revoked token.");
+                } else {
+                    eprintln!("Token by that name does not exist.");
+                    std::process::exit(2)
+                }
+            },
+            Err(e) => {
+                eprintln!("Failed to revoke token: {}", e);
+                std::process::exit(2)
+            },
+        }
+    } else if web_opts.revoke_all_tokens {
+        match commands::revoke_all_auth_tokens() {
+            Ok(_) => {
+                println!("Successfully revoked all auth tokens");
+            },
+            Err(e) => {
+                eprintln!("Failed to revoke all auth tokens: {}", e);
+                std::process::exit(2)
+            },
+        }
+    } else if web_opts.list_tokens {
+        match commands::list_auth_tokens() {
+            Ok(token_list) => {
+                for item in token_list {
+                    println!("{}", item);
+                }
+            },
+            Err(e) => {
+                eprintln!("Failed to list tokens: {}", e);
+                std::process::exit(2)
+            },
+        }
     }
 }
