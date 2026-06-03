@@ -161,7 +161,7 @@ impl PanesScreen {
     }
     let row_start = row_start.saturating_add(1);
 
-    // Bottom-row reservation matches `render_welcome_sessions` so
+    // Bottom-row reservation matches `SessionsScreen::render` so
     // "+ New Tab" never sits flush against the modifier bar (when the
     // soft keyboard is up) or the screen edge (when it is not).
     let row_end = row_end.saturating_sub(1);
@@ -374,7 +374,7 @@ impl PanesScreen {
     // visible card. Empty-state collapses the two scroll rows to a
     // single blank, matching the 5-row "title + blank + prompt +
     // blank + footer" minimal layout used by
-    // `render_welcome_sessions`.
+    // `SessionsScreen::render`.
     let visible_items_height = 2 * visible_count;
     let block_height = if visible_count == 0 {
         5.min(body_height)
@@ -545,7 +545,7 @@ impl PanesScreen {
     // Footer row pinned at the bottom of the block. `block_height -
     // 1` lands on the final row of the centered block regardless of
     // how many cards are visible, matching how
-    // `render_welcome_sessions` pins "+ New Session". Renders
+    // `SessionsScreen::render` pins "+ New Session". Renders
     // "+ New Tab" and (when a target tab exists) "+ New Pane" side
     // by side as a single centered block.
     let footer_y = top_y + block_height.saturating_sub(1);
