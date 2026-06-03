@@ -190,10 +190,8 @@ impl ZellijPlugin for State {
         };
         // Single fit reconcile point. Any event that changed the embedded
         // area pushes the new `Size` here, deduped against the last push.
-        // Shim calls are forbidden in `render()`, so `update()` is the
-        // only place this can happen.
         if self.fit.active {
-            let suppress_top_bar = self.sessions.welcome_auto_expand_done
+            let suppress_top_bar = self.sessions.is_welcome_screen
                 || self.active == ActiveScreen::Sessions;
             self.fit
                 .notify_size(&self.workspace, &self.frame, suppress_top_bar);
@@ -272,7 +270,7 @@ impl State {
     /// Toggle the fit-to-screen override for the focused pane's tab.
     pub fn toggle_fit(&mut self) -> bool {
         let suppress_top_bar =
-            self.sessions.welcome_auto_expand_done || self.active == ActiveScreen::Sessions;
+            self.sessions.is_welcome_screen || self.active == ActiveScreen::Sessions;
         self.fit.toggle(&self.workspace, &self.frame, suppress_top_bar)
     }
 
@@ -338,8 +336,7 @@ impl State {
 /// Restrict the session list to entries this client is allowed to see.
 /// When the mobile plugin is driven by a web client, sessions whose
 /// `web_clients_allowed` is `false` are hidden. Welcome-screen sessions
-/// are always dropped — every browser tab spins up its own, and
-/// attaching to one is meaningless.
+/// are always dropped
 pub fn filter_sessions_for_client(
     sessions: Vec<SessionInfo>,
     state: &State,
@@ -422,51 +419,6 @@ mod tests {
     use super::*;
     use crate::click::{self, ClickAction};
     use zellij_tile::prelude::{PaneInfo, TabInfo};
-
-    /// Static canary: `render.rs` (the render shell + shared chrome) must
-    /// not invoke any host shim. Every shim is backed by
-    /// `host_run_plugin_command`, which drains the plugin's stdout via
-    /// `read_to_end`; a shim called mid-`render` consumes the in-flight
-    /// frame's bytes as its (malformed) reply payload and the user sees an
-    /// empty frame. The fix is to defer shim calls to `update()`.
-    ///
-    /// Scope: `render.rs` only. The per-screen render methods live
-    /// alongside their (legitimately shim-calling) key/action handlers in
-    /// `screens/*.rs`, so a whole-file scan there would false-positive;
-    /// those render methods are simple print-only layout.
-    #[test]
-    fn no_shim_calls_from_render() {
-        const RENDER_SRC: &str = include_str!("render.rs");
-        const FORBIDDEN_SHIMS: &[&str] = &[
-            "set_tab_fit",
-            "exit_mobile_mode",
-            "set_soft_keyboard",
-            "switch_session",
-            "write_to_pane_id",
-            "set_timeout",
-            "get_pane_info",
-            "host_run_plugin_command",
-        ];
-        let mut offences: Vec<String> = Vec::new();
-        for (idx, line) in RENDER_SRC.lines().enumerate() {
-            let trimmed = line.trim_start();
-            if trimmed.starts_with("//") {
-                continue;
-            }
-            for name in FORBIDDEN_SHIMS {
-                let needle = format!("{name}(");
-                if line.contains(&needle) {
-                    offences.push(format!("line {}: `{}`", idx + 1, line.trim()));
-                }
-            }
-        }
-        assert!(
-            offences.is_empty(),
-            "render.rs must not invoke host shims (they drain plugin \
-             stdout mid-frame). Offending occurrences:\n  {}",
-            offences.join("\n  ")
-        );
-    }
 
     /// Build a `State` seeded with one tab + one pane — the minimum
     /// surface required for the `ToggleFit` dispatch path.

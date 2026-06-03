@@ -52,7 +52,7 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
 
     // Welcome flow / open Sessions selector suppress the top bar (the
     // welcome-style body paints its own "[← BACK]" affordance).
-    let in_welcome_flow = state.sessions.welcome_auto_expand_done;
+    let in_welcome_flow = state.sessions.is_welcome_screen;
     let in_sessions_selector = state.active == ActiveScreen::Sessions;
     let suppress_top_bar = in_welcome_flow || in_sessions_selector;
     let (body_top, bar_height) =

@@ -105,7 +105,7 @@ pub fn ensure_pane_selected(state: &mut State) {
 /// embedded one renders full-width and needs horizontal panning to read.
 /// Fires once; the user can re-close the selector to see the raw pane.
 pub fn maybe_take_over_welcome(state: &mut State) {
-    if state.sessions.welcome_auto_expand_done
+    if state.sessions.is_welcome_screen
         || state.active != ActiveScreen::Viewport
         || !state.workspace.current_pane_is_welcome()
     {
@@ -117,7 +117,7 @@ pub fn maybe_take_over_welcome(state: &mut State) {
     state.active = ActiveScreen::Sessions;
     state.navigation.selector_scroll_offset = 0;
     state.menu.open = false;
-    state.sessions.welcome_auto_expand_done = true;
+    state.sessions.is_welcome_screen = true;
     // The standing `SessionUpdate` only carries the current session until
     // a scan is requested, so pull the snapshot now — else the selector
     // renders empty on first show.

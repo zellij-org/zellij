@@ -1,9 +1,3 @@
-//! The Sessions selector — the welcome-style centered session switcher.
-//! Used both for the welcome flow (`welcome_auto_expand_done`) and the
-//! in-mobile "Change Session" view. Owns the fuzzy-search buffer, the
-//! sticky welcome flag, and the last-visible-card count used to cap
-//! scrolling.
-
 use fuzzy_matcher::FuzzyMatcher;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
@@ -13,12 +7,8 @@ use crate::frame::Frame;
 use crate::navigation::Navigation;
 use crate::screens::ActiveScreen;
 
-/// Sessions selector state.
 #[derive(Default)]
 pub struct SessionsScreen {
-    /// All sessions the host knows about, filtered for this client.
-    /// Updated on every `SessionUpdate` and when a selector opens.
-    /// Rendered when this screen is active.
     pub sessions: Vec<SessionInfo>,
     /// Fuzzy-search buffer for the "Session:" prompt. Empty when the
     /// prompt has no input. Cleared when the selector closes.
@@ -27,7 +17,7 @@ pub struct SessionsScreen {
     /// because the underlying pane was the welcome screen, never
     /// re-auto-expand. Stays true for the lifetime of the welcome
     /// session.
-    pub welcome_auto_expand_done: bool,
+    pub is_welcome_screen: bool,
     /// Number of welcome-screen session cards that fit on screen the
     /// last time the renderer ran. Used by the scroll handler to cap
     /// the per-event delta so at least one card of overlap is kept.
@@ -35,19 +25,13 @@ pub struct SessionsScreen {
 }
 
 impl SessionsScreen {
-    /// Selecting a session hands off to the host — the client genuinely
-    /// changes session, leaving this one.
     pub fn select_session(&self, active: &mut ActiveScreen, name: &str) -> bool {
         switch_session(Some(name));
         *active = ActiveScreen::Viewport;
         true
     }
 
-    /// Capture keys for the "Session:" fuzzy-search prompt. Char /
-    /// Backspace edit the buffer, Enter attaches to the highest-scored
-    /// match, Esc clears the buffer first and only closes the selector
-    /// once the buffer is already empty (and not in the welcome flow,
-    /// which has no embedded pane to return to).
+    /// Capture keys for the "Session:" fuzzy-search prompt.
     pub fn handle_key(
         &mut self,
         active: &mut ActiveScreen,
@@ -59,7 +43,7 @@ impl SessionsScreen {
                 if !self.welcome_search.is_empty() {
                     self.welcome_search.clear();
                     nav.selector_scroll_offset = 0;
-                } else if !self.welcome_auto_expand_done {
+                } else if !self.is_welcome_screen {
                     *active = ActiveScreen::Viewport;
                 }
             },
@@ -82,10 +66,6 @@ impl SessionsScreen {
         true
     }
 
-    /// Pick the highest-scoring non-current session for the prompt —
-    /// what `Enter` should attach to. With an empty search term, returns
-    /// the alphabetically first non-current session. Returns `None` only
-    /// when no non-current sessions exist.
     pub fn welcome_top_match_name(&mut self, nav: &mut Navigation) -> Option<String> {
         let search = self.welcome_search.clone();
         if search.is_empty() {
@@ -115,9 +95,6 @@ impl SessionsScreen {
         best.map(|(_, name)| name)
     }
 
-    /// Render the Sessions selector. Welcome flow shows "Hi from
-    /// Zellij!" with no back button; the in-mobile switch view shows
-    /// "Switch Session" with a "[← BACK]" affordance.
     pub fn render(
         &mut self,
         nav: &mut Navigation,
@@ -126,7 +103,7 @@ impl SessionsScreen {
         row_end: usize,
         cols: usize,
     ) {
-        let (title, show_back_button) = if self.welcome_auto_expand_done {
+        let (title, show_back_button) = if self.is_welcome_screen {
             ("Hi from Zellij!", false)
         } else {
             ("Switch Session", true)
@@ -134,7 +111,6 @@ impl SessionsScreen {
         self.render_welcome(nav, frame, row_start, row_end, cols, title, show_back_button);
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn render_welcome(
         &mut self,
         nav: &mut Navigation,
@@ -145,368 +121,276 @@ impl SessionsScreen {
         title: &str,
         show_back_button: bool,
     ) {
-    // Back-button row: painted at the original `row_start` so it sits
-    // at the very top of the body region the render dispatch handed
-    // us. The centered block below is then computed against
-    // `row_start + 1` so its geometry can never collide with the
-    // affordance on a narrow screen (the title would otherwise center
-    // through column 0). `CollapseSelector` is the same action the
-    // top-bar tap dispatches in selector mode — single source of
-    // truth for "leave the selector, return to the viewport".
-    if show_back_button && row_start < row_end {
-        let back_label = "[← BACK]";
-        let back_w = UnicodeWidthStr::width(back_label);
-        print_text_with_coordinates(
-            Text::new(back_label).color_range(3, ..),
-            0,
-            row_start,
-            None,
-            None,
-        );
-        frame.click_regions.push(ClickRegion::tight(
-            row_start,
-            0,
-            back_w,
-            ClickAction::CollapseSelector,
-        ));
-    }
-    let row_start = if show_back_button {
-        row_start.saturating_add(1)
-    } else {
-        row_start
-    };
+        if show_back_button && row_start < row_end {
+            let back_label = "[← BACK]";
+            let back_w = UnicodeWidthStr::width(back_label);
+            print_text_with_coordinates(
+                Text::new(back_label).color_range(3, ..),
+                0,
+                row_start,
+                None,
+                None,
+            );
+            frame.click_regions.push(ClickRegion::tight(
+                row_start,
+                0,
+                back_w,
+                ClickAction::CollapseSelector,
+            ));
+        }
+        let row_start = if show_back_button {
+            row_start.saturating_add(1)
+        } else {
+            row_start
+        };
 
-    // Reserve one row at the bottom of the body so "+ New Session"
-    // never sits flush against the modifier bar (when the soft
-    // keyboard is up) or the screen edge (when it is not). Shadowing
-    // the parameter keeps every downstream `< row_end` check honouring
-    // the reservation without scattering the `- 1` across the body.
-    let row_end = row_end.saturating_sub(1);
-    let body_height = row_end.saturating_sub(row_start);
-    if body_height == 0 || cols == 0 {
-        return;
-    }
+        let row_end = row_end.saturating_sub(1);
+        let body_height = row_end.saturating_sub(row_start);
+        if body_height == 0 || cols == 0 {
+            return;
+        }
 
-    let new_session_label = "+ New Session";
+        let new_session_label = "+ New Session";
 
-    struct Card {
-        name_label: String,
-        counts_label: String,
-        action: ClickAction,
-        tab_range: std::ops::Range<usize>,
-        pane_range: std::ops::Range<usize>,
-        client_range: std::ops::Range<usize>,
-        /// Char indices into `name_label` that matched the fuzzy
-        /// search term — painted with emphasis-3 on the name row.
-        /// Empty when the search term itself is empty.
-        name_indices: Vec<usize>,
-    }
+        struct Card {
+            name_label: String,
+            counts_label: String,
+            action: ClickAction,
+            tab_range: std::ops::Range<usize>,
+            pane_range: std::ops::Range<usize>,
+            client_range: std::ops::Range<usize>,
+            name_indices: Vec<usize>,
+        }
 
-    // Snapshot the search term so we can borrow it freely without
-    // tangling with the matcher's `&mut` field borrow below. Small
-    // string clone; happens once per frame.
-    let search = self.welcome_search.clone();
+        let search = self.welcome_search.clone();
 
-    // Build the ordered (session_index, name_indices) list. The two
-    // branches differ in sort key and in whether the matcher runs at
-    // all — empty search means "show everything, alpha order".
-    let order: Vec<(usize, Vec<usize>)> = if search.is_empty() {
-        let mut indexed: Vec<(usize, &str)> = self
-            .sessions
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| !s.is_current_session)
-            .map(|(i, s)| (i, s.name.as_str()))
-            .collect();
-        indexed.sort_by(|a, b| a.1.cmp(b.1));
-        indexed.into_iter().map(|(i, _)| (i, Vec::new())).collect()
-    } else {
-        let matcher = nav.matcher();
-        let mut scored: Vec<(usize, i64, Vec<usize>)> = self
-            .sessions
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| !s.is_current_session)
-            .filter_map(|(i, s)| {
-                matcher
-                    .fuzzy_indices(&s.name, &search)
-                    .map(|(score, indices)| (i, score, indices))
-            })
-            .collect();
-        // Score desc, then alphabetical tiebreak. `b.cmp(&a)` keeps
-        // the higher-scoring row first; `self.sessions[i].name`
-        // resolves the tiebreaker against the same source data.
-        scored.sort_by(|a, b| {
-            b.1.cmp(&a.1).then_with(|| {
-                self.sessions[a.0]
-                    .name
-                    .cmp(&self.sessions[b.0].name)
-            })
-        });
-        scored.into_iter().map(|(i, _, indices)| (i, indices)).collect()
-    };
-
-    let cards: Vec<Card> = order
-        .into_iter()
-        .map(|(session_idx, indices)| {
-            let s = &self.sessions[session_idx];
-            let pane_count: usize = s
-                .panes
-                .panes
-                .values()
-                .map(|panes| {
-                    panes
-                        .iter()
-                        .filter(|p| p.is_selectable && !p.is_suppressed)
-                        .count()
+        let order: Vec<(usize, Vec<usize>)> = if search.is_empty() {
+            let mut indexed: Vec<(usize, &str)> = self
+                .sessions
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| !s.is_current_session)
+                .map(|(i, s)| (i, s.name.as_str()))
+                .collect();
+            indexed.sort_by(|a, b| a.1.cmp(b.1));
+            indexed.into_iter().map(|(i, _)| (i, Vec::new())).collect()
+        } else {
+            let matcher = nav.matcher();
+            let mut scored: Vec<(usize, i64, Vec<usize>)> = self
+                .sessions
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| !s.is_current_session)
+                .filter_map(|(i, s)| {
+                    matcher
+                        .fuzzy_indices(&s.name, &search)
+                        .map(|(score, indices)| (i, score, indices))
                 })
-                .sum();
-            let name = s.name.clone();
-            let tab_str = format!("{}", s.tabs.len());
-            let pane_str = format!("{}", pane_count);
-            let conn_str = format!("{}", s.connected_clients);
-            let client_word = if s.connected_clients == 1 {
-                "client"
-            } else {
-                "clients"
-            };
-            let counts_label = format!(
-                "{} tabs, {} panes, {} {}",
-                tab_str, pane_str, conn_str, client_word
-            );
-            // Byte-offset color ranges mirror the session-manager
-            // welcome screen (`UnifiedResultsRenderCache::rebuild`):
-            // tab count in color 1; pane and client counts in color 2.
-            // Digits are ASCII so byte offsets equal column offsets.
-            let tab_end = tab_str.len();
-            let pane_offset = tab_str.len() + " tabs, ".len();
-            let pane_end = pane_offset + pane_str.len();
-            let conn_offset = pane_end + " panes, ".len();
-            let conn_end = conn_offset + conn_str.len();
-            Card {
-                name_label: name.clone(),
-                counts_label,
-                action: ClickAction::SelectSession(name),
-                tab_range: 0..tab_end,
-                pane_range: pane_offset..pane_end,
-                client_range: conn_offset..conn_end,
-                name_indices: indices,
+                .collect();
+            scored.sort_by(|a, b| {
+                b.1.cmp(&a.1).then_with(|| {
+                    self.sessions[a.0]
+                        .name
+                        .cmp(&self.sessions[b.0].name)
+                })
+            });
+            scored.into_iter().map(|(i, _, indices)| (i, indices)).collect()
+        };
+
+        let cards: Vec<Card> = order
+            .into_iter()
+            .map(|(session_idx, indices)| {
+                let s = &self.sessions[session_idx];
+                let pane_count: usize = s
+                    .panes
+                    .panes
+                    .values()
+                    .map(|panes| {
+                        panes
+                            .iter()
+                            .filter(|p| p.is_selectable && !p.is_suppressed)
+                            .count()
+                    })
+                    .sum();
+                let name = s.name.clone();
+                let tab_str = format!("{}", s.tabs.len());
+                let pane_str = format!("{}", pane_count);
+                let conn_str = format!("{}", s.connected_clients);
+                let client_word = if s.connected_clients == 1 {
+                    "client"
+                } else {
+                    "clients"
+                };
+                let counts_label = format!(
+                    "{} tabs, {} panes, {} {}",
+                    tab_str, pane_str, conn_str, client_word
+                );
+                // Byte-offset color ranges mirror the session-manager
+                // welcome screen (`UnifiedResultsRenderCache::rebuild`):
+                // tab count in color 1; pane and client counts in color 2.
+                // Digits are ASCII so byte offsets equal column offsets.
+                let tab_end = tab_str.len();
+                let pane_offset = tab_str.len() + " tabs, ".len();
+                let pane_end = pane_offset + pane_str.len();
+                let conn_offset = pane_end + " panes, ".len();
+                let conn_end = conn_offset + conn_str.len();
+                Card {
+                    name_label: name.clone(),
+                    counts_label,
+                    action: ClickAction::SelectSession(name),
+                    tab_range: 0..tab_end,
+                    pane_range: pane_offset..pane_end,
+                    client_range: conn_offset..conn_end,
+                    name_indices: indices,
+                }
+            })
+            .collect();
+
+        let total_cards = cards.len();
+        let max_visible_cards = body_height.saturating_sub(6) / 2;
+        let max_visible_cards = max_visible_cards.min(total_cards);
+
+        let max_offset = total_cards.saturating_sub(max_visible_cards);
+        let offset = nav.selector_scroll_offset.min(max_offset);
+        nav.selector_scroll_offset = offset;
+        let visible_count = total_cards.saturating_sub(offset).min(max_visible_cards);
+        self.last_welcome_visible_count = visible_count;
+
+        let block_height = if visible_count == 0 {
+            5.min(body_height)
+        } else {
+            (6 + 2 * visible_count).min(body_height)
+        };
+
+        let top_y = row_start + body_height.saturating_sub(block_height) / 2;
+
+        let visible_slice: Vec<&Card> = cards.iter().skip(offset).take(visible_count).collect();
+        const CARD_BULLET: &str = "- ";
+        const CARD_INDENT_W: usize = 2;
+        let content_w = visible_slice
+            .iter()
+            .map(|c| {
+                UnicodeWidthStr::width(c.name_label.as_str())
+                    .max(UnicodeWidthStr::width(c.counts_label.as_str()))
+            })
+            .max()
+            .unwrap_or(0);
+        let card_w = CARD_INDENT_W + content_w;
+        let card_x = cols.saturating_sub(card_w) / 2;
+        let content_x = card_x + CARD_INDENT_W;
+
+        let title_w = UnicodeWidthStr::width(title);
+        let title_x = cols.saturating_sub(title_w) / 2;
+        let title_y = top_y;
+        if title_y < row_end {
+            print_text_with_coordinates(Text::new(title), title_x, title_y, None, None);
+        }
+
+        let prompt_label = "Session: ";
+        let prompt_body = format!("{}_", search);
+        let prompt_full = format!("{}{}", prompt_label, prompt_body);
+        let new_session_w = UnicodeWidthStr::width(new_session_label);
+        let new_session_x = cols.saturating_sub(new_session_w) / 2;
+        let prompt_x = if visible_count > 0 {
+            content_x
+        } else {
+            new_session_x
+        };
+        let prompt_y = top_y + 2;
+        if prompt_y < row_end {
+            let label_chars = prompt_label.chars().count();
+            let total_chars = prompt_full.chars().count();
+            let prompt_text =
+                Text::new(&prompt_full).color_range(3, label_chars..total_chars);
+            print_text_with_coordinates(prompt_text, prompt_x, prompt_y, None, None);
+        }
+
+        let hidden_above = offset;
+        let hidden_below = total_cards.saturating_sub(offset + visible_count);
+        let indicator_x = |label_w: usize| -> usize {
+            cols.saturating_sub(label_w) / 2
+        };
+        if visible_count > 0 && hidden_above > 0 {
+            let top_indicator_y = top_y + 3;
+            if top_indicator_y < row_end {
+                let label = format!("\u{2191} [+{}]", hidden_above);
+                let label_w = UnicodeWidthStr::width(label.as_str());
+                print_text_with_coordinates(
+                    Text::new(&label).color_range(1, ..),
+                    indicator_x(label_w),
+                    top_indicator_y,
+                    None,
+                    None,
+                );
             }
-        })
-        .collect();
+        }
+        if visible_count > 0 && hidden_below > 0 {
+            let bottom_indicator_y = top_y + 4 + 2 * visible_count;
+            if bottom_indicator_y < row_end {
+                let label = format!("\u{2193} [+{}]", hidden_below);
+                let label_w = UnicodeWidthStr::width(label.as_str());
+                print_text_with_coordinates(
+                    Text::new(&label).color_range(1, ..),
+                    indicator_x(label_w),
+                    bottom_indicator_y,
+                    None,
+                    None,
+                );
+            }
+        }
 
-    // Decide how many cards fit. With N > 0 the block needs
-    // `6 + 2N` rows (title + blank + prompt + blank + 2N + blank +
-    // new_session); the empty-state block needs `5` (title + blank +
-    // prompt + blank + new_session). Solving `6 + 2N <= body_height`
-    // for the maximum N gives `(body_height - 6) / 2` — saturating-
-    // subtracted to handle pathologically short bodies where no card
-    // fits.
-    let total_cards = cards.len();
-    let max_visible_cards = body_height.saturating_sub(6) / 2;
-    let max_visible_cards = max_visible_cards.min(total_cards);
-
-    let max_offset = total_cards.saturating_sub(max_visible_cards);
-    let offset = nav.selector_scroll_offset.min(max_offset);
-    nav.selector_scroll_offset = offset;
-    let visible_count = total_cards.saturating_sub(offset).min(max_visible_cards);
-    // Publish the count so the scroll handler can cap its per-event
-    // delta and preserve at least one card of overlap across scrolls.
-    self.last_welcome_visible_count = visible_count;
-
-    let block_height = if visible_count == 0 {
-        5.min(body_height)
-    } else {
-        (6 + 2 * visible_count).min(body_height)
-    };
-
-    // Vertically center the block within the body.
-    let top_y = row_start + body_height.saturating_sub(block_height) / 2;
-
-    let visible_slice: Vec<&Card> = cards.iter().skip(offset).take(visible_count).collect();
-    // Bullet rendered at the start of every card's name row so the
-    // two-row cards read as discrete blocks. The counts row indents
-    // by the same amount so the metadata text aligns under the name
-    // text rather than the bullet. Constants match
-    // `render_panes_menu` for visual consistency between the two
-    // welcome-style selectors.
-    const CARD_BULLET: &str = "- ";
-    const CARD_INDENT_W: usize = 2;
-    // Card column: name and counts left-align under each other
-    // across every visible card. The block is centered on `cols`
-    // using the bullet width plus the widest name/counts content
-    // seen.
-    let content_w = visible_slice
-        .iter()
-        .map(|c| {
-            UnicodeWidthStr::width(c.name_label.as_str())
-                .max(UnicodeWidthStr::width(c.counts_label.as_str()))
-        })
-        .max()
-        .unwrap_or(0);
-    let card_w = CARD_INDENT_W + content_w;
-    let card_x = cols.saturating_sub(card_w) / 2;
-    // Column where each card's text content begins — the bullet
-    // sits to the left of this column on the name row, and the
-    // counts row indents flush to this column with the slot blank.
-    let content_x = card_x + CARD_INDENT_W;
-
-    // Title — unstyled, centered horizontally on `cols` (not on the
-    // card column) so it sits on the screen's vertical axis even when
-    // the card column is narrow.
-    let title_w = UnicodeWidthStr::width(title);
-    let title_x = cols.saturating_sub(title_w) / 2;
-    let title_y = top_y;
-    if title_y < row_end {
-        print_text_with_coordinates(Text::new(title), title_x, title_y, None, None);
-    }
-
-    // "Session: <buffer>_" prompt. "Session: " is rendered unstyled;
-    // the user-typed buffer plus the trailing underscore cursor glyph
-    // are emphasis-3 so the active input area visually pops. A static
-    // underscore stands in for the cursor (same approach as the new-
-    // session prompt — avoids fighting host cursor gating).
-    //
-    // The prompt is left-aligned with the leftmost edge of the
-    // visible session text rather than centered on its own width:
-    // when sessions are visible, it aligns with the leftmost
-    // session-card name column (`content_x`, which sits after each
-    // card's bullet); otherwise it aligns with the footer's
-    // centered x (the only other rendered chunk). This anchors the
-    // prompt to the same column the user is scanning below it
-    // instead of letting it drift left and right with every
-    // keystroke.
-    let prompt_label = "Session: ";
-    let prompt_body = format!("{}_", search);
-    let prompt_full = format!("{}{}", prompt_label, prompt_body);
-    let new_session_w = UnicodeWidthStr::width(new_session_label);
-    let new_session_x = cols.saturating_sub(new_session_w) / 2;
-    let prompt_x = if visible_count > 0 {
-        content_x
-    } else {
-        new_session_x
-    };
-    let prompt_y = top_y + 2;
-    if prompt_y < row_end {
-        let label_chars = prompt_label.chars().count();
-        let total_chars = prompt_full.chars().count();
-        let prompt_text =
-            Text::new(&prompt_full).color_range(3, label_chars..total_chars);
-        print_text_with_coordinates(prompt_text, prompt_x, prompt_y, None, None);
-    }
-
-    // Scroll indicators: when the list is scrolled, paint
-    // "↑ [+N]" / "↓ [+M]" in the blank rows that flank the session
-    // list. The blanks are otherwise just dead space — repurposing
-    // them avoids growing the block. Emphasis-1 distinguishes them
-    // from the prompt (3) and the session-name highlights (3),
-    // keeping the visual hierarchy intact.
-    //
-    // Centered on `cols` so the indicators sit on the screen's
-    // vertical axis regardless of card-column width.
-    let hidden_above = offset;
-    let hidden_below = total_cards.saturating_sub(offset + visible_count);
-    let indicator_x = |label_w: usize| -> usize {
-        cols.saturating_sub(label_w) / 2
-    };
-    if visible_count > 0 && hidden_above > 0 {
-        let top_indicator_y = top_y + 3;
-        if top_indicator_y < row_end {
-            let label = format!("\u{2191} [+{}]", hidden_above);
-            let label_w = UnicodeWidthStr::width(label.as_str());
+        let sessions_start_y = top_y + 4;
+        for (i, c) in visible_slice.iter().enumerate() {
+            let row_name = sessions_start_y + i * 2;
+            let row_counts = row_name + 1;
+            if row_name >= row_end {
+                break;
+            }
             print_text_with_coordinates(
-                Text::new(&label).color_range(1, ..),
-                indicator_x(label_w),
-                top_indicator_y,
+                Text::new(CARD_BULLET),
+                card_x,
+                row_name,
                 None,
                 None,
             );
+            let mut name_text = Text::new(&c.name_label).color_range(0, ..);
+            if !c.name_indices.is_empty() {
+                name_text = name_text.color_indices(3, c.name_indices.clone());
+            }
+            print_text_with_coordinates(name_text, content_x, row_name, None, None);
+            if row_counts < row_end {
+                let counts_text = Text::new(&c.counts_label)
+                    .color_range(1, c.tab_range.clone())
+                    .color_range(2, c.pane_range.clone())
+                    .color_range(2, c.client_range.clone());
+                print_text_with_coordinates(counts_text, content_x, row_counts, None, None);
+            }
+            let content_click_w = UnicodeWidthStr::width(c.name_label.as_str())
+                .max(UnicodeWidthStr::width(c.counts_label.as_str()));
+            frame.click_regions.push(ClickRegion::tight_range(
+                row_name,
+                row_counts + 1,
+                card_x,
+                content_x + content_click_w,
+                c.action.clone(),
+            ));
         }
-    }
-    if visible_count > 0 && hidden_below > 0 {
-        let bottom_indicator_y = top_y + 4 + 2 * visible_count;
-        if bottom_indicator_y < row_end {
-            let label = format!("\u{2193} [+{}]", hidden_below);
-            let label_w = UnicodeWidthStr::width(label.as_str());
+
+        let new_session_y = top_y + block_height.saturating_sub(1);
+        if new_session_y < row_end {
             print_text_with_coordinates(
-                Text::new(&label).color_range(1, ..),
-                indicator_x(label_w),
-                bottom_indicator_y,
+                Text::new(new_session_label).color_range(3, ..),
+                new_session_x,
+                new_session_y,
                 None,
                 None,
             );
+            frame.click_regions.push(ClickRegion::tight(
+                new_session_y,
+                new_session_x,
+                new_session_x + new_session_w,
+                ClickAction::OpenNewSessionPrompt,
+            ));
         }
     }
-
-    // Sessions — each one occupies two rows immediately under the
-    // previous (no inter-card padding per spec). Two rows of padding
-    // (blank + prompt + blank) above shift the first session card to
-    // `top_y + 4`.
-    let sessions_start_y = top_y + 4;
-    for (i, c) in visible_slice.iter().enumerate() {
-        let row_name = sessions_start_y + i * 2;
-        let row_counts = row_name + 1;
-        if row_name >= row_end {
-            break;
-        }
-        // Bullet at the card column's left edge, name text indented
-        // by `CARD_INDENT_W`. The counts row leaves the bullet slot
-        // blank so it sits flush under the name text.
-        print_text_with_coordinates(
-            Text::new(CARD_BULLET),
-            card_x,
-            row_name,
-            None,
-            None,
-        );
-        // Base name in emphasis-0; matched indices in emphasis-3.
-        // `color_indices` indices are char positions, which is what
-        // `fuzzy_indices` returns (verified against session-manager's
-        // index handling in `ui/components.rs`).
-        let mut name_text = Text::new(&c.name_label).color_range(0, ..);
-        if !c.name_indices.is_empty() {
-            name_text = name_text.color_indices(3, c.name_indices.clone());
-        }
-        print_text_with_coordinates(name_text, content_x, row_name, None, None);
-        if row_counts < row_end {
-            let counts_text = Text::new(&c.counts_label)
-                .color_range(1, c.tab_range.clone())
-                .color_range(2, c.pane_range.clone())
-                .color_range(2, c.client_range.clone());
-            print_text_with_coordinates(counts_text, content_x, row_counts, None, None);
-        }
-        let content_click_w = UnicodeWidthStr::width(c.name_label.as_str())
-            .max(UnicodeWidthStr::width(c.counts_label.as_str()));
-        // Click region spans the bullet slot too so a tap on the
-        // bullet still selects the session.
-        frame.click_regions.push(ClickRegion::tight_range(
-            row_name,
-            row_counts + 1,
-            card_x,
-            content_x + content_click_w,
-            c.action.clone(),
-        ));
-    }
-
-    // "+ New Session" — one blank row below the last visible session,
-    // or directly under the blank-after-prompt when no sessions are
-    // visible. `new_session_x` / `new_session_w` were already computed
-    // above (for the prompt's fallback x).
-    let new_session_y = top_y + block_height.saturating_sub(1);
-    if new_session_y < row_end {
-        print_text_with_coordinates(
-            Text::new(new_session_label).color_range(3, ..),
-            new_session_x,
-            new_session_y,
-            None,
-            None,
-        );
-        frame.click_regions.push(ClickRegion::tight(
-            new_session_y,
-            new_session_x,
-            new_session_x + new_session_w,
-            ClickAction::OpenNewSessionPrompt,
-        ));
-    }
-}
 }

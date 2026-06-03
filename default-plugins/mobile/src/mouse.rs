@@ -106,7 +106,7 @@ fn apply_v_pan(old_pan: usize, max_pan: usize, lines: usize, up: bool) -> (usize
 /// per-event delta is capped so the last visible card before the scroll
 /// stays in the new window — at least one card of overlap is preserved.
 fn handle_selector_scroll(state: &mut State, lines: usize, up: bool) -> bool {
-    let effective_lines = if state.sessions.welcome_auto_expand_done
+    let effective_lines = if state.sessions.is_welcome_screen
         && state.active == ActiveScreen::Sessions
         && state.sessions.last_welcome_visible_count > 0
     {
