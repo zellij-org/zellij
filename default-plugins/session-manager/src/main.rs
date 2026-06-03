@@ -15,7 +15,6 @@ use ui::{
         render_renaming_session_screen, render_screen_toggle, render_single_screen_prompt,
         render_unified_results, render_unsaved_changes_line, Colors,
     },
-    mobile_welcome::{self, MobileClickTarget},
     welcome_screen::{render_banner, render_welcome_boundaries},
     SessionUiInfo,
 };
@@ -57,11 +56,6 @@ pub(crate) struct State {
     current_session_last_saved_time: Option<u64>,
     is_visible: bool,
     refresh_timer_armed: bool,
-    /// Click targets emitted by the most recent mobile welcome render.
-    /// Each entry maps a plugin row to the action a tap on that row
-    /// should dispatch. Rebuilt every mobile render; ignored on the
-    /// desktop path and when not in welcome mode.
-    pub(crate) mobile_click_targets: Vec<MobileClickTarget>,
 }
 
 register_plugin!(State);
@@ -92,12 +86,6 @@ impl ZellijPlugin for State {
             EventType::RunCommandResult,
             EventType::Timer,
             EventType::Visible,
-            // Mouse events are consumed by the mobile-welcome path so
-            // taps on session rows route to attach/resurrect/create
-            // without requiring an on-screen keyboard. Ignored
-            // outside of welcome+mobile rendering (see
-            // `mobile_welcome::handle_click`).
-            EventType::Mouse,
         ]);
         rename_plugin_pane(get_plugin_ids().plugin_id, "Session Manager");
         self.refresh_session_list();
@@ -128,20 +116,6 @@ impl ZellijPlugin for State {
                 _ => {},
             }
             true
-        } else if pipe_message.name == "mobile_viewport_click" {
-            // Mobile plugin forwards taps that landed inside the
-            // embedded session-manager viewport as a pipe message
-            // (SGR mouse passthrough does not reach plugin panes —
-            // the host's `parse_keys` drops non-key sequences). The
-            // `row` arg is 0-indexed in this pane's coordinates, so
-            // the value plugs straight into the click-target table
-            // recorded by the last mobile welcome render.
-            if let Some(row_str) = pipe_message.args.get("row") {
-                if let Ok(row) = row_str.parse::<usize>() {
-                    return mobile_welcome::handle_click(self, row, 0);
-                }
-            }
-            false
         } else {
             false
         }
@@ -197,14 +171,6 @@ impl ZellijPlugin for State {
             Event::Key(key) => {
                 should_render = self.handle_key(key);
             },
-            Event::Mouse(mouse) => {
-                if let Mouse::LeftClick(line, col) = mouse {
-                    if line >= 0 {
-                        should_render =
-                            mobile_welcome::handle_click(self, line as usize, col);
-                    }
-                }
-            },
             Event::PermissionRequestResult(_result) => {
                 should_render = true;
             },
@@ -245,33 +211,6 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        // Per-render reset: the mobile welcome path populates
-        // `mobile_click_targets` with row coordinates that only make
-        // sense for that specific frame. If the viewport grows past
-        // the mobile threshold between renders (e.g. user resizes a
-        // small browser window up), the desktop branch below would
-        // otherwise leave the previous mobile frame's targets in
-        // place — and a desktop click landing on one of those rows
-        // would route through `mobile_welcome::handle_click` and
-        // attach to whichever session that row pointed to. Clearing
-        // here is the single source of truth; the mobile path
-        // re-populates after this point.
-        self.mobile_click_targets.clear();
-        // Mobile-friendly path: at small viewports the welcome
-        // screen's desktop layout (banner + boundaries + 90-col
-        // centred content) does not fit. The thresholds match
-        // `mobile_threshold_cols` / `mobile_threshold_rows` defaults
-        // in `zellij-utils/src/input/options.rs`, so the welcome
-        // routes to mobile rendering at the same size at which a
-        // client would have been routed to the mobile plugin.
-        if self.is_welcome_screen
-            && (cols <= mobile_welcome::MOBILE_MAX_COLS
-                || rows <= mobile_welcome::MOBILE_MAX_ROWS)
-        {
-            mobile_welcome::render(self, rows, cols);
-            return;
-        }
-
         let (x, y, width, height) = self.main_menu_size(rows, cols);
 
         let background = self.colors.palette.text_unselected.background;
