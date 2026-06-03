@@ -12,6 +12,7 @@
 //! over `State::active`. Cross-module orchestration that no single
 //! screen can own lives in the `impl State` block below.
 
+mod ansi;
 mod click;
 mod fit;
 mod frame;
@@ -24,6 +25,7 @@ mod pane_sync;
 mod render;
 mod screens;
 mod state;
+mod top_bar;
 mod workspace;
 
 use std::collections::BTreeMap;

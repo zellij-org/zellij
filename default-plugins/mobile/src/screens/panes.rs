@@ -217,7 +217,7 @@ fn pane_activity_label(ws: &Workspace, id: PaneId, is_current: bool, now: u64) -
     if is_current {
         CURRENT_PANE_LABEL.to_string()
     } else {
-        crate::render::format_time_ago(ws.pane_last_activity.get(&id).copied(), now)
+        crate::ansi::format_time_ago(ws.pane_last_activity.get(&id).copied(), now)
     }
 }
 

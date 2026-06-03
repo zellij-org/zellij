@@ -4,7 +4,7 @@ use crate::click::ViewportRegion;
 use crate::frame::Frame;
 use crate::input::Input;
 use crate::keys;
-use crate::render::{move_to, slice_ansi_visible, visible_width, RESET};
+use crate::ansi::{move_to, slice_ansi_visible, visible_width, RESET};
 use crate::workspace::{pane_id_of, Workspace};
 
 #[derive(Default)]
