@@ -985,6 +985,54 @@ fn generate_unique_session_name_or_exit() -> String {
     unique_session_name
 }
 
+pub(crate) fn list_builtin_plugins(opts: CliArgs) {
+    use zellij_utils::consts::ASSET_MAP;
+
+    // --- Built-in plugins ---
+    let mut builtins: Vec<(String, String)> = ASSET_MAP
+        .keys()
+        .filter_map(|p| {
+            p.file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| (s.to_string(), format!("zellij:{}", s)))
+        })
+        .collect();
+    builtins.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // --- Config aliases ---
+    let aliases = match Setup::from_cli_args(&opts) {
+        Ok((config, ..)) => config
+            .plugins
+            .aliases
+            .into_iter()
+            .map(|(name, run_plugin)| (name, run_plugin.location.display()))
+            .collect::<Vec<_>>(),
+        Err(_) => vec![],
+    };
+
+    let builtin_col = builtins.iter().map(|(n, _)| n.len()).max().unwrap_or(0);
+    let builtin_url_col = builtins.iter().map(|(_, u)| u.len()).max().unwrap_or(0);
+    println!("Built-in plugins:");
+    println!("  {:<w$}  URL", "NAME", w = builtin_col);
+    println!("  {}", "-".repeat(builtin_col + 2 + builtin_url_col));
+    for (name, url) in &builtins {
+        println!("  {:<w$}  {}", name, url, w = builtin_col);
+    }
+
+    if !aliases.is_empty() {
+        let mut aliases = aliases;
+        aliases.sort_by(|a, b| a.0.cmp(&b.0));
+        let alias_col = aliases.iter().map(|(n, _)| n.len()).max().unwrap_or(0);
+        let alias_url_col = aliases.iter().map(|(_, u)| u.len()).max().unwrap_or(0);
+        println!("\nConfig aliases:");
+        println!("  {:<w$}  URL", "ALIAS", w = alias_col);
+        println!("  {}", "-".repeat(alias_col + 2 + alias_url_col));
+        for (name, url) in &aliases {
+            println!("  {:<w$}  {}", name, url, w = alias_col);
+        }
+    }
+}
+
 pub(crate) fn list_aliases(opts: CliArgs) {
     let (config, _layout, _config_options, _config_without_layout, _config_options_without_layout) =
         match Setup::from_cli_args(&opts) {
