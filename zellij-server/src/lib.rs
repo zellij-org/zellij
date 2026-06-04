@@ -14,6 +14,7 @@ pub mod tab;
 pub mod background_jobs;
 mod global_async_runtime;
 mod logging_pipe;
+mod mobile_mode;
 mod pane_groups;
 mod plugins;
 mod pty;

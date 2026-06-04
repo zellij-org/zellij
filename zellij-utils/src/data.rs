@@ -897,8 +897,7 @@ pub enum Mouse {
     ScrollUp(usize),          // number of lines
     ScrollDown(usize),        // number of lines
     /// Horizontal wheel tick toward column 0 (SGR button 67). Number
-    /// of cells. Currently only the mobile plugin consumes this; other
-    /// plugins ignore it via their `_ =>` arms.
+    /// of cells.
     ScrollLeft(usize),
     /// Horizontal wheel tick away from column 0 (SGR button 66).
     ScrollRight(usize),
@@ -3384,21 +3383,10 @@ pub enum PluginCommand {
         name: Option<String>,
         cwd: Option<String>,
     },
-    /// Like `NewTab`, but the server dispatches with
-    /// `should_change_focus_to_new_tab: false`. The new tab is created
-    /// but the requesting client stays on its current tab. The shim
-    /// returns the new tab's id synchronously. Used by the mobile
-    /// plugin which must not yank the client off its per-client plugin
-    /// tab — that would dismount the mobile UI.
     NewTabUnfocused {
         name: Option<String>,
         cwd: Option<String>,
     },
-    /// Open a new tiled terminal pane in the tab at `tab_position`
-    /// rather than in the requesting client's focused tab. The shim
-    /// returns the new pane's id synchronously. Used by the mobile
-    /// plugin so "+ New Pane" lands in the tab the user has selected
-    /// in the mobile UI, not in the plugin's own per-client tab.
     NewTiledPaneInTab {
         tab_position: usize,
     },
@@ -3646,32 +3634,27 @@ pub enum PluginCommand {
     KillSessionsAndReply(Vec<String>), // one or more session names; sends a response back
     DeleteDeadSessionAndReply(String), // session name; sends a response back
     DeleteAllDeadSessionsAndReply,     // no payload; sends a response back
-    /// Mobile-only: show or hide the soft keyboard on the calling
-    /// client's browser. No-op on non-web clients. Fire-and-forget.
+    // Mobile-only: show or hide the soft keyboard on the calling
+    // client's browser. No-op on non-web clients. Fire-and-forget.
     SetSoftKeyboard(bool),
-    /// Mobile "Fit" (per calling client). `Some((pane_id, size))`
-    /// fullscreens `pane_id` in `tab_id` and sizes the tab so the
-    /// pane's content is exactly `size`; re-send to update the size
-    /// (idempotent — enters on first call, updates thereafter).
-    /// `None` clears the calling client's fit and reverts any
-    /// fit-induced fullscreen. Size + fullscreen apply atomically;
-    /// auto-cleared on the target pane's close, tab close, or client
-    /// disconnect.
+    // Mobile "Fit" (per calling client). `Some((pane_id, size))`
+    // fullscreens `pane_id` in `tab_id` and sizes the tab so the
+    // pane's content is exactly `size`; re-send to update the size
+    // (idempotent — enters on first call, updates thereafter).
+    // `None` clears the calling client's fit and reverts any
+    // fit-induced fullscreen. Size + fullscreen apply atomically;
+    // auto-cleared on the target pane's close, tab close, or client
+    // disconnect.
     SetTabFit {
         tab_id: usize,
         fit: Option<(PaneId, Size)>,
     },
-    /// Mobile plugin → server: record the calling client as visually
-    /// focused on `pane_id` in whichever tab owns the pane. Used by
-    /// the mobile plugin so other clients see the mobile client's
-    /// focus marker on the pane the mobile viewport is rendering,
-    /// without changing the client's actual tab (which would
-    /// dismount the plugin UI).
+    // Plugins that are in "mobile" mode (set upon connection according to size thresholds)
+    // can use this command to indicate in the UI which pane the user is "really" focused on
     SetShadowFocus(PaneId),
-    /// Mobile plugin → server: exit mobile mode for the calling
-    /// client. Tears down the client's mobile tab and switches it
-    /// back to a normal session tab. One-way; the client re-enters
-    /// mobile mode only by reconnecting (auto-detection).
+    // Plugins that are in "mobile" mode (set upon connection according to size thresholds)
+    // can opt out with this command, this tears down their invisible tab, clears their shadow
+    // focus and places them back in a normal tab as normal
     ExitMobileMode,
 }
 

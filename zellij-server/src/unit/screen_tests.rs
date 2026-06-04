@@ -9946,7 +9946,7 @@ fn setup_mobile_fit(screen: &mut Screen, client: ClientId, mobile_tab_idx: usize
         None,
     )
     .expect("TEST");
-    screen.mobile_state.tabs.insert(client, mobile_tab_idx);
+    screen.mobile_state.register_tab(client, mobile_tab_idx);
 }
 
 /// Mobile client fitting tab 0 — the tab adopts the server-derived fit
@@ -9969,10 +9969,9 @@ fn fit_override_resizes_tab() {
         screen.compute_fit_size(0).unwrap(),
         "Tab adopts the server-derived fit size"
     );
-    let fit = screen.mobile_state.fit_states.get(&0).expect("fit installed");
-    assert_eq!(fit.owning_client, mobile_client);
-    assert_eq!(fit.pane_id, PaneId::Terminal(1));
-    assert_eq!(fit.size, size);
+    assert_eq!(screen.mobile_state.fit_owner(0), Some(mobile_client));
+    assert_eq!(screen.mobile_state.fit_pane(0), Some(PaneId::Terminal(1)));
+    assert_eq!(screen.mobile_state.fit_embedded_size(0), Some(size));
 }
 
 /// Closing the fit's target pane tears the override down server-side
@@ -9992,7 +9991,7 @@ fn fit_cleared_when_target_pane_closes() {
         .set_tab_fit(mobile_client, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
     assert!(
-        screen.mobile_state.fit_states.contains_key(&0),
+        screen.mobile_state.has_fit(0),
         "Pre-condition: fit installed on tab 0"
     );
 
@@ -10005,7 +10004,7 @@ fn fit_cleared_when_target_pane_closes() {
         "Closing a non-target pane does not clear the fit"
     );
     assert!(
-        screen.mobile_state.fit_states.contains_key(&0),
+        screen.mobile_state.has_fit(0),
         "Fit survives an unrelated pane close"
     );
 
@@ -10024,7 +10023,7 @@ fn fit_cleared_when_target_pane_closes() {
         "Closing the target pane clears the fit"
     );
     assert!(
-        !screen.mobile_state.fit_states.contains_key(&0),
+        !screen.mobile_state.has_fit(0),
         "Fit override is dropped once its target pane is gone"
     );
 }
@@ -10055,10 +10054,8 @@ fn fit_override_captures_fullscreen_state() {
     assert!(
         screen
             .mobile_state
-            .fit_states
-            .get(&0)
-            .expect("fit installed")
-            .was_fullscreen_before,
+            .fit_pane_was_fullscreen_before(0)
+            .expect("fit installed"),
         "Pre-existing fullscreen recorded so exit/disconnect won't toggle it off"
     );
 
@@ -10077,10 +10074,8 @@ fn fit_override_captures_fullscreen_state() {
     assert!(
         !screen
             .mobile_state
-            .fit_states
-            .get(&0)
-            .expect("fit installed")
-            .was_fullscreen_before,
+            .fit_pane_was_fullscreen_before(0)
+            .expect("fit installed"),
         "Fit toggled fullscreen on itself; exit path will revert it"
     );
     assert!(
@@ -10115,7 +10110,7 @@ fn exit_fit_reverts_size_and_fullscreen() {
 
     assert!(screen.exit_fit_mode(1).expect("TEST"));
 
-    assert!(screen.mobile_state.fit_states.is_empty(), "Override cleared");
+    assert!(screen.mobile_state.fit_count() == 0, "Override cleared");
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
         Size { cols: 80, rows: 20 },
@@ -10146,7 +10141,7 @@ fn exit_fit_preserves_pre_fit_fullscreen() {
 
     screen.exit_fit_mode(1).expect("TEST");
 
-    assert!(screen.mobile_state.fit_states.is_empty(), "Override cleared");
+    assert!(screen.mobile_state.fit_count() == 0, "Override cleared");
     assert!(
         screen.tabs.get(&0).unwrap().is_fullscreen_active(),
         "Pre-existing fullscreen preserved across exit"
@@ -10185,7 +10180,7 @@ fn set_tab_fit_update_changes_tab_size() {
         before.rows - 1,
         "One fewer embedded row shrinks the target tab by one row"
     );
-    assert_eq!(screen.mobile_state.fit_states.get(&0).unwrap().size, new_size);
+    assert_eq!(screen.mobile_state.fit_embedded_size(0), Some(new_size));
 }
 
 /// On disconnect, every `fit_states` entry owned by the leaving client
@@ -10214,7 +10209,7 @@ fn disconnect_clears_fit_for_owning_client() {
     screen.remove_client(1).expect("TEST");
 
     assert!(
-        screen.mobile_state.fit_states.is_empty(),
+        screen.mobile_state.fit_count() == 0,
         "Override owned by the leaving client cleared"
     );
     assert_eq!(
@@ -10258,16 +10253,15 @@ fn disconnect_only_clears_own_fits() {
     screen.remove_client(1).expect("TEST");
 
     assert!(
-        screen.mobile_state.fit_states.get(&0).is_none(),
+        !screen.mobile_state.has_fit(0),
         "Disconnecting client's entry cleared"
     );
-    let other = screen
-        .mobile_state
-        .fit_states
-        .get(&1)
-        .expect("Other client's entry survives");
-    assert_eq!(other.owning_client, 2);
-    assert_eq!(other.size, size);
+    assert_eq!(
+        screen.mobile_state.fit_owner(1),
+        Some(2),
+        "Other client's entry survives"
+    );
+    assert_eq!(screen.mobile_state.fit_embedded_size(1), Some(size));
     assert_eq!(
         screen.tabs.get(&1).unwrap().size,
         surviving_size,
@@ -10373,10 +10367,13 @@ fn fit_collision_last_writer_wins() {
         .set_tab_fit(2, 0, PaneId::Terminal(2), size_b)
         .expect("TEST");
 
-    let fit = screen.mobile_state.fit_states.get(&0).expect("fit present");
-    assert_eq!(fit.owning_client, 2, "Second writer owns the entry");
-    assert_eq!(fit.pane_id, PaneId::Terminal(2));
-    assert_eq!(fit.size, size_b);
+    assert_eq!(
+        screen.mobile_state.fit_owner(0),
+        Some(2),
+        "Second writer owns the entry"
+    );
+    assert_eq!(screen.mobile_state.fit_pane(0), Some(PaneId::Terminal(2)));
+    assert_eq!(screen.mobile_state.fit_embedded_size(0), Some(size_b));
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
         screen.compute_fit_size(0).unwrap(),
@@ -10408,8 +10405,8 @@ fn fit_update_after_collision_reclaims_ownership() {
         .set_tab_fit(2, 0, PaneId::Terminal(2), size)
         .expect("TEST");
     assert_eq!(
-        screen.mobile_state.fit_states.get(&0).unwrap().owning_client,
-        2,
+        screen.mobile_state.fit_owner(0),
+        Some(2),
         "Pre-condition: client 2 displaced client 1"
     );
 
@@ -10421,9 +10418,12 @@ fn fit_update_after_collision_reclaims_ownership() {
         .set_tab_fit(1, 0, PaneId::Terminal(1), reclaim_size)
         .expect("TEST");
 
-    let fit = screen.mobile_state.fit_states.get(&0).unwrap();
-    assert_eq!(fit.owning_client, 1, "Ownership reattributed to caller");
-    assert_eq!(fit.size, reclaim_size);
+    assert_eq!(
+        screen.mobile_state.fit_owner(0),
+        Some(1),
+        "Ownership reattributed to caller"
+    );
+    assert_eq!(screen.mobile_state.fit_embedded_size(0), Some(reclaim_size));
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
         screen.compute_fit_size(0).unwrap(),
@@ -10434,12 +10434,12 @@ fn fit_update_after_collision_reclaims_ownership() {
     // Client 2 disconnecting first must NOT clear the override.
     screen.remove_client(2).expect("TEST");
     assert!(
-        screen.mobile_state.fit_states.contains_key(&0),
+        screen.mobile_state.has_fit(0),
         "Override survives the original (now non-owning) client's disconnect"
     );
     screen.remove_client(1).expect("TEST");
     assert!(
-        screen.mobile_state.fit_states.is_empty(),
+        screen.mobile_state.fit_count() == 0,
         "Override clears when the reclaim-owner disconnects"
     );
 }
@@ -10458,12 +10458,12 @@ fn fit_tab_close_cleans_state() {
     screen
         .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
-    assert!(screen.mobile_state.fit_states.contains_key(&0), "Pre-condition: fit installed");
+    assert!(screen.mobile_state.has_fit(0), "Pre-condition: fit installed");
 
     screen.close_tab_by_id(0).expect("TEST");
 
     assert!(
-        !screen.mobile_state.fit_states.contains_key(&0),
+        !screen.mobile_state.has_fit(0),
         "fit_states entry removed when its tab is closed"
     );
     assert!(
@@ -10497,7 +10497,7 @@ fn disconnect_safe_with_orphan_fit() {
         tab.close_pane(PaneId::Terminal(1), false, None);
     }
     assert!(
-        screen.mobile_state.fit_states.contains_key(&0),
+        screen.mobile_state.has_fit(0),
         "Pre-condition: orphan entry present (cleanup deliberately skipped)"
     );
 
@@ -10506,7 +10506,7 @@ fn disconnect_safe_with_orphan_fit() {
     // this would panic or toggle fullscreen on a missing pane.
     screen.remove_client(1).expect("Disconnect must not panic on dead pane_id");
     assert!(
-        screen.mobile_state.fit_states.is_empty(),
+        screen.mobile_state.fit_count() == 0,
         "Disconnect cleanup clears the orphan"
     );
 }
@@ -10561,12 +10561,12 @@ fn fit_three_viewers_override_persists() {
         override_size,
         "Override survives non-owner disconnect"
     );
-    assert!(screen.mobile_state.fit_states.contains_key(&0));
+    assert!(screen.mobile_state.has_fit(0));
 
     // The owning client leaves — override is cleared and the tab
     // grows back to the remaining viewer.
     screen.remove_client(1).expect("TEST");
-    assert!(screen.mobile_state.fit_states.is_empty());
+    assert!(screen.mobile_state.fit_count() == 0);
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
         Size { cols: 200, rows: 60 },
@@ -10609,8 +10609,8 @@ fn fit_resize_repush_updates_tab() {
         "One fewer embedded row shrinks the target tab by exactly one row"
     );
     assert_eq!(
-        screen.mobile_state.fit_states.get(&0).unwrap().size,
-        Size { rows: 11, cols: 60 },
+        screen.mobile_state.fit_embedded_size(0),
+        Some(Size { rows: 11, cols: 60 }),
         "Stored embedded size follows the re-push"
     );
 }
@@ -10799,7 +10799,7 @@ fn reevaluate_mobile_routes_web_client_in_web_mode() {
         "web client + small viewport in Web mode must enter mobile",
     );
     assert!(
-        screen.mobile_state.auto_entered.contains(&client),
+        screen.mobile_state.was_auto_entered(client),
         "auto-entry must be marked so a later resize can auto-demote",
     );
 }
@@ -10937,7 +10937,7 @@ fn reevaluate_mobile_preserves_manual_entry_when_viewport_grows() {
     screen.enter_mobile_mode(client).expect("TEST");
     assert!(screen.is_in_mobile_mode(client));
     assert!(
-        !screen.mobile_state.auto_entered.contains(&client),
+        !screen.mobile_state.was_auto_entered(client),
         "manual entry must not be marked as auto",
     );
 
@@ -10970,11 +10970,11 @@ fn enter_mobile_mode_populates_consolidated_state() {
     screen.enter_mobile_mode(client).expect("TEST");
 
     assert!(
-        screen.mobile_state.tabs.contains_key(&client),
+        screen.mobile_state.is_in_mobile_mode(client),
         "entering mobile mode must record the client's mobile tab",
     );
     assert_eq!(
-        screen.mobile_state.previous_tab_ids.get(&client).copied(),
+        screen.mobile_state.previous_tab(client),
         Some(0),
         "the seeded tab 0 must be stashed as the prior tab",
     );
@@ -10984,7 +10984,7 @@ fn enter_mobile_mode_populates_consolidated_state() {
     );
     // A manual entry must NOT set the auto-entered marker.
     assert!(
-        !screen.mobile_state.auto_entered.contains(&client),
+        !screen.mobile_state.was_auto_entered(client),
         "manual enter_mobile_mode must not mark the client as auto-entered",
     );
 }
@@ -11009,21 +11009,21 @@ fn exit_mobile_mode_clears_all_consolidated_state() {
             MOBILE_THRESHOLDS.1,
         )
         .expect("TEST");
-    assert!(screen.mobile_state.tabs.contains_key(&client));
-    assert!(screen.mobile_state.auto_entered.contains(&client));
+    assert!(screen.mobile_state.is_in_mobile_mode(client));
+    assert!(screen.mobile_state.was_auto_entered(client));
 
     screen.exit_mobile_mode(client).expect("TEST");
 
     assert!(
-        !screen.mobile_state.tabs.contains_key(&client),
+        !screen.mobile_state.is_in_mobile_mode(client),
         "exit must remove the client's mobile tab entry",
     );
     assert!(
-        !screen.mobile_state.previous_tab_ids.contains_key(&client),
+        !screen.mobile_state.previous_tab(client).is_some(),
         "exit must drop the stashed prior-tab entry",
     );
     assert!(
-        !screen.mobile_state.auto_entered.contains(&client),
+        !screen.mobile_state.was_auto_entered(client),
         "exit must clear the auto-entered marker",
     );
     assert!(
@@ -11049,21 +11049,21 @@ fn remove_client_clears_all_consolidated_state() {
             MOBILE_THRESHOLDS.1,
         )
         .expect("TEST");
-    assert!(screen.mobile_state.tabs.contains_key(&client));
-    assert!(screen.mobile_state.auto_entered.contains(&client));
+    assert!(screen.mobile_state.is_in_mobile_mode(client));
+    assert!(screen.mobile_state.was_auto_entered(client));
 
     screen.remove_client(client).expect("TEST");
 
     assert!(
-        !screen.mobile_state.tabs.contains_key(&client),
+        !screen.mobile_state.is_in_mobile_mode(client),
         "disconnect must remove the client's mobile tab entry",
     );
     assert!(
-        !screen.mobile_state.previous_tab_ids.contains_key(&client),
+        !screen.mobile_state.previous_tab(client).is_some(),
         "disconnect must drop the stashed prior-tab entry",
     );
     assert!(
-        !screen.mobile_state.auto_entered.contains(&client),
+        !screen.mobile_state.was_auto_entered(client),
         "disconnect must clear the auto-entered marker",
     );
 }
@@ -11083,15 +11083,11 @@ fn mobile_state_tracks_clients_independently() {
 
     let tab_a = screen
         .mobile_state
-        .tabs
-        .get(&client_a)
-        .copied()
+        .mobile_tab_id(client_a)
         .expect("client A must have a mobile tab");
     let tab_b = screen
         .mobile_state
-        .tabs
-        .get(&client_b)
-        .copied()
+        .mobile_tab_id(client_b)
         .expect("client B must have a mobile tab");
     assert_ne!(
         tab_a, tab_b,
@@ -11101,11 +11097,11 @@ fn mobile_state_tracks_clients_independently() {
     screen.remove_client(client_a).expect("TEST");
 
     assert!(
-        !screen.mobile_state.tabs.contains_key(&client_a),
+        !screen.mobile_state.is_in_mobile_mode(client_a),
         "removed client's entry must be gone",
     );
     assert!(
-        screen.mobile_state.tabs.contains_key(&client_b),
+        screen.mobile_state.is_in_mobile_mode(client_b),
         "the other client's mobile state must be untouched",
     );
 }

@@ -93,6 +93,8 @@ use zellij_utils::{
     ipc::{ClientAttributes, PixelDimensions},
 };
 
+use crate::mobile_mode::{MobileState, ShadowFocusOutcome, FIT_RESIZE_MAX_ITERS};
+
 /// Parses a namespaced OSC 99 response and extracts the original pane ID
 /// and un-namespaced response bytes.
 ///
@@ -775,13 +777,13 @@ pub enum ScreenInstruction {
     PageScrollUpInPaneId(PaneId),
     PageScrollDownInPaneId(PaneId),
     TogglePaneIdFullscreen(PaneId),
-    /// Mobile-plugin "Fit" (per-client). `Some((pane_id, size))`
-    /// enters or updates a fit: it sizes the tab so `pane_id`'s
-    /// content is exactly `size` (adding the tab bars + pane frame),
-    /// fullscreening the pane on first install. `None` clears the
-    /// client's fit and reverts any fit-induced fullscreen. `tab_id`
-    /// identifies the override directly so a displaced client can
-    /// reclaim ownership; `client_id` becomes the new `owning_client`.
+    // Mobile-plugin "Fit" (per-client). `Some((pane_id, size))`
+    // enters or updates a fit: it sizes the tab so `pane_id`'s
+    // content is exactly `size` (adding the tab bars + pane frame),
+    // fullscreening the pane on first install. `None` clears the
+    // client's fit and reverts any fit-induced fullscreen. `tab_id`
+    // identifies the override directly so a displaced client can
+    // reclaim ownership; `client_id` becomes the new `owning_client`.
     SetTabFit {
         client_id: ClientId,
         tab_id: usize,
@@ -883,21 +885,9 @@ pub enum ScreenInstruction {
     PreviousSwapLayoutWithTabId(usize, Option<NotificationEnd>),
     NextSwapLayoutWithTabId(usize, Option<NotificationEnd>),
     MoveTabWithTabId(usize, Direction, Option<NotificationEnd>),
-    /// Promote `client_id` into a per-client mobile tab. Idempotent: if
-    /// the client is already in mobile mode, it is left alone.
     EnterMobileMode(ClientId, Option<NotificationEnd>),
-    /// Switch `client_id` back out of its mobile tab to the previously
-    /// active tab; tear down the now-empty mobile tab.
     ExitMobileMode(ClientId, Option<NotificationEnd>),
-    /// Flip mobile mode for `client_id` based on its current state.
     ToggleMobileMode(ClientId, Option<NotificationEnd>),
-    /// Re-evaluate auto-routing for `client_id` after a viewport
-    /// resize. Auto-promotes clients into mobile mode when the new
-    /// size crosses the threshold downward; auto-demotes only those
-    /// clients whose current mobile entry was itself auto-driven
-    /// (manual entries via `ToggleMobileMode` stay put). Carries the
-    /// runtime config knobs read by the route thread so the screen
-    /// thread does not need direct session-configuration access.
     ReevaluateMobileMode {
         client_id: ClientId,
         new_size: Size,
@@ -905,23 +895,13 @@ pub enum ScreenInstruction {
         threshold_cols: u16,
         threshold_rows: u16,
     },
-    /// Mobile plugin → server → web client: ask the calling client's
-    /// browser to show or hide its soft keyboard. Forwards a
-    /// `ServerToClientMsg::SetSoftKeyboard` via `os_input.send_to_client`.
-    /// No-op for non-web clients (the message is swallowed there).
+    // only relevant to mobile clients on the web, noop for others
     SetSoftKeyboard {
         client_id: ClientId,
         on: bool,
     },
-    /// Mobile plugin → server: record `client_id` as visually focused
-    /// on `pane_id` in whichever tab contains it, so other connected
-    /// clients see the mobile client's focus marker on the pane the
-    /// mobile viewport is currently rendering. Does not change the
-    /// client's `active_tab_ids` (the client stays in the mobile tab
-    /// so the plugin UI remains mounted) and does not sync to the PTY
-    /// thread (keystroke routing for the mobile client continues to
-    /// go through `write_to_pane_id`, not the PTY thread's
-    /// `active_panes`).
+    // used by the mobile plugin to indicate in the UI which pane the client is actually focused on
+    // rather than the mobile plugin itself which acts as a viewport
     SetShadowFocus(ClientId, PaneId),
 }
 
@@ -1373,7 +1353,6 @@ impl RenderBlocker {
     }
 }
 
-/// State information for a watcher client
 #[derive(Debug, Clone)]
 pub(crate) struct WatcherState {
     size: Size,
@@ -1488,121 +1467,47 @@ pub(crate) struct Screen {
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     plugins_need_ansi_pane_contents: bool,
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
-    /// Monotonic counter used to tag each forwarded host-terminal query
-    /// with a unique token. 0 is reserved as a sentinel (see
-    /// `STARTUP_SENTINEL_TOKEN`); real forwards start at 1.
+    // Monotonic counter used to tag each forwarded host-terminal query
+    // with a unique token. 0 is reserved as a sentinel (see
+    // `STARTUP_SENTINEL_TOKEN`); real forwards start at 1.
     next_forward_token: u32,
-    /// Map of forwarded-query token → the originating pane plus the
-    /// raw query bytes. When the client sends back the reply for
-    /// `token`, the server looks up the pane here and writes the
-    /// reply bytes to its pty. The retained `query_bytes` feed the
-    /// cache-fallback synthesis: if the reply comes back empty
-    /// (detached session, client crash, host timeout), we use the
-    /// cached bg/fg/pixel/palette state to answer in the host's
-    /// stead.
+    // Map of forwarded-query token -> the originating pane plus the
+    // raw query bytes. When the client sends back the reply for
+    // `token`, the server looks up the pane here and writes the
+    // reply bytes to its pty. The retained `query_bytes` feed the
+    // cache-fallback synthesis: if the reply comes back empty
+    // (detached session, client crash, host timeout), we use the
+    // cached bg/fg/pixel/palette state to answer in the host's
+    // stead.
     pending_forwarded_queries: HashMap<u32, PendingForwardEntry>,
-    /// Serialization queue for forwarded queries. Invariant: at most one
-    /// forward is in flight to the client at a time (enforced by
-    /// `forward_in_flight`). When the reply (or timeout) closes the
-    /// active slot, the next queued forward is dispatched.
+    // Serialization queue for forwarded queries. Invariant: at most one
+    // forward is in flight to the client at a time (enforced by
+    // `forward_in_flight`). When the reply (or timeout) closes the
+    // active slot, the next queued forward is dispatched.
     forward_queue: VecDeque<PendingForward>,
-    /// Token of the forward currently in flight to the (single)
-    /// connected client, if any. Used to:
-    /// * serialize forwarded queries globally (only one at a time);
-    /// * gate slot release on `handle_forwarded_reply_from_host` to a
-    ///   token-equality match, so a late server-side timeout for an
-    ///   already-answered forward cannot clobber a queued forward that
-    ///   the real reply just dispatched.
+    // Token of the forward currently in flight to the (single)
+    // connected client, if any. Used to:
+    // * serialize forwarded queries globally (only one at a time);
+    // * gate slot release on `handle_forwarded_reply_from_host` to a
+    //   token-equality match, so a late server-side timeout for an
+    //   already-answered forward cannot clobber a queued forward that
+    //   the real reply just dispatched.
     forward_in_flight_token: Option<u32>,
-    /// Last-known host terminal color-palette theme mode (CSI 2031 /
-    /// DSR 997). `None` until the host first reports. Used both for
-    /// auto-theme switching and to dedupe duplicate notifications.
+    // Last-known host terminal color-palette theme mode (CSI 2031 /
+    // DSR 997). `None` until the host first reports. Used both for
+    // auto-theme switching and to dedupe duplicate notifications.
     host_terminal_theme_mode: Option<HostTerminalThemeMode>,
-    /// Resolved styling to apply when `host_terminal_theme_mode == Dark`.
-    /// `None` disables auto-switch. Refreshed on each reconfigure.
+    // Resolved styling to apply when `host_terminal_theme_mode == Dark`.
+    // `None` disables auto-switch. Refreshed on each reconfigure.
     host_theme_dark_styling: Option<Styling>,
-    /// Resolved styling to apply when `host_terminal_theme_mode == Light`.
-    /// `None` disables auto-switch. Refreshed on each reconfigure.
+    // Resolved styling to apply when `host_terminal_theme_mode == Light`.
+    // `None` disables auto-switch. Refreshed on each reconfigure.
     host_theme_light_styling: Option<Styling>,
-    /// Consolidated per-screen mobile-mode bookkeeping (tab tracking,
-    /// prior-tab memory, auto-entry markers, and per-tab fit overrides).
-    /// See `MobileState`.
+    // Consolidated per-screen mobile-mode bookkeeping (tab tracking,
+    // prior-tab memory, auto-entry markers, and per-tab fit overrides).
+    // See `MobileState`.
     mobile_state: MobileState,
 }
-
-/// Consolidated per-screen mobile-mode bookkeeping. Groups the four
-/// collections that together track which clients are in mobile mode,
-/// where they came from, whether their entry was auto-driven, and any
-/// per-tab fit overrides. The mobile-mode lifecycle helpers on `Screen`
-/// (`enter_mobile_mode`, `exit_mobile_mode`, `toggle_mobile_mode`,
-/// `reevaluate_mobile_mode`, and the fit-mode helpers) read and mutate
-/// these fields; they remain `Screen` methods because they also touch
-/// tabs, the plugin bus, and shadow-focus state.
-#[derive(Debug, Default)]
-struct MobileState {
-    /// Per-client mobile tab tracking. Maps each client that is currently
-    /// in mobile mode to its dedicated mobile tab id. Mobile tabs are
-    /// `visible_to = Some({client_id})` so other clients never see them,
-    /// and they are torn down when the client exits mobile mode or
-    /// detaches.
-    tabs: HashMap<ClientId, usize>,
-    /// The tab id each client was on immediately before being routed
-    /// into mobile mode. Used by `exit_mobile_mode` to send the client
-    /// back to where it came from. Falls back to the first visible
-    /// non-mobile tab if the prior tab has since been closed.
-    previous_tab_ids: HashMap<ClientId, usize>,
-    /// Clients whose current mobile-mode entry was driven by the
-    /// auto-routing path (initial-attach threshold or
-    /// `ReevaluateMobileMode` from a `TerminalResize`). Tracked
-    /// separately from `tabs` because only auto-promoted
-    /// clients should ever be auto-demoted on a subsequent resize —
-    /// a client that explicitly entered mobile via
-    /// `Action::ToggleMobileMode` stays put until they toggle back.
-    auto_entered: HashSet<ClientId>,
-    /// Per-tab "fit mode" override installed by the mobile plugin's
-    /// Fit button. When present, `recompute_tab_size` sizes the tab to
-    /// `compute_fit_size` (the plugin-reported embedded `size`, plus the
-    /// target tab's bars and the target pane's frame) for that tab
-    /// instead of taking the min of all viewers' viewports.
-    /// Keyed by tab id so the recompute hot path is a single O(1)
-    /// lookup; per-client cleanup paths (`SetTabFit { fit: None }`,
-    /// `remove_client`) iterate to find the entry by `owning_client`.
-    ///
-    /// Collision: if a second mobile client targets the same tab,
-    /// `insert` overwrites — last writer wins. The first client's
-    /// plugin still thinks fit is on locally; its next `SetTabFit`
-    /// push will reclaim the override.
-    fit_states: HashMap<usize, FitState>,
-}
-
-/// Per-tab fit-mode bookkeeping. See `MobileState::fit_states`.
-#[derive(Debug, Clone, Copy)]
-struct FitState {
-    /// Mobile client that installed this fit. `remove_client` for
-    /// this id removes the override + reverts fullscreen.
-    owning_client: ClientId,
-    /// Pane that was fullscreened. Needed for the disconnect cleanup
-    /// to call `toggle_pane_fullscreen` on the correct pane, and as
-    /// the target pane whose frame `compute_fit_size` compensates for.
-    pane_id: PaneId,
-    /// Embedded content size the plugin wants the target pane's content
-    /// to be (the area inside the plugin's own chrome). `compute_fit_size`
-    /// grows it by the target tab's bars + the target pane's frame. The
-    /// plugin re-sends this via `SetTabFit` whenever it changes (its own
-    /// resize, soft-keyboard / selector toggle).
-    size: Size,
-    /// True iff the pane was *already* fullscreen when fit was
-    /// entered. Determines whether disconnect cleanup or a clearing
-    /// `SetTabFit { fit: None }` should toggle fullscreen back off.
-    was_fullscreen_before: bool,
-}
-
-/// Upper bound on the resize iterations in the fit branch of
-/// `recompute_tab_size`. The target normally converges in one pass (two
-/// when the target pane's frame appears/disappears as a side effect of
-/// the resize); the cap is a backstop against size-dependent bars or
-/// frames that never settle.
-const FIT_RESIZE_MAX_ITERS: usize = 3;
 
 /// A pending forward waiting to be dispatched once the current in-flight
 /// forward's barrier reply (or timeout) arrives.
@@ -1816,104 +1721,37 @@ impl Screen {
         }
     }
 
-    /// Returns the URL of the bundled mobile plugin. Always
-    /// `zellij:mobile`; the alias is resolved to the bundled wasm via
-    /// `default-plugins/mobile`. Future revisions may make this
-    /// configurable.
-    fn mobile_plugin_url() -> &'static str {
-        "zellij:mobile"
-    }
-
-    /// Returns true if `client_id` is currently in mobile mode (i.e.
-    /// has a tracked mobile tab in `mobile_state.tabs`).
+    /// Returns true if `client_id` is currently in mobile mode.
     pub fn is_in_mobile_mode(&self, client_id: ClientId) -> bool {
-        self.mobile_state.tabs.contains_key(&client_id)
+        self.mobile_state.is_in_mobile_mode(client_id)
     }
 
-    /// Remove every shadow-focus entry for `client_id` across all tabs
-    /// **except** the client's mobile tab. The mobile tab keeps its
-    /// real `active_panes` entry pointing at the mobile plugin pane
-    /// (which is what mounts the plugin UI); all other tabs get the
-    /// stale visual-focus marker cleared.
-    ///
-    /// Called when:
-    /// - The mobile plugin reports a new viewport pane via
-    ///   `SetShadowFocus` (before applying the new entry).
-    /// - The client enters mobile mode (`enter_mobile_mode`), to
-    ///   purge any pre-existing real-focus entry that would otherwise
-    ///   show the mobile client focused on a desktop pane.
-    /// - The client exits mobile mode (`exit_mobile_mode`).
-    /// - The client disconnects (`remove_client`).
-    fn clear_mobile_shadow_focus(&mut self, client_id: ClientId) {
-        let mobile_tab_id = self.mobile_state.tabs.get(&client_id).copied();
-        for tab in self.tabs.values_mut() {
-            if Some(tab.id) == mobile_tab_id {
-                continue;
-            }
-            tab.clear_shadow_focus(client_id);
+    /// Apply a shadow focus marker for `client_id` on `pane_id` (see
+    /// `MobileState::apply_shadow_focus`). When the marker is newly
+    /// applied, re-emit session state so the tab-bar plugin learns about
+    /// the shadow-focused client and re-render; when it was already in
+    /// place this is a no-op (which is what breaks the
+    /// server → TabUpdate → plugin → SetShadowFocus → server loop).
+    pub(crate) fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) -> Result<()> {
+        if let ShadowFocusOutcome::NewlyApplied =
+            self.mobile_state
+                .apply_shadow_focus(client_id, pane_id, &mut self.tabs)
+        {
+            self.log_and_report_session_state()?;
+            self.render(None)?;
         }
-    }
-
-    /// Apply a shadow focus marker: record `client_id` as visually
-    /// focused on `pane_id` in whichever tab owns the pane. Does not
-    /// touch `active_tab_ids` (the client stays in its mobile tab),
-    /// does not sync to the PTY thread (real input still goes through
-    /// the mobile plugin's `write_to_pane_id` path), and does not
-    /// write CSI focus-tracking events to the target terminal.
-    ///
-    /// **Idempotent / deduplicating:** if the shadow focus is already
-    /// recorded on this exact pane for this client, returns early
-    /// without re-rendering or re-emitting TabInfo. This is critical
-    /// because `log_and_report_session_state` emits TabUpdate to every
-    /// subscribed plugin (including the mobile plugin), and the mobile
-    /// plugin's TabUpdate handler calls `sync_shadow_focus` — without
-    /// dedup we would loop: server → TabUpdate → plugin →
-    /// SetShadowFocus → server → ...
-    fn set_shadow_focus(
-        &mut self,
-        client_id: ClientId,
-        pane_id: PaneId,
-    ) -> Result<()> {
-        // Early exit: is the shadow focus already on this pane?
-        let mobile_tab_id = self.mobile_state.tabs.get(&client_id).copied();
-        for tab in self.tabs.values() {
-            if Some(tab.id) == mobile_tab_id {
-                continue;
-            }
-            if tab.has_shadow_focus_on(client_id, pane_id) {
-                return Ok(());
-            }
-        }
-
-        self.clear_mobile_shadow_focus(client_id);
-        for tab in self.tabs.values_mut() {
-            if Some(tab.id) == mobile_tab_id {
-                continue;
-            }
-            if tab.set_shadow_focus(client_id, pane_id) {
-                break;
-            }
-        }
-        // Re-emit TabInfo so the tab-bar plugin learns about the
-        // shadow-focused client appearing on this tab. The pane frame
-        // cache (TerminalPane::frame) is keyed by `PaneFrame` content
-        // and includes `other_focused_clients` in its `PartialEq`
-        // derive, so the next render automatically detects the change
-        // and re-emits the affected pane's frame — no explicit
-        // `set_force_render` needed.
-        self.log_and_report_session_state()?;
-        self.render(None)
+        Ok(())
     }
 
     /// Promote `client_id` into a fresh per-client mobile tab. The tab
     /// is created with `visible_to = Some({client_id})` and contains a
     /// single plugin pane pointing at `zellij:mobile`. The previously
-    /// active tab (if any) is recorded in `mobile_state.previous_tab_ids` so
-    /// `exit_mobile_mode` can return there. Idempotent.
+    /// active tab (if any) is recorded so `exit_mobile_mode` can return
+    /// there. Idempotent.
     pub fn enter_mobile_mode(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to enter mobile mode for client {client_id}");
 
-        if self.mobile_state.tabs.contains_key(&client_id) {
+        if self.mobile_state.is_in_mobile_mode(client_id) {
             // Already in mobile mode — nothing to do.
             return Ok(());
         }
@@ -1921,33 +1759,21 @@ impl Screen {
         // Stash the prior active tab so `exit_mobile_mode` can switch
         // back to it. Falls back to the first visible non-mobile tab on
         // exit if this id is no longer valid.
-        if let Some(prior) = self.active_tab_ids.get(&client_id).copied() {
-            self.mobile_state.previous_tab_ids.insert(client_id, prior);
-        }
+        let prior = self.active_tab_ids.get(&client_id).copied();
+        self.mobile_state.set_previous_tab(client_id, prior);
 
         // Defense-in-depth: drop any pre-existing shadow-focus entry
-        // for this client. At this moment the client is typically
-        // still a `connected_clients` member of its current tab, so
-        // this is a no-op for that tab (a real focus entry is not a
-        // shadow entry). The authoritative cleanup happens later via
-        // `set_shadow_focus` once the plugin sends its first
-        // `SetShadowFocus` after the client has been moved off
-        // the desktop tab — at which point the lingering
-        // `active_panes` entry becomes a shadow entry and is cleared
-        // by the same helper before the new shadow is applied.
-        self.clear_mobile_shadow_focus(client_id);
+        // for this client. At this moment the client is typically still
+        // a `connected_clients` member of its current tab, so this is a
+        // no-op for that tab (a real focus entry is not a shadow entry).
+        // The authoritative cleanup happens later via `set_shadow_focus`
+        // once the plugin sends its first `SetShadowFocus`.
+        self.mobile_state
+            .clear_shadow_focus(client_id, &mut self.tabs);
 
-        // Build a single-plugin layout that the existing layout-apply
-        // pipeline will populate with a `zellij:mobile` plugin pane.
-        let mut tab_layout = TiledPaneLayout::default();
-        let run_plugin = RunPluginOrAlias::from_url(Self::mobile_plugin_url(), &None, None, None)
-            .map_err(|e| anyhow!("invalid mobile plugin url: {e}"))
-            .with_context(err_context)?;
-        tab_layout.run = Some(Run::Plugin(run_plugin));
-        // Borderless: the mobile plugin owns its entire viewport and
-        // paints its own bars — a frame from the server would just
-        // steal a row/column on every edge.
-        tab_layout.borderless = Some(true);
+        // Build the single-plugin layout that the layout-apply pipeline
+        // will populate with a `zellij:mobile` plugin pane.
+        let tab_layout = MobileState::mobile_tab_layout().with_context(err_context)?;
 
         // Allocate the new tab id, create the empty tab, and tag it as
         // visible only to this client before any other thread has a
@@ -1960,7 +1786,7 @@ impl Screen {
             set.insert(client_id);
             tab.visible_to = Some(set);
         }
-        self.mobile_state.tabs.insert(client_id, tab_id);
+        self.mobile_state.register_tab(client_id, tab_id);
 
         // Look up whether this client is a web client so the plugin
         // pipeline routes the right capabilities.
@@ -2001,24 +1827,17 @@ impl Screen {
     pub fn exit_mobile_mode(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to exit mobile mode for client {client_id}");
 
-        let mobile_tab_id = match self.mobile_state.tabs.remove(&client_id) {
-            Some(id) => id,
-            None => return Ok(()),
+        let Some((mobile_tab_id, prior_tab_id)) = self.mobile_state.begin_exit(client_id) else {
+            return Ok(());
         };
-        // Exiting always clears the auto-entered marker — the client's
-        // mobile-mode state is now off, so any future re-entry
-        // (whether auto or manual) starts from a clean slate.
-        self.mobile_state.auto_entered.remove(&client_id);
 
         // Resolve the destination tab. Prefer the recorded prior tab;
         // if it's gone, pick the lowest-position tab visible to this
         // client that is not someone else's mobile tab.
-        let prior_tab_id = self.mobile_state.previous_tab_ids.remove(&client_id);
         let destination = prior_tab_id
             .filter(|id| self.tabs.contains_key(id) && self.tab_visible_to(client_id, *id))
             .or_else(|| {
-                let mobile_tab_ids: HashSet<usize> =
-                    self.mobile_state.tabs.values().copied().collect();
+                let mobile_tab_ids = self.mobile_state.mobile_tab_ids();
                 self.tabs
                     .values()
                     .filter(|t| {
@@ -2051,12 +1870,11 @@ impl Screen {
         }
 
         // Clear any shadow-focus entries the mobile session created in
-        // other tabs. `mobile_state.tabs.remove(client_id)` above means the
-        // helper now considers every tab (no mobile tab to skip); the
-        // destination tab is safe because the client has been added
-        // to its `connected_clients` and therefore is_shadow_focus_client
-        // returns false there.
-        self.clear_mobile_shadow_focus(client_id);
+        // other tabs. `begin_exit` removed the client's mobile tab entry,
+        // so the helper now considers every tab; the destination tab is
+        // safe because the client is back in its `connected_clients`.
+        self.mobile_state
+            .clear_shadow_focus(client_id, &mut self.tabs);
 
         Ok(())
     }
@@ -2071,12 +1889,11 @@ impl Screen {
     }
 
     /// Decide whether `client_id` should auto-route into/out of the
-    /// mobile UI based on the new viewport, the `mobile_layout`
-    /// config, and the per-dimension breakpoints. Auto-promotes when
-    /// the size gate flips on and the client is not already in
-    /// mobile; auto-demotes only if the original entry was itself
-    /// auto-driven (manual entries via `ToggleMobileMode` are
-    /// preserved).
+    /// mobile UI based on the new viewport, the `mobile_layout` config,
+    /// and the per-dimension breakpoints. Auto-promotes when the size
+    /// gate flips on and the client is not already in mobile; auto-demotes
+    /// only if the original entry was itself auto-driven (manual entries
+    /// via `ToggleMobileMode` are preserved).
     pub fn reevaluate_mobile_mode(
         &mut self,
         client_id: ClientId,
@@ -2099,18 +1916,18 @@ impl Screen {
             threshold_rows,
         );
         let is_mobile = self.is_in_mobile_mode(client_id);
-        let was_auto = self.mobile_state.auto_entered.contains(&client_id);
+        let was_auto = self.mobile_state.was_auto_entered(client_id);
         if should_be_mobile && !is_mobile {
             // Auto-promote: small viewport just appeared (e.g. browser
             // delivered its real size after the initial server-side
             // fallback).
             self.enter_mobile_mode(client_id)?;
-            self.mobile_state.auto_entered.insert(client_id);
+            self.mobile_state.mark_auto_entered(client_id);
             self.render(None)?;
         } else if !should_be_mobile && is_mobile && was_auto {
-            // Auto-demote: viewport grew back above the threshold
-            // *and* the entry was itself auto-driven. Manual entries
-            // (via `ToggleMobileMode`) are preserved.
+            // Auto-demote: viewport grew back above the threshold *and*
+            // the entry was itself auto-driven. Manual entries (via
+            // `ToggleMobileMode`) are preserved.
             self.exit_mobile_mode(client_id)?;
             self.render(None)?;
         }
@@ -2480,11 +2297,11 @@ impl Screen {
         let mut tab_to_close = self.tabs.remove(&tab_id).with_context(err_context)?;
         // Drop any fit override pinned to this tab. The tab + pane are
         // gone; `recompute_tab_size(tab_id)` would no-op against the
-        // missing tab, but leaving the entry behind grows `mobile_state.fit_states`
-        // unboundedly across repeated open/close cycles. No fullscreen
+        // missing tab, but leaving the entry behind grows the fit-state
+        // map unboundedly across repeated open/close cycles. No fullscreen
         // revert needed: the pane it was pinned to went away with the
         // tab.
-        self.mobile_state.fit_states.remove(&tab_id);
+        self.mobile_state.remove_fit_for_tab(tab_id);
         let mut pane_ids = tab_to_close.get_all_pane_ids();
 
         // here we extract the suppressed panes (these are background panes that don't care which
@@ -2585,19 +2402,19 @@ impl Screen {
         }
     }
 
-    /// Record the viewport size most recently reported by `client_id`. Used as
-    /// input to per-tab size computation; does not by itself trigger a resize.
+    // Record the viewport size most recently reported by `client_id`. Used as
+    // input to per-tab size computation; does not by itself trigger a resize.
     pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
         self.client_sizes.insert(client_id, size);
     }
 
-    /// Recompute the size of `tab_id` from the viewports of every client whose
-    /// `active_tab_ids` entry equals `tab_id`. `rows` and `cols` are sorted
-    /// independently — each axis takes the minimum across viewers. If the tab
-    /// has no viewers the size is left untouched (the tab retains its most
-    /// recent viewer-derived dimensions). When the computed size differs from
-    /// the tab's current size, the tab is resized (via `resize_whole_tab`)
-    /// and a force-render is scheduled.
+    // Recompute the size of `tab_id` from the viewports of every client whose
+    // `active_tab_ids` entry equals `tab_id`. `rows` and `cols` are sorted
+    // independently — each axis takes the minimum across viewers. If the tab
+    // has no viewers the size is left untouched (the tab retains its most
+    // recent viewer-derived dimensions). When the computed size differs from
+    // the tab's current size, the tab is resized (via `resize_whole_tab`)
+    // and a force-render is scheduled.
     pub fn recompute_tab_size(&mut self, tab_id: usize) -> Result<()> {
         let err_context = || format!("failed to recompute size for tab {tab_id}");
 
@@ -2619,7 +2436,7 @@ impl Screen {
         // emits `\x1b[2J` to every connected client on the next
         // tab render so they start from a clean canvas. Idempotent
         // and one-shot — the flag clears itself after the first use.
-        if self.mobile_state.fit_states.contains_key(&tab_id) {
+        if self.mobile_state.has_fit(tab_id) {
             // Re-derive the target size from live geometry and resize to
             // a fixed point. Resizing the tab can shift the target tab's
             // bars or the target pane's frame (the second-order terms in
@@ -2674,50 +2491,15 @@ impl Screen {
     }
 
     /// Compute the tab size a fit override should resize `tab_id` to.
-    /// The plugin sends the exact embedded content `size` it wants the
-    /// target pane's content to be; this grows it by the target tab's
-    /// bars (`display_area − viewport`) and the target pane's frame
-    /// (`pane − content`), so that after the server re-applies those
-    /// bars and frame the pane content rectangle matches the embedded
-    /// area exactly.
-    ///
-    /// Returns `None` (→ no resize) if the fit or the target tab can't
-    /// be resolved.
+    /// Delegates to `MobileState::compute_fit_size`; returns `None`
+    /// (→ no resize) if the fit or the target tab can't be resolved.
     pub(crate) fn compute_fit_size(&self, tab_id: usize) -> Option<Size> {
-        let fit = self.mobile_state.fit_states.get(&tab_id)?;
-        let embedded_rows = fit.size.rows;
-        let embedded_cols = fit.size.cols;
-
-        // Target tab bars (tab bar / status bar) and target pane frame.
-        let target_tab = self.tabs.get(&tab_id)?;
-        let viewport = target_tab.get_viewport();
-        let display_area = target_tab.get_display_area();
-        let tab_bar_rows = display_area.rows.saturating_sub(viewport.rows);
-        let tab_bar_cols = display_area.cols.saturating_sub(viewport.cols);
-        let (frame_rows, frame_cols) = target_tab
-            .get_pane_with_id(fit.pane_id)
-            .map(|p| {
-                (
-                    p.rows().saturating_sub(p.get_content_rows()),
-                    p.cols().saturating_sub(p.get_content_columns()),
-                )
-            })
-            .unwrap_or((0, 0));
-
-        Some(Size {
-            rows: embedded_rows + tab_bar_rows + frame_rows,
-            cols: embedded_cols + tab_bar_cols + frame_cols,
-        })
+        self.mobile_state.compute_fit_size(tab_id, &self.tabs)
     }
 
     /// Enter or update a fit override for `tab_id` (per calling client),
-    /// sizing the tab so `pane_id`'s content is exactly `size`. On the
-    /// first install it captures pre-fit fullscreen state and toggles
-    /// the pane fullscreen; a re-push for an existing entry just updates
-    /// the stored `size` (and reclaims ownership), leaving fullscreen
-    /// untouched. Recomputes the tab afterwards. Extracted so
-    /// integration tests can drive the same path without a running
-    /// screen thread.
+    /// sizing the tab so `pane_id`'s content is exactly `size`, then
+    /// recompute the tab. See `MobileState::set_fit`.
     pub fn set_tab_fit(
         &mut self,
         client_id: ClientId,
@@ -2725,43 +2507,8 @@ impl Screen {
         pane_id: PaneId,
         size: Size,
     ) -> Result<()> {
-        if let Some(fit) = self.mobile_state.fit_states.get_mut(&tab_id) {
-            // Update path: the fit already exists. Only the embedded
-            // size (and owner, for collision reclaim) changes; do NOT
-            // re-toggle fullscreen.
-            fit.size = size;
-            fit.owning_client = client_id;
-            fit.pane_id = pane_id;
-            return self.recompute_tab_size(tab_id);
-        }
-
-        // Install path. Capture pre-fit fullscreen state for the target
-        // pane: `was_fullscreen_before` is true iff fullscreen is active
-        // on the tab AND it's specifically THIS pane that's fullscreen.
-        // The cleanup paths (`exit_fit_mode`, `remove_client`) consult
-        // this so they only toggle fullscreen back off when fit itself
-        // turned it on.
-        let was_fullscreen_before = self
-            .tabs
-            .get(&tab_id)
-            .map(|t| t.is_fullscreen_active() && t.fullscreen_pane_id() == Some(pane_id))
-            .unwrap_or(false);
-        if !was_fullscreen_before {
-            if let Some(tab) = self.tabs.get_mut(&tab_id) {
-                if tab.has_pane_with_pid(&pane_id) {
-                    tab.toggle_pane_fullscreen(pane_id);
-                }
-            }
-        }
-        self.mobile_state.fit_states.insert(
-            tab_id,
-            FitState {
-                owning_client: client_id,
-                pane_id,
-                size,
-                was_fullscreen_before,
-            },
-        );
+        self.mobile_state
+            .set_fit(client_id, tab_id, pane_id, size, &mut self.tabs);
         self.recompute_tab_size(tab_id)
     }
 
@@ -2770,54 +2517,32 @@ impl Screen {
     /// `true` iff an entry was actually cleared (i.e. caller should
     /// re-render).
     pub fn exit_fit_mode(&mut self, client_id: ClientId) -> Result<bool> {
-        // Find the (single) fit entry owned by this client. Per-client
-        // lookup iterates because the map is keyed by tab_id for the
-        // recompute hot path.
-        let owned_tab = self
+        match self
             .mobile_state
-            .fit_states
-            .iter()
-            .find(|(_, f)| f.owning_client == client_id)
-            .map(|(&t, _)| t);
-        let Some(tab_id) = owned_tab else {
-            return Ok(false);
-        };
-        let Some(fit) = self.mobile_state.fit_states.remove(&tab_id) else {
-            return Ok(false);
-        };
-        if !fit.was_fullscreen_before {
-            if let Some(tab) = self.tabs.get_mut(&tab_id) {
-                if tab.has_pane_with_pid(&fit.pane_id) {
-                    tab.toggle_pane_fullscreen(fit.pane_id);
-                }
-            }
+            .clear_fit_owned_by(client_id, &mut self.tabs)
+        {
+            Some(tab_id) => {
+                self.recompute_tab_size(tab_id)?;
+                Ok(true)
+            },
+            None => Ok(false),
         }
-        self.recompute_tab_size(tab_id)?;
-        Ok(true)
     }
 
     /// Drop any fit override whose target pane just closed, then grow the
     /// tab back to the min-of-viewers size. Called from the universal
     /// pane-close signal (`notify_pane_closed_to_subscribers`) so a fit no
     /// longer outlives its pane without the mobile plugin's assistance.
-    /// No fullscreen revert: `Tab::close_pane` already unset fullscreen
-    /// when it removed the pane, and the pane is gone regardless (cf. the
-    /// `close_tab_by_id` cleanup). Returns `true` iff an entry was cleared.
+    /// Returns `true` iff an entry was cleared.
     pub(crate) fn clear_fit_for_closed_pane(&mut self, pane_id: PaneId) -> Result<bool> {
-        let tab_id = self
-            .mobile_state
-            .fit_states
-            .iter()
-            .find(|(_, f)| f.pane_id == pane_id)
-            .map(|(&t, _)| t);
-        let Some(tab_id) = tab_id else {
-            return Ok(false);
-        };
-        self.mobile_state.fit_states.remove(&tab_id);
-        self.recompute_tab_size(tab_id)?;
-        Ok(true)
+        match self.mobile_state.clear_fit_for_pane(pane_id) {
+            Some(tab_id) => {
+                self.recompute_tab_size(tab_id)?;
+                Ok(true)
+            },
+            None => Ok(false),
+        }
     }
-
 
     pub fn update_pixel_dimensions(&mut self, pixel_dimensions: PixelDimensions) {
         self.pixel_dimensions.merge(pixel_dimensions);
@@ -3661,7 +3386,7 @@ impl Screen {
         });
 
         let tab_name = tab_name.unwrap_or_else(|| String::new());
-        let mobile_tab_count = self.mobile_state.tabs.len();
+        let mobile_tab_count = self.mobile_state.mobile_tab_count();
 
         let position = self.tabs.len();
         let mut tab = Tab::new(
@@ -3928,32 +3653,17 @@ impl Screen {
         // Detach also drops any mobile-mode bookkeeping for this client
         // — the mobile tab itself is collected via the `visible_to`
         // emptiness check below.
-        self.mobile_state.tabs.remove(&client_id);
-        self.mobile_state.previous_tab_ids.remove(&client_id);
-        self.mobile_state.auto_entered.remove(&client_id);
+        self.mobile_state.forget_client(client_id);
 
-        // Fit-mode cleanup: drop every fit_states entry owned by the
-        // disconnecting client. For each, revert fullscreen if it
-        // wasn't already on before fit, then recompute the tab size
-        // so it grows back to fit the remaining viewers. Done before
-        // the visibility/garbage-collect loop below so the recompute
-        // sees the cleared override.
-        let to_clean: Vec<(usize, FitState)> = self
+        // Fit-mode cleanup: drop every fit override owned by the
+        // disconnecting client (reverting any fit-induced fullscreen),
+        // then recompute each affected tab so it grows back to fit the
+        // remaining viewers. Done before the visibility/garbage-collect
+        // loop below so the recompute sees the cleared override.
+        let to_recompute = self
             .mobile_state
-            .fit_states
-            .iter()
-            .filter(|(_, f)| f.owning_client == client_id)
-            .map(|(&t, f)| (t, *f))
-            .collect();
-        for (tab_id, fit) in to_clean {
-            self.mobile_state.fit_states.remove(&tab_id);
-            if !fit.was_fullscreen_before {
-                if let Some(tab) = self.tabs.get_mut(&tab_id) {
-                    if tab.has_pane_with_pid(&fit.pane_id) {
-                        tab.toggle_pane_fullscreen(fit.pane_id);
-                    }
-                }
-            }
+            .clear_fits_owned_by(client_id, &mut self.tabs);
+        for tab_id in to_recompute {
             self.recompute_tab_size(tab_id).with_context(err_context)?;
         }
 
@@ -3980,9 +3690,9 @@ impl Screen {
         // this client are by definition shadow-focus entries. Clear
         // them so the detached mobile client does not leave a stale
         // focus marker visible to other connected clients.
-        // `mobile_state.tabs.remove(&client_id)` above ensures the helper
-        // considers every tab.
-        self.clear_mobile_shadow_focus(client_id);
+        // `forget_client` above ensures the helper considers every tab.
+        self.mobile_state
+            .clear_shadow_focus(client_id, &mut self.tabs);
         let previously_active_tab_id = self.active_tab_ids.get(&client_id).copied();
         if let Some(prev_tab_id) = previously_active_tab_id {
             self.global_last_active_tab_id = prev_tab_id;
@@ -10879,7 +10589,7 @@ pub(crate) fn screen_thread_main(
                 // arm to demote it later if the viewport grows back
                 // above the threshold.
                 screen.enter_mobile_mode(client_id)?;
-                screen.mobile_state.auto_entered.insert(client_id);
+                screen.mobile_state.mark_auto_entered(client_id);
                 screen.render(None)?;
             },
             ScreenInstruction::ExitMobileMode(client_id, _completion_tx) => {
