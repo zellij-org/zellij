@@ -5216,13 +5216,6 @@ impl From<OpenPluginPaneFloatingResponse> for ProtobufOpenPluginPaneFloatingResp
 
 #[cfg(test)]
 mod tests {
-    //! Protobuf round-trip tests for the mobile-only Fit commands.
-    //!
-    //! Catches protobuf tag / field-number drift and parser /
-    //! serializer divergence — the exact failure mode produced when
-    //! `plugin_command.proto` changes without re-running
-    //! `cargo xtask build`. `PluginCommand` itself does not derive
-    //! `PartialEq`, so the decoded value is destructured by pattern.
     use super::*;
     use crate::data::{PaneId, PluginCommand};
     use crate::pane_size::Size;

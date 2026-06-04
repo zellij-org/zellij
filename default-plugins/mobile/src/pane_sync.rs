@@ -89,7 +89,6 @@ pub fn maybe_take_over_welcome(state: &mut State) {
     state.navigation.selector_scroll_offset = 0;
     state.menu.open = false;
     state.sessions.is_welcome_screen = true;
-    // SessionUpdate carries only the current session until a scan is requested.
     if let Ok(snapshot) = get_session_list() {
         let filtered = filter_sessions_for_client(snapshot.live_sessions, state);
         state.sessions.sessions = filtered;

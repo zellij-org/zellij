@@ -3338,19 +3338,6 @@ impl Screen {
             None
         };
 
-        // Pre-populate the shared `connected_clients` map BEFORE
-        // `tab.update_input_modes()` runs inside the apply_layout
-        // chain below. That helper looks up `is_web_client` from
-        // this map when building the `Event::ModeUpdate` for each
-        // plugin in the new tab; a missing entry leaves
-        // `mode_info.is_web_client = None`, which causes plugins
-        // that branch on the flag (e.g. session-manager's web-client
-        // session filter on the welcome screen) to see `None` on the
-        // very first ModeUpdate and stay misconfigured. The full
-        // `self.add_client(...)` bookkeeping (active_tab_ids,
-        // tab_history, follow id, tab.add_client) still runs at its
-        // existing position below — this insert is idempotent and
-        // gets reaffirmed there.
         if !self.active_tab_ids.contains_key(&client_id) {
             self.connected_clients
                 .borrow_mut()
@@ -9853,14 +9840,6 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::PluginSubscribedToAnsiPaneContents(has_subscribers) => {
                 let previously_subscribed = screen.plugins_need_ansi_pane_contents;
                 screen.plugins_need_ansi_pane_contents = has_subscribers;
-                // When ANSI capture is *newly* enabled (false → true), force
-                // a render so the freshly-subscribed plugin receives a
-                // PaneRenderReportWithAnsi immediately. Without this, idle
-                // panes never trigger a render cycle and the plugin's
-                // viewport stays empty until something external (a resize,
-                // a keystroke) wakes the screen up. The cost is one render
-                // per subscription flip — bounded by the number of plugins
-                // that subscribe over a session.
                 if has_subscribers && !previously_subscribed {
                     if let Err(e) = screen.render(None) {
                         log::error!(

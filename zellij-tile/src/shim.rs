@@ -963,8 +963,6 @@ where
     NewTabResponse::try_from(response).unwrap()
 }
 
-/// Open a new tab with the default layout without moving the requesting client's focus onto it.
-/// Returns the new tab's position id, or `None` on failure.
 pub fn new_tab_unfocused<S: AsRef<str>>(name: Option<S>, cwd: Option<S>) -> Option<usize>
 where
     S: ToString,
@@ -981,8 +979,6 @@ where
     NewTabUnfocusedResponse::try_from(response).unwrap()
 }
 
-/// Open a new tiled terminal pane in the tab at `tab_position` (the tab's display index, matching
-/// `TabInfo::position`). Returns the new pane's id, or `None` on failure.
 pub fn new_tiled_pane_in_tab(tab_position: usize) -> Option<PaneId> {
     let plugin_command = PluginCommand::NewTiledPaneInTab { tab_position };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1682,8 +1678,6 @@ pub fn scan_host_folder<S: AsRef<Path>>(folder_to_scan: &S) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Show (`on = true`) or hide (`on = false`) the soft keyboard on the calling client's browser.
-/// No-op on non-web clients.
 pub fn set_soft_keyboard(on: bool) {
     let plugin_command = PluginCommand::SetSoftKeyboard(on);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -2969,6 +2963,5 @@ extern "C" {
     fn host_run_plugin_command();
 }
 
-// Native-build no-op stub; the real symbol is a wasm import resolved by the plugin host at runtime.
 #[cfg(not(target_arch = "wasm32"))]
 unsafe fn host_run_plugin_command() {}

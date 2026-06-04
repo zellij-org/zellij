@@ -2435,7 +2435,6 @@ pub struct PaneContents {
     pub lines_below_viewport: Vec<String>,
     pub viewport: Vec<String>,
     pub selected_text: Option<SelectedText>,
-    /// `(x, y)` where `(0, 0)` is the top-left of `viewport[0]`.
     pub cursor: Option<(usize, usize)>,
 }
 
