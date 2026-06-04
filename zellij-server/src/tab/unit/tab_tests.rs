@@ -16313,19 +16313,6 @@ pub fn cli_rename_active_pane_then_interactive_esc_restores() {
     assert_eq!(pane.current_title(), "spark");
 }
 
-// --- scroll_terminal_up / scroll_terminal_down wheel dispatch ---
-//
-// These cover the three-case routing introduced when these methods stopped
-// being a blind scrollback walk and started mirroring
-// `MouseHandler::handle_scrollwheel_up/down`. They use a captured pty-writer
-// channel because the wheel-forward / faux-arrow branches communicate via
-// `PtyWriteInstruction::Write`, not by mutating pane state.
-
-/// Install a real `to_pty_writer` channel on the tab so we can observe the
-/// bytes the dispatch wants to write to the pty. The harness's default
-/// senders silently drop pty-writer messages, which is what makes the
-/// scrollback-walk path (which mutates pane state directly) usable in
-/// existing tests but invisible to assertions for the new wheel branches.
 fn install_pty_writer_capture(
     tab: &mut Tab,
 ) -> Receiver<(PtyWriteInstruction, zellij_utils::errors::ErrorContext)> {
@@ -16334,9 +16321,6 @@ fn install_pty_writer_capture(
     rx
 }
 
-/// Drain every queued message from the capture channel. `try_recv` is the
-/// crossbeam idiom for a non-blocking drain since the channel is unbounded
-/// and we don't have an iterator helper here.
 fn drain_pty_writer(
     rx: &Receiver<(PtyWriteInstruction, zellij_utils::errors::ErrorContext)>,
 ) -> Vec<PtyWriteInstruction> {
@@ -16347,11 +16331,6 @@ fn drain_pty_writer(
     out
 }
 
-/// When the pane has SGR mouse tracking enabled (the vim-with-`set mouse=a`
-/// case), `scroll_terminal_up` must hand the SGR wheel-up byte stream to
-/// the pty rather than walking the scrollback. The leading `\x1b[<64;`
-/// matches what the grid produces in `mouse_scroll_up_signal` at
-/// `panes/grid.rs:3233-3239`.
 #[test]
 pub fn scroll_terminal_up_forwards_sgr_when_pane_tracks_mouse() {
     let size = Size {
@@ -16360,7 +16339,6 @@ pub fn scroll_terminal_up_forwards_sgr_when_pane_tracks_mouse() {
     };
     let mut tab = create_new_tab(size, true);
     let rx = install_pty_writer_capture(&mut tab);
-    // Enable Normal mouse tracking (CSI ?1000h) + SGR encoding (CSI ?1006h).
     tab.handle_pty_bytes(1, b"\x1b[?1000h\x1b[?1006h".to_vec())
         .unwrap();
 
@@ -16381,8 +16359,6 @@ pub fn scroll_terminal_up_forwards_sgr_when_pane_tracks_mouse() {
     }
 }
 
-/// Mirror of `scroll_terminal_up_forwards_sgr_when_pane_tracks_mouse` for
-/// the wheel-down direction; button 65 per the SGR wheel encoding.
 #[test]
 pub fn scroll_terminal_down_forwards_sgr_when_pane_tracks_mouse() {
     let size = Size {
@@ -16411,9 +16387,6 @@ pub fn scroll_terminal_down_forwards_sgr_when_pane_tracks_mouse() {
     }
 }
 
-/// Alternate-screen-without-mouse is the vim-without-`set mouse=a` case.
-/// The desktop wheel handler emits a single `\x1b[A` (cursor up) as faux
-/// scrolling; the by-pane-id path must do the same.
 #[test]
 pub fn scroll_terminal_up_emits_arrow_up_in_alt_mode_without_mouse() {
     let size = Size {
@@ -16422,7 +16395,6 @@ pub fn scroll_terminal_up_emits_arrow_up_in_alt_mode_without_mouse() {
     };
     let mut tab = create_new_tab(size, true);
     let rx = install_pty_writer_capture(&mut tab);
-    // Enter alternate-screen mode without touching mouse tracking.
     tab.handle_pty_bytes(1, b"\x1b[?1049h".to_vec()).unwrap();
 
     tab.scroll_terminal_up(1).unwrap();
@@ -16438,8 +16410,6 @@ pub fn scroll_terminal_up_emits_arrow_up_in_alt_mode_without_mouse() {
     }
 }
 
-/// Mirror of the alt-mode test for the wheel-down direction. Expects a
-/// single `\x1b[B` (cursor down).
 #[test]
 pub fn scroll_terminal_down_emits_arrow_down_in_alt_mode_without_mouse() {
     let size = Size {
@@ -16463,13 +16433,6 @@ pub fn scroll_terminal_down_emits_arrow_down_in_alt_mode_without_mouse() {
     }
 }
 
-/// In the default (regular) state — no alt screen, no mouse tracking —
-/// the dispatch must fall through to a scrollback walk. The pane is a
-/// fresh shell with nothing in `lines_above`, so the underlying
-/// `scroll_up_one_line` at `panes/grid.rs:1148` is a no-op (the
-/// `!lines_above.is_empty()` guard fails); the test asserts the
-/// observable contract: no pty write is emitted (we'd see one if the
-/// dispatch had taken the SGR or alt-mode branch).
 #[test]
 pub fn scroll_terminal_up_walks_scrollback_in_regular_mode_no_pty_write() {
     let size = Size {
@@ -16488,8 +16451,6 @@ pub fn scroll_terminal_up_walks_scrollback_in_regular_mode_no_pty_write() {
     );
 }
 
-/// Mirror of the regular-mode no-pty-write contract for the wheel-down
-/// path.
 #[test]
 pub fn scroll_terminal_down_walks_scrollback_in_regular_mode_no_pty_write() {
     let size = Size {
@@ -16508,10 +16469,6 @@ pub fn scroll_terminal_down_walks_scrollback_in_regular_mode_no_pty_write() {
     );
 }
 
-/// A nonexistent pane id must be tolerated (no panic, no pty write,
-/// returns Ok). Belt-and-braces against a race where the pane closes
-/// between the plugin's `scroll_up_in_pane_id` shim call and the screen
-/// instruction reaching this handler.
 #[test]
 pub fn scroll_terminal_up_nonexistent_pane_id_is_a_noop() {
     let size = Size {
@@ -16527,7 +16484,6 @@ pub fn scroll_terminal_up_nonexistent_pane_id_is_a_noop() {
     assert!(writes.is_empty());
 }
 
-/// Mirror of the nonexistent-pane defensive test for the wheel-down path.
 #[test]
 pub fn scroll_terminal_down_nonexistent_pane_id_is_a_noop() {
     let size = Size {
@@ -16542,19 +16498,6 @@ pub fn scroll_terminal_down_nonexistent_pane_id_is_a_noop() {
     let writes = drain_pty_writer(&rx);
     assert!(writes.is_empty());
 }
-
-// ---------------------------------------------------------------------------
-// Mobile shadow-focus tests
-//
-// These cover the "shadow focus" API used by the mobile plugin so other
-// connected clients see a focus marker on the pane the mobile viewport is
-// rendering, without moving the mobile client out of its mobile tab.
-//
-// Conventions used here:
-// * Real client of the tab: `client_id = 1` (inserted by `create_new_tab`).
-// * Synthetic shadow client: `client_id = 99` (never enters the tab's
-//   `connected_clients`).
-// ---------------------------------------------------------------------------
 
 #[test]
 pub fn set_shadow_focus_returns_true_when_pane_is_in_tab() {
@@ -16582,7 +16525,6 @@ pub fn set_shadow_focus_returns_false_when_pane_not_in_tab() {
         rows: 20,
     };
     let mut tab = create_new_tab(size, true);
-    // Pane 42 was never created in this tab.
 
     let placed = tab.set_shadow_focus(99, PaneId::Terminal(42));
 
@@ -16627,8 +16569,6 @@ pub fn clear_shadow_focus_is_a_noop_when_absent() {
     };
     let mut tab = create_new_tab(size, true);
 
-    // Client 99 has no entry at all — must not panic, must not affect
-    // the real client 1.
     tab.clear_shadow_focus(99);
 
     assert!(
@@ -16668,10 +16608,6 @@ pub fn has_shadow_focus_on_does_not_match_real_focus() {
     };
     let tab = create_new_tab(size, true);
 
-    // Client 1 has *real* focus on pane 1 (set by `create_new_tab` /
-    // `apply_layout`), but no shadow marker. The dedup helper must
-    // return false so a SetShadowFocus handler does not
-    // mistake real focus for an existing shadow.
     assert!(
         tab.tiled_panes.pane_id_is_focused(&PaneId::Terminal(1)),
         "precondition: client 1 has real focus on pane 1",
@@ -16692,8 +16628,6 @@ pub fn shadow_focus_clients_lists_only_marked_clients() {
     tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
 
-    // Real client 1 is already focused on pane 1 (no marker).
-    // Add two shadow clients on different panes.
     tab.set_shadow_focus(99, PaneId::Terminal(1));
     tab.set_shadow_focus(100, PaneId::Terminal(2));
 
@@ -16712,10 +16646,6 @@ pub fn real_focus_supersedes_shadow_marker() {
     tab.set_shadow_focus(99, PaneId::Terminal(1));
     assert_eq!(tab.shadow_focus_clients(), vec![99]);
 
-    // A subsequent real focus assignment for the same client must
-    // strip the shadow marker — otherwise the client would be
-    // double-counted and the close path could mishandle them as a
-    // "shadow client" even though their focus is now genuine.
     tab.tiled_panes
         .focus_pane(PaneId::Terminal(1), 99);
 
@@ -16766,13 +16696,6 @@ pub fn closing_a_pane_silently_drops_shadow_clients() {
     tab.set_shadow_focus(99, PaneId::Terminal(2));
     assert!(tab.has_shadow_focus_on(99, PaneId::Terminal(2)));
 
-    // Closing pane 2 must NOT migrate the shadow client to a
-    // replacement pane (the mobile plugin picks its own replacement
-    // via the next PaneUpdate / sync_shadow_focus). The entry should
-    // simply disappear, without writing CSI focus-tracking events to
-    // the closing pane — that latter property is the reason for the
-    // silent removal path; we assert the observable consequence:
-    // the shadow client no longer appears anywhere.
     tab.close_pane(PaneId::Terminal(2), false, None);
 
     assert!(

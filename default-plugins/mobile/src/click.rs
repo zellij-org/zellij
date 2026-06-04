@@ -28,7 +28,7 @@ pub struct ClickRegion {
     pub row_start: usize,
     pub row_end: usize,
     pub col_start: usize,
-    pub col_end: usize, // exclusive
+    pub col_end: usize,
     pub action: ClickAction,
     pub priority: u8,
     pub center: Option<(usize, usize)>,

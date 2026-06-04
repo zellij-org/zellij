@@ -25,12 +25,6 @@ use std::path::PathBuf;
 
 #[test]
 fn server_client_contract() {
-    // here we test all possible values of each of the nested types in the server/client contract
-    // in the context of its message.
-    //
-    // we do a "roundtrip" test, meaning we take each message, encode it to protobuf bytes and
-    // decode it back to its rust type and then assert its equality with the original type to make
-    // sure they are identical and did not lose any information
     test_client_messages();
     test_server_messages();
 }
@@ -680,7 +674,6 @@ fn test_client_messages() {
         is_web_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::AttachClient {
-        // cli_assets tested extensively ijn FirstClientConnected, we can skip it here
         cli_assets: CliAssets::default(),
         tab_position_to_focus: None,
         pane_to_focus: None,
@@ -735,7 +728,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::Write {
-            // KeyWithModifier is tested extensively in the Key ClientToServerMsg
             key_with_modifier: Some(KeyWithModifier::new(BareKey::Char('a'))),
             bytes: "a".as_bytes().to_vec(),
             is_kitty_keyboard_protocol: true,
@@ -754,7 +746,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::SwitchToMode {
-            // InputMode is tested extensively in the Options conversion tests above
             input_mode: InputMode::Locked,
         },
         terminal_id: Some(1),
@@ -763,7 +754,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::SwitchModeForAllClients {
-            // InputMode is tested extensively in the Options conversion tests above
             input_mode: InputMode::Locked,
         },
         terminal_id: Some(1),
@@ -844,7 +834,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::MoveFocus {
-            // Direction is tested extensively elsewhere
             direction: Direction::Up,
         },
         terminal_id: Some(1),
@@ -2245,7 +2234,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::Run {
-            // RunCommandAction serialization roundtrip is tested extensively upwards of here
             command: RunCommandAction {
                 command: PathBuf::from("/path/to/command"),
                 args: vec![],
@@ -2270,7 +2258,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::LaunchOrFocusPlugin {
-            // RunPluginOrAlias serialization roundtrip is tested extensively upwards
             plugin: RunPluginOrAlias::RunPlugin(RunPlugin::default()),
             should_float: true,
             move_to_focused_tab: true,
@@ -2285,7 +2272,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::LaunchOrFocusPlugin {
-            // RunPluginOrAlias serialization roundtrip is tested extensively upwards
             plugin: RunPluginOrAlias::Alias(PluginAlias::default()),
             should_float: false,
             move_to_focused_tab: false,
@@ -2300,7 +2286,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::LaunchPlugin {
-            // RunPluginOrAlias serialization roundtrip is tested extensively upwards
             plugin: RunPluginOrAlias::RunPlugin(RunPlugin::default()),
             should_float: true,
             should_open_in_place: true,
@@ -2315,7 +2300,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::LaunchPlugin {
-            // RunPluginOrAlias serialization roundtrip is tested extensively upwards
             plugin: RunPluginOrAlias::Alias(PluginAlias::default()),
             should_float: false,
             should_open_in_place: false,
@@ -2546,7 +2530,6 @@ fn test_client_messages() {
         client_id: Some(100),
         is_cli_client: true,
     });
-    // tab_id roundtrip tests - verify tab_id survives serialization
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::NewTiledPane {
             direction: Some(Direction::Right),
@@ -3296,7 +3279,6 @@ fn test_client_messages() {
         scrollback: Some(0),
         ansi: true,
     });
-    // Pane-targeting roundtrips
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::ScrollUpByPaneId {
             pane_id: PaneId::Terminal(1),
@@ -3432,7 +3414,6 @@ fn test_client_messages() {
         client_id: Some(100),
         is_cli_client: true,
     });
-    // ANSI flag roundtrip tests
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::DumpScreen {
             file_path: Some("/path".to_owned()),
@@ -3516,7 +3497,6 @@ fn test_client_messages() {
         client_id: Some(100),
         is_cli_client: true,
     });
-    // Tab-targeting roundtrips
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::UndoRenameTabByTabId { id: 5 },
         terminal_id: Some(1),
@@ -3736,7 +3716,6 @@ fn test_server_messages() {
 
 #[test]
 fn set_pane_color_wire_roundtrip() {
-    // Test actual byte-level encode/decode, not just struct conversion
     use prost::Message;
 
     let original = ClientToServerMsg::Action {
@@ -3750,21 +3729,17 @@ fn set_pane_color_wire_roundtrip() {
         is_cli_client: true,
     };
 
-    // Rust -> proto struct
     let proto: crate::client_server_contract::client_server_contract::ClientToServerMsg =
         original.clone().into();
 
-    // proto struct -> bytes (what goes over the wire)
     let bytes = proto.encode_to_vec();
 
-    // bytes -> proto struct (what the server does)
     let decoded_proto =
         crate::client_server_contract::client_server_contract::ClientToServerMsg::decode(
             &bytes[..],
         )
         .expect("Failed to decode protobuf bytes");
 
-    // proto struct -> Rust
     let roundtrip: ClientToServerMsg = decoded_proto
         .try_into()
         .expect("Failed to convert decoded protobuf back to Rust");
@@ -3798,14 +3773,12 @@ fn rename_active_pane_wire_roundtrip() {
     let proto: crate::client_server_contract::client_server_contract::ClientToServerMsg =
         original.clone().into();
 
-    // proto struct → bytes → proto struct (the actual wire path)
     let mut buf = Vec::new();
     proto.encode(&mut buf).expect("Failed to encode protobuf");
     let decoded =
         crate::client_server_contract::client_server_contract::ClientToServerMsg::decode(&buf[..])
             .expect("Failed to decode protobuf bytes");
 
-    // proto struct → Rust
     let roundtrip: ClientToServerMsg = decoded
         .try_into()
         .expect("Failed to convert decoded protobuf back to Rust");

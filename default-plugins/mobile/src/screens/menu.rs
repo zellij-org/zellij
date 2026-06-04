@@ -1,6 +1,3 @@
-//! The hamburger dropdown menu: an overlay painted over the upper-right
-//! corner of the embedded viewport while `open`.
-
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
@@ -12,8 +9,6 @@ use crate::screens::ActiveScreen;
 const H_PAD: usize = 1;
 const SEPARATOR_CHAR: char = '\u{2500}';
 
-// The separator before "Switch to Desktop" registers no click region, so
-// the dead row guards the one-way exit against an accidental tap.
 const ENTRIES: [HamburgerEntry; 5] = [
     HamburgerEntry::Item(HamburgerItem::Fit),
     HamburgerEntry::Item(HamburgerItem::ChangePane),
@@ -50,8 +45,6 @@ impl MenuScreen {
             return;
         };
 
-        // A short body clips trailing entries rather than overlapping
-        // the keyboard cells below.
         let max_visible = row_end.saturating_sub(row_start);
         for (i, entry) in ENTRIES.iter().take(max_visible).enumerate() {
             let row = row_start + i;
@@ -128,8 +121,6 @@ impl MenuLayout {
         })
     }
 
-    /// `content` left-aligned in `label_max` cells, flanked by `H_PAD`
-    /// cells of padding, for a uniform `menu_w`-wide row.
     fn padded_row(&self, content: &str, content_w: usize) -> String {
         let pad = " ".repeat(H_PAD);
         let trailing = " ".repeat(self.label_max.saturating_sub(content_w));
@@ -169,8 +160,6 @@ mod tests {
     use super::*;
     use crate::state::State;
 
-    /// Items emit click regions on rows 0, 1, 2, 4; the separator on
-    /// row 3 dispatches nothing — the gap guarding the destructive exit.
     #[test]
     fn hamburger_menu_emits_four_click_regions_with_separator_above_exit() {
         let mut state = State::default();

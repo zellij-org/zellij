@@ -1,7 +1,3 @@
-//! The shared top bar: `"Zellij <session> <pane>"` left-aligned with a
-//! right-aligned hamburger glyph. Painted on every screen except the
-//! welcome-style body, which draws its own back affordance.
-
 use std::ops::Range;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
@@ -16,16 +12,8 @@ const PREFIX: &str = "Zellij ";
 const HAMBURGER: &str = "\u{2630}";
 const SESSION_PANE_SEP: &str = " ";
 
-/// Cells of pad kept to the left of the one-cell hamburger glyph. A slop
-/// click region (priority 1) covers this halo so taps that miss the
-/// glyph but land on the pad still toggle the menu.
 const HAMBURGER_SLOP_CELLS: usize = 3;
 
-/// Paints the bar at `row` and registers its click regions. The session
-/// segment is emphasis-0, the pane emphasis-2, the hamburger emphasis-3;
-/// the prefix is unstyled chrome. Tapping the names opens the
-/// Panes/Sessions selectors, or — inside a selector — collapses back to
-/// the viewport; the hamburger always toggles the menu.
 pub(crate) fn render(ws: &Workspace, frame: &mut Frame, active: ActiveScreen, row: usize, cols: usize) {
     let pane_name = current_pane_name(ws);
     let session_name = ws.session_name.clone();
@@ -43,8 +31,6 @@ pub(crate) fn render(ws: &Workspace, frame: &mut Frame, active: ActiveScreen, ro
         bar.push(PREFIX);
     }
 
-    // The separator falls into the pane click region, so the session
-    // region ends exactly at the visible session text.
     let session_seg = session_name
         .as_ref()
         .filter(|_| plan.session_target > 0)
@@ -90,8 +76,6 @@ fn paint(
     print_text_with_coordinates(text, 0, row, Some(cols), None);
 }
 
-/// In a selector the names act as escape hatches back to the viewport;
-/// collapsed, each name opens its respective selector.
 fn actions_for(active: ActiveScreen) -> (ClickAction, ClickAction) {
     if active == ActiveScreen::Viewport {
         (ClickAction::ExpandPanes, ClickAction::ExpandSessions)
@@ -116,9 +100,6 @@ fn width(s: &str) -> usize {
     UnicodeWidthStr::width(s)
 }
 
-/// Accumulates styled segments while tracking the character cursor (for
-/// `Text::color_range`, character-indexed) and the cell cursor (for
-/// click-region hit testing).
 #[derive(Default)]
 struct BarBuilder {
     text: String,
@@ -142,9 +123,6 @@ impl BarBuilder {
     }
 }
 
-/// How `"Zellij <session> <pane>"` is fitted into the cells left of the
-/// hamburger. Priority: natural widths with the prefix → natural widths
-/// without it → split the remaining cells. No session → `"Zellij <pane>"`.
 struct Plan {
     show_prefix: bool,
     session_target: usize,
@@ -179,12 +157,6 @@ impl Plan {
     }
 }
 
-/// Partitions the bar into click regions. The left content area is one
-/// `pane_action` region, or — with a session segment — `pane_action`
-/// slices flanking a `session_action` slice. The hamburger glyph is a
-/// tight `ToggleMenu` region; a priority-1 slop region over the pad to
-/// its left also toggles, giving the one-cell glyph a generous tap halo.
-/// Pure so the partition can be exercised from `mod tests`.
 pub fn click_regions(
     row: usize,
     cols: usize,
@@ -226,8 +198,6 @@ fn push_content_regions(
     }
 }
 
-/// The session range clamped into the content area, or `None` when it is
-/// absent or collapses to zero width (so the whole area is a pane region).
 fn clamp_session(session_cells: Option<(usize, usize)>, pane_end: usize) -> Option<(usize, usize)> {
     let (start, end) = session_cells?;
     let (start, end) = (start.min(pane_end), end.min(pane_end));
@@ -239,8 +209,6 @@ mod tests {
     use super::*;
     use crate::state::State;
 
-    /// No session segment: tight pane region, tight hamburger glyph,
-    /// and a slop region over the pad so the glyph has a tap halo.
     #[test]
     fn partition_with_slop() {
         let cols = 80;
@@ -276,13 +244,10 @@ mod tests {
         assert_eq!(
             state.frame.click_to_action(0, pane_end + 5),
             Some(ClickAction::ToggleMenu),
-            "pad cell should fall through to slop hamburger",
         );
         assert_eq!(state.frame.click_to_action(0, hamburger_start), Some(ClickAction::ToggleMenu));
     }
 
-    /// In selector mode the pane region collapses the selector rather
-    /// than opening Change Pane.
     #[test]
     fn pane_action_collapses_in_selector_mode() {
         let regions = click_regions(
@@ -300,12 +265,8 @@ mod tests {
         assert_eq!(state.frame.click_to_action(0, 0), Some(ClickAction::CollapseSelector));
     }
 
-    /// With a session segment, the left area splits into prefix →
-    /// pane_action, session → session_action, separator + title →
-    /// pane_action.
     #[test]
     fn session_sub_region_dispatches_expand_sessions() {
-        // prefix 0..7, session 7..11, sep 11..12, pane 12..17, ham at 79.
         let regions = click_regions(
             0,
             80,
@@ -334,8 +295,6 @@ mod tests {
         assert_eq!(state.frame.click_to_action(0, 79), Some(ClickAction::ToggleMenu));
     }
 
-    /// A session at column 0 (prefix dropped) emits no zero-width
-    /// `[0, 0)` pane region ahead of it.
     #[test]
     fn session_at_left_edge_skips_empty_prefix_region() {
         let regions = click_regions(

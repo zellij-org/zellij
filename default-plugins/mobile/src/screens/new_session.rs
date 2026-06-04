@@ -1,6 +1,3 @@
-//! The in-plugin "+ New Session" name-entry prompt. Esc / Enter and the
-//! [Cancel] / [Accept] tap targets are equivalent.
-
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
@@ -21,11 +18,7 @@ const ACCEPT_LABEL: &str = "[Accept]";
 #[derive(Default)]
 pub struct NewSessionPromptScreen {
     pub pending_session_name: String,
-    /// Sticky count of leading characters hidden behind the `…`
-    /// indicator when the name outgrows the input row.
     pub new_session_view_offset: usize,
-    /// High-water mark of the content width: the box grows to fit the
-    /// typed name and never shrinks while backspacing.
     pub new_session_content_w: usize,
 }
 
@@ -48,7 +41,6 @@ impl NewSessionPromptScreen {
         true
     }
 
-    /// An empty name lets the host auto-name the session.
     pub fn accept(&mut self, active: &mut ActiveScreen) -> bool {
         let name = std::mem::take(&mut self.pending_session_name);
         let arg = if name.is_empty() {
@@ -63,7 +55,6 @@ impl NewSessionPromptScreen {
         true
     }
 
-    /// Every key is consumed so a typo never leaks to the pane beneath.
     pub fn handle_key(&mut self, active: &mut ActiveScreen, key: KeyWithModifier) -> bool {
         match key.bare_key {
             BareKey::Esc => {
@@ -102,14 +93,12 @@ impl NewSessionPromptScreen {
         draw_buttons(frame, &layout);
     }
 
-    /// The `"Name: …xyz_"` row, scrolled so the cursor stays visible.
-    /// Updates the sticky `new_session_view_offset`.
     fn visible_input_row(&mut self, cols: usize) -> String {
+        const CURSOR_CELL: usize = 1;
         let max_input_total_w = cols.saturating_sub(2 * H_PAD);
-        // Reserve one cell for the trailing cursor underscore.
         let max_chars_no_ellipsis = max_input_total_w
             .saturating_sub(INPUT_LABEL.len())
-            .saturating_sub(1);
+            .saturating_sub(CURSOR_CELL);
         let max_chars_with_ellipsis =
             max_chars_no_ellipsis.saturating_sub(UnicodeWidthStr::width(ELLIPSIS));
 

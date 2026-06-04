@@ -177,11 +177,6 @@ mod not_wasm {
     }
 }
 
-/// Check if a filesystem entry is an IPC socket.
-///
-/// On Unix, this checks `FileTypeExt::is_socket()`. On non-Unix platforms,
-/// this checks `is_file()` to detect marker files created by `ipc_bind()`
-/// and `ipc_bind_async()` alongside kernel-level named pipes.
 #[cfg(unix)]
 pub fn is_ipc_socket(file_type: &std::fs::FileType) -> bool {
     use std::os::unix::fs::FileTypeExt;
@@ -193,10 +188,6 @@ pub fn is_ipc_socket(file_type: &std::fs::FileType) -> bool {
     file_type.is_file()
 }
 
-/// Connect to an IPC socket at the given path.
-///
-/// On Unix, this uses Unix domain sockets via `GenericFilePath`.
-/// On Windows, this uses named pipes via `GenericNamespaced`.
 #[cfg(unix)]
 pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Stream> {
     use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
@@ -212,11 +203,6 @@ pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::loca
     LocalSocketStream::connect(ns_name)
 }
 
-/// Create an IPC listener bound to the given path.
-///
-/// On Unix, this uses Unix domain sockets via `GenericFilePath`.
-/// On Windows, this uses named pipes via `GenericNamespaced` and creates
-/// a marker file for session discovery.
 #[cfg(unix)]
 pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Listener> {
     use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
@@ -234,11 +220,6 @@ pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_s
     Ok(listener)
 }
 
-/// Create an async (tokio) IPC listener bound to the given path.
-///
-/// On Unix, this uses Unix domain sockets via `GenericFilePath`.
-/// On Windows, this uses named pipes via `GenericNamespaced` and creates
-/// a marker file for session discovery.
 #[cfg(unix)]
 pub fn ipc_bind_async(
     path: &std::path::Path,
@@ -260,9 +241,6 @@ pub fn ipc_bind_async(
     Ok(listener)
 }
 
-/// Connect to the reply pipe for a given IPC path (Windows only).
-///
-/// Uses `path-reply` as the named pipe for the server→client direction.
 #[cfg(windows)]
 pub fn ipc_connect_reply(
     path: &std::path::Path,
@@ -273,9 +251,6 @@ pub fn ipc_connect_reply(
     LocalSocketStream::connect(ns_name)
 }
 
-/// Create an IPC listener for the reply pipe (Windows only).
-///
-/// Binds to `path-reply` as the named pipe for the server→client direction.
 #[cfg(windows)]
 pub fn ipc_bind_reply(
     path: &std::path::Path,
@@ -298,12 +273,7 @@ mod unix_only {
     use nix::unistd::Uid;
     use std::env::temp_dir;
 
-    // Maximum length of a Unix domain socket path (from sockaddr_un.sun_path).
-    // macOS (and other BSDs) use 104, Linux/Android/Solaris use 108.
-    // The not(target_os = "macos") fallback of 108 is used for all other Unix
-    // platforms — this is correct for Linux/Android/Solaris and only 4 bytes
-    // over for BSDs, which would cause a slightly late error rather than a
-    // missed one.
+    // Maximum sockaddr_un.sun_path length: 104 on macOS/BSD, 108 on Linux/Android/Solaris.
     #[cfg(target_os = "macos")]
     pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 104;
     #[cfg(not(target_os = "macos"))]

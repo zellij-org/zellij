@@ -81,24 +81,10 @@ pub struct ColorRegister {
     pub color: String,
 }
 
-/// Why a `TerminalResize` was emitted. The server uses this to
-/// decide whether the resize is a true viewport change (which can
-/// re-evaluate mobile-mode auto-routing) or a purely local
-/// rendering preference change (which still re-lays the grid but
-/// must not affect mobile-mode state).
 #[derive(Default, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResizeCause {
-    /// The physical viewport changed — window resize, device
-    /// rotation, attach, or the underlying terminal's reported
-    /// size. Mobile-mode re-evaluation runs against this size.
     #[default]
     Viewport,
-    /// A local rendering preference changed and the cell grid
-    /// followed (e.g. the browser pinch zoom changed the font
-    /// size, so the same pixel viewport now fits a different cell
-    /// count). The pane grid is re-laid, but the mobile-mode
-    /// decision is NOT re-evaluated because the device is the
-    /// same — only the user's local zoom has changed.
     RenderingPreference,
 }
 
@@ -134,9 +120,6 @@ pub enum ClientToServerMsg {
     },
     TerminalResize {
         new_size: Size,
-        /// Why the resize was emitted. See `ResizeCause`. Defaults
-        /// to `Viewport` for back-compat with older clients and
-        /// for the common case.
         #[serde(default)]
         cause: ResizeCause,
     },
@@ -182,29 +165,13 @@ pub enum ClientToServerMsg {
     DesktopNotificationResponse {
         raw_bytes: Vec<u8>,
     },
-    /// Raw reply bytes observed by the client inside a forwarding window
-    /// closed by the Primary-DA barrier. The server routes these bytes
-    /// verbatim to the pane whose app issued the whitelisted query
-    /// (tracked on the server by `token`).
     ForwardedReplyFromHost {
         token: u32,
         reply_bytes: Vec<u8>,
     },
-    /// The host terminal reported a color-palette theme mode (DSR 997 reply
-    /// to `CSI ? 996 n`, or unsolicited notification while `CSI ? 2031 h`
-    /// is enabled). The server propagates this to the active configured
-    /// theme and to subscribed plugins/panes.
     HostTerminalThemeChanged {
         mode: HostTerminalThemeMode,
     },
-    /// The OS soft keyboard's actual visibility changed on a web
-    /// client. Dispatched by the browser via the web-control
-    /// WebSocket whenever `window.visualViewport.height` crosses
-    /// the keyboard-up/down threshold. The server forwards this
-    /// to subscribed plugins for the originating client as
-    /// `Event::SoftKeyboardVisibilityChanged(visible)` so a plugin
-    /// like the mobile UI can show/hide its modifier bar in lockstep
-    /// with the OS keyboard.
     SoftKeyboardVisibilityChanged {
         visible: bool,
     },
@@ -238,10 +205,6 @@ pub enum ServerToClientMsg {
         output: String,
     },
     QueryTerminalSize,
-    /// Ask the client (specifically: web clients) to show or hide the
-    /// soft keyboard. Dispatched by the mobile plugin when the user
-    /// taps its ⌨ button. Non-web clients ignore this message — the
-    /// soft-keyboard concept only exists in browser UIs.
     SetSoftKeyboard {
         on: bool,
     },
@@ -259,10 +222,6 @@ pub enum ServerToClientMsg {
     SubscribedPaneClosed {
         pane_id: PaneId,
     },
-    /// Instruct the client to write `query_bytes` followed by the
-    /// Primary-DA barrier to stdout, open a forwarding window keyed by
-    /// `token`, and reply with a `ForwardedReplyFromHost` once the
-    /// barrier closes or the window times out.
     ForwardQueryToHost {
         token: u32,
         query_bytes: Vec<u8>,

@@ -3425,12 +3425,6 @@ impl Grid {
         contents
     }
 
-    /// The cursor's position in viewport coordinates, but only when the
-    /// pane has actually exposed a visible cursor. Used to populate
-    /// `PaneContents.cursor` so plugins that embed pane viewports can
-    /// place the host cursor at the right cell each render. Returns
-    /// `None` when the cursor is hidden (typical in vim normal mode,
-    /// fzf-style pickers, etc.) or out of viewport bounds.
     fn visible_cursor_in_viewport(&self) -> Option<(usize, usize)> {
         self.cursor_coordinates()
             .and_then(|(x, y, is_visible)| if is_visible { Some((x, y)) } else { None })

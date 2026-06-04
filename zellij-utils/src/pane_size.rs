@@ -80,11 +80,6 @@ pub struct SizeInPixels {
     pub width: usize,
 }
 
-/// Opaque cell-count insets subtracted from a pane's content area on
-/// each edge. Used by the mobile "Fit" feature: the plugin reports the
-/// cells it draws around its embedded viewport (e.g. a top bar and a
-/// soft-keyboard bar) as `top`/`bottom`; the server subtracts them from
-/// the live plugin-pane size without reasoning about what produced them.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Insets {
     pub top: usize,

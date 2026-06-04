@@ -1,20 +1,11 @@
-//! Pure terminal-cell and ANSI helpers reused across screens: cursor
-//! moves, visible-width measurement, horizontal slicing, cell-width text
-//! fitting, and relative-time formatting.
-
 use unicode_width::UnicodeWidthStr;
 
-/// Resets the active style, emitted between UI cells so an SGR bleed
-/// from the embedded viewport cannot contaminate the chrome.
 pub(crate) const RESET: &str = "\x1b[0m";
 
-/// ANSI cursor move. ANSI is 1-based; the plugin render area is 0-based.
 pub(crate) fn move_to(row: usize, col: usize) -> String {
     format!("\x1b[{};{}H", row + 1, col + 1)
 }
 
-/// `Active <time> ago` relative to `now`, or `"—"` when no activity has
-/// been recorded (the activity cache is delta-only).
 pub(crate) fn format_time_ago(then_unix_secs: Option<u64>, now_unix_secs: u64) -> String {
     let Some(then) = then_unix_secs else {
         return "—".to_string();
@@ -34,8 +25,6 @@ pub(crate) fn format_time_ago(then_unix_secs: Option<u64>, now_unix_secs: u64) -
     format!("Active {}", body)
 }
 
-/// Pad with trailing spaces or truncate (with a trailing `…`) so the
-/// cell width is exactly `width`. Width 0 returns empty.
 pub(crate) fn pad_or_truncate(text: &str, width: usize) -> String {
     let text_w = UnicodeWidthStr::width(text);
     if width == 0 {
@@ -48,7 +37,6 @@ pub(crate) fn pad_or_truncate(text: &str, width: usize) -> String {
         return format!("{}{}", text, " ".repeat(width - text_w));
     }
     if width == 1 {
-        // No room for both a char and an ellipsis: take one single-cell char.
         let first = text.chars().find(|c| char_width(*c) <= 1);
         return first.map(String::from).unwrap_or_else(|| " ".to_string());
     }
@@ -74,7 +62,6 @@ fn char_width(ch: char) -> usize {
     UnicodeWidthStr::width(ch.encode_utf8(&mut buf) as &str)
 }
 
-/// Width of `text` in cells, ignoring ANSI escape sequences.
 pub(crate) fn visible_width(text: &str) -> usize {
     let bytes = text.as_bytes();
     let mut width = 0;
@@ -93,12 +80,6 @@ pub(crate) fn visible_width(text: &str) -> usize {
     width
 }
 
-/// Slice `line` so that, emitted at column 0, it renders the cells the
-/// original would have shown at `[h_offset, h_offset + max_cols)`. ANSI
-/// escapes are preserved verbatim so SGR state carries into the window;
-/// a trailing `RESET` stops it bleeding into the next row. Wide chars
-/// straddling the left boundary become a space (column alignment);
-/// those straddling the right are dropped (caller pads with `\x1b[K`).
 pub(crate) fn slice_ansi_visible(line: &str, h_offset: usize, max_cols: usize) -> String {
     if max_cols == 0 {
         return String::new();
@@ -110,8 +91,6 @@ pub(crate) fn slice_ansi_visible(line: &str, h_offset: usize, max_cols: usize) -
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == 0x1b {
-            // Replay every escape walked past, visible or not, so the
-            // first cell inside the window has the correct SGR state.
             let end = skip_escape(bytes, i);
             if let Ok(esc) = std::str::from_utf8(&bytes[i..end]) {
                 out.push_str(esc);
@@ -127,17 +106,14 @@ pub(crate) fn slice_ansi_visible(line: &str, h_offset: usize, max_cols: usize) -
         };
         let w = UnicodeWidthStr::width(ch);
         if w == 0 {
-            // Combining marks ride along with the previous emitted cell;
-            // dropped at the slice start to avoid an orphan mark.
             if cell > h_offset && cell <= right_edge && !out.is_empty() {
                 out.push_str(ch);
             }
         } else if cell + w <= h_offset {
-            // Still left of the window.
         } else if cell < h_offset {
-            out.push(' '); // wide char straddling the left boundary
+            out.push(' ');
         } else if cell >= right_edge || cell + w > right_edge {
-            break; // at or past the right edge (straddlers dropped)
+            break;
         } else {
             out.push_str(ch);
         }
@@ -148,14 +124,10 @@ pub(crate) fn slice_ansi_visible(line: &str, h_offset: usize, max_cols: usize) -
     out
 }
 
-/// Advance past the ANSI escape starting at `start`, returning the index
-/// of the first byte after it. Handles CSI, OSC, and stray two-byte
-/// escapes; a coarse parse, sufficient for cell measurement and slicing.
 fn skip_escape(bytes: &[u8], start: usize) -> usize {
     let mut i = start + 1;
     match bytes.get(i) {
         Some(b'[') => {
-            // CSI: ESC [ <params> <final 0x40..=0x7E>
             i += 1;
             while i < bytes.len() && !(0x40..=0x7e).contains(&bytes[i]) {
                 i += 1;
@@ -163,7 +135,6 @@ fn skip_escape(bytes: &[u8], start: usize) -> usize {
             (i + 1).min(bytes.len())
         },
         Some(b']') => {
-            // OSC: ESC ] <body> (BEL | ESC \)
             i += 1;
             while i < bytes.len()
                 && bytes[i] != 0x07
@@ -195,7 +166,6 @@ fn utf8_char_len(byte: u8) -> usize {
 mod tests {
     use super::*;
 
-    /// Strip the trailing `RESET` so tests assert the visible cells.
     fn visible(s: &str) -> &str {
         s.strip_suffix(RESET).unwrap_or(s)
     }
@@ -238,8 +208,6 @@ mod tests {
 
     #[test]
     fn ansi_escape_replayed_when_offset_skips_text() {
-        // Window covers the 'b' cells; the skipped-past red escape must
-        // still appear so the visible region renders with correct SGR.
         let sliced = slice_ansi_visible("\x1b[31maaaa\x1b[32mbbbb", 4, 4);
         assert!(sliced.contains("\x1b[31m"));
         assert!(sliced.contains("\x1b[32m"));
@@ -249,13 +217,11 @@ mod tests {
 
     #[test]
     fn wide_char_straddling_left_boundary_becomes_space() {
-        // "中" (2 cells) sits at cells 0..2; the slice starts at cell 1.
         assert_eq!(visible(&slice_ansi_visible("中abc", 1, 3)), " ab");
     }
 
     #[test]
     fn wide_char_straddling_right_boundary_dropped() {
-        // "中" spans cells 2..4; the window [0, 3) clips its right half.
         assert_eq!(visible(&slice_ansi_visible("ab中cd", 0, 3)), "ab");
     }
 

@@ -16,10 +16,6 @@ pub struct MouseEvent {
     pub middle: bool,
     pub wheel_up: bool,
     pub wheel_down: bool,
-    // Horizontal wheel ticks (SGR buttons 66 / 67). Emitted by trackpad
-    // horizontal swipes on desktop terminals and by the mobile client's
-    // horizontal touch panning. Default false so legacy event sites
-    // round-trip unchanged.
     #[serde(default)]
     pub wheel_left: bool,
     #[serde(default)]
@@ -408,9 +404,6 @@ impl MouseEvent {
         };
         event
     }
-    /// Horizontal wheel tick toward column 0 — emitted for SGR
-    /// button 67 (and synthesised by the mobile client when a horizontal
-    /// swipe accumulates leftward beyond its touch threshold).
     pub fn new_scroll_left_event(position: Position) -> Self {
         MouseEvent {
             event_type: MouseEventType::Press,
@@ -427,7 +420,6 @@ impl MouseEvent {
             position,
         }
     }
-    /// Horizontal wheel tick away from column 0 — SGR button 66.
     pub fn new_scroll_right_event(position: Position) -> Self {
         MouseEvent {
             event_type: MouseEventType::Press,

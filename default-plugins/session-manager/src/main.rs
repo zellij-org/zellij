@@ -152,17 +152,6 @@ impl ZellijPlugin for State {
                 self.colors = Colors::new(mode_info.style.colors);
                 let was_web_client = self.is_web_client;
                 self.is_web_client = mode_info.is_web_client.unwrap_or(false);
-                // `update_session_infos` filters out sessions whose
-                // `web_clients_allowed == false` when this plugin is
-                // a web client. The initial `refresh_session_list`
-                // in `load()` runs before the first `ModeUpdate`,
-                // so it can populate the list with web-forbidden
-                // sessions still visible. Re-run the refresh the
-                // moment we learn we are a web client so those
-                // entries drop out without waiting for the next
-                // periodic `SessionUpdate`. Symmetric on the false
-                // transition too — covers the edge case of a client
-                // promoted/demoted at runtime.
                 if was_web_client != self.is_web_client {
                     self.refresh_session_list();
                 }

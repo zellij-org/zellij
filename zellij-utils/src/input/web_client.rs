@@ -291,10 +291,6 @@ impl WebClientConfig {
             web_client_config.base_url = Some(base_url.to_owned());
         }
 
-        // `font_size` is read manually because the existing macro family
-        // doesn't include an integer extractor. KDL stores numeric
-        // entries as i64; we clamp into u16 (rejecting silly values
-        // like 0 or anything > u16::MAX).
         if let Some(font_size_node) = kdl_get_child!(kdl, "font_size") {
             let raw = font_size_node
                 .entries()

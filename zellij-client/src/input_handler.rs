@@ -46,9 +46,6 @@ fn termwiz_mouse_convert(original_event: &mut MouseEvent, event: &TermwizMouseEv
         && button_bits.contains(MouseButtons::WHEEL_POSITIVE);
     original_event.wheel_down = button_bits.contains(MouseButtons::VERT_WHEEL)
         && !button_bits.contains(MouseButtons::WHEEL_POSITIVE);
-    // Horizontal wheel: SGR 66 carries `WHEEL_POSITIVE` (scroll-right),
-    // SGR 67 omits it (scroll-left). Termwiz decodes both via
-    // `decode_mouse_button` into the HORZ_WHEEL bit.
     original_event.wheel_right = button_bits.contains(MouseButtons::HORZ_WHEEL)
         && button_bits.contains(MouseButtons::WHEEL_POSITIVE);
     original_event.wheel_left = button_bits.contains(MouseButtons::HORZ_WHEEL)

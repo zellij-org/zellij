@@ -51,20 +51,11 @@ message ColorRegistersMsg {
 
 message TerminalResizeMsg {
   Size new_size = 1;
-  // Why the resize was emitted. Defaults to RESIZE_CAUSE_VIEWPORT
-  // when the field is missing, matching back-compat behavior of
-  // older clients.
   ResizeCause cause = 2;
 }
 
 enum ResizeCause {
-  // The physical viewport changed — window resize, device
-  // rotation, attach, or the underlying terminal's reported size.
-  // Triggers mobile-mode re-evaluation on the server.
   RESIZE_CAUSE_VIEWPORT = 0;
-  // A local rendering preference changed (e.g. browser pinch
-  // zoom). The grid is re-laid but mobile-mode is not
-  // re-evaluated.
   RESIZE_CAUSE_RENDERING_PREFERENCE = 1;
 }
 

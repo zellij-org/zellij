@@ -158,16 +158,7 @@ pub(crate) struct Tab {
     pub position: usize,
     pub name: String,
     pub prev_name: String,
-    /// The tab's current viewport size, computed as `min(rows)` and `min(cols)`
-    /// independently across the clients whose `active_tab_id` equals this tab.
-    /// When the tab has no viewers it retains its most recent value (the
-    /// recompute path simply skips empty tabs).
     pub size: Size,
-    /// Per-tab visibility filter. `None` means the tab is public (visible to
-    /// every client — the default). `Some(set)` restricts visibility to the
-    /// listed clients; navigation, render, and `TabUpdate` filter the tab
-    /// out for any client not in the set. A `Some(set)` that becomes empty
-    /// triggers tab garbage-collection (see `Screen::remove_client`).
     pub visible_to: Option<HashSet<ClientId>>,
     tiled_panes: TiledPanes,
     floating_panes: FloatingPanes,
@@ -312,10 +303,6 @@ pub trait Pane {
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
-    /// Horizontal wheel ticks. Default no-op — only plugin panes
-    /// consume these today (to drive the mobile plugin's embedded-
-    /// viewport pan). Terminal panes have no horizontal scrollback,
-    /// so the wheel event is discarded for them.
     fn scroll_left(&mut self, _count: usize, _client_id: ClientId) {}
     fn scroll_right(&mut self, _count: usize, _client_id: ClientId) {}
     fn clear_scroll(&mut self);
@@ -2704,11 +2691,6 @@ impl Tab {
     pub fn has_non_suppressed_pane_with_pid(&self, pid: &PaneId) -> bool {
         self.tiled_panes.panes_contain(pid) || self.floating_panes.panes_contain(pid)
     }
-    // Shadow focus: record a client as focused on `pane_id` for the
-    // purpose of UI focus indicators only — no PTY-thread sync, no
-    // CSI focus-tracking writes, no terminal-attribute resets. The
-    // pane container that owns `pane_id` is chosen automatically.
-    // Returns `true` when the pane was found in this tab.
     pub fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) -> bool {
         if self.tiled_panes.panes_contain(&pane_id) {
             self.tiled_panes.set_shadow_focus(client_id, pane_id);
@@ -2720,8 +2702,6 @@ impl Tab {
             false
         }
     }
-    // Clear any shadow-focus entry for this client in either pane
-    // container. Safe no-op when absent.
     pub fn clear_shadow_focus(&mut self, client_id: ClientId) {
         if self.tiled_panes.is_shadow_focus_client(&client_id) {
             self.tiled_panes.clear_shadow_focus(client_id);
@@ -2730,11 +2710,6 @@ impl Tab {
             self.floating_panes.clear_shadow_focus(client_id);
         }
     }
-    /// All clients carrying the shadow-focus marker in this tab
-    /// (either tiled or floating). Used by TabInfo construction so
-    /// the tab-bar shows shadow-focused clients on this tab even
-    /// though they are not in this tab's `connected_clients` or
-    /// `active_tab_ids`.
     pub fn shadow_focus_clients(&self) -> Vec<ClientId> {
         let mut out = self.tiled_panes.shadow_focus_clients();
         out.extend(self.floating_panes.shadow_focus_clients());
@@ -2742,11 +2717,6 @@ impl Tab {
         out.dedup();
         out
     }
-    /// True iff `client_id` already has the shadow-focus marker on
-    /// `pane_id` in either pane container. Used by the shadow-focus
-    /// handler to short-circuit redundant updates (preventing a
-    /// TabUpdate → sync → TabUpdate feedback loop with the mobile
-    /// plugin).
     pub fn has_shadow_focus_on(&self, client_id: ClientId, pane_id: PaneId) -> bool {
         self.tiled_panes.has_shadow_focus_on(client_id, pane_id)
             || self.floating_panes.has_shadow_focus_on(client_id, pane_id)
@@ -3271,11 +3241,6 @@ impl Tab {
     pub fn is_fullscreen_active(&self) -> bool {
         self.tiled_panes.fullscreen_is_active()
     }
-    /// Returns the pane id currently held in fullscreen for this tab,
-    /// or `None` if no pane is fullscreen. Used by `set_tab_fit` to
-    /// capture the pre-fit fullscreen state so the disconnect / fit-clear
-    /// cleanup can revert correctly only when fit itself flipped the
-    /// toggle.
     pub fn fullscreen_pane_id(&self) -> Option<PaneId> {
         self.tiled_panes.fullscreen_pane_id()
     }
@@ -3331,11 +3296,6 @@ impl Tab {
         self.floating_panes.set_force_render(); // we do this to make sure pinned panes are
                                                 // rendered even if their surface is not visible
     }
-    /// Whether the next render of this tab will emit a `\x1b[2J`
-    /// display-clear sequence for every viewer. Test-only — used by
-    /// the fit-mode integration tests to verify the regression where
-    /// a desktop viewer of a smaller fit tab saw garbage outside the
-    /// tab area on first render.
     #[cfg(test)]
     pub fn should_clear_display_before_rendering(&self) -> bool {
         self.should_clear_display_before_rendering
@@ -4542,33 +4502,10 @@ impl Tab {
         }
     }
 
-    /// Dispatch a wheel-up tick on the terminal pane identified by id.
-    /// Mirrors `MouseHandler::handle_scrollwheel_up`'s three-case
-    /// dispatch so the plugin-facing `ScrollUpInPaneId` command (used
-    /// by the mobile plugin's overflow-into-scrollback path) routes
-    /// the same way a real desktop wheel tick would:
-    ///
-    /// 1. If the pane has mouse tracking enabled (vim with
-    ///    `set mouse=a`, less, htop, btop), forward the SGR wheel
-    ///    sequence its `mouse_scroll_up` produces — the program
-    ///    parses it from its pty and scrolls its own view.
-    /// 2. Else if the pane is in alternate-screen mode but does not
-    ///    track mouse (vim without mouse, an interactive REPL on
-    ///    alt-screen), emit a single arrow-up sequence — faux
-    ///    scrolling, the same fallback the desktop uses.
-    /// 3. Otherwise walk the zellij scrollback buffer by one line —
-    ///    the original semantic of this method.
-    ///
-    /// The synthetic `Position::new(0, 0)` we hand to
-    /// `mouse_scroll_up` is acceptable because pane-id-based commands
-    /// carry no real gesture coordinate; programs that use the wheel
-    /// position to pick a target split (e.g. multi-window vim) will
-    /// land on the top-left split, which is the conservative choice
-    /// for a viewport that has no further information.
     pub fn scroll_terminal_up(&mut self, terminal_pane_id: u32) -> Result<()> {
         let pane_id = PaneId::Terminal(terminal_pane_id);
         let err_context = || format!("failed to scroll up pane {pane_id:?}");
-        let fictitious_client_id = 1; // not checked for terminal panes; see scroll_active_terminal_up
+        let fictitious_client_id = 1;
         let synthetic_position = Position::new(0, 0);
         let (mouse_sgr, is_alt) = match self.get_pane_with_id(pane_id) {
             Some(pane) => (
@@ -4604,17 +4541,10 @@ impl Tab {
         Ok(())
     }
 
-    /// Mirror of `scroll_terminal_up` for the wheel-down direction.
-    /// Three-case dispatch matches `MouseHandler::handle_scrollwheel_down`:
-    /// SGR forward when the pane tracks mouse, arrow-down faux when in
-    /// alt mode without mouse, otherwise walk the scrollback by one
-    /// line. When walking out of scrollback into the present, flush any
-    /// pending VTE events that accumulated while the pane was scrolled
-    /// — mirrors the same flush at `mouse_handler.rs:1624-1628`.
     pub fn scroll_terminal_down(&mut self, terminal_pane_id: u32) -> Result<()> {
         let pane_id = PaneId::Terminal(terminal_pane_id);
         let err_context = || format!("failed to scroll down pane {pane_id:?}");
-        let fictitious_client_id = 1; // not checked for terminal panes; see scroll_active_terminal_down
+        let fictitious_client_id = 1;
         let synthetic_position = Position::new(0, 0);
         let (mouse_sgr, is_alt) = match self.get_pane_with_id(pane_id) {
             Some(pane) => (

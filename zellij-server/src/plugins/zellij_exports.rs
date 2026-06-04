@@ -2822,11 +2822,6 @@ fn new_tab(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
         .non_fatal();
 }
 
-// Identical to `new_tab` but dispatches with
-// `should_change_focus_to_new_tab: false`, so the requesting client stays
-// on its current tab. The new tab id is still returned synchronously via
-// the response stdin path. Used by plugins (mobile UI) that must not yank
-// their client off the per-client plugin tab.
 fn new_tab_unfocused(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
     let cwd = cwd.map(|c| translate_plugin_path(env, PathBuf::from(c)));
     let action = Action::NewTab {
@@ -2851,12 +2846,6 @@ fn new_tab_unfocused(env: &PluginEnv, name: Option<String>, cwd: Option<String>)
         .non_fatal();
 }
 
-// Open a new tiled terminal pane in the tab at `tab_position`. Modelled
-// on `open_terminal` (which targets the focused tab) but with the tab
-// explicitly addressed via the `tab_id` field on `Action::NewTiledPane`.
-// Returns the new pane's id synchronously. Used by the mobile plugin so
-// "+ New Pane" lands in the user-selected tab rather than in the per-
-// client plugin tab.
 fn new_tiled_pane_in_tab(env: &PluginEnv, tab_position: usize) {
     let error_msg = || format!("failed to open new tiled pane in tab {}", tab_position);
     let default_shell = env.default_shell.clone().unwrap_or_else(|| {
@@ -2866,8 +2855,6 @@ fn new_tiled_pane_in_tab(env: &PluginEnv, tab_position: usize) {
             ..Default::default()
         })
     });
-    // Inherit the shell's own cwd (no override). The mobile plugin's
-    // "+ New Pane" command has no path context to pass through.
     let run_command_action: Option<RunCommandAction> = match default_shell {
         TerminalAction::RunCommand(run_command) => Some(run_command.into()),
         _ => None,
@@ -3986,7 +3973,6 @@ fn list_windows_volumes(_env: &PluginEnv) {
     log::error!("ListWindowsVolumes is only supported on Windows");
 }
 
-/// Show or hide the soft keyboard on the calling client's browser.
 fn set_soft_keyboard(env: &PluginEnv, on: bool) {
     env.senders
         .send_to_screen(ScreenInstruction::SetSoftKeyboard {
@@ -3997,13 +3983,6 @@ fn set_soft_keyboard(env: &PluginEnv, on: bool) {
         .non_fatal();
 }
 
-/// Mobile plugin → server: record the calling client as visually
-/// focused on `pane_id` (a "shadow focus") so other connected clients
-/// see the mobile client's focus marker on the pane the mobile plugin
-/// viewport is rendering. The mobile client remains in its mobile tab
-/// (the plugin UI stays mounted), real keystroke routing is unchanged
-/// (the plugin uses `write_to_pane_id`), and no CSI focus-tracking
-/// events are emitted to the target terminal.
 fn set_shadow_focus(env: &PluginEnv, pane_id: PaneId) {
     env.senders
         .send_to_screen(ScreenInstruction::SetShadowFocus(
@@ -4019,14 +3998,6 @@ fn set_shadow_focus(env: &PluginEnv, pane_id: PaneId) {
         .non_fatal();
 }
 
-/// Mobile "Fit". `Some((pane_id, size))` forwards an enter-or-update
-/// to the screen thread, which atomically (on first call) captures
-/// pre-fit fullscreen state, toggles fullscreen, installs the
-/// tab-size override, and recomputes the tab — or (on later calls)
-/// updates the stored size. `None` clears the calling client's fit
-/// and reverts any fit-induced fullscreen; no-op if no active fit.
-/// Per-client; the screen thread tags the `FitState` with
-/// `env.client_id` so disconnect cleanup can find and revert it.
 fn set_tab_fit(env: &PluginEnv, tab_id: usize, fit: Option<(PaneId, Size)>) {
     env.senders
         .send_to_screen(ScreenInstruction::SetTabFit {
@@ -4038,10 +4009,6 @@ fn set_tab_fit(env: &PluginEnv, tab_id: usize, fit: Option<(PaneId, Size)>) {
         .non_fatal();
 }
 
-/// Exit mobile mode for the calling client. Forwarded to the
-/// screen thread, which tears down the client's mobile tab and
-/// switches it back to a normal tab. No-op if the client is not
-/// currently in mobile mode (server is authoritative).
 fn exit_mobile_mode(env: &PluginEnv) {
     env.senders
         .send_to_screen(ScreenInstruction::ExitMobileMode(env.client_id, None))

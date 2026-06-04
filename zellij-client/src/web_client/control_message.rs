@@ -11,24 +11,9 @@ pub struct WebClientToWebServerControlMessage {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub enum WebClientToWebServerControlMessagePayload {
-    /// Real viewport change reported by the browser — window
-    /// resize, attach, rotation. The server uses this for
-    /// mobile-mode re-evaluation.
     TerminalResize(Size),
-    /// Cell-grid change driven by a local rendering preference
-    /// (e.g. browser pinch zoom changed the font size, which
-    /// changed the cell count). The server re-lays the grid but
-    /// does NOT re-evaluate mobile-mode — the device viewport
-    /// itself has not changed.
     TerminalResizeRendering(Size),
     TerminalMetrics(TerminalMetricsPayload),
-    /// The OS soft keyboard's actual visibility changed (detected
-    /// via `window.visualViewport.height` swings). The server
-    /// forwards this to subscribed plugins as
-    /// `Event::SoftKeyboardVisibilityChanged(visible)` so a plugin
-    /// like the mobile UI can show/hide its modifier bar in lockstep
-    /// with the OS keyboard. Fires for both user toggles (2-finger
-    /// gesture) and external dismissals (Android back button).
     SoftKeyboardVisibilityChanged { visible: bool },
 }
 
@@ -48,10 +33,6 @@ pub enum WebServerToWebClientControlMessage {
     Log { lines: Vec<String> },
     LogError { lines: Vec<String> },
     SwitchedSession { new_session_name: String },
-    /// Emitted by the mobile plugin's `load()` to ensure the OS soft
-    /// keyboard is the canonical text-entry surface. `on=true`
-    /// focuses the dedicated capture textarea so the soft keyboard
-    /// surfaces; `on=false` blurs it so the keyboard dismisses.
     SetSoftKeyboard { on: bool },
 }
 

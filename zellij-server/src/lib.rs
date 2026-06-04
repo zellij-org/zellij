@@ -1082,11 +1082,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
 
-                // Mirror the AttachClient mobile-mode auto-route for the
-                // first-client-of-a-new-session path. The decision is
-                // one-shot at startup; subsequent rotations resize the
-                // mobile tab via the per-tab sizing path but do not
-                // promote/demote the client.
                 let mobile_layout = runtime_config_options
                     .mobile_layout
                     .unwrap_or_default();
@@ -1104,21 +1099,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     mobile_threshold_cols,
                     mobile_threshold_rows,
                 );
-                // Web clients connect with the `Size { rows: 24, cols: 80 }`
-                // fallback from `get_terminal_size()` (see
-                // `zellij-client/src/os_input_output.rs:79`) before the
-                // browser reports its real dimensions. That fallback's 24
-                // rows trips the default 30-row mobile threshold, so an
-                // immediate decision here would transiently enter mobile
-                // mode and then auto-demote ~150ms later when the real
-                // viewport arrives — leaving any teardown the mobile
-                // entry triggered (e.g. the mobile plugin closing the
-                // welcome pane) without a corresponding rebuild and
-                // forcing the client to disconnect/reconnect. Defer the
-                // decision to the first `TerminalResize` for web clients;
-                // terminal clients keep the eager path because
-                // `crossterm::terminal::size()` returns their real size
-                // synchronously.
                 if should_enter_mobile && !is_web_client {
                     session_data
                         .read()
@@ -1199,12 +1179,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     ))
                     .unwrap();
 
-                // Decide whether the attaching client should be auto-routed
-                // into mobile mode based on `mobile_layout` and the
-                // viewport size breakpoints. The `Web` decision is made
-                // once at attach time (rotating the phone afterwards
-                // resizes the existing mobile tab via the per-tab sizing
-                // path but does not toggle mobile mode).
                 let mobile_layout = runtime_config_options
                     .mobile_layout
                     .unwrap_or_default();
@@ -1222,10 +1196,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     mobile_threshold_cols,
                     mobile_threshold_rows,
                 );
-                // Same web-client fallback caveat as the
-                // FirstClientConnected arm above — defer the mobile
-                // decision to the first `TerminalResize` rather than
-                // acting on the 80x24 placeholder.
                 if should_enter_mobile && !is_web_client {
                     session_data
                         .senders

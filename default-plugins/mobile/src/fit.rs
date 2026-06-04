@@ -3,7 +3,6 @@ use zellij_tile::prelude::*;
 use crate::frame::{chrome_offsets, Frame};
 use crate::workspace::{pane_id_of, Workspace};
 
-// Plugin-side mirror of the active fit override.
 #[derive(Default)]
 pub struct Fit {
     pub active: bool,
@@ -135,7 +134,6 @@ mod tests {
         fit.tab_id = Some(7);
         fit.notify_size(&ws, &frame, false);
         assert_eq!(fit.last_sent_size, None);
-        // active but no tab id
         fit.active = true;
         fit.tab_id = None;
         fit.notify_size(&ws, &frame, false);

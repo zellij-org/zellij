@@ -82,9 +82,6 @@ async fn handle_ws_control(
                 }
             },
             WebClientToWebServerControlMessagePayload::TerminalResizeRendering(size) => {
-                // Pinch-driven (rendering-preference) resize: same
-                // grid update, but the server's TerminalResize
-                // handler will skip mobile-mode re-evaluation.
                 ClientToServerMsg::TerminalResize {
                     new_size: size,
                     cause: ResizeCause::RenderingPreference,

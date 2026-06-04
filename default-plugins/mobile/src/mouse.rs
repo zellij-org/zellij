@@ -88,8 +88,6 @@ fn handle_scroll_pan(state: &mut State, lines: usize, up: bool) -> bool {
         return false;
     }
     let Some(max_v_pan) = state.viewport.max_viewport_v_pan(&state.workspace) else {
-        // First event tick: no frame has rendered yet, so we don't know
-        // the embed height.
         if up {
             state.viewport.viewport_v_pan = state.viewport.viewport_v_pan.saturating_add(lines);
         } else {

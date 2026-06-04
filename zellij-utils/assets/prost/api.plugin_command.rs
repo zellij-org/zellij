@@ -329,11 +329,6 @@ pub struct NewTabPayload {
     #[prost(string, optional, tag="2")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
 }
-/// Payload for `NewTabUnfocused` — identical shape to `NewTabPayload` but
-/// the server-side handler dispatches with `should_change_focus_to_new_tab:
-/// false`, so the requesting client stays on its current tab. Used by the
-/// mobile plugin's "+ New Tab" command, which must not yank the client off
-/// the mobile plugin tab.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NewTabUnfocusedPayload {
@@ -342,9 +337,6 @@ pub struct NewTabUnfocusedPayload {
     #[prost(string, optional, tag="2")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
 }
-/// Payload for `NewTiledPaneInTab` — creates a new tiled terminal pane in
-/// the tab at `tab_position` rather than in the requesting client's
-/// focused tab. Used by the mobile plugin's "+ New Pane" command.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NewTiledPaneInTabPayload {
@@ -1513,8 +1505,6 @@ pub mod new_tab_response {
         None(bool),
     }
 }
-/// Response for `NewTabUnfocused` — carries the newly created tab id,
-/// or none on failure.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NewTabUnfocusedResponse {
@@ -1532,8 +1522,6 @@ pub mod new_tab_unfocused_response {
         None(bool),
     }
 }
-/// Response for `NewTiledPaneInTab` — carries the newly created pane id,
-/// or none on failure.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NewTiledPaneInTabResponse {
@@ -2028,10 +2016,6 @@ pub struct Size {
     #[prost(uint32, tag="2")]
     pub cols: u32,
 }
-/// Mobile "fit". With pane_id + size present: fullscreen pane_id in
-/// tab_id and size the tab so the pane's content is exactly `size`
-/// (re-send to update). With both absent: clear the calling client's
-/// fit. Atomic size+fullscreen; per calling client.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SetTabFitPayload {

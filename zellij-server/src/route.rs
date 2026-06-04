@@ -2205,9 +2205,7 @@ pub(crate) fn route_thread_main(
                             },
                             ClientToServerMsg::TerminalResize { new_size, .. } => {
                                 // For watchers: send size to Screen for rendering adjustments, but
-                                // this does not affect the screen size.
-                                // `cause` is irrelevant for watchers because mobile-mode
-                                // routing does not apply to them.
+                                // this does not affect the screen size
                                 send_to_screen_or_retry_queue!(
                                     senders,
                                     ScreenInstruction::WatcherTerminalResize(client_id, *new_size),
@@ -2390,41 +2388,12 @@ pub(crate) fn route_thread_main(
                                 // handler is a no-op for clients without an
                                 // active tab yet (i.e. resizes arriving
                                 // before AddClient is processed), so no
-                                // session-level gating is needed. Fires
-                                // regardless of `cause` because the cell
-                                // grid genuinely changed — panes must be
-                                // re-laid for the new dimensions.
+                                // session-level gating is needed.
                                 let _ = senders.as_ref().map(|s| {
                                     s.send_to_screen(ScreenInstruction::RecomputeTabSize(
                                         client_id, new_size,
                                     ))
                                 });
-                                // Mobile-mode re-evaluation only fires for
-                                // `Viewport` resizes — a real device-side
-                                // viewport change (window resize, attach,
-                                // rotation). `RenderingPreference` resizes
-                                // (e.g. browser pinch zoom) are explicitly
-                                // skipped: the device viewport itself is
-                                // unchanged, only the local rendering
-                                // preference, so promoting or demoting the
-                                // client between mobile/desktop layouts
-                                // would be an unintended side-effect of a
-                                // cosmetic zoom.
-                                //
-                                // The initial AttachClient/FirstClientConnected
-                                // path uses whatever size was reported at the
-                                // moment of attach — which for web clients is
-                                // the *server's* tty size (or its 80x24
-                                // fallback), not the browser viewport. The
-                                // browser's true cell grid only arrives via
-                                // these later `Viewport` TerminalResize
-                                // messages, and a re-evaluation here is the
-                                // only chance to route a freshly-attached
-                                // phone into the mobile UI. Reads the
-                                // runtime config so that CLI-overridden
-                                // options (`--mobile-layout`,
-                                // `--mobile-threshold-cols`, etc.) win over
-                                // the saved KDL config.
                                 if matches!(cause, ResizeCause::Viewport) {
                                     let mobile_options = session_data
                                         .read()
@@ -2690,12 +2659,6 @@ pub(crate) fn route_thread_main(
                             );
                         },
                         ClientToServerMsg::SoftKeyboardVisibilityChanged { visible } => {
-                            // Broadcast to plugins for this client so
-                            // any plugin tracking OS-keyboard state
-                            // (e.g. the mobile UI's modifier bar) can
-                            // react. Scoped via Some(client_id) so the
-                            // event only reaches plugins owned by the
-                            // originating client.
                             if let Some(senders) = senders.as_ref() {
                                 let _ = senders.send_to_plugin(
                                     PluginInstruction::Update(vec![(

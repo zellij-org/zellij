@@ -586,9 +586,6 @@ pub struct DenyAction {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ToggleMouseModeAction {
 }
-/// Runtime toggle for mobile mode. Body intentionally empty: the action
-/// flips the calling client between its current tab and a per-client
-/// mobile tab, so no payload is required.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ToggleMobileModeAction {
@@ -3017,9 +3014,6 @@ pub struct ColorRegistersMsg {
 pub struct TerminalResizeMsg {
     #[prost(message, optional, tag="1")]
     pub new_size: ::core::option::Option<Size>,
-    /// Why the resize was emitted. Defaults to RESIZE_CAUSE_VIEWPORT
-    /// when the field is missing, matching back-compat behavior of
-    /// older clients.
     #[prost(enumeration="ResizeCause", tag="2")]
     pub cause: i32,
 }
@@ -3139,13 +3133,7 @@ pub struct SoftKeyboardVisibilityChangedMsg {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum ResizeCause {
-    /// The physical viewport changed — window resize, device
-    /// rotation, attach, or the underlying terminal's reported size.
-    /// Triggers mobile-mode re-evaluation on the server.
     Viewport = 0,
-    /// A local rendering preference changed (e.g. browser pinch
-    /// zoom). The grid is re-laid but mobile-mode is not
-    /// re-evaluated.
     RenderingPreference = 1,
 }
 impl ResizeCause {

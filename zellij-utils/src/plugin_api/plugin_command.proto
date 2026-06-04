@@ -380,19 +380,11 @@ message NewTabPayload {
   optional string cwd = 2;
 }
 
-// Payload for `NewTabUnfocused` — identical shape to `NewTabPayload` but
-// the server-side handler dispatches with `should_change_focus_to_new_tab:
-// false`, so the requesting client stays on its current tab. Used by the
-// mobile plugin's "+ New Tab" command, which must not yank the client off
-// the mobile plugin tab.
 message NewTabUnfocusedPayload {
   optional string name = 1;
   optional string cwd = 2;
 }
 
-// Payload for `NewTiledPaneInTab` — creates a new tiled terminal pane in
-// the tab at `tab_position` rather than in the requesting client's
-// focused tab. Used by the mobile plugin's "+ New Pane" command.
 message NewTiledPaneInTabPayload {
   uint32 tab_position = 1;
 }
@@ -1085,8 +1077,6 @@ message NewTabResponse {
   }
 }
 
-// Response for `NewTabUnfocused` — carries the newly created tab id,
-// or none on failure.
 message NewTabUnfocusedResponse {
   oneof result {
     uint64 tab_id = 1;
@@ -1094,8 +1084,6 @@ message NewTabUnfocusedResponse {
   }
 }
 
-// Response for `NewTiledPaneInTab` — carries the newly created pane id,
-// or none on failure.
 message NewTiledPaneInTabResponse {
   optional PaneId pane_id = 1;
 }
@@ -1381,10 +1369,6 @@ message Size {
   uint32 cols = 2;
 }
 
-// Mobile "fit". With pane_id + size present: fullscreen pane_id in
-// tab_id and size the tab so the pane's content is exactly `size`
-// (re-send to update). With both absent: clear the calling client's
-// fit. Atomic size+fullscreen; per calling client.
 message SetTabFitPayload {
   uint32 tab_id = 1;
   PaneId pane_id = 2;

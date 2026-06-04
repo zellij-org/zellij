@@ -6,8 +6,6 @@ use crate::click::{slop_key, ClickAction, ClickRegion};
 pub enum LastEmittedCursor {
     #[default]
     Unknown,
-    // The most recent `show_cursor` payload — `None` for "hidden",
-    // `Some((x, y))` for "shown at these plugin-coords".
     Sent(Option<(usize, usize)>),
 }
 
@@ -33,7 +31,6 @@ impl Frame {
     }
 
     pub fn click_to_action(&self, row: usize, col: usize) -> Option<ClickAction> {
-        // Pass 1: tight regions.
         for region in &self.click_regions {
             if region.priority == 0
                 && region.row_start <= row
@@ -44,7 +41,6 @@ impl Frame {
                 return Some(region.action.clone());
             }
         }
-        // Pass 2: slop regions, resolved by nearest-center.
         let mut best: Option<(&ClickRegion, u64)> = None;
         for region in &self.click_regions {
             if region.priority == 0 {
@@ -124,7 +120,6 @@ mod tests {
         for r in 6..=8 {
             f.click_regions.push(ClickRegion::slop(r, 9, 14, kb(2), (11, 7)));
         }
-        // Divider row: equidistant; tiebreaker prefers the upper cell.
         assert_eq!(f.click_to_action(6, 11), Some(kb(1)));
         assert_eq!(f.click_to_action(8, 11), Some(kb(2)));
     }

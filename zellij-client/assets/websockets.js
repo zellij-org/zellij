@@ -1,7 +1,3 @@
-/**
- * WebSocket management for terminal and control connections
- */
-
 import { handleReconnection, handleDisconnected, markConnectionEstablished } from "./connection.js";
 import { getBaseUrl, getWebSocketBaseUrl } from "./utils.js";
 import { setSoftKeyboard } from "./input.js";
@@ -11,13 +7,6 @@ const NATURAL_MIN_TOTAL_ROWS = 25;
 const MOBILE_LEGIBLE_FLOOR_PX = 16;
 const MOBILE_ADAPTIVE_MAX_ITERATIONS = 4;
 
-/**
- * Read cell pixel dimensions from xterm.js. Tries the internal
- * _renderService first (matches what the vendored FitAddon uses) and
- * falls back to a DOM measurement of .xterm-char-measure-element — a
- * hidden helper element xterm.js creates explicitly for character
- * measurement. Returns null if neither path yields usable numbers.
- */
 function getCellPixelDimensions(term) {
     try {
         const cell =
@@ -40,27 +29,10 @@ function getCellPixelDimensions(term) {
     return null;
 }
 
-/**
- * Send both control messages that describe the client's display state
- * to the Zellij server: TerminalResize (grid rows/cols) and
- * TerminalMetrics (pixel dimensions used to answer host-terminal
- * queries such as CSI 14t / 16t and OSC 11;?).
- *
- * Single chokepoint so the protocol contract lives in one place — any
- * site that updates terminal size or theme must call this helper, and
- * any future field added to the protocol is added here once. The
- * server's TerminalResize handler is idempotent, so calling this even
- * when the grid hasn't changed (e.g. after a theme reload that only
- * shifts font metrics) is safe.
- */
 function sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols, cause) {
     if (!wsControl || !ownWebClientId) {
         return;
     }
-    // The payload `type` discriminator is what the server bridge
-    // (web_client/websocket_handlers.rs) translates into
-    // `ResizeCause::Viewport` vs `ResizeCause::RenderingPreference`.
-    // Only the former triggers the server's mobile-mode re-evaluation.
     const resizeType =
         cause === "RenderingPreference"
             ? "TerminalResizeRendering"
@@ -93,15 +65,6 @@ function sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols, cause) {
     );
 }
 
-/**
- * Initialize both terminal and control WebSocket connections
- * @param {string} webClientId - Client ID from authentication
- * @param {string} sessionName - Session name from URL
- * @param {Terminal} term - Terminal instance
- * @param {FitAddon} fitAddon - Terminal fit addon
- * @param {function} sendAnsiKey - Function to send ANSI key sequences
- * @returns {object} Object containing WebSocket instances and cleanup function
- */
 export function initWebSockets(
     webClientId,
     sessionName,
@@ -191,7 +154,6 @@ export function initWebSockets(
         }
     };
 
-    // Update sendAnsiKey to use the actual WebSocket
     const originalSendAnsiKey = sendAnsiKey;
     sendAnsiKey = (ansiKey) => {
         if (ownWebClientId !== "") {
@@ -199,7 +161,6 @@ export function initWebSockets(
         }
     };
 
-    // Setup resize handler
     setupResizeHandler(
         term,
         fitAddon,
@@ -223,13 +184,6 @@ export function initWebSockets(
     };
 }
 
-/**
- * Start the control WebSocket and set up its handlers
- * @param {WebSocket} wsControl - Control WebSocket instance
- * @param {Terminal} term - Terminal instance
- * @param {FitAddon} fitAddon - Terminal fit addon
- * @param {string} ownWebClientId - Own web client ID
- */
 function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
     wsControl.onopen = function (event) {
         const fitDimensions = fitAddon.proposeDimensions();
@@ -265,37 +219,9 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             if (cursor_inactive_style !== "undefined") {
                 term.options.cursorInactiveStyle = cursor_inactive_style;
             }
-            // The soft-keyboard capture (installed by `input.js`) takes
-            // focus on every tap, so xterm.js renders the cursor with
-            // `cursorInactiveStyle` rather than `cursorStyle` on mobile.
-            // After a user-config update has potentially changed
-            // `cursorStyle`, re-mirror it into the inactive slot so the
-            // cursor stays visible. The sync function is installed only
-            // on coarse-pointer devices, so this is a no-op on desktop.
-            // Runs after both branches above so an explicit
-            // `cursor_inactive_style` from the SetConfig payload is
-            // overridden — the soft-keyboard's focus dance makes the
-            // "inactive" rendering unavoidable on touch, and the only
-            // way to honour the user's intent for a visible cursor is
-            // to ignore an explicit inactive-style preference here.
             if (typeof window.__zjSyncInactiveCursorStyle === "function") {
                 window.__zjSyncInactiveCursorStyle();
             }
-            // Font size: explicit config wins, otherwise pick a default
-            // suited to the device. Mobile heuristic: coarse pointer
-            // (touch) AND a narrow viewport, OR a UA string that
-            // identifies a known mobile platform.
-            //
-            // Mobile starts from 24 px and then steps down adaptively
-            // until either the resulting grid hosts the mobile-plugin
-            // keyboard's natural tier (>= NATURAL_MIN_TOTAL_ROWS) or
-            // we hit MOBILE_LEGIBLE_FLOOR_PX. The terminal element's
-            // CSS height is bound to 100dvh (style.css), so
-            // `fitAddon.proposeDimensions()` already measures against
-            // the *visible* canvas — the earlier off-screen-keyboard
-            // bug (where 18 px proposed more rows than visualViewport
-            // could host) is prevented by the dynamic viewport CSS,
-            // not by the font size floor.
             const isMobileViewport =
                 (window.matchMedia &&
                     window.matchMedia("(pointer: coarse)").matches &&
@@ -308,26 +234,9 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
                 : isMobileViewport
                 ? 24
                 : 12;
-            // Capture dims BEFORE applyFontSize so the post-fit
-            // comparison detects any change driven by the font-size
-            // swap. applyFontSize calls `fitAddon.fit()` internally,
-            // which synchronously mutates term.rows/term.cols. A
-            // previous implementation read proposeDimensions() AFTER
-            // applyFontSize and compared against the already-mutated
-            // term.rows/term.cols — the comparison short-circuited,
-            // no resize was broadcast, and the server kept rendering
-            // the plugin pane at the original (pre-font-change)
-            // dimensions. On mobile that meant the server sent a
-            // 46×38 grid to a 28×23 client and the on-screen content
-            // landed at the wrong rows. Capturing prev dims and
-            // comparing afterwards fixes that gap.
             const prevRows = term.rows;
             const prevCols = term.cols;
             applyFontSize(term, fitAddon, initialCandidate);
-            // Adaptive walk: only when no explicit font_size was
-            // configured AND the device looks mobile. If the natural
-            // tier already fits at the starting candidate, the loop
-            // exits immediately and the font stays at 24 px.
             if (!hasExplicitFontSize && isMobileViewport) {
                 let candidate = initialCandidate;
                 for (
@@ -337,20 +246,11 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
                     candidate > MOBILE_LEGIBLE_FLOOR_PX;
                     i++
                 ) {
-                    // Cell height is quasi-linear in font size, so
-                    // scaling the candidate by (current_rows /
-                    // target_rows) lands close to the desired row
-                    // count in one pass. Round down so we err on the
-                    // smaller-font / more-rows side, then clamp at
-                    // the legibility floor.
                     const scaled = Math.floor(
                         (candidate * term.rows) / NATURAL_MIN_TOTAL_ROWS
                     );
                     const next = Math.max(scaled, MOBILE_LEGIBLE_FLOOR_PX);
                     if (next >= candidate) {
-                        // No forward progress (e.g. already at the
-                        // floor, or rounding produced a no-op). Stop
-                        // to avoid an infinite-loop edge case.
                         break;
                     }
                     candidate = next;
@@ -368,16 +268,6 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             if (newRows === prevRows && newCols === prevCols) {
                 return;
             }
-            // Tag as a *rendering* resize so the server's mobile-mode
-            // re-evaluation does NOT fire. SetConfig changing the font
-            // size is a rendering preference, not a device-viewport
-            // change — the device is the same screen, just with
-            // different cell pixel dimensions. The server still needs
-            // to know about the new cell count so it lays out the
-            // panes (and therefore serialises payloads) at the
-            // client's actual grid size. The TerminalMetrics half of
-            // sendSizeUpdate also refreshes — font metrics may have
-            // shifted even when the grid count happens to match.
             sendSizeUpdate(
                 wsControl,
                 ownWebClientId,
@@ -408,11 +298,6 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             const baseUrl = getBaseUrl();
             window.location.href = `${baseUrl}/${encodeURIComponent(new_session_name)}`;
         } else if (msg.type === "SetSoftKeyboard") {
-            // The server (driven by the mobile plugin's load() call)
-            // wants the soft keyboard either shown or hidden. On
-            // desktops `setSoftKeyboard` no-ops; on touch devices it
-            // focuses or blurs the dedicated capture <textarea> so
-            // the OS keyboard surfaces or dismisses.
             const { on } = msg;
             setSoftKeyboard(term, !!on);
         }
@@ -427,13 +312,6 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
     };
 }
 
-/**
- * Set up window resize event handler
- * @param {Terminal} term - Terminal instance
- * @param {FitAddon} fitAddon - Terminal fit addon
- * @param {function} getWsControl - Function that returns control WebSocket
- * @param {function} getOwnWebClientId - Function that returns own web client ID
- */
 export function setupResizeHandler(
     term,
     fitAddon,
@@ -441,15 +319,6 @@ export function setupResizeHandler(
     getOwnWebClientId
 ) {
     let resizeScheduled = false;
-    // Tracks what caused the pending resize to be scheduled. Each
-    // tick collects 0..N signals from different sources (window
-    // resize, visualViewport resize, pinch). Viewport wins if it
-    // arrived at any point during the tick — only a tick whose
-    // *every* signal was rendering-only is reported as
-    // RenderingPreference to the server. That conservative
-    // collapse means a true device-side viewport change is never
-    // silently re-labelled as cosmetic, even if a pinch fires in
-    // the same animation frame.
     let pendingViewportSignal = false;
     let pendingRenderingSignal = false;
 
@@ -501,8 +370,6 @@ export function setupResizeHandler(
         }
         resizeScheduled = true;
         requestAnimationFrame(() => {
-            // Resolve the cause for this tick. Mixed signals fall
-            // back to Viewport (safer: a real device change wins).
             const tickCause =
                 pendingRenderingSignal && !pendingViewportSignal
                     ? "RenderingPreference"
@@ -525,46 +392,11 @@ export function setupResizeHandler(
             scheduleViewportResize
         );
     }
-    // The pinch handler in `input.js` fires this custom event
-    // instead of a plain "resize" so the server can distinguish
-    // a cosmetic font-size-driven grid change from a real
-    // device-viewport change. Without the distinction, pinching
-    // would push the mobile client past the threshold and
-    // auto-demote it out of the mobile layout.
     addEventListener("zellij:rendering-resize", scheduleRenderingResize);
 
     setupSoftKeyboardVisibilityTracker(getWsControl, getOwnWebClientId);
 }
 
-/**
- * Watch `window.visualViewport.height` for shrink/grow swings and
- * report OS soft-keyboard visibility changes to the server over the
- * control WebSocket. The server forwards each report to subscribed
- * plugins as `Event::SoftKeyboardVisibilityChanged(visible)` so the
- * mobile plugin can show/hide its modifier bar in lockstep with the
- * OS keyboard.
- *
- * Heuristic: a one-shot delta of more than 150 px between consecutive
- * resize events is treated as keyboard show (shrink) or dismiss
- * (grow). 150 px sits above typical mobile URL-bar shrink (~50–100
- * px) and well below typical soft-keyboard heights (~250–400 px), so
- * routine address-bar transitions do not false-trigger.
- *
- * Device rotation can spuriously trip the threshold once, but the
- * follow-up gesture (re-tap to summon the keyboard, or the user
- * dismissing) corrects the state. False positives are self-healing.
- *
- * Also: on dismiss-detection we blur the dedicated capture textarea
- * so the next user tap goes through a fresh focus() that re-summons
- * the OS keyboard. Without this, the textarea stays focused after an
- * external dismissal (Android back button on Firefox / Chrome), and
- * a plain focus() on an already-focused element is a no-op for OS
- * keyboard summon. `input.js` also handles this defensively inside
- * `ensureCaptureFocused` (blur+focus on each gesture), so the two
- * mechanisms reinforce each other.
- *
- * No-op on devices without `visualViewport`.
- */
 function setupSoftKeyboardVisibilityTracker(getWsControl, getOwnWebClientId) {
     if (!window.visualViewport) {
         return;
@@ -588,12 +420,6 @@ function setupSoftKeyboardVisibilityTracker(getWsControl, getOwnWebClientId) {
         }
         kbdVisible = newKbdVisible;
 
-        // Blur the capture input on external dismiss so the next
-        // user tap can re-focus it and re-summon the OS keyboard.
-        // The capture lives inside a closed shadow root, so
-        // `document.activeElement` always returns the shadow host
-        // when focus is "inside" — we rely on the mirrored
-        // `isFocused` flag installed by installSoftKeyboardCapture.
         if (!kbdVisible) {
             const capture =
                 window.__zjSoftKbdCapture &&

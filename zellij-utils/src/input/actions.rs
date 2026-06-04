@@ -412,9 +412,6 @@ pub enum Action {
         option: SearchOption,
     },
     ToggleMouseMode,
-    /// Flip the calling client in or out of mobile mode. The runtime
-    /// toggle complements the auto-routing-on-attach path used when a
-    /// small-viewport client first connects.
     ToggleMobileMode,
     PreviousSwapLayout,
     NextSwapLayout,

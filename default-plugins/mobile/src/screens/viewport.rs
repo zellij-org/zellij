@@ -7,6 +7,9 @@ use crate::keys;
 use crate::ansi::{move_to, slice_ansi_visible, visible_width, RESET};
 use crate::workspace::{pane_id_of, Workspace};
 
+const DISABLE_AUTOWRAP: &str = "\x1b[?7l";
+const ENABLE_AUTOWRAP: &str = "\x1b[?7h";
+
 #[derive(Default)]
 pub struct ViewportScreen {
     pub viewport_v_pan: usize,
@@ -73,18 +76,18 @@ impl ViewportScreen {
         let pane_id = pane_id_of(&pane);
         let (cursor_x, cursor_y) = ws.latest_pane_contents.get(&pane_id)?.cursor?;
         if cursor_y < skip {
-            return None; // above the rendered slice (user has panned up)
+            return None;
         }
         let row_in_slice = cursor_y - skip;
         if row_in_slice >= viewport_height {
-            return None; // below the rendered slice (shouldn't normally happen)
+            return None;
         }
         if cursor_x < h_offset {
-            return None; // left of the rendered slice (user has panned right)
+            return None;
         }
         let plugin_x = cursor_x - h_offset;
         if plugin_x >= cols {
-            return None; // past the right edge of the rendered slice
+            return None;
         }
         let plugin_y = viewport_top + row_in_slice;
         Some((plugin_x, plugin_y))
@@ -138,16 +141,13 @@ impl ViewportScreen {
             h_offset,
         });
 
-        // Disable autowrap (DECAWM, `\x1b[?7l`) for the duration of the
-        // viewport emit.
-        print!("\x1b[?7l");
+        print!("{}", DISABLE_AUTOWRAP);
 
         for i in 0..height {
             let row = row_start + i;
             print!("{}{}", RESET, move_to(row, 0));
             if let Some(line) = viewport_lines.get(skip + i) {
                 if h_offset == 0 {
-                    // Fast path: no horizontal pan, no slicing needed
                     print!("{}", line);
                 } else {
                     let sliced = slice_ansi_visible(line, h_offset, cols);
@@ -168,9 +168,7 @@ impl ViewportScreen {
             }
         }
 
-        // Restore autowrap before the function returns so subsequent
-        // chrome rendering on later frames is unaffected.
-        print!("\x1b[?7h");
+        print!("{}", ENABLE_AUTOWRAP);
     }
 }
 

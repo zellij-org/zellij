@@ -896,10 +896,7 @@ impl fmt::Display for ResizeStrategy {
 pub enum Mouse {
     ScrollUp(usize),          // number of lines
     ScrollDown(usize),        // number of lines
-    /// Horizontal wheel tick toward column 0 (SGR button 67). Number
-    /// of cells.
     ScrollLeft(usize),
-    /// Horizontal wheel tick away from column 0 (SGR button 66).
     ScrollRight(usize),
     LeftClick(isize, usize),  // line and column
     RightClick(isize, usize), // line and column
@@ -1033,12 +1030,6 @@ pub enum Event {
     InitialKeybinds(KeybindsVec),
     /// The host terminal indicated its color palette theme mode (CSI 2031 / DSR 997).
     HostTerminalThemeChanged(HostTerminalThemeMode),
-    /// The OS soft keyboard's actual visibility changed on a web
-    /// client. Fired by the server in response to a
-    /// `ClientToServerMsg::SoftKeyboardVisibilityChanged` dispatched
-    /// by the browser whenever `window.visualViewport.height`
-    /// crosses the keyboard-up/down threshold. Scoped to plugins
-    /// for the originating client.
     SoftKeyboardVisibilityChanged(bool),
 }
 
@@ -2444,9 +2435,7 @@ pub struct PaneContents {
     pub lines_below_viewport: Vec<String>,
     pub viewport: Vec<String>,
     pub selected_text: Option<SelectedText>,
-    /// Cursor position in pane-content coordinates: `(x, y)` where `(0, 0)` is the top-left
-    /// of `viewport[0]`. `None` when the pane has no visible cursor (cursor hidden, off-screen
-    /// in scrollback, or pane has no cursor concept like a non-terminal/static pane).
+    /// `(x, y)` where `(0, 0)` is the top-left of `viewport[0]`.
     pub cursor: Option<(usize, usize)>,
 }
 
@@ -3634,27 +3623,12 @@ pub enum PluginCommand {
     KillSessionsAndReply(Vec<String>), // one or more session names; sends a response back
     DeleteDeadSessionAndReply(String), // session name; sends a response back
     DeleteAllDeadSessionsAndReply,     // no payload; sends a response back
-    // Mobile-only: show or hide the soft keyboard on the calling
-    // client's browser. No-op on non-web clients. Fire-and-forget.
     SetSoftKeyboard(bool),
-    // Mobile "Fit" (per calling client). `Some((pane_id, size))`
-    // fullscreens `pane_id` in `tab_id` and sizes the tab so the
-    // pane's content is exactly `size`; re-send to update the size
-    // (idempotent — enters on first call, updates thereafter).
-    // `None` clears the calling client's fit and reverts any
-    // fit-induced fullscreen. Size + fullscreen apply atomically;
-    // auto-cleared on the target pane's close, tab close, or client
-    // disconnect.
     SetTabFit {
         tab_id: usize,
         fit: Option<(PaneId, Size)>,
     },
-    // Plugins that are in "mobile" mode (set upon connection according to size thresholds)
-    // can use this command to indicate in the UI which pane the user is "really" focused on
     SetShadowFocus(PaneId),
-    // Plugins that are in "mobile" mode (set upon connection according to size thresholds)
-    // can opt out with this command, this tears down their invisible tab, clears their shadow
-    // focus and places them back in a normal tab as normal
     ExitMobileMode,
 }
 

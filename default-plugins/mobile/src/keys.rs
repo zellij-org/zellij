@@ -10,8 +10,8 @@ pub fn serialize_key(key: &KeyWithModifier) -> Vec<u8> {
         BareKey::Enter => prefix_alt(alt, b"\r"),
         BareKey::Tab => {
             if shift {
-                // CSI Z is the standard back-tab.
-                prefix_alt(alt, b"\x1b[Z")
+                let back_tab = b"\x1b[Z";
+                prefix_alt(alt, back_tab)
             } else {
                 prefix_alt(alt, b"\t")
             }
@@ -49,8 +49,6 @@ fn serialize_char(c: char, ctrl: bool, alt: bool, _shift: bool) -> Vec<u8> {
         if let Some(byte) = ctrl_byte(c) {
             return prefix_alt(alt, &[byte]);
         }
-        // Fall through to plain encoding for chars that have no Ctrl
-        // mapping (e.g. punctuation outside the small Ctrl table).
     }
     let mut buf = [0u8; 4];
     let encoded = c.encode_utf8(&mut buf).as_bytes();
@@ -76,8 +74,6 @@ fn arrow_or_modified(letter: u8, ctrl: bool, alt: bool, shift: bool) -> Vec<u8> 
         let modifier = encode_modifiers(ctrl, alt, shift);
         format!("\x1b[1;{}{}", modifier, letter as char).into_bytes()
     } else {
-        // Alt as the "ESC-prefix" convention works for the bare form;
-        // for modified arrows the modifier byte already carries Alt.
         prefix_alt(alt, &[0x1b, b'[', letter])
     }
 }

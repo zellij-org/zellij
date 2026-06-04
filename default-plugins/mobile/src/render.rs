@@ -1,11 +1,9 @@
-
 use crate::ansi::{move_to, RESET};
 use crate::components::{modifier_bar, top_bar};
 use crate::frame::chrome_offsets;
 use crate::screens::ActiveScreen;
 use crate::state::State;
 
-/// Fallback for the very first frame, before any state has arrived.
 pub fn render_stub(state: &mut State, rows: usize, cols: usize) {
     state.frame.emit_cursor(None);
     print!("{}{}mobile plugin loaded \u{2014} {}x{}", RESET, move_to(0, 0), rows, cols);
@@ -103,9 +101,6 @@ fn render_menu_overlay(state: &mut State, body_top: usize, body_bottom: usize, c
 }
 
 fn render_modifier_bar(state: &mut State, body_bottom: usize, cols: usize) {
-    // Read `ctrl_held` / `alt_held` directly: `Event::Key` clears these
-    // canonical flags without touching the controller's mirror, which
-    // can be stale-armed.
     let armed = modifier_bar::KeyboardModifiers {
         ctrl_armed: state.input.ctrl_held,
         alt_armed: state.input.alt_held,
@@ -113,7 +108,6 @@ fn render_modifier_bar(state: &mut State, body_bottom: usize, cols: usize) {
     modifier_bar::render_modifier_bar(&armed, body_bottom, cols, &mut state.frame.click_regions);
 }
 
-/// DECAWM off: long rows must not wrap mid-paint.
 fn disable_autowrap() {
     print!("\x1b[?7l");
 }

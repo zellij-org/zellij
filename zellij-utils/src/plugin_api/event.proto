@@ -520,8 +520,6 @@ message PaneContents {
   optional SelectedText selected_text = 2;
   repeated string lines_above_viewport = 3;
   repeated string lines_below_viewport = 4;
-  // Cursor position in pane-content coordinates (0-based, relative to
-  // viewport[0]). Absent when the pane has no visible cursor.
   optional action.Position cursor = 5;
 }
 

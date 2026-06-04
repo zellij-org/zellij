@@ -16,18 +16,6 @@ pub enum OnForceClose {
     Detach,
 }
 
-/// Controls when a newly-attaching client lands in the mobile UI plugin.
-/// `Web` (default) — web clients land in mobile mode when their viewport
-/// hits `mobile_threshold_cols` × `mobile_threshold_rows`; terminal clients
-/// never auto-route.
-/// `Always` — any client (web or terminal) lands in mobile mode when the
-/// viewport hits the same breakpoints.
-/// `Never` — clients never auto-route to mobile mode (the
-/// `Action::ToggleMobileMode` runtime toggle still works).
-///
-/// Setting either breakpoint to `0` makes that dimension always match, so
-/// `Web` with a 0 breakpoint forces every web client into mobile, and
-/// `Always` with a 0 breakpoint forces every client into mobile.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ArgEnum)]
 pub enum MobileLayoutConfiguration {
     #[serde(alias = "web")]
@@ -57,21 +45,6 @@ impl FromStr for MobileLayoutConfiguration {
 }
 
 impl MobileLayoutConfiguration {
-    /// Decide whether an attaching/resizing client should be routed
-    /// into the mobile UI plugin.
-    ///
-    /// A threshold of `0` means "this dimension always matches", so
-    /// setting either or both to `0` turns the size gate into a
-    /// no-op (`Web` then promotes every web client unconditionally;
-    /// `Always` promotes every client unconditionally).
-    ///
-    /// A *viewport* value of `0`, however, is treated as "no info
-    /// yet" rather than as a match: web clients connect with
-    /// `Size::default()` (`rows: 0, cols: 0`) before the browser's
-    /// JS has reported real dimensions, and routing to mobile based
-    /// on that placeholder would cause a transient mobile-mode entry
-    /// that subsequent code paths (e.g. the mobile plugin closing the
-    /// welcome pane) cannot safely roll back.
     pub fn should_route_to_mobile(
         self,
         is_web_client: bool,
@@ -80,14 +53,12 @@ impl MobileLayoutConfiguration {
         threshold_cols: u16,
         threshold_rows: u16,
     ) -> bool {
-        // viewport_* == 0 means "unknown" (initial Size::default()
-        // before the real size arrives) — do not treat as a match.
-        let cols_match = viewport_cols > 0
-            && (threshold_cols == 0 || viewport_cols <= threshold_cols as usize);
-        let rows_match = viewport_rows > 0
-            && (threshold_rows == 0 || viewport_rows <= threshold_rows as usize);
-        // OR semantics: phones in portrait have narrow cols but tall
-        // rows; phones in landscape have wide cols but short rows.
+        let cols_reported = viewport_cols > 0;
+        let rows_reported = viewport_rows > 0;
+        let cols_match =
+            cols_reported && (threshold_cols == 0 || viewport_cols <= threshold_cols as usize);
+        let rows_match =
+            rows_reported && (threshold_rows == 0 || viewport_rows <= threshold_rows as usize);
         let size_match = cols_match || rows_match;
         match self {
             MobileLayoutConfiguration::Always => size_match,
@@ -360,26 +331,17 @@ pub struct Options {
     #[clap(long)]
     pub client_async_worker_tasks: Option<usize>,
 
-    /// When a newly-attaching client should land in the mobile UI plugin.
-    /// One of `web` (default), `always`, `never`. `Web` and `Always` both
-    /// consult the `mobile_threshold_cols` / `mobile_threshold_rows`
-    /// breakpoints; `Web` additionally requires a web client.
+    /// When a newly-attaching client should land in the mobile UI plugin (web, always, never)
     #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
     #[serde(default)]
     pub mobile_layout: Option<MobileLayoutConfiguration>,
 
-    /// Column breakpoint for `mobile_layout` (used in both `web` and
-    /// `always` modes). A client whose viewport has at most this many
-    /// columns matches the breakpoint. Set to `0` to make this dimension
-    /// always match. Default: 60.
+    /// Column breakpoint for mobile_layout (0 to always match)
     #[clap(long, value_parser)]
     #[serde(default)]
     pub mobile_threshold_cols: Option<u16>,
 
-    /// Row breakpoint for `mobile_layout` (used in both `web` and `always`
-    /// modes). A client whose viewport has at most this many rows matches
-    /// the breakpoint. Set to `0` to make this dimension always match.
-    /// Default: 30.
+    /// Row breakpoint for mobile_layout (0 to always match)
     #[clap(long, value_parser)]
     #[serde(default)]
     pub mobile_threshold_rows: Option<u16>,
@@ -701,10 +663,6 @@ impl Options {
 mod tests {
     use super::*;
 
-    // Reference shapes for the size gate. The default breakpoint is
-    // 60x30; "small" sits at or below it, "wide_short" hits only the
-    // rows side, "tall_narrow" only the cols side, and "large"
-    // exceeds both.
     const SMALL: (usize, usize) = (40, 20);
     const WIDE_SHORT: (usize, usize) = (200, 20);
     const TALL_NARROW: (usize, usize) = (40, 200);
@@ -741,25 +699,19 @@ mod tests {
 
     #[test]
     fn web_requires_web_client() {
-        // Same small viewport, default breakpoints: only the web
-        // client gets routed.
         assert!(route(MobileLayoutConfiguration::Web, true, SMALL, (60, 30)));
         assert!(!route(MobileLayoutConfiguration::Web, false, SMALL, (60, 30)));
     }
 
     #[test]
     fn web_respects_size_in_either_dimension() {
-        // OR semantics: matching only cols, or only rows, is enough.
         assert!(route(MobileLayoutConfiguration::Web, true, TALL_NARROW, (60, 30)));
         assert!(route(MobileLayoutConfiguration::Web, true, WIDE_SHORT, (60, 30)));
-        // Neither dimension small enough → no route.
         assert!(!route(MobileLayoutConfiguration::Web, true, LARGE, (60, 30)));
     }
 
     #[test]
     fn always_routes_any_client_on_size_match() {
-        // "Always" used to mean unconditional; now it is "Web minus
-        // the is_web_client gate" — still respects breakpoints.
         assert!(route(MobileLayoutConfiguration::Always, true, SMALL, (60, 30)));
         assert!(route(MobileLayoutConfiguration::Always, false, SMALL, (60, 30)));
         assert!(!route(MobileLayoutConfiguration::Always, true, LARGE, (60, 30)));
@@ -768,45 +720,26 @@ mod tests {
 
     #[test]
     fn zero_threshold_makes_dimension_unconditional() {
-        // With cols breakpoint = 0, the cols side of the OR is
-        // always true, so size_match is always true regardless of
-        // viewport.
         assert!(route(MobileLayoutConfiguration::Always, false, LARGE, (0, 30)));
         assert!(route(MobileLayoutConfiguration::Always, false, LARGE, (60, 0)));
         assert!(route(MobileLayoutConfiguration::Always, false, LARGE, (0, 0)));
-        // And under Web mode the gate still requires a web client.
         assert!(route(MobileLayoutConfiguration::Web, true, LARGE, (0, 0)));
         assert!(!route(MobileLayoutConfiguration::Web, false, LARGE, (0, 0)));
     }
 
     #[test]
     fn zero_viewport_is_treated_as_unknown() {
-        // Web clients connect with `Size::default()` (0, 0) before the
-        // browser reports real dimensions. That placeholder must not
-        // be treated as a size match — otherwise the client would
-        // transiently route into mobile mode and back out as soon as
-        // the real viewport arrives, with no clean way to roll back
-        // any state the mobile path created in between.
         assert!(!route(MobileLayoutConfiguration::Always, true, (0, 0), (60, 30)));
         assert!(!route(MobileLayoutConfiguration::Web, true, (0, 0), (60, 30)));
-        // Even with thresholds set to "always match" (0, 0), a (0, 0)
-        // viewport still means we have no info yet — both axes must
-        // independently confirm they have a real measurement.
         assert!(!route(MobileLayoutConfiguration::Always, true, (0, 0), (0, 0)));
-        // One real axis is enough — OR semantics still hold so a
-        // genuine narrow-cols (or narrow-rows) report routes even if
-        // the other axis hasn't reported yet.
         assert!(route(MobileLayoutConfiguration::Always, true, (40, 0), (60, 30)));
         assert!(route(MobileLayoutConfiguration::Always, true, (0, 20), (60, 30)));
     }
 
     #[test]
     fn boundary_inclusive_at_threshold() {
-        // The check is `viewport <= threshold` — exactly hitting the
-        // breakpoint counts as a match.
         assert!(route(MobileLayoutConfiguration::Always, false, (60, 200), (60, 30)));
         assert!(route(MobileLayoutConfiguration::Always, false, (200, 30), (60, 30)));
-        // One above is no match.
         assert!(!route(MobileLayoutConfiguration::Always, false, (61, 31), (60, 30)));
     }
 

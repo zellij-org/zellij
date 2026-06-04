@@ -2829,8 +2829,6 @@ impl Options {
         let mouse_click_through =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_click_through")
                 .map(|(v, _)| v);
-        // Mobile config — parsed here; consumed when a client attaches
-        // to decide whether to route it into a per-client mobile tab.
         let mobile_layout = match kdl_property_first_arg_as_string_or_error!(
             kdl_options,
             "mobile_layout"
@@ -7341,10 +7339,6 @@ fn config_options_to_string_without_options() {
 
 #[test]
 fn mobile_layout_kdl_round_trip_for_every_variant() {
-    // Drive every `mobile_layout` variant through parse → serialize
-    // → parse so a future broken FromStr arm or writer arm fails
-    // loudly. Each loop also flips the breakpoints so the 0-sentinel
-    // round-trips too.
     use crate::input::options::MobileLayoutConfiguration;
     let cases = [
         ("web", MobileLayoutConfiguration::Web, (60, 30)),

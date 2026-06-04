@@ -711,8 +711,6 @@ pub struct PaneContents {
     pub lines_above_viewport: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(string, repeated, tag="4")]
     pub lines_below_viewport: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    /// Cursor position in pane-content coordinates (0-based, relative to
-    /// viewport\[0\]). Absent when the pane has no visible cursor.
     #[prost(message, optional, tag="5")]
     pub cursor: ::core::option::Option<super::action::Position>,
 }

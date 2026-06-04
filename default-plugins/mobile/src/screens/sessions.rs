@@ -14,10 +14,7 @@ const NEW_SESSION_LABEL: &str = "+ New Session";
 #[derive(Default)]
 pub struct SessionsScreen {
     pub sessions: Vec<SessionInfo>,
-    /// Fuzzy-search buffer for the "Session:" prompt. Empty when the
-    /// prompt has no input. Cleared when the selector closes.
     pub welcome_search: String,
-    /// does this session function as the mobile version of the welcome screen
     pub is_welcome_screen: bool,
 }
 
@@ -28,7 +25,6 @@ impl SessionsScreen {
         true
     }
 
-    /// Capture keys for the "Session:" fuzzy-search prompt.
     pub fn handle_key(
         &mut self,
         active: &mut ActiveScreen,
@@ -113,8 +109,6 @@ impl SessionsScreen {
             draw_back_button(frame, row_start);
         }
 
-        // Reserve a row for the back button (top) and the new-session
-        // button (bottom); the picker block is centred in what remains.
         let body_start = if show_back_button {
             row_start.saturating_add(1)
         } else {
@@ -221,10 +215,9 @@ impl Card {
             "{} tabs, {} panes, {} {}",
             tab_str, pane_str, conn_str, client_word
         );
-        // Byte-offset color ranges mirror the session-manager welcome
-        // screen (`UnifiedResultsRenderCache::rebuild`): tab count in
-        // color 1; pane and client counts in color 2. Digits are ASCII
-        // so byte offsets equal column offsets.
+        // Color ranges mirror the session-manager welcome screen
+        // (UnifiedResultsRenderCache::rebuild): tab count color 1, pane and
+        // client counts color 2.
         let tab_end = tab_str.len();
         let pane_offset = tab_str.len() + " tabs, ".len();
         let pane_end = pane_offset + pane_str.len();
@@ -306,9 +299,10 @@ impl PickerLayout {
         cols: usize,
     ) -> Self {
         let total_cards = cards.len();
-        // Each card is two rows; the block also spends six rows on title,
-        // prompt, indicators, and the new-session button.
-        let max_visible_cards = (body_height.saturating_sub(6) / 2).min(total_cards);
+        const CHROME_ROWS: usize = 6;
+        const ROWS_PER_CARD: usize = 2;
+        let max_visible_cards =
+            (body_height.saturating_sub(CHROME_ROWS) / ROWS_PER_CARD).min(total_cards);
         let max_offset = total_cards.saturating_sub(max_visible_cards);
         let offset = nav.selector_scroll_offset.min(max_offset);
         nav.selector_scroll_offset = offset;

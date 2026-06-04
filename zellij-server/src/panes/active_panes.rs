@@ -1,21 +1,12 @@
 use crate::tab::Pane;
 
 use crate::{os_input_output::ServerOsApi, panes::PaneId, ClientId};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Clone)]
 pub struct ActivePanes {
     active_panes: HashMap<ClientId, PaneId>,
-    // Set of client ids whose `active_panes` entry was inserted via
-    // the silent ("shadow focus") path — i.e. the mobile plugin asked
-    // the server to show this client's focus marker on a pane in this
-    // tab even though the client is not a member of this tab's
-    // `connected_clients`. Rendering filters out active_panes entries
-    // for clients that are neither in `connected_clients` nor in this
-    // set, so transient/spurious entries (e.g. fake CLI client ids
-    // that briefly land in `active_panes` during action dispatch) do
-    // not leak into the UI.
-    shadow_clients: std::collections::HashSet<ClientId>,
+    shadow_clients: HashSet<ClientId>,
     os_api: Box<dyn ServerOsApi>,
 }
 
@@ -30,7 +21,7 @@ impl ActivePanes {
         let os_api = os_api.clone();
         ActivePanes {
             active_panes: HashMap::new(),
-            shadow_clients: std::collections::HashSet::new(),
+            shadow_clients: HashSet::new(),
             os_api,
         }
     }
@@ -40,8 +31,6 @@ impl ActivePanes {
     pub fn iter_shadow_clients(&self) -> impl Iterator<Item = &ClientId> {
         self.shadow_clients.iter()
     }
-    /// True iff `client_id` has the shadow-focus marker AND points at
-    /// `pane_id`. Used for idempotence in the shadow-focus handler.
     pub fn has_shadow_focus_on(&self, client_id: ClientId, pane_id: PaneId) -> bool {
         self.shadow_clients.contains(&client_id)
             && self.active_panes.get(&client_id) == Some(&pane_id)
@@ -55,22 +44,11 @@ impl ActivePanes {
         pane_id: PaneId,
         panes: &mut BTreeMap<PaneId, Box<dyn Pane>>,
     ) {
-        // A real (non-silent) focus assignment supersedes any prior
-        // shadow marker for this client — if the client now genuinely
-        // owns this pane, treat them as a regular focused client.
         self.shadow_clients.remove(&client_id);
         self.unfocus_pane_for_client(client_id, panes);
         self.active_panes.insert(client_id, pane_id);
         self.focus_pane(pane_id, panes);
     }
-    // Used by the mobile "shadow focus" path: record that a client is
-    // visually focused on a pane without writing CSI focus-tracking
-    // sequences to the affected terminals. The mobile plugin still
-    // owns real input via `write_to_pane_id`, so the shadow-focused
-    // terminal must not believe it has gained foreground. The client
-    // is tagged in `shadow_clients` so rendering knows to keep its
-    // focus marker even though the client is not in this tab's
-    // `connected_clients`.
     pub fn insert_silent(&mut self, client_id: ClientId, pane_id: PaneId) {
         self.active_panes.insert(client_id, pane_id);
         self.shadow_clients.insert(client_id);

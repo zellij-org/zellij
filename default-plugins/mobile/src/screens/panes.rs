@@ -1,6 +1,3 @@
-//! Switch Pane navigator: a centered, fuzzy-searchable list of every
-//! pane, with "+ New Tab" / "+ New Pane" in the footer.
-
 use fuzzy_matcher::FuzzyMatcher;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
@@ -27,8 +24,6 @@ pub struct PanesScreen {
 }
 
 impl PanesScreen {
-    /// `Enter` returns the resolved pane so the caller can apply the
-    /// selection side effects (workspace, fit, viewport panning).
     pub fn handle_key(
         &mut self,
         active: &mut ActiveScreen,
@@ -69,8 +64,6 @@ impl PanesScreen {
         }
     }
 
-    /// Empty search returns the first pane in tab/display order; `None`
-    /// when no panes exist.
     pub fn panes_top_match(
         &mut self,
         ws: &Workspace,
@@ -221,7 +214,6 @@ fn pane_activity_label(ws: &Workspace, id: PaneId, is_current: bool, now: u64) -
     }
 }
 
-/// A title row above a `"<tab>, <activity>"` meta row.
 struct PaneCard {
     title_label: String,
     tab_label: String,
@@ -273,9 +265,9 @@ impl PaneCard {
     }
 
     fn draw_meta_row(&self, content_x: usize, row: usize) {
-        // Painted as three texts: the host reapplies styling per
-        // color-range without composing bold state, so a single Text
-        // would bleed the tab segment's bold onto the activity segment.
+        // The host reapplies bold per color-range without composing state, so a
+        // single Text would bleed the tab segment's bold onto the activity
+        // segment; emit each segment as its own Text.
         let tab_w = UnicodeWidthStr::width(self.tab_label.as_str());
         print_text_with_coordinates(
             Text::new(&self.tab_label).color_range(1, ..),
@@ -326,9 +318,10 @@ impl PickerLayout {
         show_new_pane: bool,
     ) -> Self {
         let total_cards = cards.len();
-        // Each card is two rows; six rows go to title, prompt,
-        // indicators, and footer.
-        let max_visible_cards = (body_height.saturating_sub(6) / 2).min(total_cards);
+        const CHROME_ROWS: usize = 6;
+        const ROWS_PER_CARD: usize = 2;
+        let max_visible_cards =
+            (body_height.saturating_sub(CHROME_ROWS) / ROWS_PER_CARD).min(total_cards);
         let max_offset = total_cards.saturating_sub(max_visible_cards);
         let offset = nav.selector_scroll_offset.min(max_offset);
         nav.selector_scroll_offset = offset;
@@ -516,8 +509,6 @@ fn draw_footer(frame: &mut Frame, new_pane_target_tab: Option<usize>, layout: &P
 mod tests {
     use super::*;
     use crate::state::State;
-    /// Tabs at positions `0..tab_count`, one pane each with ids
-    /// `100..100+tab_count`. Tab 0 / pane 100 are selected.
     fn state_with_tabs_and_panes(tab_count: usize) -> State {
         use zellij_tile::prelude::TabInfo;
         let mut state = State::default();
@@ -542,7 +533,6 @@ mod tests {
         let mut state = state_with_tabs_and_panes(1);
         let cols = 40;
         state.panes.render(&state.workspace, &mut state.navigation, &mut state.frame, 0, 20, cols);
-        // [← BACK] + 1 PaneCard + footer (NewTab + NewPane).
         assert_eq!(state.frame.click_regions.len(), 4);
         let actions: Vec<ClickAction> = state
             .frame
@@ -565,14 +555,11 @@ mod tests {
         ));
     }
 
-    /// "+ New Tab" / "+ New Pane" are global, not per-tab: two tabs
-    /// still emit a single footer "+ New Pane" targeting the current tab.
     #[test]
     fn panes_menu_two_tabs_emits_single_footer_new_pane() {
         let mut state = state_with_tabs_and_panes(2);
         let cols = 40;
         state.panes.render(&state.workspace, &mut state.navigation, &mut state.frame, 0, 20, cols);
-        // [← BACK] + 2 PaneCards + footer (NewTab + NewPane).
         assert_eq!(state.frame.click_regions.len(), 5);
 
         let new_panes: Vec<usize> = state
@@ -626,9 +613,6 @@ mod tests {
         );
     }
 
-    /// Tapping "+ New Pane" resolves to `NewPaneInTab` targeting the
-    /// current tab; selection is moved to tab 1 to prove the footer
-    /// follows it.
     #[test]
     fn click_on_new_pane_row_resolves_to_action() {
         let mut state = state_with_tabs_and_panes(2);
@@ -717,7 +701,6 @@ mod tests {
         );
     }
 
-    /// The footer affordances stay visible under an active search.
     #[test]
     fn panes_menu_fuzzy_filter_keeps_footer_visible() {
         let mut state = state_with_tabs_and_panes(2);
@@ -746,14 +729,9 @@ mod tests {
             new_pane_count, 1,
             "+ New Pane must stay visible during search",
         );
-        // [← BACK] + 2 matching pane cards + footer (2) = 5.
         assert_eq!(state.frame.click_regions.len(), 5);
     }
 
-    /// The current pane swaps its activity timestamp for the wider
-    /// `[CURRENT PANE]` label, so its click region is wider than a
-    /// non-current card's. Geometry is asserted rather than painted
-    /// content, which libtest swallows.
     #[test]
     fn current_pane_card_span_includes_current_pane_label() {
         let mut state = state_with_tabs_and_panes(2);
@@ -797,12 +775,10 @@ mod tests {
             (current, other)
         };
 
-        // bullet (2) + max(title `#100` = 4, meta `Tab 0, [CURRENT PANE]` = 21).
         let current_span =
             current.col_end.saturating_sub(current.col_start);
         assert_eq!(current_span, 23);
 
-        // bullet (2) + max(title `#101` = 4, meta `Tab 1, —` = 8).
         let other_span = other.col_end.saturating_sub(other.col_start);
         assert_eq!(other_span, 10);
 

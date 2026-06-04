@@ -333,9 +333,6 @@ message CopyAction {}
 message ConfirmAction {}
 message DenyAction {}
 message ToggleMouseModeAction {}
-// Runtime toggle for mobile mode. Body intentionally empty: the action
-// flips the calling client between its current tab and a per-client
-// mobile tab, so no payload is required.
 message ToggleMobileModeAction {}
 message PreviousSwapLayoutAction {}
 message NextSwapLayoutAction {}

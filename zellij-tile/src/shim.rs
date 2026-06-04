@@ -963,15 +963,8 @@ where
     NewTabResponse::try_from(response).unwrap()
 }
 
-/// Open a new tab with the default layout, but **without** moving the
-/// requesting client's focus onto it (server-side
-/// `should_change_focus_to_new_tab` is forced to false). Returns the new
-/// tab's position id synchronously, or `None` on failure.
-///
-/// Used by plugins that must stay mounted in their own (per-client) tab
-/// — for example the mobile UI plugin, where a focus change would
-/// dismount the entire mobile UI by switching the client off the plugin
-/// tab.
+/// Open a new tab with the default layout without moving the requesting client's focus onto it.
+/// Returns the new tab's position id, or `None` on failure.
 pub fn new_tab_unfocused<S: AsRef<str>>(name: Option<S>, cwd: Option<S>) -> Option<usize>
 where
     S: ToString,
@@ -988,14 +981,8 @@ where
     NewTabUnfocusedResponse::try_from(response).unwrap()
 }
 
-/// Open a new tiled terminal pane in the tab at `tab_position` (i.e. the
-/// tab's display index, matching `TabInfo::position`). Unlike
-/// `open_terminal`, which always lands the pane in the client's focused
-/// tab, this targets the tab explicitly.
-///
-/// Returns the new pane's id synchronously, or `None` on failure. Used
-/// by the mobile UI plugin so "+ New Pane" lands in the user-selected
-/// mobile tab rather than in the plugin's own per-client tab.
+/// Open a new tiled terminal pane in the tab at `tab_position` (the tab's display index, matching
+/// `TabInfo::position`). Returns the new pane's id, or `None` on failure.
 pub fn new_tiled_pane_in_tab(tab_position: usize) -> Option<PaneId> {
     let plugin_command = PluginCommand::NewTiledPaneInTab { tab_position };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1695,15 +1682,8 @@ pub fn scan_host_folder<S: AsRef<Path>>(folder_to_scan: &S) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Show (`on = true`) or hide (`on = false`) the soft keyboard on the
-/// calling client's browser. Intended for the mobile UI: when the user
-/// taps the ⌨ button the plugin calls this so the on-screen keyboard
-/// slides in or out without the user having to do the 2-finger gesture
-/// manually.
-///
-/// On non-web clients (regular terminal attaches) this is a harmless
-/// no-op — the server-side message is swallowed before it can do any
-/// damage. Fire-and-forget; no return value, no error.
+/// Show (`on = true`) or hide (`on = false`) the soft keyboard on the calling client's browser.
+/// No-op on non-web clients.
 pub fn set_soft_keyboard(on: bool) {
     let plugin_command = PluginCommand::SetSoftKeyboard(on);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1711,15 +1691,6 @@ pub fn set_soft_keyboard(on: bool) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Mobile "Fit" (per calling client). `Some((pane_id, size))`
-/// fullscreens `pane_id` in tab `tab_id` (capturing whether fullscreen
-/// was already on so it can be reverted) and sizes the tab so the
-/// pane's content is exactly `size` — the embedded content area the
-/// caller draws into. Re-send to update the size (idempotent: enters
-/// on the first call, updates thereafter). `None` clears the caller's
-/// fit and reverts any fit-induced fullscreen. The override otherwise
-/// persists until the target pane closes or the client disconnects.
-/// No-op server-side for a clear with no active fit.
 pub fn set_tab_fit(tab_id: usize, fit: Option<(PaneId, Size)>) {
     let plugin_command = PluginCommand::SetTabFit { tab_id, fit };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1727,11 +1698,6 @@ pub fn set_tab_fit(tab_id: usize, fit: Option<(PaneId, Size)>) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Mobile mode — exit (one-way). Tears down this client's mobile
-/// tab and switches it back to a normal session tab. The mobile
-/// plugin invokes this from the "Switch to Desktop" menu item;
-/// re-entry is via reconnect / refresh, which re-triggers the
-/// server's auto-mobile-mode detection.
 pub fn exit_mobile_mode() {
     let plugin_command = PluginCommand::ExitMobileMode;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1739,13 +1705,6 @@ pub fn exit_mobile_mode() {
     unsafe { host_run_plugin_command() };
 }
 
-/// Mobile "shadow focus": record the calling client as visually
-/// focused on `pane_id` for the benefit of other connected clients'
-/// focus indicators. The calling client stays in its current tab
-/// (the mobile plugin UI stays mounted); real keystroke routing is
-/// not affected (the mobile plugin uses `write_to_pane_id`). Used by
-/// the mobile plugin to keep server-side focus aligned with whichever
-/// pane the plugin viewport is currently rendering.
 pub fn set_shadow_focus(pane_id: PaneId) {
     let plugin_command = PluginCommand::SetShadowFocus(pane_id);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -3010,16 +2969,6 @@ extern "C" {
     fn host_run_plugin_command();
 }
 
-/// Native-build stub for `host_run_plugin_command`. The real symbol is
-/// a wasm import resolved by Zellij's plugin host at runtime; on
-/// native targets (i.e. `cargo test` against any plugin crate) the
-/// linker has no definition for it, which would prevent test binaries
-/// from being built. The stub is a no-op — the protobuf payload that
-/// callers wrote to stdout via `object_to_stdout` just before this is
-/// captured by the test runner along with any other plugin output.
-///
-/// Keeping this here (rather than gating every call site with
-/// `#[cfg(not(test))]`) means production code is shim-call-agnostic:
-/// the same function bodies compile and link under both targets.
+// Native-build no-op stub; the real symbol is a wasm import resolved by the plugin host at runtime.
 #[cfg(not(target_arch = "wasm32"))]
 unsafe fn host_run_plugin_command() {}

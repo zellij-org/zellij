@@ -202,9 +202,6 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 })
             },
             Some(client_to_server_msg::Message::TerminalResize(resize)) => {
-                // `from_i32` returns `None` for unknown variants;
-                // map that (and the default 0) to `Viewport` so
-                // older clients keep working.
                 let cause = ProtoResizeCause::from_i32(resize.cause)
                     .unwrap_or(ProtoResizeCause::Viewport)
                     .into();
@@ -1474,9 +1471,6 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ToggleMouseMode => {
                 ActionType::ToggleMouseMode(ToggleMouseModeAction {})
             },
-            // ToggleMobileMode is dispatched server-side; the payload is
-            // empty (mode is derived from the client's current tab
-            // membership).
             crate::input::actions::Action::ToggleMobileMode => ActionType::ToggleMobileMode(
                 crate::client_server_contract::client_server_contract::ToggleMobileModeAction {},
             ),
