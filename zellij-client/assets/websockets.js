@@ -7,21 +7,8 @@ import { getBaseUrl, getWebSocketBaseUrl } from "./utils.js";
 import { setSoftKeyboard } from "./input.js";
 import { applyFontSize } from "./terminal.js";
 
-// Minimum total terminal rows required for the mobile-plugin keyboard's
-// "natural" tier to engage. Mirrors the threshold derived from the
-// keyboard constants in
-// default-plugins/mobile/src/keyboard/render.rs:43-59
-// (NATURAL_MAX_ROWS * MIN_ROW_HEIGHT / (KEYBOARD_PCT_NUM/KEYBOARD_PCT_DEN)
-//  = 5 * 2 / (2/5) = 25). If those constants change in the Rust plugin,
-// update this value too.
 const NATURAL_MIN_TOTAL_ROWS = 25;
-// Lowest font size the adaptive mobile-default walk is allowed to pick.
-// Sits above the global MIN_FONT_SIZE_PX (terminal.js:50) so glyphs stay
-// readable on a phone and xterm.js's WebGL renderer stays comfortable.
 const MOBILE_LEGIBLE_FLOOR_PX = 16;
-// Hard cap on the adaptive walk's iteration count. Cell metrics are
-// quasi-linear in font size so 1-2 passes usually converge; the extra
-// iterations absorb rounding-down overshoots.
 const MOBILE_ADAPTIVE_MAX_ITERATIONS = 4;
 
 /**

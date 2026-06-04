@@ -65,9 +65,6 @@ pub struct SetConfigPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor_style: Option<String>,
     pub mac_option_is_meta: bool,
-    /// Forced terminal font size in CSS pixels. `None` lets the browser
-    /// pick: 18px on coarse-pointer narrow viewports (phones), 12px
-    /// otherwise. Mirrors `WebClientConfig::font_size`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub font_size: Option<u16>,
 }

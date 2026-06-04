@@ -239,12 +239,6 @@ pub struct WebClientConfig {
     pub cursor_style: Option<CursorStyle>,
     pub mac_option_is_meta: bool,
     pub base_url: Option<String>,
-    /// Forced terminal font size (in CSS pixels). When `None`, the
-    /// browser side picks a default at runtime — 18px on coarse-pointer
-    /// devices with narrow viewports (phones), 12px otherwise. The
-    /// override exists primarily for users who want a specific size
-    /// regardless of viewport, but it is also the knob the mobile-mode
-    /// stack will eventually drive at attach time.
     pub font_size: Option<u16>,
 }
 
