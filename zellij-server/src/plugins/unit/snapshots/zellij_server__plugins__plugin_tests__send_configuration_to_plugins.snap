@@ -5,10 +5,6 @@ expression: "format!(\"{:#?}\", go_to_tab_event)"
 Some(
     GoToTabName(
         "{\"fake_config_key_1\": \"fake_config_value_1\", \"fake_config_key_2\": \"fake_config_value_2\"}",
-        (
-            [],
-            [],
-        ),
         None,
         false,
         Some(
@@ -22,6 +18,7 @@ Some(
                 affected_pane_id: None,
                 affected_tab_id: None,
                 error_message: None,
+                stdout_message: None,
             },
         ),
     ),

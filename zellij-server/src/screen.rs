@@ -29,7 +29,7 @@
 //! - `tab_history: BTreeMap<ClientId, Vec<usize>>`: History of tab IDs per client
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -40,17 +40,17 @@ use crate::route::NotificationEnd;
 
 use log::{debug, warn};
 use zellij_utils::data::{
-    CommandOrPlugin, Direction, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
-    KeyWithModifier, LayoutInfo, LayoutWithError, ListPanesResponse, ListTabsResponse,
-    NewPanePlacement, PaneContents, PaneInfo, PaneListEntry, PaneManifest, PaneRenderReport,
-    PaneScrollbackResponse, PluginPermission, RegexHighlight, Resize, ResizeStrategy, SessionInfo,
-    Styling, TabInfo, WebSharing,
+    CommandOrPlugin, Direction, EventType, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
+    HostTerminalThemeMode, KeyWithModifier, LayoutInfo, LayoutWithError, ListPanesResponse,
+    ListTabsResponse, NewPanePlacement, PaneContents, PaneInfo, PaneListEntry, PaneManifest,
+    PaneRenderReport, PaneScrollbackResponse, PluginPermission, RegexHighlight, Resize,
+    ResizeStrategy, SessionInfo, Styling, TabInfo, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
-use zellij_utils::input::mouse::MouseEvent;
+use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
@@ -80,6 +80,7 @@ use crate::{
     panes::PaneId,
     plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction, PluginRenderAsset},
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
+    pty_writer::PtyWriteInstruction,
     tab::{SuppressedPanes, Tab},
     thread_bus::Bus,
     ui::loading_indication::LoadingIndication,
@@ -91,6 +92,77 @@ use zellij_utils::{
     input::get_mode_info,
     ipc::{ClientAttributes, PixelDimensions},
 };
+
+/// Parses a namespaced OSC 99 response and extracts the original pane ID
+/// and un-namespaced response bytes.
+///
+/// Input bytes (the termwiz OperatingSystemCommand payload after stripping "99;"):
+/// e.g. b"i=p42.mynotif" or b"i=p42.mynotif:p=close;some_data"
+///
+/// Returns Some((terminal_id, full_osc_bytes)) where full_osc_bytes is
+/// the complete reconstructed OSC 99 sequence with original identifier,
+/// ready to write to the pane's PTY.
+/// Denormalizes a namespaced OSC 99 response.
+///
+/// Parses the namespaced `i=p<N>[r][q].<original_id>` format and returns:
+/// - `pane_id`: the terminal pane that originated the notification
+/// - `app_wants_report`: `r` flag — app originally requested `a=report`
+/// - `is_query`: `q` flag — this was a capability query (`p=?`)
+/// - `restored_response_bytes`: the response with the original `i=` value restored
+pub(crate) fn denormalize_notification_response(
+    payload: &[u8],
+) -> Option<(u32, bool, bool, Vec<u8>)> {
+    let payload_str = str::from_utf8(payload).ok()?;
+
+    // Split into metadata and response payload on first ';'
+    let (metadata, response_payload) = match payload_str.find(';') {
+        Some(idx) => (
+            payload_str.get(..idx).unwrap_or_default(),
+            payload_str.get(idx..).unwrap_or_default(),
+        ),
+        None => (payload_str, ""),
+    };
+
+    // Find the i= key in colon-separated metadata
+    let mut terminal_id = None;
+    let mut app_wants_report = false;
+    let mut is_query = false;
+    let mut restored_parts = Vec::new();
+
+    for kv in metadata.split(':') {
+        if let Some(namespaced_value) = kv.strip_prefix("i=p") {
+            // Parse "p<N>[r][q].<original_id>"
+            if let Some(dot_pos) = namespaced_value.find('.') {
+                let flags_part = namespaced_value.get(..dot_pos).unwrap_or_default();
+                let original_id = namespaced_value.get(dot_pos + 1..).unwrap_or_default();
+                let pane_id_str = flags_part.trim_end_matches(|c| c == 'r' || c == 'q');
+                let flag_chars = flags_part.get(pane_id_str.len()..).unwrap_or_default();
+                if let Ok(pid) = pane_id_str.parse::<u32>() {
+                    terminal_id = Some(pid);
+                    app_wants_report = flag_chars.contains('r');
+                    is_query = flag_chars.contains('q');
+                    // Empty original_id means the app never sent an i= key;
+                    // don't inject one into the response
+                    if !original_id.is_empty() {
+                        restored_parts.push(format!("i={}", original_id));
+                    }
+                    continue;
+                }
+            }
+        }
+        restored_parts.push(kv.to_string());
+    }
+
+    let terminal_id = terminal_id?;
+    let restored_metadata = restored_parts.join(":");
+    let full_response = format!("\x1b]99;{}{}\x1b\\", restored_metadata, response_payload);
+    Some((
+        terminal_id,
+        app_wants_report,
+        is_query,
+        full_response.into_bytes(),
+    ))
+}
 
 /// Get the active tab and call a closure on it
 ///
@@ -274,6 +346,11 @@ pub enum ScreenInstruction {
         tab_id: Option<usize>,
         completion: Option<NotificationEnd>,
     },
+    AreFloatingPanesVisible {
+        client_id: ClientId,
+        tab_id: Option<usize>,
+        completion: Option<NotificationEnd>,
+    },
     WriteCharacter(
         Option<KeyWithModifier>,
         Vec<u8>,
@@ -368,12 +445,16 @@ pub enum ScreenInstruction {
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
         Option<String>,
-        (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
-        Option<Vec<CommandOrPlugin>>,                    // initial_panes
-        bool,                                            // block_on_first_terminal
-        bool,                                            // should_change_focus_to_new_tab
-        (ClientId, bool),                                // bool -> is_web_client
-        Option<NotificationEnd>,                         // completion signal
+        // `None` falls back to `Screen::default_layout`'s swap layouts.
+        (
+            Option<Vec<SwapTiledLayout>>,
+            Option<Vec<SwapFloatingLayout>>,
+        ),
+        Option<Vec<CommandOrPlugin>>, // initial_panes
+        bool,                         // block_on_first_terminal
+        bool,                         // should_change_focus_to_new_tab
+        (ClientId, bool),             // bool -> is_web_client
+        Option<NotificationEnd>,      // completion signal
     ),
     /// Apply layout to tab with given stable ID.
     ///
@@ -398,8 +479,7 @@ pub enum ScreenInstruction {
     GoToTab(u32, Option<ClientId>, Option<NotificationEnd>), // this Option is a hacky workaround, please do not copy this behaviour
     GoToTabName(
         String,
-        (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
-        Option<TerminalAction>,                          // default_shell
+        Option<TerminalAction>, // default_shell
         bool,
         Option<ClientId>,
         Option<NotificationEnd>,
@@ -420,17 +500,69 @@ pub enum ScreenInstruction {
         completion_tx: Option<NotificationEnd>,
     },
     TerminalResize(Size),
+    /// Update a regular client's known viewport size and recompute the size of
+    /// that client's active tab. `(client_id, new_size)`.
+    RecomputeTabSize(ClientId, Size),
     TerminalPixelDimensions(PixelDimensions),
     TerminalBackgroundColor(String),
     TerminalForegroundColor(String),
     TerminalColorRegisters(Vec<(usize, String)>),
-    ChangeMode(ModeInfo, ClientId, Option<NotificationEnd>),
-    ChangeModeForAllClients(ModeInfo, Option<NotificationEnd>),
+    /// A pane's Grid intercepted an app-in-pane whitelisted query; Screen
+    /// assigns a token, queues the forward, and dispatches to the client.
+    /// `query` carries the classified form so Screen can match on it
+    /// directly (for cache-fallback synthesis) without re-parsing bytes.
+    ForwardHostQuery {
+        pane_id: PaneId,
+        query: crate::host_query::HostQuery,
+    },
+    /// The client observed the host's reply to a previously forwarded
+    /// query (closed by the Primary-DA barrier or the 500 ms timeout).
+    /// The reply bytes are written verbatim to the originating pane.
+    ForwardedReplyFromHost {
+        token: u32,
+        reply_bytes: Vec<u8>,
+    },
+    /// Internal: a forwarded reply (or its cache-fallback synthesis,
+    /// or a locally-answered query like `ColorPaletteMode`) is ready
+    /// to be delivered to the originating pane. Routed through the
+    /// owning Tab so that the bytes are written to PTY *and* any
+    /// PTY input that arrived while the pane was forward-paused is
+    /// drained and re-fed through vte in stream order. This preserves
+    /// query/reply ordering even when sync replies (DA1, DSR, DECQRM)
+    /// would otherwise race ahead of an async host round-trip.
+    ResumePaneAfterForward {
+        pane_id: PaneId,
+        reply_bytes: Vec<u8>,
+    },
+    /// The host terminal reported a color-palette theme mode (DSR 997 reply
+    /// to `CSI ? 996 n`, or unsolicited notification while `CSI ? 2031 h`
+    /// is enabled). Triggers auto-theme switch (when configured), the
+    /// `HostTerminalThemeChanged` plugin event, and per-pane DSR forwarding
+    /// for panes that opted in via `CSI ? 2031 h`.
+    HostTerminalThemeChanged(HostTerminalThemeMode),
+    /// Manual theme actions issued via the CLI (e.g. `zellij action set-dark-theme`)
+    /// or a keybinding. They share the same convergence point as
+    /// `HostTerminalThemeChanged`, but additionally surface a CLI-friendly error
+    /// via `NotificationEnd` if `theme_dark` and `theme_light` are not both set
+    /// (the auto-switch gate). "Last one wins": these compete naively with
+    /// terminal-driven notifications via the dedupe in
+    /// `update_host_terminal_theme_mode`.
+    SetDarkTheme(Option<NotificationEnd>),
+    SetLightTheme(Option<NotificationEnd>),
+    ToggleTheme(Option<NotificationEnd>),
+    ChangeMode(
+        InputMode,
+        Option<InputMode>,
+        ClientId,
+        Option<NotificationEnd>,
+    ),
+    ChangeModeForAllClients(InputMode, Option<InputMode>, Option<NotificationEnd>),
     MouseEvent(MouseEvent, ClientId, Option<NotificationEnd>),
     Copy(ClientId, Option<NotificationEnd>),
     AddClient(
         ClientId,
         bool,                // is_web_client
+        Size,                // client viewport size — used for per-tab sizing
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
     ),
@@ -471,6 +603,7 @@ pub enum ScreenInstruction {
         Option<PathBuf>,
         ClientId,
         Option<NotificationEnd>,
+        Option<usize>, // tab_id
     ), // Option<String> is
     // optional pane title, bool is skip cache, Option<PathBuf> is an optional cwd
     NewFloatingPluginPane(
@@ -481,6 +614,7 @@ pub enum ScreenInstruction {
         Option<FloatingPaneCoordinates>,
         ClientId,
         Option<NotificationEnd>,
+        Option<usize>, // tab_id
     ), // Option<String> is an
     // optional pane title, bool
     // is skip cache, Option<PathBuf> is an optional cwd
@@ -492,6 +626,7 @@ pub enum ScreenInstruction {
         bool,
         ClientId,
         Option<NotificationEnd>,
+        Option<usize>, // tab_id
     ), // Option<String> is an
     // optional pane title, first bool is skip cache, second bool is close_replaced_pane
     StartOrReloadPluginPane(RunPluginOrAlias, Option<String>, Option<NotificationEnd>),
@@ -525,6 +660,7 @@ pub enum ScreenInstruction {
         bool,
         ClientId,
         Option<NotificationEnd>,
+        Option<usize>, // tab_id
     ), // bools are: should_float, move_to_focused_tab, should_open_in_place, close_replaced_pane, Option<PaneId> is the pane id to replace, bool following it is skip_cache
     LaunchPlugin(
         RunPluginOrAlias,
@@ -536,6 +672,7 @@ pub enum ScreenInstruction {
         Option<PathBuf>,
         ClientId,
         Option<NotificationEnd>,
+        Option<usize>, // tab_id
     ), // bools are: should_float, should_open_in_place, close_replaced_pane, Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
     SuppressPane(PaneId, ClientId),
     UnsuppressPane(PaneId, bool), // bool -> should float if hidden
@@ -544,17 +681,13 @@ pub enum ScreenInstruction {
     // should_float_if_hidden,
     // should_be_in_place_if_hidden
     RenamePane(PaneId, Vec<u8>, Option<NotificationEnd>),
+    RenameActivePane(Vec<u8>, ClientId, Option<NotificationEnd>),
     RenameTab(usize, Vec<u8>, Option<NotificationEnd>),
     RequestPluginPermissions(
         u32, // u32 - plugin_id
         PluginPermission,
     ),
-    BreakPane(
-        Box<Layout>,
-        Option<TerminalAction>,
-        ClientId,
-        Option<NotificationEnd>,
-    ),
+    BreakPane(Option<TerminalAction>, ClientId, Option<NotificationEnd>),
     BreakPaneRight(ClientId, Option<NotificationEnd>),
     BreakPaneLeft(ClientId, Option<NotificationEnd>),
     UpdateSessionInfos(
@@ -590,6 +723,12 @@ pub enum ScreenInstruction {
         keybinds: Keybinds,
         default_mode: InputMode,
         theme: Styling,
+        /// Resolved styling for `theme_dark`. When both this and
+        /// `host_theme_light` are `Some`, Screen auto-switches the active
+        /// palette in response to host CSI 2031 / DSR 997 notifications.
+        host_theme_dark: Option<Styling>,
+        /// Resolved styling for `theme_light`. See `host_theme_dark`.
+        host_theme_light: Option<Styling>,
         simplified_ui: bool,
         default_shell: Option<PathBuf>,
         pane_frames: bool,
@@ -701,7 +840,10 @@ pub enum ScreenInstruction {
     NotifyPaneClosedToSubscribers {
         pane_id: zellij_utils::data::PaneId,
     },
+    DesktopNotificationResponse(Vec<u8>, ClientId),
     PluginSubscribedToAnsiPaneContents(bool), // true = at least one plugin needs ANSI content
+    UpdateBackgroundPluginSubscriptions(PluginId, ClientId, HashSet<EventType>),
+    BroadcastModeUpdate(ModeInfo, Option<ClientId>), // ModeInfo, optional specific client_id (None = all clients)
     // Pane-targeting CLI variants
     ScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
     ScrollDownWithPaneId(PaneId, Option<NotificationEnd>),
@@ -746,6 +888,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
             ScreenInstruction::ShowFloatingPanes { .. } => ScreenContext::ShowFloatingPanes,
             ScreenInstruction::HideFloatingPanes { .. } => ScreenContext::HideFloatingPanes,
+            ScreenInstruction::AreFloatingPanesVisible { .. } => {
+                ScreenContext::AreFloatingPanesVisible
+            },
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
             ScreenInstruction::Resize(.., strategy, _) => match strategy {
                 ResizeStrategy {
@@ -837,6 +982,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RenameTabWithId(..) => ScreenContext::RenameTabWithId,
             ScreenInstruction::BreakPanesToTabWithId { .. } => ScreenContext::BreakPanesToTabWithId,
             ScreenInstruction::TerminalResize(..) => ScreenContext::TerminalResize,
+            ScreenInstruction::RecomputeTabSize(..) => ScreenContext::RecomputeTabSize,
             ScreenInstruction::TerminalPixelDimensions(..) => {
                 ScreenContext::TerminalPixelDimensions
             },
@@ -847,6 +993,19 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::TerminalForegroundColor
             },
             ScreenInstruction::TerminalColorRegisters(..) => ScreenContext::TerminalColorRegisters,
+            ScreenInstruction::ForwardHostQuery { .. } => ScreenContext::ForwardHostQuery,
+            ScreenInstruction::ForwardedReplyFromHost { .. } => {
+                ScreenContext::ForwardedReplyFromHost
+            },
+            ScreenInstruction::ResumePaneAfterForward { .. } => {
+                ScreenContext::ResumePaneAfterForward
+            },
+            ScreenInstruction::HostTerminalThemeChanged(..) => {
+                ScreenContext::HostTerminalThemeChanged
+            },
+            ScreenInstruction::SetDarkTheme(..) => ScreenContext::SetDarkTheme,
+            ScreenInstruction::SetLightTheme(..) => ScreenContext::SetLightTheme,
+            ScreenInstruction::ToggleTheme(..) => ScreenContext::ToggleTheme,
             ScreenInstruction::ChangeMode(..) => ScreenContext::ChangeMode,
             ScreenInstruction::ChangeModeForAllClients(..) => {
                 ScreenContext::ChangeModeForAllClients
@@ -904,6 +1063,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UnsuppressOrExpandPane(..) => ScreenContext::UnsuppressOrExpandPane,
             ScreenInstruction::FocusPaneWithId(..) => ScreenContext::FocusPaneWithId,
             ScreenInstruction::RenamePane(..) => ScreenContext::RenamePane,
+            ScreenInstruction::RenameActivePane(..) => ScreenContext::RenameActivePane,
             ScreenInstruction::RenameTab(..) => ScreenContext::RenameTab,
             ScreenInstruction::RequestPluginPermissions(..) => {
                 ScreenContext::RequestPluginPermissions
@@ -997,6 +1157,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::ClearPluginHighlights { .. } => ScreenContext::ClearPluginHighlights,
             ScreenInstruction::ClearAllPluginHighlights(..) => ScreenContext::ClearPluginHighlights,
+            ScreenInstruction::DesktopNotificationResponse(..) => {
+                ScreenContext::DesktopNotificationResponse
+            },
             ScreenInstruction::SubscribeToPaneRenders { .. } => {
                 ScreenContext::SubscribeToPaneRenders
             },
@@ -1006,6 +1169,10 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PluginSubscribedToAnsiPaneContents(..) => {
                 ScreenContext::PluginSubscribedToAnsiPaneContents
             },
+            ScreenInstruction::UpdateBackgroundPluginSubscriptions(..) => {
+                ScreenContext::UpdateBackgroundPluginSubscriptions
+            },
+            ScreenInstruction::BroadcastModeUpdate(..) => ScreenContext::BroadcastModeUpdate,
             // Pane-targeting CLI variants
             ScreenInstruction::ScrollUpWithPaneId(..) => ScreenContext::ScrollUpWithPaneId,
             ScreenInstruction::ScrollDownWithPaneId(..) => ScreenContext::ScrollDownWithPaneId,
@@ -1209,6 +1376,8 @@ pub(crate) struct Screen {
     connected_clients: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_ids: BTreeMap<ClientId, usize>,
+    /// Per-regular-client viewport sizes, used to compute per-tab sizing.
+    client_sizes: HashMap<ClientId, Size>,
     global_last_active_tab_id: usize,
     tab_history: BTreeMap<ClientId, Vec<usize>>,
     pane_history: BTreeMap<ClientId, Vec<PaneId>>,
@@ -1224,10 +1393,10 @@ pub(crate) struct Screen {
     copy_options: CopyOptions,
     debug: bool,
     session_name: String,
-    session_infos_on_machine: BTreeMap<String, SessionInfo>, // String is the session name, can
+    peer_sessions_cache: BTreeMap<String, SessionInfo>, // String is the session name, can
     // also be this session
-    resurrectable_sessions: BTreeMap<String, Duration>, // String is the session name, duration is
-    // its creation time
+    resurrectable_sessions_cache: BTreeMap<String, Duration>, // String is the session name,
+    // duration is its creation time
     default_layout: Box<Layout>,
     default_shell: PathBuf,
     styled_underlines: bool,
@@ -1259,7 +1428,89 @@ pub(crate) struct Screen {
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     plugins_need_ansi_pane_contents: bool,
+    background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
+    /// Monotonic counter used to tag each forwarded host-terminal query
+    /// with a unique token. 0 is reserved as a sentinel (see
+    /// `STARTUP_SENTINEL_TOKEN`); real forwards start at 1.
+    next_forward_token: u32,
+    /// Map of forwarded-query token → the originating pane plus the
+    /// raw query bytes. When the client sends back the reply for
+    /// `token`, the server looks up the pane here and writes the
+    /// reply bytes to its pty. The retained `query_bytes` feed the
+    /// cache-fallback synthesis: if the reply comes back empty
+    /// (detached session, client crash, host timeout), we use the
+    /// cached bg/fg/pixel/palette state to answer in the host's
+    /// stead.
+    pending_forwarded_queries: HashMap<u32, PendingForwardEntry>,
+    /// Serialization queue for forwarded queries. Invariant: at most one
+    /// forward is in flight to the client at a time (enforced by
+    /// `forward_in_flight`). When the reply (or timeout) closes the
+    /// active slot, the next queued forward is dispatched.
+    forward_queue: VecDeque<PendingForward>,
+    /// Token of the forward currently in flight to the (single)
+    /// connected client, if any. Used to:
+    /// * serialize forwarded queries globally (only one at a time);
+    /// * gate slot release on `handle_forwarded_reply_from_host` to a
+    ///   token-equality match, so a late server-side timeout for an
+    ///   already-answered forward cannot clobber a queued forward that
+    ///   the real reply just dispatched.
+    forward_in_flight_token: Option<u32>,
+    /// Last-known host terminal color-palette theme mode (CSI 2031 /
+    /// DSR 997). `None` until the host first reports. Used both for
+    /// auto-theme switching and to dedupe duplicate notifications.
+    host_terminal_theme_mode: Option<HostTerminalThemeMode>,
+    /// Resolved styling to apply when `host_terminal_theme_mode == Dark`.
+    /// `None` disables auto-switch. Refreshed on each reconfigure.
+    host_theme_dark_styling: Option<Styling>,
+    /// Resolved styling to apply when `host_terminal_theme_mode == Light`.
+    /// `None` disables auto-switch. Refreshed on each reconfigure.
+    host_theme_light_styling: Option<Styling>,
 }
+
+/// A pending forward waiting to be dispatched once the current in-flight
+/// forward's barrier reply (or timeout) arrives.
+#[derive(Debug, Clone)]
+struct PendingForward {
+    token: u32,
+    pane_id: PaneId,
+    query: crate::host_query::HostQuery,
+}
+
+/// A forward currently in flight (dispatched to the client, waiting
+/// for a reply). Retains the `HostQuery` classification so we can
+/// fall back to cache-synthesized replies when the live reply is
+/// empty (no client attached, client-side timeout, etc.) without
+/// re-parsing byte strings.
+#[derive(Debug, Clone)]
+struct PendingForwardEntry {
+    pane_id: PaneId,
+    query: crate::host_query::HostQuery,
+}
+
+/// Reserved sentinel token for Zellij's own startup batch of host
+/// queries (pixel dims, bg/fg, sync-output, palette registers). The
+/// existing fire-and-forget startup plumbing is unchanged today; the
+/// sentinel exists so a future migration can route the startup batch
+/// through the same forwarded-query mechanism as per-pane queries
+/// while keeping its replies routable to `Screen`'s cached state
+/// rather than to a pane's pty. Reserved value 0 is excluded from
+/// `next_forward_token` allocation by the wrap-skip in
+/// `forward_host_query`.
+const STARTUP_SENTINEL_TOKEN: u32 = 0;
+
+/// Server-side deadline for a forwarded host query. If no
+/// `ForwardedReplyFromHost` arrives within this window, the server
+/// synthesizes an empty reply for itself so the in-flight slot
+/// releases and queued forwards continue to drain.
+///
+/// This recovers the worst-case where the connected client doesn't
+/// understand `ServerToClientMsg::ForwardQueryToHost` (an old client
+/// against a new server) — without it the slot would deadlock and
+/// every app-issued host query would hang. The window is generous
+/// relative to the 500 ms client-side deadline so a well-behaved new
+/// client always replies first; only the old-client and
+/// network-pathological cases ever see this fire.
+const SERVER_FORWARD_TIMEOUT_MS: u64 = 1000;
 
 impl Screen {
     /// Creates and returns a new [`Screen`].
@@ -1298,9 +1549,9 @@ impl Screen {
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
-        let mut session_infos_on_machine = BTreeMap::new();
-        let resurrectable_sessions = BTreeMap::new();
-        session_infos_on_machine.insert(session_name.clone(), session_info);
+        let mut peer_sessions_cache = BTreeMap::new();
+        let resurrectable_sessions_cache = BTreeMap::new();
+        peer_sessions_cache.insert(session_name.clone(), session_info);
         let current_pane_group = PaneGroups::new(bus.senders.clone());
         Screen {
             bus,
@@ -1313,6 +1564,7 @@ impl Screen {
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
             active_tab_ids: BTreeMap::new(),
+            client_sizes: HashMap::new(),
             global_last_active_tab_id: 0,
             tabs: BTreeMap::new(),
             terminal_emulator_colors: Rc::new(RefCell::new(Palette::default())),
@@ -1327,7 +1579,7 @@ impl Screen {
             copy_options,
             debug,
             session_name,
-            session_infos_on_machine,
+            peer_sessions_cache,
             default_layout,
             default_layout_name,
             default_shell,
@@ -1337,7 +1589,7 @@ impl Screen {
             styled_underlines,
             osc8_hyperlinks,
             arrow_fonts,
-            resurrectable_sessions,
+            resurrectable_sessions_cache,
             layout_dir,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
@@ -1359,6 +1611,14 @@ impl Screen {
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
             plugins_need_ansi_pane_contents: false,
+            background_plugin_subscriptions: HashMap::new(),
+            next_forward_token: 1, // 0 is reserved as the startup sentinel
+            pending_forwarded_queries: HashMap::new(),
+            forward_queue: VecDeque::new(),
+            forward_in_flight_token: None,
+            host_terminal_theme_mode: None,
+            host_theme_dark_styling: None,
+            host_theme_light_styling: None,
         }
     }
 
@@ -1610,6 +1870,14 @@ impl Screen {
                             .send_to_background_jobs(BackgroundJob::StopFlashTabBell(tab_id));
                     }
 
+                    // Both the source and destination tabs may have changed
+                    // their viewer sets; per-tab sizing is independent so each
+                    // is recomputed against its current viewers.
+                    self.recompute_tab_size(current_tab_index)
+                        .with_context(err_context)?;
+                    self.recompute_tab_size(new_tab_index)
+                        .with_context(err_context)?;
+
                     self.log_and_report_session_state()
                         .with_context(err_context)?;
                     return self.render(None).with_context(err_context);
@@ -1815,6 +2083,50 @@ impl Screen {
         }
     }
 
+    /// Record the viewport size most recently reported by `client_id`. Used as
+    /// input to per-tab size computation; does not by itself trigger a resize.
+    pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
+        self.client_sizes.insert(client_id, size);
+    }
+
+    /// Recompute the size of `tab_id` from the viewports of every client whose
+    /// `active_tab_ids` entry equals `tab_id`. `rows` and `cols` are sorted
+    /// independently — each axis takes the minimum across viewers. If the tab
+    /// has no viewers the size is left untouched (the tab retains its most
+    /// recent viewer-derived dimensions). When the computed size differs from
+    /// the tab's current size, the tab is resized (via `resize_whole_tab`)
+    /// and a force-render is scheduled.
+    pub fn recompute_tab_size(&mut self, tab_id: usize) -> Result<()> {
+        let err_context = || format!("failed to recompute size for tab {tab_id}");
+
+        let mut rows: Vec<usize> = Vec::new();
+        let mut cols: Vec<usize> = Vec::new();
+        for (client_id, active_tab) in self.active_tab_ids.iter() {
+            if *active_tab == tab_id {
+                if let Some(size) = self.client_sizes.get(client_id) {
+                    rows.push(size.rows);
+                    cols.push(size.cols);
+                }
+            }
+        }
+        if rows.is_empty() || cols.is_empty() {
+            return Ok(());
+        }
+        rows.sort_unstable();
+        cols.sort_unstable();
+        let new_size = Size {
+            rows: rows[0],
+            cols: cols[0],
+        };
+        if let Some(tab) = self.tabs.get_mut(&tab_id) {
+            if tab.size != new_size {
+                tab.resize_whole_tab(new_size).with_context(err_context)?;
+                tab.set_force_render();
+            }
+        }
+        Ok(())
+    }
+
     pub fn update_pixel_dimensions(&mut self, pixel_dimensions: PixelDimensions) {
         self.pixel_dimensions.merge(pixel_dimensions);
         if let Some(character_cell_size) = self.pixel_dimensions.character_cell_size {
@@ -1852,6 +2164,302 @@ impl Screen {
         let mut terminal_emulator_color_codes = self.terminal_emulator_color_codes.borrow_mut();
         for (color_register, color_sequence) in color_registers {
             terminal_emulator_color_codes.insert(color_register, color_sequence);
+        }
+    }
+
+    /// Enqueue a whitelisted host-terminal query from pane `pane_id`.
+    /// Queries are serialized globally: at most one is in flight to the
+    /// client at a time; the rest wait in `forward_queue`. Returns the
+    /// allocated token so callers (tests) can observe it if useful.
+    pub fn forward_host_query(
+        &mut self,
+        pane_id: PaneId,
+        query: crate::host_query::HostQuery,
+    ) -> u32 {
+        // ColorPaletteMode is answered locally — Zellij already knows
+        // the host's mode from its own startup query and from
+        // unsolicited DSR 997 updates. Skip the entire forwarding
+        // machinery (no token, no in-flight slot, no host round-trip)
+        // and write the reply straight to the originating pane's pty.
+        if let crate::host_query::HostQuery::ColorPaletteMode = query {
+            self.answer_color_palette_mode_query_locally(pane_id);
+            return STARTUP_SENTINEL_TOKEN; // sentinel: no real forward happened
+        }
+        let token = self.next_forward_token;
+        // Skip over the reserved sentinel (0) on wrap; allocate a fresh
+        // u32 for every forward.
+        self.next_forward_token = self.next_forward_token.wrapping_add(1);
+        if self.next_forward_token == STARTUP_SENTINEL_TOKEN {
+            self.next_forward_token = 1;
+        }
+        if self.forward_in_flight_token.is_some() {
+            self.forward_queue.push_back(PendingForward {
+                token,
+                pane_id,
+                query,
+            });
+        } else {
+            self.dispatch_forward(token, pane_id, query);
+        }
+        token
+    }
+
+    /// Synthesise the DSR 997 reply to a `CSI ? 996 n` query from
+    /// `host_terminal_theme_mode` and write it directly to the
+    /// originating pane's pty. Plugin panes are skipped (they receive
+    /// `Event::HostTerminalThemeChanged` and have no notion of
+    /// VT-protocol queries). When Zellij has not yet learned the host
+    /// mode, the pane receives no reply — matching what a host that
+    /// does not implement CSI 2031 would do. The Contour spec only
+    /// defines `;1` (dark) and `;2` (light); fabricating any other
+    /// code (e.g. `;0`) would be non-conformant.
+    fn answer_color_palette_mode_query_locally(&mut self, pane_id: PaneId) {
+        if matches!(pane_id, PaneId::Plugin(_)) {
+            return;
+        }
+        let code: u8 = match self.host_terminal_theme_mode {
+            Some(HostTerminalThemeMode::Dark) => 1,
+            Some(HostTerminalThemeMode::Light) => 2,
+            None => {
+                log::debug!(
+                    "CSI ?996n received but host_terminal_theme_mode is unknown; \
+                     dropping (spec defines only 1=dark / 2=light)"
+                );
+                // The Contour spec defines only ;1 / ;2 — silence is
+                // the conformant behaviour when the host's mode is
+                // unknown. But the pane may have been forward-paused
+                // on the dispatch; if so we still owe it an unblock
+                // cycle so any buffered bytes get replayed. Skip the
+                // empty resume when the pane is not paused, matching
+                // the "stay silent" guarantee.
+                if self.is_any_tab_pane_forward_paused(pane_id) {
+                    let _ = self.resume_pane_after_forward(pane_id, Vec::new());
+                }
+                return;
+            },
+        };
+        let reply = format!("\u{1b}[?997;{}n", code).into_bytes();
+        // Route via Tab so the reply lands on the pane in the correct
+        // stream position and any PTY input the app emitted while
+        // waiting is replayed.
+        let _ = self.resume_pane_after_forward(pane_id, reply);
+    }
+
+    /// Dispatch a forward to the client and mark the slot as in-flight.
+    /// Spawns a one-shot timeout task on the global tokio runtime that
+    /// synthesizes an empty reply for `token` after
+    /// `SERVER_FORWARD_TIMEOUT_MS`. The handler's token-equality guard
+    /// makes the timeout a no-op if a real reply arrived first, so no
+    /// explicit cancellation is needed.
+    fn dispatch_forward(
+        &mut self,
+        token: u32,
+        pane_id: PaneId,
+        query: crate::host_query::HostQuery,
+    ) {
+        let query_bytes = query.to_query_bytes();
+        self.pending_forwarded_queries
+            .insert(token, PendingForwardEntry { pane_id, query });
+        self.forward_in_flight_token = Some(token);
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::ForwardQueryToHost(token, query_bytes));
+        let senders = self.bus.senders.clone();
+        crate::global_async_runtime::get_tokio_runtime().spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(SERVER_FORWARD_TIMEOUT_MS)).await;
+            let _ = senders.send_to_screen(ScreenInstruction::ForwardedReplyFromHost {
+                token,
+                reply_bytes: Vec::new(),
+            });
+        });
+    }
+
+    /// Handle a host-reply observed by the client for token `token`.
+    /// Writes the bytes to the originating pane's pty (if still present)
+    /// and releases the in-flight slot so the next queued forward can
+    /// dispatch.
+    ///
+    /// An empty `reply_bytes` is treated as "nobody answered" — either
+    /// because no client was attached to forward the query, or the
+    /// chosen client's host timed out. In that case we try to answer
+    /// from Zellij's cached view of the host (pixel dims, bg/fg,
+    /// palette) so the pane still gets a well-formed reply instead of
+    /// zero bytes. If the cache has nothing relevant either, the pane
+    /// receives an empty write and the app decides what to do.
+    pub fn handle_forwarded_reply_from_host(
+        &mut self,
+        token: u32,
+        reply_bytes: Vec<u8>,
+    ) -> Result<()> {
+        // Stale-reply guard. Both the real `ForwardedReplyFromHost`
+        // path and the server-side timeout path land here. If a real
+        // reply landed first (releasing the slot AND dispatching the
+        // next queued forward), the late timeout's empty reply for the
+        // already-cleared token must be a no-op — releasing the slot
+        // again would clobber the new in-flight forward. The same
+        // logic also rejects duplicate replies and replies for tokens
+        // belonging to a previously-closed pane.
+        if self.forward_in_flight_token != Some(token) {
+            log::debug!(
+                "Dropping stale forwarded reply (token={}, in-flight={:?}, len={} bytes)",
+                token,
+                self.forward_in_flight_token,
+                reply_bytes.len(),
+            );
+            return Ok(());
+        }
+        if let Some(entry) = self.pending_forwarded_queries.remove(&token) {
+            let PendingForwardEntry { pane_id, query } = entry;
+            match pane_id {
+                PaneId::Terminal(_) => {
+                    let payload = if reply_bytes.is_empty() {
+                        self.synthesize_cached_reply(&query)
+                    } else {
+                        reply_bytes
+                    };
+                    // Route via Tab so the reply lands on the pane in
+                    // the correct stream position and any PTY input
+                    // the app emitted while waiting is replayed.
+                    self.resume_pane_after_forward(pane_id, payload)?;
+                },
+                PaneId::Plugin(_) => {
+                    // Plugin panes do not issue whitelisted host queries;
+                    // if we reach here the mapping was populated
+                    // erroneously. Drop the reply.
+                    log::warn!(
+                        "Discarding host reply for plugin pane (token={}); plugins do not forward CSI/OSC queries",
+                        token
+                    );
+                },
+            }
+        }
+        // Release the slot and dispatch the next queued forward, if any.
+        self.forward_in_flight_token = None;
+        if let Some(next) = self.forward_queue.pop_front() {
+            self.dispatch_forward(next.token, next.pane_id, next.query);
+        }
+        Ok(())
+    }
+
+    /// Whether any tab owns `pane_id` AND the pane is currently
+    /// forward-paused. Used by the `ColorPaletteMode` short-circuit
+    /// to skip the empty-payload resume when no pane needs unblocking.
+    fn is_any_tab_pane_forward_paused(&self, pane_id: PaneId) -> bool {
+        self.tabs
+            .values()
+            .any(|tab| tab.is_pane_forward_paused(pane_id))
+    }
+
+    /// Deliver a forwarded reply (or cache-fallback synthesis, or a
+    /// locally-answered query payload) to the originating pane via
+    /// the owning Tab. The Tab handler writes the bytes to PTY and
+    /// then re-feeds any PTY input that was buffered while the pane
+    /// was forward-paused, preserving query/reply ordering.
+    pub fn resume_pane_after_forward(
+        &mut self,
+        pane_id: PaneId,
+        reply_bytes: Vec<u8>,
+    ) -> Result<()> {
+        let terminal_id = match pane_id {
+            PaneId::Terminal(id) => id,
+            PaneId::Plugin(_) => {
+                // Plugin panes do not forward queries — dropping is
+                // the correct behaviour matching the existing
+                // forwarding path's plugin-pane guard.
+                return Ok(());
+            },
+        };
+        let mut found = false;
+        for tab in self.tabs.values_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                tab.resume_pane_after_forward(terminal_id, reply_bytes.clone())
+                    .non_fatal();
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            // No tab owns the pane — the pane was closed between the
+            // forward dispatch and the reply arrival. The terminal id
+            // is probably defunct; the write goes to the PTY writer
+            // anyway because an empty payload is the canonical "host
+            // declined" reply some apps rely on, and a non-empty
+            // payload may still be deliverable until the pty drains.
+            let _ = self
+                .bus
+                .senders
+                .send_to_pty_writer(PtyWriteInstruction::Write(reply_bytes, terminal_id, None));
+            log::debug!(
+                "ResumePaneAfterForward: pane {:?} not in any tab, fell back to direct PTY write",
+                pane_id
+            );
+        }
+        Ok(())
+    }
+
+    /// Build a reply for `query` from whatever host state Zellij has
+    /// cached, or an empty `Vec` if nothing relevant is cached. The
+    /// classification happened at intercept time (Grid produces a
+    /// [`HostQuery`]), so this method is pure structural dispatch —
+    /// no re-parsing of bytes.
+    fn synthesize_cached_reply(&self, query: &crate::host_query::HostQuery) -> Vec<u8> {
+        use crate::host_query::HostQuery;
+        match query {
+            HostQuery::TextAreaPixelSize => self
+                .pixel_dimensions
+                .text_area_size
+                .map(|dims| format!("\x1b[4;{};{}t", dims.height, dims.width).into_bytes())
+                .unwrap_or_default(),
+            HostQuery::CharacterCellPixelSize => self
+                .pixel_dimensions
+                .character_cell_size
+                .map(|dims| format!("\x1b[6;{};{}t", dims.height, dims.width).into_bytes())
+                .unwrap_or_default(),
+            HostQuery::DefaultForeground { terminator }
+            | HostQuery::DefaultBackground { terminator } => {
+                let palette = self.terminal_emulator_colors.borrow();
+                let (channel, color) = match query {
+                    HostQuery::DefaultForeground { .. } => (10u32, palette.fg),
+                    HostQuery::DefaultBackground { .. } => (11u32, palette.bg),
+                    _ => unreachable!(),
+                };
+                if let PaletteColor::Rgb((r, g, b)) = color {
+                    let mut out = format!(
+                        "\x1b]{};rgb:{:04x}/{:04x}/{:04x}",
+                        channel,
+                        (r as u16) * 0x0101,
+                        (g as u16) * 0x0101,
+                        (b as u16) * 0x0101,
+                    )
+                    .into_bytes();
+                    out.extend_from_slice(terminator.as_bytes());
+                    out
+                } else {
+                    Vec::new()
+                }
+            },
+            HostQuery::PaletteRegister { index, terminator } => {
+                let codes = self.terminal_emulator_color_codes.borrow();
+                if let Some(color) = codes.get(&(*index as usize)) {
+                    let mut out = format!("\x1b]4;{};{}", index, color).into_bytes();
+                    out.extend_from_slice(terminator.as_bytes());
+                    out
+                } else {
+                    Vec::new()
+                }
+            },
+            // Should not reach here: ColorPaletteMode short-circuits in
+            // `forward_host_query` before any cache-fallback path runs.
+            // The Contour spec only defines `;1` and `;2`; if the host
+            // mode is unknown there is no compliant reply, so return
+            // empty bytes (the existing convention for "no synthesis
+            // possible").
+            HostQuery::ColorPaletteMode => match self.host_terminal_theme_mode {
+                Some(HostTerminalThemeMode::Dark) => b"\x1b[?997;1n".to_vec(),
+                Some(HostTerminalThemeMode::Light) => b"\x1b[?997;2n".to_vec(),
+                None => Vec::new(),
+            },
         }
     }
 
@@ -2255,6 +2863,39 @@ impl Screen {
         Ok(())
     }
 
+    pub fn are_floating_panes_visible_in_tab(
+        &self,
+        client_id: ClientId,
+        tab_id: Option<usize>,
+        completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let tab = match tab_id {
+            Some(id) => self.tabs.get(&id),
+            None => self.get_active_tab(client_id).ok(),
+        };
+        let mut completion = completion;
+        match tab {
+            None => {
+                if let Some(c) = completion.as_mut() {
+                    c.set_error_message("Tab not found".to_string());
+                }
+            },
+            Some(tab) => {
+                if tab.are_floating_panes_visible() {
+                    if let Some(c) = completion.as_mut() {
+                        c.set_stdout_message("true".to_string());
+                    }
+                } else {
+                    if let Some(c) = completion.as_mut() {
+                        c.set_error_message("false".to_string());
+                    }
+                }
+            },
+        }
+        drop(completion);
+        Ok(())
+    }
+
     /// Creates a new [`Tab`] in this [`Screen`]
     pub fn new_tab(
         &mut self,
@@ -2443,6 +3084,11 @@ impl Screen {
                 .with_context(err_context)?;
         }
 
+        // The new tab was just resized to `self.size` above as a default; if
+        // any clients have been moved onto it, recompute to fit their actual
+        // viewports.
+        self.recompute_tab_size(tab_id).with_context(err_context)?;
+
         self.log_and_report_session_state()
             .and_then(|_| self.render(None))
             .with_context(err_context)
@@ -2486,7 +3132,12 @@ impl Screen {
             .get_mut(&tab_index)
             .with_context(|| err_context(tab_index))?
             .add_client(client_id, None)
-            .with_context(|| err_context(tab_index))
+            .with_context(|| err_context(tab_index))?;
+        // Resize the newly-active tab to the min of all viewers (this client
+        // may shrink it, or may be the first viewer of an empty tab).
+        self.recompute_tab_size(tab_index)
+            .with_context(|| err_context(tab_index))?;
+        Ok(())
     }
 
     pub fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
@@ -2515,15 +3166,23 @@ impl Screen {
                 tab.visible(false).with_context(err_context)?;
             }
         }
-        if self.active_tab_ids.contains_key(&client_id) {
-            self.global_last_active_tab_id = *self.active_tab_ids.get(&client_id).unwrap();
+        let previously_active_tab_id = self.active_tab_ids.get(&client_id).copied();
+        if let Some(prev_tab_id) = previously_active_tab_id {
+            self.global_last_active_tab_id = prev_tab_id;
             self.active_tab_ids.remove(&client_id);
         }
         if self.tab_history.contains_key(&client_id) {
             self.tab_history.remove(&client_id);
         }
         self.connected_clients.borrow_mut().remove(&client_id);
+        self.client_sizes.remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
+        // The vacated tab may have lost its smallest viewer; recompute so it
+        // can grow back to fit the remaining clients (no-op if none remain).
+        if let Some(prev_tab_id) = previously_active_tab_id {
+            self.recompute_tab_size(prev_tab_id)
+                .with_context(err_context)?;
+        }
         self.log_and_report_session_state()
             .with_context(err_context)
     }
@@ -2645,7 +3304,14 @@ impl Screen {
                 plugin_tab_updates.push(tab_info_for_plugins);
             }
             plugin_tab_updates.sort_by(|a, b| a.position.cmp(&b.position));
-            plugin_updates.push((None, Some(*client_id), Event::TabUpdate(plugin_tab_updates)));
+            let target_plugin_ids = self.targeted_plugin_ids(*client_id, EventType::TabUpdate);
+            for plugin_id in target_plugin_ids {
+                plugin_updates.push((
+                    Some(plugin_id),
+                    Some(*client_id),
+                    Event::TabUpdate(plugin_tab_updates.clone()),
+                ));
+            }
         }
         self.bus
             .senders
@@ -2658,14 +3324,24 @@ impl Screen {
         for tab in self.tabs.values() {
             pane_manifest.panes.insert(tab.position, tab.pane_infos());
         }
-        self.bus
-            .senders
-            .send_to_plugin(PluginInstruction::Update(vec![(
-                None,
-                None,
-                Event::PaneUpdate(pane_manifest.clone()),
-            )]))
-            .context("failed to update tabs")?;
+        let mut plugin_updates = vec![];
+        let client_ids: Vec<ClientId> = self.active_tab_ids.keys().copied().collect();
+        for client_id in client_ids {
+            let target_plugin_ids = self.targeted_plugin_ids(client_id, EventType::PaneUpdate);
+            for plugin_id in target_plugin_ids {
+                plugin_updates.push((
+                    Some(plugin_id),
+                    Some(client_id),
+                    Event::PaneUpdate(pane_manifest.clone()),
+                ));
+            }
+        }
+        if !plugin_updates.is_empty() {
+            self.bus
+                .senders
+                .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                .context("failed to update pane state")?;
+        }
 
         Ok(pane_manifest)
     }
@@ -2791,16 +3467,31 @@ impl Screen {
             .senders
             .send_to_background_jobs(BackgroundJob::ReportSessionInfo(
                 self.session_name.to_owned(),
-                session_info,
+                session_info.clone(),
             ))
             .with_context(err_context)?;
 
+        self.peer_sessions_cache
+            .insert(self.session_name.clone(), session_info);
+        let mut live_sessions: Vec<SessionInfo> =
+            self.peer_sessions_cache.values().cloned().collect();
+        for info in live_sessions.iter_mut() {
+            info.is_current_session = info.name == self.session_name;
+        }
+        let resurrectable_sessions: Vec<(String, Duration)> = self
+            .resurrectable_sessions_cache
+            .iter()
+            .map(|(n, d)| (n.clone(), *d))
+            .collect();
         self.bus
             .senders
-            .send_to_background_jobs(BackgroundJob::ReadAllSessionInfosOnMachine)
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                Event::SessionUpdate(live_sessions, resurrectable_sessions),
+            )]))
             .with_context(err_context)?;
 
-        // TODO: consider moving this elsewhere
         self.bus
             .senders
             .send_to_background_jobs(BackgroundJob::QueryZellijWebServerStatus)
@@ -2823,16 +3514,16 @@ impl Screen {
         new_session_infos: BTreeMap<String, SessionInfo>,
         resurrectable_sessions: BTreeMap<String, Duration>,
     ) -> Result<()> {
-        self.session_infos_on_machine = new_session_infos;
-        self.resurrectable_sessions = resurrectable_sessions;
+        self.peer_sessions_cache = new_session_infos;
+        self.resurrectable_sessions_cache = resurrectable_sessions;
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::Update(vec![(
                 None,
                 None,
                 Event::SessionUpdate(
-                    self.session_infos_on_machine.values().cloned().collect(),
-                    self.resurrectable_sessions
+                    self.peer_sessions_cache.values().cloned().collect(),
+                    self.resurrectable_sessions_cache
                         .iter()
                         .map(|(n, c)| (n.clone(), c.clone()))
                         .collect(),
@@ -3061,23 +3752,28 @@ impl Screen {
         Ok(())
     }
 
-    pub fn change_mode(&mut self, mut mode_info: ModeInfo, client_id: ClientId) -> Result<()> {
+    pub fn change_mode(
+        &mut self,
+        new_mode: InputMode,
+        base_mode: Option<InputMode>,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let mut mode_info = self
+            .mode_info
+            .get(&client_id)
+            .cloned()
+            .unwrap_or_else(|| self.default_mode_info.clone());
+        let previous_mode = mode_info.mode;
+        mode_info.mode = new_mode;
+        mode_info.base_mode = base_mode;
         if mode_info.session_name.as_ref() != Some(&self.session_name) {
             mode_info.session_name = Some(self.session_name.clone());
         }
 
-        let previous_mode_info = self
-            .mode_info
-            .get(&client_id)
-            .unwrap_or(&self.default_mode_info);
-        let previous_mode = previous_mode_info.mode;
-        mode_info.style = previous_mode_info.style;
-        mode_info.capabilities = previous_mode_info.capabilities;
-
         let err_context = || {
             format!(
                 "failed to change from mode '{:?}' to mode '{:?}' for client {client_id}",
-                previous_mode, mode_info.mode
+                previous_mode, new_mode
             )
         };
 
@@ -3122,20 +3818,92 @@ impl Screen {
             tab.mark_active_pane_for_rerender(client_id);
             tab.update_input_modes()?;
         }
+        // Notify background plugins subscribed to ModeUpdate
+        let mut bg_updates = vec![];
+        for ((bg_pid, bg_cid), subs) in &self.background_plugin_subscriptions {
+            if subs.contains(&EventType::ModeUpdate) && *bg_cid == client_id {
+                bg_updates.push((
+                    Some(*bg_pid),
+                    Some(*bg_cid),
+                    Event::ModeUpdate(mode_info.clone()),
+                ));
+            }
+        }
+        if !bg_updates.is_empty() {
+            self.bus
+                .senders
+                .send_to_plugin(PluginInstruction::Update(bg_updates))
+                .context("failed to update background plugins with mode info")?;
+        }
         Ok(())
     }
-    pub fn change_mode_for_all_clients(&mut self, mode_info: ModeInfo) -> Result<()> {
+    pub fn change_mode_for_all_clients(
+        &mut self,
+        new_mode: InputMode,
+        base_mode: Option<InputMode>,
+    ) -> Result<()> {
         let err_context = || {
             format!(
                 "failed to change input mode to {:?} for all clients",
-                mode_info.mode
+                new_mode
             )
         };
 
         let connected_client_ids: Vec<ClientId> = self.active_tab_ids.keys().copied().collect();
         for client_id in connected_client_ids {
-            self.change_mode(mode_info.clone(), client_id)
+            self.change_mode(new_mode, base_mode, client_id)
                 .with_context(err_context)?;
+        }
+        Ok(())
+    }
+    /// Collect plugin IDs that should receive a broadcast event for a given client.
+    /// Returns plugin IDs from the client's active tab plus background plugins
+    /// subscribed to the given event type.
+    fn targeted_plugin_ids(&self, client_id: ClientId, event_type: EventType) -> Vec<PluginId> {
+        let mut plugin_ids = Vec::new();
+        // Active-tab plugins
+        if let Some(active_tab_id) = self.active_tab_ids.get(&client_id) {
+            if let Some(tab) = self.tabs.get(active_tab_id) {
+                plugin_ids.extend(tab.get_plugin_ids());
+            }
+        }
+        // Background plugins subscribed to this event type
+        for ((bg_pid, bg_cid), subs) in &self.background_plugin_subscriptions {
+            if subs.contains(&event_type) && *bg_cid == client_id {
+                if !plugin_ids.contains(bg_pid) {
+                    plugin_ids.push(*bg_pid);
+                }
+            }
+        }
+        plugin_ids
+    }
+    /// Broadcast a ModeUpdate event to active-tab plugins and subscribed background plugins.
+    pub fn broadcast_mode_update(
+        &mut self,
+        mode_info: ModeInfo,
+        target_client_id: Option<ClientId>,
+    ) -> Result<()> {
+        let mut plugin_updates = vec![];
+        let client_ids: Vec<ClientId> = if let Some(cid) = target_client_id {
+            vec![cid]
+        } else {
+            self.active_tab_ids.keys().copied().collect()
+        };
+        for client_id in client_ids {
+            let plugin_ids = self.targeted_plugin_ids(client_id, EventType::ModeUpdate);
+            for plugin_id in plugin_ids {
+                plugin_updates.push((
+                    Some(plugin_id),
+                    Some(client_id),
+                    Event::ModeUpdate(mode_info.clone()),
+                ));
+            }
+        }
+        if !plugin_updates.is_empty() {
+            self.bus
+                .senders
+                .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                .context("failed to broadcast mode update")?;
         }
         Ok(())
     }
@@ -3805,6 +4573,11 @@ impl Screen {
         self.default_mode_info.update_theme(theme);
         self.default_mode_info
             .update_rounded_corners(rounded_corners);
+        // `default_mode_info` is the fallback used by `change_mode` for
+        // clients that don't yet have a per-client `mode_info` entry, so its
+        // keybinds and base mode must be kept in sync with reconfigures.
+        self.default_mode_info.update_keybinds(new_keybinds.clone());
+        self.default_mode_info.update_default_mode(new_default_mode);
         self.default_shell = default_shell.clone().unwrap_or_else(|| get_default_shell());
         self.default_editor = default_editor.clone().or_else(|| get_default_editor());
         self.auto_layout = auto_layout;
@@ -3871,6 +4644,136 @@ impl Screen {
             tab.update_input_modes()?;
         }
         Ok(())
+    }
+    /// Apply a host-reported color-palette theme mode (CSI 2031 / DSR 997).
+    ///
+    /// This is the Phase 2 entry-point: it
+    /// 1. de-duplicates against the last-known mode,
+    /// 2. swaps the active palette to the configured `theme_dark` / `theme_light`
+    ///    (when both are configured) by reusing the reconfigure propagation,
+    /// 3. fans out an `Event::HostTerminalThemeChanged` plugin event,
+    /// 4. forwards a `CSI ?997;{1|2}n` DSR onto the pty of every terminal pane
+    ///    whose app opted in via `CSI ? 2031 h`.
+    pub fn update_host_terminal_theme_mode(&mut self, mode: HostTerminalThemeMode) -> Result<()> {
+        let err_context = || "Failed to update host terminal theme mode".to_string();
+
+        // dedupe
+        if self.host_terminal_theme_mode == Some(mode) {
+            return Ok(());
+        }
+        self.host_terminal_theme_mode = Some(mode);
+
+        // resolve target styling
+        let resolved = match mode {
+            HostTerminalThemeMode::Dark => self.host_theme_dark_styling,
+            HostTerminalThemeMode::Light => self.host_theme_light_styling,
+        };
+
+        // theme propagation when both keys configured and the resolved
+        // styling exists. (If only one of theme_dark/theme_light is set,
+        // skip auto-switch; the static `theme` stays authoritative.)
+        let auto_switch_enabled =
+            self.host_theme_dark_styling.is_some() && self.host_theme_light_styling.is_some();
+        if auto_switch_enabled {
+            if let Some(theme) = resolved {
+                self.default_mode_info.update_theme(theme);
+                for tab in self.tabs.values_mut() {
+                    tab.update_theme(theme);
+                }
+                // Iterate every connected client (active_tab_ids is the
+                // canonical "who is connected" map). Iterating
+                // self.mode_info.keys() would skip any client that has
+                // never manually changed mode
+                let client_ids: Vec<ClientId> = self.active_tab_ids.keys().copied().collect();
+                let default_for_new = self.default_mode_info.clone();
+                for client_id in client_ids {
+                    let mode_info = self
+                        .mode_info
+                        .entry(client_id)
+                        .or_insert_with(|| default_for_new.clone());
+                    mode_info.update_theme(theme);
+                    let mode_info_clone = mode_info.clone();
+                    // Push the freshly-themed mode_info into every tab's
+                    // per-client mode_info map. `update_input_modes` below
+                    // reads from THAT map (not Screen's) when fanning out
+                    // ModeUpdate to plugins, so without this step plugins
+                    // receive ModeUpdate carrying the *old* style and the
+                    // status-bar / tab-bar do not repaint. Also mark the
+                    // active pane for rerender so terminal panes refresh
+                    // their borders/title using the new palette.
+                    for tab in self.tabs.values_mut() {
+                        tab.change_mode_info(mode_info_clone.clone(), client_id);
+                        tab.mark_active_pane_for_rerender(client_id);
+                    }
+                }
+                for tab in self.tabs.values_mut() {
+                    tab.update_input_modes().with_context(err_context)?;
+                }
+            } else {
+                log::warn!(
+                    "host theme auto-switch enabled but resolved styling missing for {:?}",
+                    mode
+                );
+            }
+        }
+
+        // fan out the plugin event
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                Event::HostTerminalThemeChanged(mode),
+            )]))
+            .with_context(err_context)?;
+
+        // forward DSR to opted-in terminal panes
+        let mut pty_writes: Vec<(Vec<u8>, u32)> = vec![];
+        for tab in self.tabs.values_mut() {
+            for pane_id in tab.get_all_pane_ids() {
+                if let PaneId::Terminal(terminal_id) = pane_id {
+                    if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                        pane.push_color_palette_dsr(mode);
+                        for bytes in pane.drain_messages_to_pty() {
+                            pty_writes.push((bytes, terminal_id));
+                        }
+                    }
+                }
+            }
+        }
+        for (bytes, terminal_id) in pty_writes {
+            let _ = self
+                .bus
+                .senders
+                .send_to_pty_writer(PtyWriteInstruction::Write(bytes, terminal_id, None));
+        }
+
+        self.render(None)?;
+        Ok(())
+    }
+    /// Apply a manual host-terminal theme mode change requested via the CLI or a
+    /// keybinding. Surfaces a clear error to the CLI if the auto-switch gate
+    /// (both `theme_dark` and `theme_light` configured) is not satisfied;
+    /// otherwise delegates to `update_host_terminal_theme_mode`, which dedupes,
+    /// repaints, fans out the plugin event, and forwards DSR to opted-in panes.
+    pub fn apply_manual_host_terminal_theme_mode(
+        &mut self,
+        mode: HostTerminalThemeMode,
+        completion_tx: &mut Option<NotificationEnd>,
+    ) -> Result<()> {
+        let auto_switch_enabled =
+            self.host_theme_dark_styling.is_some() && self.host_theme_light_styling.is_some();
+        if !auto_switch_enabled {
+            if let Some(c) = completion_tx.as_mut() {
+                c.set_exit_status(1);
+                c.set_error_message(
+                    "Manual theme switching requires both `theme_dark` and `theme_light` to be configured."
+                        .to_string(),
+                );
+            }
+            return Ok(());
+        }
+        self.update_host_terminal_theme_mode(mode)
     }
     pub fn toggle_pane_pinned(&mut self, client_id: ClientId) {
         active_tab_and_connected_client_id!(
@@ -3999,6 +4902,16 @@ impl Screen {
         }
     }
     pub fn handle_mouse_event(&mut self, event: MouseEvent, client_id: ClientId) {
+        let is_bare_motion = event.event_type == MouseEventType::Motion
+            && !event.left
+            && !event.right
+            && !event.middle
+            && !event.wheel_up
+            && !event.wheel_down;
+        let active_pane_id_before = self
+            .get_active_tab(client_id)
+            .ok()
+            .and_then(|tab| tab.get_active_pane_id(client_id));
         match self
             .get_active_tab_mut(client_id)
             .and_then(|tab| tab.handle_mouse_event(&event, client_id))
@@ -4024,19 +4937,34 @@ impl Screen {
                     }
                 }
                 if mouse_effect.state_changed {
-                    let _ = self.log_and_report_session_state();
+                    if !is_bare_motion {
+                        let _ = self.log_and_report_session_state();
+                    }
+                    let active_pane_id_after = self
+                        .get_active_tab(client_id)
+                        .ok()
+                        .and_then(|tab| tab.get_active_pane_id(client_id));
+                    if active_pane_id_before.is_some()
+                        && active_pane_id_before != active_pane_id_after
+                    {
+                        self.clear_bell_for_focused_pane(client_id);
+                    }
                     should_render = true;
                 }
-                if !mouse_effect.leave_clipboard_message {
-                    let _ = self
-                        .bus
-                        .senders
-                        .send_to_plugin(PluginInstruction::Update(vec![(
-                            None,
-                            Some(client_id),
-                            Event::InputReceived,
-                        )]));
-                    should_render = true; // TODO: do we need this?
+                if !mouse_effect.leave_clipboard_message && !is_bare_motion {
+                    let target_plugin_ids =
+                        self.targeted_plugin_ids(client_id, EventType::InputReceived);
+                    let plugin_updates: Vec<_> = target_plugin_ids
+                        .into_iter()
+                        .map(|pid| (Some(pid), Some(client_id), Event::InputReceived))
+                        .collect();
+                    if !plugin_updates.is_empty() {
+                        let _ = self
+                            .bus
+                            .senders
+                            .send_to_plugin(PluginInstruction::Update(plugin_updates));
+                    }
+                    should_render = true;
                 }
                 if should_render {
                     self.render(None).non_fatal();
@@ -4717,6 +5645,33 @@ pub(crate) fn screen_thread_main(
     debug: bool,
     default_layout: Box<Layout>,
 ) -> Result<()> {
+    // Resolve `theme_dark` / `theme_light` to concrete `Styling` from the
+    // bundled themes BEFORE `config.options` is moved out below. These
+    // populate Screen's auto-switch state at startup; runtime updates
+    // continue to flow through `propagate_configuration_changes`.
+    let host_theme_dark_styling = config
+        .options
+        .theme_dark
+        .as_ref()
+        .and_then(|name| config.themes.get_theme(name).map(|t| t.palette));
+    let host_theme_light_styling = config
+        .options
+        .theme_light
+        .as_ref()
+        .and_then(|name| config.themes.get_theme(name).map(|t| t.palette));
+    if config.options.theme_dark.is_some() && host_theme_dark_styling.is_none() {
+        log::warn!(
+            "theme_dark='{}' not found in themes; auto-theme switch disabled for dark.",
+            config.options.theme_dark.as_deref().unwrap_or("?")
+        );
+    }
+    if config.options.theme_light.is_some() && host_theme_light_styling.is_none() {
+        log::warn!(
+            "theme_light='{}' not found in themes; auto-theme switch disabled for light.",
+            config.options.theme_light.as_deref().unwrap_or("?")
+        );
+    }
+
     let config_options = config.options;
     let arrow_fonts = !config_options.simplified_ui.unwrap_or_default();
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
@@ -4816,12 +5771,16 @@ pub(crate) fn screen_thread_main(
         web_server_ip,
         web_server_port,
     );
+    screen.host_theme_dark_styling = host_theme_dark_styling;
+    screen.host_theme_light_styling = host_theme_light_styling;
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
     let mut pending_tab_switches: HashSet<(usize, ClientId)> = HashSet::new(); // usize is the
                                                                                // tab_index
     let mut pending_events_waiting_for_tab: Vec<ScreenInstruction> = vec![];
     let mut pending_events_waiting_for_client: Vec<ScreenInstruction> = vec![];
+    let mut pending_events_waiting_for_pane: HashMap<PaneId, Vec<ScreenInstruction>> =
+        HashMap::new();
     let mut plugin_loading_message_cache = HashMap::new();
     let mut keybind_intercepts = HashMap::new();
     loop {
@@ -4837,12 +5796,21 @@ pub(crate) fn screen_thread_main(
         match event {
             ScreenInstruction::PtyBytes(pid, vte_bytes) => {
                 let all_tabs = screen.get_tabs_mut();
+                let mut vte_bytes = Some(vte_bytes);
                 for tab in all_tabs.values_mut() {
                     if tab.has_terminal_pid(pid) {
-                        tab.handle_pty_bytes(pid, vte_bytes)
-                            .context("failed to process pty bytes")?;
+                        if let Some(bytes) = vte_bytes.take() {
+                            tab.handle_pty_bytes(pid, bytes)
+                                .context("failed to process pty bytes")?;
+                        }
                         break;
                     }
+                }
+                if let Some(vte_bytes) = vte_bytes {
+                    pending_events_waiting_for_pane
+                        .entry(PaneId::Terminal(pid))
+                        .or_default()
+                        .push(ScreenInstruction::PtyBytes(pid, vte_bytes));
                 }
                 let _ = screen
                     .bus
@@ -4923,6 +5891,29 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                     ClientTabIndexOrPaneId::TabIndex(tab_index) => {
+                        // Some placements (directional split, stacked without a
+                        // target pane) need a client_id to know which pane to
+                        // split relative to. Only resolve one when required.
+                        let needs_client_id = matches!(
+                            new_pane_placement,
+                            NewPanePlacement::Tiled {
+                                direction: Some(_),
+                                ..
+                            } | NewPanePlacement::Stacked {
+                                pane_id_to_stack_under: None,
+                                ..
+                            }
+                        );
+                        let client_id = if needs_client_id {
+                            screen
+                                .active_tab_ids
+                                .iter()
+                                .find(|(_, tid)| **tid == tab_index)
+                                .map(|(cid, _)| *cid)
+                                .or_else(|| screen.active_tab_ids.keys().next().copied())
+                        } else {
+                            None
+                        };
                         if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
                             active_tab.new_pane(
                                 pid,
@@ -4931,7 +5922,7 @@ pub(crate) fn screen_thread_main(
                                 start_suppressed,
                                 true,
                                 new_pane_placement,
-                                None,
+                                client_id,
                                 blocking_notification,
                             )?;
                             if let Some(hold_for_command) = hold_for_command {
@@ -4974,6 +5965,11 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                 };
+                if let Some(pending_events) = pending_events_waiting_for_pane.remove(&pid) {
+                    for event in pending_events {
+                        screen.bus.senders.send_to_screen(event).non_fatal();
+                    }
+                }
                 screen.log_and_report_session_state()?;
 
                 screen.render(None)?;
@@ -5045,6 +6041,13 @@ pub(crate) fn screen_thread_main(
                 screen.hide_floating_panes_in_tab(client_id, tab_id, completion)?;
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
+            },
+            ScreenInstruction::AreFloatingPanesVisible {
+                client_id,
+                tab_id,
+                completion,
+            } => {
+                screen.are_floating_panes_visible_in_tab(client_id, tab_id, completion)?;
             },
             ScreenInstruction::WriteCharacter(
                 key_with_modifier,
@@ -5915,11 +6918,19 @@ pub(crate) fn screen_thread_main(
                         ));
                     },
                     None => {
+                        let mut found = false;
                         for tab in screen.tabs.values_mut() {
                             if tab.get_all_pane_ids().contains(&id) {
                                 tab.close_pane(id, false, exit_status);
+                                found = true;
                                 break;
                             }
+                        }
+                        if !found {
+                            pending_events_waiting_for_pane
+                                .entry(id)
+                                .or_default()
+                                .push(ScreenInstruction::ClosePane(id, None, None, exit_status));
                         }
                     },
                 }
@@ -5939,11 +6950,19 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::HoldPane(id, exit_status, run_command) => {
                 let is_first_run = false;
+                let mut found = false;
                 for tab in screen.tabs.values_mut() {
                     if tab.get_all_pane_ids().contains(&id) {
-                        tab.hold_pane(id, exit_status, is_first_run, run_command);
+                        tab.hold_pane(id, exit_status, is_first_run, run_command.clone());
+                        found = true;
                         break;
                     }
+                }
+                if !found {
+                    pending_events_waiting_for_pane
+                        .entry(id)
+                        .or_default()
+                        .push(ScreenInstruction::HoldPane(id, exit_status, run_command));
                 }
                 screen.log_and_report_session_state()?;
             },
@@ -6028,7 +7047,7 @@ pub(crate) fn screen_thread_main(
                 layout,
                 floating_panes_layout,
                 tab_name,
-                swap_layouts,
+                (swap_tiled_layouts, swap_floating_layouts),
                 initial_panes,
                 block_on_first_terminal,
                 should_change_focus_to_new_tab,
@@ -6042,9 +7061,15 @@ pub(crate) fn screen_thread_main(
                 } else {
                     None
                 };
+                let resolved_swap_layouts = (
+                    swap_tiled_layouts
+                        .unwrap_or_else(|| screen.default_layout.swap_tiled_layouts.clone()),
+                    swap_floating_layouts
+                        .unwrap_or_else(|| screen.default_layout.swap_floating_layouts.clone()),
+                );
                 screen.new_tab(
                     tab_index,
-                    swap_layouts,
+                    resolved_swap_layouts,
                     tab_name.clone(),
                     client_id_for_new_tab,
                 )?;
@@ -6205,12 +7230,15 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::GoToTabName(
                 tab_name,
-                swap_layouts,
                 default_shell,
                 create,
                 client_id,
                 mut completion_tx,
             ) => {
+                let swap_layouts = (
+                    screen.default_layout.swap_tiled_layouts.clone(),
+                    screen.default_layout.swap_floating_layouts.clone(),
+                );
                 let client_id = if client_id.is_none() {
                     None
                 } else if screen
@@ -6311,6 +7339,15 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render(None)?;
             },
+            ScreenInstruction::RecomputeTabSize(client_id, new_size) => {
+                screen.set_client_size(client_id, new_size);
+                let active_tab_id = screen.active_tab_ids.get(&client_id).copied();
+                if let Some(tab_id) = active_tab_id {
+                    screen.recompute_tab_size(tab_id)?;
+                    screen.log_and_report_session_state()?;
+                    screen.render(None)?;
+                }
+            },
             ScreenInstruction::TerminalPixelDimensions(pixel_dimensions) => {
                 screen.update_pixel_dimensions(pixel_dimensions);
             },
@@ -6323,21 +7360,67 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::TerminalColorRegisters(color_registers) => {
                 screen.update_terminal_color_registers(color_registers);
             },
+            ScreenInstruction::ForwardHostQuery { pane_id, query } => {
+                screen.forward_host_query(pane_id, query);
+            },
+            ScreenInstruction::ForwardedReplyFromHost { token, reply_bytes } => {
+                screen.handle_forwarded_reply_from_host(token, reply_bytes)?;
+                // The handler's replay of `pending_pty_input` mutates the
+                // grid. Without a render scheduling here the clients
+                // keep displaying the pre-reply frame
+                screen.render(None)?;
+            },
+            ScreenInstruction::ResumePaneAfterForward {
+                pane_id,
+                reply_bytes,
+            } => {
+                screen.resume_pane_after_forward(pane_id, reply_bytes)?;
+                // Same rationale as ForwardedReplyFromHost above — the
+                // resume's replay paints the grid, so we must schedule
+                // a render before yielding back to the screen loop.
+                screen.render(None)?;
+            },
+            ScreenInstruction::HostTerminalThemeChanged(mode) => {
+                screen.update_host_terminal_theme_mode(mode)?;
+            },
+            ScreenInstruction::SetDarkTheme(mut completion_tx) => {
+                screen.apply_manual_host_terminal_theme_mode(
+                    HostTerminalThemeMode::Dark,
+                    &mut completion_tx,
+                )?;
+            },
+            ScreenInstruction::SetLightTheme(mut completion_tx) => {
+                screen.apply_manual_host_terminal_theme_mode(
+                    HostTerminalThemeMode::Light,
+                    &mut completion_tx,
+                )?;
+            },
+            ScreenInstruction::ToggleTheme(mut completion_tx) => {
+                let next = match screen.host_terminal_theme_mode {
+                    Some(HostTerminalThemeMode::Dark) => HostTerminalThemeMode::Light,
+                    Some(HostTerminalThemeMode::Light) => HostTerminalThemeMode::Dark,
+                    // No prior mode: treat as Dark and toggle to Light.
+                    None => HostTerminalThemeMode::Light,
+                };
+                screen.apply_manual_host_terminal_theme_mode(next, &mut completion_tx)?;
+            },
             ScreenInstruction::ChangeMode(
-                mode_info,
+                input_mode,
+                base_mode,
                 client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                screen.change_mode(mode_info, client_id)?;
+                screen.change_mode(input_mode, base_mode, client_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ChangeModeForAllClients(
-                mode_info,
+                input_mode,
+                base_mode,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                screen.change_mode_for_all_clients(mode_info)?;
+                screen.change_mode_for_all_clients(input_mode, base_mode)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ToggleActiveSyncTab(
@@ -6384,9 +7467,14 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::AddClient(
                 client_id,
                 is_web_client,
+                client_size,
                 tab_position_to_focus,
                 pane_id_to_focus,
             ) => {
+                // Record the client's viewport BEFORE add_client so that
+                // add_client's internal recompute sees this client's size and
+                // sizes the destination tab against all of its viewers.
+                screen.set_client_size(client_id, client_size);
                 screen.add_client(client_id, is_web_client)?;
                 let pane_id = pane_id_to_focus.map(|(pane_id, is_plugin)| {
                     if is_plugin {
@@ -6808,8 +7896,10 @@ pub(crate) fn screen_thread_main(
                 cwd,
                 client_id,
                 completion_tx,
+                explicit_tab_id,
             ) => {
-                let tab_index = screen.active_tab_ids.values().next().unwrap_or(&1);
+                let tab_index = explicit_tab_id
+                    .unwrap_or_else(|| *screen.active_tab_ids.values().next().unwrap_or(&1));
                 let size = Size::default();
                 let should_float = Some(false);
                 let should_be_opened_in_place = false;
@@ -6822,7 +7912,7 @@ pub(crate) fn screen_thread_main(
                         false, // close_replaced_pane
                         pane_title,
                         run_plugin,
-                        *tab_index,
+                        tab_index,
                         None,
                         client_id,
                         size,
@@ -6841,36 +7931,41 @@ pub(crate) fn screen_thread_main(
                 floating_pane_coordinates,
                 client_id,
                 completion_tx,
-            ) => match screen.active_tab_ids.values().next() {
-                Some(tab_index) => {
-                    let size = Size::default();
-                    let should_float = Some(true);
-                    let should_be_opened_in_place = false;
-                    screen
-                        .bus
-                        .senders
-                        .send_to_pty(PtyInstruction::FillPluginCwd(
-                            should_float,
-                            should_be_opened_in_place,
-                            false, // close_replaced_pane
-                            pane_title,
-                            run_plugin,
-                            *tab_index,
-                            None,
-                            client_id,
-                            size,
-                            skip_cache,
-                            cwd,
-                            None,
-                            floating_pane_coordinates,
-                            completion_tx,
-                        ))?;
-                },
-                None => {
-                    log::error!(
-                        "Could not find an active tab - is there at least 1 connected user?"
-                    );
-                },
+                explicit_tab_id,
+            ) => {
+                let resolved_tab_index =
+                    explicit_tab_id.or_else(|| screen.active_tab_ids.values().next().copied());
+                match resolved_tab_index {
+                    Some(tab_index) => {
+                        let size = Size::default();
+                        let should_float = Some(true);
+                        let should_be_opened_in_place = false;
+                        screen
+                            .bus
+                            .senders
+                            .send_to_pty(PtyInstruction::FillPluginCwd(
+                                should_float,
+                                should_be_opened_in_place,
+                                false, // close_replaced_pane
+                                pane_title,
+                                run_plugin,
+                                tab_index,
+                                None,
+                                client_id,
+                                size,
+                                skip_cache,
+                                cwd,
+                                None,
+                                floating_pane_coordinates,
+                                completion_tx,
+                            ))?;
+                    },
+                    None => {
+                        log::error!(
+                            "Could not find an active tab - is there at least 1 connected user?"
+                        );
+                    },
+                }
             },
             ScreenInstruction::NewInPlacePluginPane(
                 run_plugin,
@@ -6880,36 +7975,41 @@ pub(crate) fn screen_thread_main(
                 close_replaced_pane,
                 client_id,
                 completion_tx,
-            ) => match screen.active_tab_ids.values().next() {
-                Some(tab_index) => {
-                    let size = Size::default();
-                    let should_float = None;
-                    let should_be_in_place = true;
-                    screen
-                        .bus
-                        .senders
-                        .send_to_pty(PtyInstruction::FillPluginCwd(
-                            should_float,
-                            should_be_in_place,
-                            close_replaced_pane,
-                            pane_title,
-                            run_plugin,
-                            *tab_index,
-                            Some(pane_id_to_replace),
-                            client_id,
-                            size,
-                            skip_cache,
-                            None,
-                            None,
-                            None,
-                            completion_tx,
-                        ))?;
-                },
-                None => {
-                    log::error!(
-                        "Could not find an active tab - is there at least 1 connected user?"
-                    );
-                },
+                explicit_tab_id,
+            ) => {
+                let resolved_tab_index =
+                    explicit_tab_id.or_else(|| screen.active_tab_ids.values().next().copied());
+                match resolved_tab_index {
+                    Some(tab_index) => {
+                        let size = Size::default();
+                        let should_float = None;
+                        let should_be_in_place = true;
+                        screen
+                            .bus
+                            .senders
+                            .send_to_pty(PtyInstruction::FillPluginCwd(
+                                should_float,
+                                should_be_in_place,
+                                close_replaced_pane,
+                                pane_title,
+                                run_plugin,
+                                tab_index,
+                                Some(pane_id_to_replace),
+                                client_id,
+                                size,
+                                skip_cache,
+                                None,
+                                None,
+                                None,
+                                completion_tx,
+                            ))?;
+                    },
+                    None => {
+                        log::error!(
+                            "Could not find an active tab - is there at least 1 connected user?"
+                        );
+                    },
+                }
             },
             ScreenInstruction::StartOrReloadPluginPane(run_plugin, pane_title, completion_tx) => {
                 let tab_index = screen.active_tab_ids.values().next().unwrap_or(&1);
@@ -7106,9 +8206,12 @@ pub(crate) fn screen_thread_main(
                 skip_cache,
                 client_id,
                 mut completion_tx,
+                explicit_tab_id,
             ) => match pane_id_to_replace {
                 Some(pane_id_to_replace) if should_open_in_place => {
-                    match screen.active_tab_ids.values().next() {
+                    let resolved_tab_index =
+                        explicit_tab_id.or_else(|| screen.active_tab_ids.values().next().copied());
+                    match resolved_tab_index {
                         Some(tab_index) => {
                             let size = Size::default();
                             screen
@@ -7120,7 +8223,7 @@ pub(crate) fn screen_thread_main(
                                     close_replaced_pane,
                                     None,
                                     run_plugin,
-                                    *tab_index,
+                                    tab_index,
                                     Some(pane_id_to_replace),
                                     client_id,
                                     size,
@@ -7150,7 +8253,10 @@ pub(crate) fn screen_thread_main(
                             .get(&client_id)
                             .map(|tab_index| (*tab_index, client_id))
                     });
-                    match client_id_and_focused_tab {
+                    let resolved_tab_and_client = explicit_tab_id
+                        .and_then(|tid| client_id.map(|cid| (tid, cid)))
+                        .or(client_id_and_focused_tab);
+                    match resolved_tab_and_client {
                         Some((tab_index, client_id)) => {
                             if screen.focus_plugin_pane(
                                 &run_plugin,
@@ -7200,35 +8306,40 @@ pub(crate) fn screen_thread_main(
                 cwd,
                 client_id,
                 completion_tx,
+                explicit_tab_id,
             ) => match pane_id_to_replace {
-                Some(pane_id_to_replace) => match screen.active_tab_ids.values().next() {
-                    Some(tab_index) => {
-                        let size = Size::default();
-                        screen
-                            .bus
-                            .senders
-                            .send_to_pty(PtyInstruction::FillPluginCwd(
-                                Some(should_float),
-                                should_open_in_place,
-                                close_replaced_pane,
-                                None,
-                                run_plugin,
-                                *tab_index,
-                                Some(pane_id_to_replace),
-                                client_id,
-                                size,
-                                skip_cache,
-                                cwd,
-                                None,
-                                None,
-                                completion_tx,
-                            ))?;
-                    },
-                    None => {
-                        log::error!(
-                            "Could not find an active tab - is there at least 1 connected user?"
-                        );
-                    },
+                Some(pane_id_to_replace) => {
+                    let resolved_tab_index =
+                        explicit_tab_id.or_else(|| screen.active_tab_ids.values().next().copied());
+                    match resolved_tab_index {
+                        Some(tab_index) => {
+                            let size = Size::default();
+                            screen
+                                .bus
+                                .senders
+                                .send_to_pty(PtyInstruction::FillPluginCwd(
+                                    Some(should_float),
+                                    should_open_in_place,
+                                    close_replaced_pane,
+                                    None,
+                                    run_plugin,
+                                    tab_index,
+                                    Some(pane_id_to_replace),
+                                    client_id,
+                                    size,
+                                    skip_cache,
+                                    cwd,
+                                    None,
+                                    None,
+                                    completion_tx,
+                                ))?;
+                        },
+                        None => {
+                            log::error!(
+                                "Could not find an active tab - is there at least 1 connected user?"
+                            );
+                        },
+                    }
                 },
                 None => {
                     let client_id = if screen.active_tab_ids.contains_key(&client_id) {
@@ -7242,7 +8353,10 @@ pub(crate) fn screen_thread_main(
                             .get(&client_id)
                             .map(|tab_index| (*tab_index, client_id))
                     });
-                    match client_id_and_focused_tab {
+                    let resolved_tab_and_client = explicit_tab_id
+                        .and_then(|tid| client_id.map(|cid| (tid, cid)))
+                        .or(client_id_and_focused_tab);
+                    match resolved_tab_and_client {
                         Some((tab_index, client_id)) => {
                             screen
                                 .bus
@@ -7308,17 +8422,38 @@ pub(crate) fn screen_thread_main(
                 should_float_if_hidden,
                 should_be_in_place_if_hidden,
                 client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                mut completion_tx,
             ) => {
-                screen.focus_pane_with_id(
-                    pane_id,
-                    should_float_if_hidden,
-                    should_be_in_place_if_hidden,
-                    client_id,
-                )?;
-                screen.clear_bell_for_pane_id(pane_id, client_id);
-                screen.log_and_report_session_state()?;
+                let pane_exists = screen
+                    .tabs
+                    .iter()
+                    .any(|(_, tab)| tab.has_pane_with_pid(&pane_id));
+                if !pane_exists {
+                    if let Some(c) = completion_tx.as_mut() {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                } else {
+                    let already_focused = screen
+                        .get_active_pane_id(&client_id)
+                        .map(|active| active == pane_id)
+                        .unwrap_or(false);
+                    if already_focused {
+                        if let Some(c) = completion_tx.as_mut() {
+                            c.set_exit_status(1);
+                            c.set_error_message(format!("Pane {:?} is already focused", pane_id));
+                        }
+                    } else {
+                        screen.focus_pane_with_id(
+                            pane_id,
+                            should_float_if_hidden,
+                            should_be_in_place_if_hidden,
+                            client_id,
+                        )?;
+                        screen.clear_bell_for_pane_id(pane_id, client_id);
+                        screen.log_and_report_session_state()?;
+                    }
+                }
             },
             ScreenInstruction::RenamePane(
                 pane_id,
@@ -7336,6 +8471,17 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::RenameActivePane(new_name, client_id, _completion_tx) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab
+                        .rename_active_pane(new_name, client_id),
+                    ?
+                );
+                screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::RenameTab(
@@ -7455,12 +8601,12 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::BreakPane(
-                default_layout,
                 default_shell,
                 client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let default_layout = screen.default_layout.clone();
                 screen.break_pane(default_shell, default_layout, client_id)?;
             },
             ScreenInstruction::BreakPaneRight(
@@ -7583,7 +8729,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                if screen.session_infos_on_machine.contains_key(&name) {
+                if screen.peer_sessions_cache.contains_key(&name) {
                     let error_text = "A session by this name already exists.";
                     log::error!("{}", error_text);
                     if let Some(os_input) = &mut screen.bus.os_input {
@@ -7594,7 +8740,7 @@ pub(crate) fn screen_thread_main(
                             },
                         );
                     }
-                } else if screen.resurrectable_sessions.contains_key(&name) {
+                } else if screen.resurrectable_sessions_cache.contains_key(&name) {
                     let error_text =
                         "A resurrectable session by this name exists, cannot use this name.";
                     log::error!("{}", error_text);
@@ -7663,6 +8809,8 @@ pub(crate) fn screen_thread_main(
                 keybinds,
                 default_mode,
                 theme,
+                host_theme_dark,
+                host_theme_light,
                 simplified_ui,
                 default_shell,
                 pane_frames,
@@ -7680,6 +8828,8 @@ pub(crate) fn screen_thread_main(
                 focus_follows_mouse,
                 mouse_click_through,
             } => {
+                screen.host_theme_dark_styling = host_theme_dark;
+                screen.host_theme_light_styling = host_theme_light;
                 screen
                     .reconfigure(
                         keybinds,
@@ -8297,6 +9447,40 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
+            ScreenInstruction::DesktopNotificationResponse(raw_bytes, client_id) => {
+                if let Some((terminal_id, app_wants_report, is_query, rewritten_bytes)) =
+                    denormalize_notification_response(&raw_bytes)
+                {
+                    let pane_id = PaneId::Terminal(terminal_id);
+                    // Write response to the pane if the app expects it:
+                    // capability query answers (q flag) or activation reports (r flag)
+                    if app_wants_report || is_query {
+                        let all_tabs = screen.get_tabs_mut();
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                tab.write_to_pane_id(
+                                    &None,
+                                    rewritten_bytes,
+                                    false,
+                                    pane_id,
+                                    None,
+                                    None,
+                                )
+                                .non_fatal();
+                                break;
+                            }
+                        }
+                    }
+                    // Focus the pane on activation click (not on query responses)
+                    if !is_query {
+                        screen
+                            .focus_pane_with_id(pane_id, false, false, client_id)
+                            .non_fatal();
+                    }
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
+            },
             ScreenInstruction::SubscribeToPaneRenders {
                 client_id,
                 pane_ids,
@@ -8310,6 +9494,24 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::PluginSubscribedToAnsiPaneContents(has_subscribers) => {
                 screen.plugins_need_ansi_pane_contents = has_subscribers;
+            },
+            ScreenInstruction::UpdateBackgroundPluginSubscriptions(
+                plugin_id,
+                client_id,
+                subscriptions,
+            ) => {
+                if subscriptions.is_empty() {
+                    screen
+                        .background_plugin_subscriptions
+                        .remove(&(plugin_id, client_id));
+                } else {
+                    screen
+                        .background_plugin_subscriptions
+                        .insert((plugin_id, client_id), subscriptions);
+                }
+            },
+            ScreenInstruction::BroadcastModeUpdate(mode_info, target_client_id) => {
+                screen.broadcast_mode_update(mode_info, target_client_id)?;
             },
             // Pane-targeting CLI handlers
             ScreenInstruction::ScrollUpWithPaneId(pane_id, mut _completion_tx) => {

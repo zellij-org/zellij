@@ -12,6 +12,15 @@ pub struct WebClientToWebServerControlMessage {
 #[serde(tag = "type")]
 pub enum WebClientToWebServerControlMessagePayload {
     TerminalResize(Size),
+    TerminalMetrics(TerminalMetricsPayload),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TerminalMetricsPayload {
+    pub cell_pixel_width: usize,
+    pub cell_pixel_height: usize,
+    pub text_area_pixel_width: usize,
+    pub text_area_pixel_height: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

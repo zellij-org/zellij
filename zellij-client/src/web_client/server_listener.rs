@@ -1,5 +1,6 @@
 use crate::os_input_output::ClientOsApi;
 use crate::web_client::control_message::{SetConfigPayload, WebServerToWebClientControlMessage};
+use crate::web_client::host_query_seed::build_host_query_seed_msgs;
 use crate::web_client::session_management::{
     build_initial_connection, create_first_message, create_ipc_pipe,
 };
@@ -119,6 +120,17 @@ pub fn zellij_server_listener(
                         first_message,
                     );
 
+                    // Seed the server's host-terminal-query cache with web
+                    // client state derived from Config (fg/bg/palette).
+                    // Without this, OSC 10/11/4 queries from apps
+                    // stall on the 1s server forward timeout and then come
+                    // back empty. Pixel dimensions are seeded separately
+                    // via the TerminalMetrics control message once the
+                    // browser has reported them.
+                    for seed in build_host_query_seed_msgs(&config, &config_options) {
+                        os_input.send_to_server(seed);
+                    }
+
                     if let Some(tx) = attachment_complete_tx.take() {
                         let _ = tx.send(());
                     }
@@ -187,6 +199,11 @@ pub fn zellij_server_listener(
 
                                 if let Some(config_file_path) = &config_file_path {
                                     if let Ok(new_config) = Config::from_path(&config_file_path, Some(config.clone())) {
+                                        // Re-seed host-query cache for this client
+                                        // so OSC 10/11/4 replies follow the new theme.
+                                        for seed in build_host_query_seed_msgs(&new_config, &config_options) {
+                                            os_input.send_to_server(seed);
+                                        }
                                         let set_config_payload = SetConfigPayload::from(&new_config);
 
                                         let client_ids: Vec<String> = {
@@ -233,6 +250,23 @@ pub fn zellij_server_listener(
                             // Subscribe-only messages — not relevant for web clients
                             Some(ServerToClientMsg::PaneRenderUpdate { .. }) => {},
                             Some(ServerToClientMsg::SubscribedPaneClosed { .. }) => {},
+                            Some(ServerToClientMsg::ForwardQueryToHost { token, .. }) => {
+                                // Reply immediately with empty reply_bytes.
+                                // This is the existing convention that signals
+                                // "no host reply available — please synthesize
+                                // from cached state". The server's
+                                // synthesize_cached_reply path will use the
+                                // pixel dimensions and colors we have already
+                                // seeded from the browser/config, returning a
+                                // real answer rather than waiting for the
+                                // 1000ms forward timeout.
+                                os_input.send_to_server(
+                                    ClientToServerMsg::ForwardedReplyFromHost {
+                                        token,
+                                        reply_bytes: Vec::new(),
+                                    },
+                                );
+                            },
                             None => {
                                 if unknown_message_count >= 1000 {
                                     log::error!("Error: Received more than 1000 consecutive unknown server messages, disconnecting.");

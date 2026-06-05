@@ -19,7 +19,7 @@ pub struct ResurrectableSessions {
 
 impl ResurrectableSessions {
     pub fn update(&mut self, mut list: Vec<(String, Duration)>) {
-        list.sort_by(|a, b| a.1.cmp(&b.1));
+        list.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
         self.all_resurrectable_sessions = list;
         if self.is_searching {
             self.update_search_term();
@@ -260,34 +260,33 @@ impl ResurrectableSessions {
     }
     pub fn delete_selected_session(&mut self) {
         if self.is_searching {
-            self.selected_search_index
+            if let Some(search_result) = self
+                .selected_search_index
                 .and_then(|i| self.search_results.get(i))
-                .map(|search_result| delete_dead_session(&search_result.session_name));
-        } else {
-            self.selected_index
-                .and_then(|i| {
-                    if self.all_resurrectable_sessions.len() > i {
-                        // optimistic update
-                        if i == 0 {
-                            self.selected_index = None;
-                        } else if i == self.all_resurrectable_sessions.len().saturating_sub(1) {
-                            self.selected_index = Some(i.saturating_sub(1));
-                        }
-                        Some(self.all_resurrectable_sessions.remove(i))
-                    } else {
-                        None
-                    }
-                })
-                .map(|session_name_and_creation_time| {
-                    delete_dead_session(&session_name_and_creation_time.0)
-                });
+            {
+                let _ = delete_dead_session(&search_result.session_name);
+            }
+        } else if let Some(session_name_and_creation_time) = self.selected_index.and_then(|i| {
+            if self.all_resurrectable_sessions.len() > i {
+                // optimistic update
+                if i == 0 {
+                    self.selected_index = None;
+                } else if i == self.all_resurrectable_sessions.len().saturating_sub(1) {
+                    self.selected_index = Some(i.saturating_sub(1));
+                }
+                Some(self.all_resurrectable_sessions.remove(i))
+            } else {
+                None
+            }
+        }) {
+            let _ = delete_dead_session(&session_name_and_creation_time.0);
         }
     }
     fn delete_all_sessions(&mut self) {
         // optimistic update
         self.all_resurrectable_sessions = vec![];
         self.delete_all_dead_sessions_warning = false;
-        delete_all_dead_sessions();
+        let _ = delete_all_dead_sessions();
     }
     pub fn show_delete_all_sessions_warning(&mut self) {
         self.delete_all_dead_sessions_warning = true;

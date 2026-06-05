@@ -59,6 +59,12 @@ pub struct CliArgs {
     #[clap(short, long, value_parser, overrides_with = "layout")]
     pub layout: Option<PathBuf>,
 
+    /// Raw KDL layout string to use directly (instead of a file path)
+    /// if inside a session (or using the --session flag) will be added to the session as a new tab
+    /// or tabs, otherwise will start a new session
+    #[clap(long, value_parser, conflicts_with_all = &["layout", "new-session-with-layout"])]
+    pub layout_string: Option<String>,
+
     /// Name of a predefined layout inside the layout directory or the path to a layout file
     /// Will always start a new session, even if inside an existing session
     #[clap(short, long, value_parser, overrides_with = "new_session_with_layout")]
@@ -524,6 +530,14 @@ pub enum Sessions {
         /// mouse)
         #[clap(short, long, value_parser)]
         borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(
+            long,
+            value_parser,
+            conflicts_with("near-current-pane"),
+            conflicts_with("in-place")
+        )]
+        tab_id: Option<usize>,
     },
     /// Load a plugin
     /// Returns: Created pane ID (format: plugin_<id>)
@@ -584,6 +598,9 @@ pub enum Sessions {
         /// mouse)
         #[clap(short, long, value_parser)]
         borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(long, value_parser, conflicts_with("in-place"))]
+        tab_id: Option<usize>,
     },
     /// Edit file with default $EDITOR / $VISUAL
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -650,6 +667,14 @@ pub enum Sessions {
         /// mouse)
         #[clap(short, long, value_parser)]
         borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(
+            long,
+            value_parser,
+            conflicts_with("near-current-pane"),
+            conflicts_with("in-place")
+        )]
+        tab_id: Option<usize>,
     },
     ConvertConfig {
         old_config_file: PathBuf,
@@ -744,6 +769,11 @@ pub enum CliAction {
     FocusNextPane,
     /// Change focus to the previous pane
     FocusPreviousPane,
+    /// Focus a specific pane by its ID
+    FocusPaneId {
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3
+        pane_id: String,
+    },
     /// Move the focused pane in the specified direction. [right|left|up|down]
     MoveFocus {
         direction: Direction,
@@ -1014,6 +1044,14 @@ pub enum CliAction {
         /// mouse)
         #[clap(long, value_parser)]
         borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(
+            long,
+            value_parser,
+            conflicts_with("near-current-pane"),
+            conflicts_with("in-place")
+        )]
+        tab_id: Option<usize>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -1079,6 +1117,14 @@ pub enum CliAction {
         /// mouse)
         #[clap(short, long, value_parser)]
         borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(
+            long,
+            value_parser,
+            conflicts_with("near-current-pane"),
+            conflicts_with("in-place")
+        )]
+        tab_id: Option<usize>,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {
@@ -1107,6 +1153,14 @@ pub enum CliAction {
     ///
     /// Returns exit code 0 if state was changed, 2 if already hidden, 1 if tab not found.
     HideFloatingPanes {
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    /// Check if floating panes are visible in the specified tab (or active tab).
+    ///
+    /// Prints "true" to stdout and exits 0 if visible.
+    /// Prints "false" to stdout and exits 1 if not visible.
+    AreFloatingPanesVisible {
         #[clap(short, long, value_parser)]
         tab_id: Option<usize>,
     },
@@ -1183,8 +1237,12 @@ pub enum CliAction {
     /// Returns: The created tab's ID as a single number on stdout
     NewTab {
         /// Layout to use for the new tab
-        #[clap(short, long, value_parser)]
+        #[clap(short, long, value_parser, conflicts_with = "layout-string")]
         layout: Option<PathBuf>,
+
+        /// Raw KDL layout string to use directly (instead of a layout file path)
+        #[clap(long, value_parser, conflicts_with = "layout")]
+        layout_string: Option<String>,
 
         /// Default folder to look for layouts
         #[clap(long, value_parser, requires("layout"))]
@@ -1288,8 +1346,16 @@ pub enum CliAction {
     /// Override the layout of the active tab
     OverrideLayout {
         /// Path to the layout file
-        #[clap(value_parser)]
-        layout: PathBuf,
+        #[clap(
+            value_parser,
+            required_unless_present = "layout-string",
+            conflicts_with = "layout-string"
+        )]
+        layout: Option<PathBuf>,
+
+        /// Raw KDL layout string to use directly (instead of a layout file path)
+        #[clap(long, value_parser, conflicts_with = "layout")]
+        layout_string: Option<String>,
 
         /// Default folder to look for layouts
         #[clap(long, value_parser)]
@@ -1337,6 +1403,9 @@ pub enum CliAction {
         configuration: Option<PluginUserConfiguration>,
         #[clap(short, long, value_parser)]
         skip_plugin_cache: bool,
+        /// Target a specific tab by ID
+        #[clap(long, value_parser, conflicts_with("in-place"))]
+        tab_id: Option<usize>,
     },
     /// Returns: Plugin pane ID (format: plugin_<id>)
     LaunchPlugin {
@@ -1358,6 +1427,9 @@ pub enum CliAction {
         configuration: Option<PluginUserConfiguration>,
         #[clap(short, long, value_parser)]
         skip_plugin_cache: bool,
+        /// Target a specific tab by ID
+        #[clap(long, value_parser, conflicts_with("in-place"))]
+        tab_id: Option<usize>,
     },
     RenameSession {
         name: String,
@@ -1558,6 +1630,12 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
     },
     /// Detach from the current session
     Detach,
+    /// Switch the theme to dark (uses configured `theme_dark`).
+    SetDarkTheme,
+    /// Switch the theme to light (uses configured `theme_light`).
+    SetLightTheme,
+    /// Toggle between dark and light themes (used configured `theme_dark` and `theme_light`)
+    ToggleTheme,
     /// Switch to a different session
     SwitchSession {
         /// Name of the session to switch to
@@ -1569,8 +1647,11 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(long)]
         pane_id: Option<String>,
         /// Layout to apply when switching to the session (relative paths start at layout-dir)
-        #[clap(short, long, value_parser)]
+        #[clap(short, long, value_parser, conflicts_with = "layout-string")]
         layout: Option<PathBuf>,
+        /// Raw KDL layout string to use directly
+        #[clap(long, value_parser, conflicts_with = "layout")]
+        layout_string: Option<String>,
         /// Default folder to look for layouts
         #[clap(long, value_parser, requires("layout"))]
         layout_dir: Option<PathBuf>,

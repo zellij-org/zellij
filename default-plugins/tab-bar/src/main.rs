@@ -32,6 +32,7 @@ struct State {
     mode_info: ModeInfo,
     tab_line: Vec<LinePart>,
     hide_swap_layout_indication: bool,
+    cached_keybinds: KeybindsVec,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -49,13 +50,26 @@ impl ZellijPlugin for State {
             EventType::TabUpdate,
             EventType::ModeUpdate,
             EventType::Mouse,
+            EventType::InitialKeybinds,
         ]);
     }
 
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
-            Event::ModeUpdate(mode_info) => {
+            Event::InitialKeybinds(keybinds) => {
+                self.cached_keybinds = keybinds;
+                if !self.cached_keybinds.is_empty() {
+                    self.mode_info.keybinds = self.cached_keybinds.clone();
+                }
+                should_render = true;
+            },
+            Event::ModeUpdate(mut mode_info) => {
+                if mode_info.keybinds.is_empty() && !self.cached_keybinds.is_empty() {
+                    mode_info.keybinds = self.cached_keybinds.clone();
+                } else if !mode_info.keybinds.is_empty() {
+                    self.cached_keybinds = mode_info.keybinds.clone();
+                }
                 if self.mode_info != mode_info {
                     should_render = true;
                 }

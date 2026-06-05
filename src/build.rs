@@ -9,5 +9,5 @@ fn main() {
 
     // Embed the application icon into the Windows executable.
     #[cfg(target_os = "windows")]
-    embed_resource::compile("assets/zellij.rc", embed_resource::NONE);
+    let _ = embed_resource::compile("assets/zellij.rc", embed_resource::NONE);
 }

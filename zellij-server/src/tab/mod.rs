@@ -7,6 +7,7 @@ mod layout_applier;
 mod mouse_handler;
 mod swap_layouts;
 
+use crate::plugins::PluginId;
 use copy_command::CopyCommand;
 pub use mouse_handler::{MouseEffect, MouseHandler, PaneEdge, PaneResizeState};
 use std::env::temp_dir;
@@ -39,6 +40,7 @@ use crate::{
     os_input_output::ServerOsApi,
     output::{CharacterChunk, Output, SixelImageChunk},
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
+    panes::grid::namespace_notification_id,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
@@ -156,6 +158,11 @@ pub(crate) struct Tab {
     pub position: usize,
     pub name: String,
     pub prev_name: String,
+    /// The tab's current viewport size, computed as `min(rows)` and `min(cols)`
+    /// independently across the clients whose `active_tab_id` equals this tab.
+    /// When the tab has no viewers it retains its most recent value (the
+    /// recompute path simply skips empty tabs).
+    pub size: Size,
     tiled_panes: TiledPanes,
     floating_panes: FloatingPanes,
     suppressed_panes: SuppressedPanes,
@@ -238,7 +245,11 @@ pub trait Pane {
     fn handle_pty_bytes(&mut self, _bytes: VteBytes) {}
     fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {}
     fn show_cursor(&mut self, _client_id: ClientId, _cursor_position: Option<(usize, usize)>) {}
-    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)>;
+    /// Returns the cursor position and whether it is visible.
+    /// The position is returned unconditionally (as long as the cursor is within
+    /// bounds) so that the host terminal can position the cursor for IME even
+    /// when the app has hidden it. The bool is true when the cursor is visible.
+    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize, bool)>;
     fn is_mid_frame(&self) -> bool {
         false
     }
@@ -403,7 +414,45 @@ pub trait Pane {
         // we should probably refactor away from this trait at some point
         vec![]
     }
+    fn drain_forwarded_queries(&mut self) -> Vec<crate::host_query::HostQuery> {
+        // Only terminal panes forward whitelisted queries to the host;
+        // plugin panes have no such concept.
+        vec![]
+    }
+    /// Mark this pane as awaiting a host-terminal reply for a forward
+    /// it just dispatched. While paused, vte byte feeding is buffered
+    /// so that the eventual host reply lands on the pane's stdin in
+    /// the same stream position the original query occupied. Default
+    /// no-op for non-terminal panes (plugins do not forward queries).
+    fn arm_forward_pause(&mut self) {}
+    /// Clear the forward-pause flag set by `arm_forward_pause`, returning
+    /// `true` if the pane was previously paused. Default no-op.
+    fn clear_forward_pause(&mut self) -> bool {
+        false
+    }
+    /// Drain and return any PTY bytes that arrived while the pane was
+    /// forward-paused. Tab calls this on resume and re-feeds the bytes
+    /// through `handle_pty_bytes`. Default empty for non-terminal panes.
+    fn drain_pending_pty_input(&mut self) -> Vec<u8> {
+        vec![]
+    }
+    /// Whether this pane is currently waiting for a host-forward reply.
+    fn is_forward_paused(&self) -> bool {
+        false
+    }
+    /// Push a CSI ?997 DSR notification (host color-palette theme mode)
+    /// onto this pane's pending pty-write queue, but only if the pane's
+    /// underlying app opted in via `CSI ? 2031 h`.
+    /// Only relevant to terminal panes, plugin panes receive this through
+    /// `Event::HostTerminalThemeChanged`
+    fn push_color_palette_dsr(&mut self, _mode: zellij_utils::data::HostTerminalThemeMode) {}
     fn drain_clipboard_update(&mut self) -> Option<String> {
+        None
+    }
+    fn drain_desktop_notifications(&mut self) -> Vec<(String, String)> {
+        vec![]
+    }
+    fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
         None
     }
     fn render_full_viewport(&mut self) {}
@@ -625,7 +674,9 @@ pub trait Pane {
     ) {
     }
     fn clear_plugin_highlights(&mut self, _plugin_id: u32) {}
-    fn set_hover_position(&mut self, _position: Option<Position>) {}
+    fn set_hover_position(&mut self, _position: Option<Position>) -> bool {
+        false
+    }
     fn cached_hover_tooltip(&self) -> Option<String> {
         None
     }
@@ -723,6 +774,7 @@ impl Tab {
         if let Some(client_id) = client_id {
             connected_clients.insert(client_id);
         }
+        let initial_size = display_area;
         let viewport: Viewport = display_area.into();
         let viewport = Rc::new(RefCell::new(viewport));
         let display_area = Rc::new(RefCell::new(display_area));
@@ -781,6 +833,7 @@ impl Tab {
             suppressed_panes: HashMap::new(),
             name: name.clone(),
             prev_name: name,
+            size: initial_size,
             max_panes,
             viewport,
             display_area,
@@ -1154,10 +1207,11 @@ impl Tab {
         self.update_input_modes()
     }
     pub fn update_input_modes(&mut self) -> Result<()> {
-        // this updates all plugins with the client's input mode
+        // this updates only this tab's plugins with the client's input mode
         let mode_infos = self.mode_info.borrow();
         let mut plugin_updates = vec![];
         let currently_marking_pane_group = self.currently_marking_pane_group.borrow();
+        let tab_plugin_ids = self.get_plugin_ids();
         for client_id in self.connected_clients.borrow().iter() {
             let mut mode_info = mode_infos
                 .get(client_id)
@@ -1181,11 +1235,19 @@ impl Tab {
             } else {
                 mode_info.web_server_capability = Some(false);
             }
-            plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info)));
+            for plugin_id in &tab_plugin_ids {
+                plugin_updates.push((
+                    Some(*plugin_id),
+                    Some(*client_id),
+                    Event::ModeUpdate(mode_info.clone()),
+                ));
+            }
         }
-        self.senders
-            .send_to_plugin(PluginInstruction::Update(plugin_updates))
-            .with_context(|| format!("failed to update plugins with mode info"))?;
+        if !plugin_updates.is_empty() {
+            self.senders
+                .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                .with_context(|| format!("failed to update plugins with mode info"))?;
+        }
         Ok(())
     }
     pub fn add_client(&mut self, client_id: ClientId, mode_info: Option<ModeInfo>) -> Result<()> {
@@ -1547,7 +1609,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -1660,7 +1722,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -1762,7 +1824,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -1908,7 +1970,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -2582,6 +2644,24 @@ impl Tab {
                 .values()
                 .any(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
     }
+    /// Whether the pane with `pane_id` (if owned by this tab) is
+    /// currently waiting for a host-forward reply. Used by the
+    /// `ColorPaletteMode` short-circuit to decide whether an empty
+    /// "host mode unknown" answer needs to drive an unblock cycle:
+    /// if the pane is not paused, no work is owed.
+    pub fn is_pane_forward_paused(&self, pane_id: PaneId) -> bool {
+        self.tiled_panes
+            .get_pane(pane_id)
+            .or_else(|| self.floating_panes.get_pane(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &s_p.1)
+            })
+            .map(|p| p.is_forward_paused())
+            .unwrap_or(false)
+    }
     pub fn has_plugin(&self, plugin_id: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Plugin(plugin_id))
             || self
@@ -2684,6 +2764,48 @@ impl Tab {
         }
         Ok(())
     }
+    /// Deliver a forwarded host reply (or cache-fallback synthesis,
+    /// or a locally-answered query payload) to a pane that is currently
+    /// forward-paused. The reply bytes are written to the pane's PTY
+    /// first (so the app reads them on its stdin in the same stream
+    /// position the original query occupied), then the pause flag is
+    /// cleared and any PTY bytes that arrived while the pane was
+    /// paused are re-fed through vte. The re-feed itself may produce
+    /// another forward and re-arm the pause; the cycle bounds at the
+    /// buffered byte count.
+    pub fn resume_pane_after_forward(&mut self, pid: u32, reply_bytes: Vec<u8>) -> Result<()> {
+        let err_context = || format!("failed to resume pane {pid} after forward");
+        // Write the reply first so the app sees it on stdin before
+        // any subsequent (sync or async) reply that follows in the
+        // buffered byte stream.
+        if !reply_bytes.is_empty() {
+            self.write_to_pane_id_without_preprocessing(reply_bytes, PaneId::Terminal(pid))
+                .with_context(err_context)?;
+        }
+        // Clear the pause and pull out any bytes that were buffered
+        // while it waited for the host reply.
+        let buffered = if let Some(terminal_output) = self
+            .tiled_panes
+            .get_pane_mut(PaneId::Terminal(pid))
+            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Terminal(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
+                    .map(|s_p| &mut s_p.1)
+            }) {
+            terminal_output.clear_forward_pause();
+            terminal_output.drain_pending_pty_input()
+        } else {
+            // Pane closed between forward dispatch and reply arrival.
+            return Ok(());
+        };
+        if !buffered.is_empty() {
+            self.process_pty_bytes(pid, buffered)
+                .with_context(err_context)?;
+        }
+        Ok(())
+    }
     fn process_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
         let err_context = || format!("failed to process pty bytes from pid {pid}");
 
@@ -2709,14 +2831,47 @@ impl Tab {
             }
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
+            let forwarded_queries = terminal_output.drain_forwarded_queries();
+            // If at least one forward was produced, the pane stopped
+            // processing its `pending_pty_input` queue at the byte
+            // that produced the forward. Arm the pause so subsequent
+            // PTY bytes accumulate in the same queue rather than
+            // being processed; they will be drained in stream order
+            // when the host reply (or cache-fallback synthesis, or
+            // 500 ms timeout) lands via `resume_pane_after_forward`.
+            // Pause arming is independent of which forward bears the
+            // reply: resume is keyed by pane_id, not by token, so a
+            // single flag suffices for any number of queued forwards.
+            if !forwarded_queries.is_empty() {
+                terminal_output.arm_forward_pause();
+            }
             let clipboard_update = terminal_output.drain_clipboard_update();
+            let desktop_notifications = terminal_output.drain_desktop_notifications();
+            let osc7_cwd = terminal_output.drain_osc7_cwd();
             for message in messages_to_pty {
                 self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
                     .with_context(err_context)?;
             }
+            for query in forwarded_queries {
+                let _ = self
+                    .senders
+                    .send_to_screen(ScreenInstruction::ForwardHostQuery {
+                        pane_id: PaneId::Terminal(pid),
+                        query,
+                    });
+            }
             if let Some(string) = clipboard_update {
                 self.write_selection_to_clipboard(&string)
                     .with_context(err_context)?;
+            }
+            if !desktop_notifications.is_empty() {
+                self.forward_desktop_notifications(desktop_notifications, pid)
+                    .with_context(err_context)?;
+            }
+            if let Some(path) = osc7_cwd {
+                let _ = self
+                    .senders
+                    .send_to_pty(PtyInstruction::NotifyCwdFromOsc7(pid, path));
             }
         }
         Ok(())
@@ -3027,8 +3182,8 @@ impl Tab {
     pub fn get_active_terminal_cursor_position(
         &self,
         client_id: ClientId,
-    ) -> Option<(usize, usize)> {
-        // (x, y)
+    ) -> Option<(usize, usize, bool)> {
+        // (x, y, is_cursor_visible)
         let active_pane_id = if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .get_active_pane_id(client_id)
@@ -3040,13 +3195,13 @@ impl Tab {
             .floating_panes
             .get(&active_pane_id)
             .or_else(|| self.tiled_panes.get_pane(active_pane_id))?;
-        active_terminal
-            .cursor_coordinates(Some(client_id))
-            .map(|(x_in_terminal, y_in_terminal)| {
+        active_terminal.cursor_coordinates(Some(client_id)).map(
+            |(x_in_terminal, y_in_terminal, is_visible)| {
                 let x = active_terminal.x() + x_in_terminal;
                 let y = active_terminal.y() + y_in_terminal;
-                (x, y)
-            })
+                (x, y, is_visible)
+            },
+        )
     }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
@@ -3226,36 +3381,16 @@ impl Tab {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
-            match self
-                .get_active_terminal_cursor_position(client_id)
-                .and_then(|(cursor_position_x, cursor_position_y)| {
+            match self.get_active_terminal_cursor_position(client_id) {
+                Some((cursor_position_x, cursor_position_y, is_cursor_visible)) => {
                     let active_pane_z_index = self
                         .get_active_pane_id(client_id)
                         .and_then(|pane_id| self.floating_panes.get_pane_z_index(pane_id));
-                    if output.cursor_is_visible(
+                    let not_occluded = output.cursor_is_visible(
                         cursor_position_x,
                         cursor_position_y,
                         active_pane_z_index,
-                    ) {
-                        Some((cursor_position_x, cursor_position_y))
-                    } else {
-                        None
-                    }
-                }) {
-                Some((cursor_position_x, cursor_position_y)) => {
-                    let desired_cursor_shape = self
-                        .get_active_pane(client_id)
-                        .map(|ap| ap.cursor_shape_csi())
-                        .unwrap_or_default();
-                    let cursor_changed_position_or_shape = self
-                        .cursor_positions_and_shape
-                        .get(&client_id)
-                        .map(|(previous_x, previous_y, previous_shape)| {
-                            previous_x != &cursor_position_x
-                                || previous_y != &cursor_position_y
-                                || previous_shape != &desired_cursor_shape
-                        })
-                        .unwrap_or(true);
+                    );
                     let active_terminal_is_mid_frame = self
                         .active_terminal_is_mid_frame(client_id)
                         .unwrap_or(false);
@@ -3264,22 +3399,54 @@ impl Tab {
                         // no-op, this means the active terminal is currently rendering a frame,
                         // which means the cursor can be jumping around and we definitely do not
                         // want to render it
-                        //
-                        // (I felt this was clearer than expanding the if conditional below)
-                    } else if output.is_dirty() || cursor_changed_position_or_shape {
-                        let show_cursor = "\u{1b}[?25h";
+                    } else if not_occluded && is_cursor_visible {
+                        let desired_cursor_shape = self
+                            .get_active_pane(client_id)
+                            .map(|ap| ap.cursor_shape_csi())
+                            .unwrap_or_default();
+                        let cursor_changed_position_or_shape = self
+                            .cursor_positions_and_shape
+                            .get(&client_id)
+                            .map(|(previous_x, previous_y, previous_shape)| {
+                                previous_x != &cursor_position_x
+                                    || previous_y != &cursor_position_y
+                                    || previous_shape != &desired_cursor_shape
+                            })
+                            .unwrap_or(true);
+                        if output.is_dirty() || cursor_changed_position_or_shape {
+                            let show_cursor = "\u{1b}[?25h";
+                            let goto_cursor_position = &format!(
+                                "\u{1b}[{};{}H\u{1b}[m{}",
+                                cursor_position_y + 1,
+                                cursor_position_x + 1,
+                                desired_cursor_shape
+                            ); // goto row/col
+                            output.add_post_vte_instruction_to_client(client_id, show_cursor);
+                            output.add_post_vte_instruction_to_client(
+                                client_id,
+                                goto_cursor_position,
+                            );
+                            self.cursor_positions_and_shape.insert(
+                                client_id,
+                                (cursor_position_x, cursor_position_y, desired_cursor_shape),
+                            );
+                        }
+                    } else if not_occluded {
+                        // Cursor is hidden by the app but not occluded by a floating
+                        // pane. Position the host terminal cursor at the correct
+                        // location (for IME) then hide it. The IME subsystem reads
+                        // the cursor position regardless of visibility.
+                        let hide_cursor = "\u{1b}[?25l";
                         let goto_cursor_position = &format!(
-                            "\u{1b}[{};{}H\u{1b}[m{}",
+                            "\u{1b}[{};{}H",
                             cursor_position_y + 1,
                             cursor_position_x + 1,
-                            desired_cursor_shape
-                        ); // goto row/col
-                        output.add_post_vte_instruction_to_client(client_id, show_cursor);
-                        output.add_post_vte_instruction_to_client(client_id, goto_cursor_position);
-                        self.cursor_positions_and_shape.insert(
-                            client_id,
-                            (cursor_position_x, cursor_position_y, desired_cursor_shape),
                         );
+                        output.add_post_vte_instruction_to_client(client_id, hide_cursor);
+                        output.add_post_vte_instruction_to_client(client_id, goto_cursor_position);
+                    } else {
+                        let hide_cursor = "\u{1b}[?25l";
+                        output.add_post_vte_instruction_to_client(client_id, hide_cursor);
                     }
                 },
                 None => {
@@ -3353,6 +3520,17 @@ impl Tab {
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) -> Result<()> {
         let err_context = || format!("failed to resize whole tab (id {})", self.id);
+        self.size = new_screen_size;
+        // If a tiled pane is fullscreen, exit fullscreen first so that *all*
+        // tiled panes (including the currently hidden ones) participate in the
+        // resize/relayout. We re-enter fullscreen on the same pane after the
+        // resize so the user-visible state is preserved. Without this, hidden
+        // panes retain stale geometry from before the resize and the layout
+        // solver fails when fullscreen is later toggled off.
+        let fullscreen_pane_to_restore = self.tiled_panes.fullscreen_pane_id();
+        if fullscreen_pane_to_restore.is_some() {
+            self.tiled_panes.unset_fullscreen();
+        }
         self.floating_panes.resize(new_screen_size);
         // we need to do this explicitly because floating_panes.resize does not do this
         self.floating_panes
@@ -3365,7 +3543,9 @@ impl Tab {
             self.swap_layouts.set_is_floating_damaged();
             let _ = self.relayout_floating_panes(false);
         }
-        if self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !self.is_fullscreen_active()
+        if self.auto_layout
+            && !self.swap_layouts.is_tiled_damaged()
+            && fullscreen_pane_to_restore.is_none()
         {
             self.swap_layouts.set_is_tiled_damaged();
             let _ = self.relayout_tiled_panes(false);
@@ -3380,6 +3560,11 @@ impl Tab {
             &mut self.tiled_panes,
             self.draw_pane_frames,
         );
+        if let Some(pane_id) = fullscreen_pane_to_restore {
+            if self.tiled_panes.panes_contain(&pane_id) {
+                self.tiled_panes.toggle_pane_fullscreen(pane_id);
+            }
+        }
         Ok(())
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
@@ -3739,6 +3924,15 @@ impl Tab {
             .pane_ids()
             .chain(self.floating_panes.pane_ids())
             .copied()
+            .collect()
+    }
+    pub fn get_plugin_ids(&self) -> Vec<PluginId> {
+        self.get_static_and_floating_pane_ids()
+            .into_iter()
+            .filter_map(|pane_id| match pane_id {
+                PaneId::Plugin(pid) => Some(pid),
+                _ => None,
+            })
             .collect()
     }
     pub fn get_pane_info(&self, pane_id: PaneId) -> Option<PaneInfo> {
@@ -4627,6 +4821,48 @@ impl Tab {
 
         Ok(())
     }
+    fn forward_desktop_notifications(
+        &self,
+        notifications: Vec<(String, String)>,
+        pane_id: u32,
+    ) -> Result<()> {
+        let err_context = || "failed to forward desktop notifications to host terminal".to_string();
+        let mut output = Output::default();
+        // Use all clients in the app, not just those viewing this tab —
+        // desktop notifications should reach the host terminal regardless
+        // of which tab is currently focused.
+        let all_clients: HashSet<ClientId> = {
+            self.connected_clients_in_app
+                .borrow()
+                .keys()
+                .copied()
+                .collect()
+        };
+        output.add_clients(&all_clients, self.link_handler.clone(), None);
+        for (payload, terminator) in notifications {
+            // Apply identifier namespacing (Phase 3)
+            // The first semicolon-delimited part of payload is the metadata
+            let (metadata, rest) = match payload.find(';') {
+                Some(idx) => (
+                    payload.get(..idx).unwrap_or_default(),
+                    payload.get(idx..).unwrap_or_default(),
+                ),
+                None => (payload.as_str(), ""),
+            };
+            let namespaced_metadata = namespace_notification_id(metadata, pane_id);
+            let raw = if rest.is_empty() {
+                format!("\x1b]99;{}{}", namespaced_metadata, terminator)
+            } else {
+                format!("\x1b]99;{}{}{}", namespaced_metadata, rest, terminator)
+            };
+            output.add_post_vte_instruction_to_multiple_clients(all_clients.iter().copied(), &raw);
+        }
+        let serialized_output = output.serialize().with_context(err_context)?;
+        self.senders
+            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+            .with_context(err_context)?;
+        Ok(())
+    }
     pub fn visible(&mut self, visible: bool) -> Result<()> {
         let pids_in_this_tab = self.tiled_panes.pane_ids().filter_map(|p| match p {
             PaneId::Plugin(pid) => Some(pid),
@@ -4686,6 +4922,13 @@ impl Tab {
             })
             .with_context(err_context)?;
         pane.rename(buf);
+        Ok(())
+    }
+
+    pub fn rename_active_pane(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.rename(buf);
+        }
         Ok(())
     }
 
@@ -5434,6 +5677,13 @@ impl Tab {
     }
     pub fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme;
+        // The tab's `default_mode_info` is what `update_input_modes`
+        // falls back to when no per-client entry exists in
+        // `self.mode_info`. Without this update, plugins on a
+        // freshly-connected client (one that has never manually
+        // changed mode) receive `Event::ModeUpdate` carrying the old
+        // style and skip their re-render.
+        self.default_mode_info.update_theme(theme);
         self.floating_panes.update_pane_themes(theme);
         self.tiled_panes.update_pane_themes(theme);
         for (_, pane) in self.suppressed_panes.values_mut() {
@@ -5956,7 +6206,9 @@ pub fn pane_info_for_pane(
     pane_info.pane_content_rows = pane.get_content_rows();
     pane_info.pane_columns = pane.cols();
     pane_info.pane_content_columns = pane.get_content_columns();
-    pane_info.cursor_coordinates_in_pane = pane.cursor_coordinates(None);
+    pane_info.cursor_coordinates_in_pane = pane
+        .cursor_coordinates(None)
+        .and_then(|(x, y, is_visible)| if is_visible { Some((x, y)) } else { None });
     pane_info.is_selectable = pane.selectable();
     pane_info.title = pane.current_title();
     pane_info.exited = pane.exited();

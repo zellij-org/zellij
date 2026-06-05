@@ -1,10 +1,10 @@
 use crate::web_client::authentication::SessionTokenHash;
 use crate::web_client::control_message::{
-    SetConfigPayload, WebClientToWebServerControlMessage,
+    SetConfigPayload, TerminalMetricsPayload, WebClientToWebServerControlMessage,
     WebClientToWebServerControlMessagePayload, WebServerToWebClientControlMessage,
 };
 use crate::web_client::message_handlers::{
-    parse_stdin, render_to_client, send_control_messages_to_client,
+    parse_stdin, render_to_client, send_control_messages_to_client, StdinSession,
 };
 use crate::web_client::server_listener::zellij_server_listener;
 use crate::web_client::types::{AppState, TerminalParams};
@@ -19,7 +19,11 @@ use axum::{
 use futures::StreamExt;
 use std::sync::{atomic::AtomicBool, Arc};
 use tokio_util::sync::CancellationToken;
-use zellij_utils::{input::mouse::MouseEvent, ipc::ClientToServerMsg};
+use zellij_utils::{
+    input::mouse::MouseEvent,
+    ipc::{ClientToServerMsg, PixelDimensions},
+    pane_size::SizeInPixels,
+};
 
 pub async fn ws_handler_control(
     ws: WebSocketUpgrade,
@@ -73,6 +77,9 @@ async fn handle_ws_control(
         let client_msg = match deserialized_msg.payload {
             WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
                 ClientToServerMsg::TerminalResize { new_size: size }
+            },
+            WebClientToWebServerControlMessagePayload::TerminalMetrics(metrics) => {
+                terminal_metrics_to_ipc(metrics)
             },
         };
 
@@ -221,7 +228,46 @@ async fn handle_ws_terminal(
     let _ = attachment_complete_rx.await;
 
     let mut mouse_old_event = MouseEvent::new();
-    while let Some(Ok(msg)) = client_terminal_channel_rx.next().await {
+    // Per-connection parser state. Hoisted so a CSI / Kitty sequence
+    // split across two WebSocket frames resolves on the second frame.
+    let mut stdin_session = StdinSession::new(explicitly_disable_kitty_keyboard_protocol);
+    let finalize_idle = std::time::Duration::from_millis(50);
+    loop {
+        // When termwiz is holding ambiguous-but-complete events from
+        // the previous frame, race the next frame against an idle
+        // timeout so the held events still drain if no further frame
+        // arrives.
+        let result = if stdin_session.pending_finalize() {
+            tokio::select! {
+                msg = client_terminal_channel_rx.next() => Some(msg),
+                _ = tokio::time::sleep(finalize_idle) => None,
+            }
+        } else {
+            Some(client_terminal_channel_rx.next().await)
+        };
+        let msg = match result {
+            Some(Some(Ok(m))) => m,
+            Some(_) => break,
+            None => {
+                // Idle timeout fired with `pending_finalize` set:
+                // drain any ambiguous-but-complete events termwiz held
+                // back on the previous frame.
+                if let Some(client_connection) = state
+                    .connection_table
+                    .lock()
+                    .unwrap()
+                    .get_client_os_api(&web_client_id)
+                    .cloned()
+                {
+                    stdin_session.finalize(&*client_connection, &mut mouse_old_event);
+                } else {
+                    // No client to send drained events to — clear the
+                    // flag so we don't busy-loop the idle timer.
+                    stdin_session.clear_pending_finalize();
+                }
+                continue;
+            },
+        };
         match msg {
             Message::Binary(buf) => {
                 let Some(client_connection) = state
@@ -238,7 +284,7 @@ async fn handle_ws_terminal(
                     &buf,
                     client_connection.clone(),
                     &mut mouse_old_event,
-                    explicitly_disable_kitty_keyboard_protocol,
+                    &mut stdin_session,
                 );
             },
             Message::Text(msg) => {
@@ -256,7 +302,7 @@ async fn handle_ws_terminal(
                     msg.as_bytes(),
                     client_connection.clone(),
                     &mut mouse_old_event,
-                    explicitly_disable_kitty_keyboard_protocol,
+                    &mut stdin_session,
                 );
             },
             Message::Close(_) => {
@@ -274,4 +320,101 @@ async fn handle_ws_terminal(
         }
     }
     os_input.send_to_server(ClientToServerMsg::ClientExited);
+}
+
+fn terminal_metrics_to_ipc(metrics: TerminalMetricsPayload) -> ClientToServerMsg {
+    ClientToServerMsg::TerminalPixelDimensions {
+        pixel_dimensions: PixelDimensions {
+            text_area_size: Some(SizeInPixels {
+                width: metrics.text_area_pixel_width,
+                height: metrics.text_area_pixel_height,
+            }),
+            character_cell_size: Some(SizeInPixels {
+                width: metrics.cell_pixel_width,
+                height: metrics.cell_pixel_height,
+            }),
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn terminal_metrics_to_ipc_preserves_all_dimensions() {
+        let metrics = TerminalMetricsPayload {
+            cell_pixel_width: 9,
+            cell_pixel_height: 18,
+            text_area_pixel_width: 80 * 9,
+            text_area_pixel_height: 24 * 18,
+        };
+        let msg = terminal_metrics_to_ipc(metrics);
+        match msg {
+            ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions } => {
+                let cell = pixel_dimensions
+                    .character_cell_size
+                    .expect("cell size missing");
+                let area = pixel_dimensions
+                    .text_area_size
+                    .expect("text area size missing");
+                assert_eq!(cell.width, 9);
+                assert_eq!(cell.height, 18);
+                assert_eq!(area.width, 720);
+                assert_eq!(area.height, 432);
+            },
+            other => panic!("expected TerminalPixelDimensions, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn terminal_metrics_round_trips_through_json_payload() {
+        // The browser sends this message as JSON over the control
+        // socket. Verify that the on-wire shape deserializes into the
+        // variant we route into terminal_metrics_to_ipc.
+        let raw = serde_json::json!({
+            "web_client_id": "abc",
+            "payload": {
+                "type": "TerminalMetrics",
+                "cell_pixel_width": 7,
+                "cell_pixel_height": 14,
+                "text_area_pixel_width": 560,
+                "text_area_pixel_height": 336,
+            }
+        });
+        let parsed: WebClientToWebServerControlMessage =
+            serde_json::from_value(raw).expect("parse");
+        let metrics = match parsed.payload {
+            WebClientToWebServerControlMessagePayload::TerminalMetrics(m) => m,
+            other => panic!("expected TerminalMetrics, got {:?}", other),
+        };
+        assert_eq!(metrics.cell_pixel_width, 7);
+        assert_eq!(metrics.cell_pixel_height, 14);
+        assert_eq!(metrics.text_area_pixel_width, 560);
+        assert_eq!(metrics.text_area_pixel_height, 336);
+    }
+
+    #[test]
+    fn terminal_resize_still_deserializes_after_adding_variant() {
+        // Regression guard for the new enum variant: the existing
+        // TerminalResize wire shape must continue to parse unchanged
+        // (no `type` rename, no required-field changes).
+        let raw = serde_json::json!({
+            "web_client_id": "abc",
+            "payload": {
+                "type": "TerminalResize",
+                "rows": 24,
+                "cols": 80,
+            }
+        });
+        let parsed: WebClientToWebServerControlMessage =
+            serde_json::from_value(raw).expect("parse");
+        match parsed.payload {
+            WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
+                assert_eq!(size.rows, 24);
+                assert_eq!(size.cols, 80);
+            },
+            other => panic!("expected TerminalResize, got {:?}", other),
+        }
+    }
 }

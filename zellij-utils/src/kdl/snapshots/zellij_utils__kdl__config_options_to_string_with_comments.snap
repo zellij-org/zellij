@@ -22,6 +22,16 @@ simplified_ui true
 // 
 theme "dracula"
  
+// Theme to use when the host terminal reports a dark color palette.
+// Requires `theme_light` to also be set; otherwise `theme` is used.
+// 
+// theme_dark "dracula"
+ 
+// Theme to use when the host terminal reports a light color palette.
+// Requires `theme_dark` to also be set; otherwise `theme` is used.
+// 
+// theme_light "solarized-light"
+ 
 // Choose the base input mode of zellij.
 // Default: normal
 // 
@@ -291,3 +301,4 @@ web_sharing "disabled"
 // typically work best. Set to 0 to use the number of (physical) CPU cores.
 // Note: This only applies to web clients at the moment.
 // client_async_worker_tasks 4
+

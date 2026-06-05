@@ -136,6 +136,22 @@ pub enum InputEvent {
     Paste(String),
     /// The program has woken the input thread.
     Wake,
+    /// An Operating System Command sequence was received.
+    /// Contains the raw payload between \x1b] and the terminator.
+    OperatingSystemCommand(Vec<u8>),
+    /// A CSI-based device control / status report reply emitted by the
+    /// host terminal (not a keyboard event). This variant is only produced
+    /// for a deliberately narrow whitelist of final bytes — `t` (pixel
+    /// dimensions reply), `y` (DECRPM reply), `c` (Primary-DA reply), and
+    /// `n` (DSR reply). The raw field contains the exact byte sequence of
+    /// the original report (including the leading ESC) so it can be
+    /// forwarded verbatim without re-serialization.
+    DeviceControlReply {
+        intermediates: Vec<u8>,
+        params: Vec<u8>,
+        final_byte: u8,
+        raw: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -801,6 +817,144 @@ fn parse_sgr_mouse(buf: &[u8]) -> Option<(InputEvent, usize)> {
         }),
         consumed,
     ))
+}
+
+/// Attempt to parse an OSC (Operating System Command) sequence from the buffer.
+/// Returns `Some((InputEvent::OperatingSystemCommand(payload), len))` if a complete
+/// OSC sequence is found, where `payload` is the bytes between `\x1b]` and the
+/// terminator, and `len` is the total number of bytes consumed.
+/// Returns `None` if the buffer does not start with `\x1b]` or the sequence is incomplete.
+/// Attempt to parse a CSI-based host-terminal report (device-attribute
+/// responses, DSR replies, DECRPM, pixel-dims reply, etc.) from the start
+/// of `buf`.
+///
+/// Only a narrow whitelist of final bytes is recognised: `t`, `y`, `c`,
+/// `n`. Any other final byte returns `None` so the bytes fall through to
+/// the regular CSI key-mapping machinery.
+///
+/// Returns `Some((event, len))` on a full match, `None` if the bytes do
+/// not look like a whitelisted CSI report (caller should try the next
+/// parser) and reserves returning None with the buffer starting with
+/// `ESC [` for two distinct cases — not currently disambiguated here:
+/// - truly malformed / unsupported sequence, or
+/// - incomplete input; caller handles incompleteness via `maybe_more`.
+/// Return `Some(len)` if `buf` starts with a structurally complete CSI
+/// sequence (`\x1b[ <params>* <intermediates>* <final>` per ECMA-48 §5.4),
+/// regardless of whether the final byte is one we have a use for. Used by
+/// `process_bytes` to advance past CSI sequences the keymap doesn't
+/// recognise — most importantly Kitty keyboard-protocol events
+/// `\x1b[<keycode>;<mods>u`. Without this, the keymap returns
+/// `Found::NeedData` (it sees the bytes as a possible prefix of a longer
+/// registered key) and the parser wedges holding bytes that will never
+/// extend into anything.
+///
+/// Returns `None` if the buffer doesn't start with `\x1b[`, contains a
+/// non-CSI byte, or hasn't yet received its final byte.
+fn complete_csi_len(buf: &[u8]) -> Option<usize> {
+    if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b'[') {
+        return None;
+    }
+    let mut i = 2;
+    let max_scan = buf.len().min(256);
+    while i < max_scan {
+        let b = buf[i];
+        match b {
+            // Parameters (digits, ;, :, ?, <, =, >) and intermediates (space..'/').
+            0x30..=0x3F | 0x20..=0x2F => i += 1,
+            // Any byte in the final-byte range terminates a CSI sequence.
+            0x40..=0x7E => return Some(i + 1),
+            // Anything else means this isn't a well-formed CSI.
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn parse_csi_report(buf: &[u8]) -> Option<(InputEvent, usize)> {
+    if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b'[') {
+        return None;
+    }
+    // Scan forward looking for a final byte in the whitelist, or bail if
+    // we hit something that clearly is not a CSI report (a non-printable
+    // byte other than the known final bytes).
+    let mut i = 2;
+    let mut intermediates: Vec<u8> = Vec::new();
+    let mut params: Vec<u8> = Vec::new();
+    // Parameters (0x30..=0x3F) come first, then intermediates (0x20..=0x2F),
+    // then a final byte (0x40..=0x7E). We only scan up to a reasonable
+    // length to avoid pathological buffers.
+    let max_scan = buf.len().min(256);
+    while i < max_scan {
+        let b = buf[i];
+        match b {
+            // Parameters: digits, `;`, `:`, `?`, `<`, `=`, `>`
+            0x30..=0x3F => {
+                params.push(b);
+                i += 1;
+            },
+            // Intermediates: space, `!`, `"`, ... `/`
+            0x20..=0x2F => {
+                intermediates.push(b);
+                i += 1;
+            },
+            // Final byte (0x40..=0x7E): must be one of the whitelisted bytes.
+            b't' | b'y' | b'c' | b'n' => {
+                let raw = buf[0..=i].to_vec();
+                return Some((
+                    InputEvent::DeviceControlReply {
+                        intermediates,
+                        params,
+                        final_byte: b,
+                        raw,
+                    },
+                    i + 1,
+                ));
+            },
+            0x40..=0x7E => {
+                // Final byte outside the whitelist — not ours.
+                return None;
+            },
+            _ => {
+                // Something unexpected inside the CSI — give up.
+                return None;
+            },
+        }
+    }
+    None
+}
+
+fn parse_osc(buf: &[u8]) -> Option<(InputEvent, usize)> {
+    // OSC sequences start with ESC ] (0x1b 0x5d)
+    if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b']') {
+        return None;
+    }
+    let mut i = 2;
+    while i < buf.len() {
+        match buf.get(i) {
+            Some(&0x07) => {
+                // BEL terminator
+                let payload = buf.get(2..i).unwrap_or_default().to_vec();
+                return Some((InputEvent::OperatingSystemCommand(payload), i + 1));
+            },
+            Some(&0x1b) => {
+                // Possible ST terminator (ESC \)
+                if buf.get(i + 1) == Some(&b'\\') {
+                    let payload = buf.get(2..i).unwrap_or_default().to_vec();
+                    return Some((InputEvent::OperatingSystemCommand(payload), i + 2));
+                }
+                // Bare ESC inside OSC — malformed, but don't consume further
+                return None;
+            },
+            Some(_) => {
+                i += 1;
+            },
+            None => {
+                // Should not happen since i < buf.len(), but handle gracefully
+                return None;
+            },
+        }
+    }
+    None // incomplete — no terminator found yet
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1489,6 +1643,23 @@ impl InputParser {
         }
     }
 
+    /// If a parked ESC is currently held in `EscapeMaybeAlt`, emit it as a
+    /// real `Esc` keystroke and return to `Normal`. Called from
+    /// `process_bytes` before dispatching any structured sequence (SGR
+    /// mouse, OSC, whitelisted CSI host-reply) that the upcoming bytes
+    /// match — those sequences are autonomous host events and cannot be
+    /// ALT-combined with the parked ESC, so the ESC must be flushed
+    /// before the sequence is emitted.
+    fn flush_parked_esc_if_held<F: FnMut(InputEvent)>(&mut self, callback: &mut F) {
+        if self.state == InputState::EscapeMaybeAlt {
+            callback(InputEvent::Key(KeyEvent {
+                key: KeyCode::Escape,
+                modifiers: Modifiers::NONE,
+            }));
+            self.state = InputState::Normal;
+        }
+    }
+
     fn process_bytes<F: FnMut(InputEvent)>(&mut self, mut callback: F, maybe_more: bool) {
         while !self.buf.is_empty() {
             match self.state {
@@ -1507,14 +1678,62 @@ impl InputParser {
                     }
                 },
                 InputState::EscapeMaybeAlt | InputState::Normal => {
-                    if self.state == InputState::Normal && self.buf.as_slice()[0] == b'\x1b' {
+                    // Structured terminal sequences — SGR mouse, OSC, whitelisted
+                    // CSI host-replies — are autonomous host events and cannot be
+                    // ALT-combined with a leading Esc keystroke. Run these checks
+                    // in *both* Normal and EscapeMaybeAlt: if we're sitting on a
+                    // parked ESC (EscapeMaybeAlt) and the upcoming bytes match one
+                    // of these patterns, the ESC must be a real Esc keystroke, so
+                    // flush it before dispatching the sequence. Otherwise a parked
+                    // ESC immediately followed by `\x1b[<...M` (xterm flushes Esc
+                    // alone, then a mouse motion in the next read) would dispatch
+                    // as a spurious ALT+`[` because the keymap registers `\x1b[`
+                    // as Alt+`[`.
+                    if self.buf.as_slice().get(0) == Some(&b'\x1b') {
                         if let Some((event, len)) = parse_sgr_mouse(self.buf.as_slice()) {
+                            self.flush_parked_esc_if_held(&mut callback);
                             self.buf.advance(len);
                             callback(event);
                             continue;
                         }
 
+                        // OSC sequence check — must come before the incomplete-SGR-mouse early return
+                        if let Some((event, len)) = parse_osc(self.buf.as_slice()) {
+                            self.flush_parked_esc_if_held(&mut callback);
+                            self.buf.advance(len);
+                            callback(event);
+                            continue;
+                        }
+
+                        // Incomplete OSC — buffer and wait for more data
+                        if maybe_more && self.buf.as_slice().starts_with(b"\x1b]") {
+                            self.flush_parked_esc_if_held(&mut callback);
+                            return;
+                        }
+
                         if maybe_more && self.buf.as_slice().starts_with(b"\x1b[<") {
+                            self.flush_parked_esc_if_held(&mut callback);
+                            return;
+                        }
+
+                        // CSI-based host-terminal report (pixel-dims reply,
+                        // DECRPM, DSR, Primary-DA). Must come before the
+                        // regular CSI key-mapping machinery, which would
+                        // otherwise match "\x1b[" as an escape prefix and
+                        // pass the bytes through as keyboard input.
+                        if let Some((event, len)) = parse_csi_report(self.buf.as_slice()) {
+                            self.flush_parked_esc_if_held(&mut callback);
+                            self.buf.advance(len);
+                            callback(event);
+                            continue;
+                        }
+
+                        // Incomplete CSI ?... report (DECRPM, DSR 997, etc.) —
+                        // wait for more data so the report-classification path
+                        // can match the full sequence rather than letting the
+                        // keymap dispatch the leading bytes as separate keys.
+                        if maybe_more && self.buf.as_slice().starts_with(b"\x1b[?") {
+                            self.flush_parked_esc_if_held(&mut callback);
                             return;
                         }
                     }
@@ -1546,6 +1765,42 @@ impl InputParser {
                             self.buf.advance(len);
                         },
                         (Found::Ambiguous(_, _), true) | (Found::NeedData, true) => {
+                            // The keymap is signalling "this buffer
+                            // could still grow into a registered key,
+                            // give me more bytes." That verdict is
+                            // wrong when the buffer already holds a
+                            // structurally complete CSI sequence whose
+                            // final byte isn't in the keymap — most
+                            // importantly Kitty keyboard-protocol
+                            // events `\x1b[<keycode>;<mods>u`, which
+                            // never grow into anything the keymap
+                            // knows. Returning here would wedge
+                            // `self.buf` indefinitely, swallowing every
+                            // host reply that arrives behind it (the
+                            // OSC + DA1 bytes for a forwarded
+                            // `OSC 11;?` query among them) and stalling
+                            // host-color forwards until session exit.
+                            //
+                            // Both `Ambiguous(_, true)` and
+                            // `NeedData(true)` reach this point in
+                            // practice: for `\x1b[<digits>;<digits>u`
+                            // the trie reports `Ambiguous(1, Escape)`
+                            // (it has ESC alone as a match and ESC[…]
+                            // as longer prefixes), so the fix must
+                            // cover both verdicts.
+                            //
+                            // Skip past the unrecognised CSI without
+                            // emitting an event; callers that need
+                            // keyboard dispatch (kitty_parser, the
+                            // separate `input_parser` instance fed the
+                            // residue from `StdinAnsiParser`) see the
+                            // same bytes via `strip_replies`, which
+                            // already treats unwhitelisted-final CSIs
+                            // as `Malformed` and pushes them through.
+                            if let Some(len) = complete_csi_len(self.buf.as_slice()) {
+                                self.buf.advance(len);
+                                continue;
+                            }
                             return;
                         },
                         (Found::None, _) | (Found::NeedData, false) => {
@@ -2284,6 +2539,148 @@ mod test {
         assert_eq!(res.len(), 2);
     }
 
+    /// Regression for the xterm Esc-during-mouse-drag bug:
+    /// xterm flushes a real Esc keypress as a single `\x1b` byte. If a mouse
+    /// motion arrives in the next stdin read, upstream `StdinAnsiParser` may
+    /// concatenate them into `\x1b\x1b[<...M`. Termwiz must parse this as
+    /// two events (Esc then Mouse), not as Alt+`[` (which would happen if
+    /// the keymap's `\x1b[`=Alt+`[` registration short-circuits the SGR
+    /// mouse parser while in `EscapeMaybeAlt` state).
+    #[test]
+    fn esc_then_sgr_mouse_emits_esc_and_mouse() {
+        let mut p = InputParser::new();
+        let res = p.parse_as_vec(b"\x1b\x1b[<35;42;12M", MAYBE_MORE);
+        assert_eq!(
+            res,
+            vec![
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Escape,
+                    modifiers: Modifiers::NONE,
+                }),
+                InputEvent::Mouse(MouseEvent {
+                    x: 42,
+                    y: 12,
+                    mouse_buttons: MouseButtons::NONE,
+                    modifiers: Modifiers::NONE,
+                }),
+            ]
+        );
+    }
+
+    /// Same regression but for the cross-`parse()` case where the parked
+    /// ESC is in `EscapeMaybeAlt` state from a prior call. The SGR mouse
+    /// sequence arrives in a subsequent call.
+    #[test]
+    fn esc_then_sgr_mouse_across_parse_calls() {
+        let mut p = InputParser::new();
+
+        // First call: lone ESC byte. Termwiz parks no state because the
+        // first arm only fires when there are bytes after the ESC; with
+        // `MAYBE_MORE` it leaves the ESC pending in its internal buf and
+        // emits nothing yet.
+        let mut res = p.parse_as_vec(b"\x1b", MAYBE_MORE);
+        assert!(
+            res.is_empty(),
+            "lone ESC should not emit yet under MAYBE_MORE"
+        );
+
+        // Second call: the mouse sequence arrives. The buffered ESC plus
+        // these bytes form `\x1b\x1b[<...M` (the inner buf already has the
+        // ESC; this call's bytes start with another ESC because that's
+        // what xterm sends for the mouse sequence). Result must still be
+        // Esc + Mouse, not Alt+`[`.
+        res = p.parse_as_vec(b"\x1b[<35;42;12M", MAYBE_MORE);
+        assert_eq!(
+            res,
+            vec![
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Escape,
+                    modifiers: Modifiers::NONE,
+                }),
+                InputEvent::Mouse(MouseEvent {
+                    x: 42,
+                    y: 12,
+                    mouse_buttons: MouseButtons::NONE,
+                    modifiers: Modifiers::NONE,
+                }),
+            ]
+        );
+    }
+
+    /// Real Alt+Esc keystroke (`\x1b\x1b` with no further bytes) must
+    /// still be recognised as Alt+Esc — the fix above must not regress
+    /// this convention.
+    #[test]
+    fn alt_esc_still_recognized() {
+        let mut p = InputParser::new();
+        let res = p.parse_as_vec(b"\x1b\x1b", NO_MORE);
+        assert_eq!(
+            res,
+            vec![InputEvent::Key(KeyEvent {
+                key: KeyCode::Escape,
+                modifiers: Modifiers::ALT,
+            })]
+        );
+    }
+
+    /// Esc keystroke followed by an OSC host reply (e.g. an OSC 11 color
+    /// query response that arrives concatenated after a stray Esc byte
+    /// the user pressed) must emit Esc and the OSC, not Alt-modify the
+    /// OSC bytes.
+    #[test]
+    fn esc_then_osc_emits_esc_and_osc() {
+        let mut p = InputParser::new();
+        let res = p.parse_as_vec(b"\x1b\x1b]11;rgb:ffff/ffff/ffff\x1b\\", MAYBE_MORE);
+        assert_eq!(
+            res,
+            vec![
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Escape,
+                    modifiers: Modifiers::NONE,
+                }),
+                InputEvent::OperatingSystemCommand(b"11;rgb:ffff/ffff/ffff".to_vec()),
+            ]
+        );
+    }
+
+    /// Esc followed by a CSI host-reply (whitelisted final byte). Must
+    /// emit Esc and the report, never Alt+`[`.
+    #[test]
+    fn esc_then_csi_report_emits_esc_and_report() {
+        let mut p = InputParser::new();
+        // \x1b[?2026;0$y is a DECRPM reply for synchronised output mode.
+        // Wrapped behind a stray Esc keystroke prefix.
+        let res = p.parse_as_vec(b"\x1b\x1b[?2026;0$y", MAYBE_MORE);
+        assert!(
+            !res.is_empty(),
+            "expected at least one event from Esc + CSI report"
+        );
+        assert!(
+            matches!(
+                res[0],
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Escape,
+                    modifiers: Modifiers::NONE,
+                })
+            ),
+            "first event must be a bare Esc keystroke, got {:?}",
+            res[0]
+        );
+        // The CSI report dispatches as DeviceControlReply via the
+        // `parse_csi_report` whitelist. Anything but Alt+`[` is acceptable
+        // for the second event; what we are guarding against is the
+        // spurious Alt+`[` dispatch.
+        for ev in &res {
+            if let InputEvent::Key(KeyEvent { key, modifiers }) = ev {
+                assert!(
+                    !(matches!(key, KeyCode::Char('[')) && modifiers.contains(Modifiers::ALT)),
+                    "must not emit Alt+`[`; got {:?}",
+                    ev
+                );
+            }
+        }
+    }
+
     #[test]
     fn invalid_sgr_mouse_falls_through() {
         let mut p = InputParser::new();
@@ -2291,5 +2688,235 @@ mod test {
         let res = p.parse_as_vec(b"\x1b[<0;1M", false);
         // Should NOT parse as mouse - falls through to keymap
         assert!(res.iter().all(|e| matches!(e, InputEvent::Key(_))));
+    }
+
+    #[test]
+    fn osc_bel_terminated() {
+        // Complete OSC sequence with BEL terminator
+        let mut p = InputParser::new();
+        let inputs = p.parse_as_vec(b"\x1b]99;i=test:p=title;Hello\x07", NO_MORE);
+        assert_eq!(
+            vec![InputEvent::OperatingSystemCommand(
+                b"99;i=test:p=title;Hello".to_vec()
+            )],
+            inputs
+        );
+    }
+
+    #[test]
+    fn osc_st_terminated() {
+        // Complete OSC sequence with ST terminator (ESC \)
+        let mut p = InputParser::new();
+        let inputs = p.parse_as_vec(b"\x1b]99;i=test:p=title;Hello\x1b\\", NO_MORE);
+        assert_eq!(
+            vec![InputEvent::OperatingSystemCommand(
+                b"99;i=test:p=title;Hello".to_vec()
+            )],
+            inputs
+        );
+    }
+
+    #[test]
+    fn osc_partial_across_reads() {
+        // OSC sequence split across two reads — must buffer first part
+        let mut p = InputParser::new();
+        let mut inputs = Vec::new();
+        p.parse(
+            b"\x1b]99;i=test:p=title;Hel",
+            |evt| inputs.push(evt),
+            MAYBE_MORE,
+        );
+        assert!(inputs.is_empty(), "no events yet - sequence incomplete");
+        p.parse(b"lo\x1b\\", |evt| inputs.push(evt), MAYBE_MORE);
+        assert_eq!(
+            vec![InputEvent::OperatingSystemCommand(
+                b"99;i=test:p=title;Hello".to_vec()
+            )],
+            inputs
+        );
+    }
+
+    #[test]
+    fn osc_followed_by_keypress() {
+        // OSC sequence then regular key in same buffer
+        let mut p = InputParser::new();
+        let inputs = p.parse_as_vec(b"\x1b]99;i=test;clicked\x07x", NO_MORE);
+        assert_eq!(
+            vec![
+                InputEvent::OperatingSystemCommand(b"99;i=test;clicked".to_vec()),
+                InputEvent::Key(KeyEvent {
+                    modifiers: Modifiers::NONE,
+                    key: KeyCode::Char('x'),
+                }),
+            ],
+            inputs
+        );
+    }
+
+    #[test]
+    fn keypress_followed_by_osc() {
+        // Regular key then OSC sequence in same buffer
+        let mut p = InputParser::new();
+        let inputs = p.parse_as_vec(b"x\x1b]99;i=test;clicked\x07", NO_MORE);
+        assert_eq!(
+            vec![
+                InputEvent::Key(KeyEvent {
+                    modifiers: Modifiers::NONE,
+                    key: KeyCode::Char('x'),
+                }),
+                InputEvent::OperatingSystemCommand(b"99;i=test;clicked".to_vec()),
+            ],
+            inputs
+        );
+    }
+
+    #[test]
+    fn osc_incomplete_degrades_to_keys() {
+        // Incomplete OSC that never gets a terminator — when finalized with
+        // maybe_more=false, must degrade to individual key events (not hang)
+        let mut p = InputParser::new();
+        let mut inputs = Vec::new();
+        p.parse(b"\x1b]99;no-terminator", |evt| inputs.push(evt), MAYBE_MORE);
+        assert!(inputs.is_empty(), "buffered while maybe_more=true");
+        p.parse(b"", |evt| inputs.push(evt), NO_MORE);
+        assert!(!inputs.is_empty(), "must emit something on finalization");
+    }
+
+    #[test]
+    fn osc_non_99_code() {
+        // Non-99 OSC codes are also captured as OperatingSystemCommand
+        let mut p = InputParser::new();
+        let inputs = p.parse_as_vec(b"\x1b]11;rgb:0000/0000/0000\x1b\\", NO_MORE);
+        assert_eq!(
+            vec![InputEvent::OperatingSystemCommand(
+                b"11;rgb:0000/0000/0000".to_vec()
+            )],
+            inputs
+        );
+    }
+
+    #[test]
+    fn osc_empty_payload() {
+        // Edge case: OSC with no payload between \x1b] and terminator
+        let mut p = InputParser::new();
+        let inputs = p.parse_as_vec(b"\x1b]\x07", NO_MORE);
+        assert_eq!(
+            vec![InputEvent::OperatingSystemCommand(b"".to_vec())],
+            inputs
+        );
+    }
+
+    #[test]
+    fn csi_not_captured_as_osc() {
+        // ESC [ (CSI) must NOT be captured as an OSC sequence.
+        // This validates that only ESC ] triggers OSC parsing.
+        let mut p = InputParser::new();
+        let inputs = p.parse_as_vec(b"\x1b[A", NO_MORE);
+        assert_eq!(
+            vec![InputEvent::Key(KeyEvent {
+                modifiers: Modifiers::NONE,
+                key: KeyCode::UpArrow,
+            })],
+            inputs
+        );
+    }
+
+    // =====================================================================
+    // parse_csi_report (CSI report whitelist for host-reply forwarding)
+    // =====================================================================
+
+    fn csi_reply(intermediates: &[u8], params: &[u8], final_byte: u8, raw: &[u8]) -> InputEvent {
+        InputEvent::DeviceControlReply {
+            intermediates: intermediates.to_vec(),
+            params: params.to_vec(),
+            final_byte,
+            raw: raw.to_vec(),
+        }
+    }
+
+    #[test]
+    fn csi_report_recognises_each_whitelisted_final_byte() {
+        // `t` — pixel-dimension reply form `\x1b[4;H;Wt`.
+        let bytes = b"\x1b[4;600;800t";
+        let (evt, consumed) = parse_csi_report(bytes).expect("t accepted");
+        assert_eq!(consumed, bytes.len());
+        assert_eq!(evt, csi_reply(b"", b"4;600;800", b't', bytes));
+
+        // `y` — DECRPM, e.g. sync-output support. Intermediate `$`.
+        let bytes = b"\x1b[?2026;1$y";
+        let (evt, consumed) = parse_csi_report(bytes).expect("y accepted");
+        assert_eq!(consumed, bytes.len());
+        assert_eq!(evt, csi_reply(b"$", b"?2026;1", b'y', bytes));
+
+        // `c` — Primary-DA reply (barrier).
+        let bytes = b"\x1b[?62;1;6c";
+        let (evt, consumed) = parse_csi_report(bytes).expect("c accepted");
+        assert_eq!(consumed, bytes.len());
+        assert_eq!(evt, csi_reply(b"", b"?62;1;6", b'c', bytes));
+
+        // `n` — DSR reply (used for theme notifications).
+        let bytes = b"\x1b[?997;1n";
+        let (evt, consumed) = parse_csi_report(bytes).expect("n accepted");
+        assert_eq!(consumed, bytes.len());
+        assert_eq!(evt, csi_reply(b"", b"?997;1", b'n', bytes));
+    }
+
+    #[test]
+    fn csi_report_preserves_intermediates() {
+        // DECRPM uses `$` as its intermediate byte — it must land in
+        // `intermediates`, not `params`.
+        let bytes = b"\x1b[?2026;2$y";
+        let (evt, _len) = parse_csi_report(bytes).expect("DECRPM accepted");
+        let InputEvent::DeviceControlReply {
+            intermediates,
+            params,
+            final_byte,
+            raw,
+        } = evt
+        else {
+            panic!("expected DeviceControlReply, got {:?}", evt);
+        };
+        assert_eq!(intermediates, b"$");
+        assert_eq!(params, b"?2026;2");
+        assert_eq!(final_byte, b'y');
+        assert_eq!(raw, bytes);
+    }
+
+    #[test]
+    fn csi_report_rejects_non_whitelisted_final_bytes() {
+        // `A` = cursor-up (keyboard input, not a report).
+        assert!(parse_csi_report(b"\x1b[A").is_none());
+        // `R` = cursor-position report — not whitelisted; must pass
+        // through to the keyboard path.
+        assert!(parse_csi_report(b"\x1b[24;80R").is_none());
+        // `m` = SGR; appears in render streams but should never reach
+        // stdin as a report.
+        assert!(parse_csi_report(b"\x1b[0m").is_none());
+    }
+
+    #[test]
+    fn csi_report_returns_none_on_truncated_input() {
+        // No final byte within the supplied slice → caller should wait
+        // for more bytes; `parse_csi_report` must not "commit" to a
+        // partial parse.
+        assert!(parse_csi_report(b"\x1b[4;600;800").is_none());
+        // Only the lead-in; parameters haven't started.
+        assert!(parse_csi_report(b"\x1b[").is_none());
+        // Empty input — zero bytes to consume.
+        assert!(parse_csi_report(b"").is_none());
+    }
+
+    #[test]
+    fn csi_report_raw_preserves_input_byte_for_byte() {
+        // `raw` must include the leading ESC through the final byte
+        // inclusive, without adding or dropping any byte — the
+        // forwarding path writes it verbatim to the pane's pty.
+        let bytes = b"\x1b[4;16;8t";
+        let (evt, consumed) = parse_csi_report(bytes).expect("accepted");
+        assert_eq!(consumed, bytes.len());
+        let InputEvent::DeviceControlReply { raw, .. } = evt else {
+            panic!("wrong variant");
+        };
+        assert_eq!(&raw[..], bytes, "raw must be byte-identical to input");
     }
 }

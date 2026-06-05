@@ -51,6 +51,29 @@ pub fn create_config_and_cache_folders() {
     if let Err(e) = std::fs::create_dir_all(&ZELLIJ_SESSION_INFO_CACHE_DIR.as_path()) {
         log::error!("Failed to create session_info cache dir: {:?}", e);
     }
+    prune_empty_session_info_folders();
+}
+
+fn prune_empty_session_info_folders() {
+    let Ok(entries) = std::fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let is_empty = std::fs::read_dir(&path)
+            .ok()
+            .map_or(false, |mut iter| iter.next().is_none());
+        if is_empty {
+            if let Err(e) = std::fs::remove_dir(&path) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    log::debug!("Failed to prune empty session folder {:?}: {:?}", path, e);
+                }
+            }
+        }
+    }
 }
 
 const fn system_default_data_dir() -> &'static str {
@@ -83,8 +106,6 @@ lazy_static! {
     pub static ref ZELLIJ_SESSION_INFO_CACHE_DIR: PathBuf = ZELLIJ_CACHE_DIR
         .join(CLIENT_SERVER_CONTRACT_DIR.clone())
         .join("session_info");
-    pub static ref ZELLIJ_STDIN_CACHE_FILE: PathBuf =
-        ZELLIJ_CACHE_DIR.join(VERSION).join("stdin_cache");
     pub static ref ZELLIJ_PLUGIN_ARTIFACT_DIR: PathBuf = ZELLIJ_CACHE_DIR.join(VERSION);
     pub static ref ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE: PathBuf =
         ZELLIJ_CACHE_DIR.join(VERSION).join("seen_release_notes");
@@ -276,6 +297,15 @@ mod unix_only {
     use nix::unistd::Uid;
     use std::env::temp_dir;
 
+    // Maximum length of a Unix domain socket path (from sockaddr_un.sun_path).
+    // macOS (and other BSDs) use 104, Linux/Android/Solaris use 108.
+    // The not(target_os = "macos") fallback of 108 is used for all other Unix
+    // platforms — this is correct for Linux/Android/Solaris and only 4 bytes
+    // over for BSDs, which would cause a slightly late error rather than a
+    // missed one.
+    #[cfg(target_os = "macos")]
+    pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 104;
+    #[cfg(not(target_os = "macos"))]
     pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 108;
 
     lazy_static! {
@@ -307,24 +337,39 @@ mod not_unix {
     use super::*;
     use crate::envs;
     pub use crate::shared::set_permissions;
+    #[cfg(windows)]
+    use dunce;
     use lazy_static::lazy_static;
     use std::env::temp_dir;
+
+    #[cfg(windows)]
+    fn canonicalize_path(path: PathBuf) -> PathBuf {
+        dunce::canonicalize(&path).unwrap_or(path)
+    }
+
+    #[cfg(not(windows))]
+    fn canonicalize_path(path: PathBuf) -> PathBuf {
+        path
+    }
 
     pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 256;
 
     lazy_static! {
-        pub static ref ZELLIJ_TMP_DIR: PathBuf = temp_dir().join("zellij");
+        pub static ref ZELLIJ_TMP_DIR: PathBuf = {
+            let tmp_dir = canonicalize_path(temp_dir());
+            tmp_dir.join("zellij")
+        };
         pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
         pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");
         pub static ref ZELLIJ_SOCK_DIR: PathBuf = {
-            let mut ipc_dir = envs::get_socket_dir().map_or_else(
+            let mut ipc_dir = canonicalize_path(envs::get_socket_dir().map_or_else(
                 |_| {
                     ZELLIJ_PROJ_DIR
                         .runtime_dir()
                         .map_or_else(|| ZELLIJ_TMP_DIR.clone(), |p| p.to_owned())
                 },
                 PathBuf::from,
-            );
+            ));
             ipc_dir.push(CLIENT_SERVER_CONTRACT_DIR.clone());
             ipc_dir
         };

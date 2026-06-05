@@ -8,7 +8,7 @@ use uuid::Uuid;
 use zellij_tile::prelude::*;
 
 use new_session_info::NewSessionInfo;
-use single_screen::{SingleScreenMode, SingleScreenState, UnifiedSearchResult};
+use single_screen::{DeleteTarget, SingleScreenMode, SingleScreenState, UnifiedSearchResult};
 use ui::{
     components::{
         render_controls_line, render_error, render_new_session_block, render_prompt,
@@ -54,6 +54,8 @@ struct State {
     request_ids: Vec<String>,
     is_web_client: bool,
     current_session_last_saved_time: Option<u64>,
+    is_visible: bool,
+    refresh_timer_armed: bool,
 }
 
 register_plugin!(State);
@@ -76,17 +78,20 @@ impl ZellijPlugin for State {
             self.active_screen = ActiveScreen::SingleScreen;
         }
         self.single_screen_state.is_welcome_screen = self.is_welcome_screen;
-        if !self.is_welcome_screen {
-            set_timeout(0.1); // for the current_session_last_saved_time polling
-        }
+        self.is_visible = true;
         subscribe(&[
             EventType::ModeUpdate,
             EventType::SessionUpdate,
             EventType::Key,
             EventType::RunCommandResult,
             EventType::Timer,
+            EventType::Visible,
         ]);
         rename_plugin_pane(get_plugin_ids().plugin_id, "Session Manager");
+        self.refresh_session_list();
+        if !self.is_welcome_screen {
+            self.arm_refresh_timer();
+        }
     }
 
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
@@ -119,12 +124,29 @@ impl ZellijPlugin for State {
         let mut should_render = false;
         match event {
             Event::Timer(_) => {
+                self.refresh_timer_armed = false;
+                if !self.is_visible {
+                    return false;
+                }
                 let new_saved_time = current_session_last_saved_time();
                 if new_saved_time != self.current_session_last_saved_time {
                     self.current_session_last_saved_time = new_saved_time;
                     should_render = true;
                 }
-                set_timeout(1.0);
+                if self.refresh_session_list() {
+                    should_render = true;
+                }
+                self.arm_refresh_timer();
+            },
+            Event::Visible(is_visible) => {
+                let was_visible = self.is_visible;
+                self.is_visible = is_visible;
+                if is_visible && !was_visible {
+                    if self.refresh_session_list() {
+                        should_render = true;
+                    }
+                    self.arm_refresh_timer();
+                }
             },
             Event::ModeUpdate(mode_info) => {
                 self.colors = Colors::new(mode_info.style.colors);
@@ -152,8 +174,19 @@ impl ZellijPlugin for State {
                         &self.sessions.session_ui_infos,
                         &self.resurrectable_sessions.all_resurrectable_sessions,
                     );
+                    let previous_selection =
+                        self.single_screen_state.layout_list.selected_layout_index;
+                    let previous_search_term = self
+                        .single_screen_state
+                        .layout_list
+                        .layout_search_term
+                        .clone();
                     self.single_screen_state.layout_list =
                         self.new_session_info.get_layout_list_clone();
+                    self.single_screen_state.layout_list.layout_search_term = previous_search_term;
+                    self.single_screen_state.layout_list.update_search_term();
+                    self.single_screen_state.layout_list.selected_layout_index =
+                        previous_selection.min(self.single_screen_state.layout_list.max_index());
                 }
                 should_render = true;
             },
@@ -490,11 +523,26 @@ impl State {
             match key.bare_key {
                 BareKey::Char('y') if key.has_no_modifiers() => {
                     let all_other_sessions = self.sessions.all_other_sessions();
-                    kill_sessions(&all_other_sessions);
-                    self.reset_selected_index();
-                    self.search_term.clear();
-                    self.sessions
-                        .update_search_term(&self.search_term, &self.colors);
+                    let was_searching = self.sessions.is_searching;
+                    let prev_search_idx = self.sessions.selected_search_index;
+                    let prev_top_idx = self.sessions.selected_index.0;
+                    match kill_sessions(&all_other_sessions) {
+                        Ok(()) => {
+                            self.sessions
+                                .session_ui_infos
+                                .retain(|s| !all_other_sessions.contains(&s.name));
+                            self.sessions
+                                .update_search_term(&self.search_term, &self.colors);
+                            self.sessions.restore_selection_after_delete(
+                                was_searching,
+                                prev_search_idx,
+                                prev_top_idx,
+                            );
+                        },
+                        Err(e) => {
+                            self.show_error(&format!("Failed to kill sessions: {}", e));
+                        },
+                    }
                     self.show_kill_all_sessions_warning = false;
                     should_render = true;
                 },
@@ -566,11 +614,26 @@ impl State {
                 },
                 BareKey::Delete if key.has_no_modifiers() => {
                     if let Some(selected_session_name) = self.sessions.get_selected_session_name() {
-                        kill_sessions(&[selected_session_name]);
-                        self.reset_selected_index();
-                        self.search_term.clear();
-                        self.sessions
-                            .update_search_term(&self.search_term, &self.colors);
+                        let was_searching = self.sessions.is_searching;
+                        let prev_search_idx = self.sessions.selected_search_index;
+                        let prev_top_idx = self.sessions.selected_index.0;
+                        match kill_sessions(&[selected_session_name.clone()]) {
+                            Ok(()) => {
+                                self.sessions
+                                    .session_ui_infos
+                                    .retain(|s| s.name != selected_session_name);
+                                self.sessions
+                                    .update_search_term(&self.search_term, &self.colors);
+                                self.sessions.restore_selection_after_delete(
+                                    was_searching,
+                                    prev_search_idx,
+                                    prev_top_idx,
+                                );
+                            },
+                            Err(e) => {
+                                self.show_error(&format!("Failed to kill session: {}", e));
+                            },
+                        }
                     } else {
                         self.show_error("Must select session before killing it.");
                     }
@@ -596,7 +659,7 @@ impl State {
                         self.reset_selected_index();
                     } else if !self.is_welcome_screen {
                         self.reset_selected_index();
-                        hide_self();
+                        close_self();
                     }
                     should_render = true;
                 },
@@ -609,7 +672,7 @@ impl State {
                         self.renaming_session_name = None;
                         should_render = true;
                     } else if !self.is_welcome_screen {
-                        hide_self();
+                        close_self();
                     }
                 },
                 BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
@@ -671,7 +734,7 @@ impl State {
             },
             BareKey::Esc if key.has_no_modifiers() => {
                 if !self.is_welcome_screen {
-                    hide_self();
+                    close_self();
                 }
             },
             _ => {},
@@ -692,7 +755,23 @@ impl State {
             match key.bare_key {
                 BareKey::Char('y') if key.has_no_modifiers() => {
                     let all_other_sessions = self.sessions.all_other_sessions();
-                    kill_sessions(&all_other_sessions);
+                    let previous_index = self.single_screen_state.selected_index;
+                    match kill_sessions(&all_other_sessions) {
+                        Ok(()) => {
+                            self.sessions
+                                .session_ui_infos
+                                .retain(|s| !all_other_sessions.contains(&s.name));
+                            self.single_screen_state.update_search_term(
+                                &self.sessions.session_ui_infos,
+                                &self.resurrectable_sessions.all_resurrectable_sessions,
+                            );
+                            self.single_screen_state
+                                .restore_selection_after_delete(previous_index);
+                        },
+                        Err(e) => {
+                            self.show_error(&format!("Failed to kill sessions: {}", e));
+                        },
+                    }
                     self.show_kill_all_sessions_warning = false;
                     should_render = true;
                 },
@@ -788,16 +867,35 @@ impl State {
                 should_render = true;
             },
             BareKey::Delete if key.has_no_modifiers() => {
-                if let Some(result) = self.single_screen_state.get_selected_result() {
-                    match result {
-                        UnifiedSearchResult::ActiveSession { session_name, .. } => {
-                            kill_sessions(&[session_name.clone()]);
+                let selected = self
+                    .single_screen_state
+                    .get_selected_result()
+                    .map(|r| r.as_delete_target());
+                if let Some(target) = selected {
+                    let previous_index = self.single_screen_state.selected_index;
+                    let outcome: Result<(), String> = match &target {
+                        DeleteTarget::Active(name) => kill_sessions(&[name.clone()]).map(|()| {
+                            self.sessions.session_ui_infos.retain(|s| s.name != *name);
+                        }),
+                        DeleteTarget::Resurrectable(name) => delete_dead_session(name).map(|()| {
+                            self.resurrectable_sessions
+                                .all_resurrectable_sessions
+                                .retain(|(n, _)| n != name);
+                        }),
+                    };
+                    match outcome {
+                        Ok(()) => {
+                            self.single_screen_state.update_search_term(
+                                &self.sessions.session_ui_infos,
+                                &self.resurrectable_sessions.all_resurrectable_sessions,
+                            );
+                            self.single_screen_state
+                                .restore_selection_after_delete(previous_index);
                         },
-                        UnifiedSearchResult::ResurrectableSession { session_name, .. } => {
-                            delete_dead_session(session_name);
+                        Err(e) => {
+                            self.show_error(&format!("Failed to delete session: {}", e));
                         },
                     }
-                    self.single_screen_state.selected_index = None;
                 }
                 should_render = true;
             },
@@ -828,7 +926,7 @@ impl State {
                         &self.resurrectable_sessions.all_resurrectable_sessions,
                     );
                 } else if !self.is_welcome_screen {
-                    hide_self();
+                    close_self();
                 }
                 should_render = true;
             },
@@ -837,7 +935,7 @@ impl State {
                     self.single_screen_state.selected_index = None;
                     should_render = true;
                 } else if !self.is_welcome_screen {
-                    hide_self();
+                    close_self();
                 }
             },
             _ => {},
@@ -1160,6 +1258,47 @@ impl State {
         }
         self.session_name = Some(new_name.to_owned());
     }
+    fn arm_refresh_timer(&mut self) {
+        if !self.refresh_timer_armed {
+            set_timeout(1.0);
+            self.refresh_timer_armed = true;
+        }
+    }
+
+    fn refresh_session_list(&mut self) -> bool {
+        let snapshot = match get_session_list() {
+            Ok(snapshot) => snapshot,
+            Err(_) => return false,
+        };
+        for session_info in &snapshot.live_sessions {
+            if session_info.is_current_session {
+                self.new_session_info
+                    .update_layout_list(session_info.available_layouts.clone());
+            }
+        }
+        self.resurrectable_sessions
+            .update(snapshot.resurrectable_sessions);
+        self.update_session_infos(snapshot.live_sessions);
+        if !self.is_multi_screen {
+            self.single_screen_state.update_search_term(
+                &self.sessions.session_ui_infos,
+                &self.resurrectable_sessions.all_resurrectable_sessions,
+            );
+            let previous_selection = self.single_screen_state.layout_list.selected_layout_index;
+            let previous_search_term = self
+                .single_screen_state
+                .layout_list
+                .layout_search_term
+                .clone();
+            self.single_screen_state.layout_list = self.new_session_info.get_layout_list_clone();
+            self.single_screen_state.layout_list.layout_search_term = previous_search_term;
+            self.single_screen_state.layout_list.update_search_term();
+            self.single_screen_state.layout_list.selected_layout_index =
+                previous_selection.min(self.single_screen_state.layout_list.max_index());
+        }
+        true
+    }
+
     fn update_session_infos(&mut self, session_infos: Vec<SessionInfo>) {
         let session_ui_infos: Vec<SessionUiInfo> = session_infos
             .iter()

@@ -222,6 +222,7 @@ pub enum ScreenContext {
     ToggleFloatingPanes,
     ShowFloatingPanes,
     HideFloatingPanes,
+    AreFloatingPanesVisible,
     TogglePaneEmbedOrFloating,
     HorizontalSplit,
     VerticalSplit,
@@ -305,10 +306,18 @@ pub enum ScreenContext {
     RenameTabWithId,
     BreakPanesToTabWithId,
     TerminalResize,
+    RecomputeTabSize,
     TerminalPixelDimensions,
     TerminalBackgroundColor,
     TerminalForegroundColor,
     TerminalColorRegisters,
+    ForwardHostQuery,
+    ForwardedReplyFromHost,
+    ResumePaneAfterForward,
+    HostTerminalThemeChanged,
+    SetDarkTheme,
+    SetLightTheme,
+    ToggleTheme,
     ChangeMode,
     ChangeModeForAllClients,
     LeftClick,
@@ -351,6 +360,7 @@ pub enum ScreenContext {
     UnsuppressOrExpandPane,
     FocusPaneWithId,
     RenamePane,
+    RenameActivePane,
     RenameTab,
     RequestPluginPermissions,
     BreakPane,
@@ -419,6 +429,7 @@ pub enum ScreenContext {
     ClearMouseHelpText,
     SetPluginRegexHighlights,
     ClearPluginHighlights,
+    DesktopNotificationResponse,
     SubscribeToPaneRenders,
     NotifyPaneClosedToSubscribers,
     // Pane-targeting CLI variants
@@ -449,6 +460,8 @@ pub enum ScreenContext {
     NextSwapLayoutWithTabId,
     MoveTabWithTabId,
     PluginSubscribedToAnsiPaneContents,
+    UpdateBackgroundPluginSubscriptions,
+    BroadcastModeUpdate,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -482,6 +495,7 @@ pub enum PtyContext {
     GetPaneRunningCommand,
     GetPaneCwd,
     UpdateAndReportCwds,
+    NotifyCwdFromOsc7,
     Exit,
 }
 
@@ -547,8 +561,6 @@ pub enum ClientContext {
     Log,
     LogError,
     OwnClientId,
-    StartedParsingStdinQuery,
-    DoneParsingStdinQuery,
     SwitchSession,
     SetSynchronisedOutput,
     UnblockCliPipeInput,
@@ -558,6 +570,7 @@ pub enum ClientContext {
     StartWebServer,
     RenamedSession,
     ConfigFileUpdated,
+    ForwardQueryToHost,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -593,6 +606,7 @@ pub enum ServerContext {
     FailedToStartWebServer,
     SendWebClientsForbidden,
     ClearMouseHelpText,
+    ForwardQueryToHost,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -609,7 +623,6 @@ pub enum BackgroundJobContext {
     DisplayPaneError,
     AnimatePluginLoading,
     StopPluginLoadingAnimation,
-    ReadAllSessionInfosOnMachine,
     ReportSessionInfo,
     ReportLayoutInfo,
     RunCommand,

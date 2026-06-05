@@ -2,6 +2,7 @@ pub mod control_message;
 
 pub(crate) mod authentication;
 mod connection_manager;
+mod host_query_seed;
 mod http_handlers;
 mod ipc_listener;
 mod message_handlers;
@@ -36,6 +37,7 @@ use interprocess::unnamed_pipe::pipe;
 #[cfg(unix)]
 use nix::sys::stat::{umask, Mode};
 
+#[cfg(unix)]
 use std::io::prelude::*;
 #[cfg(unix)]
 use std::io::{BufRead, BufReader};

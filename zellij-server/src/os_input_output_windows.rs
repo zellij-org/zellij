@@ -2,13 +2,13 @@ use crate::os_input_output::{resolve_command, AsyncReader};
 use crate::panes::PaneId;
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     ffi::OsStr,
     io,
     os::windows::ffi::OsStrExt,
     os::windows::io::{FromRawHandle, IntoRawHandle, OwnedHandle},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU32, AtomicU64, Ordering},
         Arc, Mutex,
     },
 };
@@ -55,7 +55,8 @@ struct ConPtyTerminal {
     input_write_handle: HANDLE,
 }
 
-// HANDLE/HPCON are isize (plain integers), safe to send across threads.
+// HANDLE/HPCON are raw pointers in windows-sys >= 0.59; OS handles are
+// safe to send across threads.
 unsafe impl Send for ConPtyTerminal {}
 unsafe impl Sync for ConPtyTerminal {}
 
@@ -222,11 +223,11 @@ fn create_overlapped_output_pipe(terminal_id: u32) -> io::Result<(HANDLE, HANDLE
         CreateFileW(
             wide_name.as_ptr(),
             GENERIC_WRITE,
-            0,                // no sharing
-            std::ptr::null(), // default security
-            OPEN_EXISTING,    // pipe already exists
-            0,                // synchronous
-            0,                // no template
+            0,                    // no sharing
+            std::ptr::null(),     // default security
+            OPEN_EXISTING,        // pipe already exists
+            0,                    // synchronous
+            std::ptr::null_mut(), // no template
         )
     };
     if client == INVALID_HANDLE_VALUE {
@@ -350,7 +351,7 @@ fn spawn_child_process(
 fn terminate_process(pid: u32) -> std::result::Result<(), std::io::Error> {
     unsafe {
         let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
-        if handle == 0 {
+        if handle.is_null() {
             return Err(std::io::Error::last_os_error());
         }
         let ok = TerminateProcess(handle, 1);
@@ -370,12 +371,14 @@ fn terminate_process(pid: u32) -> std::result::Result<(), std::io::Error> {
 #[derive(Clone)]
 pub(crate) struct WindowsPtyBackend {
     terminals: Arc<Mutex<BTreeMap<u32, Option<ConPtyTerminal>>>>,
+    next_terminal_id_counter: Arc<AtomicU32>,
 }
 
 impl WindowsPtyBackend {
     pub fn new() -> Result<Self, io::Error> {
         Ok(Self {
             terminals: Arc::new(Mutex::new(BTreeMap::new())),
+            next_terminal_id_counter: Arc::new(AtomicU32::new(0)),
         })
     }
 
@@ -398,8 +401,8 @@ impl WindowsPtyBackend {
             create_overlapped_output_pipe(terminal_id).with_context(|| err_context(&cmd))?;
 
         // 2. Input pipe pair (anonymous, both synchronous)
-        let mut input_read: HANDLE = 0;
-        let mut input_write: HANDLE = 0;
+        let mut input_read: HANDLE = std::ptr::null_mut();
+        let mut input_write: HANDLE = std::ptr::null_mut();
         if unsafe { CreatePipe(&mut input_read, &mut input_write, std::ptr::null(), 0) } == 0 {
             unsafe {
                 CloseHandle(output_read);
@@ -455,8 +458,12 @@ impl WindowsPtyBackend {
         );
 
         // 7. Exit-monitoring thread (zero CPU — spends all time in kernel wait)
+        // Pass the HANDLE through as `usize` because raw pointers are not
+        // Send. Windows OS handles are safe to use cross-thread.
         let cmd_for_monitor = cmd.clone();
+        let process_handle_addr = process_handle as usize;
         std::thread::spawn(move || {
+            let process_handle = process_handle_addr as HANDLE;
             let exit_code = unsafe {
                 WaitForSingleObject(process_handle, INFINITE);
                 let mut code: u32 = 0;
@@ -634,14 +641,9 @@ impl WindowsPtyBackend {
     }
 
     pub fn next_terminal_id(&self) -> Option<u32> {
-        self.terminals
-            .lock()
-            .unwrap()
-            .keys()
-            .copied()
-            .collect::<BTreeSet<u32>>()
-            .last()
-            .map(|l| l + 1)
-            .or(Some(0))
+        Some(
+            self.next_terminal_id_counter
+                .fetch_add(1, Ordering::Relaxed),
+        )
     }
 }

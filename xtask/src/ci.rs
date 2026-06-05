@@ -89,23 +89,55 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
     }
 
     let _pd = sh.push_dir(project_root);
-    crate::cargo()
-        .and_then(|cargo| {
-            // On Windows, build natively (MSVC). On Unix, cross-compile for musl.
-            if cfg!(windows) {
+    // On Windows, build natively (MSVC).
+    // On macOS: use cargo-zigbuild which handles musl cross-compilation for any arch without
+    //   needing a separate linker toolchain. The target arch matches the host so the Docker
+    //   container runs natively without emulation (arm64 on Apple Silicon, amd64 on Intel).
+    //   Install with: cargo install cargo-zigbuild && brew install zig
+    // On Linux: cross-compile for musl.
+    if cfg!(windows) {
+        crate::cargo()
+            .and_then(|cargo| {
                 cmd!(sh, "{cargo} build --release")
                     .run()
                     .map_err(anyhow::Error::new)
-            } else {
+            })
+            .context(err_context)
+    } else if cfg!(target_os = "macos") {
+        let target = if cfg!(target_arch = "aarch64") {
+            "aarch64-unknown-linux-musl"
+        } else {
+            "x86_64-unknown-linux-musl"
+        };
+        crate::cargo()
+            .and_then(|cargo| {
+                if which::which("cargo-zigbuild").is_err() {
+                    eprintln!("!! 'cargo-zigbuild' wasn't found but is needed on macOS.");
+                    eprintln!("!! Please install it with:");
+                    eprintln!("!!   cargo install cargo-zigbuild");
+                    eprintln!("!!   brew install zig");
+                    return Err(anyhow::anyhow!("couldn't find 'cargo-zigbuild'"));
+                }
+                cmd!(sh, "rustup target add {target}")
+                    .run()
+                    .map_err(anyhow::Error::new)?;
+                cmd!(sh, "{cargo} zigbuild --release --target {target}")
+                    .run()
+                    .map_err(anyhow::Error::new)
+            })
+            .context(err_context)
+    } else {
+        crate::cargo()
+            .and_then(|cargo| {
                 cmd!(
                     sh,
                     "{cargo} build --release --target x86_64-unknown-linux-musl"
                 )
                 .run()
                 .map_err(anyhow::Error::new)
-            }
-        })
-        .context(err_context)
+            })
+            .context(err_context)
+    }
 }
 
 /// Native release build: builds plugins, generates protobufs, and runs

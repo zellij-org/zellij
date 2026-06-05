@@ -468,6 +468,199 @@ mod web_client_tests {
 
     #[tokio::test]
     #[serial]
+    async fn test_terminal_metrics_translates_to_pixel_dimensions() {
+        // Simulates a browser sending a TerminalMetrics control message
+        // (the payload our websockets.js sendTerminalMetrics() helper
+        // produces) and verifies the web server translates it into
+        // ClientToServerMsg::TerminalPixelDimensions with field-for-field
+        // accuracy. This guards the wire-format contract end-to-end
+        // through serde + the match arm in websocket_handlers.rs.
+        let _ = delete_db();
+
+        let test_token_name = "test_token_terminal_metrics";
+        let read_only = false;
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let factory_for_verification = client_os_api_factory.clone();
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(session_manager),
+                Some(client_os_api_factory),
+                addr.ip(),
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        let login_url = format!("http://127.0.0.1:{}/command/login", port);
+        let login_payload = serde_json::json!({
+            "auth_token": auth_token,
+            "remember_me": true,
+        });
+        let login_response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || {
+                isahc::Request::post(&login_url)
+                    .header("Content-Type", "application/json")
+                    .body(login_payload.to_string())
+                    .unwrap()
+                    .send()
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        assert!(login_response.status().is_success());
+
+        let set_cookie_header = login_response.headers().get("set-cookie");
+        let cookie_value = set_cookie_header.unwrap().to_str().unwrap();
+        let session_token = cookie_value
+            .split(';')
+            .next()
+            .and_then(|part| part.split('=').nth(1))
+            .unwrap();
+
+        let session_url = format!("http://127.0.0.1:{}/session", port);
+        let mut client_response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking({
+                let session_token = session_token.to_string();
+                move || {
+                    isahc::Request::post(&session_url)
+                        .header("Cookie", format!("session_token={}", session_token))
+                        .header("Content-Type", "application/json")
+                        .body("{}")
+                        .unwrap()
+                        .send()
+                }
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        assert!(client_response.status().is_success());
+
+        let client_data: serde_json::Value =
+            serde_json::from_str(&client_response.text().unwrap()).unwrap();
+        let web_client_id = client_data["web_client_id"].as_str().unwrap().to_string();
+
+        // Open the control WebSocket and consume the initial SetConfig.
+        let control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
+        let (control_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&control_ws_url, session_token),
+        )
+        .await
+        .expect("Control WebSocket connection timed out")
+        .expect("Failed to connect to control WebSocket");
+        let (mut control_sink, mut control_stream) = control_ws.split();
+        let _ = timeout(Duration::from_secs(2), control_stream.next())
+            .await
+            .expect("Timeout waiting for initial control message");
+
+        // The control channel only registers the client_id after the
+        // first inbound message. Send a TerminalResize first to mirror
+        // what the browser does at startup, then the TerminalMetrics.
+        let resize_msg = WebClientToWebServerControlMessage {
+            web_client_id: web_client_id.clone(),
+            payload: WebClientToWebServerControlMessagePayload::TerminalResize(Size {
+                rows: 24,
+                cols: 80,
+            }),
+        };
+        control_sink
+            .send(Message::Text(
+                serde_json::to_string(&resize_msg).unwrap().into(),
+            ))
+            .await
+            .expect("Failed to send TerminalResize");
+
+        // Send the actual TerminalMetrics payload — this is what the
+        // browser-side sendTerminalMetrics() helper writes onto the wire.
+        // Hand-construct the JSON to lock in the exact field names the
+        // browser uses, rather than going through the serde Serialize
+        // impl (which would mask any rename mismatch).
+        let metrics_json = serde_json::json!({
+            "web_client_id": web_client_id,
+            "payload": {
+                "type": "TerminalMetrics",
+                "cell_pixel_width": 9,
+                "cell_pixel_height": 18,
+                "text_area_pixel_width": 720,
+                "text_area_pixel_height": 432,
+            },
+        });
+        control_sink
+            .send(Message::Text(metrics_json.to_string().into()))
+            .await
+            .expect("Failed to send TerminalMetrics");
+
+        // Give the server a moment to process both messages.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Inspect the captured ClientToServerMsg traffic on the mock OS
+        // API for this web client.
+        let mock_apis = factory_for_verification.mock_apis.lock().unwrap();
+        let mut found_pixel_dims: Option<ClientToServerMsg> = None;
+        for (_, mock_api) in mock_apis.iter() {
+            for msg in mock_api.get_sent_messages() {
+                if matches!(msg, ClientToServerMsg::TerminalPixelDimensions { .. }) {
+                    found_pixel_dims = Some(msg);
+                    break;
+                }
+            }
+        }
+        let pixel_dims = found_pixel_dims
+            .expect("TerminalMetrics did not reach the server as TerminalPixelDimensions");
+        match pixel_dims {
+            ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions } => {
+                let cell = pixel_dimensions
+                    .character_cell_size
+                    .expect("character_cell_size missing");
+                let area = pixel_dimensions
+                    .text_area_size
+                    .expect("text_area_size missing");
+                assert_eq!(cell.width, 9);
+                assert_eq!(cell.height, 18);
+                assert_eq!(area.width, 720);
+                assert_eq!(area.height, 432);
+            },
+            other => panic!("unexpected msg variant: {:?}", other),
+        }
+
+        drop(mock_apis);
+        let _ = control_sink.close().await;
+        server_handle.abort();
+
+        revoke_token(test_token_name).expect("Failed to revoke test token");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn test_unauthorized_access_without_session() {
         let _ = delete_db();
 
@@ -2650,6 +2843,261 @@ mod web_client_tests {
 
         server_handle.abort();
         tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    // ========== PWA manifest and icon tests ==========
+
+    async fn spawn_test_server_with_config(config: Config) -> (u16, tokio::task::JoinHandle<()>) {
+        let session_manager = Arc::new(MockSessionManager::new());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(serve_web_client(
+            config,
+            options,
+            Some(temp_config_path),
+            listener,
+            None,
+            Some(session_manager),
+            Some(client_os_api_factory),
+            addr.ip(),
+            port,
+        ));
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        (port, server_handle)
+    }
+
+    async fn fetch_url(url: String) -> isahc::Response<isahc::Body> {
+        timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || isahc::get(&url)),
+        )
+        .await
+        .expect("Request timed out")
+        .expect("Spawn blocking failed")
+        .expect("Request failed")
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_manifest_endpoint_returns_correct_content_type_and_required_fields() {
+        let _ = delete_db();
+
+        let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
+
+        let url = format!("http://127.0.0.1:{}/assets/manifest.webmanifest", port);
+        let mut response = fetch_url(url).await;
+
+        assert!(
+            response.status().is_success(),
+            "manifest endpoint should return 2xx, got {}",
+            response.status()
+        );
+
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+        assert_eq!(
+            content_type, "application/manifest+json",
+            "manifest must be served as application/manifest+json"
+        );
+
+        let body = response.text().expect("Failed to read manifest body");
+        let manifest: serde_json::Value =
+            serde_json::from_str(&body).expect("Manifest body must be valid JSON");
+
+        assert!(
+            manifest.get("name").and_then(|v| v.as_str()).is_some(),
+            "manifest must declare `name`"
+        );
+        assert!(
+            manifest.get("start_url").is_some(),
+            "manifest must declare `start_url` (W3C required member)"
+        );
+        let icons = manifest
+            .get("icons")
+            .and_then(|v| v.as_array())
+            .expect("manifest must declare a non-empty `icons` array");
+        assert!(
+            !icons.is_empty(),
+            "icons array must contain at least one icon"
+        );
+        assert!(
+            manifest.get("display").is_some() || manifest.get("display_override").is_some(),
+            "manifest must declare `display` or `display_override`"
+        );
+
+        server_handle.abort();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_manifest_uses_relative_urls() {
+        // Pins the relative-URL contract that lets the static manifest work under any
+        // reverse-proxy base_url. start_url, scope, and icons[*].src must all be relative
+        // to the manifest URL — never absolute paths and never absolute URLs.
+        let _ = delete_db();
+
+        let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
+
+        let url = format!("http://127.0.0.1:{}/assets/manifest.webmanifest", port);
+        let mut response = fetch_url(url).await;
+        let body = response.text().expect("Failed to read manifest body");
+        let manifest: serde_json::Value = serde_json::from_str(&body).expect("Invalid JSON");
+
+        let is_relative = |v: &serde_json::Value| -> bool {
+            v.as_str()
+                .map(|s| {
+                    !s.starts_with('/') && !s.starts_with("http://") && !s.starts_with("https://")
+                })
+                .unwrap_or(false)
+        };
+
+        if let Some(start_url) = manifest.get("start_url") {
+            assert!(
+                is_relative(start_url),
+                "start_url must be relative, got {:?}",
+                start_url
+            );
+        }
+        if let Some(scope) = manifest.get("scope") {
+            assert!(
+                is_relative(scope),
+                "scope must be relative, got {:?}",
+                scope
+            );
+        }
+        let icons = manifest
+            .get("icons")
+            .and_then(|v| v.as_array())
+            .expect("icons array required");
+        for icon in icons {
+            let src = icon.get("src").expect("each icon must have src");
+            assert!(is_relative(src), "icon src must be relative, got {:?}", src);
+        }
+
+        server_handle.abort();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_pwa_icon_assets_reachable() {
+        let _ = delete_db();
+
+        let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
+
+        let cases: &[(&str, &str)] = &[("icon-192.png", "image/png")];
+
+        for (filename, expected_mime) in cases {
+            let url = format!("http://127.0.0.1:{}/assets/{}", port, filename);
+            let response = fetch_url(url).await;
+
+            assert!(
+                response.status().is_success(),
+                "{} should return 2xx, got {}",
+                filename,
+                response.status()
+            );
+
+            let content_type = response
+                .headers()
+                .get("content-type")
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or("");
+            assert_eq!(
+                content_type, *expected_mime,
+                "{} must be served as {}",
+                filename, expected_mime
+            );
+        }
+
+        server_handle.abort();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_index_html_references_manifest_and_pwa_meta_tags() {
+        let _ = delete_db();
+
+        let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
+
+        let url = format!("http://127.0.0.1:{}/", port);
+        let mut response = fetch_url(url).await;
+        let body = response.text().expect("Failed to read index.html");
+
+        assert!(
+            body.contains("rel=\"manifest\""),
+            "index.html must reference the manifest via <link rel=\"manifest\">"
+        );
+        assert!(
+            body.contains("manifest.webmanifest"),
+            "manifest link must point at manifest.webmanifest"
+        );
+        assert!(
+            body.contains("apple-touch-icon"),
+            "index.html must declare an apple-touch-icon for iOS"
+        );
+        assert!(
+            body.contains("theme-color"),
+            "index.html must declare a theme-color meta tag"
+        );
+
+        server_handle.abort();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_manifest_body_invariant_under_base_url() {
+        // The server-side manifest response is identical regardless of base_url config —
+        // base_url only affects the browser-side URL composition via <base href> in
+        // serve_html. The manifest itself is a static asset.
+        let _ = delete_db();
+
+        let default_body = {
+            let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
+            let url = format!("http://127.0.0.1:{}/assets/manifest.webmanifest", port);
+            let mut response = fetch_url(url).await;
+            let body = response
+                .text()
+                .expect("Failed to read default-base manifest");
+            server_handle.abort();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            body
+        };
+
+        let prefixed_body = {
+            let mut config = Config::default();
+            config.web_client.base_url = Some("/zellij/".to_string());
+            let (port, server_handle) = spawn_test_server_with_config(config).await;
+            let url = format!("http://127.0.0.1:{}/assets/manifest.webmanifest", port);
+            let mut response = fetch_url(url).await;
+            let body = response
+                .text()
+                .expect("Failed to read prefixed-base manifest");
+            server_handle.abort();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            body
+        };
+
+        assert_eq!(
+            default_body, prefixed_body,
+            "manifest body must be identical regardless of base_url config"
+        );
     }
 }
 
