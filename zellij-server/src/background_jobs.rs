@@ -74,6 +74,7 @@ pub enum BackgroundJob {
     StopFlashPaneBell(Vec<PaneId>),
     FlashTabBell(usize),     // usize = tab_id
     StopFlashTabBell(usize), // usize = tab_id
+    MobileGateTimeout(ClientId),
     Exit,
 }
 
@@ -102,12 +103,14 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::StopFlashPaneBell(..) => BackgroundJobContext::StopFlashPaneBell,
             BackgroundJob::FlashTabBell(..) => BackgroundJobContext::FlashTabBell,
             BackgroundJob::StopFlashTabBell(..) => BackgroundJobContext::StopFlashTabBell,
+            BackgroundJob::MobileGateTimeout(..) => BackgroundJobContext::MobileGateTimeout,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
 }
 
 static LONG_FLASH_DURATION_MS: u64 = 1000;
+static MOBILE_GATE_FALLBACK_LIFT_TIMEOUT_MS: u64 = 5000;
 static FLASH_DURATION_MS: u64 = 400; // Doherty threshold
 static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_METADATA_WRITE_INTERVAL_MS: u64 = 1000;
@@ -620,6 +623,19 @@ pub(crate) fn background_jobs_main(
                 let _ = bus
                     .senders
                     .send_to_screen(ScreenInstruction::SetTabBellFlash(tab_id, false));
+            },
+            BackgroundJob::MobileGateTimeout(client_id) => {
+                runtime.spawn({
+                    let senders = bus.senders.clone();
+                    async move {
+                        tokio::time::sleep(Duration::from_millis(
+                            MOBILE_GATE_FALLBACK_LIFT_TIMEOUT_MS,
+                        ))
+                        .await;
+                        let _ = senders
+                            .send_to_screen(ScreenInstruction::ForceMobileUngate(client_id));
+                    }
+                });
             },
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {

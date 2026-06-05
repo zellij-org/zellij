@@ -87,6 +87,12 @@ async fn handle_ws_control(
                     cause: ResizeCause::RenderingPreference,
                 }
             },
+            WebClientToWebServerControlMessagePayload::TerminalSizeSettled(size) => {
+                ClientToServerMsg::TerminalResize {
+                    new_size: size,
+                    cause: ResizeCause::SizeSettled,
+                }
+            },
             WebClientToWebServerControlMessagePayload::TerminalMetrics(metrics) => {
                 terminal_metrics_to_ipc(metrics)
             },

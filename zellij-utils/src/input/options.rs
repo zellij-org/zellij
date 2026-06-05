@@ -66,6 +66,13 @@ impl MobileLayoutConfiguration {
             MobileLayoutConfiguration::Web => is_web_client && size_match,
         }
     }
+
+    pub fn may_route_web_client_to_mobile(self) -> bool {
+        matches!(
+            self,
+            MobileLayoutConfiguration::Web | MobileLayoutConfiguration::Always
+        )
+    }
 }
 
 impl Default for OnForceClose {

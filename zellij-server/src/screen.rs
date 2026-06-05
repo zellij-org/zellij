@@ -93,7 +93,7 @@ use zellij_utils::{
     ipc::{ClientAttributes, PixelDimensions},
 };
 
-use crate::mobile_mode::{MobileState, ShadowFocusOutcome, FIT_RESIZE_MAX_ITERS};
+use crate::mobile_mode::{MobileRenderGate, MobileState, ShadowFocusOutcome, FIT_RESIZE_MAX_ITERS};
 
 /// Parses a namespaced OSC 99 response and extracts the original pane ID
 /// and un-namespaced response bytes.
@@ -567,6 +567,9 @@ pub enum ScreenInstruction {
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
     ),
     RemoveClient(ClientId),
+    SuppressRenderUntilMobile(ClientId),
+    MobileSizeSettled(ClientId),
+    ForceMobileUngate(ClientId),
     UpdateSearch(Vec<u8>, ClientId, Option<NotificationEnd>),
     SearchDown(ClientId, Option<NotificationEnd>),
     SearchUp(ClientId, Option<NotificationEnd>),
@@ -1038,6 +1041,11 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleTab(..) => ScreenContext::ToggleTab,
             ScreenInstruction::AddClient(..) => ScreenContext::AddClient,
             ScreenInstruction::RemoveClient(..) => ScreenContext::RemoveClient,
+            ScreenInstruction::SuppressRenderUntilMobile(..) => {
+                ScreenContext::SuppressRenderUntilMobile
+            },
+            ScreenInstruction::MobileSizeSettled(..) => ScreenContext::MobileSizeSettled,
+            ScreenInstruction::ForceMobileUngate(..) => ScreenContext::ForceMobileUngate,
             ScreenInstruction::UpdateSearch(..) => ScreenContext::UpdateSearch,
             ScreenInstruction::SearchDown(..) => ScreenContext::SearchDown,
             ScreenInstruction::SearchUp(..) => ScreenContext::SearchUp,
@@ -1462,6 +1470,7 @@ pub(crate) struct Screen {
     host_theme_dark_styling: Option<Styling>,
     host_theme_light_styling: Option<Styling>,
     mobile_state: MobileState,
+    mobile_render_gate: MobileRenderGate,
 }
 
 /// A pending forward waiting to be dispatched once the current in-flight
@@ -1617,6 +1626,55 @@ impl Screen {
             host_theme_dark_styling: None,
             host_theme_light_styling: None,
             mobile_state: MobileState::default(),
+            mobile_render_gate: MobileRenderGate::default(),
+        }
+    }
+
+    fn client_is_web(&self, client_id: ClientId) -> bool {
+        self.connected_clients
+            .borrow()
+            .get(&client_id)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    fn try_lift_mobile_gate(&mut self, client_id: ClientId) -> bool {
+        let is_web_client = self.client_is_web(client_id);
+        let reported_size = self.client_sizes.get(&client_id).copied();
+        let lifted = self
+            .mobile_render_gate
+            .try_reveal(client_id, is_web_client, reported_size);
+        if lifted {
+            self.force_render_mobile_tab(client_id);
+        }
+        lifted
+    }
+
+    fn force_render_mobile_tab(&mut self, client_id: ClientId) {
+        if let Some(tab_id) = self.mobile_state.mobile_tab_id(client_id) {
+            if let Some(tab) = self.tabs.get_mut(&tab_id) {
+                tab.set_should_clear_display_before_rendering();
+                tab.set_force_render();
+            }
+        }
+    }
+
+    fn ungate_clients_for_mobile_plugin(&mut self, plugin_id: u32) {
+        if self.mobile_render_gate.is_empty() {
+            return;
+        }
+        let Some(tab_id) = self
+            .tabs
+            .values()
+            .find(|tab| tab.has_plugin(plugin_id))
+            .map(|tab| tab.id)
+        else {
+            return;
+        };
+        for client_id in self.mobile_render_gate.gated_clients() {
+            if self.mobile_state.mobile_tab_id(client_id) == Some(tab_id) {
+                self.mobile_render_gate.ungate(client_id);
+            }
         }
     }
 
@@ -1741,6 +1799,8 @@ impl Screen {
     pub fn exit_mobile_mode(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to exit mobile mode for client {client_id}");
 
+        self.mobile_render_gate.ungate(client_id);
+
         let Some((mobile_tab_id, prior_tab_id)) = self.mobile_state.begin_exit(client_id) else {
             return Ok(());
         };
@@ -1818,6 +1878,10 @@ impl Screen {
             self.render(None)?;
         } else if !should_be_mobile && is_mobile && was_auto {
             self.exit_mobile_mode(client_id)?;
+            self.render(None)?;
+        }
+        if !should_be_mobile && self.mobile_render_gate.is_gated(client_id) {
+            self.mobile_render_gate.ungate(client_id);
             self.render(None)?;
         }
         Ok(())
@@ -2876,12 +2940,16 @@ impl Screen {
             }
 
             if non_watcher_output_was_dirty || has_bell {
-                let serialized_output = output.serialize().context(err_context)?;
-                let _ = self
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-                    .context(err_context);
+                let mut serialized_output = output.serialize().context(err_context)?;
+                self.mobile_render_gate
+                    .blank_gated_clients(&mut serialized_output);
+                if !serialized_output.is_empty() {
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+                        .context(err_context);
+                }
             }
 
             if bell_state_changed {
@@ -3448,6 +3516,7 @@ impl Screen {
         }
 
         self.mobile_state.forget_client(client_id);
+        self.mobile_render_gate.ungate(client_id);
 
         let to_recompute = self
             .mobile_state
@@ -6152,15 +6221,33 @@ pub(crate) fn screen_thread_main(
                 for plugin_render_asset in plugin_render_assets.iter_mut() {
                     let plugin_id = plugin_render_asset.plugin_id;
                     let client_id = plugin_render_asset.client_id;
-                    let vte_bytes = plugin_render_asset.bytes.drain(..).collect();
+                    let vte_bytes: Vec<u8> = plugin_render_asset.bytes.drain(..).collect();
+                    let painted_content = !vte_bytes.is_empty();
 
+                    let mobile_tab_id = screen.mobile_state.mobile_tab_id(client_id);
+                    let mut painted_tab_id = None;
+                    let mut painted_size = None;
                     let all_tabs = screen.get_tabs_mut();
                     for tab in all_tabs.values_mut() {
                         if tab.has_plugin(plugin_id) {
                             tab.handle_plugin_bytes(plugin_id, client_id, vte_bytes)
                                 .context("failed to process plugin bytes")?;
+                            painted_tab_id = Some(tab.id);
+                            painted_size =
+                                tab.get_pane_with_id(PaneId::Plugin(plugin_id)).map(|pane| Size {
+                                    rows: pane.get_content_rows(),
+                                    cols: pane.get_content_columns(),
+                                });
                             break;
                         }
+                    }
+                    if painted_content && painted_tab_id == mobile_tab_id && mobile_tab_id.is_some() {
+                        if let Some(painted_size) = painted_size {
+                            screen
+                                .mobile_render_gate
+                                .record_paint_size(client_id, painted_size);
+                        }
+                        screen.try_lift_mobile_gate(client_id);
                     }
                     screen.render_blocker.remove_blocking_plugin(plugin_id);
                 }
@@ -7842,6 +7929,27 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
             },
+            ScreenInstruction::SuppressRenderUntilMobile(client_id) => {
+                screen.mobile_render_gate.gate(client_id);
+                screen
+                    .bus
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::MobileGateTimeout(client_id))
+                    .non_fatal();
+            },
+            ScreenInstruction::MobileSizeSettled(client_id) => {
+                screen.mobile_render_gate.record_settled_size(client_id);
+                if screen.try_lift_mobile_gate(client_id) {
+                    screen.render(None)?;
+                }
+            },
+            ScreenInstruction::ForceMobileUngate(client_id) => {
+                if screen.mobile_render_gate.is_gated(client_id) {
+                    screen.mobile_render_gate.ungate(client_id);
+                    screen.force_render_mobile_tab(client_id);
+                    screen.render(None)?;
+                }
+            },
             ScreenInstruction::UpdateSearch(
                 c,
                 client_id,
@@ -8489,6 +8597,9 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::UpdatePluginLoadingStage(pid, loading_indication) => {
+                if loading_indication.is_error() {
+                    screen.ungate_clients_for_mobile_plugin(pid);
+                }
                 let found_plugin =
                     screen.update_plugin_loading_stage(pid, loading_indication.clone());
                 if !found_plugin {
@@ -10324,7 +10435,11 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::EnterMobileMode(client_id, _completion_tx) => {
-                screen.enter_mobile_mode(client_id)?;
+                if let Err(e) = screen.enter_mobile_mode(client_id) {
+                    screen.mobile_render_gate.ungate(client_id);
+                    screen.render(None)?;
+                    return Err(e);
+                }
                 screen.mobile_state.mark_auto_entered(client_id);
                 screen.render(None)?;
             },

@@ -3135,6 +3135,7 @@ pub struct SoftKeyboardVisibilityChangedMsg {
 pub enum ResizeCause {
     Viewport = 0,
     RenderingPreference = 1,
+    SizeSettled = 2,
 }
 impl ResizeCause {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -3145,6 +3146,7 @@ impl ResizeCause {
         match self {
             ResizeCause::Viewport => "RESIZE_CAUSE_VIEWPORT",
             ResizeCause::RenderingPreference => "RESIZE_CAUSE_RENDERING_PREFERENCE",
+            ResizeCause::SizeSettled => "RESIZE_CAUSE_SIZE_SETTLED",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -3152,6 +3154,7 @@ impl ResizeCause {
         match value {
             "RESIZE_CAUSE_VIEWPORT" => Some(Self::Viewport),
             "RESIZE_CAUSE_RENDERING_PREFERENCE" => Some(Self::RenderingPreference),
+            "RESIZE_CAUSE_SIZE_SETTLED" => Some(Self::SizeSettled),
             _ => None,
         }
     }

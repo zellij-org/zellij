@@ -4,11 +4,6 @@ use crate::frame::chrome_offsets;
 use crate::screens::ActiveScreen;
 use crate::state::State;
 
-pub fn render_stub(state: &mut State, rows: usize, cols: usize) {
-    state.frame.emit_cursor(None);
-    print!("{}{}mobile plugin loaded \u{2014} {}x{}", RESET, move_to(0, 0), rows, cols);
-}
-
 pub fn render(state: &mut State, rows: usize, cols: usize) {
     reset_frame(state, rows, cols);
     if rows < 4 || cols < 8 {

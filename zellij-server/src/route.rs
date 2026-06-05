@@ -2437,6 +2437,12 @@ pub(crate) fn route_thread_main(
                                             )
                                         });
                                     }
+                                } else if matches!(cause, ResizeCause::SizeSettled) {
+                                    let _ = senders.as_ref().map(|s| {
+                                        s.send_to_screen(ScreenInstruction::MobileSizeSettled(
+                                            client_id,
+                                        ))
+                                    });
                                 }
                             }
                         },

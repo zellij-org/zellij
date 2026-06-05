@@ -86,6 +86,7 @@ pub enum ResizeCause {
     #[default]
     Viewport,
     RenderingPreference,
+    SizeSettled,
 }
 
 impl PixelDimensions {

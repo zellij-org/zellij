@@ -36,6 +36,8 @@ function sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols, cause) {
     const resizeType =
         cause === "RenderingPreference"
             ? "TerminalResizeRendering"
+            : cause === "Settled"
+            ? "TerminalSizeSettled"
             : "TerminalResize";
     wsControl.send(
         JSON.stringify({
@@ -234,8 +236,6 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
                 : isMobileViewport
                 ? 24
                 : 12;
-            const prevRows = term.rows;
-            const prevCols = term.cols;
             applyFontSize(term, fitAddon, initialCandidate);
             if (!hasExplicitFontSize && isMobileViewport) {
                 let candidate = initialCandidate;
@@ -263,18 +263,13 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             const terminal = document.getElementById("terminal");
             terminal.style.background = theme.background;
 
-            const newRows = term.rows;
-            const newCols = term.cols;
-            if (newRows === prevRows && newCols === prevCols) {
-                return;
-            }
             sendSizeUpdate(
                 wsControl,
                 ownWebClientId,
                 term,
-                newRows,
-                newCols,
-                "RenderingPreference"
+                term.rows,
+                term.cols,
+                "Settled"
             );
         } else if (msg.type === "QueryTerminalSize") {
             const fitDimensions = fitAddon.proposeDimensions();

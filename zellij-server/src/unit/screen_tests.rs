@@ -10854,3 +10854,70 @@ fn mobile_state_tracks_clients_independently() {
     );
 }
 
+#[test]
+fn render_gate_can_be_set_and_lifted() {
+    let mut screen = setup_mobile_screen();
+    let client = 40;
+
+    assert!(!screen.is_client_gated(client));
+    screen.gate_client_until_mobile(client);
+    assert!(screen.is_client_gated(client));
+    screen.ungate_client(client);
+    assert!(!screen.is_client_gated(client));
+}
+
+#[test]
+fn remove_client_lifts_render_gate() {
+    let mut screen = setup_mobile_screen();
+    let client = 41;
+    screen.add_client(client, /* is_web_client */ false).expect("TEST");
+    screen.gate_client_until_mobile(client);
+
+    screen.remove_client(client).expect("TEST");
+
+    assert!(
+        !screen.is_client_gated(client),
+        "a removed client must never stay gated",
+    );
+}
+
+#[test]
+fn exit_mobile_mode_lifts_render_gate() {
+    let mut screen = setup_mobile_screen();
+    let client = 42;
+    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    screen.enter_mobile_mode(client).expect("TEST");
+    screen.gate_client_until_mobile(client);
+
+    screen.exit_mobile_mode(client).expect("TEST");
+
+    assert!(
+        !screen.is_client_gated(client),
+        "leaving mobile mode must never leave the client gated",
+    );
+}
+
+#[test]
+fn first_mobile_plugin_paint_lifts_only_the_owning_client() {
+    let mut screen = setup_mobile_screen();
+    let owner = 43;
+    let other = 44;
+    let mobile_tab_idx = 9;
+    let plugin_id = 900;
+    screen.add_client(owner, /* is_web_client */ true).expect("TEST");
+    setup_mobile_fit(&mut screen, owner, mobile_tab_idx, plugin_id);
+    screen.gate_client_until_mobile(owner);
+    screen.gate_client_until_mobile(other);
+
+    screen.ungate_clients_for_mobile_plugin(plugin_id);
+
+    assert!(
+        !screen.is_client_gated(owner),
+        "the client whose mobile plugin painted must be ungated",
+    );
+    assert!(
+        screen.is_client_gated(other),
+        "a client unrelated to the painting plugin must stay gated",
+    );
+}
+

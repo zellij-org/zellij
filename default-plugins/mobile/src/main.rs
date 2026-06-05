@@ -161,15 +161,11 @@ impl ZellijPlugin for State {
             self.fit
                 .notify_size(&self.workspace, &self.frame, suppress_top_bar);
         }
-        should_render
+        should_render && self.is_ready_to_render()
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        if rows == 0 || cols == 0 {
-            return;
-        }
-        if self.workspace.tabs.is_empty() && self.workspace.panes_by_tab_position.is_empty() {
-            render::render_stub(self, rows, cols);
+        if rows == 0 || cols == 0 || !self.is_ready_to_render() {
             return;
         }
         render::render(self, rows, cols);
@@ -177,6 +173,23 @@ impl ZellijPlugin for State {
 }
 
 impl State {
+    fn is_ready_to_render(&self) -> bool {
+        if self.workspace.tabs.is_empty() && self.workspace.panes_by_tab_position.is_empty() {
+            return false;
+        }
+        if self.active == ActiveScreen::Viewport {
+            if let Some(pane) = self.workspace.current_pane() {
+                return self
+                    .workspace
+                    .latest_pane_contents
+                    .get(&pane_id_of(&pane))
+                    .map(|contents| !contents.viewport.is_empty())
+                    .unwrap_or(false);
+            }
+        }
+        true
+    }
+
     pub fn open_sessions(&mut self) -> bool {
         self.menu.open = false;
         self.navigation.selector_scroll_offset = 0;

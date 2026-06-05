@@ -28,6 +28,80 @@ struct FitOverride {
     pane_was_fullscreen_before_fit: bool,
 }
 
+const CLEAR_SCREEN: &str = "\u{1b}[2J\u{1b}[H";
+
+#[derive(Debug, Default)]
+pub(crate) struct MobileRenderGate {
+    awaiting_first_render: HashSet<ClientId>,
+    clients_with_settled_size: HashSet<ClientId>,
+    last_paint_size: HashMap<ClientId, Size>,
+}
+
+impl MobileRenderGate {
+    pub(crate) fn gate(&mut self, client_id: ClientId) {
+        self.awaiting_first_render.insert(client_id);
+    }
+
+    pub(crate) fn is_gated(&self, client_id: ClientId) -> bool {
+        self.awaiting_first_render.contains(&client_id)
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.awaiting_first_render.is_empty()
+    }
+
+    pub(crate) fn gated_clients(&self) -> Vec<ClientId> {
+        self.awaiting_first_render.iter().copied().collect()
+    }
+
+    pub(crate) fn ungate(&mut self, client_id: ClientId) {
+        self.awaiting_first_render.remove(&client_id);
+        self.clients_with_settled_size.remove(&client_id);
+        self.last_paint_size.remove(&client_id);
+    }
+
+    pub(crate) fn record_settled_size(&mut self, client_id: ClientId) {
+        self.clients_with_settled_size.insert(client_id);
+    }
+
+    pub(crate) fn record_paint_size(&mut self, client_id: ClientId, size: Size) {
+        self.last_paint_size.insert(client_id, size);
+    }
+
+    pub(crate) fn try_reveal(
+        &mut self,
+        client_id: ClientId,
+        is_web_client: bool,
+        reported_size: Option<Size>,
+    ) -> bool {
+        if !self.is_gated(client_id) {
+            return false;
+        }
+        let Some(paint_size) = self.last_paint_size.get(&client_id).copied() else {
+            return false;
+        };
+        let ready_to_reveal = if is_web_client {
+            let size_settled = self.clients_with_settled_size.contains(&client_id);
+            let paint_matches_settled_size = reported_size == Some(paint_size);
+            size_settled && paint_matches_settled_size
+        } else {
+            true
+        };
+        if ready_to_reveal {
+            self.ungate(client_id);
+        }
+        ready_to_reveal
+    }
+
+    pub(crate) fn blank_gated_clients(&self, serialized_output: &mut HashMap<ClientId, String>) {
+        for (client_id, bytes) in serialized_output.iter_mut() {
+            if self.is_gated(*client_id) {
+                *bytes = CLEAR_SCREEN.to_string();
+            }
+        }
+    }
+}
+
 impl MobileState {
     pub(crate) fn is_in_mobile_mode(&self, client_id: ClientId) -> bool {
         self.mobile_tab_for_client.contains_key(&client_id)

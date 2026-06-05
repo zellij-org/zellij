@@ -13,6 +13,7 @@ pub struct WebClientToWebServerControlMessage {
 pub enum WebClientToWebServerControlMessagePayload {
     TerminalResize(Size),
     TerminalResizeRendering(Size),
+    TerminalSizeSettled(Size),
     TerminalMetrics(TerminalMetricsPayload),
     SoftKeyboardVisibilityChanged { visible: bool },
 }

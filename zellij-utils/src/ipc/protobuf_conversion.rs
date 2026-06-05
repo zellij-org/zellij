@@ -3074,6 +3074,7 @@ impl From<ResizeCause> for ProtoResizeCause {
         match cause {
             ResizeCause::Viewport => ProtoResizeCause::Viewport,
             ResizeCause::RenderingPreference => ProtoResizeCause::RenderingPreference,
+            ResizeCause::SizeSettled => ProtoResizeCause::SizeSettled,
         }
     }
 }
@@ -3083,6 +3084,7 @@ impl From<ProtoResizeCause> for ResizeCause {
         match cause {
             ProtoResizeCause::Viewport => ResizeCause::Viewport,
             ProtoResizeCause::RenderingPreference => ResizeCause::RenderingPreference,
+            ProtoResizeCause::SizeSettled => ResizeCause::SizeSettled,
         }
     }
 }

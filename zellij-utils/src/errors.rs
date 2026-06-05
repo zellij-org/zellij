@@ -331,6 +331,9 @@ pub enum ScreenContext {
     ToggleTab,
     AddClient,
     RemoveClient,
+    SuppressRenderUntilMobile,
+    MobileSizeSettled,
+    ForceMobileUngate,
     UpdateSearch,
     SearchDown,
     SearchUp,
@@ -644,6 +647,7 @@ pub enum BackgroundJobContext {
     StopFlashPaneBell,
     FlashTabBell,
     StopFlashTabBell,
+    MobileGateTimeout,
     Exit,
 }
 
