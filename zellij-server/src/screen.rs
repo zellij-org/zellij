@@ -3163,7 +3163,10 @@ impl Screen {
         for (_, tab) in self.tabs.iter_mut() {
             tab.remove_client(client_id);
             if tab.has_no_connected_clients() {
-                tab.visible(false).with_context(err_context)?;
+                // Best-effort: a disconnecting client must not abort the server (and
+                // must complete structural cleanup below) just because a plugin can no
+                // longer be notified that this tab became hidden. See #4805.
+                tab.visible(false).with_context(err_context).non_fatal();
             }
         }
         let previously_active_tab_id = self.active_tab_ids.get(&client_id).copied();
@@ -7510,9 +7513,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::RemoveClient(client_id) => {
-                screen.remove_client(client_id)?;
-                screen.log_and_report_session_state()?;
-                screen.render(None)?;
+                // Client teardown must be best-effort: if a plugin or the
+                // background_jobs thread is already gone, notifying it must not panic
+                // the screen thread (which would process::exit the whole server). See
+                // #4805 and the deferred sweep noted in #5119.
+                screen.remove_client(client_id).non_fatal();
+                screen.log_and_report_session_state().non_fatal();
+                screen.render(None).non_fatal();
             },
             ScreenInstruction::UpdateSearch(
                 c,
