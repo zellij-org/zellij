@@ -1120,6 +1120,7 @@ pub enum ActionName {
     SetDarkTheme = 101,
     SetLightTheme = 102,
     ToggleTheme = 103,
+    FocusLastPane = 104,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1229,6 +1230,7 @@ impl ActionName {
             ActionName::SetDarkTheme => "SetDarkTheme",
             ActionName::SetLightTheme => "SetLightTheme",
             ActionName::ToggleTheme => "ToggleTheme",
+            ActionName::FocusLastPane => "FocusLastPane",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1335,6 +1337,7 @@ impl ActionName {
             "SetDarkTheme" => Some(Self::SetDarkTheme),
             "SetLightTheme" => Some(Self::SetLightTheme),
             "ToggleTheme" => Some(Self::ToggleTheme),
+            "FocusLastPane" => Some(Self::FocusLastPane),
             _ => None,
         }
     }

@@ -493,6 +493,7 @@ enum ActionName {
     SetDarkTheme = 101;
     SetLightTheme = 102;
     ToggleTheme = 103;
+    FocusLastPane = 104;
 }
 
 message Position {
