@@ -7764,6 +7764,70 @@ pub fn inactive_tab_plugins_get_fresh_state_on_activation() {
 }
 
 #[test]
+pub fn closing_active_tab_sends_fresh_mode_update_to_revealed_tab_plugins() {
+    // Tab 0: plugin pane 2 (from new_tab_with_plugins, queued before run)
+    // Tab 1: terminal panes only (from run, starts screen thread and becomes active)
+    //
+    // Closing Tab 1 moves the client back to Tab 0. The plugin pane in Tab 0
+    // becomes visible for this client again, so it must receive a fresh ModeUpdate.
+    //
+    // This guards against stale tab-local plugin state in tab-bar/status-bar-like
+    // plugins after closing the currently active tab.
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10;
+
+    let mut mock_screen = MockScreen::new(size);
+
+    // Queue a first tab containing a plugin pane. `run(None, vec![])` below
+    // creates another tab and makes it active, so closing it should reveal this one.
+    mock_screen.new_tab_with_plugins(vec![2]);
+
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+
+    // Drain initial setup/plugin state messages before the close action.
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let instructions_before_close = received_plugin_instructions.lock().unwrap().len();
+
+    // Close the active tab. The client should return to the tab with plugin 2.
+    let close_tab = CliAction::CloseTab { tab_id: None };
+    send_cli_action_to_server(&session_metadata, close_tab, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    let instructions = received_plugin_instructions.lock().unwrap();
+    let instructions_after_close = &instructions[instructions_before_close..];
+
+    let mut plugin_ids_that_received_mode_update: Vec<u32> = vec![];
+    for instruction in instructions_after_close.iter() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _cid, event) in updates {
+                if matches!(event, Event::ModeUpdate(..)) {
+                    if let Some(id) = pid {
+                        plugin_ids_that_received_mode_update.push(*id);
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(
+        plugin_ids_that_received_mode_update.contains(&2),
+        "Plugin 2 in the revealed tab should receive a fresh ModeUpdate after closing the active tab, got: {:?}",
+        plugin_ids_that_received_mode_update
+    );
+}
+
+#[test]
 pub fn send_cli_new_tab_action_with_layout_string() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10;
