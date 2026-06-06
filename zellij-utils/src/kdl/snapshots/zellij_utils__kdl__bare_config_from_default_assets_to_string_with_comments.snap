@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
+assertion_line: 7270
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -558,6 +559,12 @@ web_client {
 // Whether clicking a pane to focus it also sends the click into the pane
 // default is false
 // mouse_click_through false
+ 
+// Forward OSC 9 (iTerm2) and OSC 777 (rxvt) desktop-notification
+// sequences from panes to the host terminal. When false, the visual
+// indicator still fires but the OSC bytes are not forwarded.
+// default is true
+// allow_osc_passthrough true
  
 // The ip address the web server should listen on when it starts
 // Default: "127.0.0.1"
