@@ -4863,9 +4863,15 @@ impl Tab {
         for pid in pids_in_this_tab {
             plugin_updates.push((Some(*pid), None, Event::Visible(visible)));
         }
+        // Best-effort: notifying plugins that a tab became visible/hidden is
+        // advisory. A failed send (e.g. a plugin whose thread is already gone)
+        // must not panic the screen thread and process::exit the whole server.
+        // This path is hit on every tab switch (keyboard or mouse) and on tab
+        // close, not just client teardown. See #4805 / #5231.
         self.senders
             .send_to_plugin(PluginInstruction::Update(plugin_updates))
-            .with_context(|| format!("failed to set visibility of tab to {visible}"))?;
+            .with_context(|| format!("failed to set visibility of tab to {visible}"))
+            .non_fatal();
         if !visible {
             self.mouse_hover_pane_id.clear();
         }
