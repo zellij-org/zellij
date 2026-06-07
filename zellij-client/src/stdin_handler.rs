@@ -280,10 +280,10 @@ fn build_startup_query_string() -> String {
     let mut query_string = String::from(
         "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p",
     );
-    // query colors
-    // eg. <ESC>]4;5;?<ESC>\ => query color register number 5
+    query_string.push_str("\u{1b}]4");
     for i in 0..256 {
-        query_string.push_str(&format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
+        query_string.push_str(&format!(";{};?", i));
     }
+    query_string.push_str("\u{1b}\u{5c}");
     query_string
 }
