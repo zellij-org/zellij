@@ -87,10 +87,7 @@ impl Workspace {
 
     pub fn current_pane_is_welcome(&self) -> bool {
         self.current_pane()
-            .map(|p| {
-                p.is_plugin
-                    && p.plugin_url.as_deref() == Some(WELCOME_SCREEN_PLUGIN_ALIAS)
-            })
+            .map(|p| p.is_plugin && p.plugin_url.as_deref() == Some(WELCOME_SCREEN_PLUGIN_ALIAS))
             .unwrap_or(false)
     }
 

@@ -632,8 +632,8 @@ pub(crate) fn background_jobs_main(
                             MOBILE_GATE_FALLBACK_LIFT_TIMEOUT_MS,
                         ))
                         .await;
-                        let _ = senders
-                            .send_to_screen(ScreenInstruction::ForceMobileUngate(client_id));
+                        let _ =
+                            senders.send_to_screen(ScreenInstruction::ForceMobileUngate(client_id));
                     }
                 });
             },

@@ -144,15 +144,60 @@ struct BarCell {
 }
 
 const BAR: [BarCell; BAR_CELL_COUNT] = [
-    BarCell { id: CELL_ESC,   label: "ESC",       short_label: "ES",        modifier: None },
-    BarCell { id: CELL_TAB,   label: "TAB",       short_label: "TB",        modifier: None },
-    BarCell { id: CELL_CTRL,  label: "CTRL",      short_label: "CTL",       modifier: Some(Modifier::Ctrl) },
-    BarCell { id: CELL_ALT,   label: "ALT",       short_label: "AL",        modifier: Some(Modifier::Alt) },
-    BarCell { id: CELL_LEFT,  label: "\u{2190}",  short_label: "\u{2190}",  modifier: None },
-    BarCell { id: CELL_DOWN,  label: "\u{2193}",  short_label: "\u{2193}",  modifier: None },
-    BarCell { id: CELL_UP,    label: "\u{2191}",  short_label: "\u{2191}",  modifier: None },
-    BarCell { id: CELL_RIGHT, label: "\u{2192}",  short_label: "\u{2192}",  modifier: None },
-    BarCell { id: CELL_MINUS, label: "-",         short_label: "-",         modifier: None },
+    BarCell {
+        id: CELL_ESC,
+        label: "ESC",
+        short_label: "ES",
+        modifier: None,
+    },
+    BarCell {
+        id: CELL_TAB,
+        label: "TAB",
+        short_label: "TB",
+        modifier: None,
+    },
+    BarCell {
+        id: CELL_CTRL,
+        label: "CTRL",
+        short_label: "CTL",
+        modifier: Some(Modifier::Ctrl),
+    },
+    BarCell {
+        id: CELL_ALT,
+        label: "ALT",
+        short_label: "AL",
+        modifier: Some(Modifier::Alt),
+    },
+    BarCell {
+        id: CELL_LEFT,
+        label: "\u{2190}",
+        short_label: "\u{2190}",
+        modifier: None,
+    },
+    BarCell {
+        id: CELL_DOWN,
+        label: "\u{2193}",
+        short_label: "\u{2193}",
+        modifier: None,
+    },
+    BarCell {
+        id: CELL_UP,
+        label: "\u{2191}",
+        short_label: "\u{2191}",
+        modifier: None,
+    },
+    BarCell {
+        id: CELL_RIGHT,
+        label: "\u{2192}",
+        short_label: "\u{2192}",
+        modifier: None,
+    },
+    BarCell {
+        id: CELL_MINUS,
+        label: "-",
+        short_label: "-",
+        modifier: None,
+    },
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -220,18 +265,22 @@ fn required_width(drop: DropMode, labels: LabelMode, sep: SepMode) -> usize {
 
 fn choose_config(cols: usize) -> Option<(DropMode, LabelMode, SepMode)> {
     const CONFIGS: [(DropMode, LabelMode, SepMode); 12] = [
-        (DropMode::None,             LabelMode::Full,  SepMode::Wide),
-        (DropMode::None,             LabelMode::Full,  SepMode::Compact),
-        (DropMode::None,             LabelMode::Short, SepMode::Wide),
-        (DropMode::None,             LabelMode::Short, SepMode::Compact),
-        (DropMode::DropMinus,        LabelMode::Full,  SepMode::Wide),
-        (DropMode::DropMinus,        LabelMode::Full,  SepMode::Compact),
-        (DropMode::DropMinus,        LabelMode::Short, SepMode::Wide),
-        (DropMode::DropMinus,        LabelMode::Short, SepMode::Compact),
-        (DropMode::DropMinusAndTab,  LabelMode::Full,  SepMode::Wide),
-        (DropMode::DropMinusAndTab,  LabelMode::Full,  SepMode::Compact),
-        (DropMode::DropMinusAndTab,  LabelMode::Short, SepMode::Wide),
-        (DropMode::DropMinusAndTab,  LabelMode::Short, SepMode::Compact),
+        (DropMode::None, LabelMode::Full, SepMode::Wide),
+        (DropMode::None, LabelMode::Full, SepMode::Compact),
+        (DropMode::None, LabelMode::Short, SepMode::Wide),
+        (DropMode::None, LabelMode::Short, SepMode::Compact),
+        (DropMode::DropMinus, LabelMode::Full, SepMode::Wide),
+        (DropMode::DropMinus, LabelMode::Full, SepMode::Compact),
+        (DropMode::DropMinus, LabelMode::Short, SepMode::Wide),
+        (DropMode::DropMinus, LabelMode::Short, SepMode::Compact),
+        (DropMode::DropMinusAndTab, LabelMode::Full, SepMode::Wide),
+        (DropMode::DropMinusAndTab, LabelMode::Full, SepMode::Compact),
+        (DropMode::DropMinusAndTab, LabelMode::Short, SepMode::Wide),
+        (
+            DropMode::DropMinusAndTab,
+            LabelMode::Short,
+            SepMode::Compact,
+        ),
     ];
     CONFIGS
         .iter()
@@ -427,9 +476,8 @@ mod tests {
         let naturals = vec![1usize; BAR_CELL_COUNT];
         for cols in [9, 10, 20, 80, 137] {
             let layout = compute_bar_layout(cols, &naturals);
-            let total: usize = layout.widths.iter().sum::<usize>()
-                + layout.left_margin
-                + layout.right_margin;
+            let total: usize =
+                layout.widths.iter().sum::<usize>() + layout.left_margin + layout.right_margin;
             assert_eq!(total, cols, "cols={}", cols);
             assert_eq!(layout.widths.len(), BAR_CELL_COUNT);
         }
@@ -445,13 +493,7 @@ mod tests {
                 .iter()
                 .zip(naturals.iter())
                 .map(|(&w, &nat)| {
-                    assert!(
-                        w >= nat,
-                        "cols={} cell width {} < natural {}",
-                        cols,
-                        w,
-                        nat
-                    );
+                    assert!(w >= nat, "cols={} cell width {} < natural {}", cols, w, nat);
                     let p2 = w - nat;
                     assert_eq!(p2 % 2, 0, "cols={} cell padding {} not even", cols, p2);
                     p2 / 2
@@ -459,7 +501,11 @@ mod tests {
                 .collect();
             let first = pads[0];
             for (i, &p) in pads.iter().enumerate() {
-                assert_eq!(p, first, "cols={} cell {} pad={} (expected {})", cols, i, p, first);
+                assert_eq!(
+                    p, first,
+                    "cols={} cell {} pad={} (expected {})",
+                    cols, i, p, first
+                );
             }
             assert!(
                 layout.left_margin + layout.right_margin < 2 * naturals.len(),
@@ -467,7 +513,13 @@ mod tests {
                 cols
             );
             let diff = layout.left_margin.abs_diff(layout.right_margin);
-            assert!(diff <= 1, "cols={} margins {}/{} not centred", cols, layout.left_margin, layout.right_margin);
+            assert!(
+                diff <= 1,
+                "cols={} margins {}/{} not centred",
+                cols,
+                layout.left_margin,
+                layout.right_margin
+            );
         }
     }
 
@@ -547,11 +599,19 @@ mod tests {
     fn choose_config_drops_minus_and_tab_at_minimum() {
         assert_eq!(
             choose_config(19),
-            Some((DropMode::DropMinusAndTab, LabelMode::Short, SepMode::Compact))
+            Some((
+                DropMode::DropMinusAndTab,
+                LabelMode::Short,
+                SepMode::Compact
+            ))
         );
         assert_eq!(
             choose_config(17),
-            Some((DropMode::DropMinusAndTab, LabelMode::Short, SepMode::Compact))
+            Some((
+                DropMode::DropMinusAndTab,
+                LabelMode::Short,
+                SepMode::Compact
+            ))
         );
     }
 

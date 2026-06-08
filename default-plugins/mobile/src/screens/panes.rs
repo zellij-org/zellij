@@ -179,8 +179,8 @@ impl PanesScreen {
         for tab in &tabs {
             for pane in ws.panes_for_tab(tab.position) {
                 let id = pane_id_of(pane);
-                let is_current = current_tab_position == Some(tab.position)
-                    && current_pane_id == Some(id);
+                let is_current =
+                    current_tab_position == Some(tab.position) && current_pane_id == Some(id);
                 cards.push(PaneCard {
                     title_label: pane_title(pane),
                     tab_label: tab.name.clone(),
@@ -532,7 +532,14 @@ mod tests {
     fn panes_menu_one_tab_emits_four_click_regions() {
         let mut state = state_with_tabs_and_panes(1);
         let cols = 40;
-        state.panes.render(&state.workspace, &mut state.navigation, &mut state.frame, 0, 20, cols);
+        state.panes.render(
+            &state.workspace,
+            &mut state.navigation,
+            &mut state.frame,
+            0,
+            20,
+            cols,
+        );
         assert_eq!(state.frame.click_regions.len(), 4);
         let actions: Vec<ClickAction> = state
             .frame
@@ -559,7 +566,14 @@ mod tests {
     fn panes_menu_two_tabs_emits_single_footer_new_pane() {
         let mut state = state_with_tabs_and_panes(2);
         let cols = 40;
-        state.panes.render(&state.workspace, &mut state.navigation, &mut state.frame, 0, 20, cols);
+        state.panes.render(
+            &state.workspace,
+            &mut state.navigation,
+            &mut state.frame,
+            0,
+            20,
+            cols,
+        );
         assert_eq!(state.frame.click_regions.len(), 5);
 
         let new_panes: Vec<usize> = state
@@ -585,7 +599,14 @@ mod tests {
     #[test]
     fn footer_affordances_share_a_row_and_order_left_to_right() {
         let mut state = state_with_tabs_and_panes(1);
-        state.panes.render(&state.workspace, &mut state.navigation, &mut state.frame, 0, 20, 40);
+        state.panes.render(
+            &state.workspace,
+            &mut state.navigation,
+            &mut state.frame,
+            0,
+            20,
+            40,
+        );
         let new_tab = state
             .frame
             .click_regions
@@ -618,24 +639,25 @@ mod tests {
         let mut state = state_with_tabs_and_panes(2);
         state.workspace.selected_tab_position = Some(1);
         state.workspace.selected_pane_id = Some(PaneId::Terminal(101));
-        state.panes.render(&state.workspace, &mut state.navigation, &mut state.frame, 0, 20, 40);
+        state.panes.render(
+            &state.workspace,
+            &mut state.navigation,
+            &mut state.frame,
+            0,
+            20,
+            40,
+        );
         let new_pane_region = state
             .frame
             .click_regions
             .iter()
-            .find(|r| {
-                matches!(
-                    r.action,
-                    ClickAction::NewPaneInTab { tab_position: 1 }
-                )
-            })
+            .find(|r| matches!(r.action, ClickAction::NewPaneInTab { tab_position: 1 }))
             .expect("expected NewPaneInTab targeting the selected tab")
             .clone();
         assert_eq!(
-            state.frame.click_to_action(
-                new_pane_region.row_start,
-                new_pane_region.col_start,
-            ),
+            state
+                .frame
+                .click_to_action(new_pane_region.row_start, new_pane_region.col_start,),
             Some(ClickAction::NewPaneInTab { tab_position: 1 })
         );
     }
@@ -643,7 +665,14 @@ mod tests {
     #[test]
     fn panes_menu_back_button_at_top_left_collapses_selector() {
         let mut state = state_with_tabs_and_panes(1);
-        state.panes.render(&state.workspace, &mut state.navigation, &mut state.frame, 0, 20, 40);
+        state.panes.render(
+            &state.workspace,
+            &mut state.navigation,
+            &mut state.frame,
+            0,
+            20,
+            40,
+        );
         let first = state
             .frame
             .click_regions
@@ -661,7 +690,14 @@ mod tests {
     #[test]
     fn pane_card_click_region_spans_two_rows() {
         let mut state = state_with_tabs_and_panes(1);
-        state.panes.render(&state.workspace, &mut state.navigation, &mut state.frame, 0, 20, 40);
+        state.panes.render(
+            &state.workspace,
+            &mut state.navigation,
+            &mut state.frame,
+            0,
+            20,
+            40,
+        );
         let pane_region = state
             .frame
             .click_regions
@@ -687,15 +723,16 @@ mod tests {
             pane_id: PaneId::Terminal(100),
         });
         assert_eq!(
-            state.frame.click_to_action(pane_region.row_start, pane_region.col_start),
+            state
+                .frame
+                .click_to_action(pane_region.row_start, pane_region.col_start),
             expected,
             "tap on title row should select the pane",
         );
         assert_eq!(
-            state.frame.click_to_action(
-                pane_region.row_start + 1,
-                pane_region.col_start,
-            ),
+            state
+                .frame
+                .click_to_action(pane_region.row_start + 1, pane_region.col_start,),
             expected,
             "tap on activity row should select the pane",
         );
@@ -710,7 +747,14 @@ mod tests {
             }
         }
         state.panes.panes_search = "alpha".to_string();
-        state.panes.render(&state.workspace, &mut state.navigation, &mut state.frame, 0, 20, 60);
+        state.panes.render(
+            &state.workspace,
+            &mut state.navigation,
+            &mut state.frame,
+            0,
+            20,
+            60,
+        );
 
         let new_tab_count = state
             .frame
@@ -718,7 +762,10 @@ mod tests {
             .iter()
             .filter(|r| matches!(r.action, ClickAction::NewTab))
             .count();
-        assert_eq!(new_tab_count, 1, "+ New Tab must stay visible during search");
+        assert_eq!(
+            new_tab_count, 1,
+            "+ New Tab must stay visible during search"
+        );
         let new_pane_count = state
             .frame
             .click_regions
@@ -737,7 +784,14 @@ mod tests {
         let mut state = state_with_tabs_and_panes(2);
         state.workspace.selected_tab_position = Some(0);
         state.workspace.selected_pane_id = Some(PaneId::Terminal(100));
-        state.panes.render(&state.workspace, &mut state.navigation, &mut state.frame, 0, 20, 60);
+        state.panes.render(
+            &state.workspace,
+            &mut state.navigation,
+            &mut state.frame,
+            0,
+            20,
+            60,
+        );
 
         let select_regions: Vec<&ClickRegion> = state
             .frame
@@ -775,8 +829,7 @@ mod tests {
             (current, other)
         };
 
-        let current_span =
-            current.col_end.saturating_sub(current.col_start);
+        let current_span = current.col_end.saturating_sub(current.col_start);
         assert_eq!(current_span, 23);
 
         let other_span = other.col_end.saturating_sub(other.col_start);
@@ -791,12 +844,17 @@ mod tests {
     #[test]
     fn panes_menu_fuzzy_filter_narrows_to_matching_pane() {
         let mut state = state_with_tabs_and_panes(2);
-        state.workspace.panes_by_tab_position.get_mut(&0).unwrap()[0].title =
-            "alpha".to_string();
-        state.workspace.panes_by_tab_position.get_mut(&1).unwrap()[0].title =
-            "bravo".to_string();
+        state.workspace.panes_by_tab_position.get_mut(&0).unwrap()[0].title = "alpha".to_string();
+        state.workspace.panes_by_tab_position.get_mut(&1).unwrap()[0].title = "bravo".to_string();
         state.panes.panes_search = "brv".to_string();
-        state.panes.render(&state.workspace, &mut state.navigation, &mut state.frame, 0, 20, 60);
+        state.panes.render(
+            &state.workspace,
+            &mut state.navigation,
+            &mut state.frame,
+            0,
+            20,
+            60,
+        );
 
         let select_panes: Vec<ClickAction> = state
             .frame

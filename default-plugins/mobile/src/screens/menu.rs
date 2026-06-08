@@ -109,7 +109,11 @@ struct MenuLayout {
 
 impl MenuLayout {
     fn compute(entries: &[HamburgerEntry], cols: usize) -> Option<Self> {
-        let label_max = entries.iter().filter_map(HamburgerEntry::label_width).max().unwrap_or(0);
+        let label_max = entries
+            .iter()
+            .filter_map(HamburgerEntry::label_width)
+            .max()
+            .unwrap_or(0);
         let menu_w = label_max + 2 * H_PAD;
         if label_max == 0 || menu_w > cols {
             return None;
@@ -128,7 +132,13 @@ impl MenuLayout {
     }
 }
 
-fn draw_item_row(frame: &mut Frame, fit: &Fit, item: &HamburgerItem, layout: &MenuLayout, row: usize) {
+fn draw_item_row(
+    frame: &mut Frame,
+    fit: &Fit,
+    item: &HamburgerItem,
+    layout: &MenuLayout,
+    row: usize,
+) {
     let label = item.label();
     let text = layout.padded_row(label, UnicodeWidthStr::width(label));
     let label_chars = H_PAD..H_PAD + label.chars().count();
@@ -150,9 +160,17 @@ fn draw_item_row(frame: &mut Frame, fit: &Fit, item: &HamburgerItem, layout: &Me
 }
 
 fn draw_separator_row(layout: &MenuLayout, row: usize) {
-    let rule: String = std::iter::repeat(SEPARATOR_CHAR).take(layout.label_max).collect();
+    let rule: String = std::iter::repeat(SEPARATOR_CHAR)
+        .take(layout.label_max)
+        .collect();
     let text = layout.padded_row(&rule, layout.label_max);
-    print_text_with_coordinates(Text::new(&text).selected(), layout.menu_x, row, Some(layout.menu_w), None);
+    print_text_with_coordinates(
+        Text::new(&text).selected(),
+        layout.menu_x,
+        row,
+        Some(layout.menu_w),
+        None,
+    );
 }
 
 #[cfg(test)]

@@ -1,6 +1,5 @@
 use crate::ipc::{
-    ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ResizeCause,
-    ServerToClientMsg,
+    ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ResizeCause, ServerToClientMsg,
 };
 use crate::pane_size::Size;
 use interprocess::local_socket::{prelude::*, ListenerOptions};

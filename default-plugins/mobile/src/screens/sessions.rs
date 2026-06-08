@@ -62,10 +62,7 @@ impl SessionsScreen {
     pub fn top_match_name(&mut self, nav: &mut Navigation) -> Option<String> {
         let search = self.welcome_search.clone();
         if search.is_empty() {
-            return self
-                .selectable_sessions()
-                .map(|s| s.name.clone())
-                .min();
+            return self.selectable_sessions().map(|s| s.name.clone()).min();
         }
         let matcher = nav.matcher();
         let mut best: Option<(i64, String)> = None;

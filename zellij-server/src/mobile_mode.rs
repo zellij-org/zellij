@@ -157,11 +157,7 @@ impl MobileState {
         Ok(mobile_tab_layout)
     }
 
-    pub(crate) fn clear_shadow_focus(
-        &self,
-        client_id: ClientId,
-        tabs: &mut BTreeMap<usize, Tab>,
-    ) {
+    pub(crate) fn clear_shadow_focus(&self, client_id: ClientId, tabs: &mut BTreeMap<usize, Tab>) {
         let mobile_tab_id = self.mobile_tab_id(client_id);
         for tab in tabs.values_mut() {
             if Some(tab.id) == mobile_tab_id {
@@ -568,7 +564,13 @@ mod tests {
     fn set_fit_records_an_override() {
         let mut state = MobileState::default();
         let mut tabs = no_tabs();
-        state.set_fit(CLIENT_A, 5, PaneId::Terminal(11), embedded_size(), &mut tabs);
+        state.set_fit(
+            CLIENT_A,
+            5,
+            PaneId::Terminal(11),
+            embedded_size(),
+            &mut tabs,
+        );
         assert!(state.has_fit(5));
     }
 
@@ -576,8 +578,20 @@ mod tests {
     fn refitting_a_tab_reassigns_ownership() {
         let mut state = MobileState::default();
         let mut tabs = no_tabs();
-        state.set_fit(CLIENT_A, 5, PaneId::Terminal(11), embedded_size(), &mut tabs);
-        state.set_fit(CLIENT_B, 5, PaneId::Terminal(11), embedded_size(), &mut tabs);
+        state.set_fit(
+            CLIENT_A,
+            5,
+            PaneId::Terminal(11),
+            embedded_size(),
+            &mut tabs,
+        );
+        state.set_fit(
+            CLIENT_B,
+            5,
+            PaneId::Terminal(11),
+            embedded_size(),
+            &mut tabs,
+        );
 
         assert_eq!(state.clear_fit_owned_by(CLIENT_A, &mut tabs), None);
         assert_eq!(state.clear_fit_owned_by(CLIENT_B, &mut tabs), Some(5));
@@ -587,7 +601,13 @@ mod tests {
     fn compute_fit_size_is_none_without_a_target_tab() {
         let mut state = MobileState::default();
         let mut tabs = no_tabs();
-        state.set_fit(CLIENT_A, 5, PaneId::Terminal(11), embedded_size(), &mut tabs);
+        state.set_fit(
+            CLIENT_A,
+            5,
+            PaneId::Terminal(11),
+            embedded_size(),
+            &mut tabs,
+        );
         assert_eq!(state.compute_fit_size(5, &tabs), None);
     }
 
@@ -602,7 +622,13 @@ mod tests {
     fn clear_fit_owned_by_removes_and_returns_the_tab() {
         let mut state = MobileState::default();
         let mut tabs = no_tabs();
-        state.set_fit(CLIENT_A, 5, PaneId::Terminal(11), embedded_size(), &mut tabs);
+        state.set_fit(
+            CLIENT_A,
+            5,
+            PaneId::Terminal(11),
+            embedded_size(),
+            &mut tabs,
+        );
 
         assert_eq!(state.clear_fit_owned_by(CLIENT_A, &mut tabs), Some(5));
         assert!(!state.has_fit(5));
@@ -612,7 +638,13 @@ mod tests {
     fn clear_fit_owned_by_is_none_when_client_owns_nothing() {
         let mut state = MobileState::default();
         let mut tabs = no_tabs();
-        state.set_fit(CLIENT_A, 5, PaneId::Terminal(11), embedded_size(), &mut tabs);
+        state.set_fit(
+            CLIENT_A,
+            5,
+            PaneId::Terminal(11),
+            embedded_size(),
+            &mut tabs,
+        );
         assert_eq!(state.clear_fit_owned_by(CLIENT_B, &mut tabs), None);
         assert!(state.has_fit(5));
     }
@@ -621,7 +653,13 @@ mod tests {
     fn clear_fit_for_pane_matches_by_fullscreened_pane() {
         let mut state = MobileState::default();
         let mut tabs = no_tabs();
-        state.set_fit(CLIENT_A, 5, PaneId::Terminal(11), embedded_size(), &mut tabs);
+        state.set_fit(
+            CLIENT_A,
+            5,
+            PaneId::Terminal(11),
+            embedded_size(),
+            &mut tabs,
+        );
 
         assert_eq!(state.clear_fit_for_pane(PaneId::Terminal(11)), Some(5));
         assert!(!state.has_fit(5));
@@ -631,7 +669,13 @@ mod tests {
     fn clear_fit_for_pane_is_none_when_no_fit_targets_it() {
         let mut state = MobileState::default();
         let mut tabs = no_tabs();
-        state.set_fit(CLIENT_A, 5, PaneId::Terminal(11), embedded_size(), &mut tabs);
+        state.set_fit(
+            CLIENT_A,
+            5,
+            PaneId::Terminal(11),
+            embedded_size(),
+            &mut tabs,
+        );
         assert_eq!(state.clear_fit_for_pane(PaneId::Terminal(99)), None);
         assert!(state.has_fit(5));
     }
@@ -640,7 +684,13 @@ mod tests {
     fn remove_fit_for_tab_drops_the_override() {
         let mut state = MobileState::default();
         let mut tabs = no_tabs();
-        state.set_fit(CLIENT_A, 5, PaneId::Terminal(11), embedded_size(), &mut tabs);
+        state.set_fit(
+            CLIENT_A,
+            5,
+            PaneId::Terminal(11),
+            embedded_size(),
+            &mut tabs,
+        );
 
         state.remove_fit_for_tab(5);
         assert!(!state.has_fit(5));
@@ -650,9 +700,27 @@ mod tests {
     fn clear_fits_owned_by_removes_only_the_clients_fits() {
         let mut state = MobileState::default();
         let mut tabs = no_tabs();
-        state.set_fit(CLIENT_A, 1, PaneId::Terminal(11), embedded_size(), &mut tabs);
-        state.set_fit(CLIENT_A, 2, PaneId::Terminal(12), embedded_size(), &mut tabs);
-        state.set_fit(CLIENT_B, 3, PaneId::Terminal(13), embedded_size(), &mut tabs);
+        state.set_fit(
+            CLIENT_A,
+            1,
+            PaneId::Terminal(11),
+            embedded_size(),
+            &mut tabs,
+        );
+        state.set_fit(
+            CLIENT_A,
+            2,
+            PaneId::Terminal(12),
+            embedded_size(),
+            &mut tabs,
+        );
+        state.set_fit(
+            CLIENT_B,
+            3,
+            PaneId::Terminal(13),
+            embedded_size(),
+            &mut tabs,
+        );
 
         let mut cleared = state.clear_fits_owned_by(CLIENT_A, &mut tabs);
         cleared.sort_unstable();

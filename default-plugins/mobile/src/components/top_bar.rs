@@ -14,7 +14,13 @@ const SESSION_PANE_SEP: &str = " ";
 
 const HAMBURGER_SLOP_CELLS: usize = 3;
 
-pub(crate) fn render(ws: &Workspace, frame: &mut Frame, active: ActiveScreen, row: usize, cols: usize) {
+pub(crate) fn render(
+    ws: &Workspace,
+    frame: &mut Frame,
+    active: ActiveScreen,
+    row: usize,
+    cols: usize,
+) {
     let pane_name = current_pane_name(ws);
     let session_name = ws.session_name.clone();
     let content_max = cols.saturating_sub(HAMBURGER_SLOP_CELLS + width(HAMBURGER));
@@ -43,17 +49,34 @@ pub(crate) fn render(ws: &Workspace, frame: &mut Frame, active: ActiveScreen, ro
     let pane_seg = bar.push(&pad_or_truncate(&pane_name, plan.pane_target));
     let pane_end = bar.cells;
 
-    let pad = cols.saturating_sub(bar.cells + width(HAMBURGER)).max(HAMBURGER_SLOP_CELLS);
+    let pad = cols
+        .saturating_sub(bar.cells + width(HAMBURGER))
+        .max(HAMBURGER_SLOP_CELLS);
     bar.push(&" ".repeat(pad));
 
     let hamburger_start = bar.cells;
     let hamburger_seg = bar.push(HAMBURGER);
 
-    paint(&bar.text, row, cols, &pane_seg, &hamburger_seg, session_seg.as_ref());
+    paint(
+        &bar.text,
+        row,
+        cols,
+        &pane_seg,
+        &hamburger_seg,
+        session_seg.as_ref(),
+    );
 
     let (pane_action, session_action) = actions_for(active);
     let session_cells = session_seg.map(|s| (s.cells.start, s.cells.end));
-    for region in click_regions(row, cols, pane_end, hamburger_start, pane_action, session_cells, session_action) {
+    for region in click_regions(
+        row,
+        cols,
+        pane_end,
+        hamburger_start,
+        pane_action,
+        session_cells,
+        session_action,
+    ) {
         frame.click_regions.push(region);
     }
 }
@@ -130,7 +153,13 @@ struct Plan {
 }
 
 impl Plan {
-    fn compute(session_w: Option<usize>, pane_w: usize, prefix_w: usize, sep_w: usize, content_max: usize) -> Self {
+    fn compute(
+        session_w: Option<usize>,
+        pane_w: usize,
+        prefix_w: usize,
+        sep_w: usize,
+        content_max: usize,
+    ) -> Self {
         let Some(session_w) = session_w else {
             return Plan {
                 show_prefix: true,
@@ -139,10 +168,18 @@ impl Plan {
             };
         };
         if prefix_w + session_w + sep_w + pane_w <= content_max {
-            return Plan { show_prefix: true, session_target: session_w, pane_target: pane_w };
+            return Plan {
+                show_prefix: true,
+                session_target: session_w,
+                pane_target: pane_w,
+            };
         }
         if session_w + sep_w + pane_w <= content_max {
-            return Plan { show_prefix: false, session_target: session_w, pane_target: pane_w };
+            return Plan {
+                show_prefix: false,
+                session_target: session_w,
+                pane_target: pane_w,
+            };
         }
         let available = content_max.saturating_sub(sep_w);
         let half = available / 2;
@@ -153,7 +190,11 @@ impl Plan {
         } else {
             (half, available.saturating_sub(half))
         };
-        Plan { show_prefix: false, session_target, pane_target }
+        Plan {
+            show_prefix: false,
+            session_target,
+            pane_target,
+        }
     }
 }
 
@@ -167,11 +208,29 @@ pub fn click_regions(
     session_action: ClickAction,
 ) -> Vec<ClickRegion> {
     let mut regions = Vec::with_capacity(5);
-    push_content_regions(&mut regions, row, pane_end, session_cells, pane_action, session_action);
+    push_content_regions(
+        &mut regions,
+        row,
+        pane_end,
+        session_cells,
+        pane_action,
+        session_action,
+    );
 
-    regions.push(ClickRegion::tight(row, hamburger_start, cols, ClickAction::ToggleMenu));
+    regions.push(ClickRegion::tight(
+        row,
+        hamburger_start,
+        cols,
+        ClickAction::ToggleMenu,
+    ));
     let hamburger_center = (hamburger_start.min(cols.saturating_sub(1)), row);
-    regions.push(ClickRegion::slop(row, pane_end, cols, ClickAction::ToggleMenu, hamburger_center));
+    regions.push(ClickRegion::slop(
+        row,
+        pane_end,
+        cols,
+        ClickAction::ToggleMenu,
+        hamburger_center,
+    ));
     regions
 }
 
@@ -190,9 +249,19 @@ fn push_content_regions(
         return;
     };
     if session_start > 0 {
-        regions.push(ClickRegion::tight(row, 0, session_start, pane_action.clone()));
+        regions.push(ClickRegion::tight(
+            row,
+            0,
+            session_start,
+            pane_action.clone(),
+        ));
     }
-    regions.push(ClickRegion::tight(row, session_start, session_end, session_action));
+    regions.push(ClickRegion::tight(
+        row,
+        session_start,
+        session_end,
+        session_action,
+    ));
     if session_end < pane_end {
         regions.push(ClickRegion::tight(row, session_end, pane_end, pane_action));
     }
@@ -240,12 +309,18 @@ mod tests {
 
         let mut state = State::default();
         state.frame.click_regions = regions.clone();
-        assert_eq!(state.frame.click_to_action(0, 0), Some(ClickAction::ExpandPanes));
+        assert_eq!(
+            state.frame.click_to_action(0, 0),
+            Some(ClickAction::ExpandPanes)
+        );
         assert_eq!(
             state.frame.click_to_action(0, pane_end + 5),
             Some(ClickAction::ToggleMenu),
         );
-        assert_eq!(state.frame.click_to_action(0, hamburger_start), Some(ClickAction::ToggleMenu));
+        assert_eq!(
+            state.frame.click_to_action(0, hamburger_start),
+            Some(ClickAction::ToggleMenu)
+        );
     }
 
     #[test]
@@ -262,7 +337,10 @@ mod tests {
         assert!(matches!(regions[0].action, ClickAction::CollapseSelector));
         let mut state = State::default();
         state.frame.click_regions = regions;
-        assert_eq!(state.frame.click_to_action(0, 0), Some(ClickAction::CollapseSelector));
+        assert_eq!(
+            state.frame.click_to_action(0, 0),
+            Some(ClickAction::CollapseSelector)
+        );
     }
 
     #[test]
@@ -287,12 +365,30 @@ mod tests {
 
         let mut state = State::default();
         state.frame.click_regions = regions;
-        assert_eq!(state.frame.click_to_action(0, 3), Some(ClickAction::ExpandPanes));
-        assert_eq!(state.frame.click_to_action(0, 9), Some(ClickAction::ExpandSessions));
-        assert_eq!(state.frame.click_to_action(0, 11), Some(ClickAction::ExpandPanes));
-        assert_eq!(state.frame.click_to_action(0, 14), Some(ClickAction::ExpandPanes));
-        assert_eq!(state.frame.click_to_action(0, 30), Some(ClickAction::ToggleMenu));
-        assert_eq!(state.frame.click_to_action(0, 79), Some(ClickAction::ToggleMenu));
+        assert_eq!(
+            state.frame.click_to_action(0, 3),
+            Some(ClickAction::ExpandPanes)
+        );
+        assert_eq!(
+            state.frame.click_to_action(0, 9),
+            Some(ClickAction::ExpandSessions)
+        );
+        assert_eq!(
+            state.frame.click_to_action(0, 11),
+            Some(ClickAction::ExpandPanes)
+        );
+        assert_eq!(
+            state.frame.click_to_action(0, 14),
+            Some(ClickAction::ExpandPanes)
+        );
+        assert_eq!(
+            state.frame.click_to_action(0, 30),
+            Some(ClickAction::ToggleMenu)
+        );
+        assert_eq!(
+            state.frame.click_to_action(0, 79),
+            Some(ClickAction::ToggleMenu)
+        );
     }
 
     #[test]

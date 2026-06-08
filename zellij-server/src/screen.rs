@@ -1761,8 +1761,13 @@ impl Screen {
         let tab_layout = MobileState::mobile_tab_layout().with_context(err_context)?;
 
         let tab_id = self.get_new_tab_id();
-        self.new_tab(tab_id, (vec![], vec![]), Some("Mobile".to_string()), Some(client_id))
-            .with_context(err_context)?;
+        self.new_tab(
+            tab_id,
+            (vec![], vec![]),
+            Some("Mobile".to_string()),
+            Some(client_id),
+        )
+        .with_context(err_context)?;
         if let Some(tab) = self.tabs.get_mut(&tab_id) {
             let mut set = HashSet::new();
             set.insert(client_id);
@@ -6246,14 +6251,16 @@ pub(crate) fn screen_thread_main(
                                 .context("failed to process plugin bytes")?;
                             painted_tab_id = Some(tab.id);
                             painted_size =
-                                tab.get_pane_with_id(PaneId::Plugin(plugin_id)).map(|pane| Size {
-                                    rows: pane.get_content_rows(),
-                                    cols: pane.get_content_columns(),
-                                });
+                                tab.get_pane_with_id(PaneId::Plugin(plugin_id))
+                                    .map(|pane| Size {
+                                        rows: pane.get_content_rows(),
+                                        cols: pane.get_content_columns(),
+                                    });
                             break;
                         }
                     }
-                    if painted_content && painted_tab_id == mobile_tab_id && mobile_tab_id.is_some() {
+                    if painted_content && painted_tab_id == mobile_tab_id && mobile_tab_id.is_some()
+                    {
                         if let Some(painted_size) = painted_size {
                             screen
                                 .mobile_render_gate
@@ -9975,10 +9982,7 @@ pub(crate) fn screen_thread_main(
                 screen.plugins_need_ansi_pane_contents = has_subscribers;
                 if has_subscribers && !previously_subscribed {
                     if let Err(e) = screen.render(None) {
-                        log::error!(
-                            "Failed to render after ANSI subscription enabled: {:?}",
-                            e
-                        );
+                        log::error!("Failed to render after ANSI subscription enabled: {:?}", e);
                     }
                 }
             },

@@ -681,13 +681,7 @@ mod tests {
         viewport: (usize, usize),
         thresholds: (u16, u16),
     ) -> bool {
-        layout.should_route_to_mobile(
-            is_web,
-            viewport.0,
-            viewport.1,
-            thresholds.0,
-            thresholds.1,
-        )
+        layout.should_route_to_mobile(is_web, viewport.0, viewport.1, thresholds.0, thresholds.1)
     }
 
     #[test]
@@ -707,60 +701,170 @@ mod tests {
     #[test]
     fn web_requires_web_client() {
         assert!(route(MobileLayoutConfiguration::Web, true, SMALL, (60, 30)));
-        assert!(!route(MobileLayoutConfiguration::Web, false, SMALL, (60, 30)));
+        assert!(!route(
+            MobileLayoutConfiguration::Web,
+            false,
+            SMALL,
+            (60, 30)
+        ));
     }
 
     #[test]
     fn web_respects_size_in_either_dimension() {
-        assert!(route(MobileLayoutConfiguration::Web, true, TALL_NARROW, (60, 30)));
-        assert!(route(MobileLayoutConfiguration::Web, true, WIDE_SHORT, (60, 30)));
-        assert!(!route(MobileLayoutConfiguration::Web, true, LARGE, (60, 30)));
+        assert!(route(
+            MobileLayoutConfiguration::Web,
+            true,
+            TALL_NARROW,
+            (60, 30)
+        ));
+        assert!(route(
+            MobileLayoutConfiguration::Web,
+            true,
+            WIDE_SHORT,
+            (60, 30)
+        ));
+        assert!(!route(
+            MobileLayoutConfiguration::Web,
+            true,
+            LARGE,
+            (60, 30)
+        ));
     }
 
     #[test]
     fn always_routes_any_client_on_size_match() {
-        assert!(route(MobileLayoutConfiguration::Always, true, SMALL, (60, 30)));
-        assert!(route(MobileLayoutConfiguration::Always, false, SMALL, (60, 30)));
-        assert!(!route(MobileLayoutConfiguration::Always, true, LARGE, (60, 30)));
-        assert!(!route(MobileLayoutConfiguration::Always, false, LARGE, (60, 30)));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            true,
+            SMALL,
+            (60, 30)
+        ));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            false,
+            SMALL,
+            (60, 30)
+        ));
+        assert!(!route(
+            MobileLayoutConfiguration::Always,
+            true,
+            LARGE,
+            (60, 30)
+        ));
+        assert!(!route(
+            MobileLayoutConfiguration::Always,
+            false,
+            LARGE,
+            (60, 30)
+        ));
     }
 
     #[test]
     fn zero_threshold_makes_dimension_unconditional() {
-        assert!(route(MobileLayoutConfiguration::Always, false, LARGE, (0, 30)));
-        assert!(route(MobileLayoutConfiguration::Always, false, LARGE, (60, 0)));
-        assert!(route(MobileLayoutConfiguration::Always, false, LARGE, (0, 0)));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            false,
+            LARGE,
+            (0, 30)
+        ));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            false,
+            LARGE,
+            (60, 0)
+        ));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            false,
+            LARGE,
+            (0, 0)
+        ));
         assert!(route(MobileLayoutConfiguration::Web, true, LARGE, (0, 0)));
         assert!(!route(MobileLayoutConfiguration::Web, false, LARGE, (0, 0)));
     }
 
     #[test]
     fn zero_viewport_is_treated_as_unknown() {
-        assert!(!route(MobileLayoutConfiguration::Always, true, (0, 0), (60, 30)));
-        assert!(!route(MobileLayoutConfiguration::Web, true, (0, 0), (60, 30)));
-        assert!(!route(MobileLayoutConfiguration::Always, true, (0, 0), (0, 0)));
-        assert!(route(MobileLayoutConfiguration::Always, true, (40, 0), (60, 30)));
-        assert!(route(MobileLayoutConfiguration::Always, true, (0, 20), (60, 30)));
+        assert!(!route(
+            MobileLayoutConfiguration::Always,
+            true,
+            (0, 0),
+            (60, 30)
+        ));
+        assert!(!route(
+            MobileLayoutConfiguration::Web,
+            true,
+            (0, 0),
+            (60, 30)
+        ));
+        assert!(!route(
+            MobileLayoutConfiguration::Always,
+            true,
+            (0, 0),
+            (0, 0)
+        ));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            true,
+            (40, 0),
+            (60, 30)
+        ));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            true,
+            (0, 20),
+            (60, 30)
+        ));
     }
 
     #[test]
     fn boundary_inclusive_at_threshold() {
-        assert!(route(MobileLayoutConfiguration::Always, false, (60, 200), (60, 30)));
-        assert!(route(MobileLayoutConfiguration::Always, false, (200, 30), (60, 30)));
-        assert!(!route(MobileLayoutConfiguration::Always, false, (61, 31), (60, 30)));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            false,
+            (60, 200),
+            (60, 30)
+        ));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            false,
+            (200, 30),
+            (60, 30)
+        ));
+        assert!(!route(
+            MobileLayoutConfiguration::Always,
+            false,
+            (61, 31),
+            (60, 30)
+        ));
     }
 
     #[test]
     fn from_str_accepts_canonical_and_lowercase() {
-        assert_eq!("web".parse::<MobileLayoutConfiguration>(), Ok(MobileLayoutConfiguration::Web));
-        assert_eq!("Web".parse::<MobileLayoutConfiguration>(), Ok(MobileLayoutConfiguration::Web));
-        assert_eq!("always".parse::<MobileLayoutConfiguration>(), Ok(MobileLayoutConfiguration::Always));
-        assert_eq!("never".parse::<MobileLayoutConfiguration>(), Ok(MobileLayoutConfiguration::Never));
+        assert_eq!(
+            "web".parse::<MobileLayoutConfiguration>(),
+            Ok(MobileLayoutConfiguration::Web)
+        );
+        assert_eq!(
+            "Web".parse::<MobileLayoutConfiguration>(),
+            Ok(MobileLayoutConfiguration::Web)
+        );
+        assert_eq!(
+            "always".parse::<MobileLayoutConfiguration>(),
+            Ok(MobileLayoutConfiguration::Always)
+        );
+        assert_eq!(
+            "never".parse::<MobileLayoutConfiguration>(),
+            Ok(MobileLayoutConfiguration::Never)
+        );
         assert!("auto".parse::<MobileLayoutConfiguration>().is_err());
     }
 
     #[test]
     fn default_is_web() {
-        assert_eq!(MobileLayoutConfiguration::default(), MobileLayoutConfiguration::Web);
+        assert_eq!(
+            MobileLayoutConfiguration::default(),
+            MobileLayoutConfiguration::Web
+        );
     }
 }

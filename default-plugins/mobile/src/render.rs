@@ -17,7 +17,9 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
     let body_bottom = rows.saturating_sub(bar_height);
     let viewport_height = body_bottom.saturating_sub(body_top);
 
-    state.frame.emit_cursor(viewport_cursor(state, body_top, viewport_height, cols));
+    state
+        .frame
+        .emit_cursor(viewport_cursor(state, body_top, viewport_height, cols));
 
     disable_autowrap();
     if !suppress_top_bar && cols > 0 {
@@ -75,14 +77,23 @@ fn render_active_screen(state: &mut State, body_top: usize, body_bottom: usize, 
     let frame = &mut state.frame;
     match state.active {
         ActiveScreen::Viewport => {
-            state.viewport.render(&state.workspace, frame, body_top, body_bottom, cols)
+            state
+                .viewport
+                .render(&state.workspace, frame, body_top, body_bottom, cols)
         },
         ActiveScreen::Sessions => {
-            state.sessions.render(&mut state.navigation, frame, body_top, body_bottom, cols)
+            state
+                .sessions
+                .render(&mut state.navigation, frame, body_top, body_bottom, cols)
         },
-        ActiveScreen::Panes => {
-            state.panes.render(&state.workspace, &mut state.navigation, frame, body_top, body_bottom, cols)
-        },
+        ActiveScreen::Panes => state.panes.render(
+            &state.workspace,
+            &mut state.navigation,
+            frame,
+            body_top,
+            body_bottom,
+            cols,
+        ),
         ActiveScreen::NewSessionPrompt => {
             state.new_session.render(frame, body_top, body_bottom, cols)
         },
@@ -91,7 +102,9 @@ fn render_active_screen(state: &mut State, body_top: usize, body_bottom: usize, 
 
 fn render_menu_overlay(state: &mut State, body_top: usize, body_bottom: usize, cols: usize) {
     if state.menu.open && state.active == ActiveScreen::Viewport {
-        state.menu.render(&state.fit, &mut state.frame, body_top, body_bottom, cols);
+        state
+            .menu
+            .render(&state.fit, &mut state.frame, body_top, body_bottom, cols);
     }
 }
 

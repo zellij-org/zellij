@@ -1,10 +1,10 @@
 use zellij_tile::prelude::*;
 
+use crate::ansi::{move_to, slice_ansi_visible, visible_width, RESET};
 use crate::click::ViewportRegion;
 use crate::frame::Frame;
 use crate::input::Input;
 use crate::keys;
-use crate::ansi::{move_to, slice_ansi_visible, visible_width, RESET};
 use crate::workspace::{pane_id_of, Workspace};
 
 const DISABLE_AUTOWRAP: &str = "\x1b[?7l";
@@ -197,7 +197,8 @@ mod tests {
 
         let mut contents = PaneContents::default();
         contents.viewport = vec![String::new(); viewport_len];
-        ws.latest_pane_contents.insert(PaneId::Terminal(42), contents);
+        ws.latest_pane_contents
+            .insert(PaneId::Terminal(42), contents);
 
         let mut vp = ViewportScreen::default();
         if let Some(h) = embed_height {

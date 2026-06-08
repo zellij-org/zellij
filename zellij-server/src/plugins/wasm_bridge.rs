@@ -1234,7 +1234,8 @@ impl WasmBridge {
     }
 
     pub fn hold_mobile_render(&mut self, client_id: ClientId) {
-        self.clients_holding_mobile_render_until_size_settled.insert(client_id);
+        self.clients_holding_mobile_render_until_size_settled
+            .insert(client_id);
     }
 
     pub fn release_mobile_render(
@@ -1242,7 +1243,10 @@ impl WasmBridge {
         client_id: ClientId,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
-        if !self.clients_holding_mobile_render_until_size_settled.remove(&client_id) {
+        if !self
+            .clients_holding_mobile_render_until_size_settled
+            .remove(&client_id)
+        {
             return Ok(());
         }
         let plugins_held_for_client: Vec<PluginId> = self
@@ -1269,9 +1273,7 @@ impl WasmBridge {
         plugin_id: PluginId,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
-        if let Some((rows, columns)) =
-            self.cached_resizes_for_pending_plugins.remove(&plugin_id)
-        {
+        if let Some((rows, columns)) = self.cached_resizes_for_pending_plugins.remove(&plugin_id) {
             self.resize_plugin(plugin_id, columns, rows, shutdown_sender.clone())?;
         }
         self.apply_cached_events(vec![plugin_id], true, shutdown_sender)
@@ -1313,7 +1315,8 @@ impl WasmBridge {
         Ok(())
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
-        self.clients_holding_mobile_render_until_size_settled.remove(&client_id);
+        self.clients_holding_mobile_render_until_size_settled
+            .remove(&client_id);
         self.connected_clients
             .lock()
             .unwrap()

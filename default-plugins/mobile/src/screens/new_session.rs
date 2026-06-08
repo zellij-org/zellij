@@ -74,13 +74,7 @@ impl NewSessionPromptScreen {
         true
     }
 
-    pub fn render(
-        &mut self,
-        frame: &mut Frame,
-        row_start: usize,
-        row_end: usize,
-        cols: usize,
-    ) {
+    pub fn render(&mut self, frame: &mut Frame, row_start: usize, row_end: usize, cols: usize) {
         let body_height = row_end.saturating_sub(row_start);
         if body_height == 0 || cols == 0 {
             return;
@@ -105,7 +99,9 @@ impl NewSessionPromptScreen {
         let buffer_chars = self.pending_session_name.chars().count();
         let view_offset = if buffer_chars > max_chars_no_ellipsis {
             let min_offset = buffer_chars.saturating_sub(max_chars_with_ellipsis);
-            self.new_session_view_offset.max(min_offset).min(buffer_chars)
+            self.new_session_view_offset
+                .max(min_offset)
+                .min(buffer_chars)
         } else {
             0
         };
@@ -131,8 +127,9 @@ impl NewSessionPromptScreen {
         row_end: usize,
         body_height: usize,
     ) -> PromptLayout {
-        let default_buttons_w =
-            UnicodeWidthStr::width(CANCEL_LABEL) + DEFAULT_BUTTON_GAP + UnicodeWidthStr::width(ACCEPT_LABEL);
+        let default_buttons_w = UnicodeWidthStr::width(CANCEL_LABEL)
+            + DEFAULT_BUTTON_GAP
+            + UnicodeWidthStr::width(ACCEPT_LABEL);
         let default_input_w = INPUT_LABEL.len() + RESERVED_INPUT_CHARS + 1;
         let default_content_w = UnicodeWidthStr::width(TITLE)
             .max(default_input_w)
@@ -184,13 +181,25 @@ impl PromptLayout {
 fn draw_title(layout: &PromptLayout) {
     if layout.row_title < layout.row_end {
         let x = layout.centered_x(UnicodeWidthStr::width(TITLE));
-        print_text_with_coordinates(Text::new(TITLE).color_range(3, ..), x, layout.row_title, None, None);
+        print_text_with_coordinates(
+            Text::new(TITLE).color_range(3, ..),
+            x,
+            layout.row_title,
+            None,
+            None,
+        );
     }
 }
 
 fn draw_input(input: &str, layout: &PromptLayout) {
     if layout.row_input < layout.row_end {
-        print_text_with_coordinates(Text::new(input), layout.content_x, layout.row_input, None, None);
+        print_text_with_coordinates(
+            Text::new(input),
+            layout.content_x,
+            layout.row_input,
+            None,
+            None,
+        );
     }
 }
 

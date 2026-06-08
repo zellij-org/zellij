@@ -54,8 +54,11 @@ impl ZellijPlugin for State {
                         self.workspace.tabs_in_order().first().map(|t| t.position);
                 }
                 if let Some(pos) = self.workspace.selected_tab_position {
-                    let still_visible =
-                        self.workspace.tabs_in_order().iter().any(|t| t.position == pos);
+                    let still_visible = self
+                        .workspace
+                        .tabs_in_order()
+                        .iter()
+                        .any(|t| t.position == pos);
                     if !still_visible {
                         self.workspace.selected_tab_position =
                             self.workspace.tabs_in_order().first().map(|t| t.position);
@@ -147,7 +150,8 @@ impl ZellijPlugin for State {
                         self.menu.open = false;
                         true
                     } else {
-                        self.viewport.handle_key(&self.workspace, &mut self.input, key)
+                        self.viewport
+                            .handle_key(&self.workspace, &mut self.input, key)
                     }
                 },
             },
@@ -161,8 +165,8 @@ impl ZellijPlugin for State {
             _ => false,
         };
         if self.fit.active {
-            let suppress_top_bar = self.sessions.is_welcome_screen
-                || self.active == ActiveScreen::Sessions;
+            let suppress_top_bar =
+                self.sessions.is_welcome_screen || self.active == ActiveScreen::Sessions;
             self.fit
                 .notify_size(&self.workspace, &self.frame, suppress_top_bar);
         }
@@ -250,7 +254,8 @@ impl State {
     pub fn toggle_fit(&mut self) -> bool {
         let suppress_top_bar =
             self.sessions.is_welcome_screen || self.active == ActiveScreen::Sessions;
-        self.fit.toggle(&self.workspace, &self.frame, suppress_top_bar)
+        self.fit
+            .toggle(&self.workspace, &self.frame, suppress_top_bar)
     }
 
     pub fn new_pane_in_tab(&mut self, tab_position: usize) -> bool {
@@ -301,10 +306,7 @@ impl State {
     }
 }
 
-pub fn filter_sessions_for_client(
-    sessions: Vec<SessionInfo>,
-    state: &State,
-) -> Vec<SessionInfo> {
+pub fn filter_sessions_for_client(sessions: Vec<SessionInfo>, state: &State) -> Vec<SessionInfo> {
     let is_web_client = state
         .workspace
         .mode_info

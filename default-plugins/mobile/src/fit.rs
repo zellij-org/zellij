@@ -11,12 +11,7 @@ pub struct Fit {
 }
 
 impl Fit {
-    pub fn toggle(
-        &mut self,
-        ws: &Workspace,
-        frame: &Frame,
-        suppress_top_bar: bool,
-    ) -> bool {
+    pub fn toggle(&mut self, ws: &Workspace, frame: &Frame, suppress_top_bar: bool) -> bool {
         if self.active {
             let tab_id = self.tab_id.unwrap_or_default();
             self.active = false;
@@ -56,12 +51,7 @@ impl Fit {
         self.last_sent_size = None;
     }
 
-    pub fn notify_size(
-        &mut self,
-        ws: &Workspace,
-        frame: &Frame,
-        suppress_top_bar: bool,
-    ) {
+    pub fn notify_size(&mut self, ws: &Workspace, frame: &Frame, suppress_top_bar: bool) {
         if !self.active {
             return;
         }

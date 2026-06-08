@@ -894,8 +894,8 @@ impl fmt::Display for ResizeStrategy {
 // left click) and the `ScrollUp` and `ScrollDown` events could probably be
 // merged into a single `Scroll(isize)` event.
 pub enum Mouse {
-    ScrollUp(usize),          // number of lines
-    ScrollDown(usize),        // number of lines
+    ScrollUp(usize),   // number of lines
+    ScrollDown(usize), // number of lines
     ScrollLeft(usize),
     ScrollRight(usize),
     LeftClick(isize, usize),  // line and column

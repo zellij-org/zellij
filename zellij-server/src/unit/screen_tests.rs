@@ -9829,8 +9829,7 @@ fn setup_mobile_fit(screen: &mut Screen, client: ClientId, mobile_tab_idx: usize
     let run = RunPluginOrAlias::from_url("zellij:mobile", &None, None, None).unwrap();
     // Bus::empty() has no to_plugin sender, but PluginPane::new requires one; leak the
     // receiver so the injected sender's channel stays alive for the test's lifetime.
-    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> =
-        channels::unbounded();
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
     Box::leak(Box::new(plugin_receiver));
     screen
         .bus
@@ -9894,7 +9893,12 @@ fn fit_cleared_when_target_pane_closes() {
     let mobile_client = 1;
     setup_mobile_fit(&mut screen, mobile_client, 9, 100);
     screen
-        .set_tab_fit(mobile_client, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
+        .set_tab_fit(
+            mobile_client,
+            0,
+            PaneId::Terminal(1),
+            Size { rows: 12, cols: 60 },
+        )
         .expect("TEST");
     assert!(
         screen.mobile_state.has_fit(0),
@@ -10188,8 +10192,20 @@ fn recompute_tab_size_short_circuit() {
         "Pre-condition: override active"
     );
 
-    screen.set_client_size(1, Size { cols: 100, rows: 30 });
-    screen.set_client_size(2, Size { cols: 120, rows: 40 });
+    screen.set_client_size(
+        1,
+        Size {
+            cols: 100,
+            rows: 30,
+        },
+    );
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 120,
+            rows: 40,
+        },
+    );
     screen.recompute_tab_size(0).expect("TEST");
 
     let after = screen.tabs.get(&0).unwrap().size;
@@ -10299,7 +10315,10 @@ fn fit_tab_close_cleans_state() {
     screen
         .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
         .expect("TEST");
-    assert!(screen.mobile_state.has_fit(0), "Pre-condition: fit installed");
+    assert!(
+        screen.mobile_state.has_fit(0),
+        "Pre-condition: fit installed"
+    );
 
     screen.close_tab_by_id(0).expect("TEST");
 
@@ -10333,7 +10352,9 @@ fn disconnect_safe_with_orphan_fit() {
         "Pre-condition: orphan entry present (cleanup deliberately skipped)"
     );
 
-    screen.remove_client(1).expect("Disconnect must not panic on dead pane_id");
+    screen
+        .remove_client(1)
+        .expect("Disconnect must not panic on dead pane_id");
     assert!(
         screen.mobile_state.fit_count() == 0,
         "Disconnect cleanup clears the orphan"
@@ -10342,14 +10363,29 @@ fn disconnect_safe_with_orphan_fit() {
 
 #[test]
 fn fit_three_viewers_override_persists() {
-    let initial_size = Size { cols: 200, rows: 60 };
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
     let mut screen = create_new_screen(initial_size, true, true);
     new_tab(&mut screen, 1, 0);
     screen.add_client(2, false).expect("TEST");
     screen.add_client(3, false).expect("TEST");
     screen.set_client_size(1, Size { cols: 40, rows: 10 });
-    screen.set_client_size(2, Size { cols: 100, rows: 30 });
-    screen.set_client_size(3, Size { cols: 200, rows: 60 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 100,
+            rows: 30,
+        },
+    );
+    screen.set_client_size(
+        3,
+        Size {
+            cols: 200,
+            rows: 60,
+        },
+    );
     setup_mobile_fit(&mut screen, 1, 9, 100);
     screen
         .tabs
@@ -10384,7 +10420,10 @@ fn fit_three_viewers_override_persists() {
     assert!(screen.mobile_state.fit_count() == 0);
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
-        Size { cols: 200, rows: 60 },
+        Size {
+            cols: 200,
+            rows: 60
+        },
         "Tab grew to fit the surviving desktop client"
     );
 }
@@ -10536,9 +10575,15 @@ pub fn render_report_writes_per_client_plugin_pane_contents_in_fallback() {
     );
 }
 
-const MOBILE_BASE_SIZE: Size = Size { cols: 121, rows: 40 };
+const MOBILE_BASE_SIZE: Size = Size {
+    cols: 121,
+    rows: 40,
+};
 const MOBILE_SMALL: Size = Size { cols: 40, rows: 20 };
-const MOBILE_LARGE: Size = Size { cols: 200, rows: 200 };
+const MOBILE_LARGE: Size = Size {
+    cols: 200,
+    rows: 200,
+};
 const MOBILE_THRESHOLDS: (u16, u16) = (60, 30);
 
 fn setup_mobile_screen() -> Screen {
@@ -10552,7 +10597,9 @@ fn reevaluate_mobile_routes_web_client_in_web_mode() {
     use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 10;
-    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
 
     screen
         .reevaluate_mobile_mode(
@@ -10578,7 +10625,9 @@ fn reevaluate_mobile_skips_terminal_client_in_web_mode() {
     use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 11;
-    screen.add_client(client, /* is_web_client */ false).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ false)
+        .expect("TEST");
 
     screen
         .reevaluate_mobile_mode(
@@ -10600,7 +10649,9 @@ fn reevaluate_mobile_routes_terminal_client_in_always_mode() {
     use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 12;
-    screen.add_client(client, /* is_web_client */ false).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ false)
+        .expect("TEST");
 
     screen
         .reevaluate_mobile_mode(
@@ -10622,10 +10673,18 @@ fn reevaluate_mobile_zero_threshold_forces_entry() {
     use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 13;
-    screen.add_client(client, /* is_web_client */ false).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ false)
+        .expect("TEST");
 
     screen
-        .reevaluate_mobile_mode(client, MOBILE_LARGE, MobileLayoutConfiguration::Always, 0, 0)
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_LARGE,
+            MobileLayoutConfiguration::Always,
+            0,
+            0,
+        )
         .expect("TEST");
     assert!(
         screen.is_in_mobile_mode(client),
@@ -10638,7 +10697,9 @@ fn reevaluate_mobile_never_never_routes() {
     use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 14;
-    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
 
     screen
         .reevaluate_mobile_mode(
@@ -10660,7 +10721,9 @@ fn reevaluate_mobile_auto_demotes_after_growth() {
     use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 15;
-    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
 
     screen
         .reevaluate_mobile_mode(
@@ -10693,7 +10756,9 @@ fn reevaluate_mobile_preserves_manual_entry_when_viewport_grows() {
     use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 16;
-    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
 
     screen.enter_mobile_mode(client).expect("TEST");
     assert!(screen.is_in_mobile_mode(client));
@@ -10721,7 +10786,9 @@ fn reevaluate_mobile_preserves_manual_entry_when_viewport_grows() {
 fn enter_mobile_mode_populates_consolidated_state() {
     let mut screen = setup_mobile_screen();
     let client = 20;
-    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
 
     screen.enter_mobile_mode(client).expect("TEST");
 
@@ -10749,7 +10816,9 @@ fn exit_mobile_mode_clears_all_consolidated_state() {
     use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 21;
-    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
 
     screen
         .reevaluate_mobile_mode(
@@ -10788,7 +10857,9 @@ fn remove_client_clears_all_consolidated_state() {
     use zellij_utils::input::options::MobileLayoutConfiguration;
     let mut screen = setup_mobile_screen();
     let client = 22;
-    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
 
     screen
         .reevaluate_mobile_mode(
@@ -10823,8 +10894,12 @@ fn mobile_state_tracks_clients_independently() {
     let mut screen = setup_mobile_screen();
     let client_a = 23;
     let client_b = 24;
-    screen.add_client(client_a, /* is_web_client */ true).expect("TEST");
-    screen.add_client(client_b, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(client_a, /* is_web_client */ true)
+        .expect("TEST");
+    screen
+        .add_client(client_b, /* is_web_client */ true)
+        .expect("TEST");
 
     screen.enter_mobile_mode(client_a).expect("TEST");
     screen.enter_mobile_mode(client_b).expect("TEST");
@@ -10870,7 +10945,9 @@ fn render_gate_can_be_set_and_lifted() {
 fn remove_client_lifts_render_gate() {
     let mut screen = setup_mobile_screen();
     let client = 41;
-    screen.add_client(client, /* is_web_client */ false).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ false)
+        .expect("TEST");
     screen.mobile_render_gate.gate(client);
 
     screen.remove_client(client).expect("TEST");
@@ -10885,7 +10962,9 @@ fn remove_client_lifts_render_gate() {
 fn exit_mobile_mode_lifts_render_gate() {
     let mut screen = setup_mobile_screen();
     let client = 42;
-    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
     screen.enter_mobile_mode(client).expect("TEST");
     screen.mobile_render_gate.gate(client);
 
@@ -10904,7 +10983,9 @@ fn first_mobile_plugin_paint_lifts_only_the_owning_client() {
     let other = 44;
     let mobile_tab_idx = 9;
     let plugin_id = 900;
-    screen.add_client(owner, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(owner, /* is_web_client */ true)
+        .expect("TEST");
     setup_mobile_fit(&mut screen, owner, mobile_tab_idx, plugin_id);
     screen.mobile_render_gate.gate(owner);
     screen.mobile_render_gate.gate(other);
@@ -10922,8 +11003,7 @@ fn first_mobile_plugin_paint_lifts_only_the_owning_client() {
 }
 
 fn capture_plugin_channel(screen: &mut Screen) -> Receiver<(PluginInstruction, ErrorContext)> {
-    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> =
-        channels::unbounded();
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
     screen
         .bus
         .senders
@@ -10945,7 +11025,9 @@ fn drain_plugin_instructions(
 fn entering_mobile_while_gated_holds_the_plugin_render() {
     let mut screen = setup_mobile_screen();
     let client = 50;
-    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
     let plugin_receiver = capture_plugin_channel(&mut screen);
 
     screen.mobile_render_gate.gate(client); // SuppressRenderUntilMobile does this
@@ -10963,7 +11045,9 @@ fn entering_mobile_while_gated_holds_the_plugin_render() {
 fn entering_mobile_without_a_gate_does_not_hold() {
     let mut screen = setup_mobile_screen();
     let client = 51;
-    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
     let plugin_receiver = capture_plugin_channel(&mut screen);
 
     // No SuppressRenderUntilMobile: the client is not gated.
@@ -10982,7 +11066,9 @@ fn entering_mobile_without_a_gate_does_not_hold() {
 fn exiting_mobile_releases_the_plugin_render() {
     let mut screen = setup_mobile_screen();
     let client = 52;
-    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
     screen.enter_mobile_mode(client).expect("TEST");
     let plugin_receiver = capture_plugin_channel(&mut screen);
 
@@ -10995,4 +11081,3 @@ fn exiting_mobile_releases_the_plugin_render() {
         "exiting mobile must release the plugin render; sent={sent:?}",
     );
 }
-

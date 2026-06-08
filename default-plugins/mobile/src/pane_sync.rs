@@ -1,9 +1,9 @@
 use zellij_tile::prelude::*;
 
+use crate::filter_sessions_for_client;
 use crate::screens::ActiveScreen;
 use crate::state::State;
 use crate::workspace::pane_id_of;
-use crate::filter_sessions_for_client;
 
 const EMPTY_WELCOME_LIST_GRACE_SECS: f64 = 0.4;
 

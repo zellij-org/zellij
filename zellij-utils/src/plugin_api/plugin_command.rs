@@ -13,9 +13,9 @@ pub use super::generated_api::api::{
         get_focused_pane_info_response, get_pane_cwd_response, get_pane_pid_response,
         get_pane_running_command_response, get_session_list_response, hide_floating_panes_response,
         highlight_style::Style as ProtobufHighlightStyleVariant, new_tab_response,
-        parse_layout_response, plugin_command::Payload, rename_layout_response,
-        save_layout_response, save_session_response, show_floating_panes_response,
-        BreakPanesToNewTabPayload,
+        new_tab_unfocused_response, parse_layout_response, plugin_command::Payload,
+        rename_layout_response, save_layout_response, save_session_response,
+        show_floating_panes_response, BreakPanesToNewTabPayload,
         BreakPanesToNewTabResponse as ProtobufBreakPanesToNewTabResponse,
         BreakPanesToTabWithIdPayload,
         BreakPanesToTabWithIdResponse as ProtobufBreakPanesToTabWithIdResponse,
@@ -67,10 +67,8 @@ pub use super::generated_api::api::{
         MovePaneWithPaneIdPayload, MovePayload, NewPluginArgs as ProtobufNewPluginArgs,
         NewTabPayload, NewTabResponse as ProtobufNewTabResponse, NewTabUnfocusedPayload,
         NewTabUnfocusedResponse as ProtobufNewTabUnfocusedResponse,
-        NewTabsResponse as ProtobufNewTabsResponse,
-        NewTabsWithLayoutInfoPayload, NewTiledPaneInTabPayload,
-        NewTiledPaneInTabResponse as ProtobufNewTiledPaneInTabResponse,
-        new_tab_unfocused_response,
+        NewTabsResponse as ProtobufNewTabsResponse, NewTabsWithLayoutInfoPayload,
+        NewTiledPaneInTabPayload, NewTiledPaneInTabResponse as ProtobufNewTiledPaneInTabResponse,
         OpenCommandPaneBackgroundResponse as ProtobufOpenCommandPaneBackgroundResponse,
         OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneFloatingNearPluginResponse as ProtobufOpenCommandPaneFloatingNearPluginResponse,
@@ -124,15 +122,14 @@ pub use super::generated_api::api::{
         SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
         SetPaneBorderlessPayload, SetPaneColorPayload, SetPaneRegexHighlightsPayload,
         SetSelfMouseSelectionSupportPayload,
-        SetTabFitPayload as ProtobufSetTabFitPayload, Size as ProtobufSize,
-        SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
-        ShowCursorPayload,
+        SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload,
+        SetTabFitPayload as ProtobufSetTabFitPayload, SetTimeoutPayload, ShowCursorPayload,
         ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
-        StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToIdPayload,
-        SwitchTabToPayload, TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
-        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        Size as ProtobufSize, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
+        SwitchTabToIdPayload, SwitchTabToPayload, TogglePaneBorderlessPayload,
+        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
+        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -2974,9 +2971,11 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::NewTiledPaneInTab { tab_position } => Ok(ProtobufPluginCommand {
                 name: CommandName::NewTiledPaneInTab as i32,
-                payload: Some(Payload::NewTiledPaneInTabPayload(NewTiledPaneInTabPayload {
-                    tab_position: tab_position as u32,
-                })),
+                payload: Some(Payload::NewTiledPaneInTabPayload(
+                    NewTiledPaneInTabPayload {
+                        tab_position: tab_position as u32,
+                    },
+                )),
             }),
             PluginCommand::GoToNextTab => Ok(ProtobufPluginCommand {
                 name: CommandName::GoToNextTab as i32,
@@ -5231,7 +5230,10 @@ mod tests {
         match decoded {
             PluginCommand::SetTabFit { tab_id, fit } => {
                 assert_eq!(tab_id, 7);
-                assert_eq!(fit, Some((PaneId::Terminal(3), Size { rows: 24, cols: 80 })));
+                assert_eq!(
+                    fit,
+                    Some((PaneId::Terminal(3), Size { rows: 24, cols: 80 }))
+                );
             },
             other => panic!("expected SetTabFit, got {:?}", other),
         }

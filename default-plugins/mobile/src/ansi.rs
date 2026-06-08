@@ -72,7 +72,10 @@ pub(crate) fn visible_width(text: &str) -> usize {
             continue;
         }
         let ch_len = utf8_char_len(bytes[i]).max(1);
-        if let Some(s) = bytes.get(i..i + ch_len).and_then(|b| std::str::from_utf8(b).ok()) {
+        if let Some(s) = bytes
+            .get(i..i + ch_len)
+            .and_then(|b| std::str::from_utf8(b).ok())
+        {
             width += UnicodeWidthStr::width(s);
         }
         i += ch_len;

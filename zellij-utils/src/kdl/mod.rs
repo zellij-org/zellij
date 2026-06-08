@@ -2829,19 +2829,17 @@ impl Options {
         let mouse_click_through =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_click_through")
                 .map(|(v, _)| v);
-        let mobile_layout = match kdl_property_first_arg_as_string_or_error!(
-            kdl_options,
-            "mobile_layout"
-        ) {
-            Some((value, entry)) => {
-                use crate::input::options::MobileLayoutConfiguration;
-                match value.parse::<MobileLayoutConfiguration>() {
-                    Ok(v) => Some(v),
-                    Err(e) => return Err(kdl_parsing_error!(e, entry)),
-                }
-            },
-            None => None,
-        };
+        let mobile_layout =
+            match kdl_property_first_arg_as_string_or_error!(kdl_options, "mobile_layout") {
+                Some((value, entry)) => {
+                    use crate::input::options::MobileLayoutConfiguration;
+                    match value.parse::<MobileLayoutConfiguration>() {
+                        Ok(v) => Some(v),
+                        Err(e) => return Err(kdl_parsing_error!(e, entry)),
+                    }
+                },
+                None => None,
+            };
         let mobile_threshold_cols =
             match kdl_property_first_arg_as_i64_or_error!(kdl_options, "mobile_threshold_cols") {
                 Some((value, _)) if value >= 0 => Some(value as u16),
@@ -7362,10 +7360,8 @@ fn mobile_layout_kdl_round_trip_for_every_variant() {
         let mut serialized = Options::to_kdl(&parsed, false);
         let mut fake_document = KdlDocument::new();
         fake_document.nodes_mut().append(&mut serialized);
-        let reparsed = Options::from_kdl(
-            &fake_document.to_string().parse::<KdlDocument>().unwrap(),
-        )
-        .unwrap();
+        let reparsed =
+            Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
         assert_eq!(parsed, reparsed, "round-trip mismatch for {value}");
     }
 }

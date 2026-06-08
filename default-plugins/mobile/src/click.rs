@@ -15,7 +15,9 @@ pub enum ClickAction {
     ToggleFit,
     Keyboard(crate::components::modifier_bar::CellId),
     ToggleMenu,
-    NewPaneInTab { tab_position: usize },
+    NewPaneInTab {
+        tab_position: usize,
+    },
     NewTab,
     OpenNewSessionPrompt,
     CancelNewSessionPrompt,
@@ -35,12 +37,7 @@ pub struct ClickRegion {
 }
 
 impl ClickRegion {
-    pub fn tight(
-        row: usize,
-        col_start: usize,
-        col_end: usize,
-        action: ClickAction,
-    ) -> Self {
+    pub fn tight(row: usize, col_start: usize, col_end: usize, action: ClickAction) -> Self {
         Self::tight_range(row, row + 1, col_start, col_end, action)
     }
 
@@ -114,9 +111,7 @@ pub fn dispatch(state: &mut State, action: ClickAction) -> bool {
         ClickAction::ExpandPanes => state.open_panes(),
         ClickAction::ToggleMenu => state.menu.toggle(&mut state.active),
         ClickAction::CollapseSelector => state.collapse_selector(),
-        ClickAction::SelectSession(name) => {
-            state.sessions.select_session(&mut state.active, &name)
-        },
+        ClickAction::SelectSession(name) => state.sessions.select_session(&mut state.active, &name),
         ClickAction::OpenNewSessionPrompt => state.open_new_session_prompt(),
         ClickAction::CancelNewSessionPrompt => state.cancel_new_session_prompt(),
         ClickAction::AcceptNewSessionPrompt => state.accept_new_session_prompt(),

@@ -4,9 +4,9 @@ use crate::panes::sixel::SixelImageStore;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
 use crate::{os_input_output::ServerOsApi, panes::PaneId, thread_bus::ThreadSenders, ClientId};
-use zellij_utils::channels::{unbounded, Receiver, SenderWithContext};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
+use zellij_utils::channels::{unbounded, Receiver, SenderWithContext};
 use zellij_utils::data::{Direction, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
@@ -16317,7 +16317,8 @@ fn install_pty_writer_capture(
     tab: &mut Tab,
 ) -> Receiver<(PtyWriteInstruction, zellij_utils::errors::ErrorContext)> {
     let (tx, rx) = unbounded();
-    tab.senders.replace_to_pty_writer(SenderWithContext::new(tx));
+    tab.senders
+        .replace_to_pty_writer(SenderWithContext::new(tx));
     rx
 }
 
@@ -16511,7 +16512,10 @@ pub fn set_shadow_focus_returns_true_when_pane_is_in_tab() {
 
     let placed = tab.set_shadow_focus(99, PaneId::Terminal(2));
 
-    assert!(placed, "pane is in the tab — should report a successful placement");
+    assert!(
+        placed,
+        "pane is in the tab — should report a successful placement"
+    );
     assert!(
         tab.has_shadow_focus_on(99, PaneId::Terminal(2)),
         "shadow focus must be recorded on the target pane",
@@ -16646,8 +16650,7 @@ pub fn real_focus_supersedes_shadow_marker() {
     tab.set_shadow_focus(99, PaneId::Terminal(1));
     assert_eq!(tab.shadow_focus_clients(), vec![99]);
 
-    tab.tiled_panes
-        .focus_pane(PaneId::Terminal(1), 99);
+    tab.tiled_panes.focus_pane(PaneId::Terminal(1), 99);
 
     assert!(
         tab.shadow_focus_clients().is_empty(),

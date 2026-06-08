@@ -2395,10 +2395,8 @@ pub(crate) fn route_thread_main(
                                     ))
                                 });
                                 if matches!(cause, ResizeCause::Viewport) {
-                                    let mobile_options = session_data
-                                        .read()
-                                        .ok()
-                                        .and_then(|guard| {
+                                    let mobile_options =
+                                        session_data.read().ok().and_then(|guard| {
                                             guard.as_ref().map(|s| {
                                                 let config = s
                                                     .session_configuration
@@ -2419,11 +2417,8 @@ pub(crate) fn route_thread_main(
                                                 )
                                             })
                                         });
-                                    if let Some((
-                                        mobile_layout,
-                                        threshold_cols,
-                                        threshold_rows,
-                                    )) = mobile_options
+                                    if let Some((mobile_layout, threshold_cols, threshold_rows)) =
+                                        mobile_options
                                     {
                                         let _ = senders.as_ref().map(|s| {
                                             s.send_to_screen(
@@ -2666,13 +2661,11 @@ pub(crate) fn route_thread_main(
                         },
                         ClientToServerMsg::SoftKeyboardVisibilityChanged { visible } => {
                             if let Some(senders) = senders.as_ref() {
-                                let _ = senders.send_to_plugin(
-                                    PluginInstruction::Update(vec![(
-                                        None,
-                                        Some(client_id),
-                                        Event::SoftKeyboardVisibilityChanged(visible),
-                                    )]),
-                                );
+                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                    None,
+                                    Some(client_id),
+                                    Event::SoftKeyboardVisibilityChanged(visible),
+                                )]));
                             }
                         },
                     }

@@ -52,7 +52,9 @@ impl Frame {
             if col < region.col_start || col >= region.col_end {
                 continue;
             }
-            let Some((cx, cy)) = region.center else { continue };
+            let Some((cx, cy)) = region.center else {
+                continue;
+            };
             let dx = (cx as i64 - col as i64).unsigned_abs();
             let dy = (cy as i64 - row as i64).unsigned_abs();
             let dist_sq = dx * dx + dy * dy;
@@ -102,9 +104,11 @@ mod tests {
     fn tight_wins_over_overlapping_slop() {
         let mut f = Frame::default();
         f.click_regions.push(ClickRegion::tight(5, 10, 13, kb(1)));
-        f.click_regions.push(ClickRegion::slop(5, 9, 14, kb(1), (11, 5)));
+        f.click_regions
+            .push(ClickRegion::slop(5, 9, 14, kb(1), (11, 5)));
         f.click_regions.push(ClickRegion::tight(5, 13, 16, kb(2)));
-        f.click_regions.push(ClickRegion::slop(5, 12, 17, kb(2), (14, 5)));
+        f.click_regions
+            .push(ClickRegion::slop(5, 12, 17, kb(2), (14, 5)));
         assert_eq!(f.click_to_action(5, 12), Some(kb(1)));
         assert_eq!(f.click_to_action(5, 13), Some(kb(2)));
     }
@@ -114,11 +118,13 @@ mod tests {
         let mut f = Frame::default();
         f.click_regions.push(ClickRegion::tight(5, 10, 13, kb(1)));
         for r in 4..=6 {
-            f.click_regions.push(ClickRegion::slop(r, 9, 14, kb(1), (11, 5)));
+            f.click_regions
+                .push(ClickRegion::slop(r, 9, 14, kb(1), (11, 5)));
         }
         f.click_regions.push(ClickRegion::tight(7, 10, 13, kb(2)));
         for r in 6..=8 {
-            f.click_regions.push(ClickRegion::slop(r, 9, 14, kb(2), (11, 7)));
+            f.click_regions
+                .push(ClickRegion::slop(r, 9, 14, kb(2), (11, 7)));
         }
         assert_eq!(f.click_to_action(6, 11), Some(kb(1)));
         assert_eq!(f.click_to_action(8, 11), Some(kb(2)));
@@ -128,7 +134,8 @@ mod tests {
     fn miss_returns_none() {
         let mut f = Frame::default();
         f.click_regions.push(ClickRegion::tight(5, 10, 13, kb(1)));
-        f.click_regions.push(ClickRegion::slop(5, 9, 14, kb(1), (11, 5)));
+        f.click_regions
+            .push(ClickRegion::slop(5, 9, 14, kb(1), (11, 5)));
         assert!(f.click_to_action(0, 0).is_none());
         assert!(f.click_to_action(5, 20).is_none());
     }
