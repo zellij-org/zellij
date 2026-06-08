@@ -1373,7 +1373,6 @@ impl WasmBridge {
         pane_render_report: PaneRenderReport,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
-        // Plain content (existing behavior)
         let changed_panes_per_client = self.get_changed_panes_per_client(
             &pane_render_report.all_pane_contents,
             self.previous_pane_render_report
@@ -1385,7 +1384,6 @@ impl WasmBridge {
             self.update_plugins(updates, shutdown_sender.clone())?;
         }
 
-        // ANSI content (new behavior)
         if !pane_render_report.all_pane_contents_with_ansi.is_empty() {
             let changed_ansi_panes_per_client = self.get_changed_panes_per_client(
                 &pane_render_report.all_pane_contents_with_ansi,
