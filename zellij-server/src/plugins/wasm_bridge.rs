@@ -1354,6 +1354,7 @@ impl WasmBridge {
                     .map(|prev_pane_contents| {
                         prev_pane_contents.viewport != new_pane_contents.viewport
                             || prev_pane_contents.selected_text != new_pane_contents.selected_text
+                            || prev_pane_contents.cursor != new_pane_contents.cursor
                     })
                     .unwrap_or(true);
                 if has_changed {

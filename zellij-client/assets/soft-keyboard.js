@@ -44,7 +44,9 @@ export function installSoftKeyboardCapture(term, sendFunction) {
 
     // Firefox Android / GBoard no-op backspace on truly empty content, so keep the
     // input padded with the caret in the middle to give backspace something to delete.
-    const PADDING_CHAR = " ";
+    // Must NOT be a normal space: diff() strips PADDING_CHAR out of the inserted text,
+    // which would swallow a genuinely typed space (U+0020). U+00A0 is non-typeable.
+    const PADDING_CHAR = "\u00a0";
     const PADDING_LEN = 8;
     const CARET_OFFSET = PADDING_LEN / 2;
     const BASELINE = PADDING_CHAR.repeat(PADDING_LEN);
