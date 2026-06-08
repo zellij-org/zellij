@@ -37,6 +37,7 @@ impl ZellijPlugin for State {
             EventType::PaneRenderReportWithAnsi,
             EventType::SessionUpdate,
             EventType::SoftKeyboardVisibilityChanged,
+            EventType::Timer,
         ]);
     }
 
@@ -78,6 +79,10 @@ impl ZellijPlugin for State {
                 }
                 let filtered = filter_sessions_for_client(sessions, self);
                 self.sessions.sessions = filtered;
+                true
+            },
+            Event::Timer(_) => {
+                self.empty_welcome_list_grace_elapsed = true;
                 true
             },
             Event::PaneRenderReportWithAnsi(map) => {
@@ -177,17 +182,30 @@ impl State {
         if self.workspace.tabs.is_empty() && self.workspace.panes_by_tab_position.is_empty() {
             return false;
         }
+        if self.showing_empty_welcome_list_within_grace() {
+            return false;
+        }
         if self.active == ActiveScreen::Viewport {
-            if let Some(pane) = self.workspace.current_pane() {
-                return self
-                    .workspace
-                    .latest_pane_contents
-                    .get(&pane_id_of(&pane))
-                    .map(|contents| !contents.viewport.is_empty())
-                    .unwrap_or(false);
-            }
+            return self.viewport_pane_has_content();
         }
         true
+    }
+
+    fn showing_empty_welcome_list_within_grace(&self) -> bool {
+        self.sessions.is_welcome_screen
+            && self.sessions.sessions.is_empty()
+            && !self.empty_welcome_list_grace_elapsed
+    }
+
+    fn viewport_pane_has_content(&self) -> bool {
+        let Some(pane) = self.workspace.current_pane() else {
+            return false;
+        };
+        self.workspace
+            .latest_pane_contents
+            .get(&pane_id_of(&pane))
+            .map(|contents| !contents.viewport.is_empty())
+            .unwrap_or(false)
     }
 
     pub fn open_sessions(&mut self) -> bool {
@@ -348,7 +366,7 @@ pub fn refresh_pane_titles(state: &mut State) {
 mod tests {
     use super::*;
     use crate::click::{self, ClickAction};
-    use zellij_tile::prelude::{PaneInfo, TabInfo};
+    use zellij_tile::prelude::{PaneInfo, SessionInfo, TabInfo};
 
     fn fit_ready_state() -> State {
         let mut state = State::default();
@@ -496,5 +514,62 @@ mod tests {
 
         assert_eq!(state.workspace.pending_new_tab_position, Some(5));
         assert_eq!(state.workspace.selected_tab_position, Some(0));
+    }
+
+    fn welcome_state(session_names: &[&str]) -> State {
+        let mut state = fit_ready_state();
+        state.active = ActiveScreen::Sessions;
+        state.sessions.is_welcome_screen = true;
+        state.sessions.sessions = session_names
+            .iter()
+            .map(|name| SessionInfo {
+                name: name.to_string(),
+                ..SessionInfo::default()
+            })
+            .collect();
+        state
+    }
+
+    #[test]
+    fn welcome_empty_list_is_not_ready_within_grace() {
+        let mut state = welcome_state(&[]);
+        state.empty_welcome_list_grace_elapsed = false;
+        assert!(!state.is_ready_to_render());
+    }
+
+    #[test]
+    fn welcome_empty_list_is_ready_after_grace() {
+        let mut state = welcome_state(&[]);
+        state.empty_welcome_list_grace_elapsed = true;
+        assert!(state.is_ready_to_render());
+    }
+
+    #[test]
+    fn welcome_non_empty_list_is_ready_within_grace() {
+        let mut state = welcome_state(&["alpha"]);
+        state.empty_welcome_list_grace_elapsed = false;
+        assert!(state.is_ready_to_render());
+    }
+
+    #[test]
+    fn timer_event_elapses_welcome_grace() {
+        let mut state = welcome_state(&[]);
+        assert!(!state.empty_welcome_list_grace_elapsed);
+        state.update(Event::Timer(0.0));
+        assert!(state.empty_welcome_list_grace_elapsed);
+        assert!(state.is_ready_to_render());
+    }
+
+    #[test]
+    fn viewport_without_a_pane_is_not_ready() {
+        let mut state = State::default();
+        state.workspace.tabs.push(TabInfo {
+            position: 0,
+            ..TabInfo::default()
+        });
+        state.workspace.selected_tab_position = Some(0);
+        state.active = ActiveScreen::Viewport;
+        assert!(state.workspace.current_pane().is_none());
+        assert!(!state.is_ready_to_render());
     }
 }

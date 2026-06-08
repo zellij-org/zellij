@@ -5,7 +5,6 @@ import { applyFontSize } from "./terminal.js";
 
 const NATURAL_MIN_TOTAL_ROWS = 25;
 const MOBILE_LEGIBLE_FLOOR_PX = 16;
-const MOBILE_ADAPTIVE_MAX_ITERATIONS = 4;
 
 function getCellPixelDimensions(term) {
     try {
@@ -231,30 +230,25 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
                 /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
             const hasExplicitFontSize =
                 typeof font_size === "number" && font_size > 0;
-            const initialCandidate = hasExplicitFontSize
+            const baseFontPx = hasExplicitFontSize
                 ? font_size
                 : isMobileViewport
                 ? 24
                 : 12;
-            applyFontSize(term, fitAddon, initialCandidate);
-            if (!hasExplicitFontSize && isMobileViewport) {
-                let candidate = initialCandidate;
-                for (
-                    let i = 0;
-                    i < MOBILE_ADAPTIVE_MAX_ITERATIONS &&
-                    term.rows < NATURAL_MIN_TOTAL_ROWS &&
-                    candidate > MOBILE_LEGIBLE_FLOOR_PX;
-                    i++
-                ) {
-                    const scaled = Math.floor(
-                        (candidate * term.rows) / NATURAL_MIN_TOTAL_ROWS
-                    );
-                    const next = Math.max(scaled, MOBILE_LEGIBLE_FLOOR_PX);
-                    if (next >= candidate) {
-                        break;
-                    }
-                    candidate = next;
-                    applyFontSize(term, fitAddon, candidate);
+            applyFontSize(term, fitAddon, baseFontPx);
+            const needsMobileDownscale =
+                !hasExplicitFontSize &&
+                isMobileViewport &&
+                term.rows < NATURAL_MIN_TOTAL_ROWS;
+            if (needsMobileDownscale) {
+                const downscaledPx = Math.max(
+                    Math.floor(
+                        (baseFontPx * term.rows) / NATURAL_MIN_TOTAL_ROWS
+                    ),
+                    MOBILE_LEGIBLE_FLOOR_PX
+                );
+                if (downscaledPx < baseFontPx) {
+                    applyFontSize(term, fitAddon, downscaledPx);
                 }
             }
             const body = document.querySelector("body");
@@ -343,9 +337,9 @@ export function setupResizeHandler(
             return;
         }
 
+        const wsControl = getWsControl();
         term.resize(cols, rows);
 
-        const wsControl = getWsControl();
         sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols, cause);
     };
 

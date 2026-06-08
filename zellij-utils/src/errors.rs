@@ -526,6 +526,8 @@ pub enum PluginContext {
     NewTab,
     OverrideLayout,
     ApplyCachedEvents,
+    HoldMobileRender,
+    ReleaseMobileRender,
     ApplyCachedWorkerMessages,
     PostMessageToPluginWorker,
     PostMessageToPlugin,

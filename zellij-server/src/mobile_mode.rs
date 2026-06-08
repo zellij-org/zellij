@@ -77,15 +77,12 @@ impl MobileRenderGate {
         if !self.is_gated(client_id) {
             return false;
         }
-        let Some(paint_size) = self.last_paint_size.get(&client_id).copied() else {
-            return false;
-        };
-        let ready_to_reveal = if is_web_client {
-            let size_settled = self.clients_with_settled_size.contains(&client_id);
-            let paint_matches_settled_size = reported_size == Some(paint_size);
-            size_settled && paint_matches_settled_size
-        } else {
-            true
+        let paint_size = self.last_paint_size.get(&client_id).copied();
+        let size_settled = self.clients_with_settled_size.contains(&client_id);
+        let ready_to_reveal = match paint_size {
+            None => false,
+            Some(paint_size) if is_web_client => size_settled && reported_size == Some(paint_size),
+            Some(_) => true,
         };
         if ready_to_reveal {
             self.ungate(client_id);
@@ -382,6 +379,91 @@ mod tests {
 
     fn no_tabs() -> BTreeMap<usize, Tab> {
         BTreeMap::new()
+    }
+
+    fn settled_size() -> Size {
+        Size { rows: 25, cols: 31 }
+    }
+
+    #[test]
+    fn try_reveal_is_false_for_an_ungated_client() {
+        let mut gate = MobileRenderGate::default();
+        assert!(!gate.try_reveal(CLIENT_A, true, Some(settled_size())));
+    }
+
+    #[test]
+    fn web_client_is_not_revealed_before_size_settles() {
+        let mut gate = MobileRenderGate::default();
+        gate.gate(CLIENT_A);
+        gate.record_paint_size(CLIENT_A, settled_size());
+        // Paint arrived but no settled size has been reported yet.
+        assert!(!gate.try_reveal(CLIENT_A, true, Some(settled_size())));
+        assert!(gate.is_gated(CLIENT_A));
+    }
+
+    #[test]
+    fn web_client_is_not_revealed_without_a_paint() {
+        let mut gate = MobileRenderGate::default();
+        gate.gate(CLIENT_A);
+        gate.record_settled_size(CLIENT_A);
+        assert!(!gate.try_reveal(CLIENT_A, true, Some(settled_size())));
+        assert!(gate.is_gated(CLIENT_A));
+    }
+
+    #[test]
+    fn web_client_is_not_revealed_when_reported_size_differs_from_paint() {
+        let mut gate = MobileRenderGate::default();
+        gate.gate(CLIENT_A);
+        gate.record_settled_size(CLIENT_A);
+        gate.record_paint_size(CLIENT_A, settled_size());
+        let stale = Size { rows: 38, cols: 46 };
+        assert!(!gate.try_reveal(CLIENT_A, true, Some(stale)));
+        assert!(gate.is_gated(CLIENT_A));
+    }
+
+    #[test]
+    fn web_client_is_revealed_on_settled_matching_paint() {
+        let mut gate = MobileRenderGate::default();
+        gate.gate(CLIENT_A);
+        gate.record_settled_size(CLIENT_A);
+        gate.record_paint_size(CLIENT_A, settled_size());
+        assert!(gate.try_reveal(CLIENT_A, true, Some(settled_size())));
+        assert!(!gate.is_gated(CLIENT_A));
+    }
+
+    #[test]
+    fn non_web_client_is_revealed_on_any_paint() {
+        let mut gate = MobileRenderGate::default();
+        gate.gate(CLIENT_A);
+        gate.record_paint_size(CLIENT_A, embedded_size());
+        // No settled size, mismatched reported size — still revealed for non-web.
+        assert!(gate.try_reveal(CLIENT_A, false, None));
+        assert!(!gate.is_gated(CLIENT_A));
+    }
+
+    #[test]
+    fn blank_gated_clients_replaces_only_gated_output() {
+        let mut gate = MobileRenderGate::default();
+        gate.gate(CLIENT_A);
+        let mut output = HashMap::new();
+        output.insert(CLIENT_A, "real-a".to_string());
+        output.insert(CLIENT_B, "real-b".to_string());
+        gate.blank_gated_clients(&mut output);
+        assert_eq!(output.get(&CLIENT_A).unwrap(), CLEAR_SCREEN);
+        assert_eq!(output.get(&CLIENT_B).unwrap(), "real-b");
+    }
+
+    #[test]
+    fn ungate_clears_settled_and_paint_state() {
+        let mut gate = MobileRenderGate::default();
+        gate.gate(CLIENT_A);
+        gate.record_settled_size(CLIENT_A);
+        gate.record_paint_size(CLIENT_A, settled_size());
+        gate.ungate(CLIENT_A);
+        assert!(!gate.is_gated(CLIENT_A));
+        // A fresh gate must not inherit the prior settled/paint state.
+        gate.gate(CLIENT_A);
+        assert!(!gate.try_reveal(CLIENT_A, true, Some(settled_size())));
     }
 
     #[test]

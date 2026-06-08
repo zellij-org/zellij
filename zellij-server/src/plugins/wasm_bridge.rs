@@ -177,6 +177,7 @@ pub struct WasmBridge {
     plugin_ids_waiting_for_permission_request: HashSet<PluginId>,
     cached_events_for_pending_plugins: HashMap<PluginId, Vec<EventOrPipeMessage>>,
     cached_resizes_for_pending_plugins: HashMap<PluginId, (usize, usize)>, // (rows, columns)
+    clients_holding_mobile_render_until_size_settled: HashSet<ClientId>,
     cached_worker_messages: HashMap<PluginId, Vec<(ClientId, String, String, String)>>, // Vec<clientid,
     // worker_name,
     // message,
@@ -242,6 +243,7 @@ impl WasmBridge {
             path_to_default_shell,
             watcher,
             next_plugin_id: 0,
+            clients_holding_mobile_render_until_size_settled: HashSet::new(),
             cached_events_for_pending_plugins: HashMap::new(),
             plugin_ids_waiting_for_permission_request: HashSet::new(),
             cached_resizes_for_pending_plugins: HashMap::new(),
@@ -1214,6 +1216,67 @@ impl WasmBridge {
         }
         Ok(())
     }
+    fn plugin_render_is_held_until_size_settled(&self, plugin_id: PluginId) -> bool {
+        let clients_of_plugin: Vec<ClientId> = self
+            .plugin_map
+            .lock()
+            .unwrap()
+            .running_plugins()
+            .iter()
+            .filter(|(pid, _client_id, _running_plugin)| *pid == plugin_id)
+            .map(|(_pid, client_id, _running_plugin)| *client_id)
+            .collect();
+        !clients_of_plugin.is_empty()
+            && clients_of_plugin.iter().all(|client_id| {
+                self.clients_holding_mobile_render_until_size_settled
+                    .contains(client_id)
+            })
+    }
+
+    pub fn hold_mobile_render(&mut self, client_id: ClientId) {
+        self.clients_holding_mobile_render_until_size_settled.insert(client_id);
+    }
+
+    pub fn release_mobile_render(
+        &mut self,
+        client_id: ClientId,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
+        if !self.clients_holding_mobile_render_until_size_settled.remove(&client_id) {
+            return Ok(());
+        }
+        let plugins_held_for_client: Vec<PluginId> = self
+            .plugin_map
+            .lock()
+            .unwrap()
+            .running_plugins()
+            .iter()
+            .filter(|(pid, cid, _)| {
+                *cid == client_id
+                    && (self.cached_events_for_pending_plugins.contains_key(pid)
+                        || self.cached_resizes_for_pending_plugins.contains_key(pid))
+            })
+            .map(|(pid, _cid, _)| *pid)
+            .collect();
+        for plugin_id in &plugins_held_for_client {
+            self.drain_pending_plugin_resize_before_events(*plugin_id, shutdown_sender.clone())?;
+        }
+        Ok(())
+    }
+
+    fn drain_pending_plugin_resize_before_events(
+        &mut self,
+        plugin_id: PluginId,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
+        if let Some((rows, columns)) =
+            self.cached_resizes_for_pending_plugins.remove(&plugin_id)
+        {
+            self.resize_plugin(plugin_id, columns, rows, shutdown_sender.clone())?;
+        }
+        self.apply_cached_events(vec![plugin_id], true, shutdown_sender)
+    }
+
     pub fn apply_cached_events(
         &mut self,
         plugin_ids: Vec<PluginId>,
@@ -1222,6 +1285,9 @@ impl WasmBridge {
     ) -> Result<()> {
         let mut applied_plugin_paths = HashSet::new();
         for plugin_id in plugin_ids {
+            if self.plugin_render_is_held_until_size_settled(plugin_id) {
+                continue;
+            }
             if !done_receiving_permissions
                 && self
                     .plugin_ids_waiting_for_permission_request
@@ -1247,6 +1313,7 @@ impl WasmBridge {
         Ok(())
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
+        self.clients_holding_mobile_render_until_size_settled.remove(&client_id);
         self.connected_clients
             .lock()
             .unwrap()

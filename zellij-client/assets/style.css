@@ -27,6 +27,7 @@ body {
     width: var(--dynamic-vw, 100vw);
     margin: 0;
     overflow: hidden;
+    background: #000; /* TODO: this should be embedded as the user's theme background */
 }
 
 #terminal {

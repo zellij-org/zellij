@@ -21,4 +21,5 @@ pub struct State {
     pub panes: PanesScreen,
     pub new_session: NewSessionPromptScreen,
     pub menu: MenuScreen,
+    pub empty_welcome_list_grace_elapsed: bool,
 }

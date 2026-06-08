@@ -113,6 +113,8 @@ pub enum PluginInstruction {
         plugin_ids: Vec<PluginId>,
         done_receiving_permissions: bool,
     },
+    HoldMobileRender(ClientId),
+    ReleaseMobileRender(ClientId),
     ApplyCachedWorkerMessages(PluginId),
     PostMessagesToPluginWorker(
         PluginId,
@@ -239,6 +241,8 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::NewTab(..) => PluginContext::NewTab,
             PluginInstruction::OverrideLayout(..) => PluginContext::OverrideLayout,
             PluginInstruction::ApplyCachedEvents { .. } => PluginContext::ApplyCachedEvents,
+            PluginInstruction::HoldMobileRender(..) => PluginContext::HoldMobileRender,
+            PluginInstruction::ReleaseMobileRender(..) => PluginContext::ReleaseMobileRender,
             PluginInstruction::ApplyCachedWorkerMessages(..) => {
                 PluginContext::ApplyCachedWorkerMessages
             },
@@ -731,6 +735,12 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::ApplyCachedWorkerMessages(plugin_id) => {
                 wasm_bridge.apply_cached_worker_messages(plugin_id)?;
+            },
+            PluginInstruction::HoldMobileRender(client_id) => {
+                wasm_bridge.hold_mobile_render(client_id);
+            },
+            PluginInstruction::ReleaseMobileRender(client_id) => {
+                wasm_bridge.release_mobile_render(client_id, shutdown_send.clone())?;
             },
             PluginInstruction::PostMessagesToPluginWorker(
                 plugin_id,

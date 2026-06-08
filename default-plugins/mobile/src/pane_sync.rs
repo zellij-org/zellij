@@ -5,6 +5,8 @@ use crate::state::State;
 use crate::workspace::pane_id_of;
 use crate::filter_sessions_for_client;
 
+const EMPTY_WELCOME_LIST_GRACE_SECS: f64 = 0.4;
+
 pub fn refresh_pane_manifest(state: &mut State, manifest: PaneManifest) {
     state.workspace.panes_by_tab_position = manifest.panes;
     let live_pane_ids: std::collections::HashSet<PaneId> = state
@@ -93,4 +95,5 @@ pub fn maybe_take_over_welcome(state: &mut State) {
         let filtered = filter_sessions_for_client(snapshot.live_sessions, state);
         state.sessions.sessions = filtered;
     }
+    set_timeout(EMPTY_WELCOME_LIST_GRACE_SECS);
 }

@@ -10859,11 +10859,11 @@ fn render_gate_can_be_set_and_lifted() {
     let mut screen = setup_mobile_screen();
     let client = 40;
 
-    assert!(!screen.is_client_gated(client));
-    screen.gate_client_until_mobile(client);
-    assert!(screen.is_client_gated(client));
-    screen.ungate_client(client);
-    assert!(!screen.is_client_gated(client));
+    assert!(!screen.mobile_render_gate.is_gated(client));
+    screen.mobile_render_gate.gate(client);
+    assert!(screen.mobile_render_gate.is_gated(client));
+    screen.mobile_render_gate.ungate(client);
+    assert!(!screen.mobile_render_gate.is_gated(client));
 }
 
 #[test]
@@ -10871,12 +10871,12 @@ fn remove_client_lifts_render_gate() {
     let mut screen = setup_mobile_screen();
     let client = 41;
     screen.add_client(client, /* is_web_client */ false).expect("TEST");
-    screen.gate_client_until_mobile(client);
+    screen.mobile_render_gate.gate(client);
 
     screen.remove_client(client).expect("TEST");
 
     assert!(
-        !screen.is_client_gated(client),
+        !screen.mobile_render_gate.is_gated(client),
         "a removed client must never stay gated",
     );
 }
@@ -10887,12 +10887,12 @@ fn exit_mobile_mode_lifts_render_gate() {
     let client = 42;
     screen.add_client(client, /* is_web_client */ true).expect("TEST");
     screen.enter_mobile_mode(client).expect("TEST");
-    screen.gate_client_until_mobile(client);
+    screen.mobile_render_gate.gate(client);
 
     screen.exit_mobile_mode(client).expect("TEST");
 
     assert!(
-        !screen.is_client_gated(client),
+        !screen.mobile_render_gate.is_gated(client),
         "leaving mobile mode must never leave the client gated",
     );
 }
@@ -10906,18 +10906,93 @@ fn first_mobile_plugin_paint_lifts_only_the_owning_client() {
     let plugin_id = 900;
     screen.add_client(owner, /* is_web_client */ true).expect("TEST");
     setup_mobile_fit(&mut screen, owner, mobile_tab_idx, plugin_id);
-    screen.gate_client_until_mobile(owner);
-    screen.gate_client_until_mobile(other);
+    screen.mobile_render_gate.gate(owner);
+    screen.mobile_render_gate.gate(other);
 
     screen.ungate_clients_for_mobile_plugin(plugin_id);
 
     assert!(
-        !screen.is_client_gated(owner),
+        !screen.mobile_render_gate.is_gated(owner),
         "the client whose mobile plugin painted must be ungated",
     );
     assert!(
-        screen.is_client_gated(other),
+        screen.mobile_render_gate.is_gated(other),
         "a client unrelated to the painting plugin must stay gated",
+    );
+}
+
+fn capture_plugin_channel(screen: &mut Screen) -> Receiver<(PluginInstruction, ErrorContext)> {
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> =
+        channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    plugin_receiver
+}
+
+fn drain_plugin_instructions(
+    receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+) -> Vec<PluginInstruction> {
+    let mut instructions = vec![];
+    while let Ok((instruction, _err_ctx)) = receiver.try_recv() {
+        instructions.push(instruction);
+    }
+    instructions
+}
+
+#[test]
+fn entering_mobile_while_gated_holds_the_plugin_render() {
+    let mut screen = setup_mobile_screen();
+    let client = 50;
+    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    let plugin_receiver = capture_plugin_channel(&mut screen);
+
+    screen.mobile_render_gate.gate(client); // SuppressRenderUntilMobile does this
+    screen.enter_mobile_mode(client).expect("TEST");
+
+    let sent = drain_plugin_instructions(&plugin_receiver);
+    assert!(
+        sent.iter()
+            .any(|i| matches!(i, PluginInstruction::HoldMobileRender(c) if *c == client)),
+        "entering mobile while gated must hold the plugin render; sent={sent:?}",
+    );
+}
+
+#[test]
+fn entering_mobile_without_a_gate_does_not_hold() {
+    let mut screen = setup_mobile_screen();
+    let client = 51;
+    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    let plugin_receiver = capture_plugin_channel(&mut screen);
+
+    // No SuppressRenderUntilMobile: the client is not gated.
+    screen.enter_mobile_mode(client).expect("TEST");
+
+    let sent = drain_plugin_instructions(&plugin_receiver);
+    assert!(
+        !sent
+            .iter()
+            .any(|i| matches!(i, PluginInstruction::HoldMobileRender(_))),
+        "a non-gated client must not hold the plugin render; sent={sent:?}",
+    );
+}
+
+#[test]
+fn exiting_mobile_releases_the_plugin_render() {
+    let mut screen = setup_mobile_screen();
+    let client = 52;
+    screen.add_client(client, /* is_web_client */ true).expect("TEST");
+    screen.enter_mobile_mode(client).expect("TEST");
+    let plugin_receiver = capture_plugin_channel(&mut screen);
+
+    screen.exit_mobile_mode(client).expect("TEST");
+
+    let sent = drain_plugin_instructions(&plugin_receiver);
+    assert!(
+        sent.iter()
+            .any(|i| matches!(i, PluginInstruction::ReleaseMobileRender(c) if *c == client)),
+        "exiting mobile must release the plugin render; sent={sent:?}",
     );
 }
 

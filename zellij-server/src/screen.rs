@@ -1777,6 +1777,14 @@ impl Screen {
             .copied()
             .unwrap_or(false);
 
+        let client_is_gated = self.mobile_render_gate.is_gated(client_id);
+        if client_is_gated {
+            self.bus
+                .senders
+                .send_to_plugin(PluginInstruction::HoldMobileRender(client_id))
+                .with_context(err_context)?;
+        }
+
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::NewTab(
@@ -1800,6 +1808,10 @@ impl Screen {
         let err_context = || format!("failed to exit mobile mode for client {client_id}");
 
         self.mobile_render_gate.ungate(client_id);
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::ReleaseMobileRender(client_id))
+            .non_fatal();
 
         let Some((mobile_tab_id, prior_tab_id)) = self.mobile_state.begin_exit(client_id) else {
             return Ok(());
@@ -7939,12 +7951,22 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::MobileSizeSettled(client_id) => {
                 screen.mobile_render_gate.record_settled_size(client_id);
+                screen
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::ReleaseMobileRender(client_id))
+                    .non_fatal();
                 if screen.try_lift_mobile_gate(client_id) {
                     screen.render(None)?;
                 }
             },
             ScreenInstruction::ForceMobileUngate(client_id) => {
                 if screen.mobile_render_gate.is_gated(client_id) {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_plugin(PluginInstruction::ReleaseMobileRender(client_id))
+                        .non_fatal();
                     screen.mobile_render_gate.ungate(client_id);
                     screen.force_render_mobile_tab(client_id);
                     screen.render(None)?;
