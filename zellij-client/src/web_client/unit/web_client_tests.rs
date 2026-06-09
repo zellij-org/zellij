@@ -62,6 +62,46 @@ mod web_client_tests {
         ))
     }
 
+    #[cfg(unix)]
+    async fn wait_for_unix_socket_server(
+        socket_path: &std::path::Path,
+        timeout: Duration,
+    ) -> Result<(), String> {
+        let start = Instant::now();
+        let socket_path = socket_path.to_path_buf();
+
+        while start.elapsed() < timeout {
+            match tokio::task::spawn_blocking({
+                let socket_path = socket_path.clone();
+                move || {
+                    let http_client = isahc::HttpClient::builder()
+                        .dial(isahc::config::Dialer::unix_socket(socket_path))
+                        .build()?;
+                    let request = isahc::Request::get("http://localhost/info/version").body(())?;
+                    http_client.send(request)
+                }
+            })
+            .await
+            {
+                Ok(Ok(_)) => {
+                    return Ok(());
+                },
+                Ok(Err(e)) => {
+                    eprintln!("Unix socket HTTP request failed: {:?}", e);
+                },
+                Err(e) => {
+                    eprintln!("Task spawn failed: {:?}", e);
+                },
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        Err(format!(
+            "HTTP server failed to start on Unix socket {} within {:?}",
+            socket_path.display(),
+            timeout
+        ))
+    }
+
     #[tokio::test]
     #[serial]
     async fn test_version_endpoint() {
@@ -114,6 +154,68 @@ mod web_client_tests {
         server_handle.abort();
 
         // time for cleanup
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    #[serial]
+    async fn test_version_endpoint_over_unix_socket() {
+        let _ = delete_db();
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let socket_dir = tempfile::tempdir().unwrap();
+        let socket_path = socket_dir.path().join("zellij-web.sock");
+        let listener = tokio::net::UnixListener::bind(&socket_path).unwrap();
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+
+        let server_handle = tokio::spawn(serve_web_client_on_unix_socket(
+            config,
+            options,
+            Some(temp_config_path),
+            listener,
+            socket_path.clone(),
+            Some(session_manager),
+            Some(client_os_api_factory),
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            0,
+        ));
+
+        wait_for_unix_socket_server(&socket_path, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        let socket_path_for_request = socket_path.clone();
+        let mut response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || {
+                let http_client = isahc::HttpClient::builder()
+                    .dial(isahc::config::Dialer::unix_socket(socket_path_for_request))
+                    .build()
+                    .expect("Failed to build client");
+                let request = isahc::Request::get("http://localhost/info/version")
+                    .body(())
+                    .expect("Failed to build request");
+                http_client.send(request)
+            }),
+        )
+        .await
+        .expect("Request timed out")
+        .expect("Spawn blocking failed")
+        .expect("Request failed");
+
+        assert!(response.status().is_success());
+
+        let version_text = response.text().expect("Failed to read response body");
+        assert_eq!(version_text, VERSION);
+
+        server_handle.abort();
+
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
