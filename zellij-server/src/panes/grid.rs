@@ -1676,11 +1676,29 @@ impl Grid {
     }
     /// Clears all buffers with text for a current screen
     pub fn clear_screen(&mut self) {
-        if self.alternate_screen_state.is_some() {
-            log::warn!("Tried to clear pane with alternate_screen_state");
-            return;
+        let cursor_y = self.cursor.y;
+        let replace_with = EMPTY_TERMINAL_CHARACTER;
+        let replace_with_columns = VecDeque::from(vec![replace_with.clone(); self.width]);
+
+        if cursor_y > 0 {
+            self.transfer_rows_to_lines_above(cursor_y);
         }
-        self.reset_terminal_state();
+
+        for row in self.viewport.iter_mut().skip(1) {
+            row.replace_columns(replace_with_columns.clone());
+        }
+
+        while self.viewport.len() < self.height {
+            self.viewport
+                .push_back(Row::from_columns(replace_with_columns.clone()).canonical());
+        }
+
+        self.cursor.y = 0;
+        self.set_scroll_region_to_viewport_size();
+        if let Some(images_to_reap) = self.sixel_grid.clear() {
+            self.sixel_grid.reap_images(images_to_reap);
+        }
+        self.output_buffer.update_all_lines();
         self.mark_for_rerender();
     }
     /// Dumps all lines above terminal vieport and the viewport itself to a string

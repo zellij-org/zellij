@@ -1356,10 +1356,15 @@ fn clear_screen() {
     tab.clear_active_terminal_screen(client_id).unwrap();
     tab.dump_active_terminal_screen(Some(file.to_string()), client_id, false)
         .unwrap();
+    let dump = map.lock().unwrap().get(file).unwrap().clone();
+    assert!(
+        dump.starts_with("scratch"),
+        "screen was cleared but the cursor line should be preserved"
+    );
     assert_eq!(
-        map.lock().unwrap().get(file).unwrap(),
-        "",
-        "screen was cleared properly"
+        dump.chars().filter(|c| *c != '\n').collect::<String>(),
+        "scratch",
+        "only the cursor line should have content"
     );
 }
 
