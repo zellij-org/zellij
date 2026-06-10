@@ -6102,3 +6102,26 @@ fn csi_5n_status_query_still_handled_locally() {
         "DSR 5 must still produce its local 'all good' reply"
     );
 }
+
+#[test]
+fn erase_to_end_of_line_after_wide_characters_preserves_background_to_line_end() {
+    use crate::panes::terminal_character::NamedColor;
+    // Use a wide character to exercise clearing a line that contains wide cells.
+    assert_eq!(crate::panes::TerminalCharacter::new('Ａ').width(), 2);
+
+    let content = "\x1b[44mAＡＡＡＡ\x1b[1;2H\x1b[K".as_bytes();
+    let grid = create_grid_with_size_and_raw(2, 10, content);
+
+    let lines = grid.as_character_lines();
+
+    assert_eq!(lines[0][0].character, 'A');
+
+    for cell in &lines[0] {
+        assert_eq!(
+            cell.styles.background,
+            Some(crate::panes::terminal_character::AnsiCode::NamedColor(
+                NamedColor::Blue
+            ))
+        );
+    }
+}
