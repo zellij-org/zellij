@@ -2058,7 +2058,10 @@ impl Action {
                     )),
                 }
             },
-            CliAction::Detach => Ok(vec![Action::Detach]),
+            CliAction::Detach {
+                client_id: _,
+                all: _,
+            } => Ok(vec![Action::Detach]),
             CliAction::SetDarkTheme => Ok(vec![Action::SetDarkTheme]),
             CliAction::SetLightTheme => Ok(vec![Action::SetLightTheme]),
             CliAction::ToggleTheme => Ok(vec![Action::ToggleTheme]),
