@@ -207,12 +207,6 @@ enum SepMode {
 }
 
 impl SepMode {
-    fn glyph(self) -> &'static str {
-        match self {
-            Self::Wide => " | ",
-            Self::Compact => "|",
-        }
-    }
     fn width(self) -> usize {
         match self {
             Self::Wide => 3,
@@ -301,7 +295,6 @@ pub fn render_modifier_bar(
 
     let indices = drop_mode.cell_indices();
     let n = indices.len();
-    let sep_str = sep_mode.glyph();
     let sep_w = sep_mode.width();
     let sep_total = n.saturating_sub(1) * sep_w;
     let content_cols = cols - sep_total;
@@ -314,7 +307,6 @@ pub fn render_modifier_bar(
 
     let mut bar = String::with_capacity(cols);
     let mut label_ranges: Vec<(std::ops::Range<usize>, bool)> = Vec::with_capacity(n);
-    let mut sep_ranges: Vec<std::ops::Range<usize>> = Vec::with_capacity(n.saturating_sub(1));
     let mut cell_boundaries: Vec<usize> = Vec::with_capacity(n + 1);
 
     let mut chars_cursor: usize = 0;
@@ -363,10 +355,12 @@ pub fn render_modifier_bar(
         cells_cursor += width;
 
         if slot + 1 < n {
-            let sep_chars_start = chars_cursor;
-            bar.push_str(sep_str);
-            chars_cursor += sep_str.chars().count();
-            sep_ranges.push(sep_chars_start..chars_cursor);
+            // Separators are blank cells on the shared selected background; the
+            // gap is represented by spaces rather than a drawn glyph.
+            for _ in 0..sep_w {
+                bar.push(' ');
+            }
+            chars_cursor += sep_w;
             cells_cursor += sep_w;
             cell_boundaries.push(cells_cursor);
         }
@@ -384,9 +378,6 @@ pub fn render_modifier_bar(
     for (range, armed) in &label_ranges {
         let level = if *armed { 2 } else { 3 };
         text = text.color_range(level, range.clone());
-    }
-    for range in &sep_ranges {
-        text = text.color_range(3, range.clone());
     }
     print_text_with_coordinates(text, 0, row, Some(cols), None);
 
