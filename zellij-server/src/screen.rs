@@ -6181,6 +6181,7 @@ pub(crate) fn screen_thread_main(
                         |tab: &mut Tab, client_id: ClientId| tab.focus_next_pane(client_id)
                     );
                     screen.render(None)?;
+                    screen.log_and_report_session_state()?;
                 }
             },
             ScreenInstruction::FocusPreviousPane(client_id, mut _completion_tx) => {
