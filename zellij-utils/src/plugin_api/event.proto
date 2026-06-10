@@ -69,6 +69,7 @@ enum EventType {
     InitialKeybinds = 44;
     CommandChanged = 45;
     HostTerminalThemeChanged = 46;
+    SoftKeyboardVisibilityChanged = 47;
 }
 
 message EventNameList {
@@ -117,11 +118,16 @@ message Event {
     InitialKeybindsPayload initial_keybinds_payload = 38;
     CommandChangedPayload command_changed_payload = 39;
     HostTerminalThemeChangedPayload host_terminal_theme_changed_payload = 40;
+    SoftKeyboardVisibilityChangedPayload soft_keyboard_visibility_changed_payload = 41;
   }
 }
 
 message HostTerminalThemeChangedPayload {
   HostTerminalThemeIndication mode = 1;
+}
+
+message SoftKeyboardVisibilityChangedPayload {
+  bool visible = 1;
 }
 
 enum HostTerminalThemeIndication {
@@ -305,6 +311,8 @@ enum MouseEventName {
     MouseHold = 4;
     MouseRelease = 5;
     MouseHover = 6;
+    MouseScrollLeft = 7;
+    MouseScrollRight = 8;
 }
 
 message TabUpdatePayload {
@@ -512,6 +520,7 @@ message PaneContents {
   optional SelectedText selected_text = 2;
   repeated string lines_above_viewport = 3;
   repeated string lines_below_viewport = 4;
+  optional action.Position cursor = 5;
 }
 
 message PaneScrollbackResponse {

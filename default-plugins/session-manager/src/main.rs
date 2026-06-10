@@ -37,20 +37,20 @@ impl Default for ActiveScreen {
 }
 
 #[derive(Default)]
-struct State {
+pub(crate) struct State {
     session_name: Option<String>,
-    sessions: SessionList,
-    resurrectable_sessions: ResurrectableSessions,
+    pub(crate) sessions: SessionList,
+    pub(crate) resurrectable_sessions: ResurrectableSessions,
     search_term: String,
     new_session_info: NewSessionInfo,
-    renaming_session_name: Option<String>,
-    error: Option<String>,
-    active_screen: ActiveScreen,
-    colors: Colors,
-    is_welcome_screen: bool,
+    pub(crate) renaming_session_name: Option<String>,
+    pub(crate) error: Option<String>,
+    pub(crate) active_screen: ActiveScreen,
+    pub(crate) colors: Colors,
+    pub(crate) is_welcome_screen: bool,
     is_multi_screen: bool,
-    single_screen_state: SingleScreenState,
-    show_kill_all_sessions_warning: bool,
+    pub(crate) single_screen_state: SingleScreenState,
+    pub(crate) show_kill_all_sessions_warning: bool,
     request_ids: Vec<String>,
     is_web_client: bool,
     current_session_last_saved_time: Option<u64>,
@@ -150,7 +150,11 @@ impl ZellijPlugin for State {
             },
             Event::ModeUpdate(mode_info) => {
                 self.colors = Colors::new(mode_info.style.colors);
+                let was_web_client = self.is_web_client;
                 self.is_web_client = mode_info.is_web_client.unwrap_or(false);
+                if was_web_client != self.is_web_client {
+                    self.refresh_session_list();
+                }
                 should_render = true;
             },
             Event::Key(key) => {
@@ -1404,7 +1408,13 @@ impl State {
             },
         }
     }
-    fn render_kill_all_sessions_warning(&self, rows: usize, columns: usize, x: usize, y: usize) {
+    pub(crate) fn render_kill_all_sessions_warning(
+        &self,
+        rows: usize,
+        columns: usize,
+        x: usize,
+        y: usize,
+    ) {
         if rows == 0 || columns == 0 {
             return;
         }

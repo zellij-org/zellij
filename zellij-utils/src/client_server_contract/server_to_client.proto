@@ -21,6 +21,7 @@ message ServerToClientMsg {
     PaneRenderUpdateMsg pane_render_update = 14;
     SubscribedPaneClosedMsg subscribed_pane_closed = 15;
     ForwardQueryToHostMsg forward_query_to_host = 16;
+    SetSoftKeyboardMsg set_soft_keyboard = 17;
   }
 }
 
@@ -93,4 +94,8 @@ message SubscribedPaneClosedMsg {
 message ForwardQueryToHostMsg {
   uint32 token = 1;
   bytes query_bytes = 2;
+}
+
+message SetSoftKeyboardMsg {
+  bool on = 1;
 }

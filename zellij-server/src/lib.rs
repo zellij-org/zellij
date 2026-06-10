@@ -14,6 +14,7 @@ pub mod tab;
 pub mod background_jobs;
 mod global_async_runtime;
 mod logging_pipe;
+mod mobile_mode;
 mod pane_groups;
 mod plugins;
 mod pty;
@@ -984,6 +985,22 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     is_web_client,
                 );
 
+                let should_enter_mobile = should_enter_mobile_on_connect(
+                    &runtime_config_options,
+                    is_web_client,
+                    client_attributes.size,
+                );
+                if should_enter_mobile {
+                    session_data
+                        .read()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::SuppressRenderUntilMobile(client_id))
+                        .unwrap();
+                }
+
                 let default_shell = runtime_config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
                         command: shell,
@@ -1080,6 +1097,17 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
+
+                if should_enter_mobile {
+                    session_data
+                        .read()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::EnterMobileMode(client_id, None))
+                        .unwrap();
+                }
             },
             ServerInstruction::AttachClient(
                 cli_assets,
@@ -1123,6 +1151,19 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     client_attributes.size,
                     is_web_client,
                 );
+
+                let should_enter_mobile = should_enter_mobile_on_connect(
+                    &runtime_config_options,
+                    is_web_client,
+                    client_attributes.size,
+                );
+                if should_enter_mobile {
+                    session_data
+                        .senders
+                        .send_to_screen(ScreenInstruction::SuppressRenderUntilMobile(client_id))
+                        .unwrap();
+                }
+
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::AddClient(
@@ -1149,6 +1190,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         None,
                     ))
                     .unwrap();
+
+                if should_enter_mobile {
+                    session_data
+                        .senders
+                        .send_to_screen(ScreenInstruction::EnterMobileMode(client_id, None))
+                        .unwrap();
+                }
             },
             ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client) => {
                 // the client_id was inserted into clients upon ipc tunnel initialization
@@ -2194,6 +2242,21 @@ fn should_show_startup_tip(
         false
     } else {
         should_show_startup_tip_config.unwrap_or(true)
+    }
+}
+
+fn should_enter_mobile_on_connect(options: &Options, is_web_client: bool, viewport: Size) -> bool {
+    let mobile_layout = options.mobile_layout.unwrap_or_default();
+    if is_web_client {
+        mobile_layout.may_route_web_client_to_mobile()
+    } else {
+        mobile_layout.should_route_to_mobile(
+            is_web_client,
+            viewport.cols,
+            viewport.rows,
+            options.mobile_threshold_cols.unwrap_or(60),
+            options.mobile_threshold_rows.unwrap_or(30),
+        )
     }
 }
 

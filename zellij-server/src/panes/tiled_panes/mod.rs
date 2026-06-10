@@ -1032,7 +1032,10 @@ impl TiledPanes {
         } else {
             self.active_panes
                 .iter()
-                .filter(|(client_id, _pane_id)| connected_clients.contains(client_id))
+                .filter(|(client_id, _pane_id)| {
+                    connected_clients.contains(client_id)
+                        || self.active_panes.is_shadow_client(client_id)
+                })
                 .map(|(client_id, pane_id)| (*client_id, *pane_id))
                 .collect()
         };
@@ -2443,10 +2446,19 @@ impl TiledPanes {
                 {
                     self.expand_pane_in_stack(next_active_pane_id);
                 }
+                let connected_clients: HashSet<ClientId> =
+                    self.connected_clients.borrow().iter().copied().collect();
                 for (client_id, active_pane_id) in active_panes {
                     if active_pane_id == pane_id {
-                        self.active_panes
-                            .insert(client_id, next_active_pane_id, &mut self.panes);
+                        if connected_clients.contains(&client_id) {
+                            self.active_panes.insert(
+                                client_id,
+                                next_active_pane_id,
+                                &mut self.panes,
+                            );
+                        } else {
+                            self.active_panes.remove_silent(&client_id);
+                        }
                     }
                 }
             },
@@ -2667,6 +2679,21 @@ impl TiledPanes {
     pub fn set_active_panes(&mut self, active_panes: ActivePanes) {
         self.active_panes = active_panes;
     }
+    pub fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) {
+        self.active_panes.insert_silent(client_id, pane_id);
+    }
+    pub fn clear_shadow_focus(&mut self, client_id: ClientId) -> Option<PaneId> {
+        self.active_panes.remove_silent(&client_id)
+    }
+    pub fn is_shadow_focus_client(&self, client_id: &ClientId) -> bool {
+        self.active_panes.is_shadow_client(client_id)
+    }
+    pub fn shadow_focus_clients(&self) -> Vec<ClientId> {
+        self.active_panes.iter_shadow_clients().copied().collect()
+    }
+    pub fn has_shadow_focus_on(&self, client_id: ClientId, pane_id: PaneId) -> bool {
+        self.active_panes.has_shadow_focus_on(client_id, pane_id)
+    }
     pub fn move_client_focus_to_existing_panes(&mut self) {
         let existing_pane_ids: Vec<PaneId> = self.panes.keys().copied().collect();
         let nonexisting_panes_that_are_focused = self
@@ -2686,10 +2713,17 @@ impl TiledPanes {
             .filter(|(_cid, pid)| **pid == from_pane_id)
             .map(|(cid, _pid)| *cid)
             .collect();
+        let connected_clients: HashSet<ClientId> =
+            self.connected_clients.borrow().iter().copied().collect();
         for client_id in clients_in_pane {
-            self.active_panes.remove(&client_id, &mut self.panes);
-            self.active_panes
-                .insert(client_id, to_pane_id, &mut self.panes);
+            if connected_clients.contains(&client_id) {
+                self.active_panes.remove(&client_id, &mut self.panes);
+                self.active_panes
+                    .insert(client_id, to_pane_id, &mut self.panes);
+            } else {
+                self.active_panes.remove_silent(&client_id);
+                self.active_panes.insert_silent(client_id, to_pane_id);
+            }
         }
     }
     fn reset_boundaries(&mut self) {

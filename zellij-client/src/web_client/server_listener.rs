@@ -178,6 +178,11 @@ pub fn zellij_server_listener(
                                     WebServerToWebClientControlMessage::QueryTerminalSize,
                                 );
                             },
+                            Some(ServerToClientMsg::SetSoftKeyboard{on}) => {
+                                client_connection_bus.send_control(
+                                    WebServerToWebClientControlMessage::SetSoftKeyboard { on },
+                                );
+                            },
                             Some(ServerToClientMsg::Log{lines}) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::Log { lines },

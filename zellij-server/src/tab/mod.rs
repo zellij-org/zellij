@@ -158,11 +158,8 @@ pub(crate) struct Tab {
     pub position: usize,
     pub name: String,
     pub prev_name: String,
-    /// The tab's current viewport size, computed as `min(rows)` and `min(cols)`
-    /// independently across the clients whose `active_tab_id` equals this tab.
-    /// When the tab has no viewers it retains its most recent value (the
-    /// recompute path simply skips empty tabs).
     pub size: Size,
+    pub visible_to: Option<HashSet<ClientId>>,
     tiled_panes: TiledPanes,
     floating_panes: FloatingPanes,
     suppressed_panes: SuppressedPanes,
@@ -306,6 +303,8 @@ pub trait Pane {
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
+    fn scroll_left(&mut self, _count: usize, _client_id: ClientId) {}
+    fn scroll_right(&mut self, _count: usize, _client_id: ClientId) {}
     fn clear_scroll(&mut self);
     fn is_scrolled(&self) -> bool;
     fn active_at(&self) -> Instant;
@@ -763,9 +762,10 @@ impl Tab {
         mouse_click_through: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
+        mobile_tab_count: usize,
     ) -> Self {
         let name = if name.is_empty() {
-            format!("Tab #{}", id + 1)
+            format!("Tab #{}", (id + 1).saturating_sub(mobile_tab_count))
         } else {
             name
         };
@@ -825,6 +825,7 @@ impl Tab {
             name: name.clone(),
             prev_name: name,
             size: initial_size,
+            visible_to: None,
             max_panes,
             viewport,
             display_area,
@@ -2690,6 +2691,36 @@ impl Tab {
     pub fn has_non_suppressed_pane_with_pid(&self, pid: &PaneId) -> bool {
         self.tiled_panes.panes_contain(pid) || self.floating_panes.panes_contain(pid)
     }
+    pub fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) -> bool {
+        if self.tiled_panes.panes_contain(&pane_id) {
+            self.tiled_panes.set_shadow_focus(client_id, pane_id);
+            true
+        } else if self.floating_panes.panes_contain(&pane_id) {
+            self.floating_panes.set_shadow_focus(client_id, pane_id);
+            true
+        } else {
+            false
+        }
+    }
+    pub fn clear_shadow_focus(&mut self, client_id: ClientId) {
+        if self.tiled_panes.is_shadow_focus_client(&client_id) {
+            self.tiled_panes.clear_shadow_focus(client_id);
+        }
+        if self.floating_panes.is_shadow_focus_client(&client_id) {
+            self.floating_panes.clear_shadow_focus(client_id);
+        }
+    }
+    pub fn shadow_focus_clients(&self) -> Vec<ClientId> {
+        let mut out = self.tiled_panes.shadow_focus_clients();
+        out.extend(self.floating_panes.shadow_focus_clients());
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+    pub fn has_shadow_focus_on(&self, client_id: ClientId, pane_id: PaneId) -> bool {
+        self.tiled_panes.has_shadow_focus_on(client_id, pane_id)
+            || self.floating_panes.has_shadow_focus_on(client_id, pane_id)
+    }
     pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
         if self.is_pending {
             self.pending_instructions
@@ -3210,6 +3241,9 @@ impl Tab {
     pub fn is_fullscreen_active(&self) -> bool {
         self.tiled_panes.fullscreen_is_active()
     }
+    pub fn fullscreen_pane_id(&self) -> Option<PaneId> {
+        self.tiled_panes.fullscreen_pane_id()
+    }
     pub fn are_floating_panes_visible(&self) -> bool {
         self.floating_panes.panes_are_visible()
     }
@@ -3261,6 +3295,10 @@ impl Tab {
         self.should_clear_display_before_rendering = true;
         self.floating_panes.set_force_render(); // we do this to make sure pinned panes are
                                                 // rendered even if their surface is not visible
+    }
+    #[cfg(test)]
+    pub fn should_clear_display_before_rendering(&self) -> bool {
+        self.should_clear_display_before_rendering
     }
     pub fn is_sync_panes_active(&self) -> bool {
         self.synchronize_is_active
@@ -4464,13 +4502,28 @@ impl Tab {
         }
     }
 
-    pub fn scroll_terminal_up(&mut self, terminal_pane_id: u32) {
-        if let Some(terminal_pane) = self.get_pane_with_id_mut(PaneId::Terminal(terminal_pane_id)) {
-            let fictitious_client_id = 1; // this is not checked for terminal panes and we
-                                          // don't have an actual client id here
-                                          // TODO: traits were a mistake
-            terminal_pane.scroll_up(1, fictitious_client_id);
+    pub fn scroll_terminal_up(&mut self, terminal_pane_id: u32) -> Result<()> {
+        let pane_id = PaneId::Terminal(terminal_pane_id);
+        let err_context = || format!("failed to scroll up pane {pane_id:?}");
+        let fictitious_client_id = 1;
+        let synthetic_position = Position::new(0, 0);
+        let (mouse_sgr, is_alt) = match self.get_pane_with_id(pane_id) {
+            Some(pane) => (
+                pane.mouse_scroll_up(&synthetic_position),
+                pane.is_alternate_mode_active(),
+            ),
+            None => return Ok(()),
+        };
+        if let Some(sgr) = mouse_sgr {
+            self.write_to_pane_id(&None, sgr.into_bytes(), false, pane_id, None, None)
+                .with_context(err_context)?;
+        } else if is_alt {
+            self.write_to_pane_id(&None, b"\x1b[A".to_vec(), false, pane_id, None, None)
+                .with_context(err_context)?;
+        } else if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.scroll_up(1, fictitious_client_id);
         }
+        Ok(())
     }
 
     pub fn scroll_active_terminal_down(&mut self, client_id: ClientId) -> Result<()> {
@@ -4488,13 +4541,37 @@ impl Tab {
         Ok(())
     }
 
-    pub fn scroll_terminal_down(&mut self, terminal_pane_id: u32) {
-        if let Some(terminal_pane) = self.get_pane_with_id_mut(PaneId::Terminal(terminal_pane_id)) {
-            let fictitious_client_id = 1; // this is not checked for terminal panes and we
-                                          // don't have an actual client id here
-                                          // TODO: traits were a mistake
-            terminal_pane.scroll_down(1, fictitious_client_id);
+    pub fn scroll_terminal_down(&mut self, terminal_pane_id: u32) -> Result<()> {
+        let pane_id = PaneId::Terminal(terminal_pane_id);
+        let err_context = || format!("failed to scroll down pane {pane_id:?}");
+        let fictitious_client_id = 1;
+        let synthetic_position = Position::new(0, 0);
+        let (mouse_sgr, is_alt) = match self.get_pane_with_id(pane_id) {
+            Some(pane) => (
+                pane.mouse_scroll_down(&synthetic_position),
+                pane.is_alternate_mode_active(),
+            ),
+            None => return Ok(()),
+        };
+        if let Some(sgr) = mouse_sgr {
+            self.write_to_pane_id(&None, sgr.into_bytes(), false, pane_id, None, None)
+                .with_context(err_context)?;
+        } else if is_alt {
+            self.write_to_pane_id(&None, b"\x1b[B".to_vec(), false, pane_id, None, None)
+                .with_context(err_context)?;
+        } else {
+            let needs_flush = if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.scroll_down(1, fictitious_client_id);
+                !pane.is_scrolled()
+            } else {
+                false
+            };
+            if needs_flush {
+                self.process_pending_vte_events(terminal_pane_id)
+                    .with_context(err_context)?;
+            }
         }
+        Ok(())
     }
 
     pub fn scroll_active_terminal_up_page(&mut self, client_id: ClientId) {

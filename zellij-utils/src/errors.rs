@@ -331,6 +331,9 @@ pub enum ScreenContext {
     ToggleTab,
     AddClient,
     RemoveClient,
+    SuppressRenderUntilMobile,
+    MobileSizeSettled,
+    ForceMobileUngate,
     UpdateSearch,
     SearchDown,
     SearchUp,
@@ -399,6 +402,7 @@ pub enum ScreenContext {
     PageScrollUpInPaneId,
     PageScrollDownInPaneId,
     TogglePaneIdFullscreen,
+    SetTabFit,
     TogglePaneEmbedOrEjectForPaneId,
     CloseTabWithIndex,
     BreakPanesToNewTab,
@@ -462,6 +466,12 @@ pub enum ScreenContext {
     PluginSubscribedToAnsiPaneContents,
     UpdateBackgroundPluginSubscriptions,
     BroadcastModeUpdate,
+    EnterMobileMode,
+    ExitMobileMode,
+    ToggleMobileMode,
+    ReevaluateMobileMode,
+    SetSoftKeyboard,
+    SetShadowFocus,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -516,6 +526,8 @@ pub enum PluginContext {
     NewTab,
     OverrideLayout,
     ApplyCachedEvents,
+    HoldMobileRender,
+    ReleaseMobileRender,
     ApplyCachedWorkerMessages,
     PostMessageToPluginWorker,
     PostMessageToPlugin,
@@ -637,6 +649,7 @@ pub enum BackgroundJobContext {
     StopFlashPaneBell,
     FlashTabBell,
     StopFlashTabBell,
+    MobileGateTimeout,
     Exit,
 }
 

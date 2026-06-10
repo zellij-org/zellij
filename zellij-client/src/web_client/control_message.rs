@@ -12,7 +12,10 @@ pub struct WebClientToWebServerControlMessage {
 #[serde(tag = "type")]
 pub enum WebClientToWebServerControlMessagePayload {
     TerminalResize(Size),
+    TerminalResizeRendering(Size),
+    TerminalSizeSettled(Size),
     TerminalMetrics(TerminalMetricsPayload),
+    SoftKeyboardVisibilityChanged { visible: bool },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -31,6 +34,7 @@ pub enum WebServerToWebClientControlMessage {
     Log { lines: Vec<String> },
     LogError { lines: Vec<String> },
     SwitchedSession { new_session_name: String },
+    SetSoftKeyboard { on: bool },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -43,6 +47,8 @@ pub struct SetConfigPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor_style: Option<String>,
     pub mac_option_is_meta: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<u16>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -159,6 +165,8 @@ impl From<&Config> for SetConfigPayload {
             .as_ref()
             .map(|s| s.to_string());
 
+        let font_size = config.web_client.font_size;
+
         SetConfigPayload {
             font,
             theme,
@@ -166,6 +174,7 @@ impl From<&Config> for SetConfigPayload {
             mac_option_is_meta,
             cursor_style,
             cursor_inactive_style,
+            font_size,
         }
     }
 }

@@ -156,7 +156,7 @@ use zellij_utils::{
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{cli_assets::CliAssets, config::Config, options::Options},
-    ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ExitReason, ResizeCause, ServerToClientMsg},
     pane_size::Size,
     vendored::termwiz::input::InputEvent,
 };
@@ -214,6 +214,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             // Subscribe-only messages — not handled by regular interactive clients
             ServerToClientMsg::PaneRenderUpdate { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SubscribedPaneClosed { .. } => ClientInstruction::UnblockInputThread,
+            ServerToClientMsg::SetSoftKeyboard { .. } => ClientInstruction::UnblockInputThread,
         }
     }
 }
@@ -594,6 +595,9 @@ pub async fn run_remote_client_terminal_loop(
                                 }
                             }
                             Ok(WebServerToWebClientControlMessage::SwitchedSession{ .. }) => {
+                                // no-op
+                            }
+                            Ok(WebServerToWebClientControlMessage::SetSoftKeyboard{ .. }) => {
                                 // no-op
                             }
                             Err(e) => {
@@ -1051,6 +1055,7 @@ pub fn start_client(
                         move || {
                             os_api.send_to_server(ClientToServerMsg::TerminalResize {
                                 new_size: os_api.get_terminal_size(),
+                                cause: ResizeCause::Viewport,
                             });
                         }
                     }),
@@ -1192,6 +1197,7 @@ pub fn start_client(
             ClientInstruction::QueryTerminalSize => {
                 os_input.send_to_server(ClientToServerMsg::TerminalResize {
                     new_size: os_input.get_terminal_size(),
+                    cause: ResizeCause::Viewport,
                 });
             },
             ClientInstruction::StartWebServer => {

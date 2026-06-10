@@ -27,10 +27,10 @@ use zellij_utils::data::{
     FocusOrCreateTabResponse, GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
     GetPaneRunningCommandResponse, HttpVerb, KeyWithModifier, KillSessionsResponse, LayoutInfo,
     LayoutMetadata, LayoutParsingError, MessageToPlugin, NewPanePlacement, NewTabResponse,
-    OpenCommandPaneBackgroundResponse, OpenCommandPaneFloatingNearPluginResponse,
-    OpenCommandPaneFloatingResponse, OpenCommandPaneInPlaceOfPaneIdResponse,
-    OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
-    OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
+    NewTabUnfocusedResponse, NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
+    OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
+    OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
+    OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
     OpenEditPaneInPlaceOfPaneIdResponse, OpenFileFloatingNearPluginResponse,
     OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
     OpenFileNearPluginResponse, OpenFileResponse, OpenPaneInNewTabResponse,
@@ -53,6 +53,7 @@ use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
 use kdl::KdlDocument;
+use zellij_utils::pane_size::Size;
 
 use prost::Message;
 use zellij_utils::{
@@ -86,7 +87,8 @@ use zellij_utils::{
             ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
             ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetSessionListResponse,
             ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse,
-            ProtobufKillSessionsResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
+            ProtobufKillSessionsResponse, ProtobufNewTabResponse, ProtobufNewTabUnfocusedResponse,
+            ProtobufNewTabsResponse, ProtobufNewTiledPaneInTabResponse,
             ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse,
@@ -296,6 +298,12 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         context,
                     } => edit_layout(env, layout_name, context),
                     PluginCommand::NewTab { name, cwd } => new_tab(env, name, cwd),
+                    PluginCommand::NewTabUnfocused { name, cwd } => {
+                        new_tab_unfocused(env, name, cwd)
+                    },
+                    PluginCommand::NewTiledPaneInTab { tab_position } => {
+                        new_tiled_pane_in_tab(env, tab_position)
+                    },
                     PluginCommand::GoToNextTab => go_to_next_tab(env),
                     PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
                     PluginCommand::Resize(resize_payload) => resize(env, resize_payload),
@@ -447,6 +455,14 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
                     PluginCommand::ListWindowsVolumes => list_windows_volumes(env),
                     PluginCommand::GetSessionList => get_session_list(env),
+                    PluginCommand::SetSoftKeyboard(on) => set_soft_keyboard(env, on),
+                    PluginCommand::SetTabFit { tab_id, fit } => set_tab_fit(
+                        env,
+                        tab_id,
+                        fit.map(|(pane_id, size)| (pane_id.into(), size)),
+                    ),
+                    PluginCommand::ExitMobileMode => exit_mobile_mode(env),
+                    PluginCommand::SetShadowFocus(pane_id) => set_shadow_focus(env, pane_id.into()),
                     PluginCommand::DumpSessionLayout { tab_index } => {
                         dump_session_layout(env, tab_index)
                     },
@@ -2806,6 +2822,62 @@ fn new_tab(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
         .non_fatal();
 }
 
+fn new_tab_unfocused(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
+    let cwd = cwd.map(|c| translate_plugin_path(env, PathBuf::from(c)));
+    let action = Action::NewTab {
+        tiled_layout: None,
+        floating_layouts: vec![],
+        swap_tiled_layouts: None,
+        swap_floating_layouts: None,
+        tab_name: name,
+        should_change_focus_to_new_tab: false,
+        cwd,
+        initial_panes: None,
+        first_pane_unblock_condition: None,
+    };
+    let error_msg = || format!("Failed to open new tab (unfocused)");
+    let result = apply_action!(action, error_msg, env);
+
+    let tab_id: NewTabUnfocusedResponse = result.and_then(|r| r.affected_tab_id);
+
+    let response = ProtobufNewTabUnfocusedResponse::from(tab_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write new_tab_unfocused response"))
+        .non_fatal();
+}
+
+fn new_tiled_pane_in_tab(env: &PluginEnv, tab_position: usize) {
+    let error_msg = || format!("failed to open new tiled pane in tab {}", tab_position);
+    let default_shell = env.default_shell.clone().unwrap_or_else(|| {
+        TerminalAction::RunCommand(RunCommand {
+            command: env.path_to_default_shell.clone(),
+            use_terminal_title: true,
+            ..Default::default()
+        })
+    });
+    let run_command_action: Option<RunCommandAction> = match default_shell {
+        TerminalAction::RunCommand(run_command) => Some(run_command.into()),
+        _ => None,
+    };
+    let action = Action::NewTiledPane {
+        direction: None,
+        command: run_command_action,
+        pane_name: None,
+        near_current_pane: false,
+        borderless: None,
+        tab_id: Some(tab_position),
+    };
+    let result = apply_action!(action, error_msg, env);
+
+    let pane_id: NewTiledPaneInTabResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    let response = ProtobufNewTiledPaneInTabResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write new_tiled_pane_in_tab response"))
+        .non_fatal();
+}
+
 fn go_to_next_tab(env: &PluginEnv) {
     let action = Action::GoToNextTab;
     let error_msg = || format!("Failed to go to next tab");
@@ -3899,6 +3971,56 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
 #[cfg(not(windows))]
 fn list_windows_volumes(_env: &PluginEnv) {
     log::error!("ListWindowsVolumes is only supported on Windows");
+}
+
+fn set_soft_keyboard(env: &PluginEnv, on: bool) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetSoftKeyboard {
+            client_id: env.client_id,
+            on,
+        })
+        .with_context(|| {
+            format!(
+                "failed to dispatch SetSoftKeyboard for plugin {}",
+                env.plugin_id
+            )
+        })
+        .non_fatal();
+}
+
+fn set_shadow_focus(env: &PluginEnv, pane_id: PaneId) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetShadowFocus(env.client_id, pane_id))
+        .with_context(|| {
+            format!(
+                "failed to dispatch SetShadowFocus for plugin {}",
+                env.plugin_id
+            )
+        })
+        .non_fatal();
+}
+
+fn set_tab_fit(env: &PluginEnv, tab_id: usize, fit: Option<(PaneId, Size)>) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetTabFit {
+            client_id: env.client_id,
+            tab_id,
+            fit,
+        })
+        .with_context(|| format!("failed to dispatch SetTabFit for plugin {}", env.plugin_id))
+        .non_fatal();
+}
+
+fn exit_mobile_mode(env: &PluginEnv) {
+    env.senders
+        .send_to_screen(ScreenInstruction::ExitMobileMode(env.client_id, None))
+        .with_context(|| {
+            format!(
+                "failed to dispatch ExitMobileMode for plugin {}",
+                env.plugin_id
+            )
+        })
+        .non_fatal();
 }
 
 #[cfg(windows)]
@@ -5307,6 +5429,7 @@ fn check_command_permission(
         | PluginCommand::OpenTerminalInPlaceOfPlugin(..)
         | PluginCommand::OpenPluginPaneInNewTab { .. }
         | PluginCommand::OpenPluginPaneFloating { .. }
+        | PluginCommand::NewTiledPaneInTab { .. }
         | PluginCommand::OpenTerminalPaneInPlaceOfPaneId(..) => {
             PermissionType::OpenTerminalsOrPlugins
         },
@@ -5331,6 +5454,7 @@ fn check_command_permission(
         | PluginCommand::NewTabsWithLayout(..)
         | PluginCommand::NewTabsWithLayoutInfo(..)
         | PluginCommand::NewTab { .. }
+        | PluginCommand::NewTabUnfocused { .. }
         | PluginCommand::GoToNextTab
         | PluginCommand::GoToPreviousTab
         | PluginCommand::Resize(..)
@@ -5428,7 +5552,10 @@ fn check_command_permission(
         | PluginCommand::ShowFloatingPanes { .. }
         | PluginCommand::HideFloatingPanes { .. }
         | PluginCommand::SetPaneRegexHighlights(..)
-        | PluginCommand::ClearPaneHighlights(..) => PermissionType::ChangeApplicationState,
+        | PluginCommand::ClearPaneHighlights(..)
+        | PluginCommand::SetSoftKeyboard(..)
+        | PluginCommand::SetTabFit { .. }
+        | PluginCommand::ExitMobileMode => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,

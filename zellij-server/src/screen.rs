@@ -51,7 +51,7 @@ use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
-use zellij_utils::input::options::Clipboard;
+use zellij_utils::input::options::{Clipboard, MobileLayoutConfiguration};
 use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
@@ -92,6 +92,8 @@ use zellij_utils::{
     input::get_mode_info,
     ipc::{ClientAttributes, PixelDimensions},
 };
+
+use crate::mobile_mode::{MobileRenderGate, MobileState, ShadowFocusOutcome, FIT_RESIZE_MAX_ITERS};
 
 /// Parses a namespaced OSC 99 response and extracts the original pane ID
 /// and un-namespaced response bytes.
@@ -500,8 +502,6 @@ pub enum ScreenInstruction {
         completion_tx: Option<NotificationEnd>,
     },
     TerminalResize(Size),
-    /// Update a regular client's known viewport size and recompute the size of
-    /// that client's active tab. `(client_id, new_size)`.
     RecomputeTabSize(ClientId, Size),
     TerminalPixelDimensions(PixelDimensions),
     TerminalBackgroundColor(String),
@@ -562,11 +562,14 @@ pub enum ScreenInstruction {
     AddClient(
         ClientId,
         bool,                // is_web_client
-        Size,                // client viewport size — used for per-tab sizing
+        Size,                // client viewport size
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
     ),
     RemoveClient(ClientId),
+    SuppressRenderUntilMobile(ClientId),
+    MobileSizeSettled(ClientId),
+    ForceMobileUngate(ClientId),
     UpdateSearch(Vec<u8>, ClientId, Option<NotificationEnd>),
     SearchDown(ClientId, Option<NotificationEnd>),
     SearchUp(ClientId, Option<NotificationEnd>),
@@ -775,6 +778,11 @@ pub enum ScreenInstruction {
     PageScrollUpInPaneId(PaneId),
     PageScrollDownInPaneId(PaneId),
     TogglePaneIdFullscreen(PaneId),
+    SetTabFit {
+        client_id: ClientId,
+        tab_id: usize,
+        fit: Option<(PaneId, Size)>,
+    },
     TogglePaneEmbedOrEjectForPaneId(PaneId),
     CloseTabWithIndex(usize),
     BreakPanesToNewTab {
@@ -871,6 +879,21 @@ pub enum ScreenInstruction {
     PreviousSwapLayoutWithTabId(usize, Option<NotificationEnd>),
     NextSwapLayoutWithTabId(usize, Option<NotificationEnd>),
     MoveTabWithTabId(usize, Direction, Option<NotificationEnd>),
+    EnterMobileMode(ClientId, Option<NotificationEnd>),
+    ExitMobileMode(ClientId, Option<NotificationEnd>),
+    ToggleMobileMode(ClientId, Option<NotificationEnd>),
+    ReevaluateMobileMode {
+        client_id: ClientId,
+        new_size: Size,
+        mobile_layout: MobileLayoutConfiguration,
+        threshold_cols: u16,
+        threshold_rows: u16,
+    },
+    SetSoftKeyboard {
+        client_id: ClientId,
+        on: bool,
+    },
+    SetShadowFocus(ClientId, PaneId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -1018,6 +1041,11 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleTab(..) => ScreenContext::ToggleTab,
             ScreenInstruction::AddClient(..) => ScreenContext::AddClient,
             ScreenInstruction::RemoveClient(..) => ScreenContext::RemoveClient,
+            ScreenInstruction::SuppressRenderUntilMobile(..) => {
+                ScreenContext::SuppressRenderUntilMobile
+            },
+            ScreenInstruction::MobileSizeSettled(..) => ScreenContext::MobileSizeSettled,
+            ScreenInstruction::ForceMobileUngate(..) => ScreenContext::ForceMobileUngate,
             ScreenInstruction::UpdateSearch(..) => ScreenContext::UpdateSearch,
             ScreenInstruction::SearchDown(..) => ScreenContext::SearchDown,
             ScreenInstruction::SearchUp(..) => ScreenContext::SearchUp,
@@ -1105,6 +1133,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PageScrollUpInPaneId(..) => ScreenContext::PageScrollUpInPaneId,
             ScreenInstruction::PageScrollDownInPaneId(..) => ScreenContext::PageScrollDownInPaneId,
             ScreenInstruction::TogglePaneIdFullscreen(..) => ScreenContext::TogglePaneIdFullscreen,
+            ScreenInstruction::SetTabFit { .. } => ScreenContext::SetTabFit,
             ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(..) => {
                 ScreenContext::TogglePaneEmbedOrEjectForPaneId
             },
@@ -1228,6 +1257,12 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::NextSwapLayoutWithTabId
             },
             ScreenInstruction::MoveTabWithTabId(..) => ScreenContext::MoveTabWithTabId,
+            ScreenInstruction::EnterMobileMode(..) => ScreenContext::EnterMobileMode,
+            ScreenInstruction::ExitMobileMode(..) => ScreenContext::ExitMobileMode,
+            ScreenInstruction::ToggleMobileMode(..) => ScreenContext::ToggleMobileMode,
+            ScreenInstruction::ReevaluateMobileMode { .. } => ScreenContext::ReevaluateMobileMode,
+            ScreenInstruction::SetSoftKeyboard { .. } => ScreenContext::SetSoftKeyboard,
+            ScreenInstruction::SetShadowFocus(..) => ScreenContext::SetShadowFocus,
         }
     }
 }
@@ -1314,7 +1349,6 @@ impl RenderBlocker {
     }
 }
 
-/// State information for a watcher client
 #[derive(Debug, Clone)]
 pub(crate) struct WatcherState {
     size: Size,
@@ -1376,7 +1410,6 @@ pub(crate) struct Screen {
     connected_clients: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_ids: BTreeMap<ClientId, usize>,
-    /// Per-regular-client viewport sizes, used to compute per-tab sizing.
     client_sizes: HashMap<ClientId, Size>,
     global_last_active_tab_id: usize,
     tab_history: BTreeMap<ClientId, Vec<usize>>,
@@ -1429,42 +1462,15 @@ pub(crate) struct Screen {
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     plugins_need_ansi_pane_contents: bool,
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
-    /// Monotonic counter used to tag each forwarded host-terminal query
-    /// with a unique token. 0 is reserved as a sentinel (see
-    /// `STARTUP_SENTINEL_TOKEN`); real forwards start at 1.
     next_forward_token: u32,
-    /// Map of forwarded-query token → the originating pane plus the
-    /// raw query bytes. When the client sends back the reply for
-    /// `token`, the server looks up the pane here and writes the
-    /// reply bytes to its pty. The retained `query_bytes` feed the
-    /// cache-fallback synthesis: if the reply comes back empty
-    /// (detached session, client crash, host timeout), we use the
-    /// cached bg/fg/pixel/palette state to answer in the host's
-    /// stead.
     pending_forwarded_queries: HashMap<u32, PendingForwardEntry>,
-    /// Serialization queue for forwarded queries. Invariant: at most one
-    /// forward is in flight to the client at a time (enforced by
-    /// `forward_in_flight`). When the reply (or timeout) closes the
-    /// active slot, the next queued forward is dispatched.
     forward_queue: VecDeque<PendingForward>,
-    /// Token of the forward currently in flight to the (single)
-    /// connected client, if any. Used to:
-    /// * serialize forwarded queries globally (only one at a time);
-    /// * gate slot release on `handle_forwarded_reply_from_host` to a
-    ///   token-equality match, so a late server-side timeout for an
-    ///   already-answered forward cannot clobber a queued forward that
-    ///   the real reply just dispatched.
     forward_in_flight_token: Option<u32>,
-    /// Last-known host terminal color-palette theme mode (CSI 2031 /
-    /// DSR 997). `None` until the host first reports. Used both for
-    /// auto-theme switching and to dedupe duplicate notifications.
     host_terminal_theme_mode: Option<HostTerminalThemeMode>,
-    /// Resolved styling to apply when `host_terminal_theme_mode == Dark`.
-    /// `None` disables auto-switch. Refreshed on each reconfigure.
     host_theme_dark_styling: Option<Styling>,
-    /// Resolved styling to apply when `host_terminal_theme_mode == Light`.
-    /// `None` disables auto-switch. Refreshed on each reconfigure.
     host_theme_light_styling: Option<Styling>,
+    mobile_state: MobileState,
+    mobile_render_gate: MobileRenderGate,
 }
 
 /// A pending forward waiting to be dispatched once the current in-flight
@@ -1619,6 +1625,56 @@ impl Screen {
             host_terminal_theme_mode: None,
             host_theme_dark_styling: None,
             host_theme_light_styling: None,
+            mobile_state: MobileState::default(),
+            mobile_render_gate: MobileRenderGate::default(),
+        }
+    }
+
+    fn client_is_web(&self, client_id: ClientId) -> bool {
+        self.connected_clients
+            .borrow()
+            .get(&client_id)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    fn try_lift_mobile_gate(&mut self, client_id: ClientId) -> bool {
+        let is_web_client = self.client_is_web(client_id);
+        let reported_size = self.client_sizes.get(&client_id).copied();
+        let lifted = self
+            .mobile_render_gate
+            .try_reveal(client_id, is_web_client, reported_size);
+        if lifted {
+            self.force_render_mobile_tab(client_id);
+        }
+        lifted
+    }
+
+    fn force_render_mobile_tab(&mut self, client_id: ClientId) {
+        if let Some(tab_id) = self.mobile_state.mobile_tab_id(client_id) {
+            if let Some(tab) = self.tabs.get_mut(&tab_id) {
+                tab.set_should_clear_display_before_rendering();
+                tab.set_force_render();
+            }
+        }
+    }
+
+    fn ungate_clients_for_mobile_plugin(&mut self, plugin_id: u32) {
+        if self.mobile_render_gate.is_empty() {
+            return;
+        }
+        let Some(tab_id) = self
+            .tabs
+            .values()
+            .find(|tab| tab.has_plugin(plugin_id))
+            .map(|tab| tab.id)
+        else {
+            return;
+        };
+        for client_id in self.mobile_render_gate.gated_clients() {
+            if self.mobile_state.mobile_tab_id(client_id) == Some(tab_id) {
+                self.mobile_render_gate.ungate(client_id);
+            }
         }
     }
 
@@ -1662,6 +1718,204 @@ impl Screen {
     /// Use this to convert ID → position for user-facing operations.
     fn get_tab_position_by_id(&self, id: usize) -> Option<usize> {
         self.tabs.get(&id).map(|t| t.position)
+    }
+
+    pub fn tab_visible_to(&self, client_id: ClientId, tab_id: usize) -> bool {
+        match self.tabs.get(&tab_id) {
+            Some(tab) => match &tab.visible_to {
+                None => true,
+                Some(set) => set.contains(&client_id),
+            },
+            None => false,
+        }
+    }
+
+    pub fn is_in_mobile_mode(&self, client_id: ClientId) -> bool {
+        self.mobile_state.is_in_mobile_mode(client_id)
+    }
+
+    pub(crate) fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) -> Result<()> {
+        if let ShadowFocusOutcome::NewlyApplied =
+            self.mobile_state
+                .apply_shadow_focus(client_id, pane_id, &mut self.tabs)
+        {
+            self.log_and_report_session_state()?;
+            self.render(None)?;
+        }
+        Ok(())
+    }
+
+    pub fn enter_mobile_mode(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = || format!("failed to enter mobile mode for client {client_id}");
+
+        if self.mobile_state.is_in_mobile_mode(client_id) {
+            return Ok(());
+        }
+
+        let prior = self.active_tab_ids.get(&client_id).copied();
+        self.mobile_state.set_previous_tab(client_id, prior);
+
+        self.mobile_state
+            .clear_shadow_focus(client_id, &mut self.tabs);
+
+        let tab_layout = MobileState::mobile_tab_layout().with_context(err_context)?;
+
+        let tab_id = self.get_new_tab_id();
+        self.new_tab(
+            tab_id,
+            (vec![], vec![]),
+            Some("Mobile".to_string()),
+            Some(client_id),
+        )
+        .with_context(err_context)?;
+        if let Some(tab) = self.tabs.get_mut(&tab_id) {
+            let mut set = HashSet::new();
+            set.insert(client_id);
+            tab.visible_to = Some(set);
+        }
+        self.mobile_state.register_tab(client_id, tab_id);
+
+        let is_web_client = self
+            .connected_clients
+            .borrow()
+            .get(&client_id)
+            .copied()
+            .unwrap_or(false);
+
+        let client_is_gated = self.mobile_render_gate.is_gated(client_id);
+        if client_is_gated {
+            self.bus
+                .senders
+                .send_to_plugin(PluginInstruction::HoldMobileRender(client_id))
+                .with_context(err_context)?;
+        }
+
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::NewTab(
+                None,
+                None,
+                Some(tab_layout),
+                vec![],
+                tab_id,
+                None,
+                false,
+                true,
+                (client_id, is_web_client),
+                None,
+            ))
+            .with_context(err_context)?;
+
+        Ok(())
+    }
+
+    pub fn exit_mobile_mode(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = || format!("failed to exit mobile mode for client {client_id}");
+
+        self.mobile_render_gate.ungate(client_id);
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::ReleaseMobileRender(client_id))
+            .non_fatal();
+
+        let Some((mobile_tab_id, prior_tab_id)) = self.mobile_state.begin_exit(client_id) else {
+            return Ok(());
+        };
+
+        let destination = prior_tab_id
+            .filter(|id| self.tabs.contains_key(id) && self.tab_visible_to(client_id, *id))
+            .or_else(|| {
+                let mobile_tab_ids = self.mobile_state.mobile_tab_ids();
+                self.tabs
+                    .values()
+                    .filter(|t| {
+                        t.id != mobile_tab_id
+                            && !mobile_tab_ids.contains(&t.id)
+                            && match &t.visible_to {
+                                None => true,
+                                Some(set) => set.contains(&client_id),
+                            }
+                    })
+                    .min_by_key(|t| t.position)
+                    .map(|t| t.id)
+            });
+
+        if let Some(dest_id) = destination {
+            if let Some(dest_pos) = self.get_tab_position_by_id(dest_id) {
+                self.switch_active_tab(dest_pos, None, true, client_id)
+                    .with_context(err_context)?;
+            }
+        }
+
+        if self.tabs.contains_key(&mobile_tab_id) {
+            self.close_tab_by_id(mobile_tab_id)
+                .with_context(err_context)?;
+        }
+
+        self.mobile_state
+            .clear_shadow_focus(client_id, &mut self.tabs);
+
+        Ok(())
+    }
+
+    pub fn toggle_mobile_mode(&mut self, client_id: ClientId) -> Result<()> {
+        if self.is_in_mobile_mode(client_id) {
+            self.exit_mobile_mode(client_id)
+        } else {
+            self.enter_mobile_mode(client_id)
+        }
+    }
+
+    pub fn reevaluate_mobile_mode(
+        &mut self,
+        client_id: ClientId,
+        new_size: Size,
+        mobile_layout: MobileLayoutConfiguration,
+        threshold_cols: u16,
+        threshold_rows: u16,
+    ) -> Result<()> {
+        let is_web_client = self
+            .connected_clients
+            .borrow()
+            .get(&client_id)
+            .copied()
+            .unwrap_or(false);
+        let should_be_mobile = mobile_layout.should_route_to_mobile(
+            is_web_client,
+            new_size.cols,
+            new_size.rows,
+            threshold_cols,
+            threshold_rows,
+        );
+        let is_mobile = self.is_in_mobile_mode(client_id);
+        let was_auto = self.mobile_state.was_auto_entered(client_id);
+        if should_be_mobile && !is_mobile {
+            self.enter_mobile_mode(client_id)?;
+            self.mobile_state.mark_auto_entered(client_id);
+            self.render(None)?;
+        } else if !should_be_mobile && is_mobile && was_auto {
+            self.exit_mobile_mode(client_id)?;
+            self.render(None)?;
+        }
+        if !should_be_mobile && self.mobile_render_gate.is_gated(client_id) {
+            self.mobile_render_gate.ungate(client_id);
+            self.render(None)?;
+        }
+        Ok(())
+    }
+
+    fn visible_tab_positions_for_client(&self, client_id: ClientId) -> Vec<usize> {
+        let mut positions: Vec<usize> = self
+            .tabs
+            .values()
+            .filter(|t| match &t.visible_to {
+                None => true,
+                Some(set) => set.contains(&client_id),
+            })
+            .map(|t| t.position)
+            .collect();
+        positions.sort_unstable();
+        positions
     }
 
     fn move_clients_from_closed_tab(
@@ -1870,9 +2124,6 @@ impl Screen {
                             .send_to_background_jobs(BackgroundJob::StopFlashTabBell(tab_id));
                     }
 
-                    // Both the source and destination tabs may have changed
-                    // their viewer sets; per-tab sizing is independent so each
-                    // is recomputed against its current viewers.
                     self.recompute_tab_size(current_tab_index)
                         .with_context(err_context)?;
                     self.recompute_tab_size(new_tab_index)
@@ -1891,7 +2142,11 @@ impl Screen {
     /// A helper function to switch to a new tab with specified name. Return true if tab [name] has
     /// been created, else false.
     fn switch_active_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
-        match self.tabs.values().find(|t| t.name == name) {
+        match self
+            .tabs
+            .values()
+            .find(|t| t.name == name && self.tab_visible_to(client_id, t.id))
+        {
             Some(new_tab) => {
                 self.switch_active_tab(new_tab.position, None, true, client_id)?;
                 Ok(true)
@@ -1919,7 +2174,14 @@ impl Screen {
             match self.get_active_tab(client_id) {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
-                    let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
+                    let visible = self.visible_tab_positions_for_client(client_id);
+                    if visible.is_empty() {
+                        return Ok(());
+                    }
+                    let new_tab_pos = match visible.iter().position(|p| *p > active_tab_pos) {
+                        Some(idx) => visible[idx],
+                        None => visible[0],
+                    };
                     return self.switch_active_tab(
                         new_tab_pos,
                         should_change_pane_focus,
@@ -1952,10 +2214,13 @@ impl Screen {
             match self.get_active_tab(client_id) {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
-                    let new_tab_pos = if active_tab_pos == 0 {
-                        self.tabs.len() - 1
-                    } else {
-                        active_tab_pos - 1
+                    let visible = self.visible_tab_positions_for_client(client_id);
+                    if visible.is_empty() {
+                        return Ok(());
+                    }
+                    let new_tab_pos = match visible.iter().rev().find(|p| **p < active_tab_pos) {
+                        Some(p) => *p,
+                        None => *visible.last().unwrap(),
                     };
 
                     return self.switch_active_tab(
@@ -1972,7 +2237,13 @@ impl Screen {
     }
 
     pub fn go_to_tab(&mut self, tab_index: usize, client_id: ClientId) -> Result<()> {
-        self.switch_active_tab(tab_index.saturating_sub(1), None, true, client_id)
+        let target_pos = tab_index.saturating_sub(1);
+        if let Some(target_id) = self.get_tab_id_at_position(target_pos) {
+            if !self.tab_visible_to(client_id, target_id) {
+                return Ok(());
+            }
+        }
+        self.switch_active_tab(target_pos, None, true, client_id)
     }
 
     pub fn go_to_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
@@ -1983,6 +2254,7 @@ impl Screen {
         let err_context = || format!("failed to close tab at index {tab_id:?}");
 
         let mut tab_to_close = self.tabs.remove(&tab_id).with_context(err_context)?;
+        self.mobile_state.remove_fit_for_tab(tab_id);
         let mut pane_ids = tab_to_close.get_all_pane_ids();
 
         // here we extract the suppressed panes (these are background panes that don't care which
@@ -2083,21 +2355,32 @@ impl Screen {
         }
     }
 
-    /// Record the viewport size most recently reported by `client_id`. Used as
-    /// input to per-tab size computation; does not by itself trigger a resize.
     pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
         self.client_sizes.insert(client_id, size);
     }
 
-    /// Recompute the size of `tab_id` from the viewports of every client whose
-    /// `active_tab_ids` entry equals `tab_id`. `rows` and `cols` are sorted
-    /// independently — each axis takes the minimum across viewers. If the tab
-    /// has no viewers the size is left untouched (the tab retains its most
-    /// recent viewer-derived dimensions). When the computed size differs from
-    /// the tab's current size, the tab is resized (via `resize_whole_tab`)
-    /// and a force-render is scheduled.
     pub fn recompute_tab_size(&mut self, tab_id: usize) -> Result<()> {
         let err_context = || format!("failed to recompute size for tab {tab_id}");
+
+        if self.mobile_state.has_fit(tab_id) {
+            for _ in 0..FIT_RESIZE_MAX_ITERS {
+                let Some(new_size) = self.compute_fit_size(tab_id) else {
+                    break;
+                };
+                let Some(tab) = self.tabs.get_mut(&tab_id) else {
+                    break;
+                };
+                if tab.size == new_size {
+                    break;
+                }
+                tab.resize_whole_tab(new_size).with_context(err_context)?;
+            }
+            if let Some(tab) = self.tabs.get_mut(&tab_id) {
+                tab.set_should_clear_display_before_rendering();
+                tab.set_force_render();
+            }
+            return Ok(());
+        }
 
         let mut rows: Vec<usize> = Vec::new();
         let mut cols: Vec<usize> = Vec::new();
@@ -2125,6 +2408,45 @@ impl Screen {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn compute_fit_size(&self, tab_id: usize) -> Option<Size> {
+        self.mobile_state.compute_fit_size(tab_id, &self.tabs)
+    }
+
+    pub fn set_tab_fit(
+        &mut self,
+        client_id: ClientId,
+        tab_id: usize,
+        pane_id: PaneId,
+        size: Size,
+    ) -> Result<()> {
+        self.mobile_state
+            .set_fit(client_id, tab_id, pane_id, size, &mut self.tabs);
+        self.recompute_tab_size(tab_id)
+    }
+
+    pub fn exit_fit_mode(&mut self, client_id: ClientId) -> Result<bool> {
+        match self
+            .mobile_state
+            .clear_fit_owned_by(client_id, &mut self.tabs)
+        {
+            Some(tab_id) => {
+                self.recompute_tab_size(tab_id)?;
+                Ok(true)
+            },
+            None => Ok(false),
+        }
+    }
+
+    pub(crate) fn clear_fit_for_closed_pane(&mut self, pane_id: PaneId) -> Result<bool> {
+        match self.mobile_state.clear_fit_for_pane(pane_id) {
+            Some(tab_id) => {
+                self.recompute_tab_size(tab_id)?;
+                Ok(true)
+            },
+            None => Ok(false),
+        }
     }
 
     pub fn update_pixel_dimensions(&mut self, pixel_dimensions: PixelDimensions) {
@@ -2524,6 +2846,49 @@ impl Screen {
                 }
             }
 
+            if self.plugins_need_ansi_pane_contents {
+                let all_regular_clients: Vec<ClientId> = self
+                    .connected_clients
+                    .borrow()
+                    .keys()
+                    .copied()
+                    .filter(|id| !self.watcher_clients.contains_key(id))
+                    .collect();
+                if !all_regular_clients.is_empty() {
+                    for tab in self.tabs.values() {
+                        for pane_id in tab.get_static_and_floating_pane_ids() {
+                            if let Some(pane) = tab.get_pane_with_id(pane_id) {
+                                match pane_id {
+                                    PaneId::Terminal(_) => {
+                                        let contents =
+                                            pane.pane_contents_with_ansi(None, false, None);
+                                        output.add_pane_contents_with_ansi(
+                                            &all_regular_clients,
+                                            pane_id,
+                                            contents,
+                                        );
+                                    },
+                                    PaneId::Plugin(_) => {
+                                        for client_id in &all_regular_clients {
+                                            let contents = pane.pane_contents_with_ansi(
+                                                Some(*client_id),
+                                                false,
+                                                None,
+                                            );
+                                            output.add_pane_contents_with_ansi(
+                                                &[*client_id],
+                                                pane_id,
+                                                contents,
+                                            );
+                                        }
+                                    },
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             let pane_render_report = output.drain_pane_render_report();
 
             // Subscriber delivery — gated behind is_empty() for zero overhead
@@ -2592,12 +2957,16 @@ impl Screen {
             }
 
             if non_watcher_output_was_dirty || has_bell {
-                let serialized_output = output.serialize().context(err_context)?;
-                let _ = self
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-                    .context(err_context);
+                let mut serialized_output = output.serialize().context(err_context)?;
+                self.mobile_render_gate
+                    .blank_gated_clients(&mut serialized_output);
+                if !serialized_output.is_empty() {
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+                        .context(err_context);
+                }
             }
 
             if bell_state_changed {
@@ -2917,6 +3286,7 @@ impl Screen {
         });
 
         let tab_name = tab_name.unwrap_or_else(|| String::new());
+        let mobile_tab_count = self.mobile_state.mobile_tab_count();
 
         let position = self.tabs.len();
         let mut tab = Tab::new(
@@ -2962,6 +3332,7 @@ impl Screen {
             self.mouse_click_through,
             self.web_server_ip,
             self.web_server_port,
+            mobile_tab_count,
         );
         for (client_id, mode_info) in &self.mode_info {
             tab.change_mode_info(mode_info.clone(), *client_id);
@@ -3052,6 +3423,12 @@ impl Screen {
             None
         };
 
+        if !self.active_tab_ids.contains_key(&client_id) {
+            self.connected_clients
+                .borrow_mut()
+                .insert(client_id, is_web_client);
+        }
+
         // apply the layout to the new tab
         self.tabs
             .get_mut(&tab_id)
@@ -3084,9 +3461,6 @@ impl Screen {
                 .with_context(err_context)?;
         }
 
-        // The new tab was just resized to `self.size` above as a default; if
-        // any clients have been moved onto it, recompute to fit their actual
-        // viewports.
         self.recompute_tab_size(tab_id).with_context(err_context)?;
 
         self.log_and_report_session_state()
@@ -3133,8 +3507,6 @@ impl Screen {
             .with_context(|| err_context(tab_index))?
             .add_client(client_id, None)
             .with_context(|| err_context(tab_index))?;
-        // Resize the newly-active tab to the min of all viewers (this client
-        // may shrink it, or may be the first viewer of an empty tab).
         self.recompute_tab_size(tab_index)
             .with_context(|| err_context(tab_index))?;
         Ok(())
@@ -3160,12 +3532,32 @@ impl Screen {
             }
         }
 
-        for (_, tab) in self.tabs.iter_mut() {
+        self.mobile_state.forget_client(client_id);
+        self.mobile_render_gate.ungate(client_id);
+
+        let to_recompute = self
+            .mobile_state
+            .clear_fits_owned_by(client_id, &mut self.tabs);
+        for tab_id in to_recompute {
+            self.recompute_tab_size(tab_id).with_context(err_context)?;
+        }
+
+        let mut tabs_to_garbage_collect: Vec<usize> = vec![];
+        for (tab_id, tab) in self.tabs.iter_mut() {
             tab.remove_client(client_id);
             if tab.has_no_connected_clients() {
                 tab.visible(false).with_context(err_context)?;
             }
+            if let Some(set) = tab.visible_to.as_mut() {
+                set.remove(&client_id);
+                if set.is_empty() {
+                    tabs_to_garbage_collect.push(*tab_id);
+                }
+            }
         }
+
+        self.mobile_state
+            .clear_shadow_focus(client_id, &mut self.tabs);
         let previously_active_tab_id = self.active_tab_ids.get(&client_id).copied();
         if let Some(prev_tab_id) = previously_active_tab_id {
             self.global_last_active_tab_id = prev_tab_id;
@@ -3177,11 +3569,14 @@ impl Screen {
         self.connected_clients.borrow_mut().remove(&client_id);
         self.client_sizes.remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
-        // The vacated tab may have lost its smallest viewer; recompute so it
-        // can grow back to fit the remaining clients (no-op if none remain).
         if let Some(prev_tab_id) = previously_active_tab_id {
             self.recompute_tab_size(prev_tab_id)
                 .with_context(err_context)?;
+        }
+        for tab_id in tabs_to_garbage_collect {
+            if self.tabs.contains_key(&tab_id) {
+                self.close_tab_by_id(tab_id).with_context(err_context)?;
+            }
         }
         self.log_and_report_session_state()
             .with_context(err_context)
@@ -3223,13 +3618,18 @@ impl Screen {
         let mut plugin_updates = vec![];
         let mut tab_infos_for_screen_state = BTreeMap::new();
         for tab in self.tabs.values() {
-            let all_focused_clients: Vec<ClientId> = self
+            let mut all_focused_clients: Vec<ClientId> = self
                 .active_tab_ids
                 .iter()
                 .filter(|(_c_id, tab_position)| **tab_position == tab.id)
                 .map(|(c_id, _)| c_id)
                 .copied()
                 .collect();
+            for s_id in tab.shadow_focus_clients() {
+                if !all_focused_clients.contains(&s_id) {
+                    all_focused_clients.push(s_id);
+                }
+            }
             let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
             let tab_viewport = tab.get_viewport();
             let tab_display_area = tab.get_display_area();
@@ -3263,17 +3663,29 @@ impl Screen {
         for (client_id, active_tab_index) in self.active_tab_ids.iter() {
             let mut plugin_tab_updates = vec![];
             for tab in self.tabs.values() {
+                if let Some(set) = &tab.visible_to {
+                    if !set.contains(client_id) {
+                        continue;
+                    }
+                }
                 let other_focused_clients: Vec<ClientId> = if self.session_is_mirrored {
                     vec![]
                 } else {
-                    self.active_tab_ids
+                    let mut clients: Vec<ClientId> = self
+                        .active_tab_ids
                         .iter()
                         .filter(|(c_id, tab_position)| {
                             **tab_position == tab.id && *c_id != client_id
                         })
                         .map(|(c_id, _)| c_id)
                         .copied()
-                        .collect()
+                        .collect();
+                    for s_id in tab.shadow_focus_clients() {
+                        if s_id != *client_id && !clients.contains(&s_id) {
+                            clients.push(s_id);
+                        }
+                    }
+                    clients
                 };
                 let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
                 let tab_viewport = tab.get_viewport();
@@ -5231,13 +5643,18 @@ impl Screen {
     fn get_tab_info(&self, tab_id: usize) -> Option<TabInfo> {
         // Look up tab by its stable ID
         self.tabs.get(&tab_id).map(|tab| {
-            let all_focused_clients: Vec<ClientId> = self
+            let mut all_focused_clients: Vec<ClientId> = self
                 .active_tab_ids
                 .iter()
                 .filter(|(_c_id, active_tab_id)| **active_tab_id == tab.id)
                 .map(|(c_id, _)| c_id)
                 .copied()
                 .collect();
+            for s_id in tab.shadow_focus_clients() {
+                if !all_focused_clients.contains(&s_id) {
+                    all_focused_clients.push(s_id);
+                }
+            }
             let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
             let tab_viewport = tab.get_viewport();
             let tab_display_area = tab.get_display_area();
@@ -5821,15 +6238,35 @@ pub(crate) fn screen_thread_main(
                 for plugin_render_asset in plugin_render_assets.iter_mut() {
                     let plugin_id = plugin_render_asset.plugin_id;
                     let client_id = plugin_render_asset.client_id;
-                    let vte_bytes = plugin_render_asset.bytes.drain(..).collect();
+                    let vte_bytes: Vec<u8> = plugin_render_asset.bytes.drain(..).collect();
+                    let painted_content = !vte_bytes.is_empty();
 
+                    let mobile_tab_id = screen.mobile_state.mobile_tab_id(client_id);
+                    let mut painted_tab_id = None;
+                    let mut painted_size = None;
                     let all_tabs = screen.get_tabs_mut();
                     for tab in all_tabs.values_mut() {
                         if tab.has_plugin(plugin_id) {
                             tab.handle_plugin_bytes(plugin_id, client_id, vte_bytes)
                                 .context("failed to process plugin bytes")?;
+                            painted_tab_id = Some(tab.id);
+                            painted_size =
+                                tab.get_pane_with_id(PaneId::Plugin(plugin_id))
+                                    .map(|pane| Size {
+                                        rows: pane.get_content_rows(),
+                                        cols: pane.get_content_columns(),
+                                    });
                             break;
                         }
+                    }
+                    if painted_content && painted_tab_id == mobile_tab_id && mobile_tab_id.is_some()
+                    {
+                        if let Some(painted_size) = painted_size {
+                            screen
+                                .mobile_render_gate
+                                .record_paint_size(client_id, painted_size);
+                        }
+                        screen.try_lift_mobile_gate(client_id);
                     }
                     screen.render_blocker.remove_blocking_plugin(plugin_id);
                 }
@@ -7471,9 +7908,6 @@ pub(crate) fn screen_thread_main(
                 tab_position_to_focus,
                 pane_id_to_focus,
             ) => {
-                // Record the client's viewport BEFORE add_client so that
-                // add_client's internal recompute sees this client's size and
-                // sizes the destination tab against all of its viewers.
                 screen.set_client_size(client_id, client_size);
                 screen.add_client(client_id, is_web_client)?;
                 let pane_id = pane_id_to_focus.map(|(pane_id, is_plugin)| {
@@ -7513,6 +7947,37 @@ pub(crate) fn screen_thread_main(
                 screen.remove_client(client_id)?;
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
+            },
+            ScreenInstruction::SuppressRenderUntilMobile(client_id) => {
+                screen.mobile_render_gate.gate(client_id);
+                screen
+                    .bus
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::MobileGateTimeout(client_id))
+                    .non_fatal();
+            },
+            ScreenInstruction::MobileSizeSettled(client_id) => {
+                screen.mobile_render_gate.record_settled_size(client_id);
+                screen
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::ReleaseMobileRender(client_id))
+                    .non_fatal();
+                if screen.try_lift_mobile_gate(client_id) {
+                    screen.render(None)?;
+                }
+            },
+            ScreenInstruction::ForceMobileUngate(client_id) => {
+                if screen.mobile_render_gate.is_gated(client_id) {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_plugin(PluginInstruction::ReleaseMobileRender(client_id))
+                        .non_fatal();
+                    screen.mobile_render_gate.ungate(client_id);
+                    screen.force_render_mobile_tab(client_id);
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::UpdateSearch(
                 c,
@@ -8161,6 +8626,9 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::UpdatePluginLoadingStage(pid, loading_indication) => {
+                if loading_indication.is_error() {
+                    screen.ungate_clients_for_mobile_plugin(pid);
+                }
                 let found_plugin =
                     screen.update_plugin_loading_stage(pid, loading_indication.clone());
                 if !found_plugin {
@@ -9000,7 +9468,7 @@ pub(crate) fn screen_thread_main(
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         if let PaneId::Terminal(terminal_pane_id) = pane_id {
-                            tab.scroll_terminal_up(terminal_pane_id);
+                            tab.scroll_terminal_up(terminal_pane_id)?;
                         } else {
                             // this is because to do this with plugins, we need the client_id -
                             // which we do not have (yet?) in this context...
@@ -9018,7 +9486,7 @@ pub(crate) fn screen_thread_main(
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         if let PaneId::Terminal(terminal_pane_id) = pane_id {
-                            tab.scroll_terminal_down(terminal_pane_id);
+                            tab.scroll_terminal_down(terminal_pane_id)?;
                         } else {
                             // this is because to do this with plugins, we need the client_id -
                             // which we do not have (yet?) in this context...
@@ -9110,6 +9578,22 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.render(None)?;
+            },
+            ScreenInstruction::SetTabFit {
+                client_id,
+                tab_id,
+                fit,
+            } => {
+                let changed = match fit {
+                    Some((pane_id, size)) => {
+                        screen.set_tab_fit(client_id, tab_id, pane_id, size)?;
+                        true
+                    },
+                    None => screen.exit_fit_mode(client_id)?,
+                };
+                if changed {
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
@@ -9491,9 +9975,16 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::NotifyPaneClosedToSubscribers { pane_id } => {
                 screen.notify_pane_closed_to_subscribers(pane_id);
+                screen.clear_fit_for_closed_pane(pane_id.into())?;
             },
             ScreenInstruction::PluginSubscribedToAnsiPaneContents(has_subscribers) => {
+                let previously_subscribed = screen.plugins_need_ansi_pane_contents;
                 screen.plugins_need_ansi_pane_contents = has_subscribers;
+                if has_subscribers && !previously_subscribed {
+                    if let Err(e) = screen.render(None) {
+                        log::error!("Failed to render after ANSI subscription enabled: {:?}", e);
+                    }
+                }
             },
             ScreenInstruction::UpdateBackgroundPluginSubscriptions(
                 plugin_id,
@@ -9968,6 +10459,47 @@ pub(crate) fn screen_thread_main(
                         _completion_tx,
                     ));
                 }
+            },
+            ScreenInstruction::EnterMobileMode(client_id, _completion_tx) => {
+                if let Err(e) = screen.enter_mobile_mode(client_id) {
+                    screen.mobile_render_gate.ungate(client_id);
+                    screen.render(None)?;
+                    return Err(e);
+                }
+                screen.mobile_state.mark_auto_entered(client_id);
+                screen.render(None)?;
+            },
+            ScreenInstruction::ExitMobileMode(client_id, _completion_tx) => {
+                screen.exit_mobile_mode(client_id)?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::ToggleMobileMode(client_id, _completion_tx) => {
+                screen.toggle_mobile_mode(client_id)?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::ReevaluateMobileMode {
+                client_id,
+                new_size,
+                mobile_layout,
+                threshold_cols,
+                threshold_rows,
+            } => {
+                screen.reevaluate_mobile_mode(
+                    client_id,
+                    new_size,
+                    mobile_layout,
+                    threshold_cols,
+                    threshold_rows,
+                )?;
+            },
+            ScreenInstruction::SetSoftKeyboard { client_id, on } => {
+                if let Some(os_input) = &screen.bus.os_input {
+                    let _ = os_input
+                        .send_to_client(client_id, ServerToClientMsg::SetSoftKeyboard { on });
+                }
+            },
+            ScreenInstruction::SetShadowFocus(client_id, pane_id) => {
+                screen.set_shadow_focus(client_id, pane_id)?;
             },
         }
     }

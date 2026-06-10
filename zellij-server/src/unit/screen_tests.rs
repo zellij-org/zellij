@@ -9469,17 +9469,6 @@ fn empty_reply_with_paused_pane_drains_buffer_without_phantom_write() {
     );
 }
 
-// --- per-tab viewport sizing (Stage 1 of mobile_view_plan.md) -------------
-
-// All five tests below exercise `Screen::recompute_tab_size`, which the
-// production code invokes from `ScreenInstruction::AddClient`,
-// `ScreenInstruction::RecomputeTabSize` (runtime resize), `remove_client`,
-// and `switch_active_tab`. Tests drive the helper directly so the assertions
-// don't depend on instruction-bus plumbing.
-
-/// Variant of `create_new_screen` with `session_is_mirrored = false`. The
-/// payoff of per-tab sizing only shows up when clients can sit on different
-/// tabs; mirrored mode forces every client to share the active tab.
 fn create_non_mirrored_screen(size: Size) -> Screen {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput::default();
@@ -9554,11 +9543,8 @@ fn recompute_tab_size_takes_independent_min_across_axes() {
     };
     let mut screen = create_new_screen(initial_size, true, true);
     new_tab(&mut screen, 1, 0);
-    // Drop the second client onto the same tab as client 1.
     screen.add_client(2, false).expect("TEST");
 
-    // Wide-but-short and narrow-but-tall: rows and cols must min independently,
-    // not be paired by client.
     screen.set_client_size(
         1,
         Size {
@@ -9582,13 +9568,9 @@ fn recompute_tab_size_isolates_tabs_with_different_viewers() {
         cols: 200,
         rows: 60,
     };
-    // Non-mirrored: per-tab sizing's whole point is letting clients sit on
-    // different tabs without one dragging the other's grid.
     let mut screen = create_non_mirrored_screen(initial_size);
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
-    // Client 1 is on tab 1 (the most recent). Pull client 2 onto tab 0 so
-    // tabs have one viewer each.
     screen.add_client(2, false).expect("TEST");
     screen.set_client_size(1, Size { cols: 80, rows: 24 });
     screen.set_client_size(
@@ -9626,8 +9608,6 @@ fn switching_tabs_recomputes_source_and_destination() {
     new_tab(&mut screen, 2, 1);
     screen.add_client(2, false).expect("TEST");
 
-    // Both clients start on tab 1 (most recently created). Give them
-    // different sizes; the smaller wins on tab 1.
     screen.set_client_size(1, Size { cols: 80, rows: 24 });
     screen.set_client_size(
         2,
@@ -9643,8 +9623,6 @@ fn switching_tabs_recomputes_source_and_destination() {
         "Both clients on tab 1 → it sizes to the smaller"
     );
 
-    // Move the smaller client to tab 0. Tab 1 must grow back to fit its
-    // remaining viewer; tab 0 must shrink to fit the arriving one.
     screen.switch_active_tab(0, None, true, 1).expect("TEST");
 
     assert_eq!(
@@ -9664,10 +9642,6 @@ fn switching_tabs_recomputes_source_and_destination() {
 
 #[test]
 fn break_pane_to_new_tab_recomputes_source_and_destination() {
-    // `break_pane_to_new_tab` extracts the active pane and switches the
-    // requesting client to an adjacent tab via `switch_tab_next`/`prev`. That
-    // routes through `switch_active_tab`, so per-tab sizing must follow the
-    // moving client.
     let initial_size = Size {
         cols: 200,
         rows: 60,
@@ -9677,7 +9651,6 @@ fn break_pane_to_new_tab_recomputes_source_and_destination() {
     new_tab(&mut screen, 2, 1);
     screen.add_client(2, false).expect("TEST");
 
-    // Park each client on its own tab with its own viewport.
     screen.set_client_size(1, Size { cols: 80, rows: 24 });
     screen.set_client_size(
         2,
@@ -9686,8 +9659,6 @@ fn break_pane_to_new_tab_recomputes_source_and_destination() {
             rows: 50,
         },
     );
-    // After new_tab(2), client 1 is on tab id=1 (the new one). Pull it back
-    // onto tab id=0 so the two clients are split across the two tabs.
     screen.switch_active_tab(0, None, true, 1).expect("TEST");
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
@@ -9703,9 +9674,6 @@ fn break_pane_to_new_tab_recomputes_source_and_destination() {
         "Pre-condition: tab 1 sized to client 2"
     );
 
-    // Give tab 0 a second pane so break_pane_to_new_tab has something to
-    // extract — but the per-tab sizing assertions are about clients, not
-    // panes; the second pane is just to satisfy the function's preconditions.
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
@@ -9722,14 +9690,10 @@ fn break_pane_to_new_tab_recomputes_source_and_destination() {
             .unwrap();
     }
 
-    // Move client 1's active pane rightward into tab 1. The function
-    // synchronously calls switch_tab_next → switch_active_tab(client 1, tab 1).
     screen
         .break_pane_to_new_tab(Direction::Right, 1)
         .expect("TEST");
 
-    // Tab 1 now has both clients → recomputes to the smaller viewport.
-    // Tab 0 has no viewers → its size is left untouched.
     assert_eq!(
         screen.tabs.get(&1).unwrap().size,
         Size { cols: 80, rows: 24 },
@@ -9744,9 +9708,6 @@ fn break_pane_to_new_tab_recomputes_source_and_destination() {
 
 #[test]
 fn moving_panes_between_tabs_with_focus_change_recomputes_both() {
-    // `break_multiple_panes_to_tab_with_index` with `should_change_focus = true`
-    // calls `go_to_tab` on the requesting client. That hits `switch_active_tab`,
-    // so the source tab grows back and the destination shrinks to fit.
     let initial_size = Size {
         cols: 200,
         rows: 60,
@@ -9756,7 +9717,6 @@ fn moving_panes_between_tabs_with_focus_change_recomputes_both() {
     new_tab(&mut screen, 2, 1);
     screen.add_client(2, false).expect("TEST");
 
-    // Both clients on tab 1 (the most recent), small client wins.
     screen.set_client_size(1, Size { cols: 80, rows: 24 });
     screen.set_client_size(
         2,
@@ -9765,7 +9725,6 @@ fn moving_panes_between_tabs_with_focus_change_recomputes_both() {
             rows: 50,
         },
     );
-    // Park client 2 alone on tab 0 so the two tabs are differently sized.
     screen.switch_active_tab(0, None, true, 2).expect("TEST");
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
@@ -9781,7 +9740,6 @@ fn moving_panes_between_tabs_with_focus_change_recomputes_both() {
         "Pre-condition: tab 1 sized to client 1"
     );
 
-    // Add a movable pane on tab 1 (where client 1 lives).
     let pane_to_move = PaneId::Terminal(42);
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -9799,11 +9757,6 @@ fn moving_panes_between_tabs_with_focus_change_recomputes_both() {
             .unwrap();
     }
 
-    // Move the pane onto tab at position 0 AND switch client 1's focus there.
-    // Client 1 leaves tab 1 → tab 1 grows back to client 2's size... wait,
-    // client 2 already left tab 1 above. Tab 1 will be empty, so it keeps its
-    // last size. Tab 0 gains client 1 alongside client 2 → recomputes to the
-    // smaller of the two viewports.
     screen
         .break_multiple_panes_to_tab_with_index(vec![pane_to_move], 0, true, 1)
         .expect("TEST");
@@ -9830,7 +9783,6 @@ fn detaching_client_grows_vacated_tab_back() {
     new_tab(&mut screen, 1, 0);
     screen.add_client(2, false).expect("TEST");
 
-    // Tab 0 has both clients; the smaller one defines its size.
     screen.set_client_size(
         1,
         Size {
@@ -9846,7 +9798,6 @@ fn detaching_client_grows_vacated_tab_back() {
         "Smaller viewer wins while both clients are on the tab"
     );
 
-    // The smaller client leaves; the tab must grow to fit the remaining one.
     screen.remove_client(2).expect("TEST");
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
@@ -9855,5 +9806,1278 @@ fn detaching_client_grows_vacated_tab_back() {
             rows: 50,
         },
         "Tab grows back to fit the remaining viewer after the smaller one detaches"
+    );
+}
+
+fn add_second_pane_to_active_tab(screen: &mut Screen, pid: u32) {
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    active_tab
+        .new_pane(
+            PaneId::Terminal(pid),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+}
+
+fn setup_mobile_fit(screen: &mut Screen, client: ClientId, mobile_tab_idx: usize, plugin_id: u32) {
+    let run = RunPluginOrAlias::from_url("zellij:mobile", &None, None, None).unwrap();
+    // Bus::empty() has no to_plugin sender, but PluginPane::new requires one; leak the
+    // receiver so the injected sender's channel stays alive for the test's lifetime.
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    Box::leak(Box::new(plugin_receiver));
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    screen
+        .new_tab(
+            mobile_tab_idx,
+            (vec![], vec![]),
+            Some("Mobile".to_string()),
+            Some(client),
+        )
+        .expect("TEST");
+    let tab = screen.tabs.get_mut(&mobile_tab_idx).expect("mobile tab");
+    tab.new_pane(
+        PaneId::Plugin(plugin_id),
+        None,
+        Some(Run::Plugin(run)),
+        false,
+        true,
+        NewPanePlacement::NoPreference {
+            borderless: Some(true),
+        },
+        Some(client),
+        None,
+    )
+    .expect("TEST");
+    screen.mobile_state.register_tab(client, mobile_tab_idx);
+}
+
+#[test]
+fn fit_override_resizes_tab() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+
+    let mobile_client = 1;
+    setup_mobile_fit(&mut screen, mobile_client, 9, 100);
+    let size = Size { rows: 12, cols: 60 };
+    screen
+        .set_tab_fit(mobile_client, 0, PaneId::Terminal(1), size)
+        .expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        screen.compute_fit_size(0).unwrap(),
+        "Tab adopts the server-derived fit size"
+    );
+    assert_eq!(screen.mobile_state.fit_owner(0), Some(mobile_client));
+    assert_eq!(screen.mobile_state.fit_pane(0), Some(PaneId::Terminal(1)));
+    assert_eq!(screen.mobile_state.fit_embedded_size(0), Some(size));
+}
+
+#[test]
+fn fit_cleared_when_target_pane_closes() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+
+    let mobile_client = 1;
+    setup_mobile_fit(&mut screen, mobile_client, 9, 100);
+    screen
+        .set_tab_fit(
+            mobile_client,
+            0,
+            PaneId::Terminal(1),
+            Size { rows: 12, cols: 60 },
+        )
+        .expect("TEST");
+    assert!(
+        screen.mobile_state.has_fit(0),
+        "Pre-condition: fit installed on tab 0"
+    );
+
+    assert!(
+        !screen
+            .clear_fit_for_closed_pane(PaneId::Terminal(2))
+            .expect("TEST"),
+        "Closing a non-target pane does not clear the fit"
+    );
+    assert!(
+        screen.mobile_state.has_fit(0),
+        "Fit survives an unrelated pane close"
+    );
+
+    screen
+        .tabs
+        .get_mut(&0)
+        .unwrap()
+        .close_pane(PaneId::Terminal(1), false, None);
+    assert!(
+        screen
+            .clear_fit_for_closed_pane(PaneId::Terminal(1))
+            .expect("TEST"),
+        "Closing the target pane clears the fit"
+    );
+    assert!(
+        !screen.mobile_state.has_fit(0),
+        "Fit override is dropped once its target pane is gone"
+    );
+}
+
+#[test]
+fn fit_override_captures_fullscreen_state() {
+    let initial_size = Size { cols: 80, rows: 20 };
+
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    setup_mobile_fit(&mut screen, 1, 9, 100);
+    {
+        let tab = screen.get_active_tab_mut(1).unwrap();
+        tab.toggle_pane_fullscreen(PaneId::Terminal(1));
+        assert!(tab.is_fullscreen_active());
+    }
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
+        .expect("TEST");
+    assert!(
+        screen
+            .mobile_state
+            .fit_pane_was_fullscreen_before(0)
+            .expect("fit installed"),
+        "Pre-existing fullscreen recorded so exit/disconnect won't toggle it off"
+    );
+
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    setup_mobile_fit(&mut screen, 1, 9, 100);
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Pre-condition: no fullscreen"
+    );
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
+        .expect("TEST");
+    assert!(
+        !screen
+            .mobile_state
+            .fit_pane_was_fullscreen_before(0)
+            .expect("fit installed"),
+        "Fit toggled fullscreen on itself; exit path will revert it"
+    );
+    assert!(
+        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Entering fit fullscreens the target pane"
+    );
+}
+
+#[test]
+fn exit_fit_reverts_size_and_fullscreen() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    screen.set_client_size(1, Size { cols: 80, rows: 20 });
+    screen.recompute_tab_size(0).expect("TEST");
+    setup_mobile_fit(&mut screen, 1, 9, 100);
+
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
+        .expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        screen.compute_fit_size(0).unwrap(),
+        "Pre-condition: override installed"
+    );
+    assert!(screen.tabs.get(&0).unwrap().is_fullscreen_active());
+
+    assert!(screen.exit_fit_mode(1).expect("TEST"));
+
+    assert!(screen.mobile_state.fit_count() == 0, "Override cleared");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 20 },
+        "Tab grew back to its lone viewer's size"
+    );
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Fit-induced fullscreen reverted on exit"
+    );
+}
+
+#[test]
+fn exit_fit_preserves_pre_fit_fullscreen() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    setup_mobile_fit(&mut screen, 1, 9, 100);
+    {
+        let tab = screen.get_active_tab_mut(1).unwrap();
+        tab.toggle_pane_fullscreen(PaneId::Terminal(1));
+    }
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
+        .expect("TEST");
+
+    screen.exit_fit_mode(1).expect("TEST");
+
+    assert!(screen.mobile_state.fit_count() == 0, "Override cleared");
+    assert!(
+        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Pre-existing fullscreen preserved across exit"
+    );
+}
+
+#[test]
+fn set_tab_fit_update_changes_tab_size() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    setup_mobile_fit(&mut screen, 1, 9, 100);
+
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
+        .expect("TEST");
+    let before = screen.tabs.get(&0).unwrap().size;
+
+    let new_size = Size { rows: 11, cols: 60 };
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), new_size)
+        .expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        screen.compute_fit_size(0).unwrap(),
+        "Tab tracks the server-derived size for the new embedded size"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size.rows,
+        before.rows - 1,
+        "One fewer embedded row shrinks the target tab by one row"
+    );
+    assert_eq!(screen.mobile_state.fit_embedded_size(0), Some(new_size));
+}
+
+#[test]
+fn disconnect_clears_fit_for_owning_client() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(2, Size { cols: 80, rows: 20 });
+    screen.recompute_tab_size(0).expect("TEST");
+    setup_mobile_fit(&mut screen, 1, 9, 100);
+
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
+        .expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        screen.compute_fit_size(0).unwrap()
+    );
+
+    screen.remove_client(1).expect("TEST");
+
+    assert!(
+        screen.mobile_state.fit_count() == 0,
+        "Override owned by the leaving client cleared"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 20 },
+        "Tab grew back to fit the remaining viewer (client 2)"
+    );
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Fit-induced fullscreen reverted on disconnect"
+    );
+}
+
+#[test]
+fn disconnect_only_clears_own_fits() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.add_client(2, false).expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(2, Size { cols: 40, rows: 10 });
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(1, None, true, 2).expect("TEST");
+    setup_mobile_fit(&mut screen, 1, 8, 100);
+    setup_mobile_fit(&mut screen, 2, 9, 101);
+    let size = Size { rows: 12, cols: 60 };
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), size)
+        .expect("TEST");
+    screen
+        .set_tab_fit(2, 1, PaneId::Terminal(2), size)
+        .expect("TEST");
+    let surviving_size = screen.compute_fit_size(1).unwrap();
+
+    screen.remove_client(1).expect("TEST");
+
+    assert!(
+        !screen.mobile_state.has_fit(0),
+        "Disconnecting client's entry cleared"
+    );
+    assert_eq!(
+        screen.mobile_state.fit_owner(1),
+        Some(2),
+        "Other client's entry survives"
+    );
+    assert_eq!(screen.mobile_state.fit_embedded_size(1), Some(size));
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        surviving_size,
+        "Tab still pinned to surviving client's override"
+    );
+}
+
+#[test]
+fn override_emits_display_clear() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(2, Size { cols: 80, rows: 20 });
+    screen.recompute_tab_size(0).expect("TEST");
+    setup_mobile_fit(&mut screen, 1, 9, 100);
+
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
+        .expect("TEST");
+
+    assert!(
+        screen
+            .tabs
+            .get(&0)
+            .unwrap()
+            .should_clear_display_before_rendering(),
+        "Tab must request a display-clear so a larger desktop viewer's \
+         viewport outside the fit area is wiped before the next render"
+    );
+}
+
+#[test]
+fn recompute_tab_size_short_circuit() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(2, Size { cols: 80, rows: 20 });
+    setup_mobile_fit(&mut screen, 1, 9, 100);
+
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
+        .expect("TEST");
+    let override_size = screen.compute_fit_size(0).unwrap();
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        override_size,
+        "Pre-condition: override active"
+    );
+
+    screen.set_client_size(
+        1,
+        Size {
+            cols: 100,
+            rows: 30,
+        },
+    );
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 120,
+            rows: 40,
+        },
+    );
+    screen.recompute_tab_size(0).expect("TEST");
+
+    let after = screen.tabs.get(&0).unwrap().size;
+    assert_eq!(
+        after,
+        screen.compute_fit_size(0).unwrap(),
+        "Override wins against the min-of-viewers path"
+    );
+    assert!(
+        after.rows < 30 || after.cols < 100,
+        "Override is smaller than the min-of-viewers size"
+    );
+}
+
+#[test]
+fn fit_collision_last_writer_wins() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    screen.add_client(2, false).expect("TEST");
+    setup_mobile_fit(&mut screen, 1, 8, 100);
+    setup_mobile_fit(&mut screen, 2, 9, 101);
+
+    let size_a = Size { rows: 12, cols: 60 };
+    let size_b = Size { rows: 10, cols: 50 };
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), size_a)
+        .expect("TEST");
+    screen
+        .set_tab_fit(2, 0, PaneId::Terminal(2), size_b)
+        .expect("TEST");
+
+    assert_eq!(
+        screen.mobile_state.fit_owner(0),
+        Some(2),
+        "Second writer owns the entry"
+    );
+    assert_eq!(screen.mobile_state.fit_pane(0), Some(PaneId::Terminal(2)));
+    assert_eq!(screen.mobile_state.fit_embedded_size(0), Some(size_b));
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        screen.compute_fit_size(0).unwrap(),
+        "Tab size matches the second writer's override"
+    );
+}
+
+#[test]
+fn fit_update_after_collision_reclaims_ownership() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    screen.add_client(2, false).expect("TEST");
+    setup_mobile_fit(&mut screen, 1, 8, 100);
+    setup_mobile_fit(&mut screen, 2, 9, 101);
+
+    let size = Size { rows: 12, cols: 60 };
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), size)
+        .expect("TEST");
+    screen
+        .set_tab_fit(2, 0, PaneId::Terminal(2), size)
+        .expect("TEST");
+    assert_eq!(
+        screen.mobile_state.fit_owner(0),
+        Some(2),
+        "Pre-condition: client 2 displaced client 1"
+    );
+
+    let reclaim_size = Size { rows: 9, cols: 40 };
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), reclaim_size)
+        .expect("TEST");
+
+    assert_eq!(
+        screen.mobile_state.fit_owner(0),
+        Some(1),
+        "Ownership reattributed to caller"
+    );
+    assert_eq!(screen.mobile_state.fit_embedded_size(0), Some(reclaim_size));
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        screen.compute_fit_size(0).unwrap(),
+        "Tab size follows the reclaimed override"
+    );
+
+    screen.remove_client(2).expect("TEST");
+    assert!(
+        screen.mobile_state.has_fit(0),
+        "Override survives the original (now non-owning) client's disconnect"
+    );
+    screen.remove_client(1).expect("TEST");
+    assert!(
+        screen.mobile_state.fit_count() == 0,
+        "Override clears when the reclaim-owner disconnects"
+    );
+}
+
+#[test]
+fn fit_tab_close_cleans_state() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    setup_mobile_fit(&mut screen, 1, 9, 100);
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
+        .expect("TEST");
+    assert!(
+        screen.mobile_state.has_fit(0),
+        "Pre-condition: fit installed"
+    );
+
+    screen.close_tab_by_id(0).expect("TEST");
+
+    assert!(
+        !screen.mobile_state.has_fit(0),
+        "fit_states entry removed when its tab is closed"
+    );
+    assert!(
+        !screen.tabs.contains_key(&0),
+        "Pre-condition: tab is actually gone"
+    );
+}
+
+#[test]
+fn disconnect_safe_with_orphan_fit() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    setup_mobile_fit(&mut screen, 1, 9, 100);
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
+        .expect("TEST");
+
+    {
+        let tab = screen.get_active_tab_mut(1).unwrap();
+        tab.close_pane(PaneId::Terminal(1), false, None);
+    }
+    assert!(
+        screen.mobile_state.has_fit(0),
+        "Pre-condition: orphan entry present (cleanup deliberately skipped)"
+    );
+
+    screen
+        .remove_client(1)
+        .expect("Disconnect must not panic on dead pane_id");
+    assert!(
+        screen.mobile_state.fit_count() == 0,
+        "Disconnect cleanup clears the orphan"
+    );
+}
+
+#[test]
+fn fit_three_viewers_override_persists() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+    screen.add_client(3, false).expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 100,
+            rows: 30,
+        },
+    );
+    screen.set_client_size(
+        3,
+        Size {
+            cols: 200,
+            rows: 60,
+        },
+    );
+    setup_mobile_fit(&mut screen, 1, 9, 100);
+    screen
+        .tabs
+        .get_mut(&9)
+        .unwrap()
+        .resize_whole_tab(Size { cols: 40, rows: 10 })
+        .expect("TEST");
+
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
+        .expect("TEST");
+    let override_size = screen.compute_fit_size(0).unwrap();
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        override_size,
+        "Override wins over the three viewers' minimum"
+    );
+    assert!(
+        override_size.rows < 60 && override_size.cols < 200,
+        "Override is smaller than the desktop viewers' size"
+    );
+
+    screen.remove_client(2).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        override_size,
+        "Override survives non-owner disconnect"
+    );
+    assert!(screen.mobile_state.has_fit(0));
+
+    screen.remove_client(1).expect("TEST");
+    assert!(screen.mobile_state.fit_count() == 0);
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 200,
+            rows: 60
+        },
+        "Tab grew to fit the surviving desktop client"
+    );
+}
+
+#[test]
+fn fit_resize_repush_updates_tab() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    setup_mobile_fit(&mut screen, 1, 9, 100);
+
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
+        .expect("TEST");
+    let before = screen.tabs.get(&0).unwrap().size;
+
+    screen
+        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 11, cols: 60 })
+        .expect("TEST");
+
+    let after = screen.tabs.get(&0).unwrap().size;
+    assert_eq!(
+        after,
+        screen.compute_fit_size(0).unwrap(),
+        "Target tab tracks the re-derived fit size after the re-push"
+    );
+    assert_eq!(
+        after.rows,
+        before.rows - 1,
+        "One fewer embedded row shrinks the target tab by exactly one row"
+    );
+    assert_eq!(
+        screen.mobile_state.fit_embedded_size(0),
+        Some(Size { rows: 11, cols: 60 }),
+        "Stored embedded size follows the re-push"
+    );
+}
+
+#[test]
+pub fn render_report_writes_per_client_plugin_pane_contents_in_fallback() {
+    use crate::plugins::PluginRenderAsset;
+    use zellij_utils::data::PaneId as DataPaneId;
+
+    let size = Size { cols: 80, rows: 20 };
+    let mut initial_layout = TiledPaneLayout::default();
+    let mut plugin_pane_layout = TiledPaneLayout::default();
+    plugin_pane_layout.run = Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+        configuration: Default::default(),
+        ..Default::default()
+    })));
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![plugin_pane_layout];
+
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+
+    let first_client_id: ClientId = mock_screen.main_client_id;
+    let second_client_id: ClientId = 2;
+    let _ = mock_screen.to_screen.send(ScreenInstruction::AddClient(
+        second_client_id,
+        false,
+        size,
+        None,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    let plugin_id: u32 = 1;
+    let bytes_for_client_1 = b"client one render payload".to_vec();
+    let bytes_for_client_2 = b"client two render payload".to_vec();
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::PluginBytes(vec![
+            PluginRenderAsset::new(plugin_id, first_client_id, bytes_for_client_1.clone()),
+            PluginRenderAsset::new(plugin_id, second_client_id, bytes_for_client_2.clone()),
+        ]));
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::PluginSubscribedToAnsiPaneContents(true));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    let captured = received_plugin_instructions.lock().unwrap();
+    let last_report = captured
+        .iter()
+        .rev()
+        .find_map(|i| match i {
+            PluginInstruction::PaneRenderReport(r) => Some(r.clone()),
+            _ => None,
+        })
+        .expect("expected at least one PaneRenderReport on the plugin bus");
+
+    let plugin_pane_id = DataPaneId::Plugin(plugin_id);
+    let client_1_contents = last_report
+        .all_pane_contents_with_ansi
+        .get(&first_client_id)
+        .and_then(|p| p.get(&plugin_pane_id))
+        .cloned()
+        .expect("client 1 must have plugin-pane contents in the report");
+    let client_2_contents = last_report
+        .all_pane_contents_with_ansi
+        .get(&second_client_id)
+        .and_then(|p| p.get(&plugin_pane_id))
+        .cloned()
+        .expect("client 2 must have plugin-pane contents in the report");
+
+    assert!(
+        !client_1_contents.viewport.is_empty(),
+        "client 1's plugin-pane viewport must not be empty — the fallback \
+         must read from the client's per-client grid, not return \
+         Default::default() via a `None` client_id lookup"
+    );
+    assert!(
+        !client_2_contents.viewport.is_empty(),
+        "client 2's plugin-pane viewport must not be empty — same reason \
+         as client 1, but this is the path that was broken pre-fix for \
+         the mobile-UI case"
+    );
+    assert_ne!(
+        client_1_contents.viewport, client_2_contents.viewport,
+        "per-client plugin grids must surface distinct viewports when \
+         distinct PluginBytes were delivered to each client"
+    );
+
+    let joined_viewport_1 = client_1_contents.viewport.join("");
+    let joined_viewport_2 = client_2_contents.viewport.join("");
+    assert!(
+        joined_viewport_1.contains("client one render payload"),
+        "client 1's viewport must contain its bytes; got {:?}",
+        joined_viewport_1
+    );
+    assert!(
+        joined_viewport_2.contains("client two render payload"),
+        "client 2's viewport must contain its bytes; got {:?}",
+        joined_viewport_2
+    );
+}
+
+const MOBILE_BASE_SIZE: Size = Size {
+    cols: 121,
+    rows: 40,
+};
+const MOBILE_SMALL: Size = Size { cols: 40, rows: 20 };
+const MOBILE_LARGE: Size = Size {
+    cols: 200,
+    rows: 200,
+};
+const MOBILE_THRESHOLDS: (u16, u16) = (60, 30);
+
+fn setup_mobile_screen() -> Screen {
+    let mut screen = create_new_screen(MOBILE_BASE_SIZE, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen
+}
+
+#[test]
+fn reevaluate_mobile_routes_web_client_in_web_mode() {
+    use zellij_utils::input::options::MobileLayoutConfiguration;
+    let mut screen = setup_mobile_screen();
+    let client = 10;
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_SMALL,
+            MobileLayoutConfiguration::Web,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(
+        screen.is_in_mobile_mode(client),
+        "web client + small viewport in Web mode must enter mobile",
+    );
+    assert!(
+        screen.mobile_state.was_auto_entered(client),
+        "auto-entry must be marked so a later resize can auto-demote",
+    );
+}
+
+#[test]
+fn reevaluate_mobile_skips_terminal_client_in_web_mode() {
+    use zellij_utils::input::options::MobileLayoutConfiguration;
+    let mut screen = setup_mobile_screen();
+    let client = 11;
+    screen
+        .add_client(client, /* is_web_client */ false)
+        .expect("TEST");
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_SMALL,
+            MobileLayoutConfiguration::Web,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(
+        !screen.is_in_mobile_mode(client),
+        "terminal client in Web mode must NOT enter mobile even with small viewport",
+    );
+}
+
+#[test]
+fn reevaluate_mobile_routes_terminal_client_in_always_mode() {
+    use zellij_utils::input::options::MobileLayoutConfiguration;
+    let mut screen = setup_mobile_screen();
+    let client = 12;
+    screen
+        .add_client(client, /* is_web_client */ false)
+        .expect("TEST");
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_SMALL,
+            MobileLayoutConfiguration::Always,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(
+        screen.is_in_mobile_mode(client),
+        "Always mode must route terminal clients too on size match",
+    );
+}
+
+#[test]
+fn reevaluate_mobile_zero_threshold_forces_entry() {
+    use zellij_utils::input::options::MobileLayoutConfiguration;
+    let mut screen = setup_mobile_screen();
+    let client = 13;
+    screen
+        .add_client(client, /* is_web_client */ false)
+        .expect("TEST");
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_LARGE,
+            MobileLayoutConfiguration::Always,
+            0,
+            0,
+        )
+        .expect("TEST");
+    assert!(
+        screen.is_in_mobile_mode(client),
+        "0 breakpoint under Always must route regardless of viewport size",
+    );
+}
+
+#[test]
+fn reevaluate_mobile_never_never_routes() {
+    use zellij_utils::input::options::MobileLayoutConfiguration;
+    let mut screen = setup_mobile_screen();
+    let client = 14;
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_SMALL,
+            MobileLayoutConfiguration::Never,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(
+        !screen.is_in_mobile_mode(client),
+        "Never must never auto-route, even for a small web client",
+    );
+}
+
+#[test]
+fn reevaluate_mobile_auto_demotes_after_growth() {
+    use zellij_utils::input::options::MobileLayoutConfiguration;
+    let mut screen = setup_mobile_screen();
+    let client = 15;
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_SMALL,
+            MobileLayoutConfiguration::Web,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(screen.is_in_mobile_mode(client));
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_LARGE,
+            MobileLayoutConfiguration::Web,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(
+        !screen.is_in_mobile_mode(client),
+        "auto-entered client must auto-demote when viewport grows",
+    );
+}
+
+#[test]
+fn reevaluate_mobile_preserves_manual_entry_when_viewport_grows() {
+    use zellij_utils::input::options::MobileLayoutConfiguration;
+    let mut screen = setup_mobile_screen();
+    let client = 16;
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
+
+    screen.enter_mobile_mode(client).expect("TEST");
+    assert!(screen.is_in_mobile_mode(client));
+    assert!(
+        !screen.mobile_state.was_auto_entered(client),
+        "manual entry must not be marked as auto",
+    );
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_LARGE,
+            MobileLayoutConfiguration::Web,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(
+        screen.is_in_mobile_mode(client),
+        "manually-entered client must NOT be auto-demoted on resize",
+    );
+}
+
+#[test]
+fn enter_mobile_mode_populates_consolidated_state() {
+    let mut screen = setup_mobile_screen();
+    let client = 20;
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
+
+    screen.enter_mobile_mode(client).expect("TEST");
+
+    assert!(
+        screen.mobile_state.is_in_mobile_mode(client),
+        "entering mobile mode must record the client's mobile tab",
+    );
+    assert_eq!(
+        screen.mobile_state.previous_tab(client),
+        Some(0),
+        "the seeded tab 0 must be stashed as the prior tab",
+    );
+    assert!(
+        screen.is_in_mobile_mode(client),
+        "is_in_mobile_mode must reflect the new mobile_state.tabs entry",
+    );
+    assert!(
+        !screen.mobile_state.was_auto_entered(client),
+        "manual enter_mobile_mode must not mark the client as auto-entered",
+    );
+}
+
+#[test]
+fn exit_mobile_mode_clears_all_consolidated_state() {
+    use zellij_utils::input::options::MobileLayoutConfiguration;
+    let mut screen = setup_mobile_screen();
+    let client = 21;
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_SMALL,
+            MobileLayoutConfiguration::Web,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(screen.mobile_state.is_in_mobile_mode(client));
+    assert!(screen.mobile_state.was_auto_entered(client));
+
+    screen.exit_mobile_mode(client).expect("TEST");
+
+    assert!(
+        !screen.mobile_state.is_in_mobile_mode(client),
+        "exit must remove the client's mobile tab entry",
+    );
+    assert!(
+        !screen.mobile_state.previous_tab(client).is_some(),
+        "exit must drop the stashed prior-tab entry",
+    );
+    assert!(
+        !screen.mobile_state.was_auto_entered(client),
+        "exit must clear the auto-entered marker",
+    );
+    assert!(
+        !screen.is_in_mobile_mode(client),
+        "client must no longer be in mobile mode after exit",
+    );
+}
+
+#[test]
+fn remove_client_clears_all_consolidated_state() {
+    use zellij_utils::input::options::MobileLayoutConfiguration;
+    let mut screen = setup_mobile_screen();
+    let client = 22;
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
+
+    screen
+        .reevaluate_mobile_mode(
+            client,
+            MOBILE_SMALL,
+            MobileLayoutConfiguration::Web,
+            MOBILE_THRESHOLDS.0,
+            MOBILE_THRESHOLDS.1,
+        )
+        .expect("TEST");
+    assert!(screen.mobile_state.is_in_mobile_mode(client));
+    assert!(screen.mobile_state.was_auto_entered(client));
+
+    screen.remove_client(client).expect("TEST");
+
+    assert!(
+        !screen.mobile_state.is_in_mobile_mode(client),
+        "disconnect must remove the client's mobile tab entry",
+    );
+    assert!(
+        !screen.mobile_state.previous_tab(client).is_some(),
+        "disconnect must drop the stashed prior-tab entry",
+    );
+    assert!(
+        !screen.mobile_state.was_auto_entered(client),
+        "disconnect must clear the auto-entered marker",
+    );
+}
+
+#[test]
+fn mobile_state_tracks_clients_independently() {
+    let mut screen = setup_mobile_screen();
+    let client_a = 23;
+    let client_b = 24;
+    screen
+        .add_client(client_a, /* is_web_client */ true)
+        .expect("TEST");
+    screen
+        .add_client(client_b, /* is_web_client */ true)
+        .expect("TEST");
+
+    screen.enter_mobile_mode(client_a).expect("TEST");
+    screen.enter_mobile_mode(client_b).expect("TEST");
+
+    let tab_a = screen
+        .mobile_state
+        .mobile_tab_id(client_a)
+        .expect("client A must have a mobile tab");
+    let tab_b = screen
+        .mobile_state
+        .mobile_tab_id(client_b)
+        .expect("client B must have a mobile tab");
+    assert_ne!(
+        tab_a, tab_b,
+        "each mobile client must get its own dedicated tab",
+    );
+
+    screen.remove_client(client_a).expect("TEST");
+
+    assert!(
+        !screen.mobile_state.is_in_mobile_mode(client_a),
+        "removed client's entry must be gone",
+    );
+    assert!(
+        screen.mobile_state.is_in_mobile_mode(client_b),
+        "the other client's mobile state must be untouched",
+    );
+}
+
+#[test]
+fn render_gate_can_be_set_and_lifted() {
+    let mut screen = setup_mobile_screen();
+    let client = 40;
+
+    assert!(!screen.mobile_render_gate.is_gated(client));
+    screen.mobile_render_gate.gate(client);
+    assert!(screen.mobile_render_gate.is_gated(client));
+    screen.mobile_render_gate.ungate(client);
+    assert!(!screen.mobile_render_gate.is_gated(client));
+}
+
+#[test]
+fn remove_client_lifts_render_gate() {
+    let mut screen = setup_mobile_screen();
+    let client = 41;
+    screen
+        .add_client(client, /* is_web_client */ false)
+        .expect("TEST");
+    screen.mobile_render_gate.gate(client);
+
+    screen.remove_client(client).expect("TEST");
+
+    assert!(
+        !screen.mobile_render_gate.is_gated(client),
+        "a removed client must never stay gated",
+    );
+}
+
+#[test]
+fn exit_mobile_mode_lifts_render_gate() {
+    let mut screen = setup_mobile_screen();
+    let client = 42;
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
+    screen.enter_mobile_mode(client).expect("TEST");
+    screen.mobile_render_gate.gate(client);
+
+    screen.exit_mobile_mode(client).expect("TEST");
+
+    assert!(
+        !screen.mobile_render_gate.is_gated(client),
+        "leaving mobile mode must never leave the client gated",
+    );
+}
+
+#[test]
+fn first_mobile_plugin_paint_lifts_only_the_owning_client() {
+    let mut screen = setup_mobile_screen();
+    let owner = 43;
+    let other = 44;
+    let mobile_tab_idx = 9;
+    let plugin_id = 900;
+    screen
+        .add_client(owner, /* is_web_client */ true)
+        .expect("TEST");
+    setup_mobile_fit(&mut screen, owner, mobile_tab_idx, plugin_id);
+    screen.mobile_render_gate.gate(owner);
+    screen.mobile_render_gate.gate(other);
+
+    screen.ungate_clients_for_mobile_plugin(plugin_id);
+
+    assert!(
+        !screen.mobile_render_gate.is_gated(owner),
+        "the client whose mobile plugin painted must be ungated",
+    );
+    assert!(
+        screen.mobile_render_gate.is_gated(other),
+        "a client unrelated to the painting plugin must stay gated",
+    );
+}
+
+fn capture_plugin_channel(screen: &mut Screen) -> Receiver<(PluginInstruction, ErrorContext)> {
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    plugin_receiver
+}
+
+fn drain_plugin_instructions(
+    receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+) -> Vec<PluginInstruction> {
+    let mut instructions = vec![];
+    while let Ok((instruction, _err_ctx)) = receiver.try_recv() {
+        instructions.push(instruction);
+    }
+    instructions
+}
+
+#[test]
+fn entering_mobile_while_gated_holds_the_plugin_render() {
+    let mut screen = setup_mobile_screen();
+    let client = 50;
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
+    let plugin_receiver = capture_plugin_channel(&mut screen);
+
+    screen.mobile_render_gate.gate(client); // SuppressRenderUntilMobile does this
+    screen.enter_mobile_mode(client).expect("TEST");
+
+    let sent = drain_plugin_instructions(&plugin_receiver);
+    assert!(
+        sent.iter()
+            .any(|i| matches!(i, PluginInstruction::HoldMobileRender(c) if *c == client)),
+        "entering mobile while gated must hold the plugin render; sent={sent:?}",
+    );
+}
+
+#[test]
+fn entering_mobile_without_a_gate_does_not_hold() {
+    let mut screen = setup_mobile_screen();
+    let client = 51;
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
+    let plugin_receiver = capture_plugin_channel(&mut screen);
+
+    // No SuppressRenderUntilMobile: the client is not gated.
+    screen.enter_mobile_mode(client).expect("TEST");
+
+    let sent = drain_plugin_instructions(&plugin_receiver);
+    assert!(
+        !sent
+            .iter()
+            .any(|i| matches!(i, PluginInstruction::HoldMobileRender(_))),
+        "a non-gated client must not hold the plugin render; sent={sent:?}",
+    );
+}
+
+#[test]
+fn exiting_mobile_releases_the_plugin_render() {
+    let mut screen = setup_mobile_screen();
+    let client = 52;
+    screen
+        .add_client(client, /* is_web_client */ true)
+        .expect("TEST");
+    screen.enter_mobile_mode(client).expect("TEST");
+    let plugin_receiver = capture_plugin_channel(&mut screen);
+
+    screen.exit_mobile_mode(client).expect("TEST");
+
+    let sent = drain_plugin_instructions(&plugin_receiver);
+    assert!(
+        sent.iter()
+            .any(|i| matches!(i, PluginInstruction::ReleaseMobileRender(c) if *c == client)),
+        "exiting mobile must release the plugin render; sent={sent:?}",
     );
 }

@@ -21,7 +21,7 @@ use std::sync::{atomic::AtomicBool, Arc};
 use tokio_util::sync::CancellationToken;
 use zellij_utils::{
     input::mouse::MouseEvent,
-    ipc::{ClientToServerMsg, PixelDimensions},
+    ipc::{ClientToServerMsg, PixelDimensions, ResizeCause},
     pane_size::SizeInPixels,
 };
 
@@ -76,11 +76,29 @@ async fn handle_ws_control(
         };
         let client_msg = match deserialized_msg.payload {
             WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
-                ClientToServerMsg::TerminalResize { new_size: size }
+                ClientToServerMsg::TerminalResize {
+                    new_size: size,
+                    cause: ResizeCause::Viewport,
+                }
+            },
+            WebClientToWebServerControlMessagePayload::TerminalResizeRendering(size) => {
+                ClientToServerMsg::TerminalResize {
+                    new_size: size,
+                    cause: ResizeCause::RenderingPreference,
+                }
+            },
+            WebClientToWebServerControlMessagePayload::TerminalSizeSettled(size) => {
+                ClientToServerMsg::TerminalResize {
+                    new_size: size,
+                    cause: ResizeCause::SizeSettled,
+                }
             },
             WebClientToWebServerControlMessagePayload::TerminalMetrics(metrics) => {
                 terminal_metrics_to_ipc(metrics)
             },
+            WebClientToWebServerControlMessagePayload::SoftKeyboardVisibilityChanged {
+                visible,
+            } => ClientToServerMsg::SoftKeyboardVisibilityChanged { visible },
         };
 
         let _ = client_connection.send_to_server(client_msg);

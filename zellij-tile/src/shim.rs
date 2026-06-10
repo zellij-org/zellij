@@ -7,6 +7,7 @@ use std::{
 use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
+use zellij_utils::pane_size::Size;
 pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::generated_api::api::plugin_command::{
@@ -26,7 +27,8 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
     ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetSessionListResponse,
     ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse, ProtobufKillSessionsResponse,
-    ProtobufNewTabResponse, ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
+    ProtobufNewTabResponse, ProtobufNewTabUnfocusedResponse, ProtobufNewTabsResponse,
+    ProtobufNewTiledPaneInTabResponse, ProtobufOpenCommandPaneBackgroundResponse,
     ProtobufOpenCommandPaneFloatingNearPluginResponse, ProtobufOpenCommandPaneFloatingResponse,
     ProtobufOpenCommandPaneInPlaceOfPaneIdResponse, ProtobufOpenCommandPaneInPlaceOfPluginResponse,
     ProtobufOpenCommandPaneInPlaceResponse, ProtobufOpenCommandPaneNearPluginResponse,
@@ -961,6 +963,33 @@ where
     NewTabResponse::try_from(response).unwrap()
 }
 
+pub fn new_tab_unfocused<S: AsRef<str>>(name: Option<S>, cwd: Option<S>) -> Option<usize>
+where
+    S: ToString,
+{
+    let name = name.map(|s| s.to_string());
+    let cwd = cwd.map(|s| s.to_string());
+    let plugin_command = PluginCommand::NewTabUnfocused { name, cwd };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufNewTabUnfocusedResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    NewTabUnfocusedResponse::try_from(response).unwrap()
+}
+
+pub fn new_tiled_pane_in_tab(tab_position: usize) -> Option<PaneId> {
+    let plugin_command = PluginCommand::NewTiledPaneInTab { tab_position };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufNewTiledPaneInTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    NewTiledPaneInTabResponse::try_from(response).unwrap()
+}
+
 /// Opens a new tab with a command pane running `command_to_run`.
 /// Returns `(tab_id, pane_id)` of the created tab and pane, or `None` if unavailable.
 pub fn open_command_pane_in_new_tab(
@@ -1644,6 +1673,34 @@ pub fn list_windows_volumes() {
 /// issues), will not follow symlinks
 pub fn scan_host_folder<S: AsRef<Path>>(folder_to_scan: &S) {
     let plugin_command = PluginCommand::ScanHostFolder(folder_to_scan.as_ref().to_path_buf());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn set_soft_keyboard(on: bool) {
+    let plugin_command = PluginCommand::SetSoftKeyboard(on);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn set_tab_fit(tab_id: usize, fit: Option<(PaneId, Size)>) {
+    let plugin_command = PluginCommand::SetTabFit { tab_id, fit };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn exit_mobile_mode() {
+    let plugin_command = PluginCommand::ExitMobileMode;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn set_shadow_focus(pane_id: PaneId) {
+    let plugin_command = PluginCommand::SetShadowFocus(pane_id);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -2900,7 +2957,11 @@ pub fn clear_pane_highlights(pane_id: PaneId) {
     unsafe { host_run_plugin_command() };
 }
 
+#[cfg(target_arch = "wasm32")]
 #[link(wasm_import_module = "zellij")]
 extern "C" {
     fn host_run_plugin_command();
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+unsafe fn host_run_plugin_command() {}

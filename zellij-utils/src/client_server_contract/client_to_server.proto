@@ -25,6 +25,7 @@ message ClientToServerMsg {
     DesktopNotificationResponseMsg desktop_notification_response = 18;
     ForwardedReplyFromHostMsg forwarded_reply_from_host = 19;
     HostTerminalThemeChangedMsg host_terminal_theme_changed = 20;
+    SoftKeyboardVisibilityChangedMsg soft_keyboard_visibility_changed = 21;
   }
 }
 
@@ -50,6 +51,13 @@ message ColorRegistersMsg {
 
 message TerminalResizeMsg {
   Size new_size = 1;
+  ResizeCause cause = 2;
+}
+
+enum ResizeCause {
+  RESIZE_CAUSE_VIEWPORT = 0;
+  RESIZE_CAUSE_RENDERING_PREFERENCE = 1;
+  RESIZE_CAUSE_SIZE_SETTLED = 2;
 }
 
 message FirstClientConnectedMsg {
@@ -124,4 +132,8 @@ message HostTerminalThemeChangedMsg {
 enum HostTerminalThemeIndication {
   HOST_TERMINAL_THEME_INDICATION_DARK = 0;
   HOST_TERMINAL_THEME_INDICATION_LIGHT = 1;
+}
+
+message SoftKeyboardVisibilityChangedMsg {
+  bool visible = 1;
 }

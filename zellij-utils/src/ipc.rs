@@ -81,6 +81,14 @@ pub struct ColorRegister {
     pub color: String,
 }
 
+#[derive(Default, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResizeCause {
+    #[default]
+    Viewport,
+    RenderingPreference,
+    SizeSettled,
+}
+
 impl PixelDimensions {
     pub fn merge(&mut self, other: PixelDimensions) {
         if let Some(text_area_size) = other.text_area_size {
@@ -113,6 +121,8 @@ pub enum ClientToServerMsg {
     },
     TerminalResize {
         new_size: Size,
+        #[serde(default)]
+        cause: ResizeCause,
     },
     FirstClientConnected {
         cli_assets: CliAssets,
@@ -156,20 +166,15 @@ pub enum ClientToServerMsg {
     DesktopNotificationResponse {
         raw_bytes: Vec<u8>,
     },
-    /// Raw reply bytes observed by the client inside a forwarding window
-    /// closed by the Primary-DA barrier. The server routes these bytes
-    /// verbatim to the pane whose app issued the whitelisted query
-    /// (tracked on the server by `token`).
     ForwardedReplyFromHost {
         token: u32,
         reply_bytes: Vec<u8>,
     },
-    /// The host terminal reported a color-palette theme mode (DSR 997 reply
-    /// to `CSI ? 996 n`, or unsolicited notification while `CSI ? 2031 h`
-    /// is enabled). The server propagates this to the active configured
-    /// theme and to subscribed plugins/panes.
     HostTerminalThemeChanged {
         mode: HostTerminalThemeMode,
+    },
+    SoftKeyboardVisibilityChanged {
+        visible: bool,
     },
 }
 
@@ -201,6 +206,9 @@ pub enum ServerToClientMsg {
         output: String,
     },
     QueryTerminalSize,
+    SetSoftKeyboard {
+        on: bool,
+    },
     StartWebServer,
     RenamedSession {
         name: String,
@@ -215,10 +223,6 @@ pub enum ServerToClientMsg {
     SubscribedPaneClosed {
         pane_id: PaneId,
     },
-    /// Instruct the client to write `query_bytes` followed by the
-    /// Primary-DA barrier to stdout, open a forwarding window keyed by
-    /// `token`, and reply with a `ForwardedReplyFromHost` once the
-    /// barrier closes or the window times out.
     ForwardQueryToHost {
         token: u32,
         query_bytes: Vec<u8>,

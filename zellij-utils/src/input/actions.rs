@@ -412,6 +412,7 @@ pub enum Action {
         option: SearchOption,
     },
     ToggleMouseMode,
+    ToggleMobileMode,
     PreviousSwapLayout,
     NextSwapLayout,
     /// Override the layout of the active tab

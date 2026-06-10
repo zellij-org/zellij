@@ -9,7 +9,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -95,6 +95,8 @@ pub mod event {
         CommandChangedPayload(super::CommandChangedPayload),
         #[prost(message, tag="40")]
         HostTerminalThemeChangedPayload(super::HostTerminalThemeChangedPayload),
+        #[prost(message, tag="41")]
+        SoftKeyboardVisibilityChangedPayload(super::SoftKeyboardVisibilityChangedPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -102,6 +104,12 @@ pub mod event {
 pub struct HostTerminalThemeChangedPayload {
     #[prost(enumeration="HostTerminalThemeIndication", tag="1")]
     pub mode: i32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SoftKeyboardVisibilityChangedPayload {
+    #[prost(bool, tag="1")]
+    pub visible: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -703,6 +711,8 @@ pub struct PaneContents {
     pub lines_above_viewport: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(string, repeated, tag="4")]
     pub lines_below_viewport: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="5")]
+    pub cursor: ::core::option::Option<super::action::Position>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -839,6 +849,7 @@ pub enum EventType {
     InitialKeybinds = 44,
     CommandChanged = 45,
     HostTerminalThemeChanged = 46,
+    SoftKeyboardVisibilityChanged = 47,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -893,6 +904,7 @@ impl EventType {
             EventType::InitialKeybinds => "InitialKeybinds",
             EventType::CommandChanged => "CommandChanged",
             EventType::HostTerminalThemeChanged => "HostTerminalThemeChanged",
+            EventType::SoftKeyboardVisibilityChanged => "SoftKeyboardVisibilityChanged",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -944,6 +956,7 @@ impl EventType {
             "InitialKeybinds" => Some(Self::InitialKeybinds),
             "CommandChanged" => Some(Self::CommandChanged),
             "HostTerminalThemeChanged" => Some(Self::HostTerminalThemeChanged),
+            "SoftKeyboardVisibilityChanged" => Some(Self::SoftKeyboardVisibilityChanged),
             _ => None,
         }
     }
@@ -1069,6 +1082,8 @@ pub enum MouseEventName {
     MouseHold = 4,
     MouseRelease = 5,
     MouseHover = 6,
+    MouseScrollLeft = 7,
+    MouseScrollRight = 8,
 }
 impl MouseEventName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1084,6 +1099,8 @@ impl MouseEventName {
             MouseEventName::MouseHold => "MouseHold",
             MouseEventName::MouseRelease => "MouseRelease",
             MouseEventName::MouseHover => "MouseHover",
+            MouseEventName::MouseScrollLeft => "MouseScrollLeft",
+            MouseEventName::MouseScrollRight => "MouseScrollRight",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1096,6 +1113,8 @@ impl MouseEventName {
             "MouseHold" => Some(Self::MouseHold),
             "MouseRelease" => Some(Self::MouseRelease),
             "MouseHover" => Some(Self::MouseHover),
+            "MouseScrollLeft" => Some(Self::MouseScrollLeft),
+            "MouseScrollRight" => Some(Self::MouseScrollRight),
             _ => None,
         }
     }
