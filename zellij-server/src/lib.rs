@@ -805,7 +805,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         let current_umask = umask(Mode::all());
         umask(current_umask);
         daemonize::Daemonize::new()
-            .working_directory(std::env::current_dir().unwrap())
+            .working_directory("/")
             .umask(current_umask.bits() as u32)
             .start()
             .expect("could not daemonize the server process");
