@@ -9,5 +9,5 @@ license.workspace = true
 zellij-tile = { path = "../../zellij-tile" }
 miette = { version = "5.7.0", features = ["fancy"] }
 strip-ansi-escapes = "0.2"
-unicode-width = "0.1"
+unicode-width = "0.2.2"
 fuzzy-matcher = "0.3"

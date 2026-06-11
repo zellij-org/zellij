@@ -4,6 +4,7 @@ use crate::stdin_ansi_parser::StdinAnsiParser;
 #[cfg(windows)]
 use crate::stdin_handler_windows::enable_vt_input;
 use crate::InputInstruction;
+use std::io::Write;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 use zellij_utils::{
@@ -48,9 +49,9 @@ pub(crate) fn stdin_loop(
 
         if can_query_terminal {
             let query_string = build_startup_query_string();
-            let _ = os_input
+            os_input
                 .get_stdout_writer()
-                .write(query_string.as_bytes())
+                .write_all(query_string.as_bytes())
                 .unwrap();
         }
     }
@@ -277,8 +278,9 @@ fn build_startup_query_string() -> String {
     // <ESC>]11;?<ESC>\ => get background color
     // <ESC>]10;?<ESC>\ => get foreground color
     // <ESC>[?2026$p => get synchronised output mode
+    // <ESC>[?2027$p => get grapheme cluster mode support
     let mut query_string = String::from(
-        "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p",
+        "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p\u{1b}[?2027$p",
     );
     // query colors
     // eg. <ESC>]4;5;?<ESC>\ => query color register number 5
