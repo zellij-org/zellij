@@ -4770,11 +4770,15 @@ impl Row {
         let absolute_x_index = self.absolute_character_index(x);
         if let Some(character) = self.columns.get_mut(absolute_x_index) {
             let terminal_character_width = terminal_character.width();
+
+            let mut padding_character = EMPTY_TERMINAL_CHARACTER;
+            padding_character.styles = terminal_character.styles.clone();
+
             let character = std::mem::replace(character, terminal_character);
             let excess_width = character.width().saturating_sub(terminal_character_width);
             for _ in 0..excess_width {
                 self.columns
-                    .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
+                    .insert(absolute_x_index, padding_character.clone());
             }
         }
         self.width = None;
