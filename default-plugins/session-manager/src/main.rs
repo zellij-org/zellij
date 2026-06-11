@@ -1038,19 +1038,19 @@ impl State {
                 if let Some(renaming_session_name) = &self.renaming_session_name.take() {
                     if renaming_session_name.is_empty() {
                         self.show_error("New name must not be empty.");
-                        return; // so that we don't hide self
+                        return; // so that we don't close self
                     } else if self.session_name.as_ref() == Some(renaming_session_name) {
                         // noop - we're already called that!
-                        return; // so that we don't hide self
+                        return; // so that we don't close self
                     } else if self.sessions.has_session(&renaming_session_name) {
                         self.show_error("A session by this name already exists.");
-                        return; // so that we don't hide self
+                        return; // so that we don't close self
                     } else if self
                         .resurrectable_sessions
                         .has_session(&renaming_session_name)
                     {
                         self.show_error("A resurrectable session by this name already exists.");
-                        return; // s that we don't hide self
+                        return; // so that we don't close self
                     } else {
                         if renaming_session_name.contains('/') {
                             self.show_error("Session names cannot contain '/'");
@@ -1058,7 +1058,7 @@ impl State {
                         }
                         self.update_current_session_name_in_ui(&renaming_session_name);
                         rename_session(&renaming_session_name);
-                        return; // s that we don't hide self
+                        return; // so that we don't close self
                     }
                 }
                 if let Some(selected_session_name) = self.sessions.get_selected_session_name() {
@@ -1094,7 +1094,7 @@ impl State {
                     // session so as not to leave garbage sessions behind
                     quit_zellij();
                 } else {
-                    hide_self();
+                    close_self();
                 }
             },
             ActiveScreen::ResurrectSession => {
@@ -1107,7 +1107,7 @@ impl State {
                         // session so as not to leave garbage sessions behind
                         quit_zellij();
                     } else {
-                        hide_self();
+                        close_self();
                     }
                 }
             },
@@ -1163,7 +1163,7 @@ impl State {
                             if self.is_welcome_screen {
                                 quit_zellij();
                             } else {
-                                hide_self();
+                                close_self();
                             }
                         } else {
                             // No navigation - use typed name
@@ -1194,7 +1194,7 @@ impl State {
                                     if self.is_welcome_screen {
                                         quit_zellij();
                                     } else {
-                                        hide_self();
+                                        close_self();
                                     }
                                 }
                                 return;
@@ -1205,7 +1205,7 @@ impl State {
                                 if self.is_welcome_screen {
                                     quit_zellij();
                                 } else {
-                                    hide_self();
+                                    close_self();
                                 }
                                 return;
                             }
@@ -1237,7 +1237,7 @@ impl State {
                         if self.is_welcome_screen {
                             quit_zellij();
                         } else {
-                            hide_self();
+                            close_self();
                         }
                     },
                 }

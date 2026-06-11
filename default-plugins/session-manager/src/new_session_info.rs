@@ -113,7 +113,7 @@ impl NewSessionInfo {
                                 // session so as not to leave garbage sessions behind
                                 quit_zellij();
                             } else {
-                                hide_self();
+                                close_self();
                             }
                         },
                         None => {
@@ -123,14 +123,14 @@ impl NewSessionInfo {
                                 // session so as not to leave garbage sessions behind
                                 quit_zellij();
                             } else {
-                                hide_self();
+                                close_self();
                             }
                         },
                     }
                 }
                 self.name.clear();
                 self.layout_list.clear_selection();
-                hide_self();
+                close_self();
             },
             EnteringState::EnteringName => {
                 self.entering_new_session_info = EnteringState::EnteringLayoutSearch;
