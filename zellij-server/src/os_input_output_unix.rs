@@ -230,8 +230,13 @@ fn handle_openpty(
                 Ok(())
             })
             .spawn()
-            .expect("failed to spawn")
-    };
+    }
+    .map_err(|e| {
+        let _ = unistd::close(pid_primary);
+        let _ = unistd::close(pid_secondary);
+        e
+    })
+    .with_context(|| err_context(&cmd))?;
 
     let child_id = child.id();
     thread::spawn(move || {
