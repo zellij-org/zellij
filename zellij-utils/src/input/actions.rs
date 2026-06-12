@@ -1790,11 +1790,54 @@ impl Action {
                 }])
             },
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
-            CliAction::StartOrReloadPlugin { url, configuration } => {
+            CliAction::StartOrReloadPlugin {
+                url,
+                configuration,
+                configuration_file,
+            } => {
                 let current_dir = get_current_dir();
+                // Start from the (possibly comma-split) `-c` configuration...
+                let mut merged_configuration: BTreeMap<String, String> = configuration
+                    .map(|c| c.inner().clone())
+                    .unwrap_or_default();
+                // ...then merge entries parsed from --configuration-file, which override `-c`.
+                // Each non-empty, non-comment line is `key=value`, split on the FIRST '=' only,
+                // value taken verbatim (commas and '=' allowed) to end of line.
+                if let Some(configuration_file) = configuration_file {
+                    let contents = std::fs::read_to_string(&configuration_file).map_err(|e| {
+                        format!(
+                            "Failed to read configuration file {}: {}",
+                            configuration_file.display(),
+                            e
+                        )
+                    })?;
+                    for line in contents.lines() {
+                        let trimmed = line.trim_start();
+                        if trimmed.is_empty() || trimmed.starts_with('#') {
+                            continue;
+                        }
+                        match line.split_once('=') {
+                            Some((key, value)) => {
+                                merged_configuration
+                                    .insert(key.trim().to_owned(), value.to_owned());
+                            },
+                            None => {
+                                return Err(format!(
+                                    "Invalid line in configuration file (expected key=value): {}",
+                                    line
+                                ));
+                            },
+                        }
+                    }
+                }
+                let configuration = if merged_configuration.is_empty() {
+                    None
+                } else {
+                    Some(merged_configuration)
+                };
                 let run_plugin_or_alias = RunPluginOrAlias::from_url(
                     &url,
-                    &configuration.map(|c| c.inner().clone()),
+                    &configuration,
                     None,
                     Some(current_dir),
                 )?;

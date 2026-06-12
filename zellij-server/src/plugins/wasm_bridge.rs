@@ -599,6 +599,13 @@ impl WasmBridge {
         Ok(())
     }
     pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
+        self.reload_plugin_with_id_and_config(plugin_id, None)
+    }
+    pub fn reload_plugin_with_id_and_config(
+        &mut self,
+        plugin_id: u32,
+        new_configuration: Option<PluginUserConfiguration>,
+    ) -> Result<()> {
         let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id).map(|r| r.clone()) else {
             log::error!("Failed to find plugin with id: {}", plugin_id);
             return Ok(());
@@ -620,10 +627,19 @@ impl WasmBridge {
             log::error!("No connected clients, cannot reload plugin.");
             return Ok(());
         };
-        let Some(plugin_config) = self.plugin_config_of_plugin_id(plugin_id) else {
+        let Some(mut plugin_config) = self.plugin_config_of_plugin_id(plugin_id) else {
             log::error!("Could not find running plugin with id: {}", plugin_id);
             return Ok(());
         };
+        // If a new configuration was provided (and is non-empty), override the
+        // stored configuration so the reloaded plugin instance picks it up.
+        if let Some(new_configuration) = new_configuration {
+            if !new_configuration.inner().is_empty() {
+                plugin_config.initial_userspace_configuration = new_configuration;
+                // a config-changing reload invalidates the location->configuration cache
+                self.cached_plugin_map.clear();
+            }
+        }
         let tab_index = self.tab_index_of_plugin_id(plugin_id);
         let Some(size) = self.size_of_plugin_id(plugin_id) else {
             log::error!(
@@ -691,10 +707,23 @@ impl WasmBridge {
             return Ok(());
         }
 
+        // Look up running instances by location only (ignoring configuration), so that a
+        // reload carrying a *new* configuration still matches the currently running bars
+        // instead of falling through to opening a brand-new pane.
         let plugin_ids = self
-            .all_plugin_ids_for_plugin_location(&run_plugin.location, &run_plugin.configuration)?;
+            .plugin_map
+            .lock()
+            .unwrap()
+            .all_plugin_ids_for_plugin_location_ignoring_configuration(&run_plugin.location)?;
+        // Only thread the configuration through when it is non-empty; an empty configuration
+        // means "bare reload" and should preserve the currently running configuration.
+        let new_configuration = if run_plugin.configuration.inner().is_empty() {
+            None
+        } else {
+            Some(run_plugin.configuration.clone())
+        };
         for plugin_id in &plugin_ids {
-            self.reload_plugin_with_id(*plugin_id)?;
+            self.reload_plugin_with_id_and_config(*plugin_id, new_configuration.clone())?;
         }
         Ok(())
     }

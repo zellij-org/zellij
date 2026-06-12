@@ -1371,6 +1371,12 @@ pub enum CliAction {
         url: String,
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
+        /// Read plugin configuration from a file. Each non-empty line not starting with '#' is
+        /// `key=value`, split on the FIRST '=' only; the value is taken verbatim to end of line.
+        /// This avoids the comma/'=' splitting of `-c`, allowing format strings with commas.
+        /// Entries here merge with (and override) those from `-c`.
+        #[clap(long, value_parser)]
+        configuration_file: Option<PathBuf>,
     },
     /// Returns: Plugin pane ID (format: plugin_<id>) when creating or focusing plugin
     LaunchOrFocusPlugin {
