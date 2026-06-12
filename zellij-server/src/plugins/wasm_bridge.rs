@@ -1742,11 +1742,30 @@ impl WasmBridge {
         if self.cached_plugin_map.is_empty() {
             self.cached_plugin_map = self.plugin_map.lock().unwrap().clone_plugin_assets();
         }
-        match self
+
+        let plugin_and_client_ids = self
             .cached_plugin_map
             .get(plugin_location)
-            .and_then(|m| m.get(plugin_configuration))
+            .and_then(|m| m.get(plugin_configuration));
+
+        // Try an exact configuration match first. If it misses, retry without
+        // `caller_cwd` because it is caller-context metadata rather than part of the
+        // target plugin's logical identity.
+        let plugin_and_client_ids = if plugin_and_client_ids.is_none()
+            && plugin_configuration.inner().contains_key("caller_cwd")
         {
+            let mut configuration_without_caller_cwd = plugin_configuration.inner().clone();
+            configuration_without_caller_cwd.remove("caller_cwd");
+            let configuration_without_caller_cwd =
+                PluginUserConfiguration::new(configuration_without_caller_cwd);
+            self.cached_plugin_map
+                .get(plugin_location)
+                .and_then(|m| m.get(&configuration_without_caller_cwd))
+        } else {
+            plugin_and_client_ids
+        };
+
+        match plugin_and_client_ids {
             Some(plugin_and_client_ids) => plugin_and_client_ids
                 .iter()
                 .map(|(plugin_id, client_id)| (*plugin_id, Some(*client_id)))
