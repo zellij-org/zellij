@@ -161,3 +161,38 @@ pub async fn get_static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResp
 pub async fn version_handler() -> &'static str {
     VERSION
 }
+
+/// Health check endpoint for external monitoring (liveness/readiness probes).
+///
+/// Returns a JSON object describing the web server's current state. Always
+/// returns HTTP 200 when the server is able to respond — a non-200 or no
+/// response at all should be treated as "unhealthy" by the caller.
+///
+/// Unlike `/info/version`, this endpoint also exposes:
+///   - `uptime_seconds`: seconds since the web server started
+///   - `active_connections`: number of active web client connections
+///   - `protocol_version`: the IPC contract version (useful for upgrade
+///     detection from orchestration tooling)
+///
+/// The endpoint is unauthenticated by design so that health probes do not
+/// require credentials. It does not leak session content or tokens.
+pub async fn healthz_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let uptime_seconds = SERVER_START_TIME.elapsed().as_secs();
+    let active_connections = state
+        .connection_table
+        .lock()
+        .map(|t| t.client_id_to_channels.len())
+        .unwrap_or(0);
+    Json(serde_json::json!({
+        "status": "ok",
+        "version": VERSION,
+        "protocol_version": zellij_utils::consts::CLIENT_SERVER_CONTRACT_VERSION,
+        "uptime_seconds": uptime_seconds,
+        "active_connections": active_connections,
+    }))
+}
+
+/// Tracks when the web server started, for the `uptime_seconds` field of
+/// `/healthz`. Initialized on first access.
+static SERVER_START_TIME: std::sync::LazyLock<std::time::Instant> =
+    std::sync::LazyLock::new(std::time::Instant::now);
