@@ -260,6 +260,15 @@ pub struct WebCli {
         display_order = 16
     )]
     pub key: Option<PathBuf>,
+    /// Skip token and SSL authentication for local (127.0.0.1/::1) and LAN network access.
+    /// WARNING: This disables security checks - only use on trusted networks.
+    #[clap(
+        long,
+        value_parser,
+        conflicts_with_all(&["stop", "create-token", "revoke-token", "revoke-all-tokens"]),
+        display_order = 17
+    )]
+    pub no_auth_for_local: bool,
 }
 
 impl WebCli {
