@@ -213,6 +213,8 @@ enum CommandName {
   NewTabUnfocused = 220;
   NewTiledPaneInTab = 221;
   ExitMobileMode = 222;
+  Paste = 223;
+  PasteToPaneId = 224;
 }
 
 message PluginCommand {
@@ -372,6 +374,8 @@ message PluginCommand {
     PaneId set_shadow_focus_payload = 167;
     NewTabUnfocusedPayload new_tab_unfocused_payload = 168;
     NewTiledPaneInTabPayload new_tiled_pane_in_tab_payload = 169;
+    string paste_payload = 170;
+    PasteToPaneIdPayload paste_to_pane_id_payload = 171;
   }
 }
 
@@ -616,6 +620,11 @@ message CloseTabWithIndexPayload {
 
 message WriteCharsToPaneIdPayload {
   string chars_to_write = 1;
+  PaneId pane_id = 2;
+}
+
+message PasteToPaneIdPayload {
+  string chars_to_paste = 1;
   PaneId pane_id = 2;
 }
 
