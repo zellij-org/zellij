@@ -54,7 +54,7 @@ impl RawFdAsyncReader {
     fn new(fd: RawFd) -> io::Result<Self> {
         // Set O_NONBLOCK so AsyncFd can use epoll correctly
         let flags =
-            fcntl(fd, FcntlArg::F_GETFL).map_err(|e| io::Error::from_raw_os_error(e as i32))?;
+            fcntl(fd, FcntlArg::F_GETFL).map_err(|e| io::Error::from_raw_os_error(e as i32 as i32))?;
         let mut oflags = OFlag::from_bits_truncate(flags);
         oflags.insert(OFlag::O_NONBLOCK);
         fcntl(fd, FcntlArg::F_SETFL(oflags)).map_err(|e| io::Error::from_raw_os_error(e as i32))?;
