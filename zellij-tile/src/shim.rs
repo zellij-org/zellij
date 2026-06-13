@@ -1193,6 +1193,14 @@ pub fn write_chars(chars: &str) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Paste characters to the `STDIN` of the focused pane using Zellij's paste path.
+pub fn paste(chars: &str) {
+    let plugin_command = PluginCommand::Paste(chars.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Copy arbitrary text to the user's clipboard
 ///
 /// Respects the user's configured clipboard destination (system clipboard or primary selection).
@@ -1937,6 +1945,14 @@ pub fn write_to_pane_id(bytes: Vec<u8>, pane_id: PaneId) {
 /// Write characters to the `STDIN` of the specified pane
 pub fn write_chars_to_pane_id(chars: &str, pane_id: PaneId) {
     let plugin_command = PluginCommand::WriteCharsToPaneId(chars.to_owned(), pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Paste characters to the `STDIN` of the specified pane using Zellij's paste path.
+pub fn paste_to_pane_id(chars: &str, pane_id: PaneId) {
+    let plugin_command = PluginCommand::PasteToPaneId(chars.to_owned(), pane_id);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

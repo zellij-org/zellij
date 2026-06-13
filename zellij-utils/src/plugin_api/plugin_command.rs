@@ -109,13 +109,14 @@ pub use super::generated_api::api::{
         OpenTerminalResponse as ProtobufOpenTerminalResponse, OverrideLayoutPayload,
         PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
         PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType, ParseLayoutPayload,
-        ParseLayoutResponse as ProtobufParseLayoutResponse, PluginCommand as ProtobufPluginCommand,
-        PluginMessagePayload, RebindKeysPayload, ReconfigurePayload,
-        RegexHighlight as ProtobufRegexHighlight, ReloadPluginPayload, RenameLayoutPayload,
-        RenameLayoutResponse as ProtobufRenameLayoutResponse, RenameTabWithIdPayload,
-        RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
-        RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePaneIdWithDirectionPayload,
-        ResizePayload, RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
+        ParseLayoutResponse as ProtobufParseLayoutResponse, PasteToPaneIdPayload,
+        PluginCommand as ProtobufPluginCommand, PluginMessagePayload, RebindKeysPayload,
+        ReconfigurePayload, RegexHighlight as ProtobufRegexHighlight, ReloadPluginPayload,
+        RenameLayoutPayload, RenameLayoutResponse as ProtobufRenameLayoutResponse,
+        RenameTabWithIdPayload, RenameWebLoginTokenPayload, RenameWebTokenResponse,
+        ReplacePaneWithExistingPanePayload, RequestPluginPermissionPayload,
+        RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
+        RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
         RunActionPayload, RunCommandPayload, RunningCommand as ProtobufRunningCommand,
         SaveLayoutPayload, SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
@@ -1039,6 +1040,10 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::WriteCharsPayload(chars)) => Ok(PluginCommand::WriteChars(chars)),
                 _ => Err("Mismatched payload for WriteChars"),
             },
+            Some(CommandName::Paste) => match protobuf_plugin_command.payload {
+                Some(Payload::PastePayload(chars)) => Ok(PluginCommand::Paste(chars)),
+                _ => Err("Mismatched payload for Paste"),
+            },
             Some(CommandName::ToggleTab) => {
                 if protobuf_plugin_command.payload.is_some() {
                     return Err("ToggleTab should not have a payload");
@@ -1704,6 +1709,18 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     }
                 },
                 _ => Err("Mismatched payload for WriteCharsCharsToPaneId"),
+            },
+            Some(CommandName::PasteToPaneId) => match protobuf_plugin_command.payload {
+                Some(Payload::PasteToPaneIdPayload(paste_to_pane_id_payload)) => {
+                    match paste_to_pane_id_payload.pane_id {
+                        Some(pane_id) => Ok(PluginCommand::PasteToPaneId(
+                            paste_to_pane_id_payload.chars_to_paste,
+                            pane_id.try_into()?,
+                        )),
+                        _ => Err("Malformed paste_to_pane_id payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for PasteToPaneId"),
             },
             Some(CommandName::SendSigintToPaneId) => match protobuf_plugin_command.payload {
                 Some(Payload::SendSigintToPaneIdPayload(pane_id)) => {
@@ -3081,6 +3098,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::WriteChars as i32,
                 payload: Some(Payload::WriteCharsPayload(chars)),
             }),
+            PluginCommand::Paste(chars) => Ok(ProtobufPluginCommand {
+                name: CommandName::Paste as i32,
+                payload: Some(Payload::PastePayload(chars)),
+            }),
             PluginCommand::ToggleTab => Ok(ProtobufPluginCommand {
                 name: CommandName::ToggleTab as i32,
                 payload: None,
@@ -3603,6 +3624,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
+            PluginCommand::PasteToPaneId(chars_to_paste, pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::PasteToPaneId as i32,
+                payload: Some(Payload::PasteToPaneIdPayload(PasteToPaneIdPayload {
+                    chars_to_paste,
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
             PluginCommand::SendSigintToPaneId(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::SendSigintToPaneId as i32,
                 payload: Some(Payload::SendSigintToPaneIdPayload(pane_id.try_into()?)),

@@ -3405,6 +3405,7 @@ pub enum PluginCommand {
     EditScrollback,
     Write(Vec<u8>), // bytes
     WriteChars(String),
+    Paste(String),
     ToggleTab,
     MovePane,
     MovePaneWithDirection(Direction),
@@ -3487,6 +3488,7 @@ pub enum PluginCommand {
     },
     WriteToPaneId(Vec<u8>, PaneId),
     WriteCharsToPaneId(String, PaneId),
+    PasteToPaneId(String, PaneId),
     SendSigintToPaneId(PaneId),
     SendSigkillToPaneId(PaneId),
     GetPanePid {
