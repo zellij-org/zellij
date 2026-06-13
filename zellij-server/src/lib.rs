@@ -795,7 +795,7 @@ mod session_state_tests {
     }
 }
 
-pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
+pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     info!("Starting Zellij server!");
 
     #[cfg(unix)]
@@ -825,6 +825,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         }
     }
 
+    start_server_impl(os_input, socket_path, true);
+}
+
+pub fn start_server_impl(
+    mut os_input: Box<dyn ServerOsApi>,
+    socket_path: PathBuf,
+    install_panic_hook: bool,
+) {
     envs::set_zellij("0".to_string());
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
@@ -832,13 +840,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let session_data: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
     let session_state = Arc::new(RwLock::new(SessionState::new()));
 
-    std::panic::set_hook({
-        use zellij_utils::errors::handle_panic;
-        let to_server = to_server.clone();
-        Box::new(move |info| {
-            handle_panic(info, Some(&to_server));
-        })
-    });
+    if install_panic_hook {
+        std::panic::set_hook({
+            use zellij_utils::errors::handle_panic;
+            let to_server = to_server.clone();
+            Box::new(move |info| {
+                handle_panic(info, Some(&to_server));
+            })
+        });
+    }
 
     let _ = thread::Builder::new()
         .name("server_listener".to_string())

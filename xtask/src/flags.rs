@@ -105,6 +105,15 @@ xflags::xflags! {
             repeated args: OsString
         }
 
+        /// Run the in-process whole-app integration tests
+        cmd integration-test {
+            /// Build with the default dev profile instead of dev-opt
+            /// (skips the one-time optimized dependency build, tests run ~7x slower)
+            optional --no-opt
+            /// Arguments to pass to the test runner
+            repeated args: OsString
+        }
+
         /// Build the application and all plugins
         cmd build {
             /// Build in release mode without debug symbols
@@ -139,6 +148,7 @@ pub enum XtaskCmd {
     Run(Run),
     Format(Format),
     Test(Test),
+    IntegrationTest(IntegrationTest),
     Build(Build),
 }
 
@@ -230,6 +240,13 @@ pub struct Test {
     pub args: Vec<OsString>,
 
     pub no_web: bool,
+}
+
+#[derive(Debug)]
+pub struct IntegrationTest {
+    pub args: Vec<OsString>,
+
+    pub no_opt: bool,
 }
 
 #[derive(Debug)]

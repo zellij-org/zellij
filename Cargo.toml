@@ -60,6 +60,7 @@ members = [
     "default-plugins/link",
     "default-plugins/mobile",
     "zellij-client",
+    "zellij-integration-tests",
     "zellij-server",
     "zellij-utils",
     "zellij-tile",
