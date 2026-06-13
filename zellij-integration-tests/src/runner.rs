@@ -55,6 +55,8 @@ impl TestRunner {
         let (config, default_layout_info, config_options, _, _) =
             Setup::from_cli_args(&cli_args).expect("failed to load harness config");
 
+        let concurrency_slot = test_env::acquire_concurrency_slot();
+
         let fake_server_os_api = FakeServerOsApi::default();
         let server_thread: Arc<Mutex<Option<JoinHandle<()>>>> = Arc::new(Mutex::new(None));
         let server_spawner = in_process_server_spawner(fake_server_os_api.clone(), &server_thread);
@@ -81,6 +83,7 @@ impl TestRunner {
                 fake_client_handle,
                 thread: Some(client_thread),
             },
+            _concurrency_slot: concurrency_slot,
         }
     }
 }
@@ -184,6 +187,7 @@ pub struct TestSession {
     fake_server_os_api: FakeServerOsApi,
     server_thread: Arc<Mutex<Option<JoinHandle<()>>>>,
     main_client: TestClient,
+    _concurrency_slot: test_env::ConcurrencySlot,
 }
 
 impl TestSession {

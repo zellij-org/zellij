@@ -4880,6 +4880,7 @@ dependencies = [
  "insta",
  "interprocess",
  "log",
+ "nix",
  "regex",
  "tokio",
  "vte 0.11.0",

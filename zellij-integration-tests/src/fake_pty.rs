@@ -18,6 +18,7 @@ pub(crate) struct FakePtyState {
     pub size: Option<(u16, u16)>,
     pub quit_cb: Option<QuitCb>,
     pub exited: bool,
+    pub echo: bool,
 }
 
 impl FakePtyState {
@@ -114,6 +115,7 @@ impl SharedPtys {
                     size: None,
                     quit_cb,
                     exited: false,
+                    echo: true,
                 },
             );
             fake_pty_registry.spawn_queue.push_back(terminal_id);
@@ -175,6 +177,11 @@ impl SharedPtys {
             match fake_pty_registry.fake_pty_states.get_mut(&terminal_id) {
                 Some(fake_pty_state) => {
                     fake_pty_state.stdin.extend_from_slice(bytes);
+                    if fake_pty_state.echo {
+                        if let Some(output_tx) = fake_pty_state.output_tx.as_ref() {
+                            let _ = output_tx.send(bytes.to_vec());
+                        }
+                    }
                     true
                 },
                 None => false,
@@ -259,6 +266,15 @@ impl FakePtyHandle {
                 .get(&self.terminal_id)
                 .and_then(|fake_pty_state| fake_pty_state.terminal_action.clone())
         })
+    }
+
+    pub fn disable_echo(&self) {
+        self.shared_ptys.mutate(|fake_pty_registry| {
+            if let Some(fake_pty_state) = fake_pty_registry.fake_pty_states.get_mut(&self.terminal_id)
+            {
+                fake_pty_state.echo = false;
+            }
+        });
     }
 
     pub fn output(&self, bytes: &[u8]) {

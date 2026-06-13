@@ -1,6 +1,11 @@
+use std::fs::OpenOptions;
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
+use std::time::Duration;
+
+use nix::fcntl::{flock, FlockArg};
 
 const TEMP_PARENT: &str = "/tmp/zellij-test";
 const TEST_ROOT_SUBDIRS: [&str; 8] = [
@@ -72,6 +77,59 @@ fn isolate_process_environment(test_root: &Path) {
 pub fn unique_session_name() -> String {
     let session_index = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("test-{}", session_index)
+}
+
+// caps concurrently active tests so nextest's per-cpu parallelism does not oversubscribe the
+// machine (each test is itself many threads) and miss render deadlines; flock frees on panic
+pub struct ConcurrencySlot {
+    _slot_file: std::fs::File,
+}
+
+fn is_truthy(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes"
+    )
+}
+
+fn slot_count() -> usize {
+    if std::env::var("ZELLIJ_TEST_SERIAL")
+        .map(|v| is_truthy(&v))
+        .unwrap_or(false)
+    {
+        return 1;
+    }
+    if let Some(explicit) = std::env::var("ZELLIJ_TEST_CONCURRENCY")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+    {
+        return explicit.max(1);
+    }
+    let cpus = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    (cpus / 4).max(1)
+}
+
+pub fn acquire_concurrency_slot() -> ConcurrencySlot {
+    let slots = slot_count();
+    let slot_dir = PathBuf::from(TEMP_PARENT).join("concurrency-slots");
+    std::fs::create_dir_all(&slot_dir).unwrap();
+    loop {
+        for slot_index in 0..slots {
+            let slot_file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(slot_dir.join(format!("slot-{}", slot_index)))
+                .unwrap();
+            if flock(slot_file.as_raw_fd(), FlockArg::LockExclusiveNonblock).is_ok() {
+                return ConcurrencySlot {
+                    _slot_file: slot_file,
+                };
+            }
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 
 pub const DEFAULT_TEST_CONFIG: &str = r#"

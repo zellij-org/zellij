@@ -20,10 +20,16 @@ pub fn integration_test(sh: &Shell, flags: flags::IntegrationTest) -> anyhow::Re
         .read()
         .is_ok();
     if nextest_available {
+        let serial_args: &[&str] = if flags.serial {
+            &["--test-threads=1"]
+        } else {
+            &[]
+        };
         cmd!(
             sh,
             "{cargo} nextest run --cargo-profile {profile} -p zellij-integration-tests"
         )
+        .args(serial_args)
         .args(&flags.args)
         .run()
         .context(err_context)?;

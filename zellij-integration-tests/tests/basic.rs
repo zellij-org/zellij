@@ -60,7 +60,12 @@ fn column_count(terminal: &FakePtyHandle, what: &str) -> u16 {
 fn starts_with_one_terminal() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);
-    assert_snapshot!(normalized(&zellij.snapshot()));
+    let grid_snapshot = zellij.wait_until("steady loaded state", |grid_snapshot| {
+        grid_snapshot.tab_bar_appears()
+            && grid_snapshot.status_bar_appears()
+            && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
+    });
+    assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
 
@@ -69,7 +74,11 @@ fn split_terminals_vertically() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);
     split_right_and_wait_for_prompt(&zellij);
-    assert_snapshot!(normalized(&zellij.snapshot()));
+    let grid_snapshot = zellij.wait_until("split rendered in normal mode", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+            && grid_snapshot.cursor_is_at(RIGHT_PANE_PROMPT_X, PROMPT_ROW)
+    });
+    assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
 

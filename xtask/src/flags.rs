@@ -110,6 +110,8 @@ xflags::xflags! {
             /// Build with the default dev profile instead of dev-opt
             /// (skips the one-time optimized dependency build, tests run ~7x slower)
             optional --no-opt
+            /// Run the tests one at a time instead of in parallel
+            optional --serial
             /// Arguments to pass to the test runner
             repeated args: OsString
         }
@@ -247,6 +249,7 @@ pub struct IntegrationTest {
     pub args: Vec<OsString>,
 
     pub no_opt: bool,
+    pub serial: bool,
 }
 
 #[derive(Debug)]
