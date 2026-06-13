@@ -308,6 +308,12 @@ fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
             ],
         ),
     ])
+    .into_iter()
+    .filter_map(|(mode, keys)| {
+        let bound: Vec<KeyShortcut> = keys.into_iter().filter(|k| k.key.is_some()).collect();
+        if bound.is_empty() { None } else { Some((mode, bound)) }
+    })
+    .collect()
 }
 
 fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<KeyShortcut>> {
@@ -492,6 +498,12 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
             )],
         ),
     ])
+    .into_iter()
+    .filter_map(|(mode, keys)| {
+        let bound: Vec<KeyShortcut> = keys.into_iter().filter(|k| k.key.is_some()).collect();
+        if bound.is_empty() { None } else { Some((mode, bound)) }
+    })
+    .collect()
 }
 
 fn render_mode_key_indicators(
@@ -1774,4 +1786,171 @@ fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifier> {
             .collect();
     }
     common_modifiers.into_iter().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::first_line::{KeyAction, KeyMode, KeyShortcut};
+    use std::collections::HashMap;
+    use zellij_tile::prelude::*;
+
+    fn ctrl_key(c: char) -> Option<KeyWithModifier> {
+        Some(KeyWithModifier::new(BareKey::Char(c)).with_ctrl_modifier())
+    }
+
+    #[test]
+    fn common_modifiers_found_when_all_keys_bound() {
+        let shortcuts = HashMap::from([
+            (
+                InputMode::Normal,
+                vec![
+                    KeyShortcut::new(KeyMode::Unselected, KeyAction::Lock, ctrl_key('g')),
+                    KeyShortcut::new(KeyMode::Unselected, KeyAction::Pane, ctrl_key('p')),
+                    KeyShortcut::new(KeyMode::Unselected, KeyAction::Tab, ctrl_key('t')),
+                ],
+            ),
+            (
+                InputMode::Pane,
+                vec![KeyShortcut::new(
+                    KeyMode::Selected,
+                    KeyAction::Pane,
+                    ctrl_key('p'),
+                )],
+            ),
+        ]);
+        let result = common_modifiers_in_all_modes(&shortcuts);
+        assert_eq!(result, Some(vec![KeyModifier::Ctrl]));
+    }
+
+    #[test]
+    fn common_modifiers_none_when_unbound_key_present() {
+        // This tests the pre-existing behavior of common_modifiers_in_all_modes:
+        // if any KeyShortcut has key: None, it returns None.
+        let shortcuts = HashMap::from([(
+            InputMode::Normal,
+            vec![
+                KeyShortcut::new(KeyMode::Unselected, KeyAction::Lock, ctrl_key('g')),
+                KeyShortcut::new(KeyMode::Unselected, KeyAction::Tab, None), // unbound
+                KeyShortcut::new(KeyMode::Unselected, KeyAction::Pane, ctrl_key('p')),
+            ],
+        )]);
+        let result = common_modifiers_in_all_modes(&shortcuts);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn common_modifiers_work_after_filtering_unbound_keys() {
+        // Simulates what the builder functions now do: filter out unbound keys
+        // before common_modifiers_in_all_modes ever sees them.
+        let shortcuts: HashMap<InputMode, Vec<KeyShortcut>> = HashMap::from([
+            (
+                InputMode::Normal,
+                vec![
+                    KeyShortcut::new(KeyMode::Unselected, KeyAction::Lock, ctrl_key('g')),
+                    KeyShortcut::new(KeyMode::Unselected, KeyAction::Tab, None), // unbound
+                    KeyShortcut::new(KeyMode::Unselected, KeyAction::Pane, ctrl_key('p')),
+                ],
+            ),
+            (
+                InputMode::Pane,
+                vec![KeyShortcut::new(
+                    KeyMode::Selected,
+                    KeyAction::Pane,
+                    ctrl_key('p'),
+                )],
+            ),
+        ]);
+
+        // Apply the same filtering the builders now do
+        let filtered: HashMap<InputMode, Vec<KeyShortcut>> = shortcuts
+            .into_iter()
+            .filter_map(|(mode, keys)| {
+                let bound: Vec<KeyShortcut> =
+                    keys.into_iter().filter(|k| k.key.is_some()).collect();
+                if bound.is_empty() {
+                    None
+                } else {
+                    Some((mode, bound))
+                }
+            })
+            .collect();
+
+        // Tab entry should be gone from Normal mode
+        let normal_keys = filtered.get(&InputMode::Normal).unwrap();
+        assert_eq!(normal_keys.len(), 2);
+        assert!(normal_keys.iter().all(|k| k.get_key().is_some()));
+
+        // common_modifiers should now succeed
+        let result = common_modifiers_in_all_modes(&filtered);
+        assert_eq!(result, Some(vec![KeyModifier::Ctrl]));
+    }
+
+    #[test]
+    fn filtering_removes_mode_when_all_keys_unbound() {
+        let shortcuts: HashMap<InputMode, Vec<KeyShortcut>> = HashMap::from([
+            (
+                InputMode::Normal,
+                vec![KeyShortcut::new(
+                    KeyMode::Unselected,
+                    KeyAction::Lock,
+                    ctrl_key('g'),
+                )],
+            ),
+            (
+                InputMode::Tab,
+                vec![KeyShortcut::new(
+                    KeyMode::Selected,
+                    KeyAction::Tab,
+                    None, // entirely unbound mode
+                )],
+            ),
+        ]);
+
+        let filtered: HashMap<InputMode, Vec<KeyShortcut>> = shortcuts
+            .into_iter()
+            .filter_map(|(mode, keys)| {
+                let bound: Vec<KeyShortcut> =
+                    keys.into_iter().filter(|k| k.key.is_some()).collect();
+                if bound.is_empty() {
+                    None
+                } else {
+                    Some((mode, bound))
+                }
+            })
+            .collect();
+
+        // Tab mode should be entirely removed
+        assert!(filtered.get(&InputMode::Tab).is_none());
+        // Normal mode should remain
+        assert!(filtered.get(&InputMode::Normal).is_some());
+    }
+
+    #[test]
+    fn filtering_is_noop_when_all_keys_bound() {
+        let shortcuts = HashMap::from([(
+            InputMode::Normal,
+            vec![
+                KeyShortcut::new(KeyMode::Unselected, KeyAction::Lock, ctrl_key('g')),
+                KeyShortcut::new(KeyMode::Unselected, KeyAction::Pane, ctrl_key('p')),
+                KeyShortcut::new(KeyMode::Unselected, KeyAction::Tab, ctrl_key('t')),
+            ],
+        )]);
+
+        let filtered: HashMap<InputMode, Vec<KeyShortcut>> = shortcuts
+            .into_iter()
+            .filter_map(|(mode, keys)| {
+                let bound: Vec<KeyShortcut> =
+                    keys.into_iter().filter(|k| k.key.is_some()).collect();
+                if bound.is_empty() {
+                    None
+                } else {
+                    Some((mode, bound))
+                }
+            })
+            .collect();
+
+        let normal_keys = filtered.get(&InputMode::Normal).unwrap();
+        assert_eq!(normal_keys.len(), 3);
+    }
 }
