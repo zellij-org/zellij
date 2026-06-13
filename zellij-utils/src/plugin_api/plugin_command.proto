@@ -223,6 +223,8 @@ enum CommandName {
   ApplyFloatingSwapLayout = 230;
   SetPaneBorderStyle = 231;
   GetNestedSessionKeybinds = 232;
+  Paste = 233;
+  PasteToPaneId = 234;
 }
 
 message PluginCommand {
@@ -387,6 +389,8 @@ message PluginCommand {
     string apply_floating_swap_layout_payload = 173;
     SetPaneBorderStylePayload set_pane_border_style_payload = 174;
     GetNestedSessionKeybindsPayload get_nested_session_keybinds_payload = 175;
+    string paste_payload = 176;
+    PasteToPaneIdPayload paste_to_pane_id_payload = 177;
   }
 }
 
@@ -648,6 +652,11 @@ message CloseTabWithIndexPayload {
 
 message WriteCharsToPaneIdPayload {
   string chars_to_write = 1;
+  PaneId pane_id = 2;
+}
+
+message PasteToPaneIdPayload {
+  string chars_to_paste = 1;
   PaneId pane_id = 2;
 }
 
