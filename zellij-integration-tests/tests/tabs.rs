@@ -80,7 +80,10 @@ fn close_tab() {
     zellij.send_stdin(&keys::CLOSE_TAB_IN_TAB_MODE);
 
     let grid_snapshot = zellij.wait_until("second tab closed, only first tab remains", |grid_snapshot| {
-        grid_snapshot.contains("Tab #1") && !grid_snapshot.contains("Tab #2")
+        grid_snapshot.status_bar_appears()
+            && grid_snapshot.contains("Tab #1")
+            && !grid_snapshot.contains("Tab #2")
+            && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -155,7 +158,7 @@ fn move_tab_to_left_until_it_wraps_around() {
     zellij.send_stdin(&keys::MOVE_TAB_LEFT);
 
     let grid_snapshot = zellij.wait_until("third tab wrapped to the end", |grid_snapshot| {
-        tabs_in_order(grid_snapshot, &["Tab #2", "Tab #1", "Tab #3"])
+        tabs_in_order(grid_snapshot, &["Tab #1", "Tab #2", "Tab #3"])
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -171,7 +174,7 @@ fn move_tab_to_right_until_it_wraps_around() {
     zellij.send_stdin(&keys::MOVE_TAB_RIGHT);
 
     let grid_snapshot = zellij.wait_until("third tab wrapped to the beginning", |grid_snapshot| {
-        tabs_in_order(grid_snapshot, &["Tab #3", "Tab #2", "Tab #1"])
+        tabs_in_order(grid_snapshot, &["Tab #3", "Tab #1", "Tab #2"])
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
