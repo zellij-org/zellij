@@ -1,5 +1,6 @@
 use crate::ipc::{
-    ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg,
+    ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, RecvClientMsg,
+    ServerToClientMsg,
 };
 use crate::pane_size::Size;
 use interprocess::local_socket::{prelude::*, ListenerOptions};
@@ -7,6 +8,14 @@ use interprocess::local_socket::{prelude::*, ListenerOptions};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 static IPC_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+fn unwrap_client_message(message: RecvClientMsg) -> ClientToServerMsg {
+    match message {
+        RecvClientMsg::Message(message, _) => message,
+        RecvClientMsg::IoError => panic!("failed to receive client message: I/O error"),
+        RecvClientMsg::Malformed => panic!("failed to receive client message: malformed message"),
+    }
+}
 
 // --- Cross-platform IPC helpers ---
 // On Unix: use filesystem-based sockets (TempDir + PathBuf + GenericFilePath)
@@ -112,9 +121,7 @@ fn client_to_server_message_over_socket() {
     let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
         IpcReceiverWithContext::new(stream);
 
-    let msg = receiver.recv_client_msg();
-    assert!(msg.is_some(), "should receive a message");
-    let (msg, _ctx) = msg.unwrap();
+    let msg = unwrap_client_message(receiver.recv_client_msg());
     assert!(
         matches!(msg, ClientToServerMsg::ConnStatus),
         "should be ConnStatus, got: {:?}",
@@ -167,9 +174,7 @@ fn bidirectional_communication_via_fd_duplication() {
             .send_server_msg(ServerToClientMsg::Connected)
             .expect("send failed");
 
-        let msg = receiver.recv_client_msg();
-        assert!(msg.is_some(), "server should receive client message");
-        let (msg, _) = msg.unwrap();
+        let msg = unwrap_client_message(receiver.recv_client_msg());
         assert!(
             matches!(msg, ClientToServerMsg::ConnStatus),
             "should be ConnStatus"
@@ -229,10 +234,10 @@ fn multiple_messages_in_sequence() {
     let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
         IpcReceiverWithContext::new(stream);
 
-    let (msg1, _) = receiver.recv_client_msg().expect("missing message 1");
+    let msg1 = unwrap_client_message(receiver.recv_client_msg());
     assert!(matches!(msg1, ClientToServerMsg::ConnStatus));
 
-    let (msg2, _) = receiver.recv_client_msg().expect("missing message 2");
+    let msg2 = unwrap_client_message(receiver.recv_client_msg());
     match msg2 {
         ClientToServerMsg::TerminalResize { new_size } => {
             assert_eq!(new_size.rows, 50);
@@ -241,7 +246,7 @@ fn multiple_messages_in_sequence() {
         other => panic!("expected TerminalResize, got: {:?}", other),
     }
 
-    let (msg3, _) = receiver.recv_client_msg().expect("missing message 3");
+    let msg3 = unwrap_client_message(receiver.recv_client_msg());
     assert!(matches!(msg3, ClientToServerMsg::KillSession));
 
     client.join().expect("client thread panicked");
@@ -270,11 +275,11 @@ fn receiver_returns_none_on_closed_connection() {
 
     client.join().expect("client thread panicked");
 
-    let msg = receiver.recv_client_msg();
-    assert!(msg.is_some(), "should receive the sent message");
+    let msg = unwrap_client_message(receiver.recv_client_msg());
+    assert!(matches!(msg, ClientToServerMsg::ConnStatus));
 
     let msg = receiver.recv_client_msg();
-    assert!(msg.is_none(), "should return None after connection closed");
+    assert!(matches!(msg, RecvClientMsg::IoError));
 }
 
 #[cfg(unix)]
@@ -318,7 +323,10 @@ fn session_probe_accepts_responding_socket() {
         let mut sender: IpcSenderWithContext<ServerToClientMsg> = receiver.get_sender();
 
         let msg = receiver.recv_client_msg();
-        assert!(matches!(msg, Some((ClientToServerMsg::ConnStatus, _))));
+        assert!(matches!(
+            msg,
+            RecvClientMsg::Message(ClientToServerMsg::ConnStatus, _)
+        ));
 
         sender
             .send_server_msg(ServerToClientMsg::Connected)
