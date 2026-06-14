@@ -6102,3 +6102,20 @@ fn csi_5n_status_query_still_handled_locally() {
         "DSR 5 must still produce its local 'all good' reply"
     );
 }
+
+#[test]
+fn dump_screen_preserves_trailing_spaces_before_wrapped_continuation() {
+    let grid = create_grid_with_size_and_raw(3, 10, b"a   b     c");
+
+    assert_eq!(grid.dump_screen(false), "a   b     c");
+}
+
+#[test]
+fn dump_screen_with_ansi_preserves_trailing_spaces_before_wrapped_continuation() {
+    let grid = create_grid_with_size_and_raw(3, 10, b"\x1b[31ma   b     c\x1b[0m");
+    let ansi_escape = regex::Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+    let dumped = grid.dump_screen_with_ansi(false);
+    let stripped = ansi_escape.replace_all(&dumped, "").to_string();
+
+    assert_eq!(stripped, "a   b     c");
+}
