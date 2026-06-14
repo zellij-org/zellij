@@ -54,6 +54,7 @@ pub fn wait_for_action_completion(
     receiver: oneshot::Receiver<ActionCompletionResult>,
     action_name: &str,
     wait_forever: bool,
+    completion_sender_drop_expected: bool,
 ) -> ActionCompletionResult {
     let runtime = get_tokio_runtime();
     if wait_forever {
@@ -77,12 +78,32 @@ pub fn wait_for_action_completion(
             .block_on(async { tokio::time::timeout(ACTION_COMPLETION_TIMEOUT, receiver).await })
         {
             Ok(Ok(result)) => result,
-            Err(_) | Ok(Err(_)) => {
+            Err(_) => {
                 log::error!(
                     "Action {} did not complete within {:?} timeout",
                     action_name,
                     ACTION_COMPLETION_TIMEOUT
                 );
+                ActionCompletionResult {
+                    exit_status: None,
+                    affected_pane_id: None,
+                    affected_tab_id: None,
+                    error_message: None,
+                    stdout_message: None,
+                }
+            },
+
+            Ok(Err(e)) => {
+                // This is not a timeout: the completion sender was dropped before
+                // sending a result. Some actions do this intentionally, while unexpected
+                // sender drops are logged for diagnostics.
+                if !completion_sender_drop_expected {
+                    log::warn!(
+                        "Action {} completion sender dropped before sending result: {}",
+                        action_name,
+                        e
+                    );
+                }
                 ActionCompletionResult {
                     exit_status: None,
                     affected_pane_id: None,
@@ -358,6 +379,7 @@ fn route_action_with_origin(
     let (completion_tx, completion_rx) = oneshot::channel();
 
     let mut wait_forever = false;
+    let mut completion_sender_drop_expected = false;
 
     match action {
         Action::ToggleTab => {
@@ -1411,6 +1433,7 @@ fn route_action_with_origin(
                     .with_context(err_context)?;
                 should_break = true;
             } else {
+                completion_sender_drop_expected = true;
                 drop(completion_tx); // no need to wait, this is a no-op
             }
         },
@@ -1442,6 +1465,7 @@ fn route_action_with_origin(
         #[allow(clippy::single_match)]
         Action::SkipConfirm { action } => match *action {
             Action::Quit => {
+                completion_sender_drop_expected = true;
                 drop(completion_tx);
                 senders
                     .send_to_server(ServerInstruction::ClientExit(client_id, None))
@@ -1451,6 +1475,7 @@ fn route_action_with_origin(
             _ => {},
         },
         Action::NoOp => {
+            completion_sender_drop_expected = true;
             drop(completion_tx);
         },
         Action::SearchInput { input } => {
@@ -1851,6 +1876,7 @@ fn route_action_with_origin(
             popup_no_focus,
             ..
         } => {
+            completion_sender_drop_expected = true;
             drop(completion_tx); // releasing pipes is handled by the plugins, so we don't want
                                  // this to block additionallu
             if let Some(seen_cli_pipes) = seen_cli_pipes.as_mut() {
@@ -2431,7 +2457,12 @@ fn route_action_with_origin(
     let result = if is_cli_client && !wait_forever {
         wait_for_cli_action_completion(completion_rx, &action_name)
     } else {
-        wait_for_action_completion(completion_rx, &action_name, wait_forever)
+        wait_for_action_completion(
+            completion_rx,
+            &action_name,
+            wait_forever,
+            completion_sender_drop_expected,
+        )
     };
     if let Some(error_message) = &result.error_message {
         if let Some(cli_client_id) = cli_client_id {
@@ -2710,6 +2741,7 @@ pub(crate) fn route_thread_main(
                                             let _ = wait_for_action_completion(
                                                 completion_rx,
                                                 "KeyToPopup",
+                                                false,
                                                 false,
                                             );
                                             continue;
