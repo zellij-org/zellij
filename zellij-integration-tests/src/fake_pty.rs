@@ -172,6 +172,16 @@ impl SharedPtys {
         });
     }
 
+    pub(crate) fn write_output(&self, terminal_id: u32, bytes: &[u8]) {
+        self.read(|fake_pty_registry| {
+            if let Some(fake_pty_state) = fake_pty_registry.fake_pty_states.get(&terminal_id) {
+                if let Some(output_tx) = fake_pty_state.output_tx.as_ref() {
+                    let _ = output_tx.send(bytes.to_vec());
+                }
+            }
+        });
+    }
+
     pub(crate) fn append_stdin(&self, terminal_id: u32, bytes: &[u8]) -> bool {
         self.mutate(|fake_pty_registry| {
             match fake_pty_registry.fake_pty_states.get_mut(&terminal_id) {

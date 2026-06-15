@@ -1,5 +1,5 @@
 ---
-source: zellij-integration-tests/tests/panes.rs
+source: zellij-integration-tests/tests/plugins.rs
 expression: normalized(&grid_snapshot)
 ---
  Zellij (test)  Tab #1 
@@ -8,12 +8,12 @@ expression: normalized(&grid_snapshot)
 │                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │
-│                                                                                                                      │
-│                             ┌ Pane #2 ──────────────────────────────────────── PIN [ ] ┐                             │
-│                             │$ █                                                       │                             │
-│                             │                                                          │                             │
-│                             │                                                          │                             │
-│                             │                                                          │                             │
+│                             ┌ (.) - permission-requester ───────────────────── PIN [ ] ┐                             │
+│                             │This plugin asks permission to: ReadApplicationState, Chan│                             │
+│                             │geApplicationState, OpenFiles, RunCommands, OpenTerminalsO│                             │
+│                             │rPlugins, WriteToStdin, WebAccess, ReadCliPipes, MessageAn│                             │
+│                             │dLaunchOtherPlugins, Reconfigure, RunActionsAsUser, WriteT│                             │
+│                             │oClipboard, ReadSessionEnvironmentVariables. Allow? (y/n) │                             │
 │                             │                                                          │                             │
 │                             │                                                          │                             │
 │                             │                                                          │                             │
@@ -25,4 +25,4 @@ expression: normalized(&grid_snapshot)
 │                                                                                                                      │
 │                                                                                                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...
+                                                                                                                        

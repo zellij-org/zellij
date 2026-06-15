@@ -148,9 +148,25 @@ pub fn write_config(session_name: &str, extra_config_kdl: &str) -> PathBuf {
     let config_path = test_root
         .join("config")
         .join(format!("{}-config.kdl", session_name));
-    let contents = format!("{}\n{}\n", DEFAULT_TEST_CONFIG, extra_config_kdl);
+    let contents = format!("{}\n{}\n", defaults_overridden_by(extra_config_kdl), extra_config_kdl);
     std::fs::write(&config_path, contents).unwrap();
     config_path
+}
+
+fn defaults_overridden_by(extra_config_kdl: &str) -> String {
+    let overridden_keys: std::collections::HashSet<&str> = extra_config_kdl
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .collect();
+    DEFAULT_TEST_CONFIG
+        .lines()
+        .filter(|line| {
+            line.split_whitespace()
+                .next()
+                .map_or(true, |key| !overridden_keys.contains(key))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub fn log_file_path() -> PathBuf {

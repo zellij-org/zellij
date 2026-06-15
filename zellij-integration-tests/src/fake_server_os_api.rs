@@ -70,9 +70,23 @@ impl ServerOsApi for FakeServerOsApi {
         _default_editor: Option<PathBuf>,
     ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         let terminal_id = self.shared_ptys.next_terminal_id();
+        let opened_file_contents = match &terminal_action {
+            TerminalAction::OpenFile(payload) => self
+                .fake_filesystem
+                .lock()
+                .unwrap()
+                .get(&payload.path.to_string_lossy().to_string())
+                .cloned(),
+            _ => None,
+        };
         let fake_async_reader =
             self.shared_ptys
                 .register(terminal_id, Some(terminal_action), Some(quit_cb));
+        if let Some(contents) = opened_file_contents {
+            let contents_with_carriage_returns = contents.replace("\r\n", "\n").replace('\n', "\r\n");
+            self.shared_ptys
+                .write_output(terminal_id, contents_with_carriage_returns.as_bytes());
+        }
         Ok((
             terminal_id,
             fake_async_reader,

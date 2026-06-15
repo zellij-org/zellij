@@ -20,7 +20,7 @@ pub fn start_cli_client(
     mut os_input: Box<dyn ClientOsApi>,
     session_name: &str,
     actions: Vec<Action>,
-) {
+) -> i32 {
     let zellij_ipc_pipe: PathBuf = {
         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
         fs::create_dir_all(&sock_dir).unwrap();
@@ -68,11 +68,14 @@ pub fn start_cli_client(
                 );
             },
             action => {
-                individual_messages_client(&mut os_input, action, pane_id);
+                if let Some(exit_status) = individual_messages_client(&mut os_input, action, pane_id) {
+                    return exit_status;
+                }
             },
         }
     }
     os_input.send_to_server(ClientToServerMsg::ClientExited);
+    0
 }
 
 fn pipe_client(
@@ -208,7 +211,7 @@ fn individual_messages_client(
     os_input: &mut Box<dyn ClientOsApi>,
     action: Action,
     pane_id: Option<u32>,
-) {
+) -> Option<i32> {
     let is_blocking = matches!(
         &action,
         Action::NewBlockingPane {
@@ -226,26 +229,26 @@ fn individual_messages_client(
     loop {
         match os_input.recv_from_server() {
             Some((ServerToClientMsg::UnblockInputThread, _)) if !is_blocking => {
-                break;
+                return None;
             },
             Some((ServerToClientMsg::Log { lines: log_lines }, _)) => {
                 log_lines.iter().for_each(|line| println!("{line}"));
-                break;
+                return None;
             },
             Some((ServerToClientMsg::LogError { lines: log_lines }, _)) => {
                 log_lines.iter().for_each(|line| eprintln!("{line}"));
-                process::exit(2);
+                return Some(2);
             },
             Some((ServerToClientMsg::Exit { exit_reason }, _)) => match exit_reason {
                 ExitReason::Error(e) => {
                     eprintln!("{}", e);
-                    process::exit(2);
+                    return Some(2);
                 },
                 ExitReason::CustomExitStatus(exit_status) => {
-                    process::exit(exit_status);
+                    return Some(exit_status);
                 },
                 _ => {
-                    break;
+                    return None;
                 },
             },
             _ => {},
