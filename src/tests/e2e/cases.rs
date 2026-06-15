@@ -1,3 +1,10 @@
+/*
+ *
+ * NOTE: These tests are very heavy and are used as smoke tests just to verify the app is working
+ * end-to-end. Avoid adding new ones, preferring instead to use the zellij-integration-tests module
+ * it tests the app as a whole, only mocking the OS interaction parts
+ *
+*/
 #![allow(unused)]
 
 use insta::assert_snapshot;
