@@ -170,6 +170,11 @@ impl TestClient {
         self.fake_client_handle.client_screen.snapshot()
     }
 
+    pub fn quit(mut self) {
+        self.send_stdin(&keys::QUIT);
+        self.join();
+    }
+
     fn join(&mut self) -> Option<ConnectToSession> {
         self.thread
             .take()
@@ -255,6 +260,12 @@ impl TestSession {
         }
     }
 
+    pub fn detach_main_client(&mut self) {
+        self.send_stdin(&keys::SESSION_MODE);
+        self.send_stdin(&keys::DETACH_IN_SESSION_MODE);
+        self.main_client.join();
+    }
+
     pub fn quit(&mut self) {
         if self.main_client.thread.is_some() {
             self.send_stdin(&keys::QUIT);
@@ -302,9 +313,11 @@ fn strip_swap_layout_indication(text: &str) -> String {
     let normal_mode = powerline_separated_or_plain_base("Alt <\\[\\]>");
     let tmux_mode_1 = powerline_separated_or_plain_base("Alt \\[\\|SPACE\\|Alt \\]");
     let tmux_mode_2 = powerline_separated_or_plain_base("Alt \\[\\|Alt \\]\\|SPACE");
+    let tab_bar = regex::Regex::new(r" {2,}[\u{e0b0}]? ?BASE ?[\u{e0b0}]?[ ]*\n").unwrap();
     let text = normal_mode.replace_all(text, "\n");
     let text = tmux_mode_1.replace_all(&text, "\n");
-    tmux_mode_2.replace_all(&text, "\n").to_string()
+    let text = tmux_mode_2.replace_all(&text, "\n");
+    tab_bar.replace_all(&text, "\n").to_string()
 }
 
 fn strip_trailing_whitespace(text: &str) -> String {
