@@ -82,11 +82,12 @@ fn resize_terminal_window() {
         cols < (TERMINAL_SIZE.cols / 2) as u16
     });
 
-    let grid_snapshot = zellij.wait_until("app re-rendered at the new window size", |grid_snapshot| {
-        grid_snapshot.contains("Ctrl +")
-            && grid_snapshot.tab_bar_appears()
-            && grid_snapshot.cursor_is_at(53, PROMPT_ROW)
-    });
+    let grid_snapshot =
+        zellij.wait_until("app re-rendered at the new window size", |grid_snapshot| {
+            grid_snapshot.contains("Ctrl +")
+                && grid_snapshot.tab_bar_appears()
+                && grid_snapshot.cursor_is_at(53, PROMPT_ROW)
+        });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
@@ -99,9 +100,13 @@ fn status_bar_loads_custom_keybindings() {
     let terminal = zellij.expect_pty_spawn();
     terminal.output(PROMPT);
 
-    let grid_snapshot = zellij.wait_until("status bar reflects the custom keybindings", |grid_snapshot| {
-        grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW) && grid_snapshot.contains("LOCK")
-    });
+    let grid_snapshot = zellij.wait_until(
+        "status bar reflects the custom keybindings",
+        |grid_snapshot| {
+            grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
+                && grid_snapshot.contains("LOCK")
+        },
+    );
     assert_snapshot!(normalized(&grid_snapshot));
 }
 
@@ -111,7 +116,10 @@ fn use_custom_layout_with_relative_path() {
         "{}/../src/tests/fixtures/config-dirs/e2e-upside-down/layouts",
         env!("CARGO_MANIFEST_DIR")
     );
-    let config = format!("layout_dir \"{}\"\ndefault_layout \"upside-down\"\n", layout_dir);
+    let config = format!(
+        "layout_dir \"{}\"\ndefault_layout \"upside-down\"\n",
+        layout_dir
+    );
     let mut zellij = TestRunner::new(TERMINAL_SIZE).with_config(&config).start();
     let terminal = zellij.expect_pty_spawn();
     terminal.output(PROMPT);

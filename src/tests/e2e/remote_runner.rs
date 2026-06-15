@@ -12,7 +12,6 @@ use ssh2::Session;
 use std::io::prelude::*;
 use std::net::TcpStream;
 
-
 use std::cell::RefCell;
 use std::rc::Rc;
 

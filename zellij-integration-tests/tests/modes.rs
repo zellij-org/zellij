@@ -47,11 +47,12 @@ fn lock_mode() {
     terminal.wait_for_stdin("forwarded keys reached the pane", |stdin_bytes| {
         stdin_bytes.windows(3).any(|window| window == b"abc")
     });
-    let grid_snapshot = zellij.wait_until("forwarded keys rendered in locked pane", |grid_snapshot| {
-        grid_snapshot.contains("abc")
-            && !grid_snapshot.contains("PANE")
-            && !grid_snapshot.contains("Tab #2")
-    });
+    let grid_snapshot =
+        zellij.wait_until("forwarded keys rendered in locked pane", |grid_snapshot| {
+            grid_snapshot.contains("abc")
+                && !grid_snapshot.contains("PANE")
+                && !grid_snapshot.contains("Tab #2")
+        });
     assert_snapshot!(normalized(&grid_snapshot));
 
     zellij.send_stdin(&keys::LOCK_MODE);
@@ -127,9 +128,10 @@ fn scrolling_inside_a_pane() {
     zellij.send_stdin(&keys::SCROLL_UP_IN_SCROLL_MODE);
     zellij.send_stdin(&keys::SCROLL_UP_IN_SCROLL_MODE);
 
-    let grid_snapshot = zellij.wait_until("scrolled up one line inside the pane", |grid_snapshot| {
-        grid_snapshot.contains("SCROLL:  2/2") && grid_snapshot.contains("PgDn|PgUp")
-    });
+    let grid_snapshot =
+        zellij.wait_until("scrolled up one line inside the pane", |grid_snapshot| {
+            grid_snapshot.contains("SCROLL:  2/2") && grid_snapshot.contains("PgDn|PgUp")
+        });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }

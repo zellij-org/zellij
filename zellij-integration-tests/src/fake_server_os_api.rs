@@ -83,7 +83,8 @@ impl ServerOsApi for FakeServerOsApi {
             self.shared_ptys
                 .register(terminal_id, Some(terminal_action), Some(quit_cb));
         if let Some(contents) = opened_file_contents {
-            let contents_with_carriage_returns = contents.replace("\r\n", "\n").replace('\n', "\r\n");
+            let contents_with_carriage_returns =
+                contents.replace("\r\n", "\n").replace('\n', "\r\n");
             self.shared_ptys
                 .write_output(terminal_id, contents_with_carriage_returns.as_bytes());
         }

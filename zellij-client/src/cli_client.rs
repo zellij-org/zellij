@@ -68,7 +68,9 @@ pub fn start_cli_client(
                 );
             },
             action => {
-                if let Some(exit_status) = individual_messages_client(&mut os_input, action, pane_id) {
+                if let Some(exit_status) =
+                    individual_messages_client(&mut os_input, action, pane_id)
+                {
                     return exit_status;
                 }
             },

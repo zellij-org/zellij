@@ -79,12 +79,15 @@ fn close_tab() {
     zellij.send_stdin(&keys::TAB_MODE);
     zellij.send_stdin(&keys::CLOSE_TAB_IN_TAB_MODE);
 
-    let grid_snapshot = zellij.wait_until("second tab closed, only first tab remains", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
-            && grid_snapshot.contains("Tab #1")
-            && !grid_snapshot.contains("Tab #2")
-            && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
-    });
+    let grid_snapshot = zellij.wait_until(
+        "second tab closed, only first tab remains",
+        |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains("Tab #1")
+                && !grid_snapshot.contains("Tab #2")
+                && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
+        },
+    );
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }

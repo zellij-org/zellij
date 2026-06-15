@@ -57,14 +57,17 @@ fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
 
     terminal.output(b"done");
     let tab_bar_glyph = '\u{e0b0}';
-    let grid_snapshot = zellij.wait_until("split attempt processed, chrome rendered", |grid_snapshot| {
-        grid_snapshot.contains("done")
-            && grid_snapshot.contains("Ctrl +")
-            && grid_snapshot
-                .lines()
-                .first()
-                .is_some_and(|first_line| first_line.contains(tab_bar_glyph))
-    });
+    let grid_snapshot = zellij.wait_until(
+        "split attempt processed, chrome rendered",
+        |grid_snapshot| {
+            grid_snapshot.contains("done")
+                && grid_snapshot.contains("Ctrl +")
+                && grid_snapshot
+                    .lines()
+                    .first()
+                    .is_some_and(|first_line| first_line.contains(tab_bar_glyph))
+        },
+    );
 
     assert_eq!(terminal.size().unwrap().0, width_before_split);
     assert_snapshot!(normalized(&grid_snapshot));
@@ -98,10 +101,11 @@ fn close_pane() {
     zellij.send_stdin(&keys::PANE_MODE);
     zellij.send_stdin(&keys::CLOSE_PANE_IN_PANE_MODE);
 
-    let grid_snapshot = zellij.wait_until("right pane closed, focus back on first", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
-            && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
-    });
+    let grid_snapshot =
+        zellij.wait_until("right pane closed, focus back on first", |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+                && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
+        });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
@@ -114,9 +118,10 @@ fn closing_last_pane_exits_zellij() {
     zellij.send_stdin(&keys::PANE_MODE);
     zellij.send_stdin(&keys::CLOSE_PANE_IN_PANE_MODE);
 
-    zellij.wait_until("zellij exited after closing the last pane", |grid_snapshot| {
-        grid_snapshot.contains("Bye from Zellij!")
-    });
+    zellij.wait_until(
+        "zellij exited after closing the last pane",
+        |grid_snapshot| grid_snapshot.contains("Bye from Zellij!"),
+    );
 }
 
 #[test]
@@ -127,10 +132,11 @@ fn pane_closes_when_its_process_exits() {
 
     right_terminal.exit(Some(0));
 
-    let grid_snapshot = zellij.wait_until("right pane closed, focus back on first", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
-            && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
-    });
+    let grid_snapshot =
+        zellij.wait_until("right pane closed, focus back on first", |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+                && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
+        });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
@@ -179,20 +185,24 @@ fn start_without_pane_frames() {
         .start();
     let first_terminal = zellij.expect_pty_spawn();
     first_terminal.output(PROMPT);
-    zellij.wait_until("first frameless terminal prompt rendered", |grid_snapshot| {
-        grid_snapshot.tab_bar_appears()
-            && grid_snapshot.status_bar_appears()
-            && grid_snapshot.cursor_is_at(2, 1)
-    });
+    zellij.wait_until(
+        "first frameless terminal prompt rendered",
+        |grid_snapshot| {
+            grid_snapshot.tab_bar_appears()
+                && grid_snapshot.status_bar_appears()
+                && grid_snapshot.cursor_is_at(2, 1)
+        },
+    );
 
     zellij.send_stdin(&keys::PANE_MODE);
     zellij.send_stdin(&keys::SPLIT_RIGHT_IN_PANE_MODE);
     let right_terminal = zellij.expect_pty_spawn();
     right_terminal.output(PROMPT);
 
-    let grid_snapshot = zellij.wait_until("right frameless terminal prompt rendered", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(62, 1)
-    });
+    let grid_snapshot = zellij.wait_until(
+        "right frameless terminal prompt rendered",
+        |grid_snapshot| grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(62, 1),
+    );
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }

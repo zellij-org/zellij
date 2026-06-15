@@ -150,10 +150,12 @@ fn new_pane_cli_action(
 }
 
 fn referenced_contents_files(layout: &str) -> impl Iterator<Item = &str> {
-    layout.match_indices("contents_file=\"").filter_map(|(start, marker)| {
-        let rest = &layout[start + marker.len()..];
-        rest.find('"').map(|end| &rest[..end])
-    })
+    layout
+        .match_indices("contents_file=\"")
+        .filter_map(|(start, marker)| {
+            let rest = &layout[start + marker.len()..];
+            rest.find('"').map(|end| &rest[..end])
+        })
 }
 
 fn spawn_client_thread(
@@ -404,7 +406,8 @@ impl TestSession {
         let fake_server_os_api = FakeServerOsApi::default();
         let server_thread: Arc<Mutex<Option<JoinHandle<()>>>> = Arc::new(Mutex::new(None));
         let server_spawner = in_process_server_spawner(fake_server_os_api.clone(), &server_thread);
-        let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(size, Some(server_spawner));
+        let (fake_client_os_api, fake_client_handle) =
+            FakeClientOsApi::new(size, Some(server_spawner));
         let client_thread = spawn_client_thread(
             fake_client_os_api,
             cli_args,
@@ -433,7 +436,13 @@ impl TestSession {
 
     pub fn run_suspended_command(&self, command: &[&str]) {
         let start_suspended = true;
-        self.run_cli_action(new_pane_cli_action(command, false, false, start_suspended, false));
+        self.run_cli_action(new_pane_cli_action(
+            command,
+            false,
+            false,
+            start_suspended,
+            false,
+        ));
     }
 
     pub fn run_blocking_command(&self, command: &[&str]) -> CliClientHandle {

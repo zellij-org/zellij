@@ -280,7 +280,8 @@ impl FakePtyHandle {
 
     pub fn disable_echo(&self) {
         self.shared_ptys.mutate(|fake_pty_registry| {
-            if let Some(fake_pty_state) = fake_pty_registry.fake_pty_states.get_mut(&self.terminal_id)
+            if let Some(fake_pty_state) =
+                fake_pty_registry.fake_pty_states.get_mut(&self.terminal_id)
             {
                 fake_pty_state.echo = false;
             }

@@ -428,4 +428,3 @@ pub fn send_blocking_command_through_the_cli() {
     let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
-

@@ -62,13 +62,16 @@ fn quit_and_resurrect_session() {
     zellij.quit();
 
     zellij.resurrect(TERMINAL_SIZE);
-    let grid_snapshot = zellij.wait_until("resurrected session restored the runtime pane", |grid_snapshot| {
-        grid_snapshot.contains("Zellij (test")
-            && grid_snapshot.contains("alpha")
-            && grid_snapshot.contains("beta")
-            && grid_snapshot.contains("┐┌")
-            && grid_snapshot.status_bar_appears()
-    });
+    let grid_snapshot = zellij.wait_until(
+        "resurrected session restored the runtime pane",
+        |grid_snapshot| {
+            grid_snapshot.contains("Zellij (test")
+                && grid_snapshot.contains("alpha")
+                && grid_snapshot.contains("beta")
+                && grid_snapshot.contains("┐┌")
+                && grid_snapshot.status_bar_appears()
+        },
+    );
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
@@ -80,21 +83,26 @@ fn quit_and_resurrect_session_with_viewport_serialization() {
         .start();
     let terminal = zellij.expect_pty_spawn();
     terminal.output(b"VIEWPORT_CONTENT_TO_RESTORE\n");
-    zellij.wait_until("pane content rendered before serialization", |grid_snapshot| {
-        grid_snapshot.contains("VIEWPORT_CONTENT_TO_RESTORE") && grid_snapshot.status_bar_appears()
-    });
+    zellij.wait_until(
+        "pane content rendered before serialization",
+        |grid_snapshot| {
+            grid_snapshot.contains("VIEWPORT_CONTENT_TO_RESTORE")
+                && grid_snapshot.status_bar_appears()
+        },
+    );
 
     zellij.save_session();
     zellij.wait_for_serialized_session();
     zellij.quit();
 
     zellij.resurrect(TERMINAL_SIZE);
-    let grid_snapshot = zellij.wait_until("resurrected viewport and chrome settled", |grid_snapshot| {
-        grid_snapshot.contains("VIEWPORT_CONTENT_TO_RESTORE")
-            && grid_snapshot.contains("Zellij (test")
-            && grid_snapshot.tab_bar_appears()
-            && grid_snapshot.status_bar_appears()
-    });
+    let grid_snapshot =
+        zellij.wait_until("resurrected viewport and chrome settled", |grid_snapshot| {
+            grid_snapshot.contains("VIEWPORT_CONTENT_TO_RESTORE")
+                && grid_snapshot.contains("Zellij (test")
+                && grid_snapshot.tab_bar_appears()
+                && grid_snapshot.status_bar_appears()
+        });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }

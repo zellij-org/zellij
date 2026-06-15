@@ -81,15 +81,13 @@ fn multiple_users_in_same_pane_and_tab() {
     claim_first_terminal_and_wait_for_prompt(&zellij);
 
     let second_client = zellij.attach_client(TERMINAL_SIZE);
-    let second_grid = second_client.wait_until(
-        "second client shares the focused pane",
-        |grid_snapshot| {
+    let second_grid =
+        second_client.wait_until("second client shares the focused pane", |grid_snapshot| {
             grid_snapshot.tab_bar_appears()
                 && grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains("MY FOCUS")
                 && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
-        },
-    );
+        });
     let main_grid = zellij.wait_until(
         "main client shows the shared-focus indicator",
         |grid_snapshot| {
@@ -160,15 +158,13 @@ fn multiple_users_in_different_tabs() {
     let second_tab_terminal = zellij.expect_pty_spawn();
     second_tab_terminal.output(PROMPT);
 
-    let second_grid = second_client.wait_until(
-        "second client moved to the new tab",
-        |grid_snapshot| {
+    let second_grid =
+        second_client.wait_until("second client moved to the new tab", |grid_snapshot| {
             grid_snapshot.tab_bar_appears()
                 && grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains("Tab #2")
                 && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
-        },
-    );
+        });
     let main_grid = zellij.wait_until(
         "main client sees the new tab while staying on the first tab",
         |grid_snapshot| {
