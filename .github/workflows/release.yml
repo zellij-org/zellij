@@ -78,7 +78,7 @@ jobs:
           }
 
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v2
@@ -274,7 +274,7 @@ jobs:
           }
 
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v2
