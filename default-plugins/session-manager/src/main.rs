@@ -1307,9 +1307,7 @@ impl State {
         let session_ui_infos: Vec<SessionUiInfo> = session_infos
             .iter()
             .filter_map(|s| {
-                if self.is_web_client && !s.web_clients_allowed {
-                    None
-                } else if self.is_welcome_screen && s.is_current_session {
+                if self.is_welcome_screen && s.is_current_session {
                     // do not display current session if we're the welcome screen
                     // because:
                     // 1. attaching to the welcome screen from the welcome screen is not a thing
@@ -1321,16 +1319,7 @@ impl State {
                 }
             })
             .collect();
-        let forbidden_sessions: Vec<SessionUiInfo> = session_infos
-            .iter()
-            .filter_map(|s| {
-                if self.is_web_client && !s.web_clients_allowed {
-                    Some(SessionUiInfo::from_session_info(s))
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let forbidden_sessions: Vec<SessionUiInfo> = vec![];
         let current_session_name = session_infos.iter().find_map(|s| {
             if s.is_current_session {
                 Some(s.name.clone())
