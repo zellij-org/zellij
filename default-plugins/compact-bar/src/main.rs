@@ -63,6 +63,9 @@ struct State {
 
     // Keybinding cache
     cached_keybinds: KeybindsVec,
+
+    // Tab display options
+    show_tab_indices: bool,
 }
 
 struct TabRenderData {
@@ -147,6 +150,7 @@ impl State {
     fn initialize_configuration(&mut self, configuration: BTreeMap<String, String>) {
         self.config = configuration.clone();
         self.is_tooltip = self.parse_bool_config(CONFIG_IS_TOOLTIP, false);
+        self.show_tab_indices = self.parse_bool_config("show_tab_indices", false);
 
         if !self.is_tooltip {
             if let Some(tooltip_toggle_key) = configuration.get(CONFIG_TOGGLE_TOOLTIP_KEY) {
@@ -548,12 +552,19 @@ impl State {
                 }
             }
 
+            let tab_index = if self.show_tab_indices {
+                Some(tab.position + 1)
+            } else {
+                None
+            };
+
             let styled_tab = tab_style(
                 tab_name,
                 tab,
                 is_alternate_tab,
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
+                tab_index,
             );
 
             is_alternate_tab = !is_alternate_tab;
