@@ -49,6 +49,10 @@ impl FakeServerOsApi {
     pub fn written_files(&self) -> HashMap<String, String> {
         self.fake_filesystem.lock().unwrap().clone()
     }
+
+    pub fn connected_client_count(&self) -> usize {
+        self.non_blocking_client_senders.lock().unwrap().len()
+    }
 }
 
 impl ServerOsApi for FakeServerOsApi {

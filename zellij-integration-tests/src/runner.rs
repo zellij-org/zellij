@@ -476,9 +476,24 @@ impl TestSession {
     }
 
     pub fn detach_main_client(&mut self) {
+        let connected_clients_before_detach = self.fake_server_os_api.connected_client_count();
         self.send_stdin(&keys::SESSION_MODE);
         self.send_stdin(&keys::DETACH_IN_SESSION_MODE);
         self.main_client.join();
+        self.wait_for_server_to_release_a_client(connected_clients_before_detach);
+    }
+
+    fn wait_for_server_to_release_a_client(&self, connected_clients_before_detach: usize) {
+        let deadline = std::time::Instant::now() + crate::default_timeout();
+        loop {
+            if self.fake_server_os_api.connected_client_count() < connected_clients_before_detach {
+                return;
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("timed out waiting for server to release the detached client");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 
     pub fn quit(&mut self) {
