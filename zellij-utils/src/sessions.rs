@@ -152,9 +152,18 @@ fn assert_socket(name: &str) -> bool {
                 IpcSenderWithContext::new(stream);
             let _ = sender.send_client_msg(ClientToServerMsg::ConnStatus);
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
-            match receiver.recv_server_msg() {
-                Some((ServerToClientMsg::Connected, _)) => true,
-                None | Some((_, _)) => false,
+            loop {
+                match receiver.recv_server_msg() {
+                    Some((ServerToClientMsg::Connected, _)) => return true,
+                    Some((_unrelated_message, _)) => {
+                        // `assert_socket` is only probing whether this socket belongs to a live
+                        // Zellij server. While waiting for the ConnStatus response, this temporary
+                        // client can receive other server-to-client messages. These are not the
+                        // response to our probe, so ignore them and keep waiting.
+                        continue;
+                    },
+                    None => return false,
+                }
             }
         },
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
