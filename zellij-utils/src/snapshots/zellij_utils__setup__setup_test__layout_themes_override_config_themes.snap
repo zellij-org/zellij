@@ -6028,6 +6028,9 @@ Config {
         enforce_https_for_localhost: None,
         post_command_discovery_hook: None,
         client_async_worker_tasks: None,
+        mobile_layout: None,
+        mobile_threshold_cols: None,
+        mobile_threshold_rows: None,
     },
     themes: {
         "other-theme-from-config": Theme {
@@ -7853,6 +7856,18 @@ Config {
                     "/",
                 ),
             },
+            "mobile": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "mobile",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
             "plugin-manager": RunPlugin {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
@@ -7960,5 +7975,6 @@ Config {
         cursor_style: None,
         mac_option_is_meta: true,
         base_url: None,
+        font_size: None,
     },
 }

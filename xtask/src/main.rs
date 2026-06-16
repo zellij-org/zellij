@@ -12,6 +12,7 @@ mod clippy;
 mod dist;
 mod flags;
 mod format;
+mod integration_test;
 mod metadata;
 mod pipelines;
 mod test;
@@ -87,6 +88,10 @@ fn workspace_members() -> &'static Vec<WorkspaceMember> {
                 build: true,
             },
             WorkspaceMember {
+                crate_name: "default-plugins/mobile",
+                build: true,
+            },
+            WorkspaceMember {
                 crate_name: "zellij-utils",
                 build: false,
             },
@@ -127,6 +132,7 @@ fn main() -> anyhow::Result<()> {
         flags::XtaskCmd::Clippy(flags) => clippy::clippy(shell, flags),
         flags::XtaskCmd::Format(flags) => format::format(shell, flags),
         flags::XtaskCmd::Test(flags) => test::test(shell, flags),
+        flags::XtaskCmd::IntegrationTest(flags) => integration_test::integration_test(shell, flags),
         flags::XtaskCmd::Manpage(_flags) => build::manpage(shell),
         // Pipelines
         // These are composite commands, made up of multiple "stages" defined above.

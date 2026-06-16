@@ -2186,6 +2186,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mobile"
+version = "0.1.0"
+dependencies = [
+ "fuzzy-matcher",
+ "unicode-width 0.1.10",
+ "zellij-tile",
+]
+
+[[package]]
 name = "multimap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4858,6 +4867,24 @@ dependencies = [
  "urlencoding",
  "uuid",
  "windows-sys 0.59.0",
+ "zellij-utils",
+]
+
+[[package]]
+name = "zellij-integration-tests"
+version = "0.45.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "crossbeam",
+ "insta",
+ "interprocess",
+ "log",
+ "regex",
+ "tokio",
+ "vte 0.11.0",
+ "zellij-client",
+ "zellij-server",
  "zellij-utils",
 ]
 

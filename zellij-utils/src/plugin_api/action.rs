@@ -1943,7 +1943,8 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::SaveSession
             | Action::ListTabs { .. }
             | Action::CurrentTabInfo { .. }
-            | Action::SetPaneColor { .. } => Err("Unsupported action"),
+            | Action::SetPaneColor { .. }
+            | Action::ToggleMobileMode => Err("Unsupported action"),
         }
     }
 }
@@ -2097,6 +2098,8 @@ impl TryFrom<ProtobufMouseEventPayload> for MouseEvent {
             middle: protobuf_event.middle as bool,
             wheel_up: protobuf_event.wheel_up as bool,
             wheel_down: protobuf_event.wheel_down as bool,
+            wheel_left: protobuf_event.wheel_left as bool,
+            wheel_right: protobuf_event.wheel_right as bool,
             shift: protobuf_event.shift as bool,
             alt: protobuf_event.alt as bool,
             ctrl: protobuf_event.ctrl as bool,
@@ -2119,6 +2122,8 @@ impl TryFrom<MouseEvent> for ProtobufMouseEventPayload {
             middle: event.middle as bool,
             wheel_up: event.wheel_up as bool,
             wheel_down: event.wheel_down as bool,
+            wheel_left: event.wheel_left as bool,
+            wheel_right: event.wheel_right as bool,
             shift: event.shift as bool,
             alt: event.alt as bool,
             ctrl: event.ctrl as bool,

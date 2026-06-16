@@ -10,8 +10,9 @@ use crate::{
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
         LogErrorMsg, LogMsg, PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
-        QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
-        ServerToClientMsg as ProtoServerToClientMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
+        QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg, ResizeCause as ProtoResizeCause,
+        ServerToClientMsg as ProtoServerToClientMsg, SetSoftKeyboardMsg,
+        SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
         SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
         TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
         UnblockInputThreadMsg, WebServerStartedMsg,
@@ -19,7 +20,7 @@ use crate::{
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
     ipc::{
-        ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions,
+        ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ResizeCause,
         ServerToClientMsg,
     },
 };
@@ -51,9 +52,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     color_registers: color_registers.into_iter().map(|cr| cr.into()).collect(),
                 })
             },
-            ClientToServerMsg::TerminalResize { new_size } => {
+            ClientToServerMsg::TerminalResize { new_size, cause } => {
+                let cause_proto: ProtoResizeCause = cause.into();
                 client_to_server_msg::Message::TerminalResize(TerminalResizeMsg {
                     new_size: Some(new_size.into()),
+                    cause: cause_proto as i32,
                 })
             },
             ClientToServerMsg::FirstClientConnected {
@@ -146,6 +149,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     },
                 )
             },
+            ClientToServerMsg::SoftKeyboardVisibilityChanged { visible } => {
+                client_to_server_msg::Message::SoftKeyboardVisibilityChanged(
+                    SoftKeyboardVisibilityChangedMsg { visible },
+                )
+            },
         };
 
         ProtoClientToServerMsg {
@@ -193,11 +201,15 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 })
             },
             Some(client_to_server_msg::Message::TerminalResize(resize)) => {
+                let cause = ProtoResizeCause::from_i32(resize.cause)
+                    .unwrap_or(ProtoResizeCause::Viewport)
+                    .into();
                 Ok(ClientToServerMsg::TerminalResize {
                     new_size: resize
                         .new_size
                         .ok_or_else(|| anyhow!("Missing new_size"))?
                         .try_into()?,
+                    cause,
                 })
             },
             Some(client_to_server_msg::Message::FirstClientConnected(first_client)) => {
@@ -287,6 +299,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     mode: proto_mode.into(),
                 })
             },
+            Some(client_to_server_msg::Message::SoftKeyboardVisibilityChanged(msg)) => {
+                Ok(ClientToServerMsg::SoftKeyboardVisibilityChanged {
+                    visible: msg.visible,
+                })
+            },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
     }
@@ -371,6 +388,9 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
                     token,
                     query_bytes,
                 })
+            },
+            ServerToClientMsg::SetSoftKeyboard { on } => {
+                server_to_client_msg::Message::SetSoftKeyboard(SetSoftKeyboardMsg { on })
             },
         };
 
@@ -483,6 +503,9 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                     token: msg.token,
                     query_bytes: msg.query_bytes,
                 })
+            },
+            Some(server_to_client_msg::Message::SetSoftKeyboard(msg)) => {
+                Ok(ServerToClientMsg::SetSoftKeyboard { on: msg.on })
             },
             None => Err(anyhow!("Empty ServerToClientMsg message")),
         }
@@ -732,6 +755,17 @@ impl From<crate::input::options::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
+            mobile_layout: options.mobile_layout.map(|m| {
+                use crate::client_server_contract::client_server_contract::MobileLayout as ProtoMobileLayout;
+                use crate::input::options::MobileLayoutConfiguration;
+                match m {
+                    MobileLayoutConfiguration::Web => ProtoMobileLayout::Web as i32,
+                    MobileLayoutConfiguration::Always => ProtoMobileLayout::Always as i32,
+                    MobileLayoutConfiguration::Never => ProtoMobileLayout::Never as i32,
+                }
+            }),
+            mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u32),
+            mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u32),
         }
     }
 }
@@ -744,8 +778,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
         options: crate::client_server_contract::client_server_contract::Options,
     ) -> Result<Self> {
         use crate::client_server_contract::client_server_contract::{
-            Clipboard as ProtoClipboard, OnForceClose as ProtoOnForceClose,
-            WebSharing as ProtoWebSharing,
+            Clipboard as ProtoClipboard, MobileLayout as ProtoMobileLayout,
+            OnForceClose as ProtoOnForceClose, WebSharing as ProtoWebSharing,
         };
 
         Ok(Self {
@@ -829,6 +863,23 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
+            mobile_layout: options
+                .mobile_layout
+                .map(|m| match ProtoMobileLayout::from_i32(m) {
+                    Some(ProtoMobileLayout::Web) => {
+                        Ok(crate::input::options::MobileLayoutConfiguration::Web)
+                    },
+                    Some(ProtoMobileLayout::Always) => {
+                        Ok(crate::input::options::MobileLayoutConfiguration::Always)
+                    },
+                    Some(ProtoMobileLayout::Never) => {
+                        Ok(crate::input::options::MobileLayoutConfiguration::Never)
+                    },
+                    _ => Err(anyhow!("Invalid MobileLayout value: {}", m)),
+                })
+                .transpose()?,
+            mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u16),
+            mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u16),
         })
     }
 }
@@ -1419,6 +1470,9 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ToggleMouseMode => {
                 ActionType::ToggleMouseMode(ToggleMouseModeAction {})
             },
+            crate::input::actions::Action::ToggleMobileMode => ActionType::ToggleMobileMode(
+                crate::client_server_contract::client_server_contract::ToggleMobileModeAction {},
+            ),
             crate::input::actions::Action::PreviousSwapLayout => {
                 ActionType::PreviousSwapLayout(PreviousSwapLayoutAction {})
             },
@@ -2284,6 +2338,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::ToggleMouseMode(_) => Ok(crate::input::actions::Action::ToggleMouseMode),
+            ActionType::ToggleMobileMode(_) => Ok(crate::input::actions::Action::ToggleMobileMode),
             ActionType::PreviousSwapLayout(_) => {
                 Ok(crate::input::actions::Action::PreviousSwapLayout)
             },
@@ -3013,6 +3068,26 @@ impl TryFrom<ProtoExitReason> for ExitReason {
     }
 }
 
+impl From<ResizeCause> for ProtoResizeCause {
+    fn from(cause: ResizeCause) -> Self {
+        match cause {
+            ResizeCause::Viewport => ProtoResizeCause::Viewport,
+            ResizeCause::RenderingPreference => ProtoResizeCause::RenderingPreference,
+            ResizeCause::SizeSettled => ProtoResizeCause::SizeSettled,
+        }
+    }
+}
+
+impl From<ProtoResizeCause> for ResizeCause {
+    fn from(cause: ProtoResizeCause) -> Self {
+        match cause {
+            ProtoResizeCause::Viewport => ResizeCause::Viewport,
+            ProtoResizeCause::RenderingPreference => ResizeCause::RenderingPreference,
+            ProtoResizeCause::SizeSettled => ResizeCause::SizeSettled,
+        }
+    }
+}
+
 impl From<HostTerminalThemeMode> for ProtoHostTerminalThemeIndication {
     fn from(mode: HostTerminalThemeMode) -> Self {
         match mode {
@@ -3580,6 +3655,8 @@ impl From<crate::input::mouse::MouseEvent>
             middle: event.middle,
             wheel_up: event.wheel_up,
             wheel_down: event.wheel_down,
+            wheel_left: event.wheel_left,
+            wheel_right: event.wheel_right,
             shift: event.shift,
             alt: event.alt,
             ctrl: event.ctrl,
@@ -4167,6 +4244,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::MouseEvent>
             middle: event.middle,
             wheel_up: event.wheel_up,
             wheel_down: event.wheel_down,
+            wheel_left: event.wheel_left,
+            wheel_right: event.wheel_right,
             shift: event.shift,
             alt: event.alt,
             ctrl: event.ctrl,

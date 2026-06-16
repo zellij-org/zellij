@@ -32,7 +32,7 @@ use zellij_utils::{
     data::{
         ClientInfo, CommandOrPlugin, Event, EventType, FloatingPaneCoordinates, InputMode,
         LayoutInfo, LayoutWithError, MessageToPlugin, PermissionStatus, PermissionType,
-        PipeMessage, PipeSource, PluginCapabilities, WebServerStatus,
+        PipeMessage, PipeSource, WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -42,7 +42,6 @@ use zellij_utils::{
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
         plugins::PluginAliases,
     },
-    ipc::ClientAttributes,
     pane_size::Size,
     session_serialization,
 };
@@ -114,6 +113,8 @@ pub enum PluginInstruction {
         plugin_ids: Vec<PluginId>,
         done_receiving_permissions: bool,
     },
+    HoldMobileRender(ClientId),
+    ReleaseMobileRender(ClientId),
     ApplyCachedWorkerMessages(PluginId),
     PostMessagesToPluginWorker(
         PluginId,
@@ -240,6 +241,8 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::NewTab(..) => PluginContext::NewTab,
             PluginInstruction::OverrideLayout(..) => PluginContext::OverrideLayout,
             PluginInstruction::ApplyCachedEvents { .. } => PluginContext::ApplyCachedEvents,
+            PluginInstruction::HoldMobileRender(..) => PluginContext::HoldMobileRender,
+            PluginInstruction::ReleaseMobileRender(..) => PluginContext::ReleaseMobileRender,
             PluginInstruction::ApplyCachedWorkerMessages(..) => {
                 PluginContext::ApplyCachedWorkerMessages
             },
@@ -300,8 +303,6 @@ pub(crate) fn plugin_thread_main(
     path_to_default_shell: PathBuf,
     zellij_cwd: PathBuf,
     session_env_vars: std::collections::BTreeMap<String, String>,
-    capabilities: PluginCapabilities,
-    client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
     plugin_aliases: PluginAliases,
     default_mode: InputMode,
@@ -329,10 +330,7 @@ pub(crate) fn plugin_thread_main(
         path_to_default_shell,
         zellij_cwd.clone(),
         session_env_vars,
-        capabilities,
-        client_attributes,
         default_shell,
-        layout.clone(),
         layout_dir,
         available_layouts,
         available_layout_errors,
@@ -737,6 +735,12 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::ApplyCachedWorkerMessages(plugin_id) => {
                 wasm_bridge.apply_cached_worker_messages(plugin_id)?;
+            },
+            PluginInstruction::HoldMobileRender(client_id) => {
+                wasm_bridge.hold_mobile_render(client_id);
+            },
+            PluginInstruction::ReleaseMobileRender(client_id) => {
+                wasm_bridge.release_mobile_render(client_id, shutdown_send.clone())?;
             },
             PluginInstruction::PostMessagesToPluginWorker(
                 plugin_id,

@@ -1,19 +1,71 @@
-/**
- * WebSocket management for terminal and control connections
- */
-
 import { handleReconnection, handleDisconnected, markConnectionEstablished } from "./connection.js";
 import { getBaseUrl, getWebSocketBaseUrl } from "./utils.js";
+import { setSoftKeyboard } from "./input.js";
+import { applyFontSize } from "./terminal.js";
 
-/**
- * Initialize both terminal and control WebSocket connections
- * @param {string} webClientId - Client ID from authentication
- * @param {string} sessionName - Session name from URL
- * @param {Terminal} term - Terminal instance
- * @param {FitAddon} fitAddon - Terminal fit addon
- * @param {function} sendAnsiKey - Function to send ANSI key sequences
- * @returns {object} Object containing WebSocket instances and cleanup function
- */
+const NATURAL_MIN_TOTAL_ROWS = 25;
+const MOBILE_LEGIBLE_FLOOR_PX = 16;
+
+function getCellPixelDimensions(term) {
+    try {
+        const cell =
+            term && term._core && term._core._renderService &&
+            term._core._renderService.dimensions &&
+            term._core._renderService.dimensions.css &&
+            term._core._renderService.dimensions.css.cell;
+        if (cell && cell.width && cell.height) {
+            return { width: cell.width, height: cell.height };
+        }
+    } catch (_) {}
+    const el = term && term.element &&
+        term.element.querySelector(".xterm-char-measure-element");
+    if (el) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width && rect.height) {
+            return { width: rect.width, height: rect.height };
+        }
+    }
+    return null;
+}
+
+function sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols, cause) {
+    if (!wsControl || !ownWebClientId) {
+        return;
+    }
+    const resizeType =
+        cause === "RenderingPreference"
+            ? "TerminalResizeRendering"
+            : cause === "Settled"
+            ? "TerminalSizeSettled"
+            : "TerminalResize";
+    wsControl.send(
+        JSON.stringify({
+            web_client_id: ownWebClientId,
+            payload: {
+                type: resizeType,
+                rows,
+                cols,
+            },
+        })
+    );
+    const cell = getCellPixelDimensions(term);
+    if (!cell) {
+        return;
+    }
+    wsControl.send(
+        JSON.stringify({
+            web_client_id: ownWebClientId,
+            payload: {
+                type: "TerminalMetrics",
+                cell_pixel_width: Math.round(cell.width),
+                cell_pixel_height: Math.round(cell.height),
+                text_area_pixel_width: Math.round(cols * cell.width),
+                text_area_pixel_height: Math.round(rows * cell.height),
+            },
+        })
+    );
+}
+
 export function initWebSockets(
     webClientId,
     sessionName,
@@ -103,7 +155,6 @@ export function initWebSockets(
         }
     };
 
-    // Update sendAnsiKey to use the actual WebSocket
     const originalSendAnsiKey = sendAnsiKey;
     sendAnsiKey = (ansiKey) => {
         if (ownWebClientId !== "") {
@@ -111,7 +162,6 @@ export function initWebSockets(
         }
     };
 
-    // Setup resize handler
     setupResizeHandler(
         term,
         fitAddon,
@@ -135,27 +185,11 @@ export function initWebSockets(
     };
 }
 
-/**
- * Start the control WebSocket and set up its handlers
- * @param {WebSocket} wsControl - Control WebSocket instance
- * @param {Terminal} term - Terminal instance
- * @param {FitAddon} fitAddon - Terminal fit addon
- * @param {string} ownWebClientId - Own web client ID
- */
 function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
     wsControl.onopen = function (event) {
         const fitDimensions = fitAddon.proposeDimensions();
         const { rows, cols } = fitDimensions;
-        wsControl.send(
-            JSON.stringify({
-                web_client_id: ownWebClientId,
-                payload: {
-                    type: "TerminalResize",
-                    rows,
-                    cols,
-                },
-            })
-        );
+        sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols);
     };
 
     wsControl.onmessage = function (event) {
@@ -168,6 +202,7 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
                 mac_option_is_meta,
                 cursor_style,
                 cursor_inactive_style,
+                font_size,
             } = msg;
             term.options.fontFamily = font;
             term.options.theme = theme;
@@ -185,33 +220,50 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             if (cursor_inactive_style !== "undefined") {
                 term.options.cursorInactiveStyle = cursor_inactive_style;
             }
+            if (typeof window.__zjSyncInactiveCursorStyle === "function") {
+                window.__zjSyncInactiveCursorStyle();
+            }
+            const isMobileViewport =
+                (window.matchMedia &&
+                    window.matchMedia("(pointer: coarse)").matches &&
+                    window.innerWidth < 600) ||
+                /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+            const hasExplicitFontSize =
+                typeof font_size === "number" && font_size > 0;
+            const baseFontPx = hasExplicitFontSize
+                ? font_size
+                : isMobileViewport
+                ? 24
+                : 12;
+            applyFontSize(term, fitAddon, baseFontPx);
+            const needsMobileDownscale =
+                !hasExplicitFontSize &&
+                isMobileViewport &&
+                term.rows < NATURAL_MIN_TOTAL_ROWS;
+            if (needsMobileDownscale) {
+                const downscaledPx = Math.max(
+                    Math.floor(
+                        (baseFontPx * term.rows) / NATURAL_MIN_TOTAL_ROWS
+                    ),
+                    MOBILE_LEGIBLE_FLOOR_PX
+                );
+                if (downscaledPx < baseFontPx) {
+                    applyFontSize(term, fitAddon, downscaledPx);
+                }
+            }
             const body = document.querySelector("body");
             body.style.background = theme.background || "black";
 
             const terminal = document.getElementById("terminal");
             terminal.style.background = theme.background;
 
-            const fitDimensions = fitAddon.proposeDimensions();
-            if (fitDimensions === undefined) {
-                console.warn("failed to get new fit dimensions");
-                return;
-            }
-
-            const { rows, cols } = fitDimensions;
-            if (rows === term.rows && cols === term.cols) {
-                return;
-            }
-            term.resize(cols, rows);
-
-            wsControl.send(
-                JSON.stringify({
-                    web_client_id: ownWebClientId,
-                    payload: {
-                        type: "TerminalResize",
-                        rows,
-                        cols,
-                    },
-                })
+            sendSizeUpdate(
+                wsControl,
+                ownWebClientId,
+                term,
+                term.rows,
+                term.cols,
+                "Settled"
             );
         } else if (msg.type === "QueryTerminalSize") {
             const fitDimensions = fitAddon.proposeDimensions();
@@ -219,16 +271,7 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             if (rows !== term.rows || cols !== term.cols) {
                 term.resize(cols, rows);
             }
-            wsControl.send(
-                JSON.stringify({
-                    web_client_id: ownWebClientId,
-                    payload: {
-                        type: "TerminalResize",
-                        rows,
-                        cols,
-                    },
-                })
-            );
+            sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols);
         } else if (msg.type === "Log") {
             const { lines } = msg;
             for (const line in lines) {
@@ -243,6 +286,9 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             const { new_session_name } = msg;
             const baseUrl = getBaseUrl();
             window.location.href = `${baseUrl}/${encodeURIComponent(new_session_name)}`;
+        } else if (msg.type === "SetSoftKeyboard") {
+            const { on } = msg;
+            setSoftKeyboard(term, !!on);
         }
     };
 
@@ -255,13 +301,6 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
     };
 }
 
-/**
- * Set up window resize event handler
- * @param {Terminal} term - Terminal instance
- * @param {FitAddon} fitAddon - Terminal fit addon
- * @param {function} getWsControl - Function that returns control WebSocket
- * @param {function} getOwnWebClientId - Function that returns own web client ID
- */
 export function setupResizeHandler(
     term,
     fitAddon,
@@ -269,6 +308,8 @@ export function setupResizeHandler(
     getOwnWebClientId
 ) {
     let resizeScheduled = false;
+    let pendingViewportSignal = false;
+    let pendingRenderingSignal = false;
 
     const updateViewportVars = () => {
         const root = document.documentElement;
@@ -279,7 +320,7 @@ export function setupResizeHandler(
         root.style.setProperty("--dynamic-vw", `${width}px`);
     };
 
-    const resizeTerminal = () => {
+    const resizeTerminal = (cause) => {
         const ownWebClientId = getOwnWebClientId();
         if (ownWebClientId === "") {
             return;
@@ -296,42 +337,102 @@ export function setupResizeHandler(
             return;
         }
 
+        const wsControl = getWsControl();
         term.resize(cols, rows);
 
-        const wsControl = getWsControl();
-        if (wsControl) {
-            wsControl.send(
-                JSON.stringify({
-                    web_client_id: ownWebClientId,
-                    payload: {
-                        type: "TerminalResize",
-                        rows,
-                        cols,
-                    },
-                })
-            );
-        }
+        sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols, cause);
     };
 
-    const handleViewportChange = () => {
+    const handleViewportChange = (cause) => {
         updateViewportVars();
-        resizeTerminal();
+        resizeTerminal(cause);
     };
 
-    const scheduleResize = () => {
+    const scheduleResize = (cause) => {
+        if (cause === "RenderingPreference") {
+            pendingRenderingSignal = true;
+        } else {
+            pendingViewportSignal = true;
+        }
         if (resizeScheduled) {
             return;
         }
         resizeScheduled = true;
         requestAnimationFrame(() => {
+            const tickCause =
+                pendingRenderingSignal && !pendingViewportSignal
+                    ? "RenderingPreference"
+                    : "Viewport";
+            pendingViewportSignal = false;
+            pendingRenderingSignal = false;
             resizeScheduled = false;
-            handleViewportChange();
+            handleViewportChange(tickCause);
         });
     };
 
+    const scheduleViewportResize = () => scheduleResize("Viewport");
+    const scheduleRenderingResize = () => scheduleResize("RenderingPreference");
+
     updateViewportVars();
-    addEventListener("resize", scheduleResize);
+    addEventListener("resize", scheduleViewportResize);
     if (window.visualViewport) {
-        window.visualViewport.addEventListener("resize", scheduleResize);
+        window.visualViewport.addEventListener(
+            "resize",
+            scheduleViewportResize
+        );
     }
+    addEventListener("zellij:rendering-resize", scheduleRenderingResize);
+
+    setupSoftKeyboardVisibilityTracker(getWsControl, getOwnWebClientId);
+}
+
+function setupSoftKeyboardVisibilityTracker(getWsControl, getOwnWebClientId) {
+    if (!window.visualViewport) {
+        return;
+    }
+    const VIEWPORT_DELTA_THRESHOLD_PX = 150;
+    let lastViewportHeight = window.visualViewport.height;
+    let kbdVisible = false;
+
+    const onResize = () => {
+        const newHeight = window.visualViewport.height;
+        const delta = newHeight - lastViewportHeight;
+        let newKbdVisible = kbdVisible;
+        if (delta < -VIEWPORT_DELTA_THRESHOLD_PX) {
+            newKbdVisible = true;
+        } else if (delta > VIEWPORT_DELTA_THRESHOLD_PX) {
+            newKbdVisible = false;
+        }
+        lastViewportHeight = newHeight;
+        if (newKbdVisible === kbdVisible) {
+            return;
+        }
+        kbdVisible = newKbdVisible;
+
+        if (!kbdVisible) {
+            const capture =
+                window.__zjSoftKbdCapture &&
+                window.__zjSoftKbdCapture.element;
+            if (capture && window.__zjSoftKbdCapture.isFocused) {
+                capture.blur();
+            }
+        }
+
+        const wsControl = getWsControl();
+        const ownWebClientId = getOwnWebClientId();
+        if (!wsControl || ownWebClientId === "") {
+            return;
+        }
+        wsControl.send(
+            JSON.stringify({
+                web_client_id: ownWebClientId,
+                payload: {
+                    type: "SoftKeyboardVisibilityChanged",
+                    visible: kbdVisible,
+                },
+            })
+        );
+    };
+
+    window.visualViewport.addEventListener("resize", onResize);
 }

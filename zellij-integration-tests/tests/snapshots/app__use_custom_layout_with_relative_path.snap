@@ -1,0 +1,28 @@
+---
+source: zellij-integration-tests/tests/app.rs
+expression: normalized(&grid_snapshot)
+---
+
+ Tip: UNBOUND => open new pane. UNBOUND => navigate between panes. UNBOUND => increase/decrease pane size.
+┌ Pane #1 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│$ █                                                                                                                   │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ Zellij (test)  Tab #1                                                                                              

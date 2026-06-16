@@ -277,6 +277,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -364,6 +365,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -466,6 +468,7 @@ fn create_new_tab_with_swap_layouts(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        0, // mobile_tab_count
     );
     let (
         base_layout,
@@ -569,6 +572,7 @@ fn create_new_tab_with_os_api(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -658,6 +662,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        0, // mobile_tab_count
     );
     let pane_ids = tab_layout
         .extract_run_instructions()
@@ -761,6 +766,7 @@ fn create_new_tab_with_mock_pty_writer(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -855,6 +861,7 @@ fn create_new_tab_with_sixel_support(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -12562,6 +12569,7 @@ fn create_new_tab_with_plugin_receiver(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -14346,6 +14354,7 @@ fn create_new_tab_with_server_receiver(
         false, // mouse_click_through
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         8080,
+        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -14804,14 +14813,10 @@ fn osc99_query_flag_roundtrip() {
 
 #[test]
 fn hidden_cursor_still_emits_cup_for_host_terminal_positioning() {
-    // When an app hides the cursor the host
-    // terminal still needs a CUP sequence so that IME composition candidates and
-    // other cursor-position-dependent features appear in the correct location.
     let size = Size { cols: 80, rows: 24 };
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
 
-    // Move cursor to a known position, then hide it
     tab.handle_pty_bytes(1, Vec::from("\u{1b}[10;20H\u{1b}[?25l".as_bytes()))
         .unwrap();
 
@@ -14820,26 +14825,17 @@ fn hidden_cursor_still_emits_cup_for_host_terminal_positioning() {
     let serialized = output.serialize().unwrap();
     let client_output = serialized.get(&client_id).unwrap();
 
-    // The output must contain a hide-cursor instruction
     assert!(
         client_output.contains("\u{1b}[?25l"),
         "Expected hide-cursor sequence in output"
     );
 
-    // The output must contain a CUP sequence positioning the cursor where the app
-    // left it (row 10, col 20 — 1-indexed in the pane, plus the content offset
-    // from the pane frame). The key point is that a CUP is emitted at all, even
-    // though the cursor is hidden.
-    //
-    // With draw_pane_frames=true the content offset is (1, 1), so the absolute
-    // position is row 11, col 21.
     assert!(
         client_output.contains("\u{1b}[11;21H"),
         "Expected CUP sequence for hidden cursor positioning, got: {:?}",
         client_output
     );
 
-    // The output must NOT contain a show-cursor instruction
     assert!(
         !client_output.contains("\u{1b}[?25h"),
         "Show-cursor sequence must not be present when app has hidden the cursor"

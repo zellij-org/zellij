@@ -6,8 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * feat: allow tabs to have different sizes if clients aren't focused on the same one (https://github.com/zellij-org/zellij/pull/5133)
-* fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)
+* feat: PWA support for the web client (manifest + icons + iOS meta tags) so the page can be installed as a standalone app (https://github.com/zellij-org/zellij/pull/5184)
+* feat: mobile UI (https://github.com/zellij-org/zellij/pull/5241)
+* chore: new integration testing infra (https://github.com/zellij-org/zellij/pull/5269)
 * fix: correctly send shifted keys (e.g. Alt+Shift+/) to non-kitty programs regardless of keyboard layout
+
+## [0.44.3] - 2026-05-13
+* fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)
+* fix: deadlock with --blocking panes (https://github.com/zellij-org/zellij/pull/5152)
+* fix: occasional stall before prompt/program-run (https://github.com/zellij-org/zellij/pull/5149, https://github.com/zellij-org/zellij/pull/5156 and https://github.com/zellij-org/zellij/pull/5163)
+* fix: regression with ESC+mouse hold (https://github.com/zellij-org/zellij/pull/5157)
+* fix: close session-manager instead of hiding to avoid confusion (https://github.com/zellij-org/zellij/pull/5055)
+* fix: tighten permissions around the `OpenCommandInNewTab` and `OpenEditorPaneInNewTab` plugin commands (https://github.com/zellij-org/zellij/pull/5143)
+* fix: UI feedback for deleting sessions through the session-manager (https://github.com/zellij-org/zellij/pull/5160)
+* fix: clear bell notification also when focusing pane with the mouse (https://github.com/zellij-org/zellij/pull/5161)
 
 ## [0.44.2] - 2026-05-05
 * fix: idle CPU + disk i/o, CommandChanged plugin Event, GetSessionList plugin command (https://github.com/zellij-org/zellij/pull/5063)

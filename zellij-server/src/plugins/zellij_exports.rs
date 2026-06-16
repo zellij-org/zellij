@@ -22,11 +22,12 @@ use wasmi::{Caller, Linker};
 use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{
     BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
-    CommandType, ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, Event,
-    FloatingPaneCoordinates, FocusOrCreateTabResponse, GetFocusedPaneInfoResponse,
-    GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, HttpVerb,
-    KeyWithModifier, LayoutInfo, LayoutMetadata, LayoutParsingError, MessageToPlugin,
-    NewPanePlacement, NewTabResponse, OpenCommandPaneBackgroundResponse,
+    CommandType, ConnectToSession, DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse,
+    DeleteLayoutResponse, EditLayoutResponse, Event, FloatingPaneCoordinates,
+    FocusOrCreateTabResponse, GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
+    GetPaneRunningCommandResponse, HttpVerb, KeyWithModifier, KillSessionsResponse, LayoutInfo,
+    LayoutMetadata, LayoutParsingError, MessageToPlugin, NewPanePlacement, NewTabResponse,
+    NewTabUnfocusedResponse, NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
     OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
     OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
@@ -52,6 +53,7 @@ use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
 use kdl::KdlDocument;
+use zellij_utils::pane_size::Size;
 
 use prost::Message;
 use zellij_utils::{
@@ -76,15 +78,18 @@ use zellij_utils::{
             dump_layout_response, dump_session_layout_response, hide_floating_panes_response,
             parse_layout_response, save_session_response, show_floating_panes_response,
             ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIdResponse,
-            ProtobufBreakPanesToTabWithIndexResponse, ProtobufDeleteLayoutResponse,
+            ProtobufBreakPanesToTabWithIndexResponse, ProtobufDeleteAllDeadSessionsResponse,
+            ProtobufDeleteDeadSessionResponse, ProtobufDeleteLayoutResponse,
             ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
             ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
             ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
             ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
             ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetSessionListResponse,
-            ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse, ProtobufNewTabResponse,
-            ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
+            ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse,
+            ProtobufKillSessionsResponse, ProtobufNewTabResponse, ProtobufNewTabUnfocusedResponse,
+            ProtobufNewTabsResponse, ProtobufNewTiledPaneInTabResponse,
+            ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse,
             ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
@@ -121,12 +126,8 @@ macro_rules! apply_action {
             None,
             Some(PaneId::Plugin($env.plugin_id)),
             $env.senders.clone(),
-            $env.capabilities.clone(),
-            $env.client_attributes.clone(),
             $env.default_shell.clone(),
-            &$env.default_layout,
             None,
-            &$env.keybinds,
             $env.default_mode.clone(),
             None,
         ) {
@@ -297,6 +298,12 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         context,
                     } => edit_layout(env, layout_name, context),
                     PluginCommand::NewTab { name, cwd } => new_tab(env, name, cwd),
+                    PluginCommand::NewTabUnfocused { name, cwd } => {
+                        new_tab_unfocused(env, name, cwd)
+                    },
+                    PluginCommand::NewTiledPaneInTab { tab_position } => {
+                        new_tiled_pane_in_tab(env, tab_position)
+                    },
                     PluginCommand::GoToNextTab => go_to_next_tab(env),
                     PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
                     PluginCommand::Resize(resize_payload) => resize(env, resize_payload),
@@ -433,12 +440,29 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::MessageToPlugin(message) => message_to_plugin(env, message)?,
                     PluginCommand::DisconnectOtherClients => disconnect_other_clients(env),
                     PluginCommand::KillSessions(session_list) => kill_sessions(session_list),
+                    PluginCommand::KillSessionsAndReply(session_list) => {
+                        kill_sessions_and_reply(env, session_list)
+                    },
+                    PluginCommand::DeleteDeadSessionAndReply(session_name) => {
+                        delete_dead_session_and_reply(env, session_name)
+                    },
+                    PluginCommand::DeleteAllDeadSessionsAndReply => {
+                        delete_all_dead_sessions_and_reply(env)
+                    },
                     PluginCommand::ScanHostFolder(folder_to_scan) => {
                         scan_host_folder(env, folder_to_scan)
                     },
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
                     PluginCommand::ListWindowsVolumes => list_windows_volumes(env),
                     PluginCommand::GetSessionList => get_session_list(env),
+                    PluginCommand::SetSoftKeyboard(on) => set_soft_keyboard(env, on),
+                    PluginCommand::SetTabFit { tab_id, fit } => set_tab_fit(
+                        env,
+                        tab_id,
+                        fit.map(|(pane_id, size)| (pane_id.into(), size)),
+                    ),
+                    PluginCommand::ExitMobileMode => exit_mobile_mode(env),
+                    PluginCommand::SetShadowFocus(pane_id) => set_shadow_focus(env, pane_id.into()),
                     PluginCommand::DumpSessionLayout { tab_index } => {
                         dump_session_layout(env, tab_index)
                     },
@@ -1430,11 +1454,7 @@ fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, Str
     let client_id = env.client_id;
     let plugin_id = env.plugin_id;
     let senders = env.senders.clone();
-    let capabilities = env.capabilities.clone();
-    let client_attributes = env.client_attributes.clone();
     let default_shell = env.default_shell.clone();
-    let default_layout = env.default_layout.clone();
-    let keybinds = env.keybinds.clone();
     let default_mode = env.default_mode.clone();
     let plugin_name = env.name().to_string();
 
@@ -1447,12 +1467,8 @@ fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, Str
             None,
             Some(PaneId::Plugin(plugin_id)),
             senders.clone(),
-            capabilities,
-            client_attributes,
             default_shell,
-            &default_layout,
             None,
-            &keybinds,
             default_mode,
             None,
         ) {
@@ -2806,6 +2822,62 @@ fn new_tab(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
         .non_fatal();
 }
 
+fn new_tab_unfocused(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
+    let cwd = cwd.map(|c| translate_plugin_path(env, PathBuf::from(c)));
+    let action = Action::NewTab {
+        tiled_layout: None,
+        floating_layouts: vec![],
+        swap_tiled_layouts: None,
+        swap_floating_layouts: None,
+        tab_name: name,
+        should_change_focus_to_new_tab: false,
+        cwd,
+        initial_panes: None,
+        first_pane_unblock_condition: None,
+    };
+    let error_msg = || format!("Failed to open new tab (unfocused)");
+    let result = apply_action!(action, error_msg, env);
+
+    let tab_id: NewTabUnfocusedResponse = result.and_then(|r| r.affected_tab_id);
+
+    let response = ProtobufNewTabUnfocusedResponse::from(tab_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write new_tab_unfocused response"))
+        .non_fatal();
+}
+
+fn new_tiled_pane_in_tab(env: &PluginEnv, tab_position: usize) {
+    let error_msg = || format!("failed to open new tiled pane in tab {}", tab_position);
+    let default_shell = env.default_shell.clone().unwrap_or_else(|| {
+        TerminalAction::RunCommand(RunCommand {
+            command: env.path_to_default_shell.clone(),
+            use_terminal_title: true,
+            ..Default::default()
+        })
+    });
+    let run_command_action: Option<RunCommandAction> = match default_shell {
+        TerminalAction::RunCommand(run_command) => Some(run_command.into()),
+        _ => None,
+    };
+    let action = Action::NewTiledPane {
+        direction: None,
+        command: run_command_action,
+        pane_name: None,
+        near_current_pane: false,
+        borderless: None,
+        tab_id: Some(tab_position),
+    };
+    let result = apply_action!(action, error_msg, env);
+
+    let pane_id: NewTiledPaneInTabResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    let response = ProtobufNewTiledPaneInTabResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write new_tiled_pane_in_tab response"))
+        .non_fatal();
+}
+
 fn go_to_next_tab(env: &PluginEnv) {
     let action = Action::GoToNextTab;
     let error_msg = || format!("Failed to go to next tab");
@@ -3302,6 +3374,103 @@ fn kill_sessions(session_names: Vec<String>) {
             },
         };
     }
+}
+
+// Wedge timeout: only guards against a peer that neither shuts down nor
+// crashes. Normal kill latency is tens of milliseconds (peer's route loop
+// reads the message, server sends Exit back), so 500 ms is several times the
+// expected worst case while still feeling instant to the user. Applied as a
+// single budget over the whole batch -- per-session kills are issued
+// concurrently so killing many sessions does not multiply the wait.
+const KILL_WEDGE_TIMEOUT: Duration = Duration::from_millis(500);
+
+fn kill_sessions_and_reply(env: &PluginEnv, session_names: Vec<String>) {
+    use tokio::task::JoinSet;
+    let runtime = get_tokio_runtime();
+    let result: Result<(), String> = runtime.block_on(async {
+        let mut set: JoinSet<(String, std::io::Result<()>)> = JoinSet::new();
+        for name in session_names {
+            let path = ZELLIJ_SOCK_DIR.join(&name);
+            set.spawn(async move {
+                let res = zellij_utils::ipc::async_send_kill_and_await(&path).await;
+                (name, res)
+            });
+        }
+        let drain = async {
+            let mut first_err: Option<String> = None;
+            while let Some(joined) = set.join_next().await {
+                match joined {
+                    Ok((_name, Ok(()))) => {},
+                    Ok((name, Err(e))) => {
+                        if first_err.is_none() {
+                            first_err = Some(format!("Failed to kill session {}: {}", name, e));
+                        }
+                    },
+                    Err(e) => {
+                        if first_err.is_none() {
+                            first_err = Some(format!("Internal error in kill task: {}", e));
+                        }
+                    },
+                }
+            }
+            match first_err {
+                Some(e) => Err(e),
+                None => Ok(()),
+            }
+        };
+        match tokio::time::timeout(KILL_WEDGE_TIMEOUT, drain).await {
+            Ok(res) => res,
+            Err(_) => {
+                Err("Timed out waiting for one or more sessions to acknowledge kill".to_string())
+            },
+        }
+    });
+    let response = match result {
+        Ok(()) => KillSessionsResponse::Ok,
+        Err(e) => KillSessionsResponse::Err(e),
+    };
+    let protobuf_response = ProtobufKillSessionsResponse::from(response);
+    wasi_write_object(env, &protobuf_response.encode_to_vec())
+        .with_context(|| "failed to write kill_sessions response".to_string())
+        .non_fatal();
+}
+
+fn delete_dead_session_and_reply(env: &PluginEnv, session_name: String) {
+    let response =
+        match std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&session_name)) {
+            Ok(()) => DeleteDeadSessionResponse::Ok,
+            Err(e) => DeleteDeadSessionResponse::Err(format!(
+                "Failed to delete dead session {}: {}",
+                session_name, e
+            )),
+        };
+    let protobuf_response = ProtobufDeleteDeadSessionResponse::from(response);
+    wasi_write_object(env, &protobuf_response.encode_to_vec())
+        .with_context(|| "failed to write delete_dead_session response".to_string())
+        .non_fatal();
+}
+
+fn delete_all_dead_sessions_and_reply(env: &PluginEnv) {
+    // Same budget as kill-all so the UX of "y to confirm" is consistent: the
+    // host-side fs work for many dead sessions is bounded in wall time.
+    let runtime = get_tokio_runtime();
+    let result: Result<(), String> = runtime.block_on(async {
+        let fs_task = tokio::task::spawn_blocking(delete_all_dead_sessions);
+        match tokio::time::timeout(KILL_WEDGE_TIMEOUT, fs_task).await {
+            Ok(Ok(Ok(()))) => Ok(()),
+            Ok(Ok(Err(e))) => Err(format!("Failed to delete dead sessions: {}", e)),
+            Ok(Err(e)) => Err(format!("Internal error in delete-all task: {}", e)),
+            Err(_) => Err("Timed out deleting dead sessions".to_string()),
+        }
+    });
+    let response = match result {
+        Ok(()) => DeleteAllDeadSessionsResponse::Ok,
+        Err(e) => DeleteAllDeadSessionsResponse::Err(e),
+    };
+    let protobuf_response = ProtobufDeleteAllDeadSessionsResponse::from(response);
+    wasi_write_object(env, &protobuf_response.encode_to_vec())
+        .with_context(|| "failed to write delete_all_dead_sessions response".to_string())
+        .non_fatal();
 }
 
 fn watch_filesystem(env: &PluginEnv) {
@@ -3802,6 +3971,56 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
 #[cfg(not(windows))]
 fn list_windows_volumes(_env: &PluginEnv) {
     log::error!("ListWindowsVolumes is only supported on Windows");
+}
+
+fn set_soft_keyboard(env: &PluginEnv, on: bool) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetSoftKeyboard {
+            client_id: env.client_id,
+            on,
+        })
+        .with_context(|| {
+            format!(
+                "failed to dispatch SetSoftKeyboard for plugin {}",
+                env.plugin_id
+            )
+        })
+        .non_fatal();
+}
+
+fn set_shadow_focus(env: &PluginEnv, pane_id: PaneId) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetShadowFocus(env.client_id, pane_id))
+        .with_context(|| {
+            format!(
+                "failed to dispatch SetShadowFocus for plugin {}",
+                env.plugin_id
+            )
+        })
+        .non_fatal();
+}
+
+fn set_tab_fit(env: &PluginEnv, tab_id: usize, fit: Option<(PaneId, Size)>) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetTabFit {
+            client_id: env.client_id,
+            tab_id,
+            fit,
+        })
+        .with_context(|| format!("failed to dispatch SetTabFit for plugin {}", env.plugin_id))
+        .non_fatal();
+}
+
+fn exit_mobile_mode(env: &PluginEnv) {
+    env.senders
+        .send_to_screen(ScreenInstruction::ExitMobileMode(env.client_id, None))
+        .with_context(|| {
+            format!(
+                "failed to dispatch ExitMobileMode for plugin {}",
+                env.plugin_id
+            )
+        })
+        .non_fatal();
 }
 
 #[cfg(windows)]
@@ -4482,12 +4701,8 @@ fn try_edit_layout(
         None,
         Some(PaneId::Plugin(env.plugin_id)),
         env.senders.clone(),
-        env.capabilities.clone(),
-        env.client_attributes.clone(),
         env.default_shell.clone(),
-        &env.default_layout,
         None,
-        &env.keybinds,
         env.default_mode.clone(),
         None,
     )
@@ -5214,6 +5429,7 @@ fn check_command_permission(
         | PluginCommand::OpenTerminalInPlaceOfPlugin(..)
         | PluginCommand::OpenPluginPaneInNewTab { .. }
         | PluginCommand::OpenPluginPaneFloating { .. }
+        | PluginCommand::NewTiledPaneInTab { .. }
         | PluginCommand::OpenTerminalPaneInPlaceOfPaneId(..) => {
             PermissionType::OpenTerminalsOrPlugins
         },
@@ -5238,6 +5454,7 @@ fn check_command_permission(
         | PluginCommand::NewTabsWithLayout(..)
         | PluginCommand::NewTabsWithLayoutInfo(..)
         | PluginCommand::NewTab { .. }
+        | PluginCommand::NewTabUnfocused { .. }
         | PluginCommand::GoToNextTab
         | PluginCommand::GoToPreviousTab
         | PluginCommand::Resize(..)
@@ -5322,6 +5539,9 @@ fn check_command_permission(
         | PluginCommand::EmbedMultiplePanes(..)
         | PluginCommand::ReplacePaneWithExistingPane(..)
         | PluginCommand::KillSessions(..)
+        | PluginCommand::KillSessionsAndReply(..)
+        | PluginCommand::DeleteDeadSessionAndReply(..)
+        | PluginCommand::DeleteAllDeadSessionsAndReply
         | PluginCommand::SendSigintToPaneId(..)
         | PluginCommand::SendSigkillToPaneId(..)
         | PluginCommand::OverrideLayout(..)
@@ -5332,7 +5552,10 @@ fn check_command_permission(
         | PluginCommand::ShowFloatingPanes { .. }
         | PluginCommand::HideFloatingPanes { .. }
         | PluginCommand::SetPaneRegexHighlights(..)
-        | PluginCommand::ClearPaneHighlights(..) => PermissionType::ChangeApplicationState,
+        | PluginCommand::ClearPaneHighlights(..)
+        | PluginCommand::SetSoftKeyboard(..)
+        | PluginCommand::SetTabFit { .. }
+        | PluginCommand::ExitMobileMode => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
@@ -5376,9 +5599,8 @@ fn check_command_permission(
         PluginCommand::GetSessionEnvironmentVariables => {
             PermissionType::ReadSessionEnvironmentVariables
         },
-        PluginCommand::OpenCommandPaneInNewTab(..) | PluginCommand::OpenEditorPaneInNewTab(..) => {
-            PermissionType::ChangeApplicationState
-        },
+        PluginCommand::OpenCommandPaneInNewTab(..) => PermissionType::RunCommands,
+        PluginCommand::OpenEditorPaneInNewTab(..) => PermissionType::OpenFiles,
         _ => return (PermissionStatus::Granted, None),
     };
 

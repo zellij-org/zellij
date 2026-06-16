@@ -26,6 +26,7 @@ pub use super::generated_api::api::{
         PluginConfigurationChangedPayload as ProtobufPluginConfigurationChangedPayload,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
+        SoftKeyboardVisibilityChangedPayload as ProtobufSoftKeyboardVisibilityChangedPayload,
         SyntaxError as ProtobufSyntaxError, TabInfo as ProtobufTabInfo,
         TabMetadata as ProtobufTabMetadata, UserActionPayload as ProtobufUserActionPayload,
         WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
@@ -588,6 +589,14 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for HostTerminalThemeChanged Event"),
             },
+            Some(ProtobufEventType::SoftKeyboardVisibilityChanged) => {
+                match protobuf_event.payload {
+                    Some(ProtobufEventPayload::SoftKeyboardVisibilityChangedPayload(p)) => {
+                        Ok(Event::SoftKeyboardVisibilityChanged(p.visible))
+                    },
+                    _ => Err("Malformed payload for SoftKeyboardVisibilityChanged Event"),
+                }
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -1129,6 +1138,15 @@ impl TryFrom<Event> for ProtobufEvent {
                     payload: Some(event::Payload::HostTerminalThemeChangedPayload(payload)),
                 })
             },
+            Event::SoftKeyboardVisibilityChanged(visible) => {
+                let payload = ProtobufSoftKeyboardVisibilityChangedPayload { visible };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::SoftKeyboardVisibilityChanged as i32,
+                    payload: Some(event::Payload::SoftKeyboardVisibilityChangedPayload(
+                        payload,
+                    )),
+                })
+            },
             Event::InitialKeybinds(keybinds) => {
                 let mut protobuf_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
                 for (input_mode, input_mode_keybinds) in keybinds {
@@ -1624,6 +1642,22 @@ impl TryFrom<MouseEventPayload> for Mouse {
                 ),
                 _ => Err("Malformed payload for mouse hover"),
             },
+            Some(MouseEventName::MouseScrollLeft) => {
+                match mouse_event_payload.mouse_event_payload {
+                    Some(mouse_event_payload::MouseEventPayload::LineCount(line_count)) => {
+                        Ok(Mouse::ScrollLeft(line_count as usize))
+                    },
+                    _ => Err("Malformed payload for mouse scroll left"),
+                }
+            },
+            Some(MouseEventName::MouseScrollRight) => {
+                match mouse_event_payload.mouse_event_payload {
+                    Some(mouse_event_payload::MouseEventPayload::LineCount(line_count)) => {
+                        Ok(Mouse::ScrollRight(line_count as usize))
+                    },
+                    _ => Err("Malformed payload for mouse scroll right"),
+                }
+            },
             None => Err("Malformed payload for MouseEventName"),
         }
     }
@@ -1688,6 +1722,18 @@ impl TryFrom<Mouse> for MouseEventPayload {
                         line: line as i64,
                         column: column as i64,
                     },
+                )),
+            }),
+            Mouse::ScrollLeft(cols) => Ok(MouseEventPayload {
+                mouse_event_name: MouseEventName::MouseScrollLeft as i32,
+                mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
+                    cols as u32,
+                )),
+            }),
+            Mouse::ScrollRight(cols) => Ok(MouseEventPayload {
+                mouse_event_name: MouseEventName::MouseScrollRight as i32,
+                mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
+                    cols as u32,
                 )),
             }),
         }
@@ -2078,6 +2124,9 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::HighlightClicked => EventType::HighlightClicked,
             ProtobufEventType::InitialKeybinds => EventType::InitialKeybinds,
             ProtobufEventType::HostTerminalThemeChanged => EventType::HostTerminalThemeChanged,
+            ProtobufEventType::SoftKeyboardVisibilityChanged => {
+                EventType::SoftKeyboardVisibilityChanged
+            },
         })
     }
 }
@@ -2132,6 +2181,9 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::HighlightClicked => ProtobufEventType::HighlightClicked,
             EventType::InitialKeybinds => ProtobufEventType::InitialKeybinds,
             EventType::HostTerminalThemeChanged => ProtobufEventType::HostTerminalThemeChanged,
+            EventType::SoftKeyboardVisibilityChanged => {
+                ProtobufEventType::SoftKeyboardVisibilityChanged
+            },
         })
     }
 }
@@ -2986,12 +3038,16 @@ impl TryFrom<ProtobufPaneContents> for PaneContents {
             .selected_text
             .map(|st| st.try_into())
             .transpose()?;
+        let cursor = protobuf_contents
+            .cursor
+            .map(|p| (p.column as usize, p.line as usize));
 
         Ok(PaneContents {
             viewport: protobuf_contents.viewport,
             selected_text,
             lines_above_viewport: protobuf_contents.lines_above_viewport,
             lines_below_viewport: protobuf_contents.lines_below_viewport,
+            cursor,
         })
     }
 }
@@ -3003,12 +3059,17 @@ impl TryFrom<PaneContents> for ProtobufPaneContents {
             .selected_text
             .map(|st| st.try_into())
             .transpose()?;
+        let cursor = pane_contents.cursor.map(|(x, y)| ProtobufPosition {
+            line: y as i64,
+            column: x as i64,
+        });
 
         Ok(ProtobufPaneContents {
             viewport: pane_contents.viewport,
             selected_text,
             lines_above_viewport: pane_contents.lines_above_viewport,
             lines_below_viewport: pane_contents.lines_below_viewport,
+            cursor,
         })
     }
 }
@@ -3104,6 +3165,7 @@ fn serialize_pane_render_report_with_ansi_event_with_data() {
             selected_text: None,
             lines_above_viewport: vec![],
             lines_below_viewport: vec![],
+            cursor: None,
         },
     );
     let event = Event::PaneRenderReportWithAnsi(pane_contents_map);

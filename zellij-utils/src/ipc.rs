@@ -81,6 +81,14 @@ pub struct ColorRegister {
     pub color: String,
 }
 
+#[derive(Default, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResizeCause {
+    #[default]
+    Viewport,
+    RenderingPreference,
+    SizeSettled,
+}
+
 impl PixelDimensions {
     pub fn merge(&mut self, other: PixelDimensions) {
         if let Some(text_area_size) = other.text_area_size {
@@ -113,6 +121,8 @@ pub enum ClientToServerMsg {
     },
     TerminalResize {
         new_size: Size,
+        #[serde(default)]
+        cause: ResizeCause,
     },
     FirstClientConnected {
         cli_assets: CliAssets,
@@ -156,20 +166,15 @@ pub enum ClientToServerMsg {
     DesktopNotificationResponse {
         raw_bytes: Vec<u8>,
     },
-    /// Raw reply bytes observed by the client inside a forwarding window
-    /// closed by the Primary-DA barrier. The server routes these bytes
-    /// verbatim to the pane whose app issued the whitelisted query
-    /// (tracked on the server by `token`).
     ForwardedReplyFromHost {
         token: u32,
         reply_bytes: Vec<u8>,
     },
-    /// The host terminal reported a color-palette theme mode (DSR 997 reply
-    /// to `CSI ? 996 n`, or unsolicited notification while `CSI ? 2031 h`
-    /// is enabled). The server propagates this to the active configured
-    /// theme and to subscribed plugins/panes.
     HostTerminalThemeChanged {
         mode: HostTerminalThemeMode,
+    },
+    SoftKeyboardVisibilityChanged {
+        visible: bool,
     },
 }
 
@@ -201,6 +206,9 @@ pub enum ServerToClientMsg {
         output: String,
     },
     QueryTerminalSize,
+    SetSoftKeyboard {
+        on: bool,
+    },
     StartWebServer,
     RenamedSession {
         name: String,
@@ -215,10 +223,6 @@ pub enum ServerToClientMsg {
     SubscribedPaneClosed {
         pane_id: PaneId,
     },
-    /// Instruct the client to write `query_bytes` followed by the
-    /// Primary-DA barrier to stdout, open a forwarding window keyed by
-    /// `token`, and reply with a `ForwardedReplyFromHost` once the
-    /// barrier closes or the window times out.
     ForwardQueryToHost {
         token: u32,
         query_bytes: Vec<u8>,
@@ -465,4 +469,65 @@ pub fn recv_protobuf_server_to_client(
         },
         Err(_e) => None,
     }
+}
+
+/// Asynchronously send `ClientToServerMsg::KillSession` to the peer at `path`
+/// and wait until the peer's existing shutdown path replies (or its socket
+/// closes). Either of those outcomes confirms the kill landed; the caller
+/// wraps this in `tokio::time::timeout` to bound the wait against a wedged
+/// peer.
+///
+/// On Unix the local socket is bidirectional, so the same async stream is
+/// used for both send and receive. On Windows the named pipe is half-duplex
+/// and the existing sync `ipc_connect` / `ipc_connect_reply` flow is
+/// dispatched onto a blocking task.
+#[cfg(unix)]
+pub async fn async_send_kill_and_await(path: &std::path::Path) -> io::Result<()> {
+    use interprocess::local_socket::traits::tokio::Stream as _;
+    use interprocess::local_socket::{prelude::*, GenericFilePath};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let fs_name = path.to_fs_name::<GenericFilePath>()?;
+    let mut stream: interprocess::local_socket::tokio::Stream =
+        interprocess::local_socket::tokio::Stream::connect(fs_name).await?;
+
+    let proto_msg: ProtoClientToServerMsg = crate::ipc::ClientToServerMsg::KillSession.into();
+    let encoded = proto_msg.encode_to_vec();
+    let len_bytes = (encoded.len() as u32).to_le_bytes();
+
+    stream.write_all(&len_bytes).await?;
+    stream.write_all(&encoded).await?;
+    // Best-effort flush; failing here doesn't mean the kill failed.
+    let _ = stream.flush().await;
+
+    // The peer's shutdown path sends `ServerToClientMsg::Exit { Normal }`
+    // (zellij-server/src/lib.rs ServerInstruction::KillSession) over this
+    // same socket before exiting; if it dies without ACKing, the stream
+    // closes. Either outcome -- a successful 4-byte length-prefix read or a
+    // read error/EOF -- confirms the kill is no longer in flight.
+    let mut len_buf = [0u8; 4];
+    let _ = stream.read_exact(&mut len_buf).await;
+    Ok(())
+}
+
+#[cfg(windows)]
+pub async fn async_send_kill_and_await(path: &std::path::Path) -> io::Result<()> {
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        use crate::consts::{ipc_connect, ipc_connect_reply};
+        let stream = ipc_connect(&path)?;
+        let reply = ipc_connect_reply(&path);
+        let mut sender = IpcSenderWithContext::<ClientToServerMsg>::new(stream);
+        sender
+            .send_client_msg(ClientToServerMsg::KillSession)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        if let Ok(reply_stream) = reply {
+            let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+                IpcReceiverWithContext::new(reply_stream);
+            let _ = receiver.recv_server_msg();
+        }
+        Ok::<(), io::Error>(())
+    })
+    .await
+    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
 }

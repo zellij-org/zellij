@@ -5,7 +5,7 @@ use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
-use crate::pane_size::PaneGeom;
+use crate::pane_size::{PaneGeom, Size};
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
 use clap::ArgEnum;
@@ -1009,8 +1009,10 @@ impl fmt::Display for ResizeStrategy {
 // left click) and the `ScrollUp` and `ScrollDown` events could probably be
 // merged into a single `Scroll(isize)` event.
 pub enum Mouse {
-    ScrollUp(usize),          // number of lines
-    ScrollDown(usize),        // number of lines
+    ScrollUp(usize),   // number of lines
+    ScrollDown(usize), // number of lines
+    ScrollLeft(usize),
+    ScrollRight(usize),
     LeftClick(isize, usize),  // line and column
     RightClick(isize, usize), // line and column
     Hold(isize, usize),       // line and column
@@ -1143,6 +1145,7 @@ pub enum Event {
     InitialKeybinds(KeybindsVec),
     /// The host terminal indicated its color palette theme mode (CSI 2031 / DSR 997).
     HostTerminalThemeChanged(HostTerminalThemeMode),
+    SoftKeyboardVisibilityChanged(bool),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -2547,6 +2550,7 @@ pub struct PaneContents {
     pub lines_below_viewport: Vec<String>,
     pub viewport: Vec<String>,
     pub selected_text: Option<SelectedText>,
+    pub cursor: Option<(usize, usize)>,
 }
 
 /// Extract text from a line between two column positions, accounting for wide characters
@@ -2641,6 +2645,7 @@ impl PaneContents {
             selected_text: SelectedText::from_positions(selection_start, selection_end),
             lines_above_viewport,
             lines_below_viewport,
+            cursor: None,
         }
     }
 
@@ -2714,6 +2719,24 @@ pub struct SessionListSnapshot {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GetSessionListResponse {
     Ok(SessionListSnapshot),
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum KillSessionsResponse {
+    Ok,
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum DeleteDeadSessionResponse {
+    Ok,
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum DeleteAllDeadSessionsResponse {
+    Ok,
     Err(String),
 }
 
@@ -3463,6 +3486,13 @@ pub enum PluginCommand {
         name: Option<String>,
         cwd: Option<String>,
     },
+    NewTabUnfocused {
+        name: Option<String>,
+        cwd: Option<String>,
+    },
+    NewTiledPaneInTab {
+        tab_position: usize,
+    },
     GoToNextTab,
     GoToPreviousTab,
     Resize(Resize),
@@ -3704,6 +3734,16 @@ pub enum PluginCommand {
     },
     ListWindowsVolumes,
     GetSessionList,
+    KillSessionsAndReply(Vec<String>), // one or more session names; sends a response back
+    DeleteDeadSessionAndReply(String), // session name; sends a response back
+    DeleteAllDeadSessionsAndReply,     // no payload; sends a response back
+    SetSoftKeyboard(bool),
+    SetTabFit {
+        tab_id: usize,
+        fit: Option<(PaneId, Size)>,
+    },
+    SetShadowFocus(PaneId),
+    ExitMobileMode,
 }
 
 // Response type for plugin API methods that open a pane in a new tab
@@ -3715,6 +3755,7 @@ pub struct OpenPaneInNewTabResponse {
 
 // Response types for plugin API methods that create tabs
 pub type NewTabResponse = Option<usize>;
+pub type NewTabUnfocusedResponse = Option<usize>;
 pub type NewTabsResponse = Vec<usize>;
 pub type FocusOrCreateTabResponse = Option<usize>;
 pub type BreakPanesToNewTabResponse = Option<usize>;
@@ -3735,6 +3776,7 @@ pub type OpenTerminalInPlaceResponse = Option<PaneId>;
 pub type OpenTerminalNearPluginResponse = Option<PaneId>;
 pub type OpenTerminalFloatingNearPluginResponse = Option<PaneId>;
 pub type OpenTerminalInPlaceOfPluginResponse = Option<PaneId>;
+pub type NewTiledPaneInTabResponse = Option<PaneId>;
 
 pub type OpenCommandPaneResponse = Option<PaneId>;
 pub type OpenCommandPaneFloatingResponse = Option<PaneId>;

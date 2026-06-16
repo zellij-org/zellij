@@ -19,21 +19,16 @@ use zellij_utils::{
     channels::SenderWithContext,
     data::{
         BareKey, ConnectToSession, Direction, Event, InputMode, KeyModifier, ListPanesResponse,
-        ListTabsResponse, NewPanePlacement, PaneListEntry, PluginCapabilities, ResizeStrategy,
-        TabInfo, UnblockCondition,
+        ListTabsResponse, NewPanePlacement, PaneListEntry, ResizeStrategy, TabInfo,
+        UnblockCondition,
     },
     envs,
     errors::prelude::*,
     input::{
         actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
-        get_mode_info,
-        keybinds::Keybinds,
-        layout::Layout,
     },
-    ipc::{
-        ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
-    },
+    ipc::{ClientToServerMsg, ExitReason, IpcReceiverWithContext, ResizeCause, ServerToClientMsg},
 };
 
 use crate::ClientId;
@@ -194,18 +189,18 @@ impl Drop for NotificationEnd {
     }
 }
 
+// `route_action` must not borrow from the `session_data` read guard.
+// otherwise blocking-CLI actions
+// (`wait_forever=true`) park this function while still holding the guard,
+// deadlocking concurrent `session_data.write()`s.
 pub(crate) fn route_action(
     action: Action,
     client_id: ClientId,
     cli_client_id: Option<ClientId>,
     pane_id: Option<PaneId>,
     senders: ThreadSenders,
-    capabilities: PluginCapabilities,
-    client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
-    default_layout: &Layout,
     mut seen_cli_pipes: Option<&mut HashSet<String>>,
-    client_keybinds: &Keybinds,
     default_mode: InputMode,
     os_input: Option<Box<dyn ServerOsApi>>,
 ) -> Result<(bool, Option<ActionCompletionResult>)> {
@@ -326,25 +321,12 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::SwitchToMode { input_mode } => {
-            let attrs = &client_attributes;
             senders
-                .send_to_server(ServerInstruction::ChangeMode(client_id, input_mode))
-                .with_context(err_context)?;
-            senders
-                .send_to_screen(ScreenInstruction::ChangeMode(
-                    get_mode_info(
-                        input_mode,
-                        attrs,
-                        capabilities,
-                        &client_keybinds,
-                        Some(default_mode),
-                    ),
+                .send_to_server(ServerInstruction::ChangeMode(
                     client_id,
+                    input_mode,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
-                .with_context(err_context)?;
-            senders
-                .send_to_screen(ScreenInstruction::Render)
                 .with_context(err_context)?;
         },
         Action::Resize { resize, direction } => {
@@ -743,7 +725,6 @@ pub(crate) fn route_action(
             senders.send_to_pty(pty_instr).with_context(err_context)?;
         },
         Action::SwitchModeForAllClients { input_mode } => {
-            let attrs = &client_attributes;
             // ModeUpdate broadcast is handled by the screen thread via
             // change_mode_for_all_clients() -> change_mode() -> update_input_modes()
             senders
@@ -752,13 +733,8 @@ pub(crate) fn route_action(
 
             senders
                 .send_to_screen(ScreenInstruction::ChangeModeForAllClients(
-                    get_mode_info(
-                        input_mode,
-                        attrs,
-                        capabilities,
-                        &client_keybinds,
-                        Some(default_mode),
-                    ),
+                    input_mode,
+                    Some(default_mode),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
@@ -984,10 +960,6 @@ pub(crate) fn route_action(
             first_pane_unblock_condition,
         } => {
             let shell = default_shell.clone();
-            let swap_tiled_layouts =
-                swap_tiled_layouts.unwrap_or_else(|| default_layout.swap_tiled_layouts.clone());
-            let swap_floating_layouts = swap_floating_layouts
-                .unwrap_or_else(|| default_layout.swap_floating_layouts.clone());
             let is_web_client = false; // actions cannot be initiated directly from the web
 
             // Construct completion_tx conditionally
@@ -1060,12 +1032,9 @@ pub(crate) fn route_action(
         },
         Action::GoToTabName { name, create } => {
             let shell = default_shell.clone();
-            let swap_tiled_layouts = default_layout.swap_tiled_layouts.clone();
-            let swap_floating_layouts = default_layout.swap_floating_layouts.clone();
             senders
                 .send_to_screen(ScreenInstruction::GoToTabName(
                     name,
-                    (swap_tiled_layouts, swap_floating_layouts),
                     shell,
                     create,
                     Some(client_id),
@@ -1276,6 +1245,14 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::ToggleMouseMode => {}, // Handled client side
+        Action::ToggleMobileMode => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleMobileMode(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::PreviousSwapLayout => {
             senders
                 .send_to_screen(ScreenInstruction::PreviousSwapLayout(
@@ -1538,7 +1515,6 @@ pub(crate) fn route_action(
         Action::BreakPane => {
             senders
                 .send_to_screen(ScreenInstruction::BreakPane(
-                    Box::new(default_layout.clone()),
                     default_shell.clone(),
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
@@ -2220,7 +2196,7 @@ pub(crate) fn route_thread_main(
                                     should_break = true;
                                 }
                             },
-                            ClientToServerMsg::TerminalResize { new_size } => {
+                            ClientToServerMsg::TerminalResize { new_size, .. } => {
                                 // For watchers: send size to Screen for rendering adjustments, but
                                 // this does not affect the screen size
                                 send_to_screen_or_retry_queue!(
@@ -2251,74 +2227,60 @@ pub(crate) fn route_thread_main(
                                 .unwrap()
                                 .set_last_active_client(client_id);
 
-                            let session_data_guard = session_data.read().unwrap();
-                            let session_data_assets = session_data_guard.as_ref().map(|s| {
-                                (
-                                    s.senders.clone(),
-                                    s.capabilities.clone(),
-                                    s.client_attributes.clone(),
-                                    s.default_shell.clone(),
-                                    &*s.layout,
-                                    s.session_configuration
-                                        .get_client_default_input_mode(&client_id),
-                                )
-                            });
-                            if let Some((keybinds, input_mode, default_input_mode)) =
-                                session_data_guard
-                                    .as_ref()
-                                    .and_then(|s| s.get_client_keybinds_and_mode(&client_id))
-                            {
-                                if let Some((
-                                    senders,
-                                    capabilities,
-                                    client_attributes,
-                                    default_shell,
-                                    layout,
-                                    client_input_mode,
-                                )) = session_data_assets
-                                {
-                                    for action in keybinds
+                            // The read guard ends as a temporary in this expression so
+                            // `route_action` runs without holding `session_data.read()` —
+                            // see the doc comment on `route_action` for why this matters.
+                            let dispatch_inputs =
+                                session_data.read().unwrap().as_ref().and_then(|s| {
+                                    let (kb, im, dim) =
+                                        s.get_client_keybinds_and_mode(&client_id)?;
+                                    let actions: Vec<Action> = kb
                                         .get_actions_for_key_in_mode_or_default_action(
-                                            &input_mode,
+                                            im,
                                             &key,
                                             raw_bytes,
-                                            default_input_mode,
+                                            dim,
                                             is_kitty_keyboard_protocol,
-                                        )
-                                    {
-                                        // Send user input to plugin thread for logging
-                                        let _ =
-                                            senders.send_to_plugin(PluginInstruction::UserInput {
-                                                client_id,
-                                                action: action.clone(),
-                                                terminal_id: None,
-                                                cli_client_id: None,
-                                            });
+                                        );
+                                    Some((
+                                        s.senders.clone(),
+                                        s.default_shell.clone(),
+                                        s.session_configuration
+                                            .get_client_default_input_mode(&client_id),
+                                        actions,
+                                    ))
+                                });
+                            if let Some((senders, default_shell, client_input_mode, actions)) =
+                                dispatch_inputs
+                            {
+                                for action in actions {
+                                    // Send user input to plugin thread for logging
+                                    let _ = senders.send_to_plugin(PluginInstruction::UserInput {
+                                        client_id,
+                                        action: action.clone(),
+                                        terminal_id: None,
+                                        cli_client_id: None,
+                                    });
 
-                                        match route_action(
-                                            action,
-                                            client_id,
-                                            None,
-                                            None,
-                                            senders.clone(),
-                                            capabilities,
-                                            client_attributes.clone(),
-                                            default_shell.clone(),
-                                            layout,
-                                            Some(&mut seen_cli_pipes),
-                                            keybinds,
-                                            client_input_mode,
-                                            Some(os_input.clone()),
-                                        ) {
-                                            Ok(route_action_should_break) => {
-                                                if route_action_should_break.0 {
-                                                    should_break = true;
-                                                }
-                                            },
-                                            Err(e) => {
-                                                log::error!("{}", e);
-                                            },
-                                        }
+                                    match route_action(
+                                        action,
+                                        client_id,
+                                        None,
+                                        None,
+                                        senders.clone(),
+                                        default_shell.clone(),
+                                        Some(&mut seen_cli_pipes),
+                                        client_input_mode,
+                                        Some(os_input.clone()),
+                                    ) {
+                                        Ok(route_action_should_break) => {
+                                            if route_action_should_break.0 {
+                                                should_break = true;
+                                            }
+                                        },
+                                        Err(e) => {
+                                            log::error!("{}", e);
+                                        },
                                     }
                                 }
                             }
@@ -2361,28 +2323,20 @@ pub(crate) fn route_thread_main(
                                 });
                             }
 
-                            let session_data_guard = session_data.read().unwrap();
-                            let session_data_assets = session_data_guard.as_ref().map(|s| {
-                                (
-                                    s.senders.clone(),
-                                    s.capabilities.clone(),
-                                    s.client_attributes.clone(),
-                                    s.default_shell.clone(),
-                                    &*s.layout,
-                                    s.session_configuration
-                                        .get_client_default_input_mode(&client_id),
-                                    s.session_configuration.get_client_keybinds(&client_id),
-                                )
-                            });
-                            if let Some((
-                                senders,
-                                capabilities,
-                                client_attributes,
-                                default_shell,
-                                layout,
-                                client_input_mode,
-                                client_keybinds,
-                            )) = session_data_assets
+                            // The read guard ends as a temporary in this expression so
+                            // `route_action` runs without holding `session_data.read()` —
+                            // see the doc comment on `route_action` for why this matters.
+                            let session_data_assets =
+                                session_data.read().unwrap().as_ref().map(|s| {
+                                    (
+                                        s.senders.clone(),
+                                        s.default_shell.clone(),
+                                        s.session_configuration
+                                            .get_client_default_input_mode(&client_id),
+                                    )
+                                });
+                            if let Some((senders, default_shell, client_input_mode)) =
+                                session_data_assets
                             {
                                 match route_action(
                                     action,
@@ -2390,12 +2344,8 @@ pub(crate) fn route_thread_main(
                                     Some(cli_client_id),
                                     maybe_pane_id.map(|p| PaneId::Terminal(p)),
                                     senders,
-                                    capabilities,
-                                    client_attributes,
                                     default_shell,
-                                    layout,
                                     Some(&mut seen_cli_pipes),
-                                    client_keybinds,
                                     client_input_mode,
                                     Some(os_input.clone()),
                                 ) {
@@ -2410,7 +2360,7 @@ pub(crate) fn route_thread_main(
                                 }
                             }
                         },
-                        ClientToServerMsg::TerminalResize { new_size } => {
+                        ClientToServerMsg::TerminalResize { new_size, cause } => {
                             // Check if this is a watcher or regular client
                             if is_watcher {
                                 // For watchers: send size to Screen for tracking, don't affect screen size
@@ -2437,6 +2387,51 @@ pub(crate) fn route_thread_main(
                                         client_id, new_size,
                                     ))
                                 });
+                                if matches!(cause, ResizeCause::Viewport) {
+                                    let mobile_options =
+                                        session_data.read().ok().and_then(|guard| {
+                                            guard.as_ref().map(|s| {
+                                                let config = s
+                                                    .session_configuration
+                                                    .get_client_configuration(&client_id);
+                                                (
+                                                    config
+                                                        .options
+                                                        .mobile_layout
+                                                        .unwrap_or_default(),
+                                                    config
+                                                        .options
+                                                        .mobile_threshold_cols
+                                                        .unwrap_or(60),
+                                                    config
+                                                        .options
+                                                        .mobile_threshold_rows
+                                                        .unwrap_or(30),
+                                                )
+                                            })
+                                        });
+                                    if let Some((mobile_layout, threshold_cols, threshold_rows)) =
+                                        mobile_options
+                                    {
+                                        let _ = senders.as_ref().map(|s| {
+                                            s.send_to_screen(
+                                                ScreenInstruction::ReevaluateMobileMode {
+                                                    client_id,
+                                                    new_size,
+                                                    mobile_layout,
+                                                    threshold_cols,
+                                                    threshold_rows,
+                                                },
+                                            )
+                                        });
+                                    }
+                                } else if matches!(cause, ResizeCause::SizeSettled) {
+                                    let _ = senders.as_ref().map(|s| {
+                                        s.send_to_screen(ScreenInstruction::MobileSizeSettled(
+                                            client_id,
+                                        ))
+                                    });
+                                }
                             }
                         },
                         ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions } => {
@@ -2656,6 +2651,15 @@ pub(crate) fn route_thread_main(
                                 instruction,
                                 retry_queue
                             );
+                        },
+                        ClientToServerMsg::SoftKeyboardVisibilityChanged { visible } => {
+                            if let Some(senders) = senders.as_ref() {
+                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                    None,
+                                    Some(client_id),
+                                    Event::SoftKeyboardVisibilityChanged(visible),
+                                )]));
+                            }
                         },
                     }
                     Ok(should_break)

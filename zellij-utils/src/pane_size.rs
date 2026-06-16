@@ -68,7 +68,7 @@ pub struct Offset {
     pub left: usize,
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Size {
     pub rows: usize,
     pub cols: usize,
@@ -78,6 +78,14 @@ pub struct Size {
 pub struct SizeInPixels {
     pub height: usize,
     pub width: usize,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Insets {
+    pub top: usize,
+    pub bottom: usize,
+    pub left: usize,
+    pub right: usize,
 }
 
 #[derive(Eq, Clone, Copy, PartialEq, Debug, Serialize, Deserialize, Hash)]

@@ -204,6 +204,15 @@ enum CommandName {
   OpenPluginPaneFloating = 209;
   ListWindowsVolumes = 210;
   GetSessionList = 211;
+  KillSessionsAndReply = 212;
+  DeleteDeadSessionAndReply = 213;
+  DeleteAllDeadSessionsAndReply = 214;
+  SetSoftKeyboard = 215;
+  SetTabFit = 216;
+  SetShadowFocus = 219;
+  NewTabUnfocused = 220;
+  NewTiledPaneInTab = 221;
+  ExitMobileMode = 222;
 }
 
 message PluginCommand {
@@ -356,12 +365,28 @@ message PluginCommand {
     ClearPaneHighlightsPayload clear_pane_highlights_payload = 159;
     OpenPluginPaneFloatingPayload open_plugin_pane_floating_payload = 160;
     GetSessionListPayload get_session_list_payload = 161;
+    KillSessionsPayload kill_sessions_and_reply_payload = 162;
+    string delete_dead_session_and_reply_payload = 163;
+    SetSoftKeyboardPayload set_soft_keyboard_payload = 164;
+    SetTabFitPayload set_tab_fit_payload = 165;
+    PaneId set_shadow_focus_payload = 167;
+    NewTabUnfocusedPayload new_tab_unfocused_payload = 168;
+    NewTiledPaneInTabPayload new_tiled_pane_in_tab_payload = 169;
   }
 }
 
 message NewTabPayload {
   optional string name = 1;
   optional string cwd = 2;
+}
+
+message NewTabUnfocusedPayload {
+  optional string name = 1;
+  optional string cwd = 2;
+}
+
+message NewTiledPaneInTabPayload {
+  uint32 tab_position = 1;
 }
 
 message DumpSessionLayoutPayload {
@@ -1052,6 +1077,17 @@ message NewTabResponse {
   }
 }
 
+message NewTabUnfocusedResponse {
+  oneof result {
+    uint64 tab_id = 1;
+    bool none = 2;
+  }
+}
+
+message NewTiledPaneInTabResponse {
+  optional PaneId pane_id = 1;
+}
+
 message NewTabsResponse {
   repeated uint64 tab_ids = 1;  // Only includes successfully created tabs
 }
@@ -1310,4 +1346,31 @@ message GetSessionListResponse {
     SessionListSnapshot snapshot = 1;
     string error = 2;
   }
+}
+
+message KillSessionsResponse {
+  optional string error = 1; // absent => success
+}
+
+message DeleteDeadSessionResponse {
+  optional string error = 1; // absent => success
+}
+
+message DeleteAllDeadSessionsResponse {
+  optional string error = 1; // absent => success
+}
+
+message SetSoftKeyboardPayload {
+  bool on = 1;
+}
+
+message Size {
+  uint32 rows = 1;
+  uint32 cols = 2;
+}
+
+message SetTabFitPayload {
+  uint32 tab_id = 1;
+  PaneId pane_id = 2;
+  Size size = 3;
 }

@@ -1,10 +1,12 @@
 use super::Tab;
 use crate::pane_groups::PaneGroups;
 use crate::panes::sixel::SixelImageStore;
+use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
 use crate::{os_input_output::ServerOsApi, panes::PaneId, thread_bus::ThreadSenders, ClientId};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
+use zellij_utils::channels::{unbounded, Receiver, SenderWithContext};
 use zellij_utils::data::{Direction, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
@@ -217,6 +219,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -303,6 +306,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        0, // mobile_tab_count
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -395,6 +399,7 @@ fn create_new_tab_with_cell_size(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -16306,4 +16311,398 @@ pub fn cli_rename_active_pane_then_interactive_esc_restores() {
     let _ = tab.undo_active_rename_pane(client_id);
     let pane = tab.get_pane_with_id(pane_id).unwrap();
     assert_eq!(pane.current_title(), "spark");
+}
+
+fn install_pty_writer_capture(
+    tab: &mut Tab,
+) -> Receiver<(PtyWriteInstruction, zellij_utils::errors::ErrorContext)> {
+    let (tx, rx) = unbounded();
+    tab.senders
+        .replace_to_pty_writer(SenderWithContext::new(tx));
+    rx
+}
+
+fn drain_pty_writer(
+    rx: &Receiver<(PtyWriteInstruction, zellij_utils::errors::ErrorContext)>,
+) -> Vec<PtyWriteInstruction> {
+    let mut out = Vec::new();
+    while let Ok((msg, _ctx)) = rx.try_recv() {
+        out.push(msg);
+    }
+    out
+}
+
+#[test]
+pub fn scroll_terminal_up_forwards_sgr_when_pane_tracks_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+
+    tab.scroll_terminal_up(1).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(!writes.is_empty(), "expected at least one pty write");
+    match &writes[0] {
+        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
+            assert_eq!(*terminal_id, 1);
+            let s = String::from_utf8_lossy(bytes);
+            assert!(
+                s.starts_with("\u{1b}[<64;"),
+                "expected SGR wheel-up (button 64) prefix, got {s:?}"
+            );
+        },
+        other => panic!("expected PtyWriteInstruction::Write, got {other:?}"),
+    }
+}
+
+#[test]
+pub fn scroll_terminal_down_forwards_sgr_when_pane_tracks_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+
+    tab.scroll_terminal_down(1).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(!writes.is_empty(), "expected at least one pty write");
+    match &writes[0] {
+        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
+            assert_eq!(*terminal_id, 1);
+            let s = String::from_utf8_lossy(bytes);
+            assert!(
+                s.starts_with("\u{1b}[<65;"),
+                "expected SGR wheel-down (button 65) prefix, got {s:?}"
+            );
+        },
+        other => panic!("expected PtyWriteInstruction::Write, got {other:?}"),
+    }
+}
+
+#[test]
+pub fn scroll_terminal_up_emits_arrow_up_in_alt_mode_without_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1049h".to_vec()).unwrap();
+
+    tab.scroll_terminal_up(1).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(!writes.is_empty(), "expected at least one pty write");
+    match &writes[0] {
+        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
+            assert_eq!(*terminal_id, 1);
+            assert_eq!(bytes.as_slice(), b"\x1b[A");
+        },
+        other => panic!("expected PtyWriteInstruction::Write, got {other:?}"),
+    }
+}
+
+#[test]
+pub fn scroll_terminal_down_emits_arrow_down_in_alt_mode_without_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1049h".to_vec()).unwrap();
+
+    tab.scroll_terminal_down(1).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(!writes.is_empty(), "expected at least one pty write");
+    match &writes[0] {
+        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
+            assert_eq!(*terminal_id, 1);
+            assert_eq!(bytes.as_slice(), b"\x1b[B");
+        },
+        other => panic!("expected PtyWriteInstruction::Write, got {other:?}"),
+    }
+}
+
+#[test]
+pub fn scroll_terminal_up_walks_scrollback_in_regular_mode_no_pty_write() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+
+    tab.scroll_terminal_up(1).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(
+        writes.is_empty(),
+        "expected no pty writes in regular mode, got {writes:?}"
+    );
+}
+
+#[test]
+pub fn scroll_terminal_down_walks_scrollback_in_regular_mode_no_pty_write() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+
+    tab.scroll_terminal_down(1).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(
+        writes.is_empty(),
+        "expected no pty writes in regular mode, got {writes:?}"
+    );
+}
+
+#[test]
+pub fn scroll_terminal_up_nonexistent_pane_id_is_a_noop() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+
+    tab.scroll_terminal_up(999).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(writes.is_empty());
+}
+
+#[test]
+pub fn scroll_terminal_down_nonexistent_pane_id_is_a_noop() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+
+    tab.scroll_terminal_down(999).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(writes.is_empty());
+}
+
+#[test]
+pub fn set_shadow_focus_returns_true_when_pane_is_in_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+
+    let placed = tab.set_shadow_focus(99, PaneId::Terminal(2));
+
+    assert!(
+        placed,
+        "pane is in the tab — should report a successful placement"
+    );
+    assert!(
+        tab.has_shadow_focus_on(99, PaneId::Terminal(2)),
+        "shadow focus must be recorded on the target pane",
+    );
+}
+
+#[test]
+pub fn set_shadow_focus_returns_false_when_pane_not_in_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+
+    let placed = tab.set_shadow_focus(99, PaneId::Terminal(42));
+
+    assert!(!placed, "no pane 42 in this tab — placement must fail");
+    assert!(
+        !tab.has_shadow_focus_on(99, PaneId::Terminal(42)),
+        "nothing should have been recorded",
+    );
+    assert!(
+        tab.shadow_focus_clients().is_empty(),
+        "no shadow markers should exist",
+    );
+}
+
+#[test]
+pub fn clear_shadow_focus_removes_marker_and_entry() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.set_shadow_focus(99, PaneId::Terminal(1));
+    assert_eq!(tab.shadow_focus_clients(), vec![99]);
+
+    tab.clear_shadow_focus(99);
+
+    assert!(
+        tab.shadow_focus_clients().is_empty(),
+        "marker should be gone after clear",
+    );
+    assert!(
+        !tab.has_shadow_focus_on(99, PaneId::Terminal(1)),
+        "the active_panes entry should be gone too",
+    );
+}
+
+#[test]
+pub fn clear_shadow_focus_is_a_noop_when_absent() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+
+    tab.clear_shadow_focus(99);
+
+    assert!(
+        tab.tiled_panes.pane_id_is_focused(&PaneId::Terminal(1)),
+        "real client's focus on pane 1 must survive an unrelated clear",
+    );
+}
+
+#[test]
+pub fn has_shadow_focus_on_is_pane_specific() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+
+    tab.set_shadow_focus(99, PaneId::Terminal(2));
+
+    assert!(tab.has_shadow_focus_on(99, PaneId::Terminal(2)));
+    assert!(
+        !tab.has_shadow_focus_on(99, PaneId::Terminal(1)),
+        "must NOT match a different pane id",
+    );
+    assert!(
+        !tab.has_shadow_focus_on(7, PaneId::Terminal(2)),
+        "must NOT match a different client id",
+    );
+}
+
+#[test]
+pub fn has_shadow_focus_on_does_not_match_real_focus() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let tab = create_new_tab(size, true);
+
+    assert!(
+        tab.tiled_panes.pane_id_is_focused(&PaneId::Terminal(1)),
+        "precondition: client 1 has real focus on pane 1",
+    );
+    assert!(
+        !tab.has_shadow_focus_on(1, PaneId::Terminal(1)),
+        "real focus must not register as shadow focus",
+    );
+}
+
+#[test]
+pub fn shadow_focus_clients_lists_only_marked_clients() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+
+    tab.set_shadow_focus(99, PaneId::Terminal(1));
+    tab.set_shadow_focus(100, PaneId::Terminal(2));
+
+    let mut clients = tab.shadow_focus_clients();
+    clients.sort_unstable();
+    assert_eq!(clients, vec![99, 100]);
+}
+
+#[test]
+pub fn real_focus_supersedes_shadow_marker() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.set_shadow_focus(99, PaneId::Terminal(1));
+    assert_eq!(tab.shadow_focus_clients(), vec![99]);
+
+    tab.tiled_panes.focus_pane(PaneId::Terminal(1), 99);
+
+    assert!(
+        tab.shadow_focus_clients().is_empty(),
+        "real focus must clear any prior shadow marker for the same client",
+    );
+    assert!(
+        tab.tiled_panes.pane_id_is_focused(&PaneId::Terminal(1)),
+        "real focus must still be recorded",
+    );
+}
+
+#[test]
+pub fn moving_shadow_focus_updates_pane_target() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+
+    tab.set_shadow_focus(99, PaneId::Terminal(1));
+    tab.set_shadow_focus(99, PaneId::Terminal(2));
+
+    assert!(tab.has_shadow_focus_on(99, PaneId::Terminal(2)));
+    assert!(
+        !tab.has_shadow_focus_on(99, PaneId::Terminal(1)),
+        "previous shadow target must be overwritten",
+    );
+    assert_eq!(
+        tab.shadow_focus_clients(),
+        vec![99],
+        "still only one shadow client",
+    );
+}
+
+#[test]
+pub fn closing_a_pane_silently_drops_shadow_clients() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    tab.set_shadow_focus(99, PaneId::Terminal(2));
+    assert!(tab.has_shadow_focus_on(99, PaneId::Terminal(2)));
+
+    tab.close_pane(PaneId::Terminal(2), false, None);
+
+    assert!(
+        tab.shadow_focus_clients().is_empty(),
+        "shadow client must be dropped when its pane is closed",
+    );
 }
