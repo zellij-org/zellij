@@ -1,6 +1,10 @@
 if [[ -z "$ZELLIJ" ]]; then
     if [[ "$ZELLIJ_AUTO_ATTACH" == "true" ]]; then
-        zellij attach -c
+        if [[ -z "$ZELLIJ_AUTO_ATTACH_SESSION_NAME" ]]; then
+            zellij attach -c
+        else
+            zellij attach -c "$ZELLIJ_AUTO_ATTACH_SESSION_NAME"
+        fi
     else
         zellij
     fi
