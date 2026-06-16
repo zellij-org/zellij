@@ -4871,6 +4871,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "zellij-integration-tests"
+version = "0.45.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "crossbeam",
+ "insta",
+ "interprocess",
+ "log",
+ "regex",
+ "tokio",
+ "vte 0.11.0",
+ "zellij-client",
+ "zellij-server",
+ "zellij-utils",
+]
+
+[[package]]
 name = "zellij-server"
 version = "0.45.0"
 dependencies = [

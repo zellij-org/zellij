@@ -1,0 +1,24 @@
+---
+source: zellij-integration-tests/tests/panes.rs
+expression: normalized(&grid_snapshot)
+---
+ 
+┌──────┐
+│$ done│
+│      │
+│      │
+│      │
+│      │
+│      │
+│      │
+│      │
+│      │
+│      │
+│      │
+│      │
+│      │
+│      │
+│      │
+│      │
+└──────┘
+ Ctrl +

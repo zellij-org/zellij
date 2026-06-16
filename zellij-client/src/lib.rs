@@ -879,7 +879,7 @@ pub fn start_client(
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
-            spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
+            os_input.spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
             if should_start_web_server {
                 if let Err(e) = spawn_web_server(&cli_args) {
                     log::error!("Failed to start web server: {}", e);
@@ -933,7 +933,7 @@ pub fn start_client(
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
-            spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
+            os_input.spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
             if should_start_web_server {
                 if let Err(e) = spawn_web_server(&cli_args) {
                     log::error!("Failed to start web server: {}", e);
@@ -971,18 +971,20 @@ pub fn start_client(
     > = channels::bounded(50);
     let send_input_instructions = SenderWithContext::new(send_input_instructions);
 
-    std::panic::set_hook({
-        use zellij_utils::errors::handle_panic;
-        let send_client_instructions = send_client_instructions.clone();
-        let os_input = os_input.clone();
-        Box::new(move |info| {
-            os_input.disable_mouse().non_fatal();
-            os_input.restore_console_mode();
-            if let Ok(()) = os_input.unset_raw_mode() {
-                handle_panic(info, Some(&send_client_instructions));
-            }
-        })
-    });
+    if os_input.should_install_panic_hook() {
+        std::panic::set_hook({
+            use zellij_utils::errors::handle_panic;
+            let send_client_instructions = send_client_instructions.clone();
+            let os_input = os_input.clone();
+            Box::new(move |info| {
+                os_input.disable_mouse().non_fatal();
+                os_input.restore_console_mode();
+                if let Ok(()) = os_input.unset_raw_mode() {
+                    handle_panic(info, Some(&send_client_instructions));
+                }
+            })
+        });
+    }
 
     let on_force_close = config_options.on_force_close.unwrap_or_default();
     let stdin_ansi_parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
@@ -1333,7 +1335,7 @@ pub fn start_server_detached(
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
-            spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
+            os_input.spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
             if should_start_web_server {
                 if let Err(e) = spawn_web_server(&cli_args) {
                     log::error!("Failed to start web server: {}", e);
@@ -1388,7 +1390,7 @@ pub fn start_server_detached(
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
-            spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
+            os_input.spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
             if should_start_web_server {
                 if let Err(e) = spawn_web_server(&cli_args) {
                     log::error!("Failed to start web server: {}", e);

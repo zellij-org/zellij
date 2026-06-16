@@ -111,7 +111,7 @@ pub enum ServerInstruction {
         client_id: ClientId,
     },
     DisconnectAllClientsExcept(ClientId),
-    ChangeMode(ClientId, InputMode),
+    ChangeMode(ClientId, InputMode, Option<NotificationEnd>),
     ChangeModeForAllClients(InputMode),
     Reconfigure {
         client_id: ClientId,
@@ -795,7 +795,7 @@ mod session_state_tests {
     }
 }
 
-pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
+pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     info!("Starting Zellij server!");
 
     #[cfg(unix)]
@@ -825,6 +825,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         }
     }
 
+    start_server_impl(os_input, socket_path, true);
+}
+
+pub fn start_server_impl(
+    mut os_input: Box<dyn ServerOsApi>,
+    socket_path: PathBuf,
+    install_panic_hook: bool,
+) {
     envs::set_zellij("0".to_string());
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
@@ -832,13 +840,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let session_data: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
     let session_state = Arc::new(RwLock::new(SessionState::new()));
 
-    std::panic::set_hook({
-        use zellij_utils::errors::handle_panic;
-        let to_server = to_server.clone();
-        Box::new(move |info| {
-            handle_panic(info, Some(&to_server));
-        })
-    });
+    if install_panic_hook {
+        std::panic::set_hook({
+            use zellij_utils::errors::handle_panic;
+            let to_server = to_server.clone();
+            Box::new(move |info| {
+                handle_panic(info, Some(&to_server));
+            })
+        });
+    }
 
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
@@ -1628,14 +1638,24 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .associate_pipe_with_client(pipe_id, client_id);
             },
-            ServerInstruction::ChangeMode(client_id, input_mode) => {
+            ServerInstruction::ChangeMode(client_id, input_mode, completion) => {
+                let mut session_data = session_data.write().unwrap();
+                let session_data = session_data.as_mut().unwrap();
+                let base_mode = session_data
+                    .session_configuration
+                    .get_client_default_input_mode(&client_id);
                 session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
                     .current_input_modes
                     .insert(client_id, input_mode);
+                session_data
+                    .senders
+                    .send_to_screen(ScreenInstruction::ChangeMode(
+                        input_mode,
+                        Some(base_mode),
+                        client_id,
+                        completion,
+                    ))
+                    .unwrap();
             },
             ServerInstruction::ChangeModeForAllClients(input_mode) => {
                 session_data

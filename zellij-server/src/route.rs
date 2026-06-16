@@ -322,18 +322,11 @@ pub(crate) fn route_action(
         },
         Action::SwitchToMode { input_mode } => {
             senders
-                .send_to_server(ServerInstruction::ChangeMode(client_id, input_mode))
-                .with_context(err_context)?;
-            senders
-                .send_to_screen(ScreenInstruction::ChangeMode(
-                    input_mode,
-                    Some(default_mode),
+                .send_to_server(ServerInstruction::ChangeMode(
                     client_id,
+                    input_mode,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
-                .with_context(err_context)?;
-            senders
-                .send_to_screen(ScreenInstruction::Render)
                 .with_context(err_context)?;
         },
         Action::Resize { resize, direction } => {

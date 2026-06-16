@@ -4036,13 +4036,11 @@ impl Screen {
         match self.get_active_tab(client_id) {
             Ok(active_tab) => {
                 let active_tab_pos = active_tab.position;
-                let left_tab_pos = if active_tab_pos == 0 {
-                    self.tabs.len() - 1
+                if active_tab_pos == 0 {
+                    self.rotate_tab_positions_left();
                 } else {
-                    active_tab_pos - 1
-                };
-
-                self.switch_tabs(active_tab_pos, left_tab_pos);
+                    self.switch_tabs(active_tab_pos, active_tab_pos.saturating_sub(1));
+                }
                 self.log_and_report_session_state()
                     .context("failed to move tab to left")?;
             },
@@ -4115,6 +4113,24 @@ impl Screen {
         self.tabs.insert(other_tab_id, other_tab);
     }
 
+    fn rotate_tab_positions_left(&mut self) {
+        let last_position = self.tabs.len().saturating_sub(1);
+        for tab in self.tabs.values_mut() {
+            tab.position = if tab.position == 0 {
+                last_position
+            } else {
+                tab.position.saturating_sub(1)
+            };
+        }
+    }
+
+    fn rotate_tab_positions_right(&mut self) {
+        let num_tabs = self.tabs.len();
+        for tab in self.tabs.values_mut() {
+            tab.position = (tab.position + 1) % num_tabs;
+        }
+    }
+
     pub fn move_active_tab_to_right(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || "Failed to move active tab right ";
         if self.tabs.len() < 2 {
@@ -4128,9 +4144,11 @@ impl Screen {
         match self.get_active_tab(client_id) {
             Ok(active_tab) => {
                 let active_tab_pos = active_tab.position;
-                let right_tab_pos = (active_tab_pos + 1) % self.tabs.len();
-
-                self.switch_tabs(active_tab_pos, right_tab_pos);
+                if active_tab_pos == self.tabs.len().saturating_sub(1) {
+                    self.rotate_tab_positions_right();
+                } else {
+                    self.switch_tabs(active_tab_pos, active_tab_pos + 1);
+                }
                 self.log_and_report_session_state()
                     .context("failed to move tab to the right")?;
             },
@@ -4145,18 +4163,24 @@ impl Screen {
         }
         if let Some(tab) = self.tabs.get(&tab_id) {
             let tab_pos = tab.position;
-            let swap_pos = match direction {
+            let num_tabs = self.tabs.len();
+            match direction {
                 Direction::Left => {
                     if tab_pos == 0 {
-                        self.tabs.len() - 1
+                        self.rotate_tab_positions_left();
                     } else {
-                        tab_pos - 1
+                        self.switch_tabs(tab_pos, tab_pos.saturating_sub(1));
                     }
                 },
-                Direction::Right => (tab_pos + 1) % self.tabs.len(),
+                Direction::Right => {
+                    if tab_pos == num_tabs.saturating_sub(1) {
+                        self.rotate_tab_positions_right();
+                    } else {
+                        self.switch_tabs(tab_pos, tab_pos + 1);
+                    }
+                },
                 _ => return Ok(()),
-            };
-            self.switch_tabs(tab_pos, swap_pos);
+            }
             self.log_and_report_session_state()?;
         } else {
             log::error!("Tab with id {} not found", tab_id);

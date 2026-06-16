@@ -1121,8 +1121,8 @@ pub fn switch_to_mode_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, teardown) =
-        create_plugin_thread(Some(plugin_host_folder), None);
+    let (plugin_thread_sender, server_receiver, screen_receiver, teardown) =
+        create_plugin_thread_with_server_receiver(Some(plugin_host_folder), None);
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
@@ -1137,10 +1137,17 @@ pub fn switch_to_mode_plugin_command() {
         cols: 121,
         rows: 20,
     };
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::ChangeMode,
+        server_receiver,
+        1
+    );
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = grant_permissions_and_log_actions_in_thread!(
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
         received_screen_instructions,
-        ScreenInstruction::ChangeMode,
+        ScreenInstruction::Exit,
         screen_receiver,
         1,
         &PermissionType::ChangeApplicationState,
@@ -1174,14 +1181,14 @@ pub fn switch_to_mode_plugin_command() {
         Event::Key(KeyWithModifier::new(BareKey::Char('a'))), // this triggers a SwitchToMode(Tab) command in the fixture
                                                               // plugin
     )]));
-    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    server_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let switch_to_mode_event = received_screen_instructions
+    let switch_to_mode_event = received_server_instructions
         .lock()
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::ChangeMode(..) = i {
+            if let ServerInstruction::ChangeMode(..) = i {
                 Some(i.clone())
             } else {
                 None

@@ -113,6 +113,37 @@ jobs:
       - name: Test zellij-client
         run: cargo test --no-default-features -p zellij-client --lib
 
+  integration-test:
+    name: Integration Test
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Run whole-app integration tests
+        run: cargo xtask integration-test
+
   test-no-web:
     name: Test (No Web)
     runs-on: ubuntu-latest
