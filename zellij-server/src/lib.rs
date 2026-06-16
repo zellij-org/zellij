@@ -111,7 +111,7 @@ pub enum ServerInstruction {
         client_id: ClientId,
     },
     DisconnectAllClientsExcept(ClientId),
-    ChangeMode(ClientId, InputMode),
+    ChangeMode(ClientId, InputMode, Option<NotificationEnd>),
     ChangeModeForAllClients(InputMode),
     Reconfigure {
         client_id: ClientId,
@@ -1638,14 +1638,24 @@ pub fn start_server_impl(
                     .unwrap()
                     .associate_pipe_with_client(pipe_id, client_id);
             },
-            ServerInstruction::ChangeMode(client_id, input_mode) => {
+            ServerInstruction::ChangeMode(client_id, input_mode, completion) => {
+                let mut session_data = session_data.write().unwrap();
+                let session_data = session_data.as_mut().unwrap();
+                let base_mode = session_data
+                    .session_configuration
+                    .get_client_default_input_mode(&client_id);
                 session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
                     .current_input_modes
                     .insert(client_id, input_mode);
+                session_data
+                    .senders
+                    .send_to_screen(ScreenInstruction::ChangeMode(
+                        input_mode,
+                        Some(base_mode),
+                        client_id,
+                        completion,
+                    ))
+                    .unwrap();
             },
             ServerInstruction::ChangeModeForAllClients(input_mode) => {
                 session_data

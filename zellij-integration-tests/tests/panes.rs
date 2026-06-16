@@ -75,6 +75,26 @@ fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
 }
 
 #[test]
+fn key_after_mode_switch_is_interpreted_in_new_mode_not_leaked_to_pane() {
+    let mut zellij = start_zellij();
+    let first_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    zellij.send_stdin(&keys::PANE_MODE);
+    zellij.send_stdin(&keys::SPLIT_RIGHT_IN_PANE_MODE);
+
+    let second_terminal = zellij.expect_pty_spawn();
+    second_terminal.output(PROMPT);
+    zellij.wait_until("split-right interpreted in pane mode", |grid_snapshot| {
+        grid_snapshot.cursor_is_at(RIGHT_PANE_PROMPT_X, PROMPT_ROW)
+    });
+
+    assert!(!first_terminal
+        .stdin_bytes()
+        .contains(&keys::SPLIT_RIGHT_IN_PANE_MODE[0]));
+    zellij.quit();
+}
+
+#[test]
 fn toggle_pane_fullscreen() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);
@@ -206,3 +226,4 @@ fn start_without_pane_frames() {
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
+
