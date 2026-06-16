@@ -226,4 +226,3 @@ fn start_without_pane_frames() {
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
-
