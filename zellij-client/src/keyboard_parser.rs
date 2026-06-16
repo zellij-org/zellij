@@ -2055,3 +2055,27 @@ fn non_kitty_bytes_yield_nomatch_and_reset() {
     let mut p = KittyKeyboardParser::new();
     assert!(matches!(p.feed(b"hello"), KittyParseOutcome::NoMatch));
 }
+
+#[test]
+fn can_parse_keys_with_alternate_keys() {
+    use zellij_utils::data::BareKey;
+    // With "report alternate keys" enabled the host appends the shifted and
+    // base-layout codepoints (`unicode-key:shifted:base`). Only the primary
+    // codepoint identifies the key; the alternates must not derail parsing.
+    let key = "\u{1b}[47:63;4u"; // Alt+Shift+/ with shifted '?' (63) reported
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(
+            KeyWithModifier::new(BareKey::Char('/'))
+                .with_alt_modifier()
+                .with_shift_modifier()
+        ),
+        "Alternate key codepoints are ignored when identifying the key"
+    );
+    let key = "\u{1b}[97:65u"; // bare key carrying only a shifted alternate
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('a'))),
+        "Alternate keys are ignored when there are no modifiers"
+    );
+}

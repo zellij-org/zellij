@@ -15,7 +15,7 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{self, Instant};
 use vte;
-use zellij_utils::data::PaneContents;
+use zellij_utils::data::{strip_kitty_subparams, PaneContents};
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::pane_size::Offset;
@@ -1213,7 +1213,15 @@ impl TerminalPane {
         raw_input_bytes_are_kitty: bool,
     ) -> Option<AdjustedInput> {
         if raw_input_bytes_are_kitty || key.is_none() {
-            Some(AdjustedInput::WriteBytesToTerminal(raw_input_bytes))
+            // This pane only negotiated the first kitty layer, so strip the
+            // alternate-key sub-params our own (richer) host request added before
+            // forwarding — otherwise we'd leak codepoints the pane never asked for.
+            let bytes = if raw_input_bytes_are_kitty {
+                strip_kitty_subparams(&raw_input_bytes)
+            } else {
+                raw_input_bytes
+            };
+            Some(AdjustedInput::WriteBytesToTerminal(bytes))
         } else {
             // here what happens is that the host terminal is operating in non "kitty keys" mode, but
             // this terminal pane *is* operating in "kitty keys" mode - so we need to serialize the "non kitty"
@@ -1305,7 +1313,7 @@ impl TerminalPane {
             // possible - if not possible (eg. with multiple modifiers), we'll return a None here
             // and write nothing to the terminal pane
             key.as_ref()
-                .and_then(|k| k.serialize_non_kitty())
+                .and_then(|k| k.serialize_non_kitty(Some(raw_input_bytes.as_slice())))
                 .map(|s| AdjustedInput::WriteBytesToTerminal(s.as_bytes().to_vec()))
         } else {
             Some(AdjustedInput::WriteBytesToTerminal(raw_input_bytes))

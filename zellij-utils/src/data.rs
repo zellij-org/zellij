@@ -311,8 +311,103 @@ impl FromStr for KeyModifier {
     }
 }
 
+/// Returns the US-keyboard shifted form of an ASCII punctuation/digit
+/// character (e.g. '/' -> '?', '1' -> '!'). Returns `None` for characters
+/// without a distinct shifted form (letters, control codes, non-ASCII).
+///
+/// Fallback for bridging the kitty keyboard protocol (which reports the
+/// unshifted code point + SHIFT) with legacy xterm-style encoding (which
+/// expects the already-shifted character), used when the terminal doesn't
+/// report the layout-correct shifted key via [`kitty_shifted_alternate`].
+#[cfg(not(target_family = "wasm"))]
+fn us_keyboard_shifted_char(c: char) -> Option<char> {
+    match c {
+        '1' => Some('!'),
+        '2' => Some('@'),
+        '3' => Some('#'),
+        '4' => Some('$'),
+        '5' => Some('%'),
+        '6' => Some('^'),
+        '7' => Some('&'),
+        '8' => Some('*'),
+        '9' => Some('('),
+        '0' => Some(')'),
+        '-' => Some('_'),
+        '=' => Some('+'),
+        '[' => Some('{'),
+        ']' => Some('}'),
+        '\\' => Some('|'),
+        ';' => Some(':'),
+        '\'' => Some('"'),
+        ',' => Some('<'),
+        '.' => Some('>'),
+        '/' => Some('?'),
+        '`' => Some('~'),
+        _ => None,
+    }
+}
+
+/// Returns the parameter body of a `CSI <body> u` kitty key sequence (the bytes
+/// between `ESC [` and the final `u`), or `None` for any other byte sequence.
+#[cfg(not(target_family = "wasm"))]
+fn kitty_csi_u_body(raw_kitty_bytes: &[u8]) -> Option<&str> {
+    str::from_utf8(raw_kitty_bytes)
+        .ok()
+        .and_then(|s| s.strip_prefix("\u{1b}["))
+        .and_then(|s| s.strip_suffix('u'))
+}
+
+/// The layout-correct shifted form of the key, reported by the host via the
+/// kitty "alternate keys" enhancement as the 2nd `:`-separated key codepoint
+/// (`unicode-key:shifted:base`). `None` when not reported.
+#[cfg(not(target_family = "wasm"))]
+fn kitty_shifted_alternate(raw_kitty_bytes: &[u8]) -> Option<char> {
+    let key_codes = kitty_csi_u_body(raw_kitty_bytes)?
+        .split(';')
+        .next()
+        .unwrap_or(""); // the key-codes field, before the first `;`
+    key_codes
+        .split(':')
+        .nth(1) // shifted key
+        .filter(|s| !s.is_empty())
+        .and_then(|s| s.parse::<u32>().ok())
+        .and_then(char::from_u32)
+}
+
+/// Reduces a raw kitty key sequence to the layer Zellij negotiates with panes
+/// (disambiguate) by dropping the alternate-key codepoints (`:shifted:base`)
+/// our own richer host request added. Returns the bytes unchanged when there's
+/// nothing to strip or it isn't a `CSI <body> u` sequence (no other form carries
+/// alternate keys).
+#[cfg(not(target_family = "wasm"))]
+pub fn strip_kitty_subparams(raw_kitty_bytes: &[u8]) -> Vec<u8> {
+    let body = match kitty_csi_u_body(raw_kitty_bytes) {
+        Some(body) if body.contains(':') => body,
+        _ => return raw_kitty_bytes.to_vec(),
+    };
+    // Only the key-codes field (before the first `;`) carries alternates under
+    // our flags; strip them and keep the rest (modifiers) verbatim.
+    let (key_codes, rest) = match body.split_once(';') {
+        Some((key_codes, rest)) => (key_codes, Some(rest)),
+        None => (body, None),
+    };
+    let key = key_codes.split(':').next().unwrap_or("");
+    let body = match rest {
+        Some(rest) => format!("{key};{rest}"),
+        None => key.to_string(),
+    };
+    format!("\u{1b}[{body}u").into_bytes()
+}
+
 impl BareKey {
     pub fn from_bytes_with_u(bytes: &[u8]) -> Option<Self> {
+        // With alternate-key reporting enabled, the kitty protocol appends the
+        // shifted and base-layout codepoints (`unicode-key:shifted:base`). Only
+        // the primary codepoint identifies the key, so drop any alternates.
+        let bytes = match bytes.iter().position(|&b| b == b':') {
+            Some(colon) => &bytes[..colon],
+            None => bytes,
+        };
         match str::from_utf8(bytes) {
             Ok("27") => Some(BareKey::Esc),
             Ok("13") => Some(BareKey::Enter),
@@ -576,9 +671,31 @@ impl KeyWithModifier {
             BareKey::Menu => KeyCode::Menu,
         }
     }
+    /// Serialize this key for a pane that doesn't speak the kitty keyboard
+    /// protocol. `raw_kitty_bytes` is the original sequence from the host
+    /// terminal (when the host *is* in kitty mode); it lets us recover the
+    /// layout-correct character the user typed instead of guessing from a
+    /// US-keyboard table.
     #[cfg(not(target_family = "wasm"))]
-    pub fn serialize_non_kitty(&self) -> Option<String> {
-        let modifiers = self.to_termwiz_modifiers();
+    pub fn serialize_non_kitty(&self, raw_kitty_bytes: Option<&[u8]>) -> Option<String> {
+        let mut modifiers = self.to_termwiz_modifiers();
+        let mut keycode = self.to_termwiz_keycode();
+        // A shifted key combined with another modifier (e.g. Alt+Shift+/) is reported
+        // by the kitty protocol as the unshifted code point + SHIFT. Fold the shift
+        // into the character so a non-kitty pane gets `ESC ?` not `ESC /`. Prefer the
+        // host's layout-correct shifted key (kitty "alternate keys") and fall back to
+        // the US-keyboard table for terminals that don't report it.
+        if modifiers.contains(Modifiers::SHIFT) {
+            if let KeyCode::Char(c) = keycode {
+                let shifted = raw_kitty_bytes
+                    .and_then(kitty_shifted_alternate)
+                    .or_else(|| us_keyboard_shifted_char(c));
+                if let Some(shifted) = shifted {
+                    keycode = KeyCode::Char(shifted);
+                    modifiers.remove(Modifiers::SHIFT);
+                }
+            }
+        }
         let key_code_encode_modes = KeyCodeEncodeModes {
             encoding: KeyboardEncoding::Xterm,
             // all these flags are false because they have been dealt with before this
@@ -587,9 +704,7 @@ impl KeyWithModifier {
             newline_mode: false,
             modify_other_keys: None,
         };
-        self.to_termwiz_keycode()
-            .encode(modifiers, key_code_encode_modes, true)
-            .ok()
+        keycode.encode(modifiers, key_code_encode_modes, true).ok()
     }
     #[cfg(not(target_family = "wasm"))]
     pub fn serialize_kitty(&self) -> Option<String> {
@@ -3694,5 +3809,82 @@ pub fn can_parse_unicode_bare_keys() {
         BareKey::from_bytes_with_u(&key.as_bytes()),
         Some(BareKey::Char('ъ')),
         "Can parse a bare 'ъ' keypress"
+    );
+}
+
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn serialize_non_kitty_falls_back_to_us_keyboard_table() {
+    // Without the host's raw bytes (older terminals that don't report alternate
+    // keys / associated text), the kitty protocol reports Shift+/ as the unshifted
+    // code point ('/', 47) with the SHIFT modifier. We apply the US-keyboard shift
+    // so a non-kitty pane receives "\x1b?" (ESC + ?), not "\x1b/" (ESC + /).
+    let alt_shift_slash = KeyWithModifier::new(BareKey::Char('/'))
+        .with_alt_modifier()
+        .with_shift_modifier();
+    assert_eq!(
+        alt_shift_slash.serialize_non_kitty(None),
+        Some("\u{1b}?".to_string()),
+        "Alt+Shift+/ should serialize as ESC + ? on a US keyboard"
+    );
+
+    let shift_slash = KeyWithModifier::new(BareKey::Char('/')).with_shift_modifier();
+    assert_eq!(
+        shift_slash.serialize_non_kitty(None),
+        Some("?".to_string()),
+        "Shift+/ should serialize as ? on a US keyboard"
+    );
+
+    let alt_shift_1 = KeyWithModifier::new(BareKey::Char('1'))
+        .with_alt_modifier()
+        .with_shift_modifier();
+    assert_eq!(
+        alt_shift_1.serialize_non_kitty(None),
+        Some("\u{1b}!".to_string()),
+        "Alt+Shift+1 should serialize as ESC + !"
+    );
+}
+
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn serialize_non_kitty_uses_host_reported_shifted_key() {
+    // When the host reports the layout-correct shifted key (kitty "alternate keys")
+    // we use it instead of the US-keyboard table, making this layout-agnostic.
+    // On a German layout '?' is Shift+ß, so Alt+Shift+ß is reported as the unshifted
+    // 'ß' (223) with shifted alternate '?' (63); we emit "\x1b?" (ESC + ?), which the
+    // US table alone could not produce ('ß' is not in it).
+    let alt_shift_german = KeyWithModifier::new(BareKey::Char('ß'))
+        .with_alt_modifier()
+        .with_shift_modifier();
+    assert_eq!(
+        alt_shift_german.serialize_non_kitty(Some("\u{1b}[223:63;4u".as_bytes())),
+        Some("\u{1b}?".to_string()),
+        "Alt+Shift+ß on a German keyboard should serialize as ESC + ? via alternate keys"
+    );
+}
+
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn strip_kitty_subparams_drops_alternate_keys() {
+    // The `:shifted:base` alternate-key codepoints are removed, leaving the
+    // sequence the host would have sent at the disambiguate layer.
+    assert_eq!(
+        strip_kitty_subparams("\u{1b}[47:63;4u".as_bytes()),
+        b"\x1b[47;4u".to_vec(),
+        "alternate keys removed, modifiers kept"
+    );
+    assert_eq!(
+        strip_kitty_subparams("\u{1b}[47:63u".as_bytes()),
+        b"\x1b[47u".to_vec(),
+        "alternate keys removed when there are no modifiers"
+    );
+    // Sequences without alternates, and non-`CSI u` sequences, pass through unchanged.
+    assert_eq!(
+        strip_kitty_subparams("\u{1b}[97;5u".as_bytes()),
+        b"\x1b[97;5u".to_vec()
+    );
+    assert_eq!(
+        strip_kitty_subparams("\u{1b}[1;2A".as_bytes()),
+        b"\x1b[1;2A".to_vec()
     );
 }
