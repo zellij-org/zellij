@@ -1,11 +1,8 @@
-use std::fs::OpenOptions;
-use std::os::unix::io::AsRawFd;
+use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
 use std::time::Duration;
-
-use nix::fcntl::{flock, FlockArg};
 
 const TEMP_PARENT: &str = "/tmp/zellij-test";
 const TEST_ROOT_SUBDIRS: [&str; 8] = [
@@ -13,6 +10,7 @@ const TEST_ROOT_SUBDIRS: [&str; 8] = [
 ];
 
 static TEST_ROOT: OnceLock<PathBuf> = OnceLock::new();
+static OWN_PROCESS_LOCK: OnceLock<File> = OnceLock::new();
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub fn init() -> &'static Path {
@@ -29,6 +27,7 @@ pub fn init() -> &'static Path {
 fn create_test_root() -> PathBuf {
     let parent = PathBuf::from(TEMP_PARENT);
     std::fs::create_dir_all(&parent).unwrap();
+    hold_own_process_lock(&parent);
     remove_roots_of_dead_test_processes(&parent);
     let test_root = parent.join(std::process::id().to_string());
     for subdir in TEST_ROOT_SUBDIRS {
@@ -37,26 +36,45 @@ fn create_test_root() -> PathBuf {
     test_root
 }
 
+fn process_lock_path(parent: &Path, pid: u32) -> PathBuf {
+    parent.join(format!("{}.lock", pid))
+}
+
+fn hold_own_process_lock(parent: &Path) {
+    let lock_file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(process_lock_path(parent, std::process::id()))
+        .unwrap();
+    lock_file.lock().unwrap();
+    let _ = OWN_PROCESS_LOCK.set(lock_file);
+}
+
 fn remove_roots_of_dead_test_processes(parent: &Path) {
     let Ok(entries) = std::fs::read_dir(parent) else {
         return;
     };
     for entry in entries.flatten() {
-        let entry_name = entry.file_name();
-        let Some(owner_pid) = entry_name
+        let file_name = entry.file_name();
+        let Some(owner_pid) = file_name
             .to_str()
-            .and_then(|name| name.parse::<u32>().ok())
+            .and_then(|name| name.strip_suffix(".lock"))
+            .and_then(|pid| pid.parse::<u32>().ok())
         else {
             continue;
         };
-        if owner_pid != std::process::id() && !process_is_alive(owner_pid) {
-            let _ = std::fs::remove_dir_all(entry.path());
+        if owner_pid == std::process::id() {
+            continue;
+        }
+        let Ok(lock_file) = OpenOptions::new().write(true).open(entry.path()) else {
+            continue;
+        };
+        if lock_file.try_lock().is_ok() {
+            let _ = std::fs::remove_dir_all(parent.join(owner_pid.to_string()));
+            let _ = std::fs::remove_file(entry.path());
+            let _ = lock_file.unlock();
         }
     }
-}
-
-fn process_is_alive(pid: u32) -> bool {
-    Path::new(&format!("/proc/{}", pid)).exists()
 }
 
 fn isolate_process_environment(test_root: &Path) {
@@ -79,10 +97,8 @@ pub fn unique_session_name() -> String {
     format!("test-{}", session_index)
 }
 
-// caps concurrently active tests so nextest's per-cpu parallelism does not oversubscribe the
-// machine (each test is itself many threads) and miss render deadlines; flock frees on panic
 pub struct ConcurrencySlot {
-    _slot_file: std::fs::File,
+    _slot_file: File,
 }
 
 fn is_truthy(value: &str) -> bool {
@@ -122,7 +138,7 @@ pub fn acquire_concurrency_slot() -> ConcurrencySlot {
                 .write(true)
                 .open(slot_dir.join(format!("slot-{}", slot_index)))
                 .unwrap();
-            if flock(slot_file.as_raw_fd(), FlockArg::LockExclusiveNonblock).is_ok() {
+            if slot_file.try_lock().is_ok() {
                 return ConcurrencySlot {
                     _slot_file: slot_file,
                 };

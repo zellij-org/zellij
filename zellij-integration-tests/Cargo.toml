@@ -18,7 +18,6 @@ crossbeam = { version = "0.8", default-features = false, features = ["crossbeam-
 interprocess = { workspace = true }
 insta = { version = "1.6.0", features = ["backtrace"] }
 log = { workspace = true }
-nix = { workspace = true }
 regex = { workspace = true }
 tokio = { workspace = true }
 vte = { workspace = true }
