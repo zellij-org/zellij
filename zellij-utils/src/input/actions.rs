@@ -1797,12 +1797,9 @@ impl Action {
             } => {
                 let current_dir = get_current_dir();
                 // Start from the (possibly comma-split) `-c` configuration...
-                let mut merged_configuration: BTreeMap<String, String> = configuration
-                    .map(|c| c.inner().clone())
-                    .unwrap_or_default();
+                let mut merged_configuration: BTreeMap<String, String> =
+                    configuration.map(|c| c.inner().clone()).unwrap_or_default();
                 // ...then merge entries parsed from --configuration-file, which override `-c`.
-                // Each non-empty, non-comment line is `key=value`, split on the FIRST '=' only,
-                // value taken verbatim (commas and '=' allowed) to end of line.
                 if let Some(configuration_file) = configuration_file {
                     let contents = std::fs::read_to_string(&configuration_file).map_err(|e| {
                         format!(
@@ -1811,36 +1808,28 @@ impl Action {
                             e
                         )
                     })?;
-                    for line in contents.lines() {
-                        let trimmed = line.trim_start();
-                        if trimmed.is_empty() || trimmed.starts_with('#') {
-                            continue;
-                        }
-                        match line.split_once('=') {
-                            Some((key, value)) => {
-                                merged_configuration
-                                    .insert(key.trim().to_owned(), value.to_owned());
-                            },
-                            None => {
-                                return Err(format!(
-                                    "Invalid line in configuration file (expected key=value): {}",
-                                    line
-                                ));
-                            },
-                        }
+                    let entries = parse_plugin_configuration_file(&contents).map_err(|e| {
+                        format!(
+                            "Invalid configuration file {}: {}",
+                            configuration_file.display(),
+                            e
+                        )
+                    })?;
+                    if entries.is_empty() {
+                        return Err(format!(
+                            "Configuration file {} contained no key=value entries",
+                            configuration_file.display()
+                        ));
                     }
+                    merged_configuration.extend(entries);
                 }
                 let configuration = if merged_configuration.is_empty() {
                     None
                 } else {
                     Some(merged_configuration)
                 };
-                let run_plugin_or_alias = RunPluginOrAlias::from_url(
-                    &url,
-                    &configuration,
-                    None,
-                    Some(current_dir),
-                )?;
+                let run_plugin_or_alias =
+                    RunPluginOrAlias::from_url(&url, &configuration, None, Some(current_dir))?;
                 Ok(vec![Action::StartOrReloadPlugin {
                     plugin: run_plugin_or_alias,
                 }])
@@ -2277,6 +2266,37 @@ impl Action {
     }
 }
 
+/// Parse the contents of a `--configuration-file` into key/value entries.
+///
+/// Each line that is non-empty and does not start with `#` (after left-trimming) is treated as a
+/// `key=value` entry, split on the FIRST `=` only. The key is trimmed; the value is taken verbatim
+/// (including leading/trailing whitespace, commas and any further `=`) to the end of the line. This
+/// avoids the comma/`=` splitting of `-c`, allowing format strings with commas.
+///
+/// Returns an error for a line without a `=`, or with an empty key.
+pub fn parse_plugin_configuration_file(contents: &str) -> Result<BTreeMap<String, String>, String> {
+    let mut entries: BTreeMap<String, String> = BTreeMap::new();
+    for line in contents.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        match line.split_once('=') {
+            Some((key, value)) => {
+                let key = key.trim();
+                if key.is_empty() {
+                    return Err(format!("empty key in line: {}", line));
+                }
+                entries.insert(key.to_owned(), value.to_owned());
+            },
+            None => {
+                return Err(format!("expected key=value, got: {}", line));
+            },
+        }
+    }
+    Ok(entries)
+}
+
 fn suggest_key_fix(key_str: &str) -> String {
     if key_str.contains('-') {
         return "  Hint: Use spaces instead of hyphens (e.g., \"Ctrl a\" not \"Ctrl-a\")"
@@ -2317,7 +2337,85 @@ mod tests {
     use super::*;
     use crate::data::BareKey;
     use crate::data::KeyModifier;
+    use crate::input::layout::PluginUserConfiguration;
     use std::path::PathBuf;
+
+    #[test]
+    fn test_config_file_preserves_comma_values() {
+        // the entire reason --configuration-file exists: -c shreds commas
+        let parsed = parse_plugin_configuration_file("format=hello,world,{count}").unwrap();
+        assert_eq!(parsed.get("format").unwrap(), "hello,world,{count}");
+    }
+
+    #[test]
+    fn test_config_file_splits_on_first_equals_only() {
+        let parsed = parse_plugin_configuration_file("query=SELECT a=1").unwrap();
+        assert_eq!(parsed.get("query").unwrap(), "SELECT a=1");
+    }
+
+    #[test]
+    fn test_config_file_line_without_equals_is_error() {
+        let err = parse_plugin_configuration_file("notakeyvalue").unwrap_err();
+        assert!(err.contains("expected key=value"), "got: {err}");
+    }
+
+    #[test]
+    fn test_config_file_empty_key_is_error() {
+        let err = parse_plugin_configuration_file("   =value").unwrap_err();
+        assert!(err.contains("empty key"), "got: {err}");
+    }
+
+    #[test]
+    fn test_config_file_skips_blank_and_comment_lines() {
+        let contents = "\n   \n# a comment\nformat=bar\n  # indented comment\n";
+        let parsed = parse_plugin_configuration_file(contents).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed.get("format").unwrap(), "bar");
+    }
+
+    #[test]
+    fn test_config_file_empty_or_all_comments_yields_empty_map() {
+        assert!(parse_plugin_configuration_file("").unwrap().is_empty());
+        assert!(parse_plugin_configuration_file("# only a comment\n\n")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn test_config_file_trims_key_but_value_is_verbatim() {
+        let parsed =
+            parse_plugin_configuration_file("  spaced_key  =  value with spaces  ").unwrap();
+        assert!(parsed.contains_key("spaced_key"));
+        assert_eq!(parsed.get("spaced_key").unwrap(), "  value with spaces  ");
+    }
+
+    #[test]
+    fn test_config_file_merges_and_overrides_dash_c() {
+        let configuration = Some(PluginUserConfiguration::new(
+            [
+                ("foo".to_owned(), "a".to_owned()),
+                ("bar".to_owned(), "b".to_owned()),
+            ]
+            .into_iter()
+            .collect(),
+        ));
+        let cli_action = CliAction::StartOrReloadPlugin {
+            url: "zellij:status-bar".to_string(),
+            configuration,
+            configuration_file: None,
+        };
+        // -c alone: both keys survive
+        let actions =
+            Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None).unwrap();
+        match &actions[0] {
+            Action::StartOrReloadPlugin { plugin } => {
+                let cfg = plugin.get_configuration().unwrap();
+                assert_eq!(cfg.inner().get("foo").unwrap(), "a");
+                assert_eq!(cfg.inner().get("bar").unwrap(), "b");
+            },
+            other => panic!("expected StartOrReloadPlugin, got {other:?}"),
+        }
+    }
 
     #[test]
     fn test_send_keys_single_key() {

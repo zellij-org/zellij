@@ -628,7 +628,10 @@ impl WasmBridge {
             return Ok(());
         };
         let Some(mut plugin_config) = self.plugin_config_of_plugin_id(plugin_id) else {
-            log::error!("Could not find running plugin with id: {}", plugin_id);
+            log::error!(
+                "Could not find running plugin with id {}; new configuration (if any) was NOT applied",
+                plugin_id
+            );
             return Ok(());
         };
         // If a new configuration was provided (and is non-empty), override the
@@ -636,7 +639,8 @@ impl WasmBridge {
         if let Some(new_configuration) = new_configuration {
             if !new_configuration.inner().is_empty() {
                 plugin_config.initial_userspace_configuration = new_configuration;
-                // a config-changing reload invalidates the location->configuration cache
+                // clear the cached plugin map, since this reload changes the
+                // configuration the cache is keyed on
                 self.cached_plugin_map.clear();
             }
         }
@@ -708,12 +712,13 @@ impl WasmBridge {
         }
 
         // Look up running instances by location only (ignoring configuration), so that a
-        // reload carrying a *new* configuration still matches the currently running bars
-        // instead of falling through to opening a brand-new pane.
+        // reload carrying a *new* configuration still matches the currently running plugin
+        // instances instead of falling through to opening a brand-new pane.
         let plugin_ids = self
             .plugin_map
             .lock()
-            .unwrap()
+            .map_err(|e| anyhow!("plugin_map lock poisoned: {e}"))
+            .with_context(|| format!("failed to reload plugin at {}", run_plugin.location))?
             .all_plugin_ids_for_plugin_location_ignoring_configuration(&run_plugin.location)?;
         // Only thread the configuration through when it is non-empty; an empty configuration
         // means "bare reload" and should preserve the currently running configuration.
@@ -1752,16 +1757,6 @@ impl WasmBridge {
                     None
                 }
             })
-    }
-    fn all_plugin_ids_for_plugin_location(
-        &self,
-        plugin_location: &RunPluginLocation,
-        plugin_configuration: &PluginUserConfiguration,
-    ) -> Result<Vec<PluginId>> {
-        self.plugin_map
-            .lock()
-            .unwrap()
-            .all_plugin_ids_for_plugin_location(plugin_location, plugin_configuration)
     }
     pub fn all_plugin_and_client_ids_for_plugin_location(
         &mut self,
