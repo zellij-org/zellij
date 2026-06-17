@@ -1,4 +1,5 @@
 use dialoguer::Confirm;
+#[cfg(feature = "web_server_capability")]
 use std::net::IpAddr;
 use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
@@ -213,25 +214,6 @@ pub(crate) fn start_web_server(
     );
 }
 
-#[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn start_web_server(
-    _opts: CliArgs,
-    _run_daemonized: bool,
-    _ip: Option<IpAddr>,
-    _port: Option<u16>,
-    _cert: Option<PathBuf>,
-    _key: Option<PathBuf>,
-    _startup_timeout: Option<u64>,
-) {
-    log::error!(
-        "This version of Zellij was compiled without web server support, cannot run web server!"
-    );
-    eprintln!(
-        "This version of Zellij was compiled without web server support, cannot run web server!"
-    );
-    std::process::exit(2);
-}
-
 fn create_new_client() -> ClientInfo {
     ClientInfo::New(generate_unique_session_name_or_exit(), None, None)
 }
@@ -240,17 +222,6 @@ fn create_new_client() -> ClientInfo {
 pub(crate) fn stop_web_server() -> Result<(), String> {
     shutdown_all_webserver_instances().map_err(|e| e.to_string())?;
     Ok(())
-}
-
-#[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn stop_web_server() -> Result<(), String> {
-    log::error!(
-        "This version of Zellij was compiled without web server support, cannot stop web server!"
-    );
-    eprintln!(
-        "This version of Zellij was compiled without web server support, cannot stop web server!"
-    );
-    std::process::exit(2);
 }
 
 #[cfg(feature = "web_server_capability")]
@@ -264,48 +235,15 @@ pub(crate) fn create_auth_token(name: Option<String>, read_only: bool) -> Result
         .map_err(|e| e.to_string())
 }
 
-#[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn create_auth_token(_name: Option<String>, _read_only: bool) -> Result<String, String> {
-    log::error!(
-        "This version of Zellij was compiled without web server support, cannot create auth token!"
-    );
-    eprintln!(
-        "This version of Zellij was compiled without web server support, cannot create auth token!"
-    );
-    std::process::exit(2);
-}
-
 #[cfg(feature = "web_server_capability")]
 pub(crate) fn revoke_auth_token(token_name: &str) -> Result<bool, String> {
     revoke_token(token_name).map_err(|e| e.to_string())
-}
-
-#[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn revoke_auth_token(_token_name: &str) -> Result<bool, String> {
-    log::error!(
-        "This version of Zellij was compiled without web server support, cannot revoke auth token!"
-    );
-    eprintln!(
-        "This version of Zellij was compiled without web server support, cannot revoke auth token!"
-    );
-    std::process::exit(2);
 }
 
 #[cfg(feature = "web_server_capability")]
 pub(crate) fn revoke_all_auth_tokens() -> Result<usize, String> {
     // returns the revoked count
     revoke_all_tokens().map_err(|e| e.to_string())
-}
-
-#[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn revoke_all_auth_tokens() -> Result<usize, String> {
-    log::error!(
-        "This version of Zellij was compiled without web server support, cannot revoke all tokens!"
-    );
-    eprintln!(
-        "This version of Zellij was compiled without web server support, cannot revoke all tokens!"
-    );
-    std::process::exit(2);
 }
 
 #[cfg(feature = "web_server_capability")]
@@ -326,18 +264,8 @@ pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> {
         .map_err(|e| e.to_string())
 }
 
-#[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> {
-    log::error!(
-        "This version of Zellij was compiled without web server support, cannot list tokens!"
-    );
-    eprintln!(
-        "This version of Zellij was compiled without web server support, cannot list tokens!"
-    );
-    std::process::exit(2);
-}
-
 /// Default timeout for web server status check (in seconds)
+#[cfg(feature = "web_server_capability")]
 pub const DEFAULT_WEB_SERVER_STATUS_TIMEOUT_SECS: u64 = 30;
 
 #[cfg(feature = "web_server_capability")]
@@ -365,20 +293,6 @@ pub(crate) fn web_server_status(
             status_code
         ))
     }
-}
-
-#[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn web_server_status(
-    _web_server_base_url: &str,
-    _timeout_secs: Option<u64>,
-) -> Result<String, String> {
-    log::error!(
-        "This version of Zellij was compiled without web server support, cannot get web server status!"
-    );
-    eprintln!(
-        "This version of Zellij was compiled without web server support, cannot get web server status!"
-    );
-    std::process::exit(2);
 }
 
 fn find_indexed_session(
@@ -1098,6 +1012,7 @@ fn reload_config_from_disk(
     };
 }
 
+#[cfg(feature = "web_server_capability")]
 pub fn get_config_options_from_cli_args(opts: &CliArgs) -> Result<Options, String> {
     Setup::from_cli_args(&opts)
         .map(|(_, _, config_options, _, _)| config_options)
