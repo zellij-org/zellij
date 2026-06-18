@@ -1400,6 +1400,10 @@ impl Coloration {
 pub struct Styling {
     pub text_unselected: StyleDeclaration,
     pub text_selected: StyleDeclaration,
+    /// Color of mouse-drag selection of terminal pane content.
+    /// When `None`, falls back to `text_selected` so existing themes are
+    /// byte-for-byte unchanged. (POC for issue #2160.)
+    pub pane_selection: Option<StyleDeclaration>,
     pub ribbon_unselected: StyleDeclaration,
     pub ribbon_selected: StyleDeclaration,
     pub table_title: StyleDeclaration,
@@ -1488,6 +1492,7 @@ pub const DEFAULT_STYLES: Styling = Styling {
         emphasis_3: PaletteColor::EightBit(default_colors::PURPLE),
         background: PaletteColor::EightBit(default_colors::GRAY),
     },
+    pane_selection: None,
     frame_unselected: None,
     frame_selected: StyleDeclaration {
         base: PaletteColor::EightBit(default_colors::GREEN),
@@ -1646,6 +1651,7 @@ impl From<Palette> for Styling {
                 emphasis_3: palette.purple,
                 background: Default::default(),
             },
+            pane_selection: None,
             frame_unselected: None,
             frame_selected: StyleDeclaration {
                 base: palette.green,

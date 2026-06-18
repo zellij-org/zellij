@@ -94,6 +94,7 @@ expression: "format!(\"{:#?}\", theme)"
                     ),
                 ),
             },
+            pane_selection: None,
             ribbon_unselected: StyleDeclaration {
                 base: Rgb(
                     (
