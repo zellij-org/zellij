@@ -436,6 +436,58 @@ impl KeyModifier {
     }
 }
 
+/// Parse the first Unicode codepoint from the Kitty CSI-u `associated-text`
+/// parameter. The parameter is one or more decimal codepoints joined by `:`,
+/// representing the character(s) the OS keymap would have produced if the
+/// keystroke had not been consumed by the application. We only act on the
+/// first codepoint; multi-codepoint sequences (IME, combining marks) are
+/// rare and acceptable to truncate for binding-resolution purposes.
+fn parse_first_associated_codepoint(bytes: &[u8]) -> Option<char> {
+    if bytes.is_empty() {
+        return None;
+    }
+    let s = str::from_utf8(bytes).ok()?;
+    let first = s.split(':').next()?;
+    let n: u32 = first.parse().ok()?;
+    char::from_u32(n)
+}
+
+/// When the OS keymap produced a character different from the bare keycode
+/// (AltGr glyphs, Shift+letter → uppercase, dead-key composition, IME),
+/// terminals supporting `REPORT_ASSOCIATED_TEXT` send that produced character
+/// as the third CSI-u parameter. Returning it as the bare key with no
+/// modifiers is the right thing for zellij: bindings should never match on
+/// the underlying *physical* key when the OS has resolved the keymap and
+/// produced a textual character.
+///
+/// When the associated text matches the bare keycode char (real Alt+f sends
+/// `f` as text), or there is no associated text, or it's a control codepoint,
+/// fall through to the modifier-preserving form so Alt-bindings still fire.
+fn apply_associated_text(
+    bare_key: BareKey,
+    key_modifiers: BTreeSet<KeyModifier>,
+    associated_text_bytes: &[u8],
+) -> KeyWithModifier {
+    if let Some(text_char) = parse_first_associated_codepoint(associated_text_bytes) {
+        if !text_char.is_control() {
+            let key_char = match bare_key {
+                BareKey::Char(c) => Some(c),
+                _ => None,
+            };
+            if key_char != Some(text_char) {
+                return KeyWithModifier {
+                    bare_key: BareKey::Char(text_char),
+                    key_modifiers: BTreeSet::new(),
+                };
+            }
+        }
+    }
+    KeyWithModifier {
+        bare_key,
+        key_modifiers,
+    }
+}
+
 impl KeyWithModifier {
     pub fn new(bare_key: BareKey) -> Self {
         KeyWithModifier {
@@ -465,33 +517,33 @@ impl KeyWithModifier {
         self.key_modifiers.insert(KeyModifier::Super);
         self
     }
-    pub fn from_bytes_with_u(number_bytes: &[u8], modifier_bytes: &[u8]) -> Option<Self> {
-        // CSI number ; modifiers u
-        let bare_key = BareKey::from_bytes_with_u(number_bytes);
-        match bare_key {
-            Some(bare_key) => {
-                let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
-                Some(KeyWithModifier {
-                    bare_key,
-                    key_modifiers,
-                })
-            },
-            _ => None,
-        }
+    pub fn from_bytes_with_u(
+        number_bytes: &[u8],
+        modifier_bytes: &[u8],
+        associated_text_bytes: &[u8],
+    ) -> Option<Self> {
+        // CSI number ; modifiers ; associated-text u
+        let bare_key = BareKey::from_bytes_with_u(number_bytes)?;
+        let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
+        Some(apply_associated_text(
+            bare_key,
+            key_modifiers,
+            associated_text_bytes,
+        ))
     }
-    pub fn from_bytes_with_tilde(number_bytes: &[u8], modifier_bytes: &[u8]) -> Option<Self> {
-        // CSI number ; modifiers ~
-        let bare_key = BareKey::from_bytes_with_tilde(number_bytes);
-        match bare_key {
-            Some(bare_key) => {
-                let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
-                Some(KeyWithModifier {
-                    bare_key,
-                    key_modifiers,
-                })
-            },
-            _ => None,
-        }
+    pub fn from_bytes_with_tilde(
+        number_bytes: &[u8],
+        modifier_bytes: &[u8],
+        associated_text_bytes: &[u8],
+    ) -> Option<Self> {
+        // CSI number ; modifiers ; associated-text ~
+        let bare_key = BareKey::from_bytes_with_tilde(number_bytes)?;
+        let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
+        Some(apply_associated_text(
+            bare_key,
+            key_modifiers,
+            associated_text_bytes,
+        ))
     }
     pub fn from_bytes_with_no_ending_byte(
         number_bytes: &[u8],
