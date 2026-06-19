@@ -47,7 +47,7 @@ pub fn get_default_themes() -> Themes {
 // the same name. `Themes::merge` lets the *argument* win, so the user themes must be
 // the argument and the defaults the receiver. (This was previously reversed, which
 // silently shadowed a user theme with a same-named built-in.)
-fn themes_with_defaults(defaults: Themes, user_themes: Themes) -> Themes {
+pub fn themes_with_defaults(defaults: Themes, user_themes: Themes) -> Themes {
     defaults.merge(user_themes)
 }
 
