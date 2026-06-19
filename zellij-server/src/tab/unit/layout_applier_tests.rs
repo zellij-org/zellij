@@ -204,6 +204,7 @@ fn create_layout_applier_fixtures(
         style.clone(),
         os_api.box_clone(),
         senders.clone(),
+        true,
     );
 
     // Create FloatingPanes
@@ -219,6 +220,7 @@ fn create_layout_applier_fixtures(
         style.clone(),
         os_api.box_clone(),
         senders.clone(),
+        true,
     );
 
     let focus_pane_id = None;
@@ -334,6 +336,7 @@ fn create_layout_applier_fixtures_with_receivers(
         style.clone(),
         os_api.box_clone(),
         senders.clone(),
+        true,
     );
 
     // Create FloatingPanes
@@ -349,6 +352,7 @@ fn create_layout_applier_fixtures_with_receivers(
         style.clone(),
         os_api.box_clone(),
         senders.clone(),
+        true,
     );
 
     let focus_pane_id = None;

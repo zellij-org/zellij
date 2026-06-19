@@ -744,6 +744,7 @@ pub enum ScreenInstruction {
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
+        mouse_scroll_resize: bool,
         mouse_hover_effects: bool,
         visual_bell: bool,
         focus_follows_mouse: bool,
@@ -1445,6 +1446,7 @@ pub(crate) struct Screen {
     web_sharing: WebSharing,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
+    mouse_scroll_resize: bool,
     mouse_hover_effects: bool,
     visual_bell: bool,
     focus_follows_mouse: bool,
@@ -1546,6 +1548,7 @@ impl Screen {
         web_clients_allowed: bool,
         web_sharing: WebSharing,
         advanced_mouse_actions: bool,
+        mouse_scroll_resize: bool,
         mouse_hover_effects: bool,
         visual_bell: bool,
         focus_follows_mouse: bool,
@@ -1604,6 +1607,7 @@ impl Screen {
             current_pane_group: Rc::new(RefCell::new(current_pane_group)),
             currently_marking_pane_group: Rc::new(RefCell::new(HashMap::new())),
             advanced_mouse_actions,
+            mouse_scroll_resize,
             mouse_hover_effects,
             visual_bell,
             focus_follows_mouse,
@@ -3327,6 +3331,7 @@ impl Screen {
             self.current_pane_group.clone(),
             self.currently_marking_pane_group.clone(),
             self.advanced_mouse_actions,
+            self.mouse_scroll_resize,
             self.mouse_hover_effects,
             self.focus_follows_mouse,
             self.mouse_click_through,
@@ -4997,6 +5002,7 @@ impl Screen {
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
+        mouse_scroll_resize: bool,
         mouse_hover_effects: bool,
         visual_bell: bool,
         focus_follows_mouse: bool,
@@ -5021,6 +5027,7 @@ impl Screen {
         self.copy_options.copy_on_select = copy_on_select;
         self.draw_pane_frames = pane_frames;
         self.advanced_mouse_actions = advanced_mouse_actions;
+        self.mouse_scroll_resize = mouse_scroll_resize;
         self.mouse_hover_effects = mouse_hover_effects;
         self.visual_bell = visual_bell;
         self.focus_follows_mouse = focus_follows_mouse;
@@ -5045,6 +5052,7 @@ impl Screen {
             tab.set_pane_frames(pane_frames);
             tab.update_arrow_fonts(should_support_arrow_fonts);
             tab.update_advanced_mouse_actions(advanced_mouse_actions);
+            tab.update_mouse_scroll_resize(mouse_scroll_resize);
             tab.update_mouse_hover_effects(mouse_hover_effects);
             tab.update_focus_follows_mouse(focus_follows_mouse);
             tab.update_mouse_click_through(mouse_click_through);
@@ -6164,6 +6172,7 @@ pub(crate) fn screen_thread_main(
         .unwrap_or(false);
     let web_sharing = config_options.web_sharing.unwrap_or_else(Default::default);
     let advanced_mouse_actions = config_options.advanced_mouse_actions.unwrap_or(true);
+    let mouse_scroll_resize = config_options.mouse_scroll_resize.unwrap_or(true);
     let mouse_hover_effects = config_options.mouse_hover_effects.unwrap_or(true);
     let visual_bell = config_options.visual_bell.unwrap_or(true);
     let focus_follows_mouse = config_options.focus_follows_mouse.unwrap_or(false);
@@ -6205,6 +6214,7 @@ pub(crate) fn screen_thread_main(
         web_clients_allowed,
         web_sharing,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         mouse_hover_effects,
         visual_bell,
         focus_follows_mouse,
@@ -9315,6 +9325,7 @@ pub(crate) fn screen_thread_main(
                 stacked_resize,
                 default_editor,
                 advanced_mouse_actions,
+                mouse_scroll_resize,
                 mouse_hover_effects,
                 visual_bell,
                 focus_follows_mouse,
@@ -9339,6 +9350,7 @@ pub(crate) fn screen_thread_main(
                         stacked_resize,
                         default_editor,
                         advanced_mouse_actions,
+                        mouse_scroll_resize,
                         mouse_hover_effects,
                         visual_bell,
                         focus_follows_mouse,

@@ -67,6 +67,7 @@ pub struct FrameParams {
     pub pane_is_selectable: bool,
     pub show_help_text: bool,
     pub highlight_tooltip: Option<String>,
+    pub mouse_scroll_resize: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -92,6 +93,7 @@ pub struct PaneFrame {
     is_selectable: bool,
     show_help_text: bool,
     highlight_tooltip: Option<String>,
+    mouse_scroll_resize: bool,
 }
 
 impl PaneFrame {
@@ -123,6 +125,7 @@ impl PaneFrame {
             is_selectable: frame_params.pane_is_selectable,
             show_help_text: frame_params.show_help_text,
             highlight_tooltip: frame_params.highlight_tooltip,
+            mouse_scroll_resize: frame_params.mouse_scroll_resize,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -777,10 +780,11 @@ impl PaneFrame {
     }
 
     fn help_text_version_full(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
-        let text = if self.is_floating {
-            " Ctrl <MouseScroll> or Ctrl <drag borders> to resize "
-        } else {
-            " Ctrl <MouseScroll> or <drag borders> to resize "
+        let text = match (self.is_floating, self.mouse_scroll_resize) {
+            (true, true) => " Ctrl <MouseScroll> or Ctrl <drag borders> to resize ",
+            (true, false) => " Ctrl <drag borders> to resize ",
+            (false, true) => " Ctrl <MouseScroll> or <drag borders> to resize ",
+            (false, false) => " <drag borders> to resize ",
         };
         let len = text.chars().count();
         if len <= max_length {
@@ -794,10 +798,11 @@ impl PaneFrame {
         &self,
         max_length: usize,
     ) -> Option<(Vec<TerminalCharacter>, usize)> {
-        let text = if self.is_floating {
-            " <Ctrl MouseScroll/drag borders> resize "
-        } else {
-            " <Ctrl MouseScroll>/<drag borders> resize "
+        let text = match (self.is_floating, self.mouse_scroll_resize) {
+            (true, true) => " <Ctrl MouseScroll/drag borders> resize ",
+            (true, false) => " <Ctrl drag borders> resize ",
+            (false, true) => " <Ctrl MouseScroll>/<drag borders> resize ",
+            (false, false) => " <drag borders> resize ",
         };
         let len = text.chars().count();
         if len <= max_length {
@@ -811,10 +816,11 @@ impl PaneFrame {
         &self,
         max_length: usize,
     ) -> Option<(Vec<TerminalCharacter>, usize)> {
-        let text = if self.is_floating {
-            " <Ctrl MouseScroll/drag borders> "
-        } else {
-            " <Ctrl MouseScroll>/<drag borders> "
+        let text = match (self.is_floating, self.mouse_scroll_resize) {
+            (true, true) => " <Ctrl MouseScroll/drag borders> ",
+            (true, false) => " <Ctrl drag borders> ",
+            (false, true) => " <Ctrl MouseScroll>/<drag borders> ",
+            (false, false) => " <drag borders> ",
         };
         let len = text.chars().count();
         if len <= max_length {
@@ -1180,5 +1186,101 @@ impl PaneFrame {
         ret.append(&mut foreground_color(&padding, self.color));
         ret.append(&mut right_boundary);
         ret
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zellij_utils::data::Style;
+    use zellij_utils::pane_size::{Offset, Viewport};
+
+    fn pane_frame_with(mouse_scroll_resize: bool, is_floating: bool, cols: usize) -> PaneFrame {
+        PaneFrame::new(
+            Viewport {
+                x: 0,
+                y: 0,
+                cols,
+                rows: 10,
+            },
+            (0, 0),
+            String::new(),
+            FrameParams {
+                focused_client: None,
+                is_main_client: true,
+                other_focused_clients: vec![],
+                style: Style::default(),
+                color: None,
+                other_cursors_exist_in_session: false,
+                pane_is_stacked_over: false,
+                pane_is_stacked_under: false,
+                should_draw_pane_frames: true,
+                pane_is_floating: is_floating,
+                content_offset: Offset::default(),
+                mouse_is_hovering_over_pane: false,
+                pane_is_selectable: true,
+                show_help_text: true,
+                highlight_tooltip: None,
+                mouse_scroll_resize,
+            },
+        )
+    }
+
+    fn characters_to_string(chars: &[TerminalCharacter]) -> String {
+        chars.iter().map(|c| c.character).collect()
+    }
+
+    #[test]
+    fn help_text_full_includes_ctrl_scroll_when_enabled_for_tiled_pane() {
+        let frame = pane_frame_with(true, false, 80);
+        let (chars, _) = frame.help_text_version_full(80).unwrap();
+        let text = characters_to_string(&chars);
+        assert!(text.contains("Ctrl <MouseScroll>"));
+        assert!(text.contains("<drag borders>"));
+    }
+
+    #[test]
+    fn help_text_full_omits_ctrl_scroll_when_disabled_for_tiled_pane() {
+        let frame = pane_frame_with(false, false, 80);
+        let (chars, _) = frame.help_text_version_full(80).unwrap();
+        let text = characters_to_string(&chars);
+        assert!(!text.contains("MouseScroll"));
+        assert!(text.contains("<drag borders> to resize"));
+    }
+
+    #[test]
+    fn help_text_full_includes_ctrl_scroll_when_enabled_for_floating_pane() {
+        let frame = pane_frame_with(true, true, 80);
+        let (chars, _) = frame.help_text_version_full(80).unwrap();
+        let text = characters_to_string(&chars);
+        assert!(text.contains("Ctrl <MouseScroll>"));
+        assert!(text.contains("Ctrl <drag borders>"));
+    }
+
+    #[test]
+    fn help_text_full_omits_ctrl_scroll_when_disabled_for_floating_pane() {
+        let frame = pane_frame_with(false, true, 80);
+        let (chars, _) = frame.help_text_version_full(80).unwrap();
+        let text = characters_to_string(&chars);
+        assert!(!text.contains("MouseScroll"));
+        assert!(text.contains("Ctrl <drag borders> to resize"));
+    }
+
+    #[test]
+    fn help_text_medium_omits_ctrl_scroll_when_disabled() {
+        let frame = pane_frame_with(false, false, 40);
+        let (chars, _) = frame.help_text_version_medium(40).unwrap();
+        let text = characters_to_string(&chars);
+        assert!(!text.contains("MouseScroll"));
+        assert!(text.contains("<drag borders> resize"));
+    }
+
+    #[test]
+    fn help_text_short_omits_ctrl_scroll_when_disabled() {
+        let frame = pane_frame_with(false, false, 20);
+        let (chars, _) = frame.help_text_version_short(20).unwrap();
+        let text = characters_to_string(&chars);
+        assert!(!text.contains("MouseScroll"));
+        assert!(text.contains("<drag borders>"));
     }
 }

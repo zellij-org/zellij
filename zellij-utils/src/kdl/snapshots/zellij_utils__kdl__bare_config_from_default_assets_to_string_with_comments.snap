@@ -544,6 +544,10 @@ web_client {
 // default is true
 // advanced_mouse_actions false
  
+// Whether Ctrl+ScrollWheel resizes panes
+// default is true
+// mouse_scroll_resize false
+ 
 // Whether to enable mouse hover visual effects (frame highlight and help text)
 // default is true
 // mouse_hover_effects false

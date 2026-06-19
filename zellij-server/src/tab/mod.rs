@@ -211,6 +211,7 @@ pub(crate) struct Tab {
     last_mouse_activity_time: HashMap<ClientId, Instant>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
+    mouse_scroll_resize: bool,
     mouse_hover_effects: bool,
     focus_follows_mouse: bool,
     mouse_click_through: bool,
@@ -757,6 +758,7 @@ impl Tab {
         current_pane_group: Rc<RefCell<PaneGroups>>,
         currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
         advanced_mouse_actions: bool,
+        mouse_scroll_resize: bool,
         mouse_hover_effects: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
@@ -795,6 +797,7 @@ impl Tab {
             style,
             os_api.clone(),
             senders.clone(),
+            mouse_scroll_resize,
         );
         let floating_panes = FloatingPanes::new(
             display_area.clone(),
@@ -808,6 +811,7 @@ impl Tab {
             style,
             os_api.clone(),
             senders.clone(),
+            mouse_scroll_resize,
         );
 
         let clipboard_provider = match copy_options.command {
@@ -870,6 +874,7 @@ impl Tab {
             current_pane_group,
             currently_marking_pane_group,
             advanced_mouse_actions,
+            mouse_scroll_resize,
             mouse_hover_effects,
             focus_follows_mouse,
             mouse_click_through,
@@ -5800,6 +5805,9 @@ impl Tab {
     }
     pub fn update_advanced_mouse_actions(&mut self, advanced_mouse_actions: bool) {
         self.advanced_mouse_actions = advanced_mouse_actions;
+    }
+    pub fn update_mouse_scroll_resize(&mut self, mouse_scroll_resize: bool) {
+        self.mouse_scroll_resize = mouse_scroll_resize;
     }
     pub fn update_mouse_hover_effects(&mut self, mouse_hover_effects: bool) {
         self.mouse_hover_effects = mouse_hover_effects;

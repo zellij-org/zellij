@@ -284,6 +284,7 @@ fn create_new_screen(
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
     let visual_bell = true;
+    let mouse_scroll_resize = true;
     let screen = Screen::new(
         bus,
         &client_attributes,
@@ -310,6 +311,7 @@ fn create_new_screen(
         false,
         web_sharing,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         mouse_hover_effects,
         visual_bell,
         false, // focus_follows_mouse
@@ -5374,6 +5376,7 @@ fn create_new_screen_with_message_capture(
         web_sharing,
         true,
         true,
+        true,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -8444,6 +8447,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         web_sharing,
         true,
         true,
+        true,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -9028,6 +9032,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         true,
         true,
         true,
+        true,
         false,
         false,
         web_server_ip,
@@ -9505,6 +9510,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         false,
         WebSharing::Off,
         true,  // advanced_mouse_actions
+        true,  // mouse_scroll_resize
         true,  // mouse_hover_effects
         true,  // visual_bell
         false, // focus_follows_mouse

@@ -53,6 +53,7 @@ pub struct FloatingPanes {
     // last_position)
     senders: ThreadSenders,
     window_title: Option<String>,
+    mouse_scroll_resize: bool,
 }
 
 #[allow(clippy::borrowed_box)]
@@ -70,6 +71,7 @@ impl FloatingPanes {
         style: Style,
         os_input: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
+        mouse_scroll_resize: bool,
     ) -> Self {
         FloatingPanes {
             panes: BTreeMap::new(),
@@ -89,6 +91,7 @@ impl FloatingPanes {
             pane_being_moved_with_mouse: None,
             senders,
             window_title: None,
+            mouse_scroll_resize,
         }
     }
     pub fn stack(&self) -> Option<FloatingPanesStack> {
@@ -491,6 +494,7 @@ impl FloatingPanes {
                 mouse_hover_pane_id,
                 current_pane_group.clone(),
                 show_help_text,
+                self.mouse_scroll_resize,
             );
             for client_id in &connected_clients {
                 let client_mode = self

@@ -221,6 +221,7 @@ struct MouseEventContext {
     pinned_unselectable: Option<PaneId>,
     focus_follows_mouse: bool,
     mouse_click_through: bool,
+    mouse_scroll_resize: bool,
 }
 
 fn edge_and_delta_to_strategies(
@@ -396,6 +397,7 @@ impl MouseHandler {
             pinned_unselectable,
             focus_follows_mouse: tab.focus_follows_mouse,
             mouse_click_through: tab.mouse_click_through,
+            mouse_scroll_resize: tab.mouse_scroll_resize,
         })
     }
 
@@ -1228,7 +1230,7 @@ impl MouseHandler {
 
         if event.wheel_up || event.wheel_down {
             if let Some(pane_id) = ctx.pane_id_at_position {
-                if event.ctrl {
+                if event.ctrl && ctx.mouse_scroll_resize {
                     if event.wheel_up {
                         return Ok(MouseAction::ResizeScrollUp { pane_id });
                     }

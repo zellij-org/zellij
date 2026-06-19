@@ -468,6 +468,7 @@ fn test_client_messages() {
                 show_startup_tips: Some(true),
                 show_release_notes: Some(true),
                 advanced_mouse_actions: Some(true),
+                mouse_scroll_resize: Some(true),
                 web_server_ip: Some("1.1.1.1".parse().unwrap()),
                 web_server_port: Some(8080),
                 web_server_cert: Some(PathBuf::from("web_server_cert")),
