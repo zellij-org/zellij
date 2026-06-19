@@ -1430,6 +1430,7 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
         coordinates: None,
         near_current_pane: false,
         tab_id: None,
+        should_focus_pane: true,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1525,6 +1526,7 @@ fn open_file_floating(
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
         tab_id: None,
+        should_focus_pane: true,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1566,6 +1568,7 @@ fn open_file_in_place(
         coordinates: None,
         near_current_pane: false,
         tab_id: None,
+        should_focus_pane: true,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1608,6 +1611,7 @@ fn open_file_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        false, // should_focus_pane (PaneId branch, value ignored — kept for type safety)
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
@@ -1651,6 +1655,7 @@ fn open_file_floating_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        false, // should_focus_pane (PaneId branch, value ignored)
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
@@ -1727,6 +1732,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         near_current_pane: false,
         borderless: None,
         tab_id: None,
+        should_focus_pane: true,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1765,6 +1771,7 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        false, // should_focus_pane (PaneId branch, value ignored)
     ));
 
     // Wait for completion
@@ -1803,6 +1810,7 @@ fn open_terminal_floating(
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
         tab_id: None,
+        should_focus_pane: true,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1843,6 +1851,7 @@ fn open_terminal_floating_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        false, // should_focus_pane (PaneId branch, value ignored)
     ));
 
     // Wait for completion
@@ -2164,6 +2173,7 @@ fn open_command_pane(
         near_current_pane: false,
         borderless: None,
         tab_id: None,
+        should_focus_pane: true,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2222,6 +2232,7 @@ fn open_command_pane_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        false, // should_focus_pane (PaneId branch, value ignored)
     ));
 
     // Wait for completion
@@ -2272,6 +2283,7 @@ fn open_command_pane_floating(
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
         tab_id: None,
+        should_focus_pane: true,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2328,6 +2340,7 @@ fn open_command_pane_floating_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        false, // should_focus_pane (PaneId branch, value ignored)
     ));
 
     // Wait for completion
@@ -2440,6 +2453,7 @@ fn open_command_pane_background(
         ClientTabIndexOrPaneId::ClientId(env.client_id),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        false, // should_focus_pane (background pane never steals focus)
     ));
 
     // Wait for completion
@@ -4692,6 +4706,7 @@ fn try_edit_layout(
         coordinates: None,
         near_current_pane: true,
         tab_id: None,
+        should_focus_pane: true,
     };
 
     // Route the action - this is fallible

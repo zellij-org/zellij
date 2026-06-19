@@ -521,6 +521,9 @@ pub struct NewFloatingPanePayload {
     pub command: ::core::option::Option<RunCommandAction>,
     #[prost(bool, tag="2")]
     pub near_current_pane: bool,
+    /// When unset, treated as true (legacy focus-stealing behavior).
+    #[prost(bool, optional, tag="3")]
+    pub should_focus_pane: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -533,6 +536,8 @@ pub struct NewTiledPanePayload {
     pub near_current_pane: bool,
     #[prost(bool, optional, tag="4")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="5")]
+    pub should_focus_pane: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -555,6 +560,8 @@ pub struct EditFilePayload {
     pub should_float: bool,
     #[prost(bool, tag="6")]
     pub near_current_pane: bool,
+    #[prost(bool, optional, tag="7")]
+    pub should_focus_pane: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -569,6 +576,8 @@ pub struct NewPanePayload {
     pub direction: ::core::option::Option<i32>,
     #[prost(string, optional, tag="2")]
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="3")]
+    pub should_focus_pane: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -583,6 +592,8 @@ pub struct NewBlockingPanePayload {
     pub unblock_condition: ::core::option::Option<i32>,
     #[prost(bool, tag="5")]
     pub near_current_pane: bool,
+    #[prost(bool, optional, tag="6")]
+    pub should_focus_pane: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

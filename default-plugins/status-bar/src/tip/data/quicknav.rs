@@ -68,6 +68,7 @@ fn add_keybinds<'a>(help: &'a ModeInfo) -> Keygroups<'a> {
             direction: None,
             pane_name: None,
             start_suppressed: false,
+            should_focus_pane: true,
         }],
     );
     let new_pane = if new_pane_keys.is_empty() {

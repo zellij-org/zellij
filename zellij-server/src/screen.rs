@@ -334,6 +334,7 @@ pub enum ScreenInstruction {
         ClientTabIndexOrPaneId,
         Option<NotificationEnd>, // completion signal
         bool,                    // set_blocking
+        bool,                    // should_focus_pane
     ),
     OpenInPlaceEditor(PaneId, ClientTabIndexOrPaneId),
     TogglePaneEmbedOrFloating(ClientId, Option<NotificationEnd>),
@@ -6319,6 +6320,7 @@ pub(crate) fn screen_thread_main(
                 client_or_tab_index,
                 mut completion_tx,
                 set_blocking,
+                should_focus_pane,
             ) => {
                 completion_tx.as_mut().map(|c| c.set_affected_pane_id(pid));
 
@@ -6331,7 +6333,7 @@ pub(crate) fn screen_thread_main(
                                initial_pane_title,
                                invoked_with,
                                start_suppressed,
-                               true,
+                               should_focus_pane,
                                new_pane_placement,
                                client_id,
                                blocking_notification
@@ -6381,7 +6383,7 @@ pub(crate) fn screen_thread_main(
                                 initial_pane_title,
                                 invoked_with,
                                 start_suppressed,
-                                true,
+                                should_focus_pane,
                                 new_pane_placement,
                                 client_id,
                                 blocking_notification,

@@ -224,6 +224,7 @@ pub enum Action {
         direction: Option<Direction>,
         pane_name: Option<String>,
         start_suppressed: bool,
+        should_focus_pane: bool,
     },
     /// Returns: Created pane ID (format: terminal_<id>)
     NewBlockingPane {
@@ -233,6 +234,7 @@ pub enum Action {
         unblock_condition: Option<UnblockCondition>,
         near_current_pane: bool,
         tab_id: Option<usize>,
+        should_focus_pane: bool,
     },
     /// Open the file in a new pane using the default editor
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -246,6 +248,7 @@ pub enum Action {
         coordinates: Option<FloatingPaneCoordinates>,
         near_current_pane: bool,
         tab_id: Option<usize>,
+        should_focus_pane: bool,
     },
     /// Open a new floating pane
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
@@ -255,6 +258,7 @@ pub enum Action {
         coordinates: Option<FloatingPaneCoordinates>,
         near_current_pane: bool,
         tab_id: Option<usize>,
+        should_focus_pane: bool,
     },
     /// Open a new tiled (embedded, non-floating) pane
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
@@ -265,6 +269,7 @@ pub enum Action {
         near_current_pane: bool,
         borderless: Option<bool>,
         tab_id: Option<usize>,
+        should_focus_pane: bool,
     },
     /// Open a new pane in place of the focused one, suppressing it instead
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
@@ -282,6 +287,7 @@ pub enum Action {
         pane_name: Option<String>,
         near_current_pane: bool,
         tab_id: Option<usize>,
+        should_focus_pane: bool,
     },
     /// Embed focused pane in tab if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
@@ -1035,7 +1041,9 @@ impl Action {
                 near_current_pane,
                 borderless,
                 tab_id,
+                no_focus,
             } => {
+                let should_focus_pane = !no_focus;
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
                 // otherwise the current_dir might override a cwd defined in the alias itself
@@ -1107,6 +1115,7 @@ impl Action {
                         unblock_condition,
                         near_current_pane,
                         tab_id,
+                        should_focus_pane,
                     }])
                 } else if let Some(plugin) = plugin {
                     let plugin = match RunPluginLocation::parse(&plugin, cwd.clone()) {
@@ -1188,6 +1197,7 @@ impl Action {
                             ),
                             near_current_pane,
                             tab_id,
+                            should_focus_pane,
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane {
@@ -1204,6 +1214,7 @@ impl Action {
                             pane_name: name,
                             near_current_pane,
                             tab_id,
+                            should_focus_pane,
                         }])
                     } else {
                         Ok(vec![Action::NewTiledPane {
@@ -1213,6 +1224,7 @@ impl Action {
                             near_current_pane,
                             borderless,
                             tab_id,
+                            should_focus_pane,
                         }])
                     }
                 } else {
@@ -1225,6 +1237,7 @@ impl Action {
                             ),
                             near_current_pane,
                             tab_id,
+                            should_focus_pane,
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane {
@@ -1241,6 +1254,7 @@ impl Action {
                             pane_name: name,
                             near_current_pane,
                             tab_id,
+                            should_focus_pane,
                         }])
                     } else {
                         Ok(vec![Action::NewTiledPane {
@@ -1250,6 +1264,7 @@ impl Action {
                             near_current_pane,
                             borderless,
                             tab_id,
+                            should_focus_pane,
                         }])
                     }
                 }
@@ -1270,6 +1285,7 @@ impl Action {
                 near_current_pane,
                 borderless,
                 tab_id,
+                no_focus,
             } => {
                 let mut file = file;
                 let current_dir = get_current_dir();
@@ -1282,6 +1298,7 @@ impl Action {
                     }
                 }
                 let start_suppressed = false;
+                let should_focus_pane = !no_focus;
                 Ok(vec![Action::EditFile {
                     payload: OpenFilePayload::new(file, line_number, cwd),
                     direction,
@@ -1294,6 +1311,7 @@ impl Action {
                     ),
                     near_current_pane,
                     tab_id,
+                    should_focus_pane,
                 }])
             },
             CliAction::SwitchMode { input_mode } => Ok(vec![Action::SwitchToMode { input_mode }]),
@@ -3591,6 +3609,7 @@ mod tests {
             near_current_pane: false,
             borderless: None,
             tab_id: Some(3),
+            no_focus: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3633,6 +3652,7 @@ mod tests {
             near_current_pane: false,
             borderless: None,
             tab_id: None,
+            no_focus: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3675,6 +3695,7 @@ mod tests {
             near_current_pane: false,
             borderless: None,
             tab_id: Some(5),
+            no_focus: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3717,6 +3738,7 @@ mod tests {
             near_current_pane: false,
             borderless: None,
             tab_id: Some(1),
+            no_focus: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3759,6 +3781,7 @@ mod tests {
             near_current_pane: false,
             borderless: None,
             tab_id: Some(2),
+            no_focus: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3790,6 +3813,7 @@ mod tests {
             near_current_pane: false,
             borderless: None,
             tab_id: Some(4),
+            no_focus: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3821,6 +3845,7 @@ mod tests {
             near_current_pane: false,
             borderless: None,
             tab_id: None,
+            no_focus: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3863,6 +3888,7 @@ mod tests {
             near_current_pane: false,
             borderless: None,
             tab_id: Some(2),
+            no_focus: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3905,6 +3931,7 @@ mod tests {
             near_current_pane: false,
             borderless: None,
             tab_id: Some(1),
+            no_focus: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3915,6 +3942,197 @@ mod tests {
                 assert_eq!(*tab_id, Some(1));
             },
             _ => panic!("Expected NewFloatingPluginPane action"),
+        }
+    }
+
+    // --no-focus flag round-trip tests
+
+    fn base_new_pane_cli_action() -> CliAction {
+        CliAction::NewPane {
+            direction: None,
+            command: vec![],
+            plugin: None,
+            cwd: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: None,
+            no_focus: false,
+        }
+    }
+
+    #[test]
+    fn test_new_pane_no_focus_threads_through_tiled() {
+        let cli_action = match base_new_pane_cli_action() {
+            CliAction::NewPane { .. } => CliAction::NewPane {
+                direction: None,
+                command: vec![],
+                plugin: None,
+                cwd: None,
+                floating: false,
+                in_place: false,
+                close_replaced_pane: false,
+                name: None,
+                close_on_exit: false,
+                start_suspended: false,
+                configuration: None,
+                skip_plugin_cache: false,
+                x: None,
+                y: None,
+                width: None,
+                height: None,
+                pinned: None,
+                stacked: false,
+                blocking: false,
+                block_until_exit_success: false,
+                block_until_exit_failure: false,
+                block_until_exit: false,
+                unblock_condition: None,
+                near_current_pane: false,
+                borderless: None,
+                tab_id: None,
+                no_focus: true,
+            },
+            other => other,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        let actions = result.expect("CLI parse should succeed");
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewTiledPane { should_focus_pane, .. } => {
+                assert_eq!(*should_focus_pane, false, "no_focus=true should invert to should_focus_pane=false");
+            },
+            other => panic!("Expected NewTiledPane action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_default_focuses_pane() {
+        let cli_action = base_new_pane_cli_action();
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        let actions = result.expect("CLI parse should succeed");
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewTiledPane { should_focus_pane, .. } => {
+                assert_eq!(*should_focus_pane, true, "default no_focus=false means should_focus_pane=true (legacy behavior)");
+            },
+            other => panic!("Expected NewTiledPane action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_no_focus_threads_through_floating() {
+        let mut cli_action = base_new_pane_cli_action();
+        if let CliAction::NewPane {
+            ref mut floating,
+            ref mut no_focus,
+            ..
+        } = cli_action
+        {
+            *floating = true;
+            *no_focus = true;
+        }
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        let actions = result.expect("CLI parse should succeed");
+        match &actions[0] {
+            Action::NewFloatingPane { should_focus_pane, .. } => {
+                assert_eq!(*should_focus_pane, false);
+            },
+            other => panic!("Expected NewFloatingPane action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_no_focus_threads_through_stacked() {
+        let mut cli_action = base_new_pane_cli_action();
+        if let CliAction::NewPane {
+            ref mut stacked,
+            ref mut no_focus,
+            ..
+        } = cli_action
+        {
+            *stacked = true;
+            *no_focus = true;
+        }
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        let actions = result.expect("CLI parse should succeed");
+        match &actions[0] {
+            Action::NewStackedPane { should_focus_pane, .. } => {
+                assert_eq!(*should_focus_pane, false);
+            },
+            other => panic!("Expected NewStackedPane action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_no_focus_threads_through_blocking() {
+        let mut cli_action = base_new_pane_cli_action();
+        if let CliAction::NewPane {
+            ref mut command,
+            ref mut blocking,
+            ref mut no_focus,
+            ..
+        } = cli_action
+        {
+            *command = vec!["ls".into()];
+            *blocking = true;
+            *no_focus = true;
+        }
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        let actions = result.expect("CLI parse should succeed");
+        match &actions[0] {
+            Action::NewBlockingPane { should_focus_pane, .. } => {
+                assert_eq!(*should_focus_pane, false);
+            },
+            other => panic!("Expected NewBlockingPane action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_edit_no_focus_threads_through() {
+        let cli_action = CliAction::Edit {
+            file: PathBuf::from("/tmp/test.rs"),
+            direction: None,
+            line_number: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            cwd: None,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: None,
+            no_focus: true,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        let actions = result.expect("CLI parse should succeed");
+        match &actions[0] {
+            Action::EditFile { should_focus_pane, .. } => {
+                assert_eq!(*should_focus_pane, false);
+            },
+            other => panic!("Expected EditFile action, got {:?}", other),
         }
     }
 }
