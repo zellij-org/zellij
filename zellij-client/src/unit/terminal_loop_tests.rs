@@ -124,7 +124,7 @@ impl ClientOsApi for TestClientOsApi {
         Palette::default()
     }
 
-    fn enable_mouse(&self) -> anyhow::Result<()> {
+    fn enable_mouse(&self, _track_any_motion: bool) -> anyhow::Result<()> {
         Ok(())
     }
 

@@ -294,7 +294,10 @@ pub struct Options {
     #[serde(default)]
     pub advanced_mouse_actions: Option<bool>,
 
-    /// Whether to enable mouse hover visual effects (frame highlight and help text)
+    /// Whether to enable mouse hover visual effects (frame highlight and help text).
+    /// This also controls whether XTerm any-event mouse tracking (DECSET 1003) is
+    /// enabled on the host terminal; set this to `false` if a dropped ssh session
+    /// ever leaves your terminal emitting raw mouse codes on hover.
     /// default is true
     #[clap(long, value_parser)]
     #[serde(default)]

@@ -28,7 +28,13 @@ use zellij_utils::{
 const SIGWINCH_CB_THROTTLE_DURATION: time::Duration = time::Duration::from_millis(50);
 
 pub(crate) const ENABLE_MOUSE_SUPPORT: &str =
-    "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1003h\u{1b}[?1015h\u{1b}[?1006h";
+    "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1015h\u{1b}[?1006h";
+pub(crate) const ENABLE_MOUSE_ANY_MOTION_TRACKING: &str = "\u{1b}[?1003h";
+// `?1003l` is always included in the disable sequence, even if we never
+// enabled any-motion tracking ourselves: a pane's inner app may have turned
+// it on via `?1003h`, and we want to guarantee the host terminal is quiet
+// after teardown. Sending `l` for a mode that was never set is a no-op per
+// DEC.
 pub(crate) const DISABLE_MOUSE_SUPPORT: &str =
     "\u{1b}[?1006l\u{1b}[?1015l\u{1b}[?1003l\u{1b}[?1002l\u{1b}[?1000l";
 
@@ -144,7 +150,15 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
         true
     }
     fn load_palette(&self) -> Palette;
-    fn enable_mouse(&self) -> Result<()>;
+    /// Enable mouse reporting on the host terminal.
+    ///
+    /// `track_any_motion` toggles XTerm any-event mouse tracking (`?1003`),
+    /// which reports bare mouse movement even when no button is down. That
+    /// mode is only needed for the optional hover-highlight UX; leaving it
+    /// off means a dying ssh connection (or any hang that prevents us from
+    /// sending the disable sequence) can't leave the host terminal spraying
+    /// motion escape codes on every hover — see issue #3333.
+    fn enable_mouse(&self, track_any_motion: bool) -> Result<()>;
     fn disable_mouse(&self) -> Result<()>;
     /// Restore console input mode to its pre-Zellij state.
     ///
@@ -312,9 +326,9 @@ impl ClientOsApi for ClientOsInputOutput {
         // };
         default_palette()
     }
-    fn enable_mouse(&self) -> Result<()> {
+    fn enable_mouse(&self, track_any_motion: bool) -> Result<()> {
         let mut stdout = self.get_stdout_writer();
-        enable_mouse_support(&mut *stdout)
+        enable_mouse_support(&mut *stdout, track_any_motion)
     }
 
     fn disable_mouse(&self) -> Result<()> {

@@ -3097,7 +3097,7 @@ impl ClientOsApi for MockClientOsApi {
     fn load_palette(&self) -> Palette {
         Palette::default()
     }
-    fn enable_mouse(&self) -> anyhow::Result<()> {
+    fn enable_mouse(&self, _track_any_motion: bool) -> anyhow::Result<()> {
         Ok(())
     }
     fn disable_mouse(&self) -> anyhow::Result<()> {
