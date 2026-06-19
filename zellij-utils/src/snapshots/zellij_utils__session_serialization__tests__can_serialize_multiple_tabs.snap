@@ -5,6 +5,7 @@ expression: kdl.0
 ---
 layout {
     tab name="First tab" {
+        pane
     }
     tab name="Second tab" {
         pane split_direction="vertical" {
