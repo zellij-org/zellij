@@ -39,6 +39,7 @@ fn full_length_shortcut(
     LinePart {
         part: part.to_string(),
         len: unstyled_len(&part),
+    regions: vec![],
     }
 }
 
@@ -50,6 +51,7 @@ fn locked_interface_indication(palette: Styling) -> LinePart {
     LinePart {
         part: locked_styled_text.to_string(),
         len: locked_text_len,
+    regions: vec![],
     }
 }
 
@@ -380,6 +382,7 @@ pub fn text_copied_hint(copy_destination: CopyDestination) -> LinePart {
     LinePart {
         part: serialize_text(&Text::new(&hint).color_range(2, ..).opaque()),
         len: hint.len(),
+    regions: vec![],
     }
 }
 
@@ -389,6 +392,7 @@ pub fn system_clipboard_error(palette: &Styling) -> LinePart {
     LinePart {
         part: Style::new().fg(red_color).bold().paint(hint).to_string(),
         len: hint.len(),
+    regions: vec![],
     }
 }
 
@@ -418,6 +422,7 @@ pub fn fullscreen_panes_to_hide(palette: &Styling, panes_to_hide: usize) -> Line
             Style::new().fg(text_color).bold().paint(hide)
         ),
         len,
+    regions: vec![],
     }
 }
 
@@ -480,6 +485,7 @@ pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
             Style::new().fg(white_color).bold().paint(to_hide),
         ),
         len,
+    regions: vec![],
     }
 }
 
@@ -512,6 +518,7 @@ pub fn locked_fullscreen_panes_to_hide(palette: &Styling, panes_to_hide: usize) 
             Style::new().fg(text_color).bold().paint(hide)
         ),
         len,
+    regions: vec![],
     }
 }
 
@@ -533,6 +540,7 @@ pub fn locked_floating_panes_are_visible(palette: &Styling) -> LinePart {
             shortcut_right_separator,
         ),
         len,
+    regions: vec![],
     }
 }
 
