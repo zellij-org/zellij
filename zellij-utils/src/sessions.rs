@@ -144,10 +144,27 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
 /// On Windows, reads the server PID from the marker file and checks process liveness.
 #[cfg(unix)]
 fn assert_socket(name: &str) -> bool {
-    use crate::consts::ipc_connect;
     let path = &*ZELLIJ_SOCK_DIR.join(name);
+    assert_socket_path(path, Duration::from_millis(500))
+}
+
+#[cfg(unix)]
+fn assert_socket_path(path: &std::path::Path, timeout: Duration) -> bool {
+    use crate::consts::ipc_connect;
+    use interprocess::local_socket::traits::Stream;
+
     match ipc_connect(path) {
         Ok(stream) => {
+            // A wedged server can accept the connection but never answer ConnStatus.
+            // Keep session discovery from blocking attach/list forever.
+            if let Err(e) = stream.set_recv_timeout(Some(timeout)) {
+                log::warn!("Failed to set session socket receive timeout: {:?}", e);
+                return false;
+            }
+            if let Err(e) = stream.set_send_timeout(Some(timeout)) {
+                log::warn!("Failed to set session socket send timeout: {:?}", e);
+                return false;
+            }
             let mut sender: IpcSenderWithContext<ClientToServerMsg> =
                 IpcSenderWithContext::new(stream);
             let _ = sender.send_client_msg(ClientToServerMsg::ConnStatus);
@@ -592,6 +609,46 @@ pub fn get_name_generator() -> impl Iterator<Item = String> {
 /// Returns a single name in the format: AdjectiveNoun (e.g., "BraveRustacean")
 pub fn generate_random_name() -> String {
     get_name_generator().next().unwrap()
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::assert_socket_path;
+    use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn assert_socket_rejects_accepted_socket_that_never_replies() {
+        let dir = tempfile::TempDir::new().expect("failed to create temp dir");
+        let socket_path = dir.path().join("silent-server.sock");
+        let listener = ListenerOptions::new()
+            .name(
+                socket_path
+                    .as_path()
+                    .to_fs_name::<GenericFilePath>()
+                    .unwrap(),
+            )
+            .create_sync()
+            .expect("bind failed");
+
+        let server = std::thread::spawn(move || {
+            let _stream = listener.incoming().next().unwrap().expect("accept failed");
+            std::thread::sleep(Duration::from_millis(700));
+        });
+
+        let started = Instant::now();
+        let is_live = assert_socket_path(&socket_path, Duration::from_millis(100));
+        let elapsed = started.elapsed();
+
+        assert!(!is_live, "silent session socket should be rejected");
+        assert!(
+            elapsed < Duration::from_secs(1),
+            "silent session socket probe took too long: {:?}",
+            elapsed
+        );
+
+        server.join().expect("server thread panicked");
+    }
 }
 
 const ADJECTIVES: &[&'static str] = &[
