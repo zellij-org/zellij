@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: fragmented STDIN causing "garbage" input on slow SSH connections (https://github.com/zellij-org/zellij/pull/5320)
 * feat: stacked lists - new stack UI (https://github.com/zellij-org/zellij/pull/5331)
 * fix: more verbose startup errors (https://github.com/zellij-org/zellij/pull/5334)
+* fix(windows): route Windows Terminal through the VT input path (https://github.com/zellij-org/zellij/pull/5335)
 
 ## [0.44.3] - 2026-05-13
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)
