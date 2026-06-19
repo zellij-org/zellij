@@ -88,6 +88,7 @@ mod web_client_tests {
             Some(client_os_api_factory),
             addr.ip(),
             port,
+            false,
         ));
 
         wait_for_server(port, Duration::from_secs(5))
@@ -148,6 +149,7 @@ mod web_client_tests {
                 Some(client_os_api_factory),
                 addr.ip(),
                 port,
+                false,
             )
             .await;
         });
@@ -218,6 +220,7 @@ mod web_client_tests {
                 Some(client_os_api_factory),
                 addr.ip(),
                 port,
+                false,
             )
             .await;
         });
@@ -285,6 +288,7 @@ mod web_client_tests {
                 Some(client_os_api_factory),
                 addr.ip(),
                 port,
+                false,
             )
             .await;
         });
@@ -661,6 +665,7 @@ mod web_client_tests {
                 Some(client_os_api_factory),
                 addr.ip(),
                 port,
+                false,
             )
             .await;
         });
@@ -711,6 +716,7 @@ mod web_client_tests {
                 Some(client_os_api_factory),
                 addr.ip(),
                 port,
+                false,
             )
             .await;
         });
@@ -773,6 +779,7 @@ mod web_client_tests {
                 Some(client_os_api_factory),
                 addr.ip(),
                 port,
+                false,
             )
             .await;
         });
@@ -910,6 +917,7 @@ mod web_client_tests {
                 Some(client_os_api_factory),
                 addr.ip(),
                 port,
+                false,
             )
             .await;
         });
@@ -1073,6 +1081,7 @@ mod web_client_tests {
                 Some(client_os_api_factory),
                 addr.ip(),
                 port,
+                false,
             )
             .await;
         });
@@ -1209,6 +1218,7 @@ mod web_client_tests {
                 Some(client_os_api_factory),
                 addr.ip(),
                 port,
+                false,
             )
             .await;
         });
@@ -1327,6 +1337,7 @@ mod web_client_tests {
                 Some(mock_os_api_factory),
                 ip,
                 port,
+                false,
             )
             .await;
         });
@@ -1418,6 +1429,7 @@ mod web_client_tests {
                 Some(mock_os_api_factory),
                 ip,
                 port,
+                false,
             )
             .await;
         });
@@ -1577,6 +1589,7 @@ mod web_client_tests {
                 Some(mock_os_api_factory),
                 ip,
                 port,
+                false,
             )
             .await;
         });
@@ -1678,6 +1691,7 @@ mod web_client_tests {
                 Some(mock_os_api_factory),
                 ip,
                 port,
+                false,
             )
             .await;
         });
@@ -1848,6 +1862,7 @@ mod web_client_tests {
                 Some(client_os_api_factory),
                 addr.ip(),
                 port,
+                false,
             )
             .await;
         });
@@ -2021,6 +2036,7 @@ mod web_client_tests {
                 Some(client_os_api_factory),
                 addr.ip(),
                 port,
+                false,
             )
             .await;
         });
@@ -2178,6 +2194,7 @@ mod web_client_tests {
             Some(client_os_api_factory),
             addr.ip(),
             port,
+            false,
         ));
 
         wait_for_server(port, Duration::from_secs(5))
@@ -2276,6 +2293,7 @@ mod web_client_tests {
                 Some(client_os_api_factory),
                 addr.ip(),
                 port,
+                false,
             )
             .await;
         });
@@ -2360,6 +2378,7 @@ mod web_client_tests {
                 Some(mock_os_api_factory),
                 ip,
                 port,
+                false,
             )
             .await;
         });
@@ -2466,6 +2485,7 @@ mod web_client_tests {
                 Some(mock_os_api_factory),
                 ip,
                 port,
+                false,
             )
             .await;
         });
@@ -2557,6 +2577,7 @@ mod web_client_tests {
                 Some(mock_os_api_factory),
                 ip,
                 port,
+                false,
             )
             .await;
         });
@@ -2627,6 +2648,7 @@ mod web_client_tests {
                 Some(client_os_api_factory),
                 addr.ip(),
                 port,
+                false,
             )
             .await;
         });
