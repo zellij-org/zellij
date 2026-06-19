@@ -43,6 +43,14 @@ pub fn get_default_themes() -> Themes {
     Themes::default()
 }
 
+// User-defined themes (from the config) take precedence over built-in defaults of
+// the same name. `Themes::merge` lets the *argument* win, so the user themes must be
+// the argument and the defaults the receiver. (This was previously reversed, which
+// silently shadowed a user theme with a same-named built-in.)
+fn themes_with_defaults(defaults: Themes, user_themes: Themes) -> Themes {
+    defaults.merge(user_themes)
+}
+
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
     std::io::stdout().write_all(asset)?;
     Ok(())
@@ -329,7 +337,7 @@ impl Setup {
                 None => config.options.clone(),
             };
 
-            config.themes = config.themes.merge(get_default_themes());
+            config.themes = themes_with_defaults(get_default_themes(), config.themes.clone());
 
             let user_theme_dir = config_options.theme_dir.clone().or_else(|| {
                 get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
@@ -684,6 +692,37 @@ mod setup_test {
     use crate::input::options::Options;
     use insta::assert_snapshot;
     use std::path::PathBuf;
+
+    #[test]
+    fn user_themes_override_default_themes_of_the_same_name() {
+        use super::themes_with_defaults;
+        use crate::data::{PaletteColor, Styling};
+        use crate::input::theme::{Theme, Themes};
+        use std::collections::HashMap;
+        let theme = |base: (u8, u8, u8)| {
+            let mut palette = Styling::default();
+            palette.text_unselected.base = PaletteColor::Rgb(base);
+            let mut m = HashMap::new();
+            m.insert(
+                "shared-name".to_string(),
+                Theme {
+                    sourced_from_external_file: false,
+                    palette,
+                },
+            );
+            Themes::from_data(m)
+        };
+        let defaults = theme((10, 10, 10)); // stands in for a same-named built-in
+        let user = theme((1, 2, 3)); // the user's version (sentinel)
+        let merged = themes_with_defaults(defaults, user);
+        assert_eq!(
+            merged
+                .get_theme("shared-name")
+                .map(|t| t.palette.text_unselected.base),
+            Some(PaletteColor::Rgb((1, 2, 3))),
+            "a user-defined theme must override a same-named default"
+        );
+    }
 
     #[test]
     fn default_config_with_no_cli_arguments() {
