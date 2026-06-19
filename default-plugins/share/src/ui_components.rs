@@ -2,6 +2,7 @@ use std::net::IpAddr;
 use zellij_tile::prelude::*;
 
 use crate::CoordinatesInLine;
+use percent_encoding::{percent_encode, NON_ALPHANUMERIC};
 use std::collections::HashMap;
 
 pub const USAGE_TITLE: &str = "How it works:";
@@ -589,10 +590,11 @@ impl CurrentSessionSection {
     }
 
     fn session_url(&self) -> String {
-        let web_server_ip = self
-            .web_server_ip
-            .map(|i| i.to_string())
-            .unwrap_or_else(|| "UNDEFINED".to_owned());
+        let web_server_ip = match self.web_server_ip {
+            Some(IpAddr::V6(v6)) => format!("[{}]", v6),
+            Some(ip) => ip.to_string(),
+            None => "UNDEFINED".to_owned(),
+        };
         let web_server_port = self
             .web_server_port
             .map(|p| p.to_string())
@@ -604,10 +606,20 @@ impl CurrentSessionSection {
         };
         let session_name = self.session_name.as_deref().unwrap_or("");
 
-        format!(
-            "{}://{}:{}/{}",
-            prefix, web_server_ip, web_server_port, session_name
-        )
+        let base = format!("{}://{}:{}/", prefix, web_server_ip, web_server_port);
+        match url::Url::parse(&base) {
+            Ok(mut url) => {
+                url.path_segments_mut()
+                    .expect("base URL is valid")
+                    .pop_if_empty()
+                    .push(session_name);
+                url.to_string()
+            },
+            Err(_) => {
+                let encoded_name = percent_encode(session_name.as_bytes(), NON_ALPHANUMERIC);
+                format!("{}{}", base, encoded_name)
+            },
+        }
     }
 
     fn press_space_to_share(&self) -> (Text, usize) {
