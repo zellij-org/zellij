@@ -27,6 +27,7 @@ pub struct PaneContentsAndUi<'a> {
     stack_list_entry_is_selected: bool,
     stack_list_entry_stack_is_focused: bool,
     blank_title: bool,
+    mouse_scroll_resize: bool,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -44,6 +45,7 @@ impl<'a> PaneContentsAndUi<'a> {
         current_pane_group: HashMap<ClientId, Vec<PaneId>>,
         show_help_text: bool,
         omit_title: bool,
+        mouse_scroll_resize: bool,
     ) -> Self {
         let mut focused_clients: Vec<ClientId> = active_panes
             .iter()
@@ -80,6 +82,7 @@ impl<'a> PaneContentsAndUi<'a> {
             stack_list_entry_is_selected: false,
             stack_list_entry_stack_is_focused: false,
             blank_title: false,
+            mouse_scroll_resize,
         }
     }
     pub fn set_frame_geom_override(&mut self, frame_geom_override: Option<PaneGeom>) {
@@ -310,6 +313,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 frame_geom_override: self.frame_geom_override,
                 stack_list_entry: stack_list_entry.clone(),
                 blank_title: self.blank_title,
+                mouse_scroll_resize: self.mouse_scroll_resize,
             }
         } else {
             FrameParams {
@@ -335,6 +339,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 frame_geom_override: self.frame_geom_override,
                 stack_list_entry,
                 blank_title: self.blank_title,
+                mouse_scroll_resize: self.mouse_scroll_resize,
             }
         };
 

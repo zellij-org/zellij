@@ -178,6 +178,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -216,6 +217,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -266,6 +268,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -304,6 +307,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -360,6 +364,7 @@ fn create_new_tab_with_cell_size(
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -398,6 +403,7 @@ fn create_new_tab_with_cell_size(
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through

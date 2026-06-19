@@ -251,6 +251,7 @@ pub(crate) struct Tab {
     last_active_pane_scroll: HashMap<ClientId, Option<(usize, usize)>>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
+    mouse_scroll_resize: bool,
     mouse_hover_effects: bool,
     focus_follows_mouse: bool,
     mouse_click_through: bool,
@@ -807,6 +808,7 @@ impl Tab {
         current_pane_group: Rc<RefCell<PaneGroups>>,
         currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
         advanced_mouse_actions: bool,
+        mouse_scroll_resize: bool,
         mouse_hover_effects: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
@@ -941,6 +943,7 @@ impl Tab {
             current_pane_group,
             currently_marking_pane_group,
             advanced_mouse_actions,
+            mouse_scroll_resize,
             mouse_hover_effects,
             focus_follows_mouse,
             mouse_click_through,
@@ -1583,6 +1586,7 @@ impl Tab {
                     current_pane_group.clone(),
                     false,
                     false,
+                    self.mouse_scroll_resize,
                 );
                 pane_contents_and_ui.set_frame_geom_override(Some(header_geom));
                 pane_contents_and_ui.set_stack_list_entry(
@@ -2009,7 +2013,7 @@ impl Tab {
                 + self.get_selectable_floating_panes().count();
             if selectable_pane_count > 1 && !self.is_fullscreen_active() {
                 let focused_pane_is_floating = self.floating_panes.panes_are_visible();
-                return resize_hint_variants(focused_pane_is_floating);
+                return resize_hint_variants(focused_pane_is_floating, self.mouse_scroll_resize);
             }
         }
         BTreeMap::new()
@@ -4444,6 +4448,7 @@ impl Tab {
                 current_pane_group.clone(),
                 client_id_override,
                 &self.mouse_help_text_visible,
+                self.mouse_scroll_resize,
             )
             .with_context(err_context)?;
         self.render_stack_list_headers(output, client_id_override)
@@ -4458,6 +4463,7 @@ impl Tab {
                     current_pane_group,
                     client_id_override,
                     &self.mouse_help_text_visible,
+                    self.mouse_scroll_resize,
                 )
                 .with_context(err_context)?;
         }
@@ -7007,6 +7013,9 @@ impl Tab {
     }
     pub fn update_advanced_mouse_actions(&mut self, advanced_mouse_actions: bool) {
         self.advanced_mouse_actions = advanced_mouse_actions;
+    }
+    pub fn update_mouse_scroll_resize(&mut self, mouse_scroll_resize: bool) {
+        self.mouse_scroll_resize = mouse_scroll_resize;
     }
     pub fn update_mouse_hover_effects(&mut self, mouse_hover_effects: bool) {
         self.mouse_hover_effects = mouse_hover_effects;

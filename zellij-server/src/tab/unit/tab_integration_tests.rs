@@ -236,6 +236,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -274,6 +275,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -325,6 +327,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -363,6 +366,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -429,6 +433,7 @@ fn create_new_tab_with_swap_layouts(
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -471,6 +476,7 @@ fn create_new_tab_with_swap_layouts(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -538,6 +544,7 @@ fn create_new_tab_with_os_api(
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -576,6 +583,7 @@ fn create_new_tab_with_os_api(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -629,6 +637,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -667,6 +676,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -734,6 +744,7 @@ fn create_new_tab_with_mock_pty_writer(
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -772,6 +783,7 @@ fn create_new_tab_with_mock_pty_writer(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -830,6 +842,7 @@ fn create_new_tab_with_sixel_support(
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -868,6 +881,7 @@ fn create_new_tab_with_sixel_support(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -12557,6 +12571,94 @@ fn test_ctrl_scroll_down_decreases_pinned_floating_pane_size_when_floating_panes
 }
 
 #[test]
+fn test_ctrl_scroll_up_does_not_resize_pane_when_mouse_scroll_resize_disabled() {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.vertical_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+    tab.update_mouse_scroll_resize(false);
+
+    let pane_geom_before = tab.get_active_pane(client_id).unwrap().position_and_size();
+
+    let active_pane_position = Position::new(5, 70);
+    let effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_ctrl_scroll_up_event(active_pane_position),
+            client_id,
+        )
+        .unwrap();
+
+    let pane_geom_after = tab.get_active_pane(client_id).unwrap().position_and_size();
+
+    assert!(!effect.state_changed);
+    assert_eq!(pane_geom_before, pane_geom_after);
+}
+
+#[test]
+fn test_ctrl_scroll_down_does_not_resize_pane_when_mouse_scroll_resize_disabled() {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.vertical_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+    tab.update_mouse_scroll_resize(false);
+
+    let pane_geom_before = tab.get_active_pane(client_id).unwrap().position_and_size();
+
+    let active_pane_position = Position::new(5, 70);
+    let effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_ctrl_scroll_down_event(active_pane_position),
+            client_id,
+        )
+        .unwrap();
+
+    let pane_geom_after = tab.get_active_pane(client_id).unwrap().position_and_size();
+
+    assert!(!effect.state_changed);
+    assert_eq!(pane_geom_before, pane_geom_after);
+}
+
+#[test]
+fn resize_hint_text_tracks_mouse_scroll_resize_updates() {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+
+    tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
+        .unwrap();
+    tab.mouse_help_text_visible.insert(client_id, true);
+
+    tab.update_mouse_scroll_resize(false);
+    let disabled_hints = tab.resolve_hint_text(client_id);
+    assert!(!disabled_hints.is_empty());
+    assert!(disabled_hints
+        .values()
+        .all(|hint| !hint.text.contains("MouseScroll")));
+
+    tab.update_mouse_scroll_resize(true);
+    let enabled_hints = tab.resolve_hint_text(client_id);
+    assert!(!enabled_hints.is_empty());
+    assert!(enabled_hints
+        .values()
+        .all(|hint| hint.text.contains("MouseScroll")));
+}
+
+#[test]
 fn in_place_pane_with_close_replaced_pane_false_restores_original() {
     // When an in-place pane is closed and close_replaced_pane=false (the default),
     // the pane that was replaced is restored to its original position.
@@ -12724,6 +12826,7 @@ fn create_new_tab_with_plugin_receiver(
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -12762,6 +12865,7 @@ fn create_new_tab_with_plugin_receiver(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -14548,6 +14652,7 @@ fn create_new_tab_with_server_receiver(
         current_group,
         currently_marking_pane_group,
         true,  // advanced_mouse_actions
+        true,  // mouse_scroll_resize
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
