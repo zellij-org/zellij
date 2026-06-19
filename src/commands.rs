@@ -5,6 +5,9 @@ use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 #[cfg(feature = "web_server_capability")]
 use isahc::{config::RedirectPolicy, prelude::*, HttpClient, Request};
 
+#[cfg(all(feature = "web_server_capability", unix))]
+use isahc::config::Dialer;
+
 use zellij_client::{
     old_config_converter::{
         config_yaml_to_config_kdl, convert_old_yaml_files, layout_yaml_to_layout_kdl,
@@ -182,6 +185,7 @@ pub(crate) fn start_web_server(
     run_daemonized: bool,
     ip: Option<IpAddr>,
     port: Option<u16>,
+    socket: Option<PathBuf>,
     cert: Option<PathBuf>,
     key: Option<PathBuf>,
     startup_timeout: Option<u64>,
@@ -207,6 +211,7 @@ pub(crate) fn start_web_server(
         run_daemonized,
         ip,
         port,
+        socket,
         cert,
         key,
         startup_timeout,
@@ -219,6 +224,7 @@ pub(crate) fn start_web_server(
     _run_daemonized: bool,
     _ip: Option<IpAddr>,
     _port: Option<u16>,
+    _socket: Option<PathBuf>,
     _cert: Option<PathBuf>,
     _key: Option<PathBuf>,
     _startup_timeout: Option<u64>,
@@ -341,18 +347,11 @@ pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> {
 pub const DEFAULT_WEB_SERVER_STATUS_TIMEOUT_SECS: u64 = 30;
 
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn web_server_status(
-    web_server_base_url: &str,
-    timeout_secs: Option<u64>,
+fn send_web_server_status_request(
+    http_client: HttpClient,
+    request_url: String,
 ) -> Result<String, String> {
-    let timeout =
-        Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_WEB_SERVER_STATUS_TIMEOUT_SECS));
-    let http_client = HttpClient::builder()
-        .timeout(timeout)
-        .redirect_policy(RedirectPolicy::Follow)
-        .build()
-        .map_err(|e| e.to_string())?;
-    let request = Request::get(format!("{}/info/version", web_server_base_url,));
+    let request = Request::get(request_url);
     let req = request.body(()).map_err(|e| e.to_string())?;
     let mut res = http_client.send(req).map_err(|e| e.to_string())?;
     let status_code = res.status();
@@ -361,15 +360,50 @@ pub(crate) fn web_server_status(
         Ok(String::from_utf8_lossy(&body).to_string())
     } else {
         Err(format!(
-            "Failed to stop web server, got status code: {}",
+            "Failed to query web server status, got status code: {}",
             status_code
         ))
     }
 }
 
+#[cfg(feature = "web_server_capability")]
+pub(crate) fn web_server_status(
+    web_server_base_url: &str,
+    web_server_socket: Option<PathBuf>,
+    timeout_secs: Option<u64>,
+) -> Result<String, String> {
+    let timeout =
+        Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_WEB_SERVER_STATUS_TIMEOUT_SECS));
+    let http_client = HttpClient::builder()
+        .timeout(timeout)
+        .redirect_policy(RedirectPolicy::Follow);
+    let request_url = match web_server_socket {
+        Some(socket) => {
+            #[cfg(unix)]
+            {
+                let http_client = http_client.dial(Dialer::unix_socket(socket));
+                let http_client = http_client.build().map_err(|e| e.to_string())?;
+                return send_web_server_status_request(
+                    http_client,
+                    "http://localhost/info/version".to_owned(),
+                );
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = socket;
+                return Err("Unix socket web server status is only supported on Unix".to_owned());
+            }
+        },
+        None => format!("{}/info/version", web_server_base_url),
+    };
+    let http_client = http_client.build().map_err(|e| e.to_string())?;
+    send_web_server_status_request(http_client, request_url)
+}
+
 #[cfg(not(feature = "web_server_capability"))]
 pub(crate) fn web_server_status(
     _web_server_base_url: &str,
+    _web_server_socket: Option<PathBuf>,
     _timeout_secs: Option<u64>,
 ) -> Result<String, String> {
     log::error!(

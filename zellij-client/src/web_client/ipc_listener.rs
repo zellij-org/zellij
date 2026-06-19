@@ -8,6 +8,38 @@ use zellij_utils::web_server_commands::{InstructionForWebServer, VersionInfo, We
 use zellij_utils::web_server_contract::web_server_contract::InstructionForWebServer as ProtoInstructionForWebServer;
 use zellij_utils::web_server_contract::web_server_contract::WebServerResponse as ProtoWebServerResponse;
 
+#[derive(Clone)]
+pub enum WebServerShutdownHandle {
+    AxumServer(Handle),
+    #[cfg(unix)]
+    UnixSocket(tokio::sync::watch::Sender<bool>),
+}
+
+impl WebServerShutdownHandle {
+    fn shutdown(&self) {
+        match self {
+            WebServerShutdownHandle::AxumServer(handle) => handle.shutdown(),
+            #[cfg(unix)]
+            WebServerShutdownHandle::UnixSocket(shutdown_tx) => {
+                let _ = shutdown_tx.send(true);
+            },
+        }
+    }
+}
+
+impl From<Handle> for WebServerShutdownHandle {
+    fn from(handle: Handle) -> Self {
+        WebServerShutdownHandle::AxumServer(handle)
+    }
+}
+
+#[cfg(unix)]
+impl From<tokio::sync::watch::Sender<bool>> for WebServerShutdownHandle {
+    fn from(shutdown_tx: tokio::sync::watch::Sender<bool>) -> Self {
+        WebServerShutdownHandle::UnixSocket(shutdown_tx)
+    }
+}
+
 pub async fn create_webserver_receiver(
     id: &str,
 ) -> Result<interprocess::local_socket::tokio::Stream, Box<dyn std::error::Error + Send + Sync>> {
@@ -61,7 +93,7 @@ pub async fn send_webserver_response(
 }
 
 pub async fn listen_to_web_server_instructions(
-    server_handle: Handle,
+    shutdown_handle: WebServerShutdownHandle,
     id: &str,
     web_server_ip: IpAddr,
     web_server_port: u16,
@@ -72,7 +104,7 @@ pub async fn listen_to_web_server_instructions(
             Ok(mut receiver) => match receive_webserver_instruction(&mut receiver).await {
                 Ok(instruction) => match instruction {
                     InstructionForWebServer::ShutdownWebServer => {
-                        server_handle.shutdown();
+                        shutdown_handle.shutdown();
                         break;
                     },
                     InstructionForWebServer::QueryVersion => {
