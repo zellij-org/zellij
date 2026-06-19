@@ -1169,6 +1169,74 @@ mod config_test {
     }
 
     #[test]
+    fn pane_selection_without_base_keeps_foreground() {
+        // A `pane_selection` with only a `background` (no `base`) preserves each
+        // cell's own foreground: only the background is recolored.
+        let config_contents = r##"
+            themes {
+                t {
+                    pane_selection {
+                        background "#3892E9"
+                    }
+                }
+            }
+        "##;
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        let theme = config.themes.get_theme("t").expect("theme t should parse");
+        assert!(
+            theme.palette.pane_selection_keep_foreground,
+            "omitting `base` should set keep_foreground"
+        );
+        assert_eq!(
+            theme.palette.pane_selection.unwrap().background,
+            PaletteColor::Rgb((0x38, 0x92, 0xE9)),
+        );
+    }
+
+    #[test]
+    fn pane_selection_with_base_overrides_foreground() {
+        // A `pane_selection` with an explicit `base` overrides the foreground
+        // (no preservation) — the pre-existing behavior.
+        let config_contents = r##"
+            themes {
+                t {
+                    pane_selection {
+                        base "#FFFFFF"
+                        background "#3892E9"
+                    }
+                }
+            }
+        "##;
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        let theme = config.themes.get_theme("t").expect("theme t should parse");
+        assert!(
+            !theme.palette.pane_selection_keep_foreground,
+            "providing `base` should not preserve the foreground"
+        );
+        let decl = theme.palette.pane_selection.unwrap();
+        assert_eq!(decl.base, PaletteColor::Rgb((0xFF, 0xFF, 0xFF)));
+        assert_eq!(decl.background, PaletteColor::Rgb((0x38, 0x92, 0xE9)));
+    }
+
+    #[test]
+    fn pane_selection_alpha_is_parsed() {
+        // `alpha 0.5` (0.0–1.0) -> stored as ~128 (0–255 weight).
+        let config_contents = r##"
+            themes {
+                t {
+                    pane_selection {
+                        background "#3892E9"
+                        alpha 0.5
+                    }
+                }
+            }
+        "##;
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        let theme = config.themes.get_theme("t").expect("theme t should parse");
+        assert_eq!(theme.palette.pane_selection_alpha, Some(128));
+    }
+
+    #[test]
     fn omitting_required_style_errors() {
         let config_contents = r##"
             themes {

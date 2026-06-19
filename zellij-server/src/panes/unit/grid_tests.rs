@@ -6193,3 +6193,82 @@ fn pane_content_selection_falls_back_to_text_selected_when_unset() {
         "with pane_selection unset, selection should use text_selected"
     );
 }
+
+// Render the grid and return (foreground, background) applied to the selected row.
+fn rendered_selection_colors(
+    grid: &mut Grid,
+    style: &Style,
+) -> (Option<AnsiCode>, Option<AnsiCode>) {
+    let (chunks, _, _) = grid
+        .render(0, 0, style)
+        .expect("render should succeed")
+        .expect("render should produce output");
+    chunks
+        .iter()
+        .flat_map(|chunk| chunk.selection_and_colors())
+        .next()
+        .map(|hs: &HighlightSelection| (hs.fg, hs.bg))
+        .expect("a selected row should carry a highlight")
+}
+
+#[test]
+fn pane_selection_keep_foreground_preserves_cell_foreground() {
+    // pane_selection set with keep_foreground -> only the background is recolored,
+    // each cell keeps its own foreground (terminal-native selection, like macOS Terminal).
+    let mut grid = grid_with_first_row_selected();
+    let mut style = Style::default();
+    style.colors.pane_selection = Some(selection_decl(
+        PaletteColor::Rgb((255, 255, 255)), // base present but must be ignored
+        PaletteColor::Rgb((56, 146, 233)),  // blue background
+    ));
+    style.colors.pane_selection_keep_foreground = true;
+    let (fg, bg) = rendered_selection_colors(&mut grid, &style);
+    assert_eq!(
+        bg,
+        Some(AnsiCode::RgbCode((56, 146, 233))),
+        "background should be recolored from pane_selection"
+    );
+    assert_eq!(
+        fg, None,
+        "foreground should be preserved (not overridden) when keep_foreground is set"
+    );
+}
+
+// Render the grid and return the first HighlightSelection on the selected row.
+fn rendered_selection(grid: &mut Grid, style: &Style) -> HighlightSelection {
+    let (chunks, _, _) = grid
+        .render(0, 0, style)
+        .expect("render should succeed")
+        .expect("render should produce output");
+    chunks
+        .iter()
+        .flat_map(|chunk| chunk.selection_and_colors())
+        .next()
+        .copied()
+        .expect("a selected row should carry a highlight")
+}
+
+#[test]
+fn pane_selection_alpha_marks_highlight_for_compositing() {
+    // With pane_selection_alpha set, the highlight carries the selection color as
+    // `bg`, no `fg` (left to the blend), and the alpha weight for the output layer.
+    let mut grid = grid_with_first_row_selected();
+    let mut style = Style::default();
+    style.colors.pane_selection = Some(selection_decl(
+        PaletteColor::Rgb((255, 255, 255)),
+        PaletteColor::Rgb((56, 146, 233)),
+    ));
+    style.colors.pane_selection_alpha = Some(128);
+    let hs = rendered_selection(&mut grid, &style);
+    assert_eq!(
+        hs.alpha,
+        Some(128),
+        "alpha should be carried to the highlight for compositing"
+    );
+    assert_eq!(
+        hs.bg,
+        Some(AnsiCode::RgbCode((56, 146, 233))),
+        "bg should be the selection color to composite"
+    );
+    assert_eq!(hs.fg, None, "fg is left to the composite blend");
+}

@@ -128,6 +128,11 @@ impl TryFrom<ProtobufStyling> for Styling {
             list_unselected: color_definitions!(proto, list_unselected, 6),
             list_selected: color_definitions!(proto, list_selected, 6),
             pane_selection,
+            // Pane-content selection is drawn only by the server/web-client (never by
+            // plugins), so these render-time settings are intentionally not part of the
+            // plugin theme protobuf; they are resolved from the in-process config style.
+            pane_selection_keep_foreground: false,
+            pane_selection_alpha: None,
             frame_unselected,
             frame_selected: color_definitions!(proto, frame_selected, 6),
             frame_highlight: color_definitions!(proto, frame_highlight, 6),

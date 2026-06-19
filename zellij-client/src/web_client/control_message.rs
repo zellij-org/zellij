@@ -154,7 +154,15 @@ impl From<&Config> for SetConfigPayload {
         theme.selection_foreground = web_client_theme_from_config
             .and_then(|theme| theme.selection_foreground.clone())
             .or_else(|| {
-                palette.map(|p| p.pane_selection.unwrap_or(p.text_selected).base.as_rgb_str())
+                palette.and_then(|p| {
+                    if p.pane_selection_keep_foreground {
+                        // Preserve each cell's own foreground (terminal-native
+                        // selection) — leave xterm.js' selectionForeground unset.
+                        None
+                    } else {
+                        Some(p.pane_selection.unwrap_or(p.text_selected).base.as_rgb_str())
+                    }
+                })
             });
         theme.selection_inactive_background = web_client_theme_from_config
             .and_then(|theme| theme.selection_inactive_background.clone());

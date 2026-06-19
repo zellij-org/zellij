@@ -1111,3 +1111,72 @@ fn test_pane_defaults_preserved_when_right_covered() {
         "Remaining chunk should preserve pane_default_bg"
     );
 }
+
+// ---- alpha-composited pane-content selection (issue #2160) ----
+
+#[test]
+fn blend_rgb_mixes_cell_toward_selection() {
+    use super::super::blend_rgb;
+    // alpha 0 -> unchanged cell color
+    assert_eq!(blend_rgb((10, 20, 30), (200, 100, 50), 0), (10, 20, 30));
+    // alpha 255 -> fully the selection color
+    assert_eq!(blend_rgb((10, 20, 30), (200, 100, 50), 255), (200, 100, 50));
+    // alpha 128 -> ~halfway
+    assert_eq!(blend_rgb((0, 0, 0), (255, 255, 255), 128), (128, 128, 128));
+}
+
+#[test]
+fn ansi_code_to_rgb_resolves_colors() {
+    use super::super::ansi_code_to_rgb;
+    use crate::panes::terminal_character::{AnsiCode, NamedColor};
+    assert_eq!(ansi_code_to_rgb(AnsiCode::RgbCode((1, 2, 3))), Some((1, 2, 3)));
+    assert!(ansi_code_to_rgb(AnsiCode::ColorIndex(4)).is_some());
+    assert!(ansi_code_to_rgb(AnsiCode::NamedColor(NamedColor::Blue)).is_some());
+    assert_eq!(ansi_code_to_rgb(AnsiCode::Reset), None);
+}
+
+#[test]
+fn alpha_selection_composites_over_cell_fg_and_bg() {
+    use super::super::{adjust_styles_for_possible_selection, blend_rgb, HighlightSelection};
+    use crate::panes::terminal_character::DEFAULT_STYLES;
+    use crate::panes::Selection;
+    use zellij_utils::data::HighlightLayer;
+    use zellij_utils::position::Position;
+
+    let cell_fg = (220, 220, 220);
+    let cell_bg = (10, 10, 10);
+    let selection_color = (56, 146, 233);
+    let alpha = 128u8;
+
+    let mut sel = Selection::default();
+    sel.set_start_and_end_positions(Position::new(0, 0), Position::new(0, 5));
+
+    let styles = DEFAULT_STYLES
+        .foreground(Some(AnsiCode::RgbCode(cell_fg)))
+        .background(Some(AnsiCode::RgbCode(cell_bg)));
+
+    let hs = HighlightSelection {
+        selection: sel,
+        bg: Some(AnsiCode::RgbCode(selection_color)),
+        fg: None,
+        alpha: Some(alpha),
+        bold: false,
+        italic: false,
+        underline: false,
+        layer: HighlightLayer::ActionFeedback,
+    };
+
+    let out = adjust_styles_for_possible_selection(&[hs], styles, 0, 0, None, None);
+    assert_eq!(
+        out.foreground,
+        Some(AnsiCode::RgbCode(blend_rgb(cell_fg, selection_color, alpha))),
+        "foreground should be blended toward the selection color, not erased"
+    );
+    assert_eq!(
+        out.background,
+        Some(AnsiCode::RgbCode(blend_rgb(cell_bg, selection_color, alpha))),
+        "background should be blended toward the selection color"
+    );
+    // The blended fg and bg still differ, so text remains visible.
+    assert_ne!(out.foreground, out.background);
+}
