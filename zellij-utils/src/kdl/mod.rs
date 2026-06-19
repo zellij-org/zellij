@@ -472,6 +472,9 @@ impl Action {
                         Ok(value) => resize = Some(value),
                         Err(_) => match Direction::from_str(word) {
                             Ok(value) => direction = Some(value),
+                            Err(_) if word.parse::<i64>().is_ok() => {
+                                // resize increment is parsed separately from the KDL node entries
+                            },
                             Err(_) => {
                                 return Err(ConfigError::new_kdl_error(
                                     format!(
@@ -486,7 +489,29 @@ impl Action {
                     }
                 }
                 let resize = resize.unwrap_or(Resize::Increase);
-                Ok(Action::Resize { resize, direction })
+                let resize_percent = action_node
+                    .entries()
+                    .iter()
+                    .skip(1)
+                    .find_map(|entry| entry.value().as_i64())
+                    .map(|resize_percent| {
+                        if resize_percent <= 0 {
+                            Err(ConfigError::new_kdl_error(
+                                "resize percent must be a positive integer".into(),
+                                action_node.span().offset(),
+                                action_node.span().len(),
+                            ))
+                        } else {
+                            Ok(resize_percent as usize)
+                        }
+                    })
+                    .transpose()?;
+
+                Ok(Action::Resize {
+                    resize,
+                    direction,
+                    resize_percent,
+                })
             },
             "MoveFocus" => {
                 let direction = Direction::from_str(string.as_str()).map_err(|_| {
@@ -639,6 +664,7 @@ impl Action {
             Action::Resize {
                 resize,
                 direction: resize_direction,
+                resize_percent,
             } => {
                 let mut node = KdlNode::new("Resize");
                 let resize = match resize {
@@ -656,6 +682,11 @@ impl Action {
                 } else {
                     node.push(format!("{}", resize));
                 }
+
+                if let Some(resize_percent) = resize_percent {
+                    node.push(KdlValue::Base10(*resize_percent as i64));
+                }
+
                 Some(node)
             },
             Action::FocusNextPane => Some(KdlNode::new("FocusNextPane")),
@@ -1652,11 +1683,28 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 action_arguments,
                 kdl_action
             ),
-            "Resize" => parse_kdl_action_char_or_string_arguments!(
-                action_name,
-                action_arguments,
-                kdl_action
-            ),
+            "Resize" => {
+                let action_arguments = action_arguments
+                    .into_iter()
+                    .map(|argument| {
+                        if let Some(argument) = argument.value().as_string() {
+                            Ok(argument.to_string())
+                        } else if let Some(argument) = argument.value().as_i64() {
+                            Ok(argument.to_string())
+                        } else {
+                            Err(ConfigError::new_kdl_error(
+                                format!(
+                                    "All entries for action '{}' must be strings or integers",
+                                    action_name
+                                ),
+                                kdl_action.span().offset(),
+                                kdl_action.span().len(),
+                            ))
+                        }
+                    })
+                    .collect::<Result<Vec<String>, ConfigError>>()?;
+                Action::new_from_string(action_name, action_arguments.join(" "), kdl_action)
+            },
             "ResizeNew" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,

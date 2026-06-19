@@ -1348,16 +1348,15 @@ impl TiledPanes {
         &mut self,
         client_id: ClientId,
         strategy: &ResizeStrategy,
+        resize_percent: Option<(f64, f64)>,
     ) -> Result<()> {
         if *self.stacked_resize.borrow() && strategy.direction.is_none() {
             if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-                self.stacked_resize_pane_with_id(active_pane_id, strategy, None)?;
+                self.stacked_resize_pane_with_id(active_pane_id, strategy, resize_percent)?;
                 self.reapply_pane_frames();
             }
-        } else {
-            if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-                self.resize_pane_with_id(*strategy, active_pane_id, None)?;
-            }
+        } else if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+            self.resize_pane_with_id(*strategy, active_pane_id, resize_percent)?;
         }
 
         Ok(())

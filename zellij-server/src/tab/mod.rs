@@ -3596,7 +3596,12 @@ impl Tab {
         }
         Ok(())
     }
-    pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
+    pub fn resize(
+        &mut self,
+        client_id: ClientId,
+        strategy: ResizeStrategy,
+        resize_percent: Option<(f64, f64)>,
+    ) -> Result<()> {
         let err_context = || format!("unable to resize pane");
         if self.floating_panes.panes_are_visible() {
             let successfully_resized = self
@@ -3608,7 +3613,10 @@ impl Tab {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
-            match self.tiled_panes.resize_active_pane(client_id, &strategy) {
+            match self
+                .tiled_panes
+                .resize_active_pane(client_id, &strategy, resize_percent)
+            {
                 Ok(_) => {
                     self.swap_layouts.set_is_tiled_damaged();
                 },

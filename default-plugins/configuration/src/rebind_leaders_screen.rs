@@ -1075,6 +1075,7 @@ impl RebindLeadersScreen {
             &[actions::Action::Resize {
                 resize: Resize::Increase,
                 direction: None,
+                resize_percent: None,
             }],
             KeyWithModifier::new_with_modifiers(
                 BareKey::Char('+'),
@@ -1087,6 +1088,7 @@ impl RebindLeadersScreen {
             &[actions::Action::Resize {
                 resize: Resize::Increase,
                 direction: None,
+                resize_percent: None,
             }],
             KeyWithModifier::new_with_modifiers(
                 BareKey::Char('='),
@@ -1099,6 +1101,7 @@ impl RebindLeadersScreen {
             &[actions::Action::Resize {
                 resize: Resize::Decrease,
                 direction: None,
+                resize_percent: None,
             }],
             KeyWithModifier::new_with_modifiers(
                 BareKey::Char('-'),

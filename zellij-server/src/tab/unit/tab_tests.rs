@@ -111,7 +111,7 @@ impl ServerOsApi for FakeInputOutput {
 }
 
 fn tab_resize_increase(tab: &mut Tab, id: ClientId) {
-    tab.resize(id, ResizeStrategy::new(Resize::Increase, None))
+    tab.resize(id, ResizeStrategy::new(Resize::Increase, None), None)
         .unwrap();
 }
 
@@ -119,6 +119,7 @@ fn tab_resize_left(tab: &mut Tab, id: ClientId) {
     tab.resize(
         id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Left)),
+        None,
     )
     .unwrap();
 }
@@ -127,6 +128,7 @@ fn tab_resize_down(tab: &mut Tab, id: ClientId) {
     tab.resize(
         id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
+        None,
     )
     .unwrap();
 }
@@ -135,6 +137,7 @@ fn tab_resize_up(tab: &mut Tab, id: ClientId) {
     tab.resize(
         id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Up)),
+        None,
     )
     .unwrap();
 }
@@ -143,6 +146,7 @@ fn tab_resize_right(tab: &mut Tab, id: ClientId) {
     tab.resize(
         id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Right)),
+        None,
     )
     .unwrap();
 }

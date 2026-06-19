@@ -329,10 +329,15 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::Resize { resize, direction } => {
+        Action::Resize {
+            resize,
+            direction,
+            resize_percent,
+        } => {
             let screen_instr = ScreenInstruction::Resize(
                 client_id,
                 ResizeStrategy::new(resize, direction),
+                resize_percent.map(|percent| (percent as f64, percent as f64)),
                 Some(NotificationEnd::new(completion_tx)),
             );
             senders

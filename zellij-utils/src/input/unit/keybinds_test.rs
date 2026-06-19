@@ -1,9 +1,36 @@
 use super::super::actions::*;
 use super::super::keybinds::*;
-use crate::data::{BareKey, Direction, KeyWithModifier};
+use crate::data::{BareKey, Direction, KeyWithModifier, Resize};
 use crate::input::config::Config;
 use insta::assert_snapshot;
 use strum::IntoEnumIterator;
+
+#[test]
+fn can_define_resize_keybinding_with_custom_increment() {
+    let config_contents = r#"
+        keybinds {
+            normal {
+                bind "Alt h" { Resize "Increase Left" 1; }
+            }
+        }
+    "#;
+
+    let config = Config::from_kdl(config_contents, None).unwrap();
+    let alt_h_normal_mode_action = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Normal,
+        &KeyWithModifier::new(BareKey::Char('h')).with_alt_modifier(),
+    );
+
+    assert_eq!(
+        alt_h_normal_mode_action,
+        Some(&vec![Action::Resize {
+            resize: Resize::Increase,
+            direction: Some(Direction::Left),
+            resize_percent: Some(1),
+        }]),
+        "Resize keybinding successfully parsed with custom increment"
+    );
+}
 
 #[test]
 fn can_define_keybindings_in_configfile() {

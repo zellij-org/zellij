@@ -764,6 +764,7 @@ fn test_client_messages() {
         action: Action::Resize {
             resize: Resize::Increase,
             direction: None,
+            resize_percent: None,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -773,6 +774,7 @@ fn test_client_messages() {
         action: Action::Resize {
             resize: Resize::Decrease,
             direction: None,
+            resize_percent: None,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -782,6 +784,7 @@ fn test_client_messages() {
         action: Action::Resize {
             resize: Resize::Decrease,
             direction: Some(Direction::Left),
+            resize_percent: None,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -791,6 +794,7 @@ fn test_client_messages() {
         action: Action::Resize {
             resize: Resize::Decrease,
             direction: Some(Direction::Right),
+            resize_percent: None,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -800,6 +804,7 @@ fn test_client_messages() {
         action: Action::Resize {
             resize: Resize::Decrease,
             direction: Some(Direction::Up),
+            resize_percent: None,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -809,6 +814,7 @@ fn test_client_messages() {
         action: Action::Resize {
             resize: Resize::Decrease,
             direction: Some(Direction::Down),
+            resize_percent: None,
         },
         terminal_id: Some(1),
         client_id: Some(100),
