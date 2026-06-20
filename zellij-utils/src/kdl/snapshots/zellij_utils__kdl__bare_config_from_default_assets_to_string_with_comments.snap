@@ -599,3 +599,11 @@ web_client {
 // Row breakpoint for mobile_layout (web/always). 0 = always match.
 // Default: 30
 // mobile_threshold_rows 30
+ 
+// Characters considered part of a word for double-click selection,
+// in addition to alphanumeric characters. Characters not in this list
+// (and not alphanumeric) are treated as word boundaries.
+// Default: "@-./_~?&=%+#"
+// 
+// select_by_word_characters "@-./_~?&=%+#"
+
