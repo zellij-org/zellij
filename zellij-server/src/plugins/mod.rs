@@ -88,6 +88,10 @@ pub enum PluginInstruction {
     Resize(PluginId, usize, usize), // plugin_id, columns, rows
     AddClient(ClientId),
     RemoveClient(ClientId),
+    PruneDisconnectedPluginInstances {
+        plugin_id: PluginId,
+        keep_client_id: ClientId,
+    },
     NewTab(
         Option<PathBuf>,
         Option<TerminalAction>,
@@ -236,6 +240,9 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::Exit => PluginContext::Exit,
             PluginInstruction::AddClient(_) => PluginContext::AddClient,
             PluginInstruction::RemoveClient(_) => PluginContext::RemoveClient,
+            PluginInstruction::PruneDisconnectedPluginInstances { .. } => {
+                PluginContext::RemoveClient
+            },
             PluginInstruction::NewTab(..) => PluginContext::NewTab,
             PluginInstruction::OverrideLayout(..) => PluginContext::OverrideLayout,
             PluginInstruction::ApplyCachedEvents { .. } => PluginContext::ApplyCachedEvents,
@@ -509,6 +516,12 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::RemoveClient(client_id) => {
                 wasm_bridge.remove_client(client_id);
+            },
+            PluginInstruction::PruneDisconnectedPluginInstances {
+                plugin_id,
+                keep_client_id,
+            } => {
+                wasm_bridge.prune_disconnected_plugin_instances(plugin_id, keep_client_id)?;
             },
             PluginInstruction::NewTab(
                 cwd,
