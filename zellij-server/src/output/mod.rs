@@ -795,7 +795,7 @@ impl FloatingPanesStack {
                 c_chunk.x = pane_right_edge + 1;
                 return Ok(None);
             } else if pane_left_edge >= c_chunk_left_side
-                && pane_left_edge >= c_chunk_left_side
+                && pane_left_edge < c_chunk_right_side
                 && pane_right_edge >= c_chunk_right_side
             {
                 // pane covers chunk partially to the right
