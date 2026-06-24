@@ -1737,13 +1737,17 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::CurrentTabInfo { output_json } => {
                 ActionType::CurrentTabInfo(CurrentTabInfoAction { output_json })
             },
-            crate::input::actions::Action::SetPaneColor { pane_id, fg, bg } => {
-                ActionType::SetPaneColor(SetPaneColorAction {
-                    pane_id: Some(pane_id.into()),
-                    fg,
-                    bg,
-                })
-            },
+            crate::input::actions::Action::SetPaneColor {
+                pane_id,
+                fg,
+                bg,
+                frame,
+            } => ActionType::SetPaneColor(SetPaneColorAction {
+                pane_id: Some(pane_id.into()),
+                fg,
+                bg,
+                frame,
+            }),
             // Pane-targeting CLI-only variants
             crate::input::actions::Action::ScrollUpByPaneId { pane_id } => {
                 ActionType::ScrollUpByPaneId(ScrollUpByPaneIdAction {
@@ -2609,6 +2613,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .try_into()?,
                     fg: set_pane_color_action.fg,
                     bg: set_pane_color_action.bg,
+                    frame: set_pane_color_action.frame,
                 })
             },
             // Pane-targeting CLI-only variants

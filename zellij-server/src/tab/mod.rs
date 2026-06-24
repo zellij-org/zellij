@@ -605,6 +605,9 @@ pub trait Pane {
         false
     }
     fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
+    /// Override the frame color with an arbitrary color (unlike the red/highlight
+    /// variants, which use fixed theme colors).
+    fn set_frame_color_override(&mut self, _color: PaletteColor) {}
     fn add_highlight_pane_frame_color_override(
         &mut self,
         _text: Option<String>,
@@ -2669,6 +2672,7 @@ impl Tab {
         pane_id: PaneId,
         fg: Option<String>,
         bg: Option<String>,
+        frame: Option<String>,
     ) -> Result<()> {
         let pane = self
             .floating_panes
@@ -2677,6 +2681,16 @@ impl Tab {
             .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1));
         if let Some(pane) = pane {
             pane.set_pane_default_colors(fg, bg);
+            // frame: None = leave as-is; a parseable color = set the frame override;
+            // anything else (incl. the empty string from --reset) = clear it.
+            if let Some(frame) = frame {
+                match crate::panes::alacritty_functions::xparse_color(frame.as_bytes())
+                    .and_then(crate::panes::grid::rgb_of_ansi_code)
+                {
+                    Some(rgb) => pane.set_frame_color_override(PaletteColor::Rgb(rgb)),
+                    None => pane.clear_pane_frame_color_override(None),
+                }
+            }
         }
         Ok(())
     }

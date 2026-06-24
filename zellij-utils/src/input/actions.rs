@@ -350,6 +350,7 @@ pub enum Action {
         pane_id: PaneId,
         fg: Option<String>,
         bg: Option<String>,
+        frame: Option<String>,
     },
     /// Detach session and exit
     Detach,
@@ -2030,6 +2031,7 @@ impl Action {
                 pane_id,
                 fg,
                 bg,
+                frame,
                 reset,
             } => {
                 let pane_id_str = match pane_id {
@@ -2041,15 +2043,18 @@ impl Action {
                 let parsed_pane_id = PaneId::from_str(&pane_id_str);
                 match parsed_pane_id {
                     Ok(parsed_pane_id) => {
-                        let (fg, bg) = if reset {
-                            (None, None)
+                        // --reset clears all three channels; an empty frame string
+                        // is interpreted server-side as "clear the frame override".
+                        let (fg, bg, frame) = if reset {
+                            (None, None, Some(String::new()))
                         } else {
-                            (fg, bg)
+                            (fg, bg, frame)
                         };
                         Ok(vec![Action::SetPaneColor {
                             pane_id: parsed_pane_id,
                             fg,
                             bg,
+                            frame,
                         }])
                     },
                     Err(_e) => Err(format!(
@@ -2275,6 +2280,50 @@ mod tests {
     use crate::data::BareKey;
     use crate::data::KeyModifier;
     use std::path::PathBuf;
+
+    #[test]
+    fn set_pane_color_frame_passes_through() {
+        let cli_action = CliAction::SetPaneColor {
+            pane_id: Some("3".to_string()),
+            fg: None,
+            bg: None,
+            frame: Some("#8a2be2".to_string()),
+            reset: false,
+        };
+        let actions =
+            Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None).unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::SetPaneColor { fg, bg, frame, .. } => {
+                assert_eq!(fg, &None);
+                assert_eq!(bg, &None);
+                assert_eq!(frame, &Some("#8a2be2".to_string()));
+            },
+            _ => panic!("Expected SetPaneColor action"),
+        }
+    }
+
+    #[test]
+    fn set_pane_color_reset_clears_frame() {
+        let cli_action = CliAction::SetPaneColor {
+            pane_id: Some("3".to_string()),
+            fg: Some("#00ff00".to_string()),
+            bg: None,
+            frame: None,
+            reset: true,
+        };
+        let actions =
+            Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None).unwrap();
+        match &actions[0] {
+            Action::SetPaneColor { fg, bg, frame, .. } => {
+                // --reset zeroes fg/bg; the empty frame string clears the override server-side.
+                assert_eq!(fg, &None);
+                assert_eq!(bg, &None);
+                assert_eq!(frame, &Some(String::new()));
+            },
+            _ => panic!("Expected SetPaneColor action"),
+        }
+    }
 
     #[test]
     fn test_send_keys_single_key() {

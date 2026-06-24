@@ -1662,8 +1662,11 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Background color (e.g. "#001a3a", "rgb:00/1a/3a")
         #[clap(long, value_parser)]
         bg: Option<String>,
+        /// Frame/border color (e.g. "#8a2be2", "rgb:8a/2b/e2")
+        #[clap(long, value_parser)]
+        frame: Option<String>,
         /// Reset pane colors to terminal defaults
-        #[clap(long, value_parser, conflicts_with_all(&["fg", "bg"]))]
+        #[clap(long, value_parser, conflicts_with_all(&["fg", "bg", "frame"]))]
         reset: bool,
     },
 }

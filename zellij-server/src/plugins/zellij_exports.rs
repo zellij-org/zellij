@@ -3895,7 +3895,7 @@ fn set_pane_borderless(env: &PluginEnv, pane_id: PaneId, borderless: bool) {
 fn set_pane_color(env: &PluginEnv, pane_id: PaneId, fg: Option<String>, bg: Option<String>) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::SetPaneColor(pane_id, fg, bg, None));
+        .send_to_screen(ScreenInstruction::SetPaneColor(pane_id, fg, bg, None, None));
 }
 
 fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {

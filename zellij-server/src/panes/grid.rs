@@ -705,7 +705,7 @@ impl Grid {
 /// other variant. Used at the ingress points that populate
 /// `Grid::pane_default_{fg,bg}` to keep those fields narrow to
 /// literal RGB.
-fn rgb_of_ansi_code(code: AnsiCode) -> Option<(u8, u8, u8)> {
+pub(crate) fn rgb_of_ansi_code(code: AnsiCode) -> Option<(u8, u8, u8)> {
     match code {
         AnsiCode::RgbCode(rgb) => Some(rgb),
         _ => None,

@@ -861,6 +861,9 @@ impl Pane for TerminalPane {
     fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
         self.pane_frame_color_override = Some((self.style.colors.exit_code_error.base, error_text));
     }
+    fn set_frame_color_override(&mut self, color: PaletteColor) {
+        self.pane_frame_color_override = Some((color, None));
+    }
     fn add_highlight_pane_frame_color_override(
         &mut self,
         text: Option<String>,

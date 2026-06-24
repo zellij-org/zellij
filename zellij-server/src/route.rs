@@ -310,12 +310,18 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::SetPaneColor { pane_id, fg, bg } => {
+        Action::SetPaneColor {
+            pane_id,
+            fg,
+            bg,
+            frame,
+        } => {
             senders
                 .send_to_screen(ScreenInstruction::SetPaneColor(
                     pane_id.into(),
                     fg,
                     bg,
+                    frame,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
