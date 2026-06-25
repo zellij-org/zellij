@@ -220,7 +220,7 @@ impl TestClient {
     }
 
     pub fn quit(mut self) {
-        self.send_stdin(&keys::QUIT);
+        self.send_stdin(&keys::ctrl('q'));
         self.join();
     }
 
@@ -477,8 +477,8 @@ impl TestSession {
 
     pub fn detach_main_client(&mut self) {
         let connected_clients_before_detach = self.fake_server_os_api.connected_client_count();
-        self.send_stdin(&keys::SESSION_MODE);
-        self.send_stdin(&keys::DETACH_IN_SESSION_MODE);
+        self.send_stdin(&keys::ctrl('o'));
+        self.send_stdin(&keys::key('d'));
         self.main_client.join();
         self.wait_for_server_to_release_a_client(connected_clients_before_detach);
     }
@@ -498,7 +498,7 @@ impl TestSession {
 
     pub fn quit(&mut self) {
         if self.main_client.thread.is_some() {
-            self.send_stdin(&keys::QUIT);
+            self.send_stdin(&keys::ctrl('q'));
             self.main_client.join();
         }
         if let Some(server_thread) = self.server_thread.lock().unwrap().take() {
@@ -511,7 +511,7 @@ impl TestSession {
             .main_client
             .fake_client_handle
             .stdin_tx
-            .send(keys::QUIT.to_vec());
+            .send(keys::ctrl('q').to_vec());
     }
 }
 
@@ -526,7 +526,15 @@ impl Drop for TestSession {
 pub fn normalized(grid_snapshot: &GridSnapshot) -> String {
     let text = replace_unique_session_name(&grid_snapshot.text);
     let text = strip_swap_layout_indication(&text);
+    let text = strip_tip_indication(&text);
     strip_trailing_whitespace(&text)
+}
+
+fn strip_tip_indication(text: &str) -> String {
+    regex::Regex::new(r" Tip: [^\n]*")
+        .unwrap()
+        .replace_all(text, "")
+        .to_string()
 }
 
 fn replace_unique_session_name(text: &str) -> String {

@@ -8,7 +8,7 @@ pub mod keys;
 pub mod runner;
 pub mod test_env;
 
-pub use client_screen::{ClientScreen, CursorPosition, GridSnapshot};
+pub use client_screen::{col, ClientScreen, Coord, CoordBuilder, CursorPosition, GridSnapshot};
 pub use fake_pty::FakePtyHandle;
 pub use runner::{normalized, TestClient, TestRunner, TestSession};
 pub use zellij_utils::data::LayoutInfo;

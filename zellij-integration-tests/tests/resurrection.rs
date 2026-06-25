@@ -49,8 +49,8 @@ fn quit_and_resurrect_session() {
     let mut zellij = start_serializing_session("");
     wait_for_layout_loaded(&zellij);
 
-    zellij.send_stdin(&keys::PANE_MODE);
-    zellij.send_stdin(&keys::SPLIT_RIGHT_IN_PANE_MODE);
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('r'));
     let new_pane = zellij.expect_pty_spawn();
     new_pane.output(PROMPT);
     zellij.wait_until("new pane opened before serialization", |grid_snapshot| {
