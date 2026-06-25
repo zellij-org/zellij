@@ -1,30 +1,6 @@
 #![cfg(unix)]
 
-use zellij_integration_tests::{col, keys, FakePtyHandle, Size, TestRunner, TestSession};
-
-const TERMINAL_SIZE: Size = Size {
-    cols: 120,
-    rows: 24,
-};
-const PROMPT: &[u8] = b"$ ";
-
-fn start_zellij() -> TestSession {
-    TestRunner::new(TERMINAL_SIZE).start()
-}
-
-fn claim_first_terminal_and_wait_for_prompt(zellij: &TestSession) -> FakePtyHandle {
-    let terminal = zellij.expect_pty_spawn();
-    terminal.output(PROMPT);
-    zellij.wait_until(
-        "first terminal prompt rendered in loaded app",
-        |grid_snapshot| {
-            grid_snapshot.tab_bar_appears()
-                && grid_snapshot.status_bar_appears()
-                && grid_snapshot.cursor_is_at(col(3).row(2))
-        },
-    );
-    terminal
-}
+use zellij_integration_tests::{claim_first_terminal_and_wait_for_prompt, keys, start_zellij};
 
 #[test]
 fn launch_session_manager_plugin() {

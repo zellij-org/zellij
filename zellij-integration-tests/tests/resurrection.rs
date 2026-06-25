@@ -1,13 +1,9 @@
 #![cfg(unix)]
 
 use insta::assert_snapshot;
-use zellij_integration_tests::{keys, normalized, LayoutInfo, Size, TestRunner, TestSession};
-
-const TERMINAL_SIZE: Size = Size {
-    cols: 120,
-    rows: 24,
+use zellij_integration_tests::{
+    keys, normalized, LayoutInfo, TestRunner, TestSession, PROMPT, TERMINAL_SIZE,
 };
-const PROMPT: &[u8] = b"$ ";
 
 const RESURRECT_LAYOUT: &str = r#"
 layout {

@@ -2,43 +2,9 @@
 
 use insta::assert_snapshot;
 use zellij_integration_tests::{
-    col, keys, normalized, FakePtyHandle, Size, TestRunner, TestSession,
+    claim_first_terminal_and_wait_for_prompt, col, keys, normalized,
+    split_right_and_wait_for_prompt, start_zellij,
 };
-
-const TERMINAL_SIZE: Size = Size {
-    cols: 120,
-    rows: 24,
-};
-const PROMPT: &[u8] = b"$ ";
-
-fn start_zellij() -> TestSession {
-    TestRunner::new(TERMINAL_SIZE).start()
-}
-
-fn claim_first_terminal_and_wait_for_prompt(zellij: &TestSession) -> FakePtyHandle {
-    let terminal = zellij.expect_pty_spawn();
-    terminal.output(PROMPT);
-    zellij.wait_until(
-        "first terminal prompt rendered in loaded app",
-        |grid_snapshot| {
-            grid_snapshot.tab_bar_appears()
-                && grid_snapshot.status_bar_appears()
-                && grid_snapshot.cursor_is_at(col(3).row(2))
-        },
-    );
-    terminal
-}
-
-fn split_right_and_wait_for_prompt(zellij: &TestSession) -> FakePtyHandle {
-    zellij.send_stdin(&keys::ctrl('p'));
-    zellij.send_stdin(&keys::key('r'));
-    let terminal = zellij.expect_pty_spawn();
-    terminal.output(PROMPT);
-    zellij.wait_until("right terminal prompt rendered", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(63).row(2))
-    });
-    terminal
-}
 
 #[test]
 fn quit_with_keybinding() {
