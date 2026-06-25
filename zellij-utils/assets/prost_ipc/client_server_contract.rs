@@ -119,7 +119,7 @@ pub struct RgbColor {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Action {
-    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140")]
+    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141")]
     pub action_type: ::core::option::Option<action::ActionType>,
 }
 /// Nested message and enum types in `Action`.
@@ -144,273 +144,273 @@ pub mod action {
         #[prost(message, tag="8")]
         FocusPreviousPane(super::FocusPreviousPaneAction),
         #[prost(message, tag="9")]
-        FocusLastPane(super::FocusLastPaneAction),
-        #[prost(message, tag="10")]
         SwitchFocus(super::SwitchFocusAction),
-        #[prost(message, tag="11")]
+        #[prost(message, tag="10")]
         MoveFocus(super::MoveFocusAction),
-        #[prost(message, tag="12")]
+        #[prost(message, tag="11")]
         MoveFocusOrTab(super::MoveFocusOrTabAction),
-        #[prost(message, tag="13")]
+        #[prost(message, tag="12")]
         MovePane(super::MovePaneAction),
-        #[prost(message, tag="14")]
+        #[prost(message, tag="13")]
         MovePaneBackwards(super::MovePaneBackwardsAction),
-        #[prost(message, tag="15")]
+        #[prost(message, tag="14")]
         ClearScreen(super::ClearScreenAction),
-        #[prost(message, tag="16")]
+        #[prost(message, tag="15")]
         DumpScreen(super::DumpScreenAction),
-        #[prost(message, tag="17")]
+        #[prost(message, tag="16")]
         DumpLayout(super::DumpLayoutAction),
-        #[prost(message, tag="18")]
+        #[prost(message, tag="17")]
         EditScrollback(super::EditScrollbackAction),
-        #[prost(message, tag="19")]
+        #[prost(message, tag="18")]
         ScrollUp(super::ScrollUpAction),
-        #[prost(message, tag="20")]
+        #[prost(message, tag="19")]
         ScrollUpAt(super::ScrollUpAtAction),
-        #[prost(message, tag="21")]
+        #[prost(message, tag="20")]
         ScrollDown(super::ScrollDownAction),
-        #[prost(message, tag="22")]
+        #[prost(message, tag="21")]
         ScrollDownAt(super::ScrollDownAtAction),
-        #[prost(message, tag="23")]
+        #[prost(message, tag="22")]
         ScrollToBottom(super::ScrollToBottomAction),
-        #[prost(message, tag="24")]
+        #[prost(message, tag="23")]
         ScrollToTop(super::ScrollToTopAction),
-        #[prost(message, tag="25")]
+        #[prost(message, tag="24")]
         PageScrollUp(super::PageScrollUpAction),
-        #[prost(message, tag="26")]
+        #[prost(message, tag="25")]
         PageScrollDown(super::PageScrollDownAction),
-        #[prost(message, tag="27")]
+        #[prost(message, tag="26")]
         HalfPageScrollUp(super::HalfPageScrollUpAction),
-        #[prost(message, tag="28")]
+        #[prost(message, tag="27")]
         HalfPageScrollDown(super::HalfPageScrollDownAction),
-        #[prost(message, tag="29")]
+        #[prost(message, tag="28")]
         ToggleFocusFullscreen(super::ToggleFocusFullscreenAction),
-        #[prost(message, tag="30")]
+        #[prost(message, tag="29")]
         TogglePaneFrames(super::TogglePaneFramesAction),
-        #[prost(message, tag="31")]
+        #[prost(message, tag="30")]
         ToggleActiveSyncTab(super::ToggleActiveSyncTabAction),
-        #[prost(message, tag="32")]
+        #[prost(message, tag="31")]
         NewPane(super::NewPaneAction),
-        #[prost(message, tag="33")]
+        #[prost(message, tag="32")]
         EditFile(super::EditFileAction),
-        #[prost(message, tag="34")]
+        #[prost(message, tag="33")]
         NewFloatingPane(super::NewFloatingPaneAction),
-        #[prost(message, tag="35")]
+        #[prost(message, tag="34")]
         NewTiledPane(super::NewTiledPaneAction),
-        #[prost(message, tag="36")]
+        #[prost(message, tag="35")]
         NewInPlacePane(super::NewInPlacePaneAction),
-        #[prost(message, tag="37")]
+        #[prost(message, tag="36")]
         NewStackedPane(super::NewStackedPaneAction),
-        #[prost(message, tag="38")]
+        #[prost(message, tag="37")]
         TogglePaneEmbedOrFloating(super::TogglePaneEmbedOrFloatingAction),
-        #[prost(message, tag="39")]
+        #[prost(message, tag="38")]
         ToggleFloatingPanes(super::ToggleFloatingPanesAction),
-        #[prost(message, tag="40")]
+        #[prost(message, tag="39")]
         CloseFocus(super::CloseFocusAction),
-        #[prost(message, tag="41")]
+        #[prost(message, tag="40")]
         PaneNameInput(super::PaneNameInputAction),
-        #[prost(message, tag="42")]
+        #[prost(message, tag="41")]
         UndoRenamePane(super::UndoRenamePaneAction),
-        #[prost(message, tag="43")]
+        #[prost(message, tag="42")]
         NewTab(super::NewTabAction),
-        #[prost(message, tag="44")]
+        #[prost(message, tag="43")]
         NoOp(super::NoOpAction),
-        #[prost(message, tag="45")]
+        #[prost(message, tag="44")]
         GoToNextTab(super::GoToNextTabAction),
-        #[prost(message, tag="46")]
+        #[prost(message, tag="45")]
         GoToPreviousTab(super::GoToPreviousTabAction),
-        #[prost(message, tag="47")]
+        #[prost(message, tag="46")]
         CloseTab(super::CloseTabAction),
-        #[prost(message, tag="48")]
+        #[prost(message, tag="47")]
         GoToTab(super::GoToTabAction),
-        #[prost(message, tag="49")]
+        #[prost(message, tag="48")]
         GoToTabName(super::GoToTabNameAction),
-        #[prost(message, tag="50")]
+        #[prost(message, tag="49")]
         ToggleTab(super::ToggleTabAction),
-        #[prost(message, tag="51")]
+        #[prost(message, tag="50")]
         TabNameInput(super::TabNameInputAction),
-        #[prost(message, tag="52")]
+        #[prost(message, tag="51")]
         UndoRenameTab(super::UndoRenameTabAction),
-        #[prost(message, tag="53")]
+        #[prost(message, tag="52")]
         MoveTab(super::MoveTabAction),
-        #[prost(message, tag="54")]
+        #[prost(message, tag="53")]
         Run(super::RunAction),
-        #[prost(message, tag="55")]
+        #[prost(message, tag="54")]
         Detach(super::DetachAction),
-        #[prost(message, tag="56")]
+        #[prost(message, tag="55")]
         LaunchOrFocusPlugin(super::LaunchOrFocusPluginAction),
-        #[prost(message, tag="57")]
+        #[prost(message, tag="56")]
         LaunchPlugin(super::LaunchPluginAction),
-        #[prost(message, tag="58")]
+        #[prost(message, tag="57")]
         MouseEvent(super::MouseEventAction),
-        #[prost(message, tag="59")]
+        #[prost(message, tag="58")]
         Copy(super::CopyAction),
-        #[prost(message, tag="60")]
+        #[prost(message, tag="59")]
         Confirm(super::ConfirmAction),
-        #[prost(message, tag="61")]
+        #[prost(message, tag="60")]
         Deny(super::DenyAction),
-        #[prost(message, tag="62")]
+        #[prost(message, tag="61")]
         SkipConfirm(::prost::alloc::boxed::Box<super::SkipConfirmAction>),
-        #[prost(message, tag="63")]
+        #[prost(message, tag="62")]
         SearchInput(super::SearchInputAction),
-        #[prost(message, tag="64")]
+        #[prost(message, tag="63")]
         Search(super::SearchAction),
-        #[prost(message, tag="65")]
+        #[prost(message, tag="64")]
         SearchToggleOption(super::SearchToggleOptionAction),
-        #[prost(message, tag="66")]
+        #[prost(message, tag="65")]
         ToggleMouseMode(super::ToggleMouseModeAction),
-        #[prost(message, tag="67")]
+        #[prost(message, tag="66")]
         PreviousSwapLayout(super::PreviousSwapLayoutAction),
-        #[prost(message, tag="68")]
+        #[prost(message, tag="67")]
         NextSwapLayout(super::NextSwapLayoutAction),
-        #[prost(message, tag="69")]
+        #[prost(message, tag="68")]
         QueryTabNames(super::QueryTabNamesAction),
-        #[prost(message, tag="70")]
+        #[prost(message, tag="69")]
         NewTiledPluginPane(super::NewTiledPluginPaneAction),
-        #[prost(message, tag="71")]
+        #[prost(message, tag="70")]
         NewFloatingPluginPane(super::NewFloatingPluginPaneAction),
-        #[prost(message, tag="72")]
+        #[prost(message, tag="71")]
         NewInPlacePluginPane(super::NewInPlacePluginPaneAction),
-        #[prost(message, tag="73")]
+        #[prost(message, tag="72")]
         StartOrReloadPlugin(super::StartOrReloadPluginAction),
-        #[prost(message, tag="74")]
+        #[prost(message, tag="73")]
         CloseTerminalPane(super::CloseTerminalPaneAction),
-        #[prost(message, tag="75")]
+        #[prost(message, tag="74")]
         ClosePluginPane(super::ClosePluginPaneAction),
-        #[prost(message, tag="76")]
+        #[prost(message, tag="75")]
         FocusTerminalPaneWithId(super::FocusTerminalPaneWithIdAction),
-        #[prost(message, tag="77")]
+        #[prost(message, tag="76")]
         FocusPluginPaneWithId(super::FocusPluginPaneWithIdAction),
-        #[prost(message, tag="78")]
+        #[prost(message, tag="77")]
         RenameTerminalPane(super::RenameTerminalPaneAction),
-        #[prost(message, tag="79")]
+        #[prost(message, tag="78")]
         RenamePluginPane(super::RenamePluginPaneAction),
-        #[prost(message, tag="80")]
+        #[prost(message, tag="79")]
         RenameTab(super::RenameTabAction),
-        #[prost(message, tag="81")]
+        #[prost(message, tag="80")]
         BreakPane(super::BreakPaneAction),
-        #[prost(message, tag="82")]
+        #[prost(message, tag="81")]
         BreakPaneRight(super::BreakPaneRightAction),
-        #[prost(message, tag="83")]
+        #[prost(message, tag="82")]
         BreakPaneLeft(super::BreakPaneLeftAction),
-        #[prost(message, tag="84")]
+        #[prost(message, tag="83")]
         RenameSession(super::RenameSessionAction),
-        #[prost(message, tag="85")]
+        #[prost(message, tag="84")]
         CliPipe(super::CliPipeAction),
-        #[prost(message, tag="86")]
+        #[prost(message, tag="85")]
         KeybindPipe(super::KeybindPipeAction),
-        #[prost(message, tag="87")]
+        #[prost(message, tag="86")]
         ListClients(super::ListClientsAction),
-        #[prost(message, tag="88")]
+        #[prost(message, tag="87")]
         TogglePanePinned(super::TogglePanePinnedAction),
-        #[prost(message, tag="89")]
+        #[prost(message, tag="88")]
         StackPanes(super::StackPanesAction),
-        #[prost(message, tag="90")]
+        #[prost(message, tag="89")]
         ChangeFloatingPaneCoordinates(super::ChangeFloatingPaneCoordinatesAction),
-        #[prost(message, tag="91")]
+        #[prost(message, tag="90")]
         TogglePaneInGroup(super::TogglePaneInGroupAction),
-        #[prost(message, tag="92")]
+        #[prost(message, tag="91")]
         ToggleGroupMarking(super::ToggleGroupMarkingAction),
-        #[prost(message, tag="93")]
+        #[prost(message, tag="92")]
         SwitchSession(super::SwitchSessionAction),
-        #[prost(message, tag="94")]
+        #[prost(message, tag="93")]
         NewBlockingPane(super::NewBlockingPaneAction),
-        #[prost(message, tag="95")]
+        #[prost(message, tag="94")]
         OverrideLayout(super::OverrideLayoutAction),
-        #[prost(message, tag="96")]
+        #[prost(message, tag="95")]
         TogglePaneBorderless(super::TogglePaneBorderlessAction),
-        #[prost(message, tag="97")]
+        #[prost(message, tag="96")]
         SetPaneBorderless(super::SetPaneBorderlessAction),
-        #[prost(message, tag="98")]
+        #[prost(message, tag="97")]
         SaveSession(super::SaveSessionAction),
-        #[prost(message, tag="99")]
+        #[prost(message, tag="98")]
         ListPanes(super::ListPanesAction),
-        #[prost(message, tag="100")]
+        #[prost(message, tag="99")]
         WriteCharsToPaneId(super::WriteCharsToPaneIdAction),
-        #[prost(message, tag="101")]
+        #[prost(message, tag="100")]
         WriteToPaneId(super::WriteToPaneIdAction),
-        #[prost(message, tag="102")]
+        #[prost(message, tag="101")]
         GoToTabById(super::GoToTabByIdAction),
-        #[prost(message, tag="103")]
+        #[prost(message, tag="102")]
         CloseTabById(super::CloseTabByIdAction),
-        #[prost(message, tag="104")]
+        #[prost(message, tag="103")]
         RenameTabById(super::RenameTabByIdAction),
-        #[prost(message, tag="105")]
+        #[prost(message, tag="104")]
         ListTabs(super::ListTabsAction),
-        #[prost(message, tag="106")]
+        #[prost(message, tag="105")]
         CurrentTabInfo(super::CurrentTabInfoAction),
-        #[prost(message, tag="107")]
+        #[prost(message, tag="106")]
         ShowFloatingPanes(super::ShowFloatingPanesAction),
-        #[prost(message, tag="108")]
+        #[prost(message, tag="107")]
         HideFloatingPanes(super::HideFloatingPanesAction),
-        #[prost(message, tag="109")]
+        #[prost(message, tag="108")]
         SetPaneColor(super::SetPaneColorAction),
-        #[prost(message, tag="110")]
+        #[prost(message, tag="109")]
         Paste(super::PasteAction),
         /// Pane-targeting
-        #[prost(message, tag="111")]
+        #[prost(message, tag="110")]
         ScrollUpByPaneId(super::ScrollUpByPaneIdAction),
-        #[prost(message, tag="112")]
+        #[prost(message, tag="111")]
         ScrollDownByPaneId(super::ScrollDownByPaneIdAction),
-        #[prost(message, tag="113")]
+        #[prost(message, tag="112")]
         ScrollToTopByPaneId(super::ScrollToTopByPaneIdAction),
-        #[prost(message, tag="114")]
+        #[prost(message, tag="113")]
         ScrollToBottomByPaneId(super::ScrollToBottomByPaneIdAction),
-        #[prost(message, tag="115")]
+        #[prost(message, tag="114")]
         PageScrollUpByPaneId(super::PageScrollUpByPaneIdAction),
-        #[prost(message, tag="116")]
+        #[prost(message, tag="115")]
         PageScrollDownByPaneId(super::PageScrollDownByPaneIdAction),
-        #[prost(message, tag="117")]
+        #[prost(message, tag="116")]
         HalfPageScrollUpByPaneId(super::HalfPageScrollUpByPaneIdAction),
-        #[prost(message, tag="118")]
+        #[prost(message, tag="117")]
         HalfPageScrollDownByPaneId(super::HalfPageScrollDownByPaneIdAction),
-        #[prost(message, tag="119")]
+        #[prost(message, tag="118")]
         ResizeByPaneId(super::ResizeByPaneIdAction),
-        #[prost(message, tag="120")]
+        #[prost(message, tag="119")]
         MovePaneByPaneId(super::MovePaneByPaneIdAction),
-        #[prost(message, tag="121")]
+        #[prost(message, tag="120")]
         MovePaneBackwardsByPaneId(super::MovePaneBackwardsByPaneIdAction),
-        #[prost(message, tag="122")]
+        #[prost(message, tag="121")]
         ClearScreenByPaneId(super::ClearScreenByPaneIdAction),
-        #[prost(message, tag="123")]
+        #[prost(message, tag="122")]
         EditScrollbackByPaneId(super::EditScrollbackByPaneIdAction),
-        #[prost(message, tag="124")]
+        #[prost(message, tag="123")]
         ToggleFullscreenByPaneId(super::ToggleFullscreenByPaneIdAction),
-        #[prost(message, tag="125")]
+        #[prost(message, tag="124")]
         TogglePaneEmbedOrFloatingByPaneId(super::TogglePaneEmbedOrFloatingByPaneIdAction),
-        #[prost(message, tag="126")]
+        #[prost(message, tag="125")]
         CloseFocusByPaneId(super::CloseFocusByPaneIdAction),
-        #[prost(message, tag="127")]
+        #[prost(message, tag="126")]
         RenamePaneByPaneId(super::RenamePaneByPaneIdAction),
-        #[prost(message, tag="128")]
+        #[prost(message, tag="127")]
         UndoRenamePaneByPaneId(super::UndoRenamePaneByPaneIdAction),
-        #[prost(message, tag="129")]
+        #[prost(message, tag="128")]
         TogglePanePinnedByPaneId(super::TogglePanePinnedByPaneIdAction),
         /// Tab-targeting
-        #[prost(message, tag="130")]
+        #[prost(message, tag="129")]
         UndoRenameTabByTabId(super::UndoRenameTabByTabIdAction),
-        #[prost(message, tag="131")]
+        #[prost(message, tag="130")]
         ToggleActiveSyncTabByTabId(super::ToggleActiveSyncTabByTabIdAction),
-        #[prost(message, tag="132")]
+        #[prost(message, tag="131")]
         ToggleFloatingPanesByTabId(super::ToggleFloatingPanesByTabIdAction),
-        #[prost(message, tag="133")]
+        #[prost(message, tag="132")]
         PreviousSwapLayoutByTabId(super::PreviousSwapLayoutByTabIdAction),
-        #[prost(message, tag="134")]
+        #[prost(message, tag="133")]
         NextSwapLayoutByTabId(super::NextSwapLayoutByTabIdAction),
-        #[prost(message, tag="135")]
+        #[prost(message, tag="134")]
         MoveTabByTabId(super::MoveTabByTabIdAction),
-        #[prost(message, tag="136")]
+        #[prost(message, tag="135")]
         FocusPaneByPaneId(super::FocusPaneByPaneIdAction),
-        #[prost(message, tag="137")]
+        #[prost(message, tag="136")]
         AreFloatingPanesVisible(super::AreFloatingPanesVisibleAction),
-        #[prost(message, tag="138")]
+        #[prost(message, tag="137")]
         SetDarkTheme(super::SetDarkThemeAction),
-        #[prost(message, tag="139")]
+        #[prost(message, tag="138")]
         SetLightTheme(super::SetLightThemeAction),
-        #[prost(message, tag="140")]
+        #[prost(message, tag="139")]
         ToggleTheme(super::ToggleThemeAction),
         #[prost(message, tag="140")]
         ToggleMobileMode(super::ToggleMobileModeAction),
+        #[prost(message, tag="141")]
+        FocusLastPane(super::FocusLastPaneAction),
     }
 }
 // Action message definitions (all 92 variants)
