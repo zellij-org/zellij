@@ -3,7 +3,7 @@
 use insta::assert_snapshot;
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, col, keys, normalized, start_zellij, GridSnapshot,
-    TestRunner, TERMINAL_SIZE, PROMPT,
+    TestRunner, PROMPT, TERMINAL_SIZE,
 };
 
 fn session_name_rendered(grid_snapshot: &GridSnapshot) -> bool {

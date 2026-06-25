@@ -2,8 +2,9 @@
 
 use insta::assert_snapshot;
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, col, keys, normalized, split_down_and_wait_for_prompt,
-    split_right_and_wait_for_prompt, start_zellij, FakePtyHandle, GridSnapshot, TestSession,
+    claim_first_terminal_and_wait_for_prompt, col, keys, normalized,
+    split_down_and_wait_for_prompt, split_right_and_wait_for_prompt, start_zellij, FakePtyHandle,
+    GridSnapshot, TestSession,
 };
 
 fn focus_left_pane(zellij: &TestSession) {

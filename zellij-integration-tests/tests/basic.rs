@@ -2,8 +2,8 @@
 
 use insta::assert_snapshot;
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, col, keys, normalized, split_right_and_wait_for_prompt,
-    start_zellij, FakePtyHandle, TestSession,
+    claim_first_terminal_and_wait_for_prompt, col, keys, normalized,
+    split_right_and_wait_for_prompt, start_zellij, FakePtyHandle, TestSession,
 };
 
 fn resize_focused_pane_left(zellij: &TestSession) {

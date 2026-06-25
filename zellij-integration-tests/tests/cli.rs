@@ -2,8 +2,8 @@
 
 use insta::assert_snapshot;
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, col, keys, normalized, start_zellij, TERMINAL_SIZE,
-    PROMPT,
+    claim_first_terminal_and_wait_for_prompt, col, keys, normalized, start_zellij, PROMPT,
+    TERMINAL_SIZE,
 };
 
 #[test]

@@ -125,11 +125,12 @@ fn previous_swap_layout() {
 
     zellij.send_stdin(&keys::alt('['));
 
-    let grid_snapshot = zellij.wait_until("swap layout moved back to horizontal", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
-            && grid_snapshot.contains("HORIZONTAL")
-            && !grid_snapshot.contains("BASE")
-    });
+    let grid_snapshot =
+        zellij.wait_until("swap layout moved back to horizontal", |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains("HORIZONTAL")
+                && !grid_snapshot.contains("BASE")
+        });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }

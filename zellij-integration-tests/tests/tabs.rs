@@ -169,12 +169,16 @@ fn toggle_active_sync_tab() {
     let first_stdin = first_terminal.wait_for_stdin("synced input reached first pane", |stdin| {
         stdin.windows(12).any(|window| window == b"synced-input")
     });
-    let second_stdin =
-        second_terminal.wait_for_stdin("synced input reached second pane", |stdin| {
+    let second_stdin = second_terminal
+        .wait_for_stdin("synced input reached second pane", |stdin| {
             stdin.windows(12).any(|window| window == b"synced-input")
         });
-    assert!(first_stdin.windows(12).any(|window| window == b"synced-input"));
-    assert!(second_stdin.windows(12).any(|window| window == b"synced-input"));
+    assert!(first_stdin
+        .windows(12)
+        .any(|window| window == b"synced-input"));
+    assert!(second_stdin
+        .windows(12)
+        .any(|window| window == b"synced-input"));
     zellij.quit();
 }
 
