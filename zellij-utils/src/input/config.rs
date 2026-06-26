@@ -513,7 +513,14 @@ pub async fn watch_config_file_changes<F, Fut>(
             return None;
         }
 
-        let (new_config, new_theme_dir) = load_config_and_theme_dir(config_file_path, config_dir)?;
+        let (new_config, new_theme_dir) =
+            match load_config_and_theme_dir(config_file_path, config_dir) {
+                Some(loaded) => loaded,
+                None => {
+                    log::error!("Failed to reload config from {:?}", config_file_path);
+                    return None;
+                },
+            };
         on_config_change(new_config).await;
         Some(new_theme_dir.as_deref() != watched_theme_dir)
     }
@@ -532,26 +539,36 @@ pub async fn watch_config_file_changes<F, Fut>(
                 WatcherConfig::default().with_poll_interval(Duration::from_secs(1)),
             ) {
                 Ok(watcher) => watcher,
-                Err(_) => break,
+                Err(e) => {
+                    log::error!("Failed to create config watcher: {}", e);
+                    break;
+                },
             };
 
-            if watcher
-                .watch(&config_file_path, RecursiveMode::NonRecursive)
-                .is_err()
-            {
+            if let Err(e) = watcher.watch(&config_file_path, RecursiveMode::NonRecursive) {
+                log::error!("Failed to watch config file {:?}: {}", config_file_path, e);
                 break;
             }
 
             if let Some(watched_theme_dir) = &watched_theme_dir {
-                if watcher
-                    .watch(watched_theme_dir, RecursiveMode::NonRecursive)
-                    .is_err()
-                {
-                    break;
+                if let Err(e) = watcher.watch(watched_theme_dir, RecursiveMode::NonRecursive) {
+                    log::error!(
+                        "Failed to watch theme dir {:?}, continuing without it: {}",
+                        watched_theme_dir,
+                        e,
+                    );
                 }
             }
 
-            while let Some(Ok(event)) = rx.recv().await {
+            while let Some(event_result) = rx.recv().await {
+                let event = match event_result {
+                    Ok(event) => event,
+                    Err(e) => {
+                        log::error!("Config watcher event error: {}", e);
+                        break;
+                    },
+                };
+
                 if event_is_for_config_file(&event, config_file_path.as_path()) {
                     if event.kind.is_remove() {
                         break;
