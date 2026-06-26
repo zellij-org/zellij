@@ -1176,7 +1176,7 @@ impl<'a> TiledPaneGrid<'a> {
 
             let panes_to_the_left = self
                 .pane_ids_directly_next_to(&id, &Direction::Left)
-                .unwrap();
+                .ok()?;
             let mut selectable_panes: Vec<_> = panes_to_the_left
                 .into_iter()
                 .filter(|pid| panes.get(pid).unwrap().selectable())
@@ -1232,7 +1232,7 @@ impl<'a> TiledPaneGrid<'a> {
             let left_close_border = pane.x();
             let right_close_border = pane.x() + pane.cols();
 
-            let panes_above = self.pane_ids_directly_next_to(&id, &Direction::Up).unwrap();
+            let panes_above = self.pane_ids_directly_next_to(&id, &Direction::Up).ok()?;
             let mut selectable_panes: Vec<_> = panes_above
                 .into_iter()
                 .filter(|pid| panes.get(pid).unwrap().selectable())
@@ -1257,7 +1257,7 @@ impl<'a> TiledPaneGrid<'a> {
 
             let panes_below = self
                 .pane_ids_directly_next_to(&id, &Direction::Down)
-                .unwrap();
+                .ok()?;
             let mut selectable_panes: Vec<_> = panes_below
                 .into_iter()
                 .filter(|pid| panes[pid].selectable())
