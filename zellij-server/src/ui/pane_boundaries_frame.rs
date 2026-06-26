@@ -60,6 +60,7 @@ pub struct FrameParams {
     pub other_cursors_exist_in_session: bool,
     pub pane_is_stacked_under: bool,
     pub pane_is_stacked_over: bool,
+    pub pane_is_stacked: bool,
     pub should_draw_pane_frames: bool,
     pub pane_is_floating: bool,
     pub content_offset: Offset,
@@ -84,6 +85,7 @@ pub struct PaneFrame {
     is_first_run: bool,
     pane_is_stacked_over: bool,
     pane_is_stacked_under: bool,
+    pane_is_stacked: bool,
     should_draw_pane_frames: bool,
     is_pinned: bool,
     is_floating: bool,
@@ -115,6 +117,7 @@ impl PaneFrame {
             is_first_run: false,
             pane_is_stacked_over: frame_params.pane_is_stacked_over,
             pane_is_stacked_under: frame_params.pane_is_stacked_under,
+            pane_is_stacked: frame_params.pane_is_stacked,
             should_draw_pane_frames: frame_params.should_draw_pane_frames,
             is_pinned: false,
             is_floating: frame_params.pane_is_floating,
@@ -706,12 +709,190 @@ impl PaneFrame {
             .with_context(|| format!("failed to render title '{}'", self.title))
     }
     fn render_one_line_title(&self) -> Result<Vec<TerminalCharacter>> {
-        let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
+        if self.should_draw_pane_frames {
+            let total_title_length = self.geom.cols.saturating_sub(2);
+            return self
+                .render_title_middle(total_title_length)
+                .map(|(middle, middle_length)| self.title_line_with_middle(middle, &middle_length))
+                .or_else(|| Some(self.title_line_without_middle()))
+                .with_context(|| format!("failed to render title '{}'", self.title));
+        }
 
-        self.render_title_middle(total_title_length)
-            .map(|(middle, middle_length)| self.title_line_with_middle(middle, &middle_length))
-            .or_else(|| Some(self.title_line_without_middle()))
-            .with_context(|| format!("failed to render title '{}'", self.title))
+        let width = self.geom.cols;
+        let title = self.bracketed_pane_title(width);
+        let title_length = title.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let side_budget = width.saturating_sub(title_length) / 2;
+        let focus = self.bracketed_focus_indicator(side_budget);
+        let focus_length = focus.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let scroll = self.bracketed_scroll_indicator(width.saturating_sub(focus_length + title_length));
+        Ok(self.compose_bracketed_title(focus, title, scroll))
+    }
+    fn bracketed_title_part(&self, content: &str) -> (Vec<TerminalCharacter>, usize) {
+        let text = format!(" [ {} ] ", content);
+        (foreground_color(&text, self.color), text.width())
+    }
+    fn bracketed_title_part_from_characters(
+        &self,
+        mut content: Vec<TerminalCharacter>,
+        content_length: usize,
+    ) -> (Vec<TerminalCharacter>, usize) {
+        let mut part = foreground_color(" [ ", self.color);
+        part.append(&mut content);
+        part.append(&mut foreground_color(" ] ", self.color));
+        (part, content_length + 6)
+    }
+    fn plain_title_part(&self, content: &str) -> (Vec<TerminalCharacter>, usize) {
+        let text = format!(" {} ", content);
+        (foreground_color(&text, self.color), text.width())
+    }
+    fn bracketed_pane_title(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let title_padding = 2;
+        if self.title.is_empty() || max_length <= title_padding {
+            return None;
+        }
+        let exit_part = self
+            .exit_status
+            .is_some()
+            .then(|| self.first_exited_held_title_part_full());
+        let exit_length = exit_part.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let content_max_length = max_length.saturating_sub(title_padding + exit_length);
+        let content = if self.title.width() <= content_max_length {
+            self.title.clone()
+        } else {
+            let truncation_budget = content_max_length.saturating_sub(1);
+            let mut truncated = String::new();
+            for character in self.title.chars() {
+                if truncated.width() + character.width().unwrap_or(0) > truncation_budget {
+                    break;
+                }
+                truncated.push(character);
+            }
+            truncated.push('…');
+            truncated
+        };
+        let (mut part, mut length) = self.plain_title_part(&content);
+        if let Some((mut exit, exit_length)) = exit_part {
+            part.append(&mut exit);
+            length += exit_length;
+        }
+        Some((part, length))
+    }
+    fn bracketed_scroll_indicator(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let has_scroll = self.scroll_position.0 > 0 || self.scroll_position.1 > 0;
+        if !(has_scroll && self.is_selectable) {
+            return None;
+        }
+        let full_indication =
+            format!("SCROLL: {}/{}", self.scroll_position.0, self.scroll_position.1);
+        let (full_part, full_length) = self.bracketed_title_part(&full_indication);
+        if full_length <= max_length {
+            return Some((full_part, full_length));
+        }
+        let short_indication = format!("{}/{}", self.scroll_position.0, self.scroll_position.1);
+        let (short_part, short_length) = self.bracketed_title_part(&short_indication);
+        if short_length <= max_length {
+            return Some((short_part, short_length));
+        }
+        None
+    }
+    fn bracketed_focus_indicator(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        if self.is_main_client
+            && self.other_focused_clients.is_empty()
+            && !self.other_cursors_exist_in_session
+        {
+            None
+        } else if self.is_main_client
+            && self.other_focused_clients.is_empty()
+            && self.other_cursors_exist_in_session
+        {
+            let (part, length) = self.bracketed_title_part("MY FOCUS");
+            (length <= max_length).then_some((part, length))
+        } else if self.is_main_client && !self.other_focused_clients.is_empty() {
+            self.bracketed_focused_users("MY FOCUS AND:", max_length)
+        } else if !self.other_focused_clients.is_empty() {
+            let label = if self.other_focused_clients.len() == 1 {
+                "FOCUSED USER:"
+            } else {
+                "FOCUSED USERS:"
+            };
+            self.bracketed_focused_users(label, max_length)
+        } else {
+            None
+        }
+    }
+    fn bracketed_focused_users(
+        &self,
+        label: &str,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let mut content = foreground_color(label, self.color);
+        let mut content_length = label.width();
+        for client_id in &self.other_focused_clients {
+            content.push(EMPTY_TERMINAL_CHARACTER);
+            content.append(&mut self.client_cursor(*client_id));
+            content_length += 2;
+        }
+        let (part, length) = self.bracketed_title_part_from_characters(content, content_length);
+        (length <= max_length).then_some((part, length))
+    }
+    fn compose_bracketed_title(
+        &self,
+        left: Option<(Vec<TerminalCharacter>, usize)>,
+        middle: Option<(Vec<TerminalCharacter>, usize)>,
+        right: Option<(Vec<TerminalCharacter>, usize)>,
+    ) -> Vec<TerminalCharacter> {
+        let width = self.geom.cols;
+        let left_length = left.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let middle_length = middle.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let right_length = right.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let middle_start = if middle.is_some() {
+            (width / 2).saturating_sub(middle_length / 2).max(left_length)
+        } else {
+            left_length
+        };
+        let middle_end = if middle.is_some() {
+            middle_start + middle_length
+        } else {
+            left_length
+        };
+        let right_start = width.saturating_sub(right_length).max(middle_end);
+        let fill_character = if self.pane_is_stacked {
+            foreground_color(boundary_type::HORIZONTAL, self.color)
+                .into_iter()
+                .next()
+                .unwrap_or(EMPTY_TERMINAL_CHARACTER)
+        } else {
+            EMPTY_TERMINAL_CHARACTER
+        };
+        let mut placements: Vec<(usize, Vec<TerminalCharacter>, usize)> = vec![];
+        if let Some((characters, length)) = left {
+            placements.push((0, characters, length));
+        }
+        if let Some((characters, length)) = middle {
+            placements.push((middle_start, characters, length));
+        }
+        if let Some((characters, length)) = right {
+            placements.push((right_start, characters, length));
+        }
+        let mut title_line = vec![];
+        let mut col = 0;
+        while col < width {
+            if let Some(index) = placements.iter().position(|(start, _, _)| *start == col) {
+                let (_, mut characters, length) = placements.remove(index);
+                title_line.append(&mut characters);
+                col += length;
+            } else {
+                title_line.push(fill_character.clone());
+                col += 1;
+            }
+        }
+        title_line
     }
     fn render_highlight_tooltip_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
         let max_undertitle_length = self.geom.cols.saturating_sub(2);
