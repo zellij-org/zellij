@@ -675,6 +675,8 @@ pub struct ListPanesAction {
     pub show_all: bool,
     #[prost(bool, tag="6")]
     pub output_json: bool,
+    #[prost(bool, tag="7")]
+    pub filter_bell: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

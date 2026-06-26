@@ -465,6 +465,7 @@ message PaneInfo {
     repeated IndexInPaneGroup index_in_pane_group = 23;
     optional string default_fg = 24;
     optional string default_bg = 25;
+    bool has_bell_notification = 26;
 }
 
 message IndexInPaneGroup {
