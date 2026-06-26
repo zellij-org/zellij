@@ -700,18 +700,34 @@ impl Action {
             },
             Action::MovePaneBackwards => Some(KdlNode::new("MovePaneBackwards")),
             Action::DumpScreen {
-                file_path: Some(file),
-                include_scrollback: _,
+                file_path,
+                include_scrollback,
                 pane_id: _,
-                ansi: _,
+                ansi,
             } => {
+                if file_path.is_none() && !*include_scrollback && !*ansi {
+                    return None;
+                }
                 let mut node = KdlNode::new("DumpScreen");
-                node.push(file.clone());
+                if let Some(file) = file_path {
+                    node.push(file.clone());
+                }
+                if *include_scrollback || *ansi {
+                    let mut children = KdlDocument::new();
+                    if *include_scrollback {
+                        let mut full_node = KdlNode::new("full");
+                        full_node.push(KdlValue::Bool(true));
+                        children.nodes_mut().push(full_node);
+                    }
+                    if *ansi {
+                        let mut ansi_node = KdlNode::new("ansi");
+                        ansi_node.push(KdlValue::Bool(true));
+                        children.nodes_mut().push(ansi_node);
+                    }
+                    node.set_children(children);
+                }
                 Some(node)
             },
-            Action::DumpScreen {
-                file_path: None, ..
-            } => None,
             Action::DumpLayout => Some(KdlNode::new("DumpLayout")),
             Action::EditScrollback { ansi } => {
                 let mut node = KdlNode::new("EditScrollback");
@@ -1692,11 +1708,35 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 action_arguments,
                 kdl_action
             ),
-            "DumpScreen" => parse_kdl_action_char_or_string_arguments!(
-                action_name,
-                action_arguments,
-                kdl_action
-            ),
+            "DumpScreen" => {
+                let mut file_path = String::new();
+                for kdl_entry in action_arguments.iter() {
+                    match kdl_entry.value().as_string() {
+                        Some(string_value) => file_path.push_str(string_value),
+                        None => {
+                            return Err(ConfigError::new_kdl_error(
+                                format!(
+                                    "All entries for action '{}' must be strings",
+                                    action_name
+                                ),
+                                kdl_entry.span().offset(),
+                                kdl_entry.span().len(),
+                            ))
+                        },
+                    }
+                }
+                let include_scrollback =
+                    crate::kdl_get_bool_property_or_child_value!(kdl_action, "full")
+                        .unwrap_or(false);
+                let ansi = crate::kdl_get_bool_property_or_child_value!(kdl_action, "ansi")
+                    .unwrap_or(false);
+                Ok(Action::DumpScreen {
+                    file_path: Some(file_path),
+                    include_scrollback,
+                    pane_id: None,
+                    ansi,
+                })
+            },
             "DumpLayout" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
@@ -6600,6 +6640,55 @@ fn keybinds_to_string_with_multiple_actions() {
         "Deserialized serialized config equals original config"
     );
     insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn keybinds_to_string_with_dump_screen_full_and_ansi() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Ctrl n" {
+                    DumpScreen "/tmp/dumped" {
+                        full true;
+                        ansi true;
+                    }
+                }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let clear_defaults = true;
+    let serialized = Keybinds::to_kdl(&deserialized, clear_defaults);
+    let serialized_string = serialized.to_string();
+    assert!(
+        serialized_string.contains("full"),
+        "Serialized keybinding should preserve the `full` (scrollback) flag, got:\n{}",
+        serialized_string
+    );
+    assert!(
+        serialized_string.contains("ansi"),
+        "Serialized keybinding should preserve the `ansi` flag, got:\n{}",
+        serialized_string
+    );
+    let deserialized_from_serialized = Keybinds::from_kdl(
+        serialized_string
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("keybinds")
+            .unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "DumpScreen with `full`/`ansi` flags should survive a serialize/deserialize round-trip"
+    );
 }
 
 #[test]
