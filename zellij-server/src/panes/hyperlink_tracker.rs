@@ -314,7 +314,7 @@ mod tests {
         for (i, ch) in text.chars().enumerate() {
             let char_index = row.absolute_character_index(start_x + i);
             if let Some(character) = row.columns.get_mut(char_index) {
-                character.character = ch;
+                character.set_grapheme(&ch.to_string());
             }
         }
     }
