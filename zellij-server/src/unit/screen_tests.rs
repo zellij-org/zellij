@@ -18,7 +18,7 @@ use zellij_utils::input::layout::{
     RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, TiledPaneLayout,
 };
 use zellij_utils::input::mouse::MouseEvent;
-use zellij_utils::input::options::Options;
+use zellij_utils::input::options::{Options, PaneFrameStyle};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
@@ -262,7 +262,7 @@ fn create_new_screen(
     let max_panes = None;
     let mut mode_info = ModeInfo::default();
     mode_info.session_name = Some("zellij-test".into());
-    let draw_pane_frames = false;
+    let draw_pane_frames = PaneFrameStyle::None;
     let auto_layout = true;
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
@@ -5375,7 +5375,7 @@ fn create_new_screen_with_message_capture(
     let max_panes = None;
     let mut mode_info = ModeInfo::default();
     mode_info.session_name = Some("zellij-test".into());
-    let draw_pane_frames = false;
+    let draw_pane_frames = PaneFrameStyle::None;
     let auto_layout = true;
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
@@ -8445,7 +8445,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
     let max_panes = None;
     let mut mode_info = ModeInfo::default();
     mode_info.session_name = Some("zellij-test".into());
-    let draw_pane_frames = false;
+    let draw_pane_frames = PaneFrameStyle::None;
     let auto_layout = true;
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
@@ -9054,7 +9054,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         &client_attributes,
         None,
         mode_info,
-        false,
+        PaneFrameStyle::None,
         true,
         true,
         copy_options,
@@ -9533,7 +9533,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         &client_attributes,
         None, // max_panes
         mode_info,
-        false, // draw_pane_frames
+        PaneFrameStyle::None,
         true,  // auto_layout
         false, // session_is_mirrored
         CopyOptions::default(),

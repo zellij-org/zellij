@@ -64,6 +64,7 @@ use zellij_utils::{
             FloatingPaneLayout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
             TiledPaneLayout,
         },
+        options::PaneFrameStyle,
         parse_keys,
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -176,7 +177,7 @@ pub(crate) struct Tab {
     default_mode_info: ModeInfo,
     pub style: Style,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
-    draw_pane_frames: bool,
+    pane_frame_style: PaneFrameStyle,
     auto_layout: bool,
     pending_vte_events: HashMap<u32, Vec<VteBytes>>,
     pub selecting_with_mouse_in_pane: Option<PaneId>, // this is only pub for the tests
@@ -736,7 +737,7 @@ impl Tab {
         max_panes: Option<usize>,
         style: Style,
         default_mode_info: ModeInfo,
-        draw_pane_frames: bool,
+        pane_frame_style: PaneFrameStyle,
         auto_layout: bool,
         connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
         session_is_mirrored: bool,
@@ -790,7 +791,7 @@ impl Tab {
             character_cell_size.clone(),
             stacked_resize.clone(),
             session_is_mirrored,
-            draw_pane_frames,
+            pane_frame_style,
             default_mode_info.clone(),
             style,
             os_api.clone(),
@@ -838,7 +839,7 @@ impl Tab {
             style,
             mode_info,
             default_mode_info,
-            draw_pane_frames,
+            pane_frame_style,
             auto_layout,
             pending_vte_events: HashMap::new(),
             connected_clients,
@@ -908,7 +909,7 @@ impl Tab {
             &self.display_area,
             &mut self.tiled_panes,
             &mut self.floating_panes,
-            self.draw_pane_frames,
+            self.pane_frame_style,
             &mut self.focus_pane_id,
             &self.os_api,
             self.debug,
@@ -986,7 +987,7 @@ impl Tab {
             &self.display_area,
             &mut self.tiled_panes,
             &mut self.floating_panes,
-            self.draw_pane_frames,
+            self.pane_frame_style,
             &mut self.focus_pane_id,
             &self.os_api,
             self.debug,
@@ -1032,7 +1033,7 @@ impl Tab {
                     self.viewport.clone(),
                     self.display_area.clone(),
                     &mut self.tiled_panes,
-                    self.draw_pane_frames,
+                    self.pane_frame_style,
                 );
 
                 self.apply_buffered_instructions().non_fatal();
@@ -1079,7 +1080,7 @@ impl Tab {
                 &self.display_area,
                 &mut self.tiled_panes,
                 &mut self.floating_panes,
-                self.draw_pane_frames,
+                self.pane_frame_style,
                 &mut self.focus_pane_id,
                 &self.os_api,
                 self.debug,
@@ -1119,7 +1120,7 @@ impl Tab {
                 &self.display_area,
                 &mut self.tiled_panes,
                 &mut self.floating_panes,
-                self.draw_pane_frames,
+                self.pane_frame_style,
                 &mut self.focus_pane_id,
                 &self.os_api,
                 self.debug,
@@ -3605,7 +3606,7 @@ impl Tab {
             self.viewport.clone(),
             self.display_area.clone(),
             &mut self.tiled_panes,
-            self.draw_pane_frames,
+            self.pane_frame_style,
         );
         if let Some(pane_id) = fullscreen_pane_to_restore {
             if self.tiled_panes.panes_contain(&pane_id) {
@@ -4058,7 +4059,7 @@ impl Tab {
             self.viewport.clone(),
             self.display_area.clone(),
             &mut self.tiled_panes,
-            self.draw_pane_frames,
+            self.pane_frame_style,
         );
     }
     pub fn set_mouse_selection_support(&mut self, pane_id: PaneId, selection_support: bool) {
@@ -4799,7 +4800,9 @@ impl Tab {
             let is_flexible_in_stack =
                 p.current_geom().is_stacked() && !p.current_geom().rows.is_fixed();
             let is_stacked_under = stacked_pane_ids_under_flexible_pane.contains(&p.pid());
-            let geom_to_compare_against = if is_stacked_under && !self.draw_pane_frames {
+            let geom_to_compare_against = if is_stacked_under
+                && !self.pane_frame_style.draws_full_frames()
+            {
                 // these sort of panes are one-liner panes under a flexible pane in a stack when we
                 // don't draw pane frames - because the whole stack's content is offset to allow
                 // room for the boundary between panes, they are actually drawn 1 line above where
@@ -4807,7 +4810,7 @@ impl Tab {
                 let mut geom = p.current_geom();
                 geom.y = geom.y.saturating_sub(p.get_content_offset().bottom);
                 geom
-            } else if is_flexible_in_stack && !self.draw_pane_frames {
+            } else if is_flexible_in_stack && !self.pane_frame_style.draws_full_frames() {
                 // these sorts of panes are flexible panes inside a stack when we don't draw pane
                 // frames - because the whole stack's content is offset to give room for the
                 // boundary between panes, we need to take this offset into account when figuring
@@ -5064,9 +5067,9 @@ impl Tab {
             && column < viewport.x + viewport.cols)
     }
 
-    pub fn set_pane_frames(&mut self, should_set_pane_frames: bool) {
-        self.tiled_panes.set_pane_frames(should_set_pane_frames);
-        self.draw_pane_frames = should_set_pane_frames;
+    pub fn set_pane_frames(&mut self, pane_frame_style: PaneFrameStyle) {
+        self.tiled_panes.set_pane_frames(pane_frame_style);
+        self.pane_frame_style = pane_frame_style;
         self.set_should_clear_display_before_rendering();
         self.set_force_render();
     }

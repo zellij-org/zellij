@@ -12,7 +12,7 @@ use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PercentOrFixed, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, TabLayoutInfo,
 };
-use crate::input::options::{Clipboard, OnForceClose, Options};
+use crate::input::options::{Clipboard, OnForceClose, Options, PaneFrameStyle};
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
@@ -455,6 +455,16 @@ impl Action {
     ) -> Result<Self, ConfigError> {
         match action_name {
             "WriteChars" => Ok(Action::WriteChars { chars: string }),
+            "SetPaneFrameStyle" => {
+                let style = PaneFrameStyle::from_str(string.as_str()).map_err(|e| {
+                    ConfigError::new_kdl_error(
+                        format!("{}", e),
+                        action_node.span().offset(),
+                        action_node.span().len(),
+                    )
+                })?;
+                Ok(Action::SetPaneFrameStyle(style))
+            },
             "SwitchToMode" => match InputMode::from_str(string.as_str()) {
                 Ok(input_mode) => Ok(Action::SwitchToMode { input_mode }),
                 Err(_e) => {
@@ -734,6 +744,16 @@ impl Action {
             Action::HalfPageScrollDown => Some(KdlNode::new("HalfPageScrollDown")),
             Action::ToggleFocusFullscreen => Some(KdlNode::new("ToggleFocusFullscreen")),
             Action::TogglePaneFrames => Some(KdlNode::new("TogglePaneFrames")),
+            Action::SetPaneFrameStyle(style) => {
+                let mut node = KdlNode::new("SetPaneFrameStyle");
+                let style = match style {
+                    PaneFrameStyle::Full => "full",
+                    PaneFrameStyle::Titles => "titles",
+                    PaneFrameStyle::None => "none",
+                };
+                node.push(style);
+                Some(node)
+            },
             Action::ToggleActiveSyncTab => Some(KdlNode::new("ToggleActiveSyncTab")),
             Action::NewPane {
                 direction,
@@ -1648,6 +1668,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 kdl_action
             ),
             "SwitchToMode" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
+            "SetPaneFrameStyle" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
                 kdl_action
@@ -2683,6 +2708,16 @@ impl Options {
             .map(|(string, _entry)| PathBuf::from(string));
         let pane_frames =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "pane_frames").map(|(v, _)| v);
+        let pane_frame_style =
+            match kdl_property_first_arg_as_string_or_error!(kdl_options, "pane_frame_style") {
+                Some((string, entry)) => Some(PaneFrameStyle::from_str(string).map_err(|_| {
+                    kdl_parsing_error!(
+                        format!("Invalid value for pane_frame_style: '{}'", string),
+                        entry
+                    )
+                })?),
+                None => None,
+            };
         let auto_layout =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "auto_layout").map(|(v, _)| v);
         let theme = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme")
@@ -2881,6 +2916,7 @@ impl Options {
             theme_dir,
             mouse_mode,
             pane_frames,
+            pane_frame_style,
             mirror_session,
             on_force_close,
             scroll_buffer_size,
@@ -3289,6 +3325,44 @@ impl Options {
             Some(node)
         } else if add_comments {
             let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn pane_frame_style_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Set the pane frame style when pane_frames is enabled",
+            "// Options:",
+            "//   - full",
+            "//   - titles (default)",
+            "// ",
+        );
+
+        let style_as_str = |style: &PaneFrameStyle| -> &'static str {
+            match style {
+                PaneFrameStyle::Full => "full",
+                PaneFrameStyle::Titles => "titles",
+                PaneFrameStyle::None => "none",
+            }
+        };
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("pane_frame_style");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(pane_frame_style) = &self.pane_frame_style {
+            let mut node = create_node(style_as_str(pane_frame_style));
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("titles");
             node.set_leading(format!("{}\n// ", comment_text));
             Some(node)
         } else {
@@ -4418,6 +4492,9 @@ impl Options {
         }
         if let Some(pane_frames) = self.pane_frames_to_kdl(add_comments) {
             nodes.push(pane_frames);
+        }
+        if let Some(pane_frame_style) = self.pane_frame_style_to_kdl(add_comments) {
+            nodes.push(pane_frame_style);
         }
         if let Some(mirror_session) = self.mirror_session_to_kdl(add_comments) {
             nodes.push(mirror_session);

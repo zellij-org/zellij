@@ -102,6 +102,7 @@ Config {
         theme_dir: None,
         mouse_mode: None,
         pane_frames: None,
+        pane_frame_style: None,
         mirror_session: None,
         on_force_close: None,
         scroll_buffer_size: None,

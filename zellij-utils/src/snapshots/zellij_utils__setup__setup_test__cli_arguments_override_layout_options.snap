@@ -17,6 +17,7 @@ Options {
     pane_frames: Some(
         true,
     ),
+    pane_frame_style: None,
     mirror_session: None,
     on_force_close: None,
     scroll_buffer_size: None,

@@ -91,6 +91,7 @@ fn use_custom_layout_with_relative_path() {
 
     let grid_snapshot = zellij.wait_until("upside-down layout loaded from disk", |grid_snapshot| {
         grid_snapshot.tab_bar_appears()
+            && grid_snapshot.status_bar_appears()
             && grid_snapshot.contains("Zellij (test")
             && grid_snapshot.cursor.is_some()
     });

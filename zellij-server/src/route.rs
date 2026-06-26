@@ -596,6 +596,14 @@ pub(crate) fn route_action(
                 )))
                 .with_context(err_context)?;
         },
+        Action::SetPaneFrameStyle(pane_frame_style) => {
+            senders
+                .send_to_screen(ScreenInstruction::SetPaneFrameStyle(
+                    pane_frame_style,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::NewPane {
             direction,
             pane_name,

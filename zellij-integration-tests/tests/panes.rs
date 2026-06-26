@@ -513,6 +513,16 @@ fn toggle_pane_frames() {
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('z'));
 
+    zellij.wait_until("pane frames cycle to titles only", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+            && grid_snapshot.contains("Pane #1")
+            && grid_snapshot.contains("Pane #2")
+            && !grid_snapshot.contains("┌")
+    });
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('z'));
+
     let grid_snapshot = zellij.wait_until("pane frames removed from both panes", |grid_snapshot| {
         grid_snapshot.status_bar_appears()
             && !grid_snapshot.contains("Pane #1")

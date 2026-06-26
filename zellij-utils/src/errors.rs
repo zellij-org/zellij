@@ -282,6 +282,7 @@ pub enum ScreenContext {
     ToggleActiveSyncTab,
     ToggleActiveTerminalFullscreen,
     TogglePaneFrames,
+    SetPaneFrameStyle,
     SetSelectable,
     ShowPluginCursor,
     SetInvisibleBorders,

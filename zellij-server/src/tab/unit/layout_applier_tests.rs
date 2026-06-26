@@ -1,5 +1,6 @@
 use crate::os_input_output::AsyncReader;
 use crate::panes::sixel::SixelImageStore;
+use zellij_utils::input::options::PaneFrameStyle;
 use crate::panes::{FloatingPanes, TiledPanes};
 use crate::panes::{LinkHandler, PaneId};
 use crate::plugins::PluginInstruction;
@@ -147,7 +148,7 @@ fn create_layout_applier_fixtures(
     Rc<RefCell<Size>>,
     TiledPanes,
     FloatingPanes,
-    bool,
+    PaneFrameStyle,
     Option<PaneId>,
     Box<dyn ServerOsApi>,
     bool,
@@ -187,7 +188,7 @@ fn create_layout_applier_fixtures(
     let mode_info = Rc::new(RefCell::new(HashMap::new()));
     let stacked_resize = Rc::new(RefCell::new(false));
     let session_is_mirrored = true;
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let default_mode_info = ModeInfo::default();
 
     let tiled_panes = TiledPanes::new(
@@ -269,7 +270,7 @@ fn create_layout_applier_fixtures_with_receivers(
     Rc<RefCell<Size>>,
     TiledPanes,
     FloatingPanes,
-    bool,
+    PaneFrameStyle,
     Option<PaneId>,
     Box<dyn ServerOsApi>,
     bool,
@@ -317,7 +318,7 @@ fn create_layout_applier_fixtures_with_receivers(
     let mode_info = Rc::new(RefCell::new(HashMap::new()));
     let stacked_resize = Rc::new(RefCell::new(false));
     let session_is_mirrored = true;
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let default_mode_info = ModeInfo::default();
 
     let tiled_panes = TiledPanes::new(

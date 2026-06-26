@@ -93,6 +93,51 @@ impl FromStr for OnForceClose {
     }
 }
 
+#[derive(ArgEnum, Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PaneFrameStyle {
+    Full,
+    Titles,
+    None,
+}
+
+impl Default for PaneFrameStyle {
+    fn default() -> Self {
+        PaneFrameStyle::Titles
+    }
+}
+
+impl PaneFrameStyle {
+    pub fn draws_full_frames(&self) -> bool {
+        matches!(self, PaneFrameStyle::Full)
+    }
+
+    pub fn draws_titles(&self) -> bool {
+        matches!(self, PaneFrameStyle::Titles)
+    }
+
+    pub fn from_options(options: &Options) -> Self {
+        if options.pane_frames == Some(false) {
+            return PaneFrameStyle::None;
+        }
+        match options.pane_frame_style {
+            Some(PaneFrameStyle::Full) => PaneFrameStyle::Full,
+            _ => PaneFrameStyle::Titles,
+        }
+    }
+}
+
+impl FromStr for PaneFrameStyle {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "full" => Ok(PaneFrameStyle::Full),
+            "titles" => Ok(PaneFrameStyle::Titles),
+            e => Err(format!("Unknown pane frame style: '{}' (expected 'full' or 'titles')", e).into()),
+        }
+    }
+}
+
 #[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize, Args)]
 /// Options that can be set either through the config file,
 /// or cli flags - cli flags should take precedence over the config file
@@ -146,6 +191,9 @@ pub struct Options {
     #[serde(default)]
     /// Set display of the pane frames (true or false)
     pub pane_frames: Option<bool>,
+    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[serde(default)]
+    pub pane_frame_style: Option<PaneFrameStyle>,
     #[clap(long, value_parser)]
     #[serde(default)]
     /// Mirror session when multiple users are connected (true or false)
@@ -393,6 +441,7 @@ impl Options {
     pub fn merge(&self, other: Options) -> Options {
         let mouse_mode = other.mouse_mode.or(self.mouse_mode);
         let pane_frames = other.pane_frames.or(self.pane_frames);
+        let pane_frame_style = other.pane_frame_style.or(self.pane_frame_style);
         let auto_layout = other.auto_layout.or(self.auto_layout);
         let mirror_session = other.mirror_session.or(self.mirror_session);
         let simplified_ui = other.simplified_ui.or(self.simplified_ui);
@@ -475,6 +524,7 @@ impl Options {
             theme_dir,
             mouse_mode,
             pane_frames,
+            pane_frame_style,
             mirror_session,
             on_force_close,
             scroll_buffer_size,
@@ -534,6 +584,7 @@ impl Options {
         let simplified_ui = merge_bool(other.simplified_ui, self.simplified_ui);
         let mouse_mode = merge_bool(other.mouse_mode, self.mouse_mode);
         let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
+        let pane_frame_style = other.pane_frame_style.or(self.pane_frame_style);
         let auto_layout = merge_bool(other.auto_layout, self.auto_layout);
         let mirror_session = merge_bool(other.mirror_session, self.mirror_session);
         let session_serialization =
@@ -616,6 +667,7 @@ impl Options {
             theme_dir,
             mouse_mode,
             pane_frames,
+            pane_frame_style,
             mirror_session,
             on_force_close,
             scroll_buffer_size,

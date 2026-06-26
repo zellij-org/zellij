@@ -1,5 +1,6 @@
 use super::{Output, Tab};
 use crate::panes::sixel::SixelImageStore;
+use zellij_utils::input::options::PaneFrameStyle;
 use crate::screen::CopyOptions;
 use crate::Arc;
 
@@ -214,7 +215,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let max_panes = None;
     let mode_info = default_mode;
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -302,7 +303,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
     let max_panes = None;
     let mode_info = default_mode;
     let style = Style::default();
-    let draw_pane_frames = false;
+    let draw_pane_frames = PaneFrameStyle::None;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -442,7 +443,11 @@ fn create_new_tab_with_swap_layouts(
         max_panes,
         style,
         mode_info,
-        draw_pane_frames,
+        if draw_pane_frames {
+            PaneFrameStyle::Full
+        } else {
+            PaneFrameStyle::None
+        },
         auto_layout,
         connected_clients,
         session_is_mirrored,
@@ -509,7 +514,7 @@ fn create_new_tab_with_os_api(
     let max_panes = None;
     let mode_info = default_mode;
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -597,7 +602,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let max_panes = None;
     let mode_info = default_mode;
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -703,7 +708,7 @@ fn create_new_tab_with_mock_pty_writer(
     let max_panes = None;
     let mode_info = default_mode;
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -796,7 +801,7 @@ fn create_new_tab_with_sixel_support(
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -3253,7 +3258,7 @@ fn embed_floating_pane_without_pane_frames() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.set_pane_frames(false);
+    tab.set_pane_frames(PaneFrameStyle::None);
     tab.toggle_floating_panes(Some(client_id), None, None)
         .unwrap();
     tab.new_pane(
@@ -3293,7 +3298,7 @@ fn float_embedded_pane_without_pane_frames() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.set_pane_frames(false);
+    tab.set_pane_frames(PaneFrameStyle::None);
     tab.new_pane(
         new_pane_id,
         None,
@@ -12691,7 +12696,7 @@ fn create_new_tab_with_plugin_receiver(
     let max_panes = None;
     let mode_info = default_mode;
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -14513,7 +14518,7 @@ fn create_new_tab_with_server_receiver(
         max_panes,
         Style::default(),
         default_mode,
-        true, // draw_pane_frames
+        PaneFrameStyle::Full,
         true, // auto_layout
         connected_clients,
         true, // session_is_mirrored

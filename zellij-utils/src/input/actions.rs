@@ -14,7 +14,7 @@ use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::mouse::MouseEvent;
-use crate::input::options::OnForceClose;
+use crate::input::options::{OnForceClose, PaneFrameStyle};
 use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -218,6 +218,7 @@ pub enum Action {
     ToggleFocusFullscreen,
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
+    SetPaneFrameStyle(PaneFrameStyle),
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
     ToggleActiveSyncTab,
     /// Open a new pane in the specified direction (relative to focus).
@@ -1007,6 +1008,9 @@ impl Action {
                 None => Ok(vec![Action::ToggleFocusFullscreen]),
             },
             CliAction::TogglePaneFrames => Ok(vec![Action::TogglePaneFrames]),
+            CliAction::SetPaneFrameStyle { style } => {
+                Ok(vec![Action::SetPaneFrameStyle(style)])
+            },
             CliAction::ToggleActiveSyncTab { tab_id } => match tab_id {
                 Some(id) => Ok(vec![Action::ToggleActiveSyncTabByTabId { id: id as u64 }]),
                 None => Ok(vec![Action::ToggleActiveSyncTab]),

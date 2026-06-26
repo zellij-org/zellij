@@ -386,6 +386,17 @@ impl PaneFrame {
     }
     fn render_title_middle(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
         // string and length because of color
+        let renders_exit_status_in_title = self.pane_is_stacked_under
+            || self.pane_is_stacked_over
+            || !self.should_draw_pane_frames;
+        if renders_exit_status_in_title && self.exit_status.is_some() {
+            let (first_part, first_part_len) = self.first_exited_held_title_part_full();
+            return if first_part_len <= max_length {
+                Some((first_part, first_part_len))
+            } else {
+                None
+            };
+        }
         if self.is_main_client
             && self.other_focused_clients.is_empty()
             && !self.other_cursors_exist_in_session
@@ -400,15 +411,6 @@ impl PaneFrame {
             self.render_my_and_others_focus(max_length)
         } else if !self.other_focused_clients.is_empty() {
             self.render_other_focused_users(max_length)
-        } else if (self.pane_is_stacked_under || self.pane_is_stacked_over)
-            && self.exit_status.is_some()
-        {
-            let (first_part, first_part_len) = self.first_exited_held_title_part_full();
-            if first_part_len <= max_length {
-                Some((first_part, first_part_len))
-            } else {
-                None
-            }
         } else {
             None
         }
