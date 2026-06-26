@@ -605,9 +605,15 @@ pub trait Pane {
         false
     }
     fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
-    /// Override the frame color with an arbitrary color (unlike the red/highlight
-    /// variants, which use fixed theme colors).
+    /// Set a persistent, user-requested frame color (via `set-pane-color --frame`).
+    /// Stored separately from the transient red/highlight overrides, so a bell flash
+    /// or highlight (and its later clear) does not wipe it: when the transient override
+    /// clears, the frame falls back to this user color instead of reverting to the
+    /// focus/unselected color.
     fn set_frame_color_override(&mut self, _color: PaletteColor) {}
+    /// Clear the persistent user frame color set by `set_frame_color_override`
+    /// (used by `set-pane-color --reset`). Does not touch the transient override.
+    fn clear_frame_color_user_override(&mut self) {}
     fn add_highlight_pane_frame_color_override(
         &mut self,
         _text: Option<String>,
@@ -2688,7 +2694,7 @@ impl Tab {
                     .and_then(crate::panes::grid::rgb_of_ansi_code)
                 {
                     Some(rgb) => pane.set_frame_color_override(PaletteColor::Rgb(rgb)),
-                    None => pane.clear_pane_frame_color_override(None),
+                    None => pane.clear_frame_color_user_override(),
                 }
             }
         }
