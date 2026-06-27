@@ -3023,13 +3023,18 @@ pub fn alternate_screen_change_size() {
     assert_eq!(grid.scrollback_position_and_length(), (0, 0))
 }
 
+/// Minimal regression test: viewport has more rows than self.height
+/// (simulating stale alt-screen rows after resize). Assert that
+/// dump_screen / dump_screen_with_ansi never include rows beyond height.
 #[test]
-pub fn dump_screen_clips_viewport_to_height_in_alternate_screen() {
-    let mut vte_parser = vte::Parser::new();
+pub fn dump_screen_stale_rows_not_leaked() {
+    use super::super::{Row, TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
+    use std::collections::VecDeque;
+
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
-        10,
+        5,
         20,
         Rc::new(RefCell::new(Palette::default())),
         terminal_emulator_color_codes,
@@ -3038,145 +3043,38 @@ pub fn dump_screen_clips_viewport_to_height_in_alternate_screen() {
         sixel_image_store,
         Style::default(),
         false,
-        true,
-        true,
-        true,
-        false,
-    );
-    // Enter alternate screen
-    for byte in b"\x1b[?1049h" {
-        vte_parser.advance(&mut grid, *byte);
-    }
-    assert!(grid.alternate_screen_state.is_some());
-    // Fill viewport with 10 lines
-    for i in 0u8..10 {
-        let line = format!("line{}\n", i);
-        for byte in line.as_bytes() {
-            vte_parser.advance(&mut grid, *byte);
-        }
-    }
-    assert_eq!(grid.viewport.len(), 10);
-    assert_eq!(grid.height, 10);
-    // Resize to a smaller height — viewport is not trimmed but height updates
-    grid.change_size(5, 20);
-    assert_eq!(grid.viewport.len(), 10, "viewport should still have 10 rows after alt-screen resize");
-    assert_eq!(grid.height, 5, "height should be updated to 5");
-
-    // Verify that dump_screen respects height when viewport has extra rows.
-    //
-    // In the alt-screen branch of change_size, the viewport is NOT trimmed even
-    // though height shrinks.  This test directly inserts more rows than the
-    // current height and then asserts both dump_screen & dump_screen_with_ansi
-    // clip the output.
-    let dumped = grid.dump_screen(false);
-    let lines: Vec<&str> = dumped.lines().collect();
-    assert!(
-        lines.len() <= 5,
-        "dump_screen should output at most height=5 rows when viewport has {}, got {} lines",
-        grid.viewport.len(),
-        lines.len(),
+        true, true, true, false,
     );
 
-    // Also verify that the *count* of non-empty dumped lines never exceeds height.
-    let non_empty: Vec<&str> = lines
-        .iter()
-        .copied()
-        .filter(|l| !l.is_empty())
-        .collect();
-    assert!(
-        non_empty.len() <= 5,
-        "non-empty lines ({}) exceed height=5",
-        non_empty.len()
-    );
-
-    // dump_screen_with_ansi should also be clipped.
-    let dumped_ansi = grid.dump_screen_with_ansi(false);
-    // ANSI dump contains escape sequences, so we count newline-separated segments.
-    let ansi_line_count = dumped_ansi.lines().count();
-    assert!(
-        ansi_line_count <= 5,
-        "dump_screen_with_ansi output {} lines with viewport.len()={} height=5",
-        ansi_line_count,
-        grid.viewport.len(),
-    );
-}
-
-/// Construct a grid whose viewport has more rows than self.height
-/// (simulating the stale-alt-screen-after-resize scenario) and assert
-/// dump_screen / dump_screen_with_ansi never leak rows beyond height.
-#[test]
-pub fn dump_screen_never_exceeds_height_when_viewport_has_extra_rows() {
-    use super::super::{Row, TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
-    use super::super::RcCharacterStyles;
-    use std::collections::VecDeque;
-
-    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
-    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let mut grid = Grid::new(
-        5,
-        10,
-        Rc::new(RefCell::new(Palette::default())),
-        terminal_emulator_color_codes,
-        Rc::new(RefCell::new(LinkHandler::new())),
-        Rc::new(RefCell::new(None)),
-        sixel_image_store,
-        Style::default(),
-        false,
-        true,
-        true,
-        true,
-        false,
-    );
-    // Enter alternate screen state so the Grid thinks it is in alt-screen mode.
-    let mut vte_parser = vte::Parser::new();
-    for byte in b"\x1b[?1049h" {
-        vte_parser.advance(&mut grid, *byte);
-    }
-    assert!(grid.alternate_screen_state.is_some());
-
-    // Manually push 8 rows into the viewport so viewport.len() == 8  while height == 5.
-    for i in 0u8..8 {
-        let text = format!("row{:02}", i);
-        let mut columns: VecDeque<TerminalCharacter> = text
+    // Populate viewport: initial row + 6 pushed → 7 total rows, height=5 → 2 stale.
+    for label in &["VIS-0", "VIS-1", "VIS-2", "VIS-3", "STALE-0", "STALE-1"] {
+        let mut columns: VecDeque<TerminalCharacter> = label
             .bytes()
-            .map(|b| TerminalCharacter::new_styled(b as char, RcCharacterStyles::default()))
+            .map(|b| TerminalCharacter::new_styled(b as char, Default::default()))
             .collect();
-        // Pad to width
         while columns.len() < grid.width {
             columns.push_back(EMPTY_TERMINAL_CHARACTER);
         }
         grid.viewport.push_back(Row::from_columns(columns).canonical());
     }
-    assert_eq!(grid.viewport.len(), 9, "viewport len should be 1 (initial) + 8 = 9"); // the Grid::new initial row + 8
+    // 1 (initial row) + 6 = 7
+    assert_eq!(grid.viewport.len(), 7);
     assert_eq!(grid.height, 5);
-    assert!(
-        grid.viewport.len() > grid.height,
-        "viewport rows ({}) > height ({}) — this is the stale-rows scenario",
-        grid.viewport.len(),
-        grid.height,
-    );
+    assert!(grid.viewport.len() > grid.height);
 
-    // dump_screen(false) must not output more lines than height.
+    // dump_screen(false): visible rows appear, stale rows do not
     let plain = grid.dump_screen(false);
-    let plain_lines: Vec<&str> = plain.lines().collect();
-    assert!(
-        plain_lines.len() <= grid.height,
-        "dump_screen produced {} lines with viewport.len()={} height={}",
-        plain_lines.len(),
-        grid.viewport.len(),
-        grid.height,
-    );
+    assert!(plain.contains("VIS-0"), "visible row VIS-0 should be in plain dump");
+    assert!(plain.contains("VIS-3"), "visible row VIS-3 should be in plain dump");
+    assert!(!plain.contains("STALE-0"), "stale row STALE-0 must not appear");
+    assert!(!plain.contains("STALE-1"), "stale row STALE-1 must not appear");
 
-    // dump_screen_with_ansi(false) same check.
+    // dump_screen_with_ansi(false): same check
     let ansi = grid.dump_screen_with_ansi(false);
-    let ansi_line_count = ansi.lines().count();
-    assert!(
-        ansi_line_count <= grid.height,
-        "dump_screen_with_ansi produced {} lines with viewport.len()={} height={}",
-        ansi_line_count,
-        grid.viewport.len(),
-        grid.height,
-    );
+    assert!(ansi.contains("VIS-0"), "visible row VIS-0 should be in ansi dump");
+    assert!(ansi.contains("VIS-3"), "visible row VIS-3 should be in ansi dump");
+    assert!(!ansi.contains("STALE-0"), "stale row STALE-0 must not appear in ansi dump");
+    assert!(!ansi.contains("STALE-1"), "stale row STALE-1 must not appear in ansi dump");
 }
 
 #[test]

@@ -382,9 +382,9 @@ pub fn parse_osc7_path(raw: &[u8]) -> Option<std::path::PathBuf> {
 macro_rules! dump_screen {
     ($lines:expr) => {{
         let mut is_first = true;
-        let mut buf = String::new();
+        let mut buf = String::with_capacity($lines.iter().map(|l| l.len()).sum());
 
-        for line in $lines {
+        for line in &$lines {
             if line.is_canonical && !is_first {
                 buf.push_str("\n");
             }
@@ -405,7 +405,7 @@ macro_rules! dump_screen_with_ansi {
         let mut buf = String::new();
         let mut last_styles: Option<RcCharacterStyles> = None;
 
-        for line in $lines {
+        for line in &$lines {
             if line.is_canonical && !is_first {
                 buf.push_str("\n");
                 last_styles = None;
@@ -1685,11 +1685,12 @@ impl Grid {
     }
     /// Dumps all lines above terminal vieport and the viewport itself to a string
     pub fn dump_screen(&self, full: bool) -> String {
-        let viewport: String = dump_screen!(self.viewport.iter().take(self.height));
+        let viewport_rows: Vec<&Row> = self.viewport.iter().take(self.height).collect();
+        let viewport: String = dump_screen!(viewport_rows);
         if !full {
             return viewport;
         }
-        let mut scrollback: String = dump_screen!(self.lines_above.iter());
+        let mut scrollback: String = dump_screen!(self.lines_above);
         if !scrollback.is_empty() {
             scrollback.push('\n');
         }
@@ -1698,11 +1699,12 @@ impl Grid {
     }
     /// Dumps all lines (with ansi) above terminal viewport and the viewport itself to a string
     pub fn dump_screen_with_ansi(&self, full: bool) -> String {
-        let viewport: String = dump_screen_with_ansi!(self.viewport.iter().take(self.height));
+        let viewport_rows: Vec<&Row> = self.viewport.iter().take(self.height).collect();
+        let viewport: String = dump_screen_with_ansi!(viewport_rows);
         if !full {
             return viewport;
         }
-        let mut scrollback: String = dump_screen_with_ansi!(self.lines_above.iter());
+        let mut scrollback: String = dump_screen_with_ansi!(self.lines_above);
         if !scrollback.is_empty() {
             scrollback.push('\n');
         }
