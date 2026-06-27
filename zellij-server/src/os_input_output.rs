@@ -93,6 +93,23 @@ pub(crate) fn command_exists(cmd: &RunCommand) -> bool {
     resolve_command(cmd).is_some()
 }
 
+#[cfg(windows)]
+fn shell_from_env() -> Option<PathBuf> {
+    env::var_os("SHELL")
+        .map(PathBuf::from)
+        .filter(|shell| shell.exists() && shell.is_file())
+}
+
+#[cfg(windows)]
+pub(crate) fn default_shell_command() -> Option<RunCommand> {
+    shell_from_env().map(|command| RunCommand {
+        command,
+        args: vec![],
+        cwd: None,
+        env: None,
+    })
+}
+
 // this is a utility method to separate the arguments from a pathbuf before we turn it into a
 // Command. eg. "/usr/bin/vim -e" ==> "/usr/bin/vim" + "-e" (the latter will be pushed to args)
 fn separate_command_arguments(command: &mut PathBuf, args: &mut Vec<String>) {
