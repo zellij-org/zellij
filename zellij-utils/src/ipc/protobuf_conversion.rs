@@ -1738,9 +1738,15 @@ impl From<crate::input::actions::Action>
                 show_all,
                 output_json,
             }),
-            crate::input::actions::Action::CurrentTabInfo { output_json } => {
-                ActionType::CurrentTabInfo(CurrentTabInfoAction { output_json })
-            },
+            crate::input::actions::Action::CurrentTabInfo {
+                output_json,
+                name_only,
+                id_only,
+            } => ActionType::CurrentTabInfo(CurrentTabInfoAction {
+                output_json,
+                name_only,
+                id_only,
+            }),
             crate::input::actions::Action::SetPaneColor { pane_id, fg, bg } => {
                 ActionType::SetPaneColor(SetPaneColorAction {
                     pane_id: Some(pane_id.into()),
@@ -2557,6 +2563,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::CurrentTabInfo(current_tab_info_action) => {
                 Ok(crate::input::actions::Action::CurrentTabInfo {
                     output_json: current_tab_info_action.output_json,
+                    name_only: current_tab_info_action.name_only,
+                    id_only: current_tab_info_action.id_only,
                 })
             },
             ActionType::TogglePanePinned(_) => Ok(crate::input::actions::Action::TogglePanePinned),

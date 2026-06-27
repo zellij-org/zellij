@@ -546,6 +546,8 @@ pub enum Action {
     },
     CurrentTabInfo {
         output_json: bool,
+        name_only: bool,
+        id_only: bool,
     },
     TogglePanePinned,
     StackPanes {
@@ -1925,9 +1927,11 @@ impl Action {
                 show_all: all,
                 output_json: json,
             }]),
-            CliAction::CurrentTabInfo { json } => {
-                Ok(vec![Action::CurrentTabInfo { output_json: json }])
-            },
+            CliAction::CurrentTabInfo { json, name, id } => Ok(vec![Action::CurrentTabInfo {
+                output_json: json,
+                name_only: name,
+                id_only: id,
+            }]),
             CliAction::TogglePanePinned { pane_id } => match pane_id {
                 Some(pane_id_str) => {
                     let pane_id = PaneId::from_str(&pane_id_str)

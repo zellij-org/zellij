@@ -689,6 +689,10 @@ pub struct ListTabsAction {
 pub struct CurrentTabInfoAction {
     #[prost(bool, tag="1")]
     pub output_json: bool,
+    #[prost(bool, tag="2")]
+    pub name_only: bool,
+    #[prost(bool, tag="3")]
+    pub id_only: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1405,7 +1409,9 @@ pub mod new_pane_placement {
         InPlace(super::NewPanePlacementInPlace),
         #[prost(message, tag="5")]
         Stacked(super::PaneId),
-        /// these new variants are so that we can send data along with the previous variants without compromising backwards compatibility by changing the above types
+        /// these new variants are so that we can send data along with the previous
+        /// variants without compromising backwards compatibility by changing the
+        /// above types
         #[prost(message, tag="6")]
         NoPreferenceWithOptions(super::NoPreferencePlacement),
         #[prost(message, tag="7")]
@@ -1557,7 +1563,9 @@ pub struct TiledPaneLayout {
     pub pane_initial_contents: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="14")]
     pub default_fg: ::core::option::Option<::prost::alloc::string::String>,
-    /// NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
+    /// NOTE: run_instructions_to_ignore is not represented here because it's a
+    /// field used only inside the server itself and not part of the server/client
+    /// contract
     #[prost(string, optional, tag="15")]
     pub default_bg: ::core::option::Option<::prost::alloc::string::String>,
 }
@@ -2612,8 +2620,9 @@ impl MouseEventType {
         }
     }
 }
-// Note: Old MousePressEvent, MouseReleaseEvent, MouseHoldEvent, MouseScrollEvent,
-// MouseButton, and ScrollDirection removed - replaced with unified MouseEvent structure
+// Note: Old MousePressEvent, MouseReleaseEvent, MouseHoldEvent,
+// MouseScrollEvent, MouseButton, and ScrollDirection removed - replaced with
+// unified MouseEvent structure
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

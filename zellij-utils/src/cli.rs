@@ -1566,6 +1566,12 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Output as JSON with full TabInfo
         #[clap(short, long, value_parser)]
         json: bool,
+        /// Output only the tab name
+        #[clap(short, long, value_parser)]
+        name: bool,
+        /// Output only the tab id
+        #[clap(short, long, value_parser)]
+        id: bool,
     },
     TogglePanePinned {
         /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)

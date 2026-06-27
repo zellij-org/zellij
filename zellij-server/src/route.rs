@@ -1732,7 +1732,11 @@ pub(crate) fn route_action(
             }
             drop(NotificationEnd::new(completion_tx));
         },
-        Action::CurrentTabInfo { output_json } => {
+        Action::CurrentTabInfo {
+            output_json,
+            name_only,
+            id_only,
+        } => {
             let maybe_tab_info = request_current_tab_info_from_screen(&senders, client_id)
                 .with_context(err_context)?;
 
@@ -1740,6 +1744,10 @@ pub(crate) fn route_action(
                 Some(tab_info) => {
                     let output_lines = if output_json {
                         format_current_tab_info_as_json(&tab_info)
+                    } else if name_only {
+                        vec![tab_info.name]
+                    } else if id_only {
+                        vec![tab_info.tab_id.to_string()]
                     } else {
                         format_current_tab_info_plain(&tab_info)
                     };
