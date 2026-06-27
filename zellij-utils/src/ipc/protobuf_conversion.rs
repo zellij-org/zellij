@@ -766,6 +766,7 @@ impl From<crate::input::options::Options>
             }),
             mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u32),
             mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u32),
+            select_by_word_characters: options.select_by_word_characters,
         }
     }
 }
@@ -880,6 +881,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 .transpose()?,
             mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u16),
             mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u16),
+            select_by_word_characters: options.select_by_word_characters,
         })
     }
 }

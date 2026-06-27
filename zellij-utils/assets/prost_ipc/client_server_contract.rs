@@ -1971,6 +1971,8 @@ pub struct Options {
     pub mobile_threshold_cols: ::core::option::Option<u32>,
     #[prost(uint32, optional, tag="50")]
     pub mobile_threshold_rows: ::core::option::Option<u32>,
+    #[prost(string, optional, tag="51")]
+    pub select_by_word_characters: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]

@@ -482,6 +482,7 @@ fn test_client_messages() {
                 mobile_layout: Some(MobileLayoutConfiguration::Always),
                 mobile_threshold_cols: Some(72),
                 mobile_threshold_rows: Some(40),
+                select_by_word_characters: Some("@-./_~?&=%+#".to_string()),
             }),
             layout: None,
             terminal_window_size: Size { rows: 80, cols: 42 },

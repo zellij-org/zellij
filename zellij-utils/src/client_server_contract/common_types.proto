@@ -1183,6 +1183,7 @@ message Options {
   optional MobileLayout mobile_layout = 48;
   optional uint32 mobile_threshold_cols = 49;
   optional uint32 mobile_threshold_rows = 50;
+  optional string select_by_word_characters = 51;
 }
 
 enum OnForceClose {
