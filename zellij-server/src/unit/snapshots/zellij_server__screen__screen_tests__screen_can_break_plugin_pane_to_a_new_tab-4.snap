@@ -2,7 +2,7 @@
 source: zellij-server/src/./unit/screen_tests.rs
 expression: "format!(\"{}\", snapshot)"
 ---
-00 (C): ─ plugin_pane_to_break_free ────────────────────────────────────────────────────
+00 (C):                             plugin_pane_to_break_free                           
 01 (C):                                                                                 
 02 (C):                                                                                 
 03 (C):                                                                                 

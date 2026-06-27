@@ -2,7 +2,7 @@
 source: zellij-server/src/./unit/screen_tests.rs
 expression: "format!(\"{}\", snapshot)"
 ---
-00 (C): ┌ P[..]2 ┐──────────────────────────────────────────────────────────────────────
+00 (C): ┌ P[..]2 ┐                           Pane #1                                    
 01 (C): │        │                                                                      
 02 (C): │        │                                                                      
 03 (C): │        │                                                                      
