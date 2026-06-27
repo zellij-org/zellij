@@ -558,6 +558,12 @@ impl TiledPanes {
         self.pane_frame_style = pane_frame_style;
         let draws_full_frames = pane_frame_style.draws_full_frames();
         let draws_titles = pane_frame_style.draws_titles();
+        let single_selectable_tiled_pane = self
+            .panes
+            .values()
+            .filter(|p| p.selectable() && !p.borderless())
+            .count()
+            == 1;
         let viewport = *self.viewport.borrow();
         let position_and_sizes_of_stacks = {
             StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
@@ -590,7 +596,7 @@ impl TiledPanes {
                 let (pane_columns_offset, pane_rows_offset) =
                     pane_content_offset(&position_and_size, &viewport);
                 let reserve_title_row = if draws_titles {
-                    !pane_is_borderless && is_flexible
+                    !pane_is_borderless && is_flexible && !single_selectable_tiled_pane
                 } else {
                     is_stacked && is_flexible
                 };
@@ -1059,6 +1065,12 @@ impl TiledPanes {
                 .with_context(err_context)?
         };
         let selectable_pane_count = self.panes.iter().filter(|(_, p)| p.selectable()).count();
+        let content_pane_count = self
+            .panes
+            .iter()
+            .filter(|(_, p)| p.selectable() && !p.borderless())
+            .count();
+        let omit_pane_title = self.pane_frame_style.draws_titles() && content_pane_count == 1;
         for (kind, pane) in self.panes.iter_mut() {
             match kind {
                 PaneId::Terminal(_) => {
@@ -1125,6 +1137,7 @@ impl TiledPanes {
                     &mouse_hover_pane_id,
                     current_pane_group.clone(),
                     show_help_text,
+                    omit_pane_title,
                 );
                 for client_id in &connected_clients {
                     let client_mode = self

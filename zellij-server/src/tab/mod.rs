@@ -162,6 +162,7 @@ pub(crate) struct Tab {
     pub position: usize,
     pub name: String,
     pub prev_name: String,
+    default_name: String,
     pub size: Size,
     pub visible_to: Option<HashSet<ClientId>>,
     tiled_panes: TiledPanes,
@@ -214,6 +215,7 @@ pub(crate) struct Tab {
     mouse_help_text_visible: HashMap<ClientId, bool>,
     last_mouse_activity_time: HashMap<ClientId, Instant>,
     last_hint_text: HashMap<ClientId, BTreeMap<usize, StyledText>>,
+    last_active_pane_scroll: HashMap<ClientId, Option<(usize, usize)>>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
     mouse_hover_effects: bool,
@@ -625,6 +627,12 @@ pub trait Pane {
     fn progress_animation_offset(&mut self) {} // only relevant for plugins
     fn current_title(&self) -> String;
     fn custom_title(&self) -> Option<String>;
+    fn has_explicit_title(&self) -> bool {
+        false
+    }
+    fn scroll_position(&self) -> (usize, usize) {
+        (0, 0)
+    }
     fn is_held(&self) -> bool {
         false
     }
@@ -769,8 +777,13 @@ impl Tab {
         web_server_port: u16,
         mobile_tab_count: usize,
     ) -> Self {
-        let name = if name.is_empty() {
+        let default_name = if name.is_empty() {
             format!("Tab #{}", (id + 1).saturating_sub(mobile_tab_count))
+        } else {
+            String::new()
+        };
+        let name = if name.is_empty() {
+            default_name.clone()
         } else {
             name
         };
@@ -829,6 +842,7 @@ impl Tab {
             suppressed_panes: HashMap::new(),
             name: name.clone(),
             prev_name: name,
+            default_name,
             size: initial_size,
             visible_to: None,
             max_panes,
@@ -873,6 +887,7 @@ impl Tab {
             mouse_help_text_visible: HashMap::new(),
             last_mouse_activity_time: HashMap::new(),
             last_hint_text: HashMap::new(),
+            last_active_pane_scroll: HashMap::new(),
             current_pane_group,
             currently_marking_pane_group,
             advanced_mouse_actions,
@@ -1307,6 +1322,72 @@ impl Tab {
     }
     pub fn clear_hint_text_cache(&mut self) {
         self.last_hint_text.clear();
+    }
+    fn get_selectable_tiled_content_panes(
+        &self,
+    ) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+        self.get_selectable_tiled_panes()
+            .filter(|(_, p)| !p.borderless())
+    }
+    pub fn single_pane_titles(&self) -> bool {
+        self.pane_frame_style.draws_titles()
+            && self.get_selectable_tiled_content_panes().count() == 1
+    }
+    fn tab_name_is_default(&self) -> bool {
+        !self.name.is_empty() && self.name == self.default_name
+    }
+    pub fn single_pane_tab_name(&self) -> Option<String> {
+        if !self.single_pane_titles() {
+            return None;
+        }
+        let (_, pane) = self.get_selectable_tiled_content_panes().next()?;
+        let mut base = if self.tab_name_is_default() && pane.has_explicit_title() {
+            pane.current_title()
+        } else {
+            self.name.clone()
+        };
+        if pane.is_held() && pane.exited() {
+            match pane.exit_status() {
+                Some(exit_code) => base.push_str(&format!(" [ EXIT CODE: {} ] ", exit_code)),
+                None => base.push_str(" [ EXITED ] "),
+            }
+        }
+        Some(base)
+    }
+    fn resolve_active_pane_scroll(&self, _client_id: ClientId) -> Option<(usize, usize)> {
+        if !self.single_pane_titles() {
+            return None;
+        }
+        let (_, pane) = self.get_selectable_tiled_content_panes().next()?;
+        let (position, length) = pane.scroll_position();
+        if position > 0 || length > 0 {
+            Some((position, length))
+        } else {
+            None
+        }
+    }
+    pub fn emit_active_pane_scroll_if_changed(&mut self) -> Result<()> {
+        let connected_clients: Vec<ClientId> =
+            self.connected_clients.borrow().iter().copied().collect();
+        let mut plugin_updates = vec![];
+        for client_id in connected_clients {
+            let active_pane_scroll = self.resolve_active_pane_scroll(client_id);
+            if self.last_active_pane_scroll.get(&client_id) != Some(&active_pane_scroll) {
+                self.last_active_pane_scroll
+                    .insert(client_id, active_pane_scroll);
+                plugin_updates.push((
+                    None,
+                    Some(client_id),
+                    Event::ActivePaneScroll(active_pane_scroll),
+                ));
+            }
+        }
+        if !plugin_updates.is_empty() {
+            self.senders
+                .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                .with_context(|| format!("failed to update plugins with active pane scroll"))?;
+        }
+        Ok(())
     }
     pub fn add_client(&mut self, client_id: ClientId, mode_info: Option<ModeInfo>) -> Result<()> {
         let other_clients_exist_in_tab = { !self.connected_clients.borrow().is_empty() };
@@ -3471,6 +3552,8 @@ impl Tab {
         }
 
         self.emit_hint_text_if_changed()
+            .with_context(err_context)?;
+        self.emit_active_pane_scroll_if_changed()
             .with_context(err_context)?;
 
         Ok(())

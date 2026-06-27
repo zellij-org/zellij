@@ -27,6 +27,7 @@ pub use super::generated_api::api::{
         PluginConfigurationChangedPayload as ProtobufPluginConfigurationChangedPayload,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
+        ActivePaneScrollPayload as ProtobufActivePaneScrollPayload,
         HintTextPayload as ProtobufHintTextPayload,
         SoftKeyboardVisibilityChangedPayload as ProtobufSoftKeyboardVisibilityChangedPayload,
         StyledText as ProtobufStyledText, StyledTextIndices as ProtobufStyledTextIndices,
@@ -610,6 +611,18 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for HintText Event"),
             },
+            Some(ProtobufEventType::ActivePaneScroll) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::ActivePaneScrollPayload(p)) => {
+                    let scroll = match (p.position, p.length) {
+                        (Some(position), Some(length)) => {
+                            Some((position as usize, length as usize))
+                        },
+                        _ => None,
+                    };
+                    Ok(Event::ActivePaneScroll(scroll))
+                },
+                _ => Err("Malformed payload for ActivePaneScroll Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -1171,6 +1184,22 @@ impl TryFrom<Event> for ProtobufEvent {
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::HintText as i32,
                     payload: Some(event::Payload::HintTextPayload(payload)),
+                })
+            },
+            Event::ActivePaneScroll(scroll) => {
+                let payload = match scroll {
+                    Some((position, length)) => ProtobufActivePaneScrollPayload {
+                        position: Some(position as u32),
+                        length: Some(length as u32),
+                    },
+                    None => ProtobufActivePaneScrollPayload {
+                        position: None,
+                        length: None,
+                    },
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::ActivePaneScroll as i32,
+                    payload: Some(event::Payload::ActivePaneScrollPayload(payload)),
                 })
             },
             Event::InitialKeybinds(keybinds) => {
@@ -2165,6 +2194,7 @@ impl TryFrom<ProtobufEventType> for EventType {
                 EventType::SoftKeyboardVisibilityChanged
             },
             ProtobufEventType::HintText => EventType::HintText,
+            ProtobufEventType::ActivePaneScroll => EventType::ActivePaneScroll,
         })
     }
 }
@@ -2223,6 +2253,7 @@ impl TryFrom<EventType> for ProtobufEventType {
                 ProtobufEventType::SoftKeyboardVisibilityChanged
             },
             EventType::HintText => ProtobufEventType::HintText,
+            EventType::ActivePaneScroll => ProtobufEventType::ActivePaneScroll,
         })
     }
 }

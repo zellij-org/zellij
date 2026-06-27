@@ -71,6 +71,7 @@ enum EventType {
     HostTerminalThemeChanged = 46;
     SoftKeyboardVisibilityChanged = 47;
     HintText = 48;
+    ActivePaneScroll = 49;
 }
 
 message EventNameList {
@@ -121,11 +122,17 @@ message Event {
     HostTerminalThemeChangedPayload host_terminal_theme_changed_payload = 40;
     SoftKeyboardVisibilityChangedPayload soft_keyboard_visibility_changed_payload = 41;
     HintTextPayload hint_text_payload = 42;
+    ActivePaneScrollPayload active_pane_scroll_payload = 43;
   }
 }
 
 message HintTextPayload {
   map<uint32, StyledText> hint_text = 1;
+}
+
+message ActivePaneScrollPayload {
+  optional uint32 position = 1;
+  optional uint32 length = 2;
 }
 
 message StyledText {

@@ -224,6 +224,7 @@ pub fn tab_line(
     mode_info: &ModeInfo,
     hide_swap_layout_indicator: bool,
     background: &PaletteColor,
+    active_pane_scroll: Option<(usize, usize)>,
 ) -> Vec<LinePart> {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
@@ -249,6 +250,10 @@ pub fn tab_line(
             )
         })
     };
+    if swap_layout_indicator.is_none() {
+        swap_layout_indicator =
+            active_pane_scroll.map(|scroll| scroll_status(scroll, !capabilities.arrow_fonts));
+    }
 
     // Drop indicator if it would cause wrapping (active tab always rendered unconditionally)
     let prefix_len = get_current_title_len(&prefix);
@@ -327,6 +332,12 @@ fn swap_layout_status(
         },
         None => None,
     }
+}
+
+fn scroll_status(scroll: (usize, usize), supports_arrow_fonts: bool) -> LinePart {
+    let (position, length) = scroll;
+    let text = format!("SCROLL: {}/{}", position, length);
+    ribbon_as_line_part(&text, position > 0, supports_arrow_fonts)
 }
 
 pub fn ribbon_as_line_part(text: &str, is_selected: bool, supports_arrow_fonts: bool) -> LinePart {

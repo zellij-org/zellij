@@ -1405,6 +1405,7 @@ pub(crate) struct Screen {
     max_panes: Option<usize>,
     /// A map between this [`Screen`]'s tabs and their ID/key.
     tabs: BTreeMap<usize, Tab>,
+    last_single_pane_tab_names: HashMap<usize, Option<String>>,
     /// The full size of this [`Screen`].
     size: Size,
     pixel_dimensions: PixelDimensions,
@@ -1579,6 +1580,7 @@ impl Screen {
             client_sizes: HashMap::new(),
             global_last_active_tab_id: 0,
             tabs: BTreeMap::new(),
+            last_single_pane_tab_names: HashMap::new(),
             terminal_emulator_colors: Rc::new(RefCell::new(Palette::default())),
             terminal_emulator_color_codes: Rc::new(RefCell::new(HashMap::new())),
             tab_history: BTreeMap::new(),
@@ -2975,7 +2977,8 @@ impl Screen {
                 }
             }
 
-            if bell_state_changed {
+            let single_pane_names_changed = self.update_single_pane_tab_names();
+            if bell_state_changed || single_pane_names_changed {
                 self.log_and_report_session_state()?;
             }
         } else {
@@ -3700,7 +3703,9 @@ impl Screen {
                 let selectable_floating_panes_count = tab.get_selectable_floating_panes_count();
                 let tab_info_for_plugins = TabInfo {
                     position: tab.position,
-                    name: tab.name.clone(),
+                    name: tab
+                        .single_pane_tab_name()
+                        .unwrap_or_else(|| tab.name.clone()),
                     active: *active_tab_index == tab.id,
                     panes_to_hide: tab.panes_to_hide_count(),
                     is_fullscreen_active: tab.is_fullscreen_active(),
@@ -3822,6 +3827,19 @@ impl Screen {
         }
     }
 
+    fn update_single_pane_tab_names(&mut self) -> bool {
+        let current: HashMap<usize, Option<String>> = self
+            .tabs
+            .values()
+            .map(|tab| (tab.id, tab.single_pane_tab_name()))
+            .collect();
+        if current != self.last_single_pane_tab_names {
+            self.last_single_pane_tab_names = current;
+            true
+        } else {
+            false
+        }
+    }
     fn log_and_report_session_state(&mut self) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
 

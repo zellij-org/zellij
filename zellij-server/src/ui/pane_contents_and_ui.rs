@@ -20,6 +20,7 @@ pub struct PaneContentsAndUi<'a> {
     mouse_is_hovering_over_pane_for_clients: HashSet<ClientId>,
     current_pane_group: HashMap<ClientId, Vec<PaneId>>,
     show_help_text: bool,
+    omit_title: bool,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -36,6 +37,7 @@ impl<'a> PaneContentsAndUi<'a> {
         mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
         current_pane_group: HashMap<ClientId, Vec<PaneId>>,
         show_help_text: bool,
+        omit_title: bool,
     ) -> Self {
         let mut focused_clients: Vec<ClientId> = active_panes
             .iter()
@@ -66,6 +68,7 @@ impl<'a> PaneContentsAndUi<'a> {
             mouse_is_hovering_over_pane_for_clients,
             current_pane_group,
             show_help_text,
+            omit_title,
         }
     }
     pub fn render_pane_contents_to_multiple_clients(
@@ -260,6 +263,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 pane_is_selectable,
                 show_help_text: self.show_help_text,
                 highlight_tooltip: highlight_tooltip.clone(),
+                omit_title: self.omit_title,
             }
         } else {
             FrameParams {
@@ -281,6 +285,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 pane_is_selectable,
                 show_help_text: self.show_help_text,
                 highlight_tooltip,
+                omit_title: self.omit_title,
             }
         };
 

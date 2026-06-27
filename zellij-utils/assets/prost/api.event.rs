@@ -9,7 +9,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -99,6 +99,8 @@ pub mod event {
         SoftKeyboardVisibilityChangedPayload(super::SoftKeyboardVisibilityChangedPayload),
         #[prost(message, tag="42")]
         HintTextPayload(super::HintTextPayload),
+        #[prost(message, tag="43")]
+        ActivePaneScrollPayload(super::ActivePaneScrollPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -106,6 +108,14 @@ pub mod event {
 pub struct HintTextPayload {
     #[prost(map="uint32, message", tag="1")]
     pub hint_text: ::std::collections::HashMap<u32, StyledText>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ActivePaneScrollPayload {
+    #[prost(uint32, optional, tag="1")]
+    pub position: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag="2")]
+    pub length: ::core::option::Option<u32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -875,6 +885,7 @@ pub enum EventType {
     HostTerminalThemeChanged = 46,
     SoftKeyboardVisibilityChanged = 47,
     HintText = 48,
+    ActivePaneScroll = 49,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -931,6 +942,7 @@ impl EventType {
             EventType::HostTerminalThemeChanged => "HostTerminalThemeChanged",
             EventType::SoftKeyboardVisibilityChanged => "SoftKeyboardVisibilityChanged",
             EventType::HintText => "HintText",
+            EventType::ActivePaneScroll => "ActivePaneScroll",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -984,6 +996,7 @@ impl EventType {
             "HostTerminalThemeChanged" => Some(Self::HostTerminalThemeChanged),
             "SoftKeyboardVisibilityChanged" => Some(Self::SoftKeyboardVisibilityChanged),
             "HintText" => Some(Self::HintText),
+            "ActivePaneScroll" => Some(Self::ActivePaneScroll),
             _ => None,
         }
     }

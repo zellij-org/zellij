@@ -33,6 +33,7 @@ struct State {
     tab_line: Vec<LinePart>,
     hide_swap_layout_indication: bool,
     cached_keybinds: KeybindsVec,
+    active_pane_scroll: Option<(usize, usize)>,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -51,6 +52,7 @@ impl ZellijPlugin for State {
             EventType::ModeUpdate,
             EventType::Mouse,
             EventType::InitialKeybinds,
+            EventType::ActivePaneScroll,
         ]);
     }
 
@@ -88,6 +90,12 @@ impl ZellijPlugin for State {
                 } else {
                     eprintln!("Could not find active tab.");
                 }
+            },
+            Event::ActivePaneScroll(scroll) => {
+                if self.active_pane_scroll != scroll {
+                    should_render = true;
+                }
+                self.active_pane_scroll = scroll;
             },
             Event::Mouse(me) => match me {
                 Mouse::LeftClick(_, col) => {
@@ -158,6 +166,7 @@ impl ZellijPlugin for State {
             &self.mode_info,
             self.hide_swap_layout_indication,
             &background,
+            self.active_pane_scroll,
         );
 
         let output = self

@@ -72,6 +72,7 @@ pub struct FrameParams {
     pub pane_is_selectable: bool,
     pub show_help_text: bool,
     pub highlight_tooltip: Option<String>,
+    pub omit_title: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -98,6 +99,7 @@ pub struct PaneFrame {
     is_selectable: bool,
     show_help_text: bool,
     highlight_tooltip: Option<String>,
+    omit_title: bool,
 }
 
 impl PaneFrame {
@@ -130,6 +132,7 @@ impl PaneFrame {
             is_selectable: frame_params.pane_is_selectable,
             show_help_text: frame_params.show_help_text,
             highlight_tooltip: frame_params.highlight_tooltip,
+            omit_title: frame_params.omit_title,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -1160,6 +1163,9 @@ impl PaneFrame {
     pub fn render(&self) -> Result<(Vec<CharacterChunk>, Option<String>)> {
         let err_context = || "failed to render pane frame";
         let mut character_chunks = vec![];
+        if self.omit_title {
+            return Ok((character_chunks, None));
+        }
         if self.geom.rows == 1 || !self.should_draw_pane_frames {
             // we do this explicitly when not drawing pane frames because this should only happen
             // if this is a stacked pane with pane frames off (and it doesn't necessarily have only

@@ -1039,6 +1039,7 @@ pub enum Event {
     HostTerminalThemeChanged(HostTerminalThemeMode),
     SoftKeyboardVisibilityChanged(bool),
     HintText(BTreeMap<usize, StyledText>),
+    ActivePaneScroll(Option<(usize, usize)>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
