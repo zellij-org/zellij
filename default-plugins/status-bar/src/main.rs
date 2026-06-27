@@ -42,6 +42,8 @@ struct State {
     classic_ui: bool,
     base_mode_is_locked: bool,
     cached_keybinds: KeybindsVec,
+    hint_text: Option<BTreeMap<usize, StyledText>>,
+    outstanding_hint_timeouts: usize,
 }
 
 register_plugin!(State);
@@ -209,6 +211,8 @@ impl ZellijPlugin for State {
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
             EventType::InitialKeybinds,
+            EventType::HintText,
+            EventType::Timer,
         ]);
     }
 
@@ -260,11 +264,33 @@ impl ZellijPlugin for State {
             Event::InputReceived => {
                 if self.text_copy_destination.is_some()
                     || self.display_system_clipboard_failure == true
+                    || self.hint_text.is_some()
                 {
                     should_render = true;
                 }
                 self.text_copy_destination = None;
                 self.display_system_clipboard_failure = false;
+                self.hint_text = None;
+            },
+            Event::HintText(hint_variants) => {
+                if hint_variants.is_empty() {
+                    if self.hint_text.is_some() {
+                        self.hint_text = None;
+                        should_render = true;
+                    }
+                } else {
+                    self.hint_text = Some(hint_variants);
+                    self.outstanding_hint_timeouts += 1;
+                    set_timeout(5.0);
+                    should_render = true;
+                }
+            },
+            Event::Timer(_) => {
+                self.outstanding_hint_timeouts = self.outstanding_hint_timeouts.saturating_sub(1);
+                if self.outstanding_hint_timeouts == 0 && self.hint_text.is_some() {
+                    self.hint_text = None;
+                    should_render = true;
+                }
             },
             _ => {},
         };
@@ -297,6 +323,7 @@ impl ZellijPlugin for State {
                     self.base_mode_is_locked,
                     self.text_copy_destination,
                     self.display_system_clipboard_failure,
+                    self.hint_text.as_ref(),
                 ),
                 fill_bg,
             );

@@ -3,7 +3,7 @@ use ansi_term::{
     Color::{Fixed, RGB},
     Style,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
@@ -22,6 +22,7 @@ pub fn one_line_ui(
     base_mode_is_locked: bool,
     text_copied_to_clipboard_destination: Option<CopyDestination>,
     clipboard_failure: bool,
+    hint: Option<&BTreeMap<usize, StyledText>>,
 ) -> LinePart {
     if let Some(text_copied_to_clipboard_destination) = text_copied_to_clipboard_destination {
         return text_copied_hint(text_copied_to_clipboard_destination);
@@ -35,8 +36,11 @@ pub fn one_line_ui(
         *max_len = max_len.saturating_sub(line_part.len);
     };
 
-    render_mode_key_indicators(help, max_len, separator, base_mode_is_locked)
-        .map(|mode_key_indicators| append(&mode_key_indicators, &mut max_len))
+    let left_part = hint
+        .and_then(|hint| hint_line_part(hint, max_len))
+        .or_else(|| render_mode_key_indicators(help, max_len, separator, base_mode_is_locked));
+    left_part
+        .map(|left| append(&left, &mut max_len))
         .and_then(|_| match help.mode {
             InputMode::Normal | InputMode::Locked => render_secondary_info(help, tab_info, max_len)
                 .map(|secondary_info| append(&secondary_info, &mut max_len)),
@@ -46,6 +50,16 @@ pub fn one_line_ui(
                 .map(|keybinds| append(&keybinds, &mut max_len)),
         });
     line_part_to_render
+}
+
+fn hint_line_part(hint: &BTreeMap<usize, StyledText>, max_len: usize) -> Option<LinePart> {
+    let fitting_variant = hint
+        .range(..=max_len)
+        .next_back()
+        .map(|(_width, styled_text)| styled_text)?;
+    let len = fitting_variant.text.width();
+    let part = serialize_text(&Text::from(fitting_variant.clone()));
+    Some(LinePart { part, len })
 }
 
 fn to_base_mode(base_mode: InputMode) -> Action {
