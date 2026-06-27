@@ -815,26 +815,30 @@ impl PaneFrame {
             && self.other_focused_clients.is_empty()
             && self.other_cursors_exist_in_session
         {
-            let (part, length) = self.bracketed_title_part("MY FOCUS");
-            (length <= max_length).then_some((part, length))
+            let (full_part, full_length) = self.bracketed_title_part("MY FOCUS");
+            if full_length <= max_length {
+                Some((full_part, full_length))
+            } else {
+                let (short_part, short_length) = self.bracketed_title_part("ME");
+                (short_length <= max_length).then_some((short_part, short_length))
+            }
         } else if self.is_main_client && !self.other_focused_clients.is_empty() {
-            self.bracketed_focused_users("MY FOCUS AND:", max_length)
+            self.bracketed_focused_users("MY FOCUS AND:", "+", max_length)
         } else if !self.other_focused_clients.is_empty() {
-            let label = if self.other_focused_clients.len() == 1 {
+            let full_label = if self.other_focused_clients.len() == 1 {
                 "FOCUSED USER:"
             } else {
                 "FOCUSED USERS:"
             };
-            self.bracketed_focused_users(label, max_length)
+            self.bracketed_focused_users(full_label, "U:", max_length)
         } else {
             None
         }
     }
-    fn bracketed_focused_users(
+    fn focused_users_part(
         &self,
         label: &str,
-        max_length: usize,
-    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+    ) -> (Vec<TerminalCharacter>, usize) {
         let mut content = foreground_color(label, self.color);
         let mut content_length = label.width();
         for client_id in &self.other_focused_clients {
@@ -842,8 +846,37 @@ impl PaneFrame {
             content.append(&mut self.client_cursor(*client_id));
             content_length += 2;
         }
-        let (part, length) = self.bracketed_title_part_from_characters(content, content_length);
-        (length <= max_length).then_some((part, length))
+        self.bracketed_title_part_from_characters(content, content_length)
+    }
+    fn focused_users_cursors_part(&self) -> (Vec<TerminalCharacter>, usize) {
+        let mut content = vec![];
+        let mut content_length = 0;
+        for client_id in &self.other_focused_clients {
+            if content_length > 0 {
+                content.push(EMPTY_TERMINAL_CHARACTER);
+                content_length += 1;
+            }
+            content.append(&mut self.client_cursor(*client_id));
+            content_length += 1;
+        }
+        self.bracketed_title_part_from_characters(content, content_length)
+    }
+    fn bracketed_focused_users(
+        &self,
+        full_label: &str,
+        short_label: &str,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let (full_part, full_length) = self.focused_users_part(full_label);
+        if full_length <= max_length {
+            return Some((full_part, full_length));
+        }
+        let (short_part, short_length) = self.focused_users_part(short_label);
+        if short_length <= max_length {
+            return Some((short_part, short_length));
+        }
+        let (cursors_part, cursors_length) = self.focused_users_cursors_part();
+        (cursors_length <= max_length).then_some((cursors_part, cursors_length))
     }
     fn compose_bracketed_title(
         &self,
@@ -855,8 +888,19 @@ impl PaneFrame {
         let left_length = left.as_ref().map(|(_, length)| *length).unwrap_or(0);
         let middle_length = middle.as_ref().map(|(_, length)| *length).unwrap_or(0);
         let right_length = right.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let centered_start = (width / 2).saturating_sub(middle_length / 2).max(left_length);
         let middle_start = if middle.is_some() {
-            (width / 2).saturating_sub(middle_length / 2).max(left_length)
+            if right_length > 0 {
+                let scroll_start = width.saturating_sub(right_length);
+                let centered_end = centered_start + middle_length;
+                if centered_end > scroll_start {
+                    scroll_start.saturating_sub(middle_length).max(left_length)
+                } else {
+                    centered_start
+                }
+            } else {
+                centered_start
+            }
         } else {
             left_length
         };
