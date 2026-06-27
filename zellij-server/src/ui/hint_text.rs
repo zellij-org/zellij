@@ -151,15 +151,35 @@ pub fn exit_code_segments(exit_status: HintExitStatus) -> Vec<HintSegment> {
 pub fn hover_segments(tier: HintTier) -> Vec<HintSegment> {
     match tier {
         HintTier::Full => vec![
-            HintSegment::plain(" Alt <Click>"),
+            HintSegment::plain(" "),
+            HintSegment::emphasis("Alt"),
+            HintSegment::plain(" <"),
+            HintSegment::emphasis("Click"),
+            HintSegment::plain(">"),
             HintSegment::plain(" - group,"),
-            HintSegment::plain(" Alt <Right-Click>"),
+            HintSegment::plain(" "),
+            HintSegment::emphasis("Alt"),
+            HintSegment::plain(" <"),
+            HintSegment::emphasis("Right-Click"),
+            HintSegment::plain(">"),
             HintSegment::plain(" - ungroup all "),
         ],
         HintTier::Medium => vec![
-            HintSegment::plain("Alt <Click> group, Alt <Right-Click> ungroup"),
+            HintSegment::emphasis("Alt"),
+            HintSegment::plain(" <"),
+            HintSegment::emphasis("Click"),
+            HintSegment::plain("> group, "),
+            HintSegment::emphasis("Alt"),
+            HintSegment::plain(" <"),
+            HintSegment::emphasis("Right-Click"),
+            HintSegment::plain("> ungroup"),
         ],
-        HintTier::Minimal => vec![HintSegment::plain("Alt <Click> group")],
+        HintTier::Minimal => vec![
+            HintSegment::emphasis("Alt"),
+            HintSegment::plain(" <"),
+            HintSegment::emphasis("Click"),
+            HintSegment::plain("> group"),
+        ],
     }
 }
 
