@@ -134,6 +134,7 @@ fn main() -> anyhow::Result<()> {
         flags::XtaskCmd::Test(flags) => test::test(shell, flags),
         flags::XtaskCmd::IntegrationTest(flags) => integration_test::integration_test(shell, flags),
         flags::XtaskCmd::Manpage(_flags) => build::manpage(shell),
+        flags::XtaskCmd::Proto(_flags) => build::proto(shell),
         // Pipelines
         // These are composite commands, made up of multiple "stages" defined above.
         flags::XtaskCmd::Make(flags) => pipelines::make(shell, flags),
