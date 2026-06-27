@@ -251,8 +251,7 @@ pub fn tab_line(
         })
     };
     if swap_layout_indicator.is_none() {
-        swap_layout_indicator =
-            active_pane_scroll.map(|scroll| scroll_status(scroll, !capabilities.arrow_fonts));
+        swap_layout_indicator = active_pane_scroll.map(|scroll| scroll_status(scroll, palette));
     }
 
     // Drop indicator if it would cause wrapping (active tab always rendered unconditionally)
@@ -334,10 +333,17 @@ fn swap_layout_status(
     }
 }
 
-fn scroll_status(scroll: (usize, usize), supports_arrow_fonts: bool) -> LinePart {
+fn scroll_status(scroll: (usize, usize), palette: Styling) -> LinePart {
     let (position, length) = scroll;
-    let text = format!("SCROLL: {}/{}", position, length);
-    ribbon_as_line_part(&text, position > 0, supports_arrow_fonts)
+    let text = format!("[ SCROLL {}/{} ]", position, length);
+    let text_color = palette.text_unselected.base;
+    let bg_color = palette.text_unselected.background;
+    let styled_text = style!(text_color, bg_color).bold().paint(&text);
+    LinePart {
+        part: styled_text.to_string(),
+        len: text.width(),
+        tab_index: None,
+    }
 }
 
 pub fn ribbon_as_line_part(text: &str, is_selected: bool, supports_arrow_fonts: bool) -> LinePart {
