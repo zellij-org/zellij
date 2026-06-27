@@ -55,33 +55,13 @@ For more details about our future plans, read about upcoming features in our [ro
 
 ## How do I install it?
 
-#### Linux / macOS
+The easiest way to install Zellij is through a [package for your OS](./docs/THIRD_PARTY_INSTALL.md).
 
-**Package manager** — see [third-party packages](./docs/THIRD_PARTY_INSTALL.md) (recommended if available for your distro/OS).
+If one is not available for your OS, you could download a prebuilt binary from the [latest release](https://github.com/zellij-org/zellij/releases/latest) and place it in your `$PATH`. If you'd like, we could [automatically choose one for you](#try-zellij-without-installing).
 
-**Install script** — no account or registration required, only `curl` and `tar`:
+You can also install (compile) with `cargo`:
 
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/zellij-org/zellij/main/install.sh)
-# or
-curl -fsSL https://raw.githubusercontent.com/zellij-org/zellij/main/install.sh | bash
 ```
-
-**Prebuilt binary** — download from [latest release](https://github.com/zellij-org/zellij/releases/latest) and place in your `$PATH`.
-
-**From source** — requires [Rust](https://rustup.rs/):
-
-```bash
-cargo install --locked zellij
-```
-
-#### Windows
-
-**MSI installer** — download from [latest release](https://github.com/zellij-org/zellij/releases/latest).
-
-**From source** — requires [Rust](https://rustup.rs/):
-
-```bash
 cargo install --locked zellij
 ```
 
