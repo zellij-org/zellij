@@ -30,7 +30,9 @@ use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::{CopyOptions, ScreenInstruction};
-use crate::ui::hint_text::{held_hint_variants, hover_hint_variants, HintExitStatus};
+use crate::ui::hint_text::{
+    held_hint_variants, hover_hint_variants, resize_hint_variants, HintExitStatus,
+};
 use crate::ui::{loading_indication::LoadingIndication, pane_boundaries_frame::FrameParams};
 use layout_applier::LayoutApplier;
 use swap_layouts::SwapLayouts;
@@ -1249,8 +1251,9 @@ impl Tab {
     }
     fn resolve_hint_text(&self, client_id: ClientId) -> BTreeMap<usize, StyledText> {
         let focused_pane_id = self.get_active_pane_id(client_id);
-        if let Some(hovered_pane_id) = self.mouse_hover_pane_id.get(&client_id) {
-            if Some(*hovered_pane_id) != focused_pane_id {
+        let hovered_pane_id = self.mouse_hover_pane_id.get(&client_id).copied();
+        if let Some(hovered_pane_id) = hovered_pane_id {
+            if Some(hovered_pane_id) != focused_pane_id {
                 return hover_hint_variants();
             }
         }
@@ -1267,6 +1270,19 @@ impl Tab {
                     None
                 };
                 return held_hint_variants(is_first_run, exit_status);
+            }
+        }
+        let resize_help_visible = self
+            .mouse_help_text_visible
+            .get(&client_id)
+            .copied()
+            .unwrap_or(false);
+        if resize_help_visible {
+            let selectable_pane_count = self.get_selectable_tiled_panes().count()
+                + self.get_selectable_floating_panes().count();
+            if selectable_pane_count > 1 && !self.is_fullscreen_active() {
+                let focused_pane_is_floating = self.floating_panes.panes_are_visible();
+                return resize_hint_variants(focused_pane_is_floating);
             }
         }
         BTreeMap::new()

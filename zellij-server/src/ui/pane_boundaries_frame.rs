@@ -1232,6 +1232,7 @@ impl PaneFrame {
             let color = match segment.level {
                 HintLevel::Plain => self.color,
                 HintLevel::Emphasis => Some(self.style.colors.text_unselected.emphasis_0),
+                HintLevel::Emphasis2 => Some(self.style.colors.text_unselected.emphasis_2),
                 HintLevel::Error => Some(self.style.colors.exit_code_error.base),
                 HintLevel::Success => Some(self.style.colors.exit_code_success.base),
             };

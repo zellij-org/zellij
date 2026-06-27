@@ -5,6 +5,7 @@ use zellij_utils::data::StyledText;
 pub enum HintLevel {
     Plain,
     Emphasis,
+    Emphasis2,
     Error,
     Success,
 }
@@ -25,6 +26,12 @@ impl HintSegment {
         HintSegment {
             text: text.to_string(),
             level: HintLevel::Emphasis,
+        }
+    }
+    fn emphasis_2(text: &str) -> Self {
+        HintSegment {
+            text: text.to_string(),
+            level: HintLevel::Emphasis2,
         }
     }
     fn error(text: &str) -> Self {
@@ -60,6 +67,7 @@ fn level_index(level: &HintLevel) -> Option<usize> {
     match level {
         HintLevel::Plain => None,
         HintLevel::Emphasis => Some(0),
+        HintLevel::Emphasis2 => Some(2),
         HintLevel::Error => Some(6),
         HintLevel::Success => Some(7),
     }
@@ -187,6 +195,91 @@ pub fn hover_hint_variants() -> BTreeMap<usize, StyledText> {
     let mut variants = BTreeMap::new();
     for tier in ALL_TIERS {
         let styled_text = segments_to_styled_text(&hover_segments(tier));
+        variants.insert(styled_text.text.width(), styled_text);
+    }
+    variants
+}
+
+pub fn resize_segments(is_floating: bool, tier: HintTier) -> Vec<HintSegment> {
+    match tier {
+        HintTier::Full => {
+            if is_floating {
+                vec![
+                    HintSegment::plain(" "),
+                    HintSegment::emphasis_2("Ctrl"),
+                    HintSegment::plain(" <"),
+                    HintSegment::emphasis_2("MouseScroll"),
+                    HintSegment::plain("> or "),
+                    HintSegment::emphasis_2("Ctrl"),
+                    HintSegment::plain(" <"),
+                    HintSegment::emphasis_2("drag borders"),
+                    HintSegment::plain("> to resize "),
+                ]
+            } else {
+                vec![
+                    HintSegment::plain(" "),
+                    HintSegment::emphasis_2("Ctrl"),
+                    HintSegment::plain(" <"),
+                    HintSegment::emphasis_2("MouseScroll"),
+                    HintSegment::plain("> or <"),
+                    HintSegment::emphasis_2("drag borders"),
+                    HintSegment::plain("> to resize "),
+                ]
+            }
+        },
+        HintTier::Medium => {
+            if is_floating {
+                vec![
+                    HintSegment::plain(" <"),
+                    HintSegment::emphasis_2("Ctrl"),
+                    HintSegment::plain(" "),
+                    HintSegment::emphasis_2("MouseScroll"),
+                    HintSegment::plain("/"),
+                    HintSegment::emphasis_2("drag borders"),
+                    HintSegment::plain("> resize "),
+                ]
+            } else {
+                vec![
+                    HintSegment::plain(" <"),
+                    HintSegment::emphasis_2("Ctrl"),
+                    HintSegment::plain(" "),
+                    HintSegment::emphasis_2("MouseScroll"),
+                    HintSegment::plain(">/<"),
+                    HintSegment::emphasis_2("drag borders"),
+                    HintSegment::plain("> resize "),
+                ]
+            }
+        },
+        HintTier::Minimal => {
+            if is_floating {
+                vec![
+                    HintSegment::plain(" <"),
+                    HintSegment::emphasis_2("Ctrl"),
+                    HintSegment::plain(" "),
+                    HintSegment::emphasis_2("MouseScroll"),
+                    HintSegment::plain("/"),
+                    HintSegment::emphasis_2("drag borders"),
+                    HintSegment::plain("> "),
+                ]
+            } else {
+                vec![
+                    HintSegment::plain(" <"),
+                    HintSegment::emphasis_2("Ctrl"),
+                    HintSegment::plain(" "),
+                    HintSegment::emphasis_2("MouseScroll"),
+                    HintSegment::plain(">/<"),
+                    HintSegment::emphasis_2("drag borders"),
+                    HintSegment::plain("> "),
+                ]
+            }
+        },
+    }
+}
+
+pub fn resize_hint_variants(is_floating: bool) -> BTreeMap<usize, StyledText> {
+    let mut variants = BTreeMap::new();
+    for tier in ALL_TIERS {
+        let styled_text = segments_to_styled_text(&resize_segments(is_floating, tier));
         variants.insert(styled_text.text.width(), styled_text);
     }
     variants
