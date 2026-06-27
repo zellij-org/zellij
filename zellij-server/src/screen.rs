@@ -853,6 +853,7 @@ pub enum ScreenInstruction {
     DesktopNotificationResponse(Vec<u8>, ClientId),
     PluginSubscribedToAnsiPaneContents(bool), // true = at least one plugin needs ANSI content
     UpdateBackgroundPluginSubscriptions(PluginId, ClientId, HashSet<EventType>),
+    ClearHintTextCache,
     BroadcastModeUpdate(ModeInfo, Option<ClientId>), // ModeInfo, optional specific client_id (None = all clients)
     // Pane-targeting CLI variants
     ScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
@@ -1205,6 +1206,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateBackgroundPluginSubscriptions(..) => {
                 ScreenContext::UpdateBackgroundPluginSubscriptions
             },
+            ScreenInstruction::ClearHintTextCache => ScreenContext::ClearHintTextCache,
             ScreenInstruction::BroadcastModeUpdate(..) => ScreenContext::BroadcastModeUpdate,
             // Pane-targeting CLI variants
             ScreenInstruction::ScrollUpWithPaneId(..) => ScreenContext::ScrollUpWithPaneId,
@@ -10061,6 +10063,12 @@ pub(crate) fn screen_thread_main(
                         .background_plugin_subscriptions
                         .insert((plugin_id, client_id), subscriptions);
                 }
+            },
+            ScreenInstruction::ClearHintTextCache => {
+                for tab in screen.tabs.values_mut() {
+                    tab.clear_hint_text_cache();
+                }
+                screen.render(None)?;
             },
             ScreenInstruction::BroadcastModeUpdate(mode_info, target_client_id) => {
                 screen.broadcast_mode_update(mode_info, target_client_id)?;

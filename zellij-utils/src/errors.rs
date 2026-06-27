@@ -467,6 +467,7 @@ pub enum ScreenContext {
     MoveTabWithTabId,
     PluginSubscribedToAnsiPaneContents,
     UpdateBackgroundPluginSubscriptions,
+    ClearHintTextCache,
     BroadcastModeUpdate,
     EnterMobileMode,
     ExitMobileMode,

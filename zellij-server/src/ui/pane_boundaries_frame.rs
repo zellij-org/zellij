@@ -1,6 +1,10 @@
 use crate::output::CharacterChunk;
 use crate::panes::{AnsiCode, RcCharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
 use crate::ui::boundaries::boundary_type;
+use crate::ui::hint_text::{
+    exit_code_segments, hover_segments, rerun_segments, HintExitStatus, HintLevel, HintSegment,
+    HintTier,
+};
 use crate::ClientId;
 use zellij_utils::data::{client_id_to_colors, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
@@ -1221,133 +1225,37 @@ impl PaneFrame {
         }
         Ok((character_chunks, None))
     }
+    fn render_hint_segments(&self, segments: &[HintSegment]) -> (Vec<TerminalCharacter>, usize) {
+        let mut characters = vec![];
+        let mut length = 0;
+        for segment in segments {
+            let color = match segment.level {
+                HintLevel::Plain => self.color,
+                HintLevel::Emphasis => Some(self.style.colors.text_unselected.emphasis_0),
+                HintLevel::Error => Some(self.style.colors.exit_code_error.base),
+                HintLevel::Success => Some(self.style.colors.exit_code_success.base),
+            };
+            characters.append(&mut foreground_color(&segment.text, color));
+            length += segment.text.width();
+        }
+        (characters, length)
+    }
     fn first_exited_held_title_part_full(&self) -> (Vec<TerminalCharacter>, usize) {
-        // (title part, length)
         match self.exit_status {
             Some(ExitStatus::Code(exit_code)) => {
-                let mut first_part = vec![];
-                let left_bracket = " [ ";
-                let exited_text = "EXIT CODE: ";
-                let exit_code_text = format!("{}", exit_code);
-                let exit_code_color = if exit_code == 0 {
-                    self.style.colors.exit_code_success.base
-                } else {
-                    self.style.colors.exit_code_error.base
-                };
-                let right_bracket = " ] ";
-                first_part.append(&mut foreground_color(left_bracket, self.color));
-                first_part.append(&mut foreground_color(exited_text, self.color));
-                first_part.append(&mut foreground_color(
-                    &exit_code_text,
-                    Some(exit_code_color),
-                ));
-                first_part.append(&mut foreground_color(right_bracket, self.color));
-                (
-                    first_part,
-                    left_bracket.len()
-                        + exited_text.len()
-                        + exit_code_text.len()
-                        + right_bracket.len(),
-                )
+                self.render_hint_segments(&exit_code_segments(HintExitStatus::Code(exit_code)))
             },
             Some(ExitStatus::Exited) => {
-                let mut first_part = vec![];
-                let left_bracket = " [ ";
-                let exited_text = "EXITED";
-                let right_bracket = " ] ";
-                first_part.append(&mut foreground_color(left_bracket, self.color));
-                first_part.append(&mut foreground_color(
-                    exited_text,
-                    Some(self.style.colors.exit_code_error.base),
-                ));
-                first_part.append(&mut foreground_color(right_bracket, self.color));
-                (
-                    first_part,
-                    left_bracket.len() + exited_text.len() + right_bracket.len(),
-                )
+                self.render_hint_segments(&exit_code_segments(HintExitStatus::Exited))
             },
             None => (foreground_color(boundary_type::HORIZONTAL, self.color), 1),
         }
     }
     fn second_held_title_part_full(&self) -> (Vec<TerminalCharacter>, usize) {
-        // (title part, length)
-        let mut second_part = vec![];
-        let left_enter_bracket = if self.is_first_run { " <" } else { "<" };
-        let enter_text = "ENTER";
-        let right_enter_bracket = ">";
-        let enter_tip = if self.is_first_run {
-            " run, "
-        } else {
-            " re-run, "
-        };
-
-        let left_esc_bracket = "<";
-        let esc_text = "ESC";
-        let right_esc_bracket = ">";
-        let esc_tip = " drop to shell, ";
-
-        let left_break_bracket = "<";
-        let break_text = "Ctrl-c";
-        let right_break_bracket = ">";
-        let break_tip = " exit ";
-        second_part.append(&mut foreground_color(left_enter_bracket, self.color));
-        second_part.append(&mut foreground_color(
-            enter_text,
-            Some(self.style.colors.text_unselected.emphasis_0),
-        ));
-        second_part.append(&mut foreground_color(right_enter_bracket, self.color));
-        second_part.append(&mut foreground_color(enter_tip, self.color));
-
-        second_part.append(&mut foreground_color(left_esc_bracket, self.color));
-        second_part.append(&mut foreground_color(
-            esc_text,
-            Some(self.style.colors.text_unselected.emphasis_0),
-        ));
-        second_part.append(&mut foreground_color(right_esc_bracket, self.color));
-        second_part.append(&mut foreground_color(esc_tip, self.color));
-
-        second_part.append(&mut foreground_color(left_break_bracket, self.color));
-        second_part.append(&mut foreground_color(
-            break_text,
-            Some(self.style.colors.text_unselected.emphasis_0),
-        ));
-        second_part.append(&mut foreground_color(right_break_bracket, self.color));
-        second_part.append(&mut foreground_color(break_tip, self.color));
-        (
-            second_part,
-            left_enter_bracket.len()
-                + enter_text.len()
-                + right_enter_bracket.len()
-                + enter_tip.len()
-                + left_esc_bracket.len()
-                + esc_text.len()
-                + right_esc_bracket.len()
-                + esc_tip.len()
-                + left_break_bracket.len()
-                + break_text.len()
-                + right_break_bracket.len()
-                + break_tip.len(),
-        )
+        self.render_hint_segments(&rerun_segments(self.is_first_run, HintTier::Full))
     }
     fn hover_shortcuts_part_full(&self) -> (Vec<TerminalCharacter>, usize) {
-        // (title part, length)
-        let mut hover_shortcuts = vec![];
-        let alt_click_text = " Alt <Click>";
-        let alt_click_tip = " - group,";
-        let alt_right_click_text = " Alt <Right-Click>";
-        let alt_right_click_tip = " - ungroup all ";
-
-        hover_shortcuts.append(&mut foreground_color(alt_click_text, self.color));
-        hover_shortcuts.append(&mut foreground_color(alt_click_tip, self.color));
-        hover_shortcuts.append(&mut foreground_color(alt_right_click_text, self.color));
-        hover_shortcuts.append(&mut foreground_color(alt_right_click_tip, self.color));
-        (
-            hover_shortcuts,
-            alt_click_text.chars().count()
-                + alt_click_tip.chars().count()
-                + alt_right_click_text.chars().count()
-                + alt_right_click_tip.chars().count(),
-        )
+        self.render_hint_segments(&hover_segments(HintTier::Full))
     }
     fn empty_undertitle(&self, max_undertitle_length: usize) -> Vec<TerminalCharacter> {
         let mut left_boundary =

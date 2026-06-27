@@ -938,6 +938,12 @@ impl From<Metadata> for FileMetadata {
     }
 }
 
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StyledText {
+    pub text: String,
+    pub indices: Vec<Vec<usize>>,
+}
+
 /// These events can be subscribed to with subscribe method exported by `zellij-tile`.
 /// Once subscribed to, they will trigger the `update` method of the `ZellijPlugin` trait.
 #[derive(Debug, Clone, PartialEq, EnumDiscriminants, Display, Serialize, Deserialize)]
@@ -1031,6 +1037,7 @@ pub enum Event {
     /// The host terminal indicated its color palette theme mode (CSI 2031 / DSR 997).
     HostTerminalThemeChanged(HostTerminalThemeMode),
     SoftKeyboardVisibilityChanged(bool),
+    HintText(BTreeMap<usize, StyledText>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

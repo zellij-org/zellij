@@ -17,7 +17,7 @@ use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
     Direction, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
-    PluginPermission, RegexHighlight, ResizeStrategy, Style, WebSharing,
+    PluginPermission, RegexHighlight, ResizeStrategy, Style, StyledText, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -30,6 +30,7 @@ use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::{CopyOptions, ScreenInstruction};
+use crate::ui::hint_text::{held_hint_variants, hover_hint_variants, HintExitStatus};
 use crate::ui::{loading_indication::LoadingIndication, pane_boundaries_frame::FrameParams};
 use layout_applier::LayoutApplier;
 use swap_layouts::SwapLayouts;
@@ -210,6 +211,7 @@ pub(crate) struct Tab {
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
     mouse_help_text_visible: HashMap<ClientId, bool>,
     last_mouse_activity_time: HashMap<ClientId, Instant>,
+    last_hint_text: HashMap<ClientId, BTreeMap<usize, StyledText>>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
     mouse_hover_effects: bool,
@@ -868,6 +870,7 @@ impl Tab {
             mouse_hover_pane_id: HashMap::new(),
             mouse_help_text_visible: HashMap::new(),
             last_mouse_activity_time: HashMap::new(),
+            last_hint_text: HashMap::new(),
             current_pane_group,
             currently_marking_pane_group,
             advanced_mouse_actions,
@@ -1242,6 +1245,51 @@ impl Tab {
                 .with_context(|| format!("failed to update plugins with mode info"))?;
         }
         Ok(())
+    }
+    fn resolve_hint_text(&self, client_id: ClientId) -> BTreeMap<usize, StyledText> {
+        let focused_pane_id = self.get_active_pane_id(client_id);
+        if let Some(hovered_pane_id) = self.mouse_hover_pane_id.get(&client_id) {
+            if Some(*hovered_pane_id) != focused_pane_id {
+                return hover_hint_variants();
+            }
+        }
+        if let Some(focused_pane) = self.get_active_pane(client_id) {
+            if focused_pane.is_held() {
+                let exited = focused_pane.exited();
+                let is_first_run = !exited;
+                let exit_status = if exited {
+                    Some(match focused_pane.exit_status() {
+                        Some(exit_code) => HintExitStatus::Code(exit_code),
+                        None => HintExitStatus::Exited,
+                    })
+                } else {
+                    None
+                };
+                return held_hint_variants(is_first_run, exit_status);
+            }
+        }
+        BTreeMap::new()
+    }
+    pub fn emit_hint_text_if_changed(&mut self) -> Result<()> {
+        let connected_clients: Vec<ClientId> =
+            self.connected_clients.borrow().iter().copied().collect();
+        let mut plugin_updates = vec![];
+        for client_id in connected_clients {
+            let hint_text = self.resolve_hint_text(client_id);
+            if self.last_hint_text.get(&client_id) != Some(&hint_text) {
+                self.last_hint_text.insert(client_id, hint_text.clone());
+                plugin_updates.push((None, Some(client_id), Event::HintText(hint_text)));
+            }
+        }
+        if !plugin_updates.is_empty() {
+            self.senders
+                .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                .with_context(|| format!("failed to update plugins with hint text"))?;
+        }
+        Ok(())
+    }
+    pub fn clear_hint_text_cache(&mut self) {
+        self.last_hint_text.clear();
     }
     pub fn add_client(&mut self, client_id: ClientId, mode_info: Option<ModeInfo>) -> Result<()> {
         let other_clients_exist_in_tab = { !self.connected_clients.borrow().is_empty() };
@@ -3404,6 +3452,9 @@ impl Tab {
         if output.has_rendered_assets() {
             self.hide_cursor_and_clear_display_as_needed(output);
         }
+
+        self.emit_hint_text_if_changed()
+            .with_context(err_context)?;
 
         Ok(())
     }

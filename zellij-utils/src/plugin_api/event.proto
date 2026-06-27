@@ -70,6 +70,7 @@ enum EventType {
     CommandChanged = 45;
     HostTerminalThemeChanged = 46;
     SoftKeyboardVisibilityChanged = 47;
+    HintText = 48;
 }
 
 message EventNameList {
@@ -119,7 +120,21 @@ message Event {
     CommandChangedPayload command_changed_payload = 39;
     HostTerminalThemeChangedPayload host_terminal_theme_changed_payload = 40;
     SoftKeyboardVisibilityChangedPayload soft_keyboard_visibility_changed_payload = 41;
+    HintTextPayload hint_text_payload = 42;
   }
+}
+
+message HintTextPayload {
+  map<uint32, StyledText> hint_text = 1;
+}
+
+message StyledText {
+  string text = 1;
+  repeated StyledTextIndices indices = 2;
+}
+
+message StyledTextIndices {
+  repeated uint32 indices = 1;
 }
 
 message HostTerminalThemeChangedPayload {

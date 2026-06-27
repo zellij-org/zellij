@@ -26,7 +26,9 @@ pub use super::generated_api::api::{
         PluginConfigurationChangedPayload as ProtobufPluginConfigurationChangedPayload,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
+        HintTextPayload as ProtobufHintTextPayload,
         SoftKeyboardVisibilityChangedPayload as ProtobufSoftKeyboardVisibilityChangedPayload,
+        StyledText as ProtobufStyledText, StyledTextIndices as ProtobufStyledTextIndices,
         SyntaxError as ProtobufSyntaxError, TabInfo as ProtobufTabInfo,
         TabMetadata as ProtobufTabMetadata, UserActionPayload as ProtobufUserActionPayload,
         WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
@@ -41,8 +43,8 @@ use crate::data::{
     ClientId, ClientInfo, CopyDestination, Event, EventType, FileMetadata, HostTerminalThemeMode,
     InputMode, KeyWithModifier, LayoutInfo, LayoutMetadata, ModeInfo, Mouse, PaneContents, PaneId,
     PaneInfo, PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus,
-    PluginCapabilities, PluginInfo, SelectedText, SessionInfo, Style, TabInfo, TabMetadata,
-    WebServerStatus, WebSharing,
+    PluginCapabilities, PluginInfo, SelectedText, SessionInfo, Style, StyledText, TabInfo,
+    TabMetadata, WebServerStatus, WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -597,6 +599,16 @@ impl TryFrom<ProtobufEvent> for Event {
                     _ => Err("Malformed payload for SoftKeyboardVisibilityChanged Event"),
                 }
             },
+            Some(ProtobufEventType::HintText) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::HintTextPayload(p)) => {
+                    let mut hint_text = BTreeMap::new();
+                    for (width, styled_text) in p.hint_text {
+                        hint_text.insert(width as usize, StyledText::from(styled_text));
+                    }
+                    Ok(Event::HintText(hint_text))
+                },
+                _ => Err("Malformed payload for HintText Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -1145,6 +1157,19 @@ impl TryFrom<Event> for ProtobufEvent {
                     payload: Some(event::Payload::SoftKeyboardVisibilityChangedPayload(
                         payload,
                     )),
+                })
+            },
+            Event::HintText(hint_text) => {
+                let mut proto_hint_text = HashMap::new();
+                for (width, styled_text) in hint_text {
+                    proto_hint_text.insert(width as u32, ProtobufStyledText::from(styled_text));
+                }
+                let payload = ProtobufHintTextPayload {
+                    hint_text: proto_hint_text,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::HintText as i32,
+                    payload: Some(event::Payload::HintTextPayload(payload)),
                 })
             },
             Event::InitialKeybinds(keybinds) => {
@@ -2127,6 +2152,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::SoftKeyboardVisibilityChanged => {
                 EventType::SoftKeyboardVisibilityChanged
             },
+            ProtobufEventType::HintText => EventType::HintText,
         })
     }
 }
@@ -2184,7 +2210,36 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::SoftKeyboardVisibilityChanged => {
                 ProtobufEventType::SoftKeyboardVisibilityChanged
             },
+            EventType::HintText => ProtobufEventType::HintText,
         })
+    }
+}
+
+impl From<StyledText> for ProtobufStyledText {
+    fn from(styled_text: StyledText) -> Self {
+        ProtobufStyledText {
+            text: styled_text.text,
+            indices: styled_text
+                .indices
+                .into_iter()
+                .map(|inner| ProtobufStyledTextIndices {
+                    indices: inner.into_iter().map(|i| i as u32).collect(),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<ProtobufStyledText> for StyledText {
+    fn from(styled_text: ProtobufStyledText) -> Self {
+        StyledText {
+            text: styled_text.text,
+            indices: styled_text
+                .indices
+                .into_iter()
+                .map(|inner| inner.indices.into_iter().map(|i| i as usize).collect())
+                .collect(),
+        }
     }
 }
 
