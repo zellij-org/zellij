@@ -45,49 +45,10 @@ message Key {
     Enter = 31;
   }
 
-  enum Char {
-    a = 0;
-    b = 1;
-    c = 2;
-    d = 3;
-    e = 4;
-    f = 5;
-    g = 6;
-    h = 7;
-    i = 8;
-    j = 9;
-    k = 10;
-    l = 11;
-    m = 12;
-    n = 13;
-    o = 14;
-    p = 15;
-    q = 16;
-    r = 17;
-    s = 18;
-    t = 19;
-    u = 20;
-    v = 21;
-    w = 22;
-    x = 23;
-    y = 24;
-    z = 25;
-    zero = 26;
-    one = 27;
-    two = 28;
-    three = 29;
-    four = 30;
-    five = 31;
-    six = 32;
-    seven = 33;
-    eight = 34;
-    nine = 35;
-  }
-
   optional KeyModifier modifier = 1;
   oneof main_key {
     NamedKey key = 2;
-    Char char = 3;
+    uint32 char = 3;
   }
   repeated KeyModifier additional_modifiers = 4;
 }
