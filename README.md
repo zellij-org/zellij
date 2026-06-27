@@ -57,7 +57,17 @@ For more details about our future plans, read about upcoming features in our [ro
 
 The easiest way to install Zellij is through a [package for your OS](./docs/THIRD_PARTY_INSTALL.md).
 
-If one is not available for your OS, you could download a prebuilt binary from the [latest release](https://github.com/zellij-org/zellij/releases/latest) and place it in your `$PATH`. If you'd like, we could [automatically choose one for you](#try-zellij-without-installing).
+#### Install script
+
+If a package is not available for your OS, use the install script to automatically download and install a prebuilt binary:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/zellij-org/zellij/main/install.sh)
+```
+
+The script will ask which variant to install (full or no-web) and where to place the binary.
+
+You can also download a prebuilt binary manually from the [latest release](https://github.com/zellij-org/zellij/releases/latest) and place it in your `$PATH`.
 
 You can also install (compile) with `cargo`:
 
