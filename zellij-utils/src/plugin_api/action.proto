@@ -2,6 +2,7 @@ syntax = "proto3";
 
 import "input_mode.proto";
 import "resize.proto";
+import "pane_frame_style.proto";
 
 package api.action;
 
@@ -245,7 +246,12 @@ message Action {
     ShowFloatingPanesPayload show_floating_panes_payload = 58;
     HideFloatingPanesPayload hide_floating_panes_payload = 59;
     AreFloatingPanesVisiblePayload are_floating_panes_visible_payload = 60;
+    SetPaneFrameStylePayload set_pane_frame_style_payload = 61;
   }
+}
+
+message SetPaneFrameStylePayload {
+  pane_frame_style.PaneFrameStyle pane_frame_style = 1;
 }
 
 message CliPipePayload {
@@ -494,6 +500,7 @@ enum ActionName {
     SetLightTheme = 102;
     ToggleTheme = 103;
     FocusLastPane = 104;
+    SetPaneFrameStyle = 105;
 }
 
 message Position {

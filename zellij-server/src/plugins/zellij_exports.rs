@@ -27,6 +27,7 @@ use zellij_utils::data::{
     FocusOrCreateTabResponse, GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
     GetPaneRunningCommandResponse, HttpVerb, KeyWithModifier, KillSessionsResponse, LayoutInfo,
     LayoutMetadata, LayoutParsingError, MessageToPlugin, NewPanePlacement, NewTabResponse,
+    PaneFrameStyle,
     NewTabUnfocusedResponse, NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
     OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
@@ -334,6 +335,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::PageScrollDown => page_scroll_down(env),
                     PluginCommand::ToggleFocusFullscreen => toggle_focus_fullscreen(env),
                     PluginCommand::TogglePaneFrames => toggle_pane_frames(env),
+                    PluginCommand::SetPaneFrameStyle(pane_frame_style) => {
+                        set_pane_frame_style(env, pane_frame_style)
+                    },
                     PluginCommand::TogglePaneEmbedOrEject => toggle_pane_embed_or_eject(env),
                     PluginCommand::UndoRenamePane => undo_rename_pane(env),
                     PluginCommand::CloseFocus => close_focus(env),
@@ -3146,6 +3150,12 @@ fn toggle_pane_frames(env: &PluginEnv) {
     apply_action!(action, error_msg, env);
 }
 
+fn set_pane_frame_style(env: &PluginEnv, pane_frame_style: PaneFrameStyle) {
+    let error_msg = || format!("failed to set pane frame style in plugin {}", env.name());
+    let action = Action::SetPaneFrameStyle(pane_frame_style);
+    apply_action!(action, error_msg, env);
+}
+
 fn toggle_pane_embed_or_eject(env: &PluginEnv) {
     let error_msg = || {
         format!(
@@ -5494,6 +5504,7 @@ fn check_command_permission(
         | PluginCommand::ToggleFocusFullscreen
         | PluginCommand::TogglePaneIdFullscreen(..)
         | PluginCommand::TogglePaneFrames
+        | PluginCommand::SetPaneFrameStyle(..)
         | PluginCommand::TogglePaneEmbedOrEject
         | PluginCommand::TogglePaneEmbedOrEjectForPaneId(..)
         | PluginCommand::UndoRenamePane

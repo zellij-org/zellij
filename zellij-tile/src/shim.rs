@@ -1300,6 +1300,13 @@ pub fn toggle_pane_frames() {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn set_pane_frame_style(pane_frame_style: PaneFrameStyle) {
+    let plugin_command = PluginCommand::SetPaneFrameStyle(pane_frame_style);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Embed the currently focused pane (make it stop floating) or turn it to a float pane if it is not
 pub fn toggle_pane_embed_or_eject() {
     let plugin_command = PluginCommand::TogglePaneEmbedOrEject;

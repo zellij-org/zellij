@@ -6,6 +6,7 @@ pub use super::generated_api::api::{
         SessionManifest as ProtobufSessionManifest,
     },
     input_mode::InputMode as ProtobufInputMode,
+    pane_frame_style::PaneFrameStyle as ProtobufPaneFrameStyle,
     plugin_command::{
         break_panes_to_new_tab_response, break_panes_to_tab_with_id_response,
         break_panes_to_tab_with_index_response, delete_layout_response, dump_layout_response,
@@ -120,8 +121,9 @@ pub use super::generated_api::api::{
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
-        SetPaneBorderlessPayload, SetPaneColorPayload, SetPaneRegexHighlightsPayload,
-        SetSelfMouseSelectionSupportPayload,
+        SetPaneBorderlessPayload, SetPaneColorPayload,
+        SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
+        SetPaneRegexHighlightsPayload, SetSelfMouseSelectionSupportPayload,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload,
         SetTabFitPayload as ProtobufSetTabFitPayload, SetTimeoutPayload, ShowCursorPayload,
         ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
@@ -1098,6 +1100,17 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     return Err("TogglePaneFrames should not have a payload");
                 }
                 Ok(PluginCommand::TogglePaneFrames)
+            },
+            Some(CommandName::SetPaneFrameStyle) => match protobuf_plugin_command.payload {
+                Some(Payload::SetPaneFrameStylePayload(payload)) => {
+                    match ProtobufPaneFrameStyle::from_i32(payload.pane_frame_style) {
+                        Some(protobuf_pane_frame_style) => Ok(PluginCommand::SetPaneFrameStyle(
+                            protobuf_pane_frame_style.try_into()?,
+                        )),
+                        None => Err("Malformed SetPaneFrameStyle payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for SetPaneFrameStyle"),
             },
             Some(CommandName::TogglePaneEmbedOrEject) => {
                 if protobuf_plugin_command.payload.is_some() {
@@ -3092,6 +3105,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::TogglePaneFrames => Ok(ProtobufPluginCommand {
                 name: CommandName::TogglePaneFrames as i32,
                 payload: None,
+            }),
+            PluginCommand::SetPaneFrameStyle(pane_frame_style) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetPaneFrameStyle as i32,
+                payload: Some(Payload::SetPaneFrameStylePayload(
+                    ProtobufSetPaneFrameStylePayload {
+                        pane_frame_style: ProtobufPaneFrameStyle::try_from(pane_frame_style)? as i32,
+                    },
+                )),
             }),
             PluginCommand::TogglePaneEmbedOrEject => Ok(ProtobufPluginCommand {
                 name: CommandName::TogglePaneEmbedOrEject as i32,
@@ -5263,6 +5284,26 @@ mod tests {
                 assert_eq!(fit, None);
             },
             other => panic!("expected SetTabFit, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn set_pane_frame_style_protobuf_round_trip() {
+        use crate::input::options::PaneFrameStyle;
+        for style in [
+            PaneFrameStyle::Full,
+            PaneFrameStyle::Titles,
+            PaneFrameStyle::None,
+        ] {
+            let original = PluginCommand::SetPaneFrameStyle(style);
+            let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+            let decoded: PluginCommand = protobuf.try_into().expect("decode");
+            match decoded {
+                PluginCommand::SetPaneFrameStyle(decoded_style) => {
+                    assert_eq!(decoded_style, style)
+                },
+                other => panic!("expected SetPaneFrameStyle, got {:?}", other),
+            }
         }
     }
 }

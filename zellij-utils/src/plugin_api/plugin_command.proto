@@ -9,6 +9,7 @@ import "resize.proto";
 import "plugin_permission.proto";
 import "input_mode.proto";
 import "key.proto";
+import "pane_frame_style.proto";
 
 package api.plugin_command;
 
@@ -214,6 +215,7 @@ enum CommandName {
   NewTiledPaneInTab = 221;
   ExitMobileMode = 222;
   FocusLastPane = 223;
+  SetPaneFrameStyle = 224;
 }
 
 message PluginCommand {
@@ -373,7 +375,12 @@ message PluginCommand {
     PaneId set_shadow_focus_payload = 167;
     NewTabUnfocusedPayload new_tab_unfocused_payload = 168;
     NewTiledPaneInTabPayload new_tiled_pane_in_tab_payload = 169;
+    SetPaneFrameStylePayload set_pane_frame_style_payload = 170;
   }
+}
+
+message SetPaneFrameStylePayload {
+  pane_frame_style.PaneFrameStyle pane_frame_style = 1;
 }
 
 message NewTabPayload {

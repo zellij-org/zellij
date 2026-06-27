@@ -3412,6 +3412,7 @@ pub enum PluginCommand {
     PageScrollDown,
     ToggleFocusFullscreen,
     TogglePaneFrames,
+    SetPaneFrameStyle(PaneFrameStyle),
     TogglePaneEmbedOrEject,
     UndoRenamePane,
     CloseFocus,
