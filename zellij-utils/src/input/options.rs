@@ -294,6 +294,12 @@ pub struct Options {
     #[serde(default)]
     pub advanced_mouse_actions: Option<bool>,
 
+    /// Whether Ctrl+ScrollWheel resizes panes
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub mouse_scroll_resize: Option<bool>,
+
     /// Whether to enable mouse hover visual effects (frame highlight and help text)
     /// default is true
     #[clap(long, value_parser)]
@@ -439,6 +445,7 @@ impl Options {
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
+        let mouse_scroll_resize = other.mouse_scroll_resize.or(self.mouse_scroll_resize);
         let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = other.focus_follows_mouse.or(self.focus_follows_mouse);
@@ -499,6 +506,7 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            mouse_scroll_resize,
             mouse_hover_effects,
             visual_bell,
             focus_follows_mouse,
@@ -580,6 +588,7 @@ impl Options {
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
+        let mouse_scroll_resize = other.mouse_scroll_resize.or(self.mouse_scroll_resize);
         let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = merge_bool(other.focus_follows_mouse, self.focus_follows_mouse);
@@ -640,6 +649,7 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            mouse_scroll_resize,
             mouse_hover_effects,
             visual_bell,
             focus_follows_mouse,

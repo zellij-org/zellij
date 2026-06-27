@@ -74,6 +74,7 @@ pub struct TiledPanes {
     client_id_to_boundaries: HashMap<ClientId, Boundaries>,
     tombstones_before_increase: Option<(PaneId, Vec<HashMap<PaneId, PaneGeom>>)>,
     tombstones_before_decrease: Option<(PaneId, Vec<HashMap<PaneId, PaneGeom>>)>,
+    mouse_scroll_resize: bool,
 }
 
 impl TiledPanes {
@@ -92,6 +93,7 @@ impl TiledPanes {
         style: Style,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
+        mouse_scroll_resize: bool,
     ) -> Self {
         TiledPanes {
             panes: BTreeMap::new(),
@@ -114,6 +116,7 @@ impl TiledPanes {
             client_id_to_boundaries: HashMap::new(),
             tombstones_before_increase: None,
             tombstones_before_decrease: None,
+            mouse_scroll_resize,
         }
     }
     pub fn add_pane_with_existing_geom(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
@@ -1128,6 +1131,7 @@ impl TiledPanes {
                     &mouse_hover_pane_id,
                     current_pane_group.clone(),
                     show_help_text,
+                    self.mouse_scroll_resize,
                 );
                 for client_id in &connected_clients {
                     let client_mode = self

@@ -1166,6 +1166,7 @@ message Options {
   optional bool show_startup_tips = 31;
   optional bool show_release_notes = 32;
   optional bool advanced_mouse_actions = 33;
+  optional bool mouse_scroll_resize = 51;
   optional string web_server_ip = 34;
   optional uint32 web_server_port = 35;
   optional string web_server_cert = 36;
