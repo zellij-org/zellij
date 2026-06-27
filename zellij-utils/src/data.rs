@@ -2,6 +2,7 @@ use crate::home::default_layout_dir;
 use crate::input::actions::{Action, RunCommandAction};
 use crate::input::config::{ConversionError, KdlError};
 use crate::input::keybinds::Keybinds;
+pub use crate::input::options::PaneFrameStyle;
 use crate::input::layout::{
     Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
@@ -1748,6 +1749,7 @@ pub struct ModeInfo {
     pub web_server_ip: Option<IpAddr>,
     pub web_server_port: Option<u16>,
     pub web_server_capability: Option<bool>,
+    pub pane_frame_style: Option<PaneFrameStyle>,
 }
 
 impl ModeInfo {

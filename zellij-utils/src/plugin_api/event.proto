@@ -503,12 +503,19 @@ message ModeUpdatePayload {
   optional string web_server_ip = 13;
   optional uint32 web_server_port = 14;
   optional bool web_server_capability = 15;
+  optional PaneFrameStyle pane_frame_style = 16;
 }
 
 enum WebSharing {
     On = 0;
     Off = 1;
     Disabled = 2;
+}
+
+enum PaneFrameStyle {
+    Full = 0;
+    Titles = 1;
+    None = 2;
 }
 
 message InputModeKeybinds {

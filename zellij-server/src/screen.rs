@@ -7505,6 +7505,7 @@ pub(crate) fn screen_thread_main(
                 };
                 for tab in screen.tabs.values_mut() {
                     tab.set_pane_frames(screen.pane_frame_style);
+                    tab.update_input_modes()?;
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -7513,6 +7514,7 @@ pub(crate) fn screen_thread_main(
                 screen.pane_frame_style = pane_frame_style;
                 for tab in screen.tabs.values_mut() {
                     tab.set_pane_frames(screen.pane_frame_style);
+                    tab.update_input_modes()?;
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;

@@ -313,6 +313,12 @@ impl ZellijPlugin for State {
                 PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
             };
             let active_tab = self.tabs.iter().find(|t| t.active);
+            let full_pane_frames = self.mode_info.pane_frame_style == Some(PaneFrameStyle::Full);
+            let hint_text = if full_pane_frames {
+                None
+            } else {
+                self.hint_text.as_ref()
+            };
             print!(
                 "{}{}",
                 one_line_ui(
@@ -323,7 +329,7 @@ impl ZellijPlugin for State {
                     self.base_mode_is_locked,
                     self.text_copy_destination,
                     self.display_system_clipboard_failure,
-                    self.hint_text.as_ref(),
+                    hint_text,
                 ),
                 fill_bg,
             );

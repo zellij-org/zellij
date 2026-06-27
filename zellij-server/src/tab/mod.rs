@@ -1231,6 +1231,7 @@ impl Tab {
             } else {
                 mode_info.web_server_capability = Some(false);
             }
+            mode_info.pane_frame_style = Some(self.pane_frame_style);
             for plugin_id in &tab_plugin_ids {
                 plugin_updates.push((
                     Some(*plugin_id),

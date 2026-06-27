@@ -691,6 +691,8 @@ pub struct ModeUpdatePayload {
     pub web_server_port: ::core::option::Option<u32>,
     #[prost(bool, optional, tag="15")]
     pub web_server_capability: ::core::option::Option<bool>,
+    #[prost(enumeration="PaneFrameStyle", optional, tag="16")]
+    pub pane_frame_style: ::core::option::Option<i32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1169,6 +1171,30 @@ impl WebSharing {
             "On" => Some(Self::On),
             "Off" => Some(Self::Off),
             "Disabled" => Some(Self::Disabled),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PaneFrameStyle {
+    Full = 0,
+    Titles = 1,
+    None = 2,
+}
+impl PaneFrameStyle {
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            PaneFrameStyle::Full => "Full",
+            PaneFrameStyle::Titles => "Titles",
+            PaneFrameStyle::None => "None",
+        }
+    }
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "Full" => Some(Self::Full),
+            "Titles" => Some(Self::Titles),
+            "None" => Some(Self::None),
             _ => None,
         }
     }

@@ -20,7 +20,8 @@ pub use super::generated_api::api::{
         LayoutWithError as ProtobufLayoutWithError, ModeUpdatePayload as ProtobufModeUpdatePayload,
         PaneContents as ProtobufPaneContents, PaneContentsEntry as ProtobufPaneContentsEntry,
         PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
-        PaneManifest as ProtobufPaneManifest, PaneMetadata as ProtobufPaneMetadata,
+        PaneFrameStyle as ProtobufPaneFrameStyle, PaneManifest as ProtobufPaneManifest,
+        PaneMetadata as ProtobufPaneMetadata,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
         PluginConfigurationChangedPayload as ProtobufPluginConfigurationChangedPayload,
@@ -1985,6 +1986,11 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
 
         let web_server_capability = protobuf_mode_update_payload.web_server_capability;
 
+        let pane_frame_style = protobuf_mode_update_payload
+            .pane_frame_style
+            .and_then(|p| ProtobufPaneFrameStyle::from_i32(p))
+            .map(|p| p.into());
+
         let mode_info = ModeInfo {
             mode: current_mode,
             keybinds,
@@ -2001,6 +2007,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             web_server_ip,
             web_server_port,
             web_server_capability,
+            pane_frame_style,
         };
         Ok(mode_info)
     }
@@ -2025,6 +2032,10 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let web_server_ip = mode_info.web_server_ip.map(|i| format!("{}", i));
         let web_server_port = mode_info.web_server_port.map(|p| p as u32);
         let web_server_capability = mode_info.web_server_capability;
+        let pane_frame_style = mode_info.pane_frame_style.map(|p| {
+            let protobuf_pane_frame_style: ProtobufPaneFrameStyle = p.into();
+            protobuf_pane_frame_style as i32
+        });
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -2065,6 +2076,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             web_server_ip,
             web_server_port,
             web_server_capability,
+            pane_frame_style,
         })
     }
 }
@@ -2416,6 +2428,7 @@ fn serialize_mode_update_event_with_non_default_values() {
         web_server_ip: IpAddr::from_str("127.0.0.1").ok(),
         web_server_port: Some(8082),
         web_server_capability: Some(true),
+        pane_frame_style: Some(crate::input::options::PaneFrameStyle::Titles),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
@@ -2997,6 +3010,26 @@ impl Into<WebSharing> for ProtobufWebSharing {
             ProtobufWebSharing::On => WebSharing::On,
             ProtobufWebSharing::Off => WebSharing::Off,
             ProtobufWebSharing::Disabled => WebSharing::Disabled,
+        }
+    }
+}
+
+impl Into<ProtobufPaneFrameStyle> for crate::input::options::PaneFrameStyle {
+    fn into(self) -> ProtobufPaneFrameStyle {
+        match self {
+            crate::input::options::PaneFrameStyle::Full => ProtobufPaneFrameStyle::Full,
+            crate::input::options::PaneFrameStyle::Titles => ProtobufPaneFrameStyle::Titles,
+            crate::input::options::PaneFrameStyle::None => ProtobufPaneFrameStyle::None,
+        }
+    }
+}
+
+impl Into<crate::input::options::PaneFrameStyle> for ProtobufPaneFrameStyle {
+    fn into(self) -> crate::input::options::PaneFrameStyle {
+        match self {
+            ProtobufPaneFrameStyle::Full => crate::input::options::PaneFrameStyle::Full,
+            ProtobufPaneFrameStyle::Titles => crate::input::options::PaneFrameStyle::Titles,
+            ProtobufPaneFrameStyle::None => crate::input::options::PaneFrameStyle::None,
         }
     }
 }
