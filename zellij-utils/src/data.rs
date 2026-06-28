@@ -3388,6 +3388,10 @@ pub enum PluginCommand {
     NewTiledPaneInTab {
         tab_position: usize,
     },
+    ToggleFloatingPanes {
+        tab_id: Option<u64>,
+    },
+    NewPane,
     GoToNextTab,
     GoToPreviousTab,
     Resize(Resize),

@@ -305,6 +305,10 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::NewTiledPaneInTab { tab_position } => {
                         new_tiled_pane_in_tab(env, tab_position)
                     },
+                    PluginCommand::ToggleFloatingPanes { tab_id } => {
+                        toggle_floating_panes(env, tab_id)
+                    },
+                    PluginCommand::NewPane => new_pane(env),
                     PluginCommand::GoToNextTab => go_to_next_tab(env),
                     PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
                     PluginCommand::Resize(resize_payload) => resize(env, resize_payload),
@@ -3167,6 +3171,25 @@ fn toggle_pane_embed_or_eject(env: &PluginEnv) {
     apply_action!(action, error_msg, env);
 }
 
+fn toggle_floating_panes(env: &PluginEnv, tab_id: Option<u64>) {
+    let error_msg = || format!("failed to toggle floating panes in plugin {}", env.name());
+    let action = match tab_id {
+        Some(id) => Action::ToggleFloatingPanesByTabId { id },
+        None => Action::ToggleFloatingPanes,
+    };
+    apply_action!(action, error_msg, env);
+}
+
+fn new_pane(env: &PluginEnv) {
+    let error_msg = || format!("failed to open new pane in plugin {}", env.name());
+    let action = Action::NewPane {
+        direction: None,
+        pane_name: None,
+        start_suppressed: false,
+    };
+    apply_action!(action, error_msg, env);
+}
+
 fn undo_rename_pane(env: &PluginEnv) {
     let error_msg = || format!("failed to undo rename pane in plugin {}", env.name());
     let action = Action::UndoRenamePane;
@@ -5505,6 +5528,8 @@ fn check_command_permission(
         | PluginCommand::TogglePaneIdFullscreen(..)
         | PluginCommand::TogglePaneFrames
         | PluginCommand::SetPaneFrameStyle(..)
+        | PluginCommand::ToggleFloatingPanes { .. }
+        | PluginCommand::NewPane
         | PluginCommand::TogglePaneEmbedOrEject
         | PluginCommand::TogglePaneEmbedOrEjectForPaneId(..)
         | PluginCommand::UndoRenamePane

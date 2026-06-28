@@ -1330,6 +1330,20 @@ pub fn close_focus() {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn new_pane() {
+    let plugin_command = PluginCommand::NewPane;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn toggle_floating_panes(tab_id: Option<u64>) {
+    let plugin_command = PluginCommand::ToggleFloatingPanes { tab_id };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Turn the `STDIN` synchronization of the current tab on or off
 pub fn toggle_active_tab_sync() {
     let plugin_command = PluginCommand::ToggleActiveTabSync;

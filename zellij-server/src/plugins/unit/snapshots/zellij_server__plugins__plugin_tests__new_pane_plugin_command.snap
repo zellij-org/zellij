@@ -1,0 +1,29 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", new_pane_event)"
+---
+Some(
+    SpawnTerminal(
+        None,
+        None,
+        NoPreference {
+            borderless: None,
+        },
+        false,
+        ClientId(
+            1,
+        ),
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+                unblock_condition: None,
+                affected_pane_id: None,
+                affected_tab_id: None,
+                error_message: None,
+                stdout_message: None,
+            },
+        ),
+        false,
+    ),
+)

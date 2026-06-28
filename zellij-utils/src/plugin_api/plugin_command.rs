@@ -70,6 +70,7 @@ pub use super::generated_api::api::{
         NewTabUnfocusedResponse as ProtobufNewTabUnfocusedResponse,
         NewTabsResponse as ProtobufNewTabsResponse, NewTabsWithLayoutInfoPayload,
         NewTiledPaneInTabPayload, NewTiledPaneInTabResponse as ProtobufNewTiledPaneInTabResponse,
+        ToggleFloatingPanesPayload,
         OpenCommandPaneBackgroundResponse as ProtobufOpenCommandPaneBackgroundResponse,
         OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneFloatingNearPluginResponse as ProtobufOpenCommandPaneFloatingNearPluginResponse,
@@ -941,6 +942,20 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     })
                 },
                 _ => Err("Mismatched payload for NewTiledPaneInTab"),
+            },
+            Some(CommandName::ToggleFloatingPanes) => match protobuf_plugin_command.payload {
+                Some(Payload::ToggleFloatingPanesPayload(payload)) => {
+                    Ok(PluginCommand::ToggleFloatingPanes {
+                        tab_id: payload.tab_id,
+                    })
+                },
+                _ => Ok(PluginCommand::ToggleFloatingPanes { tab_id: None }),
+            },
+            Some(CommandName::NewPane) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    return Err("NewPane should not have a payload");
+                }
+                Ok(PluginCommand::NewPane)
             },
             Some(CommandName::GoToNextTab) => {
                 if protobuf_plugin_command.payload.is_some() {
@@ -2995,6 +3010,16 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         tab_position: tab_position as u32,
                     },
                 )),
+            }),
+            PluginCommand::ToggleFloatingPanes { tab_id } => Ok(ProtobufPluginCommand {
+                name: CommandName::ToggleFloatingPanes as i32,
+                payload: Some(Payload::ToggleFloatingPanesPayload(
+                    ToggleFloatingPanesPayload { tab_id },
+                )),
+            }),
+            PluginCommand::NewPane => Ok(ProtobufPluginCommand {
+                name: CommandName::NewPane as i32,
+                payload: None,
             }),
             PluginCommand::GoToNextTab => Ok(ProtobufPluginCommand {
                 name: CommandName::GoToNextTab as i32,
@@ -5304,6 +5329,39 @@ mod tests {
                 },
                 other => panic!("expected SetPaneFrameStyle, got {:?}", other),
             }
+        }
+    }
+
+    #[test]
+    fn new_pane_protobuf_round_trip() {
+        let original = PluginCommand::NewPane;
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::NewPane => {},
+            other => panic!("expected NewPane, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn toggle_floating_panes_focused_tab_protobuf_round_trip() {
+        let original = PluginCommand::ToggleFloatingPanes { tab_id: None };
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::ToggleFloatingPanes { tab_id } => assert_eq!(tab_id, None),
+            other => panic!("expected ToggleFloatingPanes, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn toggle_floating_panes_with_tab_id_protobuf_round_trip() {
+        let original = PluginCommand::ToggleFloatingPanes { tab_id: Some(2) };
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::ToggleFloatingPanes { tab_id } => assert_eq!(tab_id, Some(2)),
+            other => panic!("expected ToggleFloatingPanes, got {:?}", other),
         }
     }
 }

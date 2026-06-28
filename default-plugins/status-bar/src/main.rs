@@ -44,6 +44,10 @@ struct State {
     cached_keybinds: KeybindsVec,
     hint_text: Option<BTreeMap<usize, StyledText>>,
     outstanding_hint_timeouts: usize,
+    new_pane_ribbon_range: Option<(usize, usize)>,
+    floating_ribbon_range: Option<(usize, usize)>,
+    new_pane_ribbon_hovered: bool,
+    floating_ribbon_hovered: bool,
 }
 
 register_plugin!(State);
@@ -194,6 +198,13 @@ fn color_elements(palette: Styling, different_color_alternates: bool) -> Colored
     }
 }
 
+fn col_in_range(range: Option<(usize, usize)>, col: usize) -> bool {
+    match range {
+        Some((start, end)) => col >= start && col < end,
+        None => false,
+    }
+}
+
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         // TODO: Should be able to choose whether to use the cache through config.
@@ -213,6 +224,7 @@ impl ZellijPlugin for State {
             EventType::InitialKeybinds,
             EventType::HintText,
             EventType::Timer,
+            EventType::Mouse,
         ]);
     }
 
@@ -292,6 +304,28 @@ impl ZellijPlugin for State {
                     should_render = true;
                 }
             },
+            Event::Mouse(mouse_event) => match mouse_event {
+                Mouse::LeftClick(_, col) => {
+                    if col_in_range(self.new_pane_ribbon_range, col) {
+                        new_pane();
+                    } else if col_in_range(self.floating_ribbon_range, col) {
+                        toggle_floating_panes(None);
+                    }
+                },
+                Mouse::Hover(_, col) => {
+                    let new_pane_hovered = col_in_range(self.new_pane_ribbon_range, col);
+                    let floating_hovered =
+                        !new_pane_hovered && col_in_range(self.floating_ribbon_range, col);
+                    if self.new_pane_ribbon_hovered != new_pane_hovered
+                        || self.floating_ribbon_hovered != floating_hovered
+                    {
+                        self.new_pane_ribbon_hovered = new_pane_hovered;
+                        self.floating_ribbon_hovered = floating_hovered;
+                        should_render = true;
+                    }
+                },
+                _ => {},
+            },
             _ => {},
         };
         should_render
@@ -319,22 +353,25 @@ impl ZellijPlugin for State {
             } else {
                 self.hint_text.as_ref()
             };
-            print!(
-                "{}{}",
-                one_line_ui(
-                    &self.mode_info,
-                    active_tab,
-                    cols,
-                    separator,
-                    self.base_mode_is_locked,
-                    self.text_copy_destination,
-                    self.display_system_clipboard_failure,
-                    hint_text,
-                ),
-                fill_bg,
+            let (line, new_pane_ribbon_range, floating_ribbon_range) = one_line_ui(
+                &self.mode_info,
+                active_tab,
+                cols,
+                separator,
+                self.base_mode_is_locked,
+                self.text_copy_destination,
+                self.display_system_clipboard_failure,
+                hint_text,
+                self.new_pane_ribbon_hovered,
+                self.floating_ribbon_hovered,
             );
+            self.new_pane_ribbon_range = new_pane_ribbon_range;
+            self.floating_ribbon_range = floating_ribbon_range;
+            print!("{}{}", line, fill_bg);
             return;
         }
+        self.new_pane_ribbon_range = None;
+        self.floating_ribbon_range = None;
 
         //TODO: Switch to UI components here
         let active_tab = self.tabs.iter().find(|t| t.active);
