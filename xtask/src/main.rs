@@ -145,7 +145,7 @@ fn main() -> anyhow::Result<()> {
 
     let elapsed = now.elapsed().as_secs();
     status(&format!("xtask (done after {} s)", elapsed));
-    println!("\n\n>> Command took {} s", elapsed);
+    eprintln!("\n\n>> Command took {} s", elapsed);
     Ok(())
 }
 
@@ -171,7 +171,7 @@ pub fn cargo() -> anyhow::Result<PathBuf> {
 
 // Set terminal title to 'msg'
 pub fn status(msg: &str) {
-    print!("\u{1b}]0;{}\u{07}", msg);
+    eprint!("\u{1b}]0;{}\u{07}", msg);
 }
 
 fn deprecation_notice() -> anyhow::Result<()> {

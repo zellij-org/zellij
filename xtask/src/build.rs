@@ -38,10 +38,10 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
             .collect();
 
         if !plugin_members.is_empty() {
-            println!();
+            eprintln!();
             let msg = ">> Building plugins";
             crate::status(msg);
-            println!("{}", msg);
+            eprintln!("{}", msg);
 
             let mut base_cmd = cmd!(sh, "{cargo} build --target wasm32-wasip1");
             if flags.release {
