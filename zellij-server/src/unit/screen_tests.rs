@@ -693,6 +693,8 @@ impl MockScreen {
 
         let os_input = FakeInputOutput::default();
         let config_options = Options::default();
+        let mut config = Config::default();
+        config.options.pane_frame_style = Some(PaneFrameStyle::Full);
         let main_client_id = 1;
 
         std::thread::Builder::new()
@@ -734,7 +736,7 @@ impl MockScreen {
             config_options,
             session_metadata,
             last_opened_tab_index: None,
-            config: Config::default(),
+            config,
             advanced_mouse_actions: true,
         }
     }
