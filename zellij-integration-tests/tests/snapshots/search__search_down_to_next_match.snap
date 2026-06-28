@@ -2,7 +2,7 @@
 source: zellij-integration-tests/tests/search.rs
 expression: normalized(&grid_snapshot)
 ---
- Zellij (test)  Tab #1 
+ Zellij (test)  Tab #1  + 
 ┌ SEARCHING: NEEDLE ──────────────────────────────────────────────────────────────────────────────────── SCROLL:  6/21 ┐
 │line16                                                                                                                │
 │line17                                                                                                                │
@@ -25,4 +25,4 @@ expression: normalized(&grid_snapshot)
 │line34                                                                                                                │
 │█ine35 NEEDLE lower                                                                                                   │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- SEARCHING   ↓↑  Scroll  PgDn|PgUp  Scroll  d|u  Scroll  n  Down  p  Up  c  Case  w  Wrap  o  Whole   
+ SEARCHING   ↓↑  Scroll  PgDn|PgUp  Scroll  d|u  Scroll  n  Down  p  Up  c  Case  w  Wrap  o  Whole 

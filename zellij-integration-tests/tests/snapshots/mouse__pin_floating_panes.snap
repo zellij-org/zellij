@@ -2,7 +2,7 @@
 source: zellij-integration-tests/tests/mouse.rs
 expression: normalized(&grid_snapshot)
 ---
- Zellij (test)  Tab #1 
+ Zellij (test)  Tab #1  + 
 ┌ Pane #1 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │$ line1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa│
 │a                                                                                                                     │

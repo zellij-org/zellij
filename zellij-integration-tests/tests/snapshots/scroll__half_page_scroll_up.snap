@@ -2,7 +2,7 @@
 source: zellij-integration-tests/tests/scroll.rs
 expression: normalized(&grid_snapshot)
 ---
- Zellij (test)  Tab #1 
+ Zellij (test)  Tab #1  + 
 ┌ Pane #1 ───────────────────────────────────────────────────────────────────────────────────────────── SCROLL:  10/21 ┐
 │line12                                                                                                                │
 │line13                                                                                                                │
@@ -25,4 +25,4 @@ expression: normalized(&grid_snapshot)
 │line30                                                                                                                │
 │█ine31                                                                                                                │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- Ctrl + <s> SEARCH   s  Search  ↓↑  Scroll  PgDn|PgUp  Scroll  d|u  Scroll  e  Edit  ENTER  Select     
+ Ctrl + <s> SEARCH   s  Search  ↓↑  Scroll  PgDn|PgUp  Scroll  d|u  Scroll  e  Edit  ENTER  Select 
