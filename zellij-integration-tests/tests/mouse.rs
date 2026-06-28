@@ -1,16 +1,10 @@
 #![cfg(unix)]
 
 use insta::assert_snapshot;
-use zellij_integration_tests::{keys, normalized, FakePtyHandle, Size, TestRunner, TestSession};
-
-const TERMINAL_SIZE: Size = Size {
-    cols: 120,
-    rows: 24,
+use zellij_integration_tests::{
+    claim_first_terminal_and_wait_for_prompt, col, keys, normalized,
+    split_right_and_wait_for_prompt, TestRunner, TestSession, PROMPT, TERMINAL_SIZE,
 };
-const PROMPT: &[u8] = b"$ ";
-const PROMPT_ROW: usize = 2;
-const FIRST_PANE_PROMPT_X: usize = 3;
-const RIGHT_PANE_PROMPT_X: usize = 63;
 
 fn start_zellij() -> TestSession {
     TestRunner::new(TERMINAL_SIZE)
@@ -22,32 +16,6 @@ fn sgr_mouse_report(column: usize, line: usize, button: u8) -> Vec<u8> {
     format!("\u{1b}[<{};{};{}M", button, column, line).into_bytes()
 }
 
-fn claim_first_terminal_and_wait_for_prompt(zellij: &TestSession) -> FakePtyHandle {
-    let terminal = zellij.expect_pty_spawn();
-    terminal.output(PROMPT);
-    zellij.wait_until(
-        "first terminal prompt rendered in loaded app",
-        |grid_snapshot| {
-            grid_snapshot.tab_bar_appears()
-                && grid_snapshot.status_bar_appears()
-                && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
-        },
-    );
-    terminal
-}
-
-fn split_right_and_wait_for_prompt(zellij: &TestSession) -> FakePtyHandle {
-    zellij.send_stdin(&keys::PANE_MODE);
-    zellij.send_stdin(&keys::SPLIT_RIGHT_IN_PANE_MODE);
-    let terminal = zellij.expect_pty_spawn();
-    terminal.output(PROMPT);
-    zellij.wait_until("right terminal prompt rendered", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
-            && grid_snapshot.cursor_is_at(RIGHT_PANE_PROMPT_X, PROMPT_ROW)
-    });
-    terminal
-}
-
 #[test]
 fn focus_pane_with_mouse() {
     let mut zellij = start_zellij();
@@ -56,8 +24,7 @@ fn focus_pane_with_mouse() {
 
     zellij.send_stdin(&sgr_mouse_report(2, 5, 0));
     let grid_snapshot = zellij.wait_until("focus moved back to the left pane", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
-            && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(3).row(2))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -91,8 +58,8 @@ fn pin_floating_panes() {
     let mut zellij = start_zellij();
     let tiled_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
 
-    zellij.send_stdin(&keys::PANE_MODE);
-    zellij.send_stdin(&keys::TOGGLE_FLOATING_PANES);
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('w'));
     let floating_terminal = zellij.expect_pty_spawn();
     floating_terminal.output(PROMPT);
     zellij.wait_until("floating pane shows the unpinned button", |grid_snapshot| {
@@ -104,14 +71,14 @@ fn pin_floating_panes() {
         grid_snapshot.contains("PIN [+]")
     });
 
-    zellij.send_stdin(&keys::PANE_MODE);
-    zellij.send_stdin(&keys::TOGGLE_FLOATING_PANES);
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('w'));
     zellij.wait_until(
         "focus settled on the tiled pane while the pinned pane stays up",
         |grid_snapshot| {
             grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains("PIN [+]")
-                && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
+                && grid_snapshot.cursor_is_at(col(3).row(2))
         },
     );
 

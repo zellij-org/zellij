@@ -278,6 +278,7 @@ message Action {
     SetLightThemeAction set_light_theme = 138;
     ToggleThemeAction toggle_theme = 139;
     ToggleMobileModeAction toggle_mobile_mode = 140;
+    FocusLastPaneAction focus_last_pane = 141;
   }
 }
 
@@ -287,6 +288,7 @@ message Action {
 message QuitAction {}
 message FocusNextPaneAction {}
 message FocusPreviousPaneAction {}
+message FocusLastPaneAction {}
 message SwitchFocusAction {}
 message MovePaneBackwardsAction {}
 message ClearScreenAction {}

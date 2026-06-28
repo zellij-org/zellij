@@ -1,0 +1,28 @@
+---
+source: zellij-integration-tests/tests/search.rs
+expression: normalized(&grid_snapshot)
+---
+ Zellij (test)  Tab #1 
+┌ SEARCHING: NEEDLE [c] ───────────────────────────────────────────────────────────────────────────────────────────────┐
+│$ NEEDLE on screen                                                                                                    │
+│█                                                                                                                     │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ SEARCHING   ↓↑  Scroll  PgDn|PgUp  Scroll  d|u  Scroll  n  Down  p  Up  c  Case  w  Wrap  o  Whole   

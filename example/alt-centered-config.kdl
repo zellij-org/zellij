@@ -30,6 +30,7 @@ keybinds {
         bind "Alt k" { MoveFocus "Up"; }
         bind "Alt +" { Resize "Increase"; }
         bind "Alt -" { Resize "Decrease"; }
+        bind "Alt \\" { FocusLastPane; }
     }
     pane clear-defaults=true {
         bind "Enter" "Esc" "Space" { SwitchToMode "normal"; }

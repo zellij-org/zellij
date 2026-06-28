@@ -1,30 +1,10 @@
 #![cfg(unix)]
 
 use insta::assert_snapshot;
-use zellij_integration_tests::{keys, normalized, FakePtyHandle, Size, TestRunner, TestSession};
-
-const TERMINAL_SIZE: Size = Size {
-    cols: 120,
-    rows: 24,
+use zellij_integration_tests::{
+    claim_first_terminal_and_wait_for_prompt, col, keys, normalized, start_zellij, PROMPT,
+    TERMINAL_SIZE,
 };
-const PROMPT: &[u8] = b"$ ";
-const PROMPT_ROW: usize = 2;
-const FIRST_PANE_PROMPT_X: usize = 3;
-
-fn start_zellij() -> TestSession {
-    TestRunner::new(TERMINAL_SIZE).start()
-}
-
-fn claim_first_terminal_and_wait_for_prompt(zellij: &TestSession) -> FakePtyHandle {
-    let terminal = zellij.expect_pty_spawn();
-    terminal.output(PROMPT);
-    zellij.wait_until("first terminal prompt rendered", |grid_snapshot| {
-        grid_snapshot.tab_bar_appears()
-            && grid_snapshot.status_bar_appears()
-            && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
-    });
-    terminal
-}
 
 #[test]
 fn override_layout_from_default_to_compact() {
@@ -95,8 +75,7 @@ fn send_blocking_command_through_the_cli() {
     assert_eq!(blocking_command.wait_for_exit(), 42);
 
     let grid_snapshot = zellij.wait_until("floating pane closed on exit", |grid_snapshot| {
-        !grid_snapshot.contains("PIN")
-            && grid_snapshot.cursor_is_at(FIRST_PANE_PROMPT_X, PROMPT_ROW)
+        !grid_snapshot.contains("PIN") && grid_snapshot.cursor_is_at(col(3).row(2))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -116,15 +95,15 @@ fn watcher_client_functionality() {
         grid_snapshot.status_bar_appears() && grid_snapshot.contains("WATCHER_OUTPUT_1")
     });
 
-    zellij.send_stdin(&keys::PANE_MODE);
-    zellij.send_stdin(&keys::SPLIT_RIGHT_IN_PANE_MODE);
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('r'));
     let right_terminal = zellij.expect_pty_spawn();
     right_terminal.output(PROMPT);
     watcher.wait_until("watcher sees the split", |grid_snapshot| {
         grid_snapshot.contains("┐┌")
     });
 
-    let ignored_new_tab_from_watcher = [keys::TAB_MODE, keys::NEW_TAB_IN_TAB_MODE].concat();
+    let ignored_new_tab_from_watcher = [keys::ctrl('t'), keys::key('n')].concat();
     watcher.send_stdin(&ignored_new_tab_from_watcher);
 
     zellij.detach_main_client();
