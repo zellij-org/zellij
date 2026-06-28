@@ -13,14 +13,23 @@ use crate::ClientId;
 use super::{Pane, Tab};
 
 fn clear_hover_for_client(tab: &mut Tab, client_id: ClientId) -> bool {
+    let mut cleared = false;
     if let Some(prev_pid) = tab.mouse_hover_pane_id.remove(&client_id) {
         if let Some(pane) = tab.get_pane_with_id_mut(prev_pid) {
             pane.set_hover_position(None);
         }
-        true
-    } else {
-        false
+        cleared = true;
     }
+    if let Some(prev_plugin_pid) = tab.plugin_hover_pane_id.remove(&client_id) {
+        if let Some(pane) = tab.get_pane_with_id(prev_plugin_pid) {
+            let _ = pane.mouse_event(
+                &MouseEvent::new_buttonless_motion(Position::new(0, u16::MAX)),
+                client_id,
+            );
+        }
+        cleared = true;
+    }
+    cleared
 }
 
 #[derive(Debug, Default, Copy, Clone)]
@@ -1059,11 +1068,46 @@ impl MouseHandler {
     fn execute_update_hover(
         tab: &mut Tab,
         pane_id: Option<PaneId>,
-        _position: Option<Position>,
+        position: Option<Position>,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let mut should_render = false;
         let previous_hover_pane_id = tab.mouse_hover_pane_id.get(&client_id).copied();
+
+        if tab.mouse_hover_effects {
+            let previous_plugin_hover_pane_id = tab.plugin_hover_pane_id.get(&client_id).copied();
+            let current_plugin_hover_pane_id = match pane_id {
+                Some(pid) if matches!(pid, PaneId::Plugin(_)) => Some(pid),
+                _ => None,
+            };
+            if let (Some(pid), Some(position)) = (current_plugin_hover_pane_id, position) {
+                if let Some(pane) = tab.get_pane_with_id(pid) {
+                    let relative_position = pane.relative_position(&position);
+                    let _ = pane.mouse_event(
+                        &MouseEvent::new_buttonless_motion(relative_position),
+                        client_id,
+                    );
+                }
+            }
+            if previous_plugin_hover_pane_id != current_plugin_hover_pane_id {
+                if let Some(previous_pid) = previous_plugin_hover_pane_id {
+                    if let Some(pane) = tab.get_pane_with_id(previous_pid) {
+                        let _ = pane.mouse_event(
+                            &MouseEvent::new_buttonless_motion(Position::new(0, u16::MAX)),
+                            client_id,
+                        );
+                    }
+                }
+                match current_plugin_hover_pane_id {
+                    Some(pid) => {
+                        tab.plugin_hover_pane_id.insert(client_id, pid);
+                    },
+                    None => {
+                        tab.plugin_hover_pane_id.remove(&client_id);
+                    },
+                }
+            }
+        }
         match pane_id {
             Some(pid) => {
                 if let Some(pane) = tab.get_pane_with_id(pid) {

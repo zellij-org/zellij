@@ -5036,6 +5036,7 @@ impl Screen {
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
+        self.arrow_fonts = should_support_arrow_fonts;
 
         // global configuration
         self.default_mode_info.update_theme(theme);
