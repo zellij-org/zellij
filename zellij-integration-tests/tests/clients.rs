@@ -21,7 +21,7 @@ fn mirrored_sessions() {
     second_client.wait_until("second client loaded on the first tab", |grid_snapshot| {
         grid_snapshot.tab_bar_appears()
             && grid_snapshot.status_bar_appears()
-            && grid_snapshot.cursor_is_at(col(3).row(2))
+            && grid_snapshot.cursor_is_at(col(2).row(1))
     });
 
     second_client.send_stdin(&keys::ctrl('p'));
@@ -34,7 +34,7 @@ fn mirrored_sessions() {
             && session_name_rendered(grid_snapshot)
             && grid_snapshot.status_bar_appears()
             && grid_snapshot.contains("Pane #2")
-            && grid_snapshot.cursor_is_at(col(63).row(2))
+            && grid_snapshot.cursor_is_at(col(62).row(2))
     };
     let main_grid = zellij.wait_until(
         "main client follows the second client's focus into the split it never asked for",
@@ -56,8 +56,16 @@ fn mirrored_sessions() {
 
 #[test]
 fn multiple_users_in_same_pane_and_tab() {
-    let mut zellij = start_zellij();
-    claim_first_terminal_and_wait_for_prompt(&zellij);
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config("pane_frame_style \"full\"")
+        .start();
+    let terminal = zellij.expect_pty_spawn();
+    terminal.output(PROMPT);
+    zellij.wait_until("first terminal prompt rendered", |grid_snapshot| {
+        grid_snapshot.tab_bar_appears()
+            && grid_snapshot.status_bar_appears()
+            && grid_snapshot.contains("$ ")
+    });
 
     let second_client = zellij.attach_client(TERMINAL_SIZE);
     let second_grid =
@@ -91,7 +99,7 @@ fn multiple_users_in_different_panes_and_same_tab() {
 
     let second_client = zellij.attach_client(TERMINAL_SIZE);
     second_client.wait_until("second client loaded on the first tab", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(3).row(2))
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(2).row(1))
     });
 
     second_client.send_stdin(&keys::ctrl('p'));
@@ -105,7 +113,7 @@ fn multiple_users_in_different_panes_and_same_tab() {
             grid_snapshot.tab_bar_appears()
                 && session_name_rendered(grid_snapshot)
                 && grid_snapshot.status_bar_appears()
-                && grid_snapshot.cursor_is_at(col(63).row(2))
+                && grid_snapshot.cursor_is_at(col(62).row(2))
         },
     );
     let main_grid = zellij.wait_until(
@@ -115,7 +123,7 @@ fn multiple_users_in_different_panes_and_same_tab() {
                 && session_name_rendered(grid_snapshot)
                 && grid_snapshot.contains("Pane #2")
                 && grid_snapshot.status_bar_appears()
-                && grid_snapshot.cursor_is_at(col(3).row(2))
+                && grid_snapshot.cursor_is_at(col(2).row(2))
         },
     );
     assert_snapshot!(normalized(&main_grid));
@@ -131,7 +139,7 @@ fn multiple_users_in_different_tabs() {
 
     let second_client = zellij.attach_client(TERMINAL_SIZE);
     second_client.wait_until("second client loaded on the first tab", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(3).row(2))
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(2).row(1))
     });
 
     second_client.send_stdin(&keys::ctrl('t'));
@@ -145,7 +153,7 @@ fn multiple_users_in_different_tabs() {
                 && session_name_rendered(grid_snapshot)
                 && grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains("Tab #2")
-                && grid_snapshot.cursor_is_at(col(3).row(2))
+                && grid_snapshot.cursor_is_at(col(2).row(1))
         });
     let main_grid = zellij.wait_until(
         "main client sees the new tab while staying on the first tab",
@@ -154,7 +162,7 @@ fn multiple_users_in_different_tabs() {
                 && session_name_rendered(grid_snapshot)
                 && grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains("Tab #2")
-                && grid_snapshot.cursor_is_at(col(3).row(2))
+                && grid_snapshot.cursor_is_at(col(2).row(1))
         },
     );
     assert_snapshot!(normalized(&main_grid));
@@ -173,7 +181,7 @@ fn detach_and_attach_session() {
     let right_terminal = zellij.expect_pty_spawn();
     right_terminal.output(PROMPT);
     zellij.wait_until("right terminal prompt rendered", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(63).row(2))
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(62).row(2))
     });
 
     right_terminal.output(b"I am some text");

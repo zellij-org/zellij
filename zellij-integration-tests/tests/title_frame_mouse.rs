@@ -60,6 +60,7 @@ fn mouse_click_new_pane_in_status_bar_opens_a_new_pane() {
 
     let grid_snapshot = zellij.wait_until("the clicked new pane rendered", |grid_snapshot| {
         grid_snapshot.contains("opened from the status bar")
+            && grid_snapshot.contains("Change Focus")
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();

@@ -28,7 +28,9 @@ fn page_scroll_up() {
     zellij.send_stdin(&keys::ctrl('b'));
 
     let grid_snapshot = zellij.wait_until("scrolled up by a page", |grid_snapshot| {
-        grid_snapshot.contains("PgDn|PgUp") && !grid_snapshot.contains(LAST_LINE)
+        grid_snapshot.contains("PgDn|PgUp")
+            && !grid_snapshot.contains(LAST_LINE)
+            && grid_snapshot.contains("SCROLL 19/")
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -49,7 +51,9 @@ fn page_scroll_down() {
 
     let grid_snapshot = zellij
         .wait_until("scrolled back down toward the bottom", |grid_snapshot| {
-            grid_snapshot.contains("line39") && grid_snapshot.contains("PgDn|PgUp")
+            grid_snapshot.contains("line39")
+                && grid_snapshot.contains("PgDn|PgUp")
+                && grid_snapshot.contains("SCROLL 0/")
         });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -64,7 +68,9 @@ fn half_page_scroll_up() {
     zellij.send_stdin(&keys::key('u'));
 
     let grid_snapshot = zellij.wait_until("scrolled up by half a page", |grid_snapshot| {
-        grid_snapshot.contains("PgDn|PgUp") && !grid_snapshot.contains(LAST_LINE)
+        grid_snapshot.contains("PgDn|PgUp")
+            && !grid_snapshot.contains(LAST_LINE)
+            && grid_snapshot.contains("SCROLL 10/")
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -85,7 +91,9 @@ fn half_page_scroll_down() {
 
     let grid_snapshot = zellij
         .wait_until("scrolled back down toward the bottom", |grid_snapshot| {
-            grid_snapshot.contains("line39") && grid_snapshot.contains("PgDn|PgUp")
+            grid_snapshot.contains("line39")
+                && grid_snapshot.contains("PgDn|PgUp")
+                && grid_snapshot.contains("SCROLL 0/")
         });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -100,13 +108,13 @@ fn scroll_down_one_line() {
     zellij.send_stdin(&keys::key('k'));
     zellij.send_stdin(&keys::key('k'));
     zellij.wait_until("scrolled up two lines", |grid_snapshot| {
-        grid_snapshot.contains("SCROLL:  2/")
+        grid_snapshot.contains("SCROLL 2/")
     });
 
     zellij.send_stdin(&keys::key('j'));
 
     let grid_snapshot = zellij.wait_until("scrolled back down one line", |grid_snapshot| {
-        grid_snapshot.contains("SCROLL:  1/") && grid_snapshot.contains("PgDn|PgUp")
+        grid_snapshot.contains("SCROLL 1/") && grid_snapshot.contains("PgDn|PgUp")
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -127,7 +135,9 @@ fn scroll_to_bottom() {
 
     let grid_snapshot = zellij
         .wait_until("returned to the bottom in normal mode", |grid_snapshot| {
-            grid_snapshot.status_bar_appears() && grid_snapshot.contains(LAST_LINE)
+            grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains(LAST_LINE)
+                && grid_snapshot.contains("SCROLL 0/")
         });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();

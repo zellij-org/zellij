@@ -11,7 +11,7 @@ fn focus_left_pane(zellij: &TestSession) {
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('h'));
     zellij.wait_until("focus moved to the left pane", |grid_snapshot| {
-        grid_snapshot.cursor_is_at(col(3).row(2))
+        grid_snapshot.cursor_is_at(col(2).row(2))
     });
 }
 
@@ -19,7 +19,7 @@ fn focus_upper_pane(zellij: &TestSession) {
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('k'));
     zellij.wait_until("focus moved to the upper pane", |grid_snapshot| {
-        grid_snapshot.cursor_is_at(col(3).row(2))
+        grid_snapshot.cursor_is_at(col(2).row(2))
     });
 }
 

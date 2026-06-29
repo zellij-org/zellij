@@ -3,8 +3,23 @@
 use insta::assert_snapshot;
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, keys, normalized, start_zellij, FakePtyHandle,
-    TestSession,
+    TestRunner, TestSession, TERMINAL_SIZE,
 };
+
+fn start_zellij_with_full_frames() -> TestSession {
+    TestRunner::new(TERMINAL_SIZE)
+        .with_config("pane_frame_style \"full\"")
+        .start()
+}
+
+fn enter_search_on_visible_match_with_full_frames(zellij: &TestSession) {
+    let terminal = zellij.expect_pty_spawn();
+    terminal.output(b"NEEDLE on screen\r\n");
+    zellij.wait_until("match visible on screen", |grid_snapshot| {
+        grid_snapshot.contains("NEEDLE on screen")
+    });
+    enter_search_for_needle(zellij);
+}
 
 fn fill_pane_with_two_matches(zellij: &TestSession) -> FakePtyHandle {
     let terminal = claim_first_terminal_and_wait_for_prompt(zellij);
@@ -36,15 +51,6 @@ fn enter_search_for_needle(zellij: &TestSession) {
     zellij.wait_until("search navigation mode active", |grid_snapshot| {
         grid_snapshot.contains("PgDn|PgUp")
     });
-}
-
-fn enter_search_on_visible_match(zellij: &TestSession) {
-    let terminal = claim_first_terminal_and_wait_for_prompt(zellij);
-    terminal.output(b"NEEDLE on screen\r\n");
-    zellij.wait_until("match visible on screen", |grid_snapshot| {
-        grid_snapshot.contains("NEEDLE on screen")
-    });
-    enter_search_for_needle(zellij);
 }
 
 #[test]
@@ -120,8 +126,8 @@ fn search_down_to_next_match() {
 
 #[test]
 fn search_toggle_case_sensitivity() {
-    let mut zellij = start_zellij();
-    enter_search_on_visible_match(&zellij);
+    let mut zellij = start_zellij_with_full_frames();
+    enter_search_on_visible_match_with_full_frames(&zellij);
 
     zellij.send_stdin(&keys::key('c'));
 
@@ -134,8 +140,8 @@ fn search_toggle_case_sensitivity() {
 
 #[test]
 fn search_toggle_wrap() {
-    let mut zellij = start_zellij();
-    enter_search_on_visible_match(&zellij);
+    let mut zellij = start_zellij_with_full_frames();
+    enter_search_on_visible_match_with_full_frames(&zellij);
 
     zellij.send_stdin(&keys::key('w'));
 
@@ -148,8 +154,8 @@ fn search_toggle_wrap() {
 
 #[test]
 fn search_toggle_whole_word() {
-    let mut zellij = start_zellij();
-    enter_search_on_visible_match(&zellij);
+    let mut zellij = start_zellij_with_full_frames();
+    enter_search_on_visible_match_with_full_frames(&zellij);
 
     zellij.send_stdin(&keys::key('o'));
 

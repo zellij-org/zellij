@@ -75,7 +75,7 @@ fn send_blocking_command_through_the_cli() {
     assert_eq!(blocking_command.wait_for_exit(), 42);
 
     let grid_snapshot = zellij.wait_until("floating pane closed on exit", |grid_snapshot| {
-        !grid_snapshot.contains("PIN") && grid_snapshot.cursor_is_at(col(3).row(2))
+        !grid_snapshot.contains("PIN") && grid_snapshot.cursor_is_at(col(2).row(1))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -100,7 +100,7 @@ fn watcher_client_functionality() {
     let right_terminal = zellij.expect_pty_spawn();
     right_terminal.output(PROMPT);
     watcher.wait_until("watcher sees the split", |grid_snapshot| {
-        grid_snapshot.contains("┐┌")
+        grid_snapshot.contains("│")
     });
 
     let ignored_new_tab_from_watcher = [keys::ctrl('t'), keys::key('n')].concat();
@@ -112,7 +112,7 @@ fn watcher_client_functionality() {
         "watcher keeps receiving output while no main client is attached",
         |grid_snapshot| {
             grid_snapshot.contains("WATCHER_DONE")
-                && grid_snapshot.contains("┐┌")
+                && grid_snapshot.contains("│")
                 && !grid_snapshot.contains("Tab #2")
         },
     );
@@ -123,7 +123,7 @@ fn watcher_client_functionality() {
         |grid_snapshot| {
             grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains("WATCHER_DONE")
-                && grid_snapshot.contains("┐┌")
+                && grid_snapshot.contains("│")
         },
     );
     assert_snapshot!(normalized(&main_snapshot));
@@ -132,7 +132,7 @@ fn watcher_client_functionality() {
         watcher.wait_until("watcher mirrors the re-attached session", |grid_snapshot| {
             grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains("WATCHER_DONE")
-                && grid_snapshot.contains("┐┌")
+                && grid_snapshot.contains("│")
                 && !grid_snapshot.contains("Tab #2")
         });
     assert_snapshot!(normalized(&watcher_snapshot));

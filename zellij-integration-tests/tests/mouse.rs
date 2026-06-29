@@ -24,7 +24,7 @@ fn focus_pane_with_mouse() {
 
     zellij.send_stdin(&sgr_mouse_report(2, 5, 0));
     let grid_snapshot = zellij.wait_until("focus moved back to the left pane", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(3).row(2))
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(2).row(2))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -78,7 +78,7 @@ fn pin_floating_panes() {
         |grid_snapshot| {
             grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains("PIN [+]")
-                && grid_snapshot.cursor_is_at(col(3).row(2))
+                && grid_snapshot.cursor_is_at(col(2).row(1))
         },
     );
 

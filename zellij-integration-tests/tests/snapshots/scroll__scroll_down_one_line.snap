@@ -2,27 +2,27 @@
 source: zellij-integration-tests/tests/scroll.rs
 expression: normalized(&grid_snapshot)
 ---
- Zellij (test)  Tab #1  + 
-┌ Pane #1 ────────────────────────────────────────────────────────────────────────────────────────────── SCROLL:  1/21 ┐
-│line21                                                                                                                │
-│line22                                                                                                                │
-│line23                                                                                                                │
-│line24                                                                                                                │
-│line25                                                                                                                │
-│line26                                                                                                                │
-│line27                                                                                                                │
-│line28                                                                                                                │
-│line29                                                                                                                │
-│line30                                                                                                                │
-│line31                                                                                                                │
-│line32                                                                                                                │
-│line33                                                                                                                │
-│line34                                                                                                                │
-│line35                                                                                                                │
-│line36                                                                                                                │
-│line37                                                                                                                │
-│line38                                                                                                                │
-│line39                                                                                                                │
-│█ine40                                                                                                                │
-└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ Zellij (test)  Tab #1  +                                                                         [ SCROLL 1/19 ]
+line19
+line20
+line21
+line22
+line23
+line24
+line25
+line26
+line27
+line28
+line29
+line30
+line31
+line32
+line33
+line34
+line35
+line36
+line37
+line38
+line39
+█ine40
  Ctrl + <s> SEARCH   s  Search  ↓↑  Scroll  PgDn|PgUp  Scroll  d|u  Scroll  e  Edit  ENTER  Select 
