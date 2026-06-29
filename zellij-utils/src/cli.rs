@@ -941,6 +941,16 @@ pub enum CliAction {
         )]
         close_replaced_pane: bool,
 
+        /// The pane to replace when opening in place, eg. terminal_1, plugin_2 or 3 (only
+        /// effective with --in-place; defaults to the focused pane)
+        #[clap(
+            long,
+            value_parser,
+            requires("in-place"),
+            conflicts_with("near-current-pane")
+        )]
+        pane_id: Option<String>,
+
         /// Name of the new pane
         #[clap(short, long, value_parser)]
         name: Option<String>,

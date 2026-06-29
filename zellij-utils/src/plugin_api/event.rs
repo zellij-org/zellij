@@ -2562,6 +2562,55 @@ fn serialize_pane_update_event() {
 }
 
 #[test]
+fn serialize_hint_text_event() {
+    use prost::Message;
+    let hint_text_event = Event::HintText(BTreeMap::from([
+        (
+            10,
+            StyledText {
+                text: "group".to_owned(),
+                indices: vec![vec![0]],
+            },
+        ),
+        (
+            42,
+            StyledText {
+                text: "resize".to_owned(),
+                indices: vec![vec![0, 1], vec![3]],
+            },
+        ),
+    ]));
+    let protobuf_event: ProtobufEvent = hint_text_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent =
+        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(
+        hint_text_event, deserialized_event,
+        "Event properly serialized/deserialized without change"
+    );
+}
+
+#[test]
+fn serialize_active_pane_scroll_event() {
+    use prost::Message;
+    for active_pane_scroll_event in [
+        Event::ActivePaneScroll(Some((3, 12))),
+        Event::ActivePaneScroll(None),
+    ] {
+        let protobuf_event: ProtobufEvent = active_pane_scroll_event.clone().try_into().unwrap();
+        let serialized_protobuf_event = protobuf_event.encode_to_vec();
+        let deserialized_protobuf_event: ProtobufEvent =
+            Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+        let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+        assert_eq!(
+            active_pane_scroll_event, deserialized_event,
+            "Event properly serialized/deserialized without change"
+        );
+    }
+}
+
+#[test]
 fn serialize_key_event() {
     use crate::data::BareKey;
     use prost::Message;
