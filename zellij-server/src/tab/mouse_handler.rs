@@ -1117,10 +1117,12 @@ impl MouseHandler {
                     } else if tab.advanced_mouse_actions || !tab.mouse_hover_effects {
                         tab.mouse_hover_pane_id.remove(&client_id);
                     }
+                    tab.mouse_last_pane_id.insert(client_id, pid);
                     should_render = true;
                 }
             },
             None => {
+                tab.mouse_last_pane_id.remove(&client_id);
                 let removed = tab.mouse_hover_pane_id.remove(&client_id);
                 if removed.is_some() {
                     should_render = true;
@@ -1190,19 +1192,24 @@ impl MouseHandler {
             if event.event_type == MouseEventType::Motion && tab.mouse_hover_effects {
                 tab.last_mouse_activity_time
                     .insert(client_id, Instant::now());
-                let was_visible = tab
-                    .mouse_help_text_visible
-                    .get(&client_id)
-                    .copied()
-                    .unwrap_or(false);
-                tab.mouse_help_text_visible.insert(client_id, true);
-                if !was_visible {
-                    should_render = true;
-                }
+                let entered_pane =
+                    tab.mouse_last_pane_id.get(&client_id) != Some(&pane_id);
+                tab.mouse_last_pane_id.insert(client_id, pane_id);
+                if entered_pane {
+                    let was_visible = tab
+                        .mouse_help_text_visible
+                        .get(&client_id)
+                        .copied()
+                        .unwrap_or(false);
+                    tab.mouse_help_text_visible.insert(client_id, true);
+                    if !was_visible {
+                        should_render = true;
+                    }
 
-                tab.senders
-                    .send_to_background_jobs(BackgroundJob::ClearHelpText { client_id })
-                    .with_context(err_context)?;
+                    tab.senders
+                        .send_to_background_jobs(BackgroundJob::ClearHelpText { client_id })
+                        .with_context(err_context)?;
+                }
             }
         }
         let mouse_effect = if should_render {

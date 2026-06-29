@@ -213,6 +213,7 @@ pub(crate) struct Tab {
     web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
     plugin_hover_pane_id: HashMap<ClientId, PaneId>,
+    mouse_last_pane_id: HashMap<ClientId, PaneId>,
     mouse_help_text_visible: HashMap<ClientId, bool>,
     last_mouse_activity_time: HashMap<ClientId, Instant>,
     last_hint_text: HashMap<ClientId, BTreeMap<usize, StyledText>>,
@@ -886,6 +887,7 @@ impl Tab {
             web_sharing,
             mouse_hover_pane_id: HashMap::new(),
             plugin_hover_pane_id: HashMap::new(),
+            mouse_last_pane_id: HashMap::new(),
             mouse_help_text_visible: HashMap::new(),
             last_mouse_activity_time: HashMap::new(),
             last_hint_text: HashMap::new(),
@@ -1463,6 +1465,7 @@ impl Tab {
             .map(|c| c.change_to_default_mode()); // TODO: no races?
         self.connected_clients.borrow_mut().remove(&client_id);
         self.mouse_help_text_visible.remove(&client_id);
+        self.mouse_last_pane_id.remove(&client_id);
         self.last_mouse_activity_time.remove(&client_id);
         self.set_force_render();
     }
@@ -6005,6 +6008,7 @@ impl Tab {
     pub fn clear_mouse_hover_state(&mut self) {
         self.mouse_hover_pane_id.clear();
         self.plugin_hover_pane_id.clear();
+        self.mouse_last_pane_id.clear();
         self.mouse_help_text_visible.clear();
     }
     pub fn update_web_sharing(&mut self, web_sharing: WebSharing) {
