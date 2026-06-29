@@ -3539,6 +3539,24 @@ fn test_client_messages() {
         client_id: Some(100),
         is_cli_client: true,
     });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetPaneFrameStyle(PaneFrameStyle::Full),
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetPaneFrameStyle(PaneFrameStyle::Titles),
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetPaneFrameStyle(PaneFrameStyle::None),
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
     test_client_roundtrip!(ClientToServerMsg::ForwardedReplyFromHost {
         token: 0,
         reply_bytes: vec![],

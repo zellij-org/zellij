@@ -133,7 +133,12 @@ impl FromStr for PaneFrameStyle {
         match s.trim().to_lowercase().as_str() {
             "full" => Ok(PaneFrameStyle::Full),
             "titles" => Ok(PaneFrameStyle::Titles),
-            e => Err(format!("Unknown pane frame style: '{}' (expected 'full' or 'titles')", e).into()),
+            "none" => Ok(PaneFrameStyle::None),
+            e => Err(format!(
+                "Unknown pane frame style: '{}' (expected 'full', 'titles' or 'none')",
+                e
+            )
+            .into()),
         }
     }
 }
@@ -726,6 +731,27 @@ mod tests {
     const WIDE_SHORT: (usize, usize) = (200, 20);
     const TALL_NARROW: (usize, usize) = (40, 200);
     const LARGE: (usize, usize) = (200, 200);
+
+    #[test]
+    fn pane_frame_style_from_str_accepts_all_variants() {
+        assert_eq!(
+            "full".parse::<PaneFrameStyle>().unwrap(),
+            PaneFrameStyle::Full
+        );
+        assert_eq!(
+            "titles".parse::<PaneFrameStyle>().unwrap(),
+            PaneFrameStyle::Titles
+        );
+        assert_eq!(
+            "none".parse::<PaneFrameStyle>().unwrap(),
+            PaneFrameStyle::None
+        );
+        assert_eq!(
+            "NONE".parse::<PaneFrameStyle>().unwrap(),
+            PaneFrameStyle::None
+        );
+        assert!("bogus".parse::<PaneFrameStyle>().is_err());
+    }
 
     fn route(
         layout: MobileLayoutConfiguration,

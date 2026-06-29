@@ -93,6 +93,38 @@ fn mouse_click_new_pane_in_status_bar_twice_opens_two_panes() {
     zellij.quit();
 }
 
+fn click_floating_ribbon_in_status_bar(zellij: &TestSession) {
+    let grid_snapshot = zellij.wait_until("status bar shows the floating ribbon", |grid_snapshot| {
+        grid_snapshot
+            .lines()
+            .last()
+            .is_some_and(|status_bar| status_bar.contains("Floating"))
+    });
+    let status_bar = grid_snapshot.lines().last().cloned().unwrap();
+    let floating_ribbon_column = display_column_of(&status_bar, "Floating")
+        .expect("floating ribbon is on the status bar")
+        + 1;
+    let status_bar_line = grid_snapshot.lines().len();
+
+    zellij.send_stdin(&sgr_left_click(floating_ribbon_column, status_bar_line));
+}
+
+#[test]
+fn mouse_click_floating_ribbon_in_status_bar_opens_a_floating_pane() {
+    let mut zellij = start_zellij(STATUS_BAR_TEST_COLS);
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    click_floating_ribbon_in_status_bar(&zellij);
+    let floating_terminal = zellij.expect_pty_spawn();
+    floating_terminal.output(PROMPT);
+
+    let grid_snapshot = zellij.wait_until("a floating pane appeared", |grid_snapshot| {
+        grid_snapshot.contains("STAGGERED") && grid_snapshot.contains("┌")
+    });
+    assert_snapshot!(normalized(&grid_snapshot));
+    zellij.quit();
+}
+
 #[test]
 fn mouse_click_new_tab_button_in_tab_bar_opens_a_new_tab() {
     let mut zellij = start_zellij(120);
