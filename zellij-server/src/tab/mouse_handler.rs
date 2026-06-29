@@ -13,14 +13,23 @@ use crate::ClientId;
 use super::{Pane, Tab};
 
 fn clear_hover_for_client(tab: &mut Tab, client_id: ClientId) -> bool {
+    let mut cleared = false;
     if let Some(prev_pid) = tab.mouse_hover_pane_id.remove(&client_id) {
         if let Some(pane) = tab.get_pane_with_id_mut(prev_pid) {
             pane.set_hover_position(None);
         }
-        true
-    } else {
-        false
+        cleared = true;
     }
+    if let Some(prev_plugin_pid) = tab.plugin_hover_pane_id.remove(&client_id) {
+        if let Some(pane) = tab.get_pane_with_id(prev_plugin_pid) {
+            let _ = pane.mouse_event(
+                &MouseEvent::new_buttonless_motion(Position::new(0, u16::MAX)),
+                client_id,
+            );
+        }
+        cleared = true;
+    }
+    cleared
 }
 
 #[derive(Debug, Default, Copy, Clone)]
@@ -1059,11 +1068,46 @@ impl MouseHandler {
     fn execute_update_hover(
         tab: &mut Tab,
         pane_id: Option<PaneId>,
-        _position: Option<Position>,
+        position: Option<Position>,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let mut should_render = false;
         let previous_hover_pane_id = tab.mouse_hover_pane_id.get(&client_id).copied();
+
+        if tab.mouse_hover_effects {
+            let previous_plugin_hover_pane_id = tab.plugin_hover_pane_id.get(&client_id).copied();
+            let current_plugin_hover_pane_id = match pane_id {
+                Some(pid) if matches!(pid, PaneId::Plugin(_)) => Some(pid),
+                _ => None,
+            };
+            if let (Some(pid), Some(position)) = (current_plugin_hover_pane_id, position) {
+                if let Some(pane) = tab.get_pane_with_id(pid) {
+                    let relative_position = pane.relative_position(&position);
+                    let _ = pane.mouse_event(
+                        &MouseEvent::new_buttonless_motion(relative_position),
+                        client_id,
+                    );
+                }
+            }
+            if previous_plugin_hover_pane_id != current_plugin_hover_pane_id {
+                if let Some(previous_pid) = previous_plugin_hover_pane_id {
+                    if let Some(pane) = tab.get_pane_with_id(previous_pid) {
+                        let _ = pane.mouse_event(
+                            &MouseEvent::new_buttonless_motion(Position::new(0, u16::MAX)),
+                            client_id,
+                        );
+                    }
+                }
+                match current_plugin_hover_pane_id {
+                    Some(pid) => {
+                        tab.plugin_hover_pane_id.insert(client_id, pid);
+                    },
+                    None => {
+                        tab.plugin_hover_pane_id.remove(&client_id);
+                    },
+                }
+            }
+        }
         match pane_id {
             Some(pid) => {
                 if let Some(pane) = tab.get_pane_with_id(pid) {
@@ -1073,10 +1117,12 @@ impl MouseHandler {
                     } else if tab.advanced_mouse_actions || !tab.mouse_hover_effects {
                         tab.mouse_hover_pane_id.remove(&client_id);
                     }
+                    tab.mouse_last_pane_id.insert(client_id, pid);
                     should_render = true;
                 }
             },
             None => {
+                tab.mouse_last_pane_id.remove(&client_id);
                 let removed = tab.mouse_hover_pane_id.remove(&client_id);
                 if removed.is_some() {
                     should_render = true;
@@ -1146,19 +1192,23 @@ impl MouseHandler {
             if event.event_type == MouseEventType::Motion && tab.mouse_hover_effects {
                 tab.last_mouse_activity_time
                     .insert(client_id, Instant::now());
-                let was_visible = tab
-                    .mouse_help_text_visible
-                    .get(&client_id)
-                    .copied()
-                    .unwrap_or(false);
-                tab.mouse_help_text_visible.insert(client_id, true);
-                if !was_visible {
-                    should_render = true;
-                }
+                let entered_pane = tab.mouse_last_pane_id.get(&client_id) != Some(&pane_id);
+                tab.mouse_last_pane_id.insert(client_id, pane_id);
+                if entered_pane {
+                    let was_visible = tab
+                        .mouse_help_text_visible
+                        .get(&client_id)
+                        .copied()
+                        .unwrap_or(false);
+                    tab.mouse_help_text_visible.insert(client_id, true);
+                    if !was_visible {
+                        should_render = true;
+                    }
 
-                tab.senders
-                    .send_to_background_jobs(BackgroundJob::ClearHelpText { client_id })
-                    .with_context(err_context)?;
+                    tab.senders
+                        .send_to_background_jobs(BackgroundJob::ClearHelpText { client_id })
+                        .with_context(err_context)?;
+                }
             }
         }
         let mouse_effect = if should_render {

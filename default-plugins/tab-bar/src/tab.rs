@@ -24,6 +24,7 @@ pub fn render_tab(
     text: String,
     tab: &TabInfo,
     is_alternate_tab: bool,
+    is_hovered: bool,
     palette: Styling,
     separator: &str,
 ) -> LinePart {
@@ -37,6 +38,8 @@ pub fn render_tab(
     };
     let background_color = if tab.active {
         palette.ribbon_selected.background
+    } else if is_hovered {
+        palette.ribbon_unselected.emphasis_1
     } else if is_alternate_tab {
         alternate_tab_color
     } else {
@@ -98,6 +101,7 @@ pub fn tab_style(
     mut tabname: String,
     tab: &TabInfo,
     mut is_alternate_tab: bool,
+    is_hovered: bool,
     palette: Styling,
     capabilities: PluginCapabilities,
 ) -> LinePart {
@@ -116,7 +120,14 @@ pub fn tab_style(
         is_alternate_tab = false;
     }
 
-    render_tab(tabname, tab, is_alternate_tab, palette, separator)
+    render_tab(
+        tabname,
+        tab,
+        is_alternate_tab,
+        is_hovered,
+        palette,
+        separator,
+    )
 }
 
 pub(crate) fn get_tab_to_focus(

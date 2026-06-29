@@ -2,27 +2,6 @@
 source: zellij-integration-tests/tests/modes.rs
 expression: normalized(&grid_snapshot)
 ---
- Zellij (test)  Tab #1 
-┌ Enter search... ─────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│$ █                                                                                                                   │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- ENTERING SEARCH TERM   ENTER  When done                                                                            
+ Zellij (test)  Tab #1  + 
+$ █
+ ENTERING SEARCH TERM   ENTER  When done 

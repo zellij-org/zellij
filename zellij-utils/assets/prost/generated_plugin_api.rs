@@ -20,6 +20,9 @@ pub mod api {
     pub mod message {
         include!("api.message.rs");
     }
+    pub mod pane_frame_style {
+        include!("api.pane_frame_style.rs");
+    }
     pub mod pipe_message {
         include!("api.pipe_message.rs");
     }

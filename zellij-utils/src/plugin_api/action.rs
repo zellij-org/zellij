@@ -58,6 +58,7 @@ pub use super::generated_api::api::{
         ScrollAtPayload,
         SearchDirection as ProtobufSearchDirection,
         SearchOption as ProtobufSearchOption,
+        SetPaneFrameStylePayload,
         ShowFloatingPanesPayload,
         SplitDirection as ProtobufSplitDirection,
         SplitSize as ProtobufSplitSize,
@@ -74,6 +75,7 @@ pub use super::generated_api::api::{
         WritePayload,
     },
     input_mode::InputMode as ProtobufInputMode,
+    pane_frame_style::PaneFrameStyle as ProtobufPaneFrameStyle,
     resize::{Resize as ProtobufResize, ResizeDirection as ProtobufResizeDirection},
 };
 use crate::data::{
@@ -299,6 +301,17 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::TogglePaneFrames) => match protobuf_action.optional_payload {
                 Some(_) => Err("TogglePaneFrames should not have a payload"),
                 None => Ok(Action::TogglePaneFrames),
+            },
+            Some(ProtobufActionName::SetPaneFrameStyle) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::SetPaneFrameStylePayload(payload)) => {
+                    match ProtobufPaneFrameStyle::from_i32(payload.pane_frame_style) {
+                        Some(protobuf_pane_frame_style) => Ok(Action::SetPaneFrameStyle(
+                            protobuf_pane_frame_style.try_into()?,
+                        )),
+                        None => Err("Malformed payload for Action::SetPaneFrameStyle"),
+                    }
+                },
+                _ => Err("Wrong payload for Action::SetPaneFrameStyle"),
             },
             Some(ProtobufActionName::ToggleActiveSyncTab) => {
                 match protobuf_action.optional_payload {
@@ -1300,6 +1313,15 @@ impl TryFrom<Action> for ProtobufAction {
             Action::TogglePaneFrames => Ok(ProtobufAction {
                 name: ProtobufActionName::TogglePaneFrames as i32,
                 optional_payload: None,
+            }),
+            Action::SetPaneFrameStyle(pane_frame_style) => Ok(ProtobufAction {
+                name: ProtobufActionName::SetPaneFrameStyle as i32,
+                optional_payload: Some(OptionalPayload::SetPaneFrameStylePayload(
+                    SetPaneFrameStylePayload {
+                        pane_frame_style: ProtobufPaneFrameStyle::try_from(pane_frame_style)?
+                            as i32,
+                    },
+                )),
             }),
             Action::ToggleActiveSyncTab => Ok(ProtobufAction {
                 name: ProtobufActionName::ToggleActiveSyncTab as i32,
@@ -3233,5 +3255,25 @@ impl TryFrom<SwapFloatingLayout> for ProtobufSwapFloatingLayout {
             constraint_map,
             name: internal.1,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::input::options::PaneFrameStyle;
+
+    #[test]
+    fn set_pane_frame_style_action_protobuf_round_trip() {
+        for style in [
+            PaneFrameStyle::Full,
+            PaneFrameStyle::Titles,
+            PaneFrameStyle::None,
+        ] {
+            let original = Action::SetPaneFrameStyle(style);
+            let protobuf: ProtobufAction = original.clone().try_into().expect("encode");
+            let decoded: Action = protobuf.try_into().expect("decode");
+            assert_eq!(original, decoded);
+        }
     }
 }

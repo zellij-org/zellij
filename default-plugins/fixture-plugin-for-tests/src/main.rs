@@ -173,6 +173,8 @@ impl ZellijPlugin for State {
                 BareKey::Char('6') if key.has_no_modifiers() => close_focused_tab(),
                 BareKey::Char('7') if key.has_no_modifiers() => undo_rename_tab(),
                 BareKey::Char('8') if key.has_no_modifiers() => quit_zellij(),
+                BareKey::Char('9') if key.has_no_modifiers() => new_pane(),
+                BareKey::Char('0') if key.has_no_modifiers() => toggle_floating_panes(None),
                 BareKey::Char('a') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     previous_swap_layout()
                 },
@@ -625,6 +627,9 @@ impl ZellijPlugin for State {
                 BareKey::Char('h') if key.has_only_modifiers(&[KeyModifier::Super]) => {
                     // Test clear_pane_highlights
                     clear_pane_highlights(PaneId::Terminal(1));
+                },
+                BareKey::Char('i') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    toggle_floating_panes(Some(2));
                 },
                 BareKey::Char('a')
                     if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>

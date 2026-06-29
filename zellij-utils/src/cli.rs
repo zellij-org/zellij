@@ -2,7 +2,10 @@ use crate::data::{Direction, InputMode, Resize, UnblockCondition};
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
-    input::{layout::PluginUserConfiguration, options::Options},
+    input::{
+        layout::PluginUserConfiguration,
+        options::{Options, PaneFrameStyle},
+    },
 };
 use clap::{ArgEnum, Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -884,6 +887,10 @@ pub enum CliAction {
     },
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
+    SetPaneFrameStyle {
+        #[clap(arg_enum, value_parser)]
+        style: PaneFrameStyle,
+    },
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
     ToggleActiveSyncTab {
         /// Target a specific tab by ID
@@ -933,6 +940,16 @@ pub enum CliAction {
             requires("in-place")
         )]
         close_replaced_pane: bool,
+
+        /// The pane to replace when opening in place, eg. terminal_1, plugin_2 or 3 (only
+        /// effective with --in-place; defaults to the focused pane)
+        #[clap(
+            long,
+            value_parser,
+            requires("in-place"),
+            conflicts_with("near-current-pane")
+        )]
+        pane_id: Option<String>,
 
         /// Name of the new pane
         #[clap(short, long, value_parser)]

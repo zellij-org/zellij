@@ -4,6 +4,7 @@ pub use super::generated_api::api::{
         event::Payload as ProtobufEventPayload,
         layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
         pane_scrollback_response, ActionCompletePayload as ProtobufActionCompletePayload,
+        ActivePaneScrollPayload as ProtobufActivePaneScrollPayload,
         AvailableLayoutInfoPayload as ProtobufAvailableLayoutInfoPayload,
         ClientInfo as ProtobufClientInfo, ClientPaneHistory as ProtobufClientPaneHistory,
         ClientTabHistory as ProtobufClientTabHistory,
@@ -11,6 +12,7 @@ pub use super::generated_api::api::{
         CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
         EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
+        HintTextPayload as ProtobufHintTextPayload,
         HostTerminalThemeChangedPayload as ProtobufHostTerminalThemeChangedPayload,
         HostTerminalThemeIndication as ProtobufHostTerminalThemeIndication,
         InputModeKeybinds as ProtobufInputModeKeybinds, KdlError as ProtobufKdlError,
@@ -19,14 +21,16 @@ pub use super::generated_api::api::{
         LayoutParsingError as ProtobufLayoutParsingError,
         LayoutWithError as ProtobufLayoutWithError, ModeUpdatePayload as ProtobufModeUpdatePayload,
         PaneContents as ProtobufPaneContents, PaneContentsEntry as ProtobufPaneContentsEntry,
-        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
-        PaneManifest as ProtobufPaneManifest, PaneMetadata as ProtobufPaneMetadata,
+        PaneFrameStyle as ProtobufPaneFrameStyle, PaneId as ProtobufPaneId,
+        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
+        PaneMetadata as ProtobufPaneMetadata,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
         PluginConfigurationChangedPayload as ProtobufPluginConfigurationChangedPayload,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
         SoftKeyboardVisibilityChangedPayload as ProtobufSoftKeyboardVisibilityChangedPayload,
+        StyledText as ProtobufStyledText, StyledTextIndices as ProtobufStyledTextIndices,
         SyntaxError as ProtobufSyntaxError, TabInfo as ProtobufTabInfo,
         TabMetadata as ProtobufTabMetadata, UserActionPayload as ProtobufUserActionPayload,
         WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
@@ -41,8 +45,8 @@ use crate::data::{
     ClientId, ClientInfo, CopyDestination, Event, EventType, FileMetadata, HostTerminalThemeMode,
     InputMode, KeyWithModifier, LayoutInfo, LayoutMetadata, ModeInfo, Mouse, PaneContents, PaneId,
     PaneInfo, PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus,
-    PluginCapabilities, PluginInfo, SelectedText, SessionInfo, Style, TabInfo, TabMetadata,
-    WebServerStatus, WebSharing,
+    PluginCapabilities, PluginInfo, SelectedText, SessionInfo, Style, StyledText, TabInfo,
+    TabMetadata, WebServerStatus, WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -597,6 +601,28 @@ impl TryFrom<ProtobufEvent> for Event {
                     _ => Err("Malformed payload for SoftKeyboardVisibilityChanged Event"),
                 }
             },
+            Some(ProtobufEventType::HintText) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::HintTextPayload(p)) => {
+                    let mut hint_text = BTreeMap::new();
+                    for (width, styled_text) in p.hint_text {
+                        hint_text.insert(width as usize, StyledText::from(styled_text));
+                    }
+                    Ok(Event::HintText(hint_text))
+                },
+                _ => Err("Malformed payload for HintText Event"),
+            },
+            Some(ProtobufEventType::ActivePaneScroll) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::ActivePaneScrollPayload(p)) => {
+                    let scroll = match (p.position, p.length) {
+                        (Some(position), Some(length)) => {
+                            Some((position as usize, length as usize))
+                        },
+                        _ => None,
+                    };
+                    Ok(Event::ActivePaneScroll(scroll))
+                },
+                _ => Err("Malformed payload for ActivePaneScroll Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -1145,6 +1171,35 @@ impl TryFrom<Event> for ProtobufEvent {
                     payload: Some(event::Payload::SoftKeyboardVisibilityChangedPayload(
                         payload,
                     )),
+                })
+            },
+            Event::HintText(hint_text) => {
+                let mut proto_hint_text = HashMap::new();
+                for (width, styled_text) in hint_text {
+                    proto_hint_text.insert(width as u32, ProtobufStyledText::from(styled_text));
+                }
+                let payload = ProtobufHintTextPayload {
+                    hint_text: proto_hint_text,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::HintText as i32,
+                    payload: Some(event::Payload::HintTextPayload(payload)),
+                })
+            },
+            Event::ActivePaneScroll(scroll) => {
+                let payload = match scroll {
+                    Some((position, length)) => ProtobufActivePaneScrollPayload {
+                        position: Some(position as u32),
+                        length: Some(length as u32),
+                    },
+                    None => ProtobufActivePaneScrollPayload {
+                        position: None,
+                        length: None,
+                    },
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::ActivePaneScroll as i32,
+                    payload: Some(event::Payload::ActivePaneScrollPayload(payload)),
                 })
             },
             Event::InitialKeybinds(keybinds) => {
@@ -1960,6 +2015,11 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
 
         let web_server_capability = protobuf_mode_update_payload.web_server_capability;
 
+        let pane_frame_style = protobuf_mode_update_payload
+            .pane_frame_style
+            .and_then(|p| ProtobufPaneFrameStyle::from_i32(p))
+            .map(|p| p.into());
+
         let mode_info = ModeInfo {
             mode: current_mode,
             keybinds,
@@ -1976,6 +2036,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             web_server_ip,
             web_server_port,
             web_server_capability,
+            pane_frame_style,
         };
         Ok(mode_info)
     }
@@ -2000,6 +2061,10 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let web_server_ip = mode_info.web_server_ip.map(|i| format!("{}", i));
         let web_server_port = mode_info.web_server_port.map(|p| p as u32);
         let web_server_capability = mode_info.web_server_capability;
+        let pane_frame_style = mode_info.pane_frame_style.map(|p| {
+            let protobuf_pane_frame_style: ProtobufPaneFrameStyle = p.into();
+            protobuf_pane_frame_style as i32
+        });
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -2040,6 +2105,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             web_server_ip,
             web_server_port,
             web_server_capability,
+            pane_frame_style,
         })
     }
 }
@@ -2127,6 +2193,8 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::SoftKeyboardVisibilityChanged => {
                 EventType::SoftKeyboardVisibilityChanged
             },
+            ProtobufEventType::HintText => EventType::HintText,
+            ProtobufEventType::ActivePaneScroll => EventType::ActivePaneScroll,
         })
     }
 }
@@ -2184,7 +2252,37 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::SoftKeyboardVisibilityChanged => {
                 ProtobufEventType::SoftKeyboardVisibilityChanged
             },
+            EventType::HintText => ProtobufEventType::HintText,
+            EventType::ActivePaneScroll => ProtobufEventType::ActivePaneScroll,
         })
+    }
+}
+
+impl From<StyledText> for ProtobufStyledText {
+    fn from(styled_text: StyledText) -> Self {
+        ProtobufStyledText {
+            text: styled_text.text,
+            indices: styled_text
+                .indices
+                .into_iter()
+                .map(|inner| ProtobufStyledTextIndices {
+                    indices: inner.into_iter().map(|i| i as u32).collect(),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<ProtobufStyledText> for StyledText {
+    fn from(styled_text: ProtobufStyledText) -> Self {
+        StyledText {
+            text: styled_text.text,
+            indices: styled_text
+                .indices
+                .into_iter()
+                .map(|inner| inner.indices.into_iter().map(|i| i as usize).collect())
+                .collect(),
+        }
     }
 }
 
@@ -2361,6 +2459,7 @@ fn serialize_mode_update_event_with_non_default_values() {
         web_server_ip: IpAddr::from_str("127.0.0.1").ok(),
         web_server_port: Some(8082),
         web_server_capability: Some(true),
+        pane_frame_style: Some(crate::input::options::PaneFrameStyle::Titles),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
@@ -2460,6 +2559,55 @@ fn serialize_pane_update_event() {
         pane_update_event, deserialized_event,
         "Event properly serialized/deserialized without change"
     );
+}
+
+#[test]
+fn serialize_hint_text_event() {
+    use prost::Message;
+    let hint_text_event = Event::HintText(BTreeMap::from([
+        (
+            10,
+            StyledText {
+                text: "group".to_owned(),
+                indices: vec![vec![0]],
+            },
+        ),
+        (
+            42,
+            StyledText {
+                text: "resize".to_owned(),
+                indices: vec![vec![0, 1], vec![3]],
+            },
+        ),
+    ]));
+    let protobuf_event: ProtobufEvent = hint_text_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent =
+        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(
+        hint_text_event, deserialized_event,
+        "Event properly serialized/deserialized without change"
+    );
+}
+
+#[test]
+fn serialize_active_pane_scroll_event() {
+    use prost::Message;
+    for active_pane_scroll_event in [
+        Event::ActivePaneScroll(Some((3, 12))),
+        Event::ActivePaneScroll(None),
+    ] {
+        let protobuf_event: ProtobufEvent = active_pane_scroll_event.clone().try_into().unwrap();
+        let serialized_protobuf_event = protobuf_event.encode_to_vec();
+        let deserialized_protobuf_event: ProtobufEvent =
+            Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+        let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+        assert_eq!(
+            active_pane_scroll_event, deserialized_event,
+            "Event properly serialized/deserialized without change"
+        );
+    }
 }
 
 #[test]
@@ -2942,6 +3090,26 @@ impl Into<WebSharing> for ProtobufWebSharing {
             ProtobufWebSharing::On => WebSharing::On,
             ProtobufWebSharing::Off => WebSharing::Off,
             ProtobufWebSharing::Disabled => WebSharing::Disabled,
+        }
+    }
+}
+
+impl Into<ProtobufPaneFrameStyle> for crate::input::options::PaneFrameStyle {
+    fn into(self) -> ProtobufPaneFrameStyle {
+        match self {
+            crate::input::options::PaneFrameStyle::Full => ProtobufPaneFrameStyle::Full,
+            crate::input::options::PaneFrameStyle::Titles => ProtobufPaneFrameStyle::Titles,
+            crate::input::options::PaneFrameStyle::None => ProtobufPaneFrameStyle::None,
+        }
+    }
+}
+
+impl Into<crate::input::options::PaneFrameStyle> for ProtobufPaneFrameStyle {
+    fn into(self) -> crate::input::options::PaneFrameStyle {
+        match self {
+            ProtobufPaneFrameStyle::Full => crate::input::options::PaneFrameStyle::Full,
+            ProtobufPaneFrameStyle::Titles => crate::input::options::PaneFrameStyle::Titles,
+            ProtobufPaneFrameStyle::None => crate::input::options::PaneFrameStyle::None,
         }
     }
 }

@@ -37,8 +37,8 @@ use zellij_utils::data::{
     OpenPluginPaneFloatingResponse, OpenTerminalFloatingNearPluginResponse,
     OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
     OpenTerminalNearPluginResponse, OpenTerminalPaneInPlaceOfPaneIdResponse, OpenTerminalResponse,
-    OriginatingPlugin, PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
-    RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
+    OriginatingPlugin, PaneFrameStyle, PaneScrollbackResponse, PermissionStatus, PermissionType,
+    PluginPermission, RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
 };
 use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;
@@ -304,6 +304,10 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::NewTiledPaneInTab { tab_position } => {
                         new_tiled_pane_in_tab(env, tab_position)
                     },
+                    PluginCommand::ToggleFloatingPanes { tab_id } => {
+                        toggle_floating_panes(env, tab_id)
+                    },
+                    PluginCommand::NewPane => new_pane(env),
                     PluginCommand::GoToNextTab => go_to_next_tab(env),
                     PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
                     PluginCommand::Resize(resize_payload) => resize(env, resize_payload),
@@ -334,6 +338,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::PageScrollDown => page_scroll_down(env),
                     PluginCommand::ToggleFocusFullscreen => toggle_focus_fullscreen(env),
                     PluginCommand::TogglePaneFrames => toggle_pane_frames(env),
+                    PluginCommand::SetPaneFrameStyle(pane_frame_style) => {
+                        set_pane_frame_style(env, pane_frame_style)
+                    },
                     PluginCommand::TogglePaneEmbedOrEject => toggle_pane_embed_or_eject(env),
                     PluginCommand::UndoRenamePane => undo_rename_pane(env),
                     PluginCommand::CloseFocus => close_focus(env),
@@ -3146,6 +3153,12 @@ fn toggle_pane_frames(env: &PluginEnv) {
     apply_action!(action, error_msg, env);
 }
 
+fn set_pane_frame_style(env: &PluginEnv, pane_frame_style: PaneFrameStyle) {
+    let error_msg = || format!("failed to set pane frame style in plugin {}", env.name());
+    let action = Action::SetPaneFrameStyle(pane_frame_style);
+    apply_action!(action, error_msg, env);
+}
+
 fn toggle_pane_embed_or_eject(env: &PluginEnv) {
     let error_msg = || {
         format!(
@@ -3154,6 +3167,25 @@ fn toggle_pane_embed_or_eject(env: &PluginEnv) {
         )
     };
     let action = Action::TogglePaneEmbedOrFloating;
+    apply_action!(action, error_msg, env);
+}
+
+fn toggle_floating_panes(env: &PluginEnv, tab_id: Option<u64>) {
+    let error_msg = || format!("failed to toggle floating panes in plugin {}", env.name());
+    let action = match tab_id {
+        Some(id) => Action::ToggleFloatingPanesByTabId { id },
+        None => Action::ToggleFloatingPanes,
+    };
+    apply_action!(action, error_msg, env);
+}
+
+fn new_pane(env: &PluginEnv) {
+    let error_msg = || format!("failed to open new pane in plugin {}", env.name());
+    let action = Action::NewPane {
+        direction: None,
+        pane_name: None,
+        start_suppressed: false,
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -5494,6 +5526,9 @@ fn check_command_permission(
         | PluginCommand::ToggleFocusFullscreen
         | PluginCommand::TogglePaneIdFullscreen(..)
         | PluginCommand::TogglePaneFrames
+        | PluginCommand::SetPaneFrameStyle(..)
+        | PluginCommand::ToggleFloatingPanes { .. }
+        | PluginCommand::NewPane
         | PluginCommand::TogglePaneEmbedOrEject
         | PluginCommand::TogglePaneEmbedOrEjectForPaneId(..)
         | PluginCommand::UndoRenamePane

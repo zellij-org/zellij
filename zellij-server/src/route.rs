@@ -596,6 +596,14 @@ pub(crate) fn route_action(
                 )))
                 .with_context(err_context)?;
         },
+        Action::SetPaneFrameStyle(pane_frame_style) => {
+            senders
+                .send_to_screen(ScreenInstruction::SetPaneFrameStyle(
+                    pane_frame_style,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::NewPane {
             direction,
             pane_name,
@@ -787,14 +795,15 @@ pub(crate) fn route_action(
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
-            let pane_id = match pane_id_to_replace {
-                Some(pane_id_to_replace) => pane_id_to_replace.try_into().ok(),
-                None => pane_id,
-            };
+            let explicit_pane_id_to_replace: Option<PaneId> = pane_id_to_replace
+                .and_then(|pane_id_to_replace| pane_id_to_replace.try_into().ok());
+            let pane_id = explicit_pane_id_to_replace.or(pane_id);
             let client_tab_index_or_paneid = if let Some(tab_id) = tab_id {
                 ClientTabIndexOrPaneId::TabIndex(tab_id)
-            } else if near_current_pane && pane_id.is_some() {
-                ClientTabIndexOrPaneId::PaneId(pane_id.unwrap())
+            } else if let Some(pane_id) =
+                pane_id.filter(|_| explicit_pane_id_to_replace.is_some() || near_current_pane)
+            {
+                ClientTabIndexOrPaneId::PaneId(pane_id)
             } else {
                 ClientTabIndexOrPaneId::ClientId(client_id)
             };

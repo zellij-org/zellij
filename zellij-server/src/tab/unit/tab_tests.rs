@@ -10,6 +10,7 @@ use zellij_utils::channels::{unbounded, Receiver, SenderWithContext};
 use zellij_utils::data::{Direction, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
+use zellij_utils::input::options::PaneFrameStyle;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
@@ -156,7 +157,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -243,7 +244,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -337,7 +338,7 @@ fn create_new_tab_with_cell_size(
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -15464,7 +15465,7 @@ fn correctly_resize_frameless_panes_on_pane_close() {
     let size = Size { cols, rows };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.set_pane_frames(false);
+    tab.set_pane_frames(PaneFrameStyle::None);
 
     // a single frameless pane should take up all available space
     let pane = tab.tiled_panes.panes.get(&PaneId::Terminal(1)).unwrap();

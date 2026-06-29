@@ -70,6 +70,8 @@ enum EventType {
     CommandChanged = 45;
     HostTerminalThemeChanged = 46;
     SoftKeyboardVisibilityChanged = 47;
+    HintText = 48;
+    ActivePaneScroll = 49;
 }
 
 message EventNameList {
@@ -119,7 +121,27 @@ message Event {
     CommandChangedPayload command_changed_payload = 39;
     HostTerminalThemeChangedPayload host_terminal_theme_changed_payload = 40;
     SoftKeyboardVisibilityChangedPayload soft_keyboard_visibility_changed_payload = 41;
+    HintTextPayload hint_text_payload = 42;
+    ActivePaneScrollPayload active_pane_scroll_payload = 43;
   }
+}
+
+message HintTextPayload {
+  map<uint32, StyledText> hint_text = 1;
+}
+
+message ActivePaneScrollPayload {
+  optional uint32 position = 1;
+  optional uint32 length = 2;
+}
+
+message StyledText {
+  string text = 1;
+  repeated StyledTextIndices indices = 2;
+}
+
+message StyledTextIndices {
+  repeated uint32 indices = 1;
 }
 
 message HostTerminalThemeChangedPayload {
@@ -488,12 +510,19 @@ message ModeUpdatePayload {
   optional string web_server_ip = 13;
   optional uint32 web_server_port = 14;
   optional bool web_server_capability = 15;
+  optional PaneFrameStyle pane_frame_style = 16;
 }
 
 enum WebSharing {
     On = 0;
     Off = 1;
     Disabled = 2;
+}
+
+enum PaneFrameStyle {
+    Full = 0;
+    Titles = 1;
+    None = 2;
 }
 
 message InputModeKeybinds {

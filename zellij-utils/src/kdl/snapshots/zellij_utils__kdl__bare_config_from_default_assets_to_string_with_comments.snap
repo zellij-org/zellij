@@ -359,6 +359,13 @@ web_client {
 // 
 // pane_frames false
  
+// Set the pane frame style when pane_frames is enabled
+// Options:
+//   - full
+//   - titles (default)
+// 
+// pane_frame_style "titles"
+ 
 // When attaching to an existing session with other users,
 // should the session be mirrored (true)
 // or should each user have their own cursor (false)

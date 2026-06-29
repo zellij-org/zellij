@@ -51,7 +51,7 @@ use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
-use zellij_utils::input::options::{Clipboard, MobileLayoutConfiguration};
+use zellij_utils::input::options::{Clipboard, MobileLayoutConfiguration, PaneFrameStyle};
 use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
@@ -430,6 +430,7 @@ pub enum ScreenInstruction {
     CloseFocusedPane(ClientId, Option<NotificationEnd>),
     ToggleActiveTerminalFullscreen(ClientId, Option<NotificationEnd>),
     TogglePaneFrames(Option<NotificationEnd>),
+    SetPaneFrameStyle(PaneFrameStyle, Option<NotificationEnd>),
     SetSelectable(PaneId, bool),
     ShowPluginCursor(u32, ClientId, Option<(usize, usize)>),
     ClosePane(
@@ -735,7 +736,7 @@ pub enum ScreenInstruction {
         host_theme_light: Option<Styling>,
         simplified_ui: bool,
         default_shell: Option<PathBuf>,
-        pane_frames: bool,
+        pane_frame_style: PaneFrameStyle,
         copy_command: Option<String>,
         copy_to_clipboard: Option<Clipboard>,
         copy_on_select: bool,
@@ -852,6 +853,7 @@ pub enum ScreenInstruction {
     DesktopNotificationResponse(Vec<u8>, ClientId),
     PluginSubscribedToAnsiPaneContents(bool), // true = at least one plugin needs ANSI content
     UpdateBackgroundPluginSubscriptions(PluginId, ClientId, HashSet<EventType>),
+    ClearHintTextCache,
     BroadcastModeUpdate(ModeInfo, Option<ClientId>), // ModeInfo, optional specific client_id (None = all clients)
     // Pane-targeting CLI variants
     ScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
@@ -985,6 +987,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::ToggleActiveTerminalFullscreen
             },
             ScreenInstruction::TogglePaneFrames(..) => ScreenContext::TogglePaneFrames,
+            ScreenInstruction::SetPaneFrameStyle(..) => ScreenContext::SetPaneFrameStyle,
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
             ScreenInstruction::ShowPluginCursor(..) => ScreenContext::ShowPluginCursor,
             ScreenInstruction::ClosePane(..) => ScreenContext::ClosePane,
@@ -1203,6 +1206,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateBackgroundPluginSubscriptions(..) => {
                 ScreenContext::UpdateBackgroundPluginSubscriptions
             },
+            ScreenInstruction::ClearHintTextCache => ScreenContext::ClearHintTextCache,
             ScreenInstruction::BroadcastModeUpdate(..) => ScreenContext::BroadcastModeUpdate,
             // Pane-targeting CLI variants
             ScreenInstruction::ScrollUpWithPaneId(..) => ScreenContext::ScrollUpWithPaneId,
@@ -1401,6 +1405,7 @@ pub(crate) struct Screen {
     max_panes: Option<usize>,
     /// A map between this [`Screen`]'s tabs and their ID/key.
     tabs: BTreeMap<usize, Tab>,
+    last_single_pane_tab_names: HashMap<usize, Option<String>>,
     /// The full size of this [`Screen`].
     size: Size,
     pixel_dimensions: PixelDimensions,
@@ -1419,7 +1424,7 @@ pub(crate) struct Screen {
     mode_info: BTreeMap<ClientId, ModeInfo>,
     default_mode_info: ModeInfo, // TODO: restructure ModeInfo to prevent this duplication
     style: Style,
-    draw_pane_frames: bool,
+    pane_frame_style: PaneFrameStyle,
     auto_layout: bool,
     session_serialization: bool,
     serialize_pane_viewport: bool,
@@ -1527,7 +1532,7 @@ impl Screen {
         client_attributes: &ClientAttributes,
         max_panes: Option<usize>,
         mode_info: ModeInfo,
-        draw_pane_frames: bool,
+        pane_frame_style: PaneFrameStyle,
         auto_layout: bool,
         session_is_mirrored: bool,
         copy_options: CopyOptions,
@@ -1575,13 +1580,14 @@ impl Screen {
             client_sizes: HashMap::new(),
             global_last_active_tab_id: 0,
             tabs: BTreeMap::new(),
+            last_single_pane_tab_names: HashMap::new(),
             terminal_emulator_colors: Rc::new(RefCell::new(Palette::default())),
             terminal_emulator_color_codes: Rc::new(RefCell::new(HashMap::new())),
             tab_history: BTreeMap::new(),
             pane_history: BTreeMap::new(),
             mode_info: BTreeMap::new(),
             default_mode_info: mode_info,
-            draw_pane_frames,
+            pane_frame_style,
             auto_layout,
             session_is_mirrored,
             copy_options,
@@ -2971,7 +2977,8 @@ impl Screen {
                 }
             }
 
-            if bell_state_changed {
+            let single_pane_names_changed = self.update_single_pane_tab_names();
+            if bell_state_changed || single_pane_names_changed {
                 self.log_and_report_session_state()?;
             }
         } else {
@@ -3308,7 +3315,7 @@ impl Screen {
             self.max_panes,
             self.style,
             self.default_mode_info.clone(),
-            self.draw_pane_frames,
+            self.pane_frame_style,
             self.auto_layout,
             self.connected_clients.clone(),
             self.session_is_mirrored,
@@ -3696,7 +3703,9 @@ impl Screen {
                 let selectable_floating_panes_count = tab.get_selectable_floating_panes_count();
                 let tab_info_for_plugins = TabInfo {
                     position: tab.position,
-                    name: tab.name.clone(),
+                    name: tab
+                        .single_pane_tab_name()
+                        .unwrap_or_else(|| tab.name.clone()),
                     active: *active_tab_index == tab.id,
                     panes_to_hide: tab.panes_to_hide_count(),
                     is_fullscreen_active: tab.is_fullscreen_active(),
@@ -3818,6 +3827,19 @@ impl Screen {
         }
     }
 
+    fn update_single_pane_tab_names(&mut self) -> bool {
+        let current: HashMap<usize, Option<String>> = self
+            .tabs
+            .values()
+            .map(|tab| (tab.id, tab.single_pane_tab_name()))
+            .collect();
+        if current != self.last_single_pane_tab_names {
+            self.last_single_pane_tab_names = current;
+            true
+        } else {
+            false
+        }
+    }
     fn log_and_report_session_state(&mut self) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
 
@@ -4997,7 +5019,7 @@ impl Screen {
         theme: Styling,
         simplified_ui: bool,
         default_shell: Option<PathBuf>,
-        pane_frames: bool,
+        pane_frame_style: PaneFrameStyle,
         copy_command: Option<String>,
         copy_to_clipboard: Option<Clipboard>,
         copy_on_select: bool,
@@ -5014,6 +5036,7 @@ impl Screen {
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
+        self.arrow_fonts = should_support_arrow_fonts;
 
         // global configuration
         self.default_mode_info.update_theme(theme);
@@ -5029,7 +5052,7 @@ impl Screen {
         self.auto_layout = auto_layout;
         self.copy_options.command = copy_command.clone();
         self.copy_options.copy_on_select = copy_on_select;
-        self.draw_pane_frames = pane_frames;
+        self.pane_frame_style = pane_frame_style;
         self.advanced_mouse_actions = advanced_mouse_actions;
         self.mouse_hover_effects = mouse_hover_effects;
         self.visual_bell = visual_bell;
@@ -5052,7 +5075,7 @@ impl Screen {
             tab.update_default_editor(self.default_editor.clone());
             tab.update_auto_layout(auto_layout);
             tab.update_copy_options(&self.copy_options);
-            tab.set_pane_frames(pane_frames);
+            tab.set_pane_frames(pane_frame_style);
             tab.update_arrow_fonts(should_support_arrow_fonts);
             tab.update_advanced_mouse_actions(advanced_mouse_actions);
             tab.update_mouse_hover_effects(mouse_hover_effects);
@@ -6125,7 +6148,7 @@ pub(crate) fn screen_thread_main(
 
     let config_options = config.options;
     let arrow_fonts = !config_options.simplified_ui.unwrap_or_default();
-    let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
+    let pane_frame_style = PaneFrameStyle::from_options(&config_options);
     let auto_layout = config_options.auto_layout.unwrap_or(true);
     let session_serialization = config_options.session_serialization.unwrap_or(true);
     let serialize_pane_viewport = config_options.serialize_pane_viewport.unwrap_or(false);
@@ -6194,7 +6217,7 @@ pub(crate) fn screen_thread_main(
             &config.keybinds,
             config_options.default_mode,
         ),
-        draw_pane_frames,
+        pane_frame_style,
         auto_layout,
         session_is_mirrored,
         copy_options,
@@ -7494,9 +7517,23 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                screen.draw_pane_frames = !screen.draw_pane_frames;
+                screen.pane_frame_style = match screen.pane_frame_style {
+                    PaneFrameStyle::Full => PaneFrameStyle::Titles,
+                    PaneFrameStyle::Titles => PaneFrameStyle::None,
+                    PaneFrameStyle::None => PaneFrameStyle::Full,
+                };
                 for tab in screen.tabs.values_mut() {
-                    tab.set_pane_frames(screen.draw_pane_frames);
+                    tab.set_pane_frames(screen.pane_frame_style);
+                    tab.update_input_modes()?;
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::SetPaneFrameStyle(pane_frame_style, _completion_tx) => {
+                screen.pane_frame_style = pane_frame_style;
+                for tab in screen.tabs.values_mut() {
+                    tab.set_pane_frames(screen.pane_frame_style);
+                    tab.update_input_modes()?;
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -9328,7 +9365,7 @@ pub(crate) fn screen_thread_main(
                 host_theme_light,
                 simplified_ui,
                 default_shell,
-                pane_frames,
+                pane_frame_style,
                 copy_to_clipboard,
                 copy_command,
                 copy_on_select,
@@ -9352,7 +9389,7 @@ pub(crate) fn screen_thread_main(
                         theme,
                         simplified_ui,
                         default_shell,
-                        pane_frames,
+                        pane_frame_style,
                         copy_command,
                         copy_to_clipboard,
                         copy_on_select,
@@ -10047,6 +10084,12 @@ pub(crate) fn screen_thread_main(
                         .background_plugin_subscriptions
                         .insert((plugin_id, client_id), subscriptions);
                 }
+            },
+            ScreenInstruction::ClearHintTextCache => {
+                for tab in screen.tabs.values_mut() {
+                    tab.clear_hint_text_cache();
+                }
+                screen.render(None)?;
             },
             ScreenInstruction::BroadcastModeUpdate(mode_info, target_client_id) => {
                 screen.broadcast_mode_update(mode_info, target_client_id)?;

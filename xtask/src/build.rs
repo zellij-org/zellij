@@ -27,7 +27,7 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
     // See [this PR][1] for details.
     //
     // [1]: https://github.com/zellij-org/zellij/pull/2711#issuecomment-1695015818
-    run_proto_codegen(sh);
+    run_proto_codegen(sh, false);
 
     // Build all plugins in a single invocation so Cargo can unify transitive dependency
     // features across all of them and compile shared crates (e.g. zellij-utils) only once.
@@ -114,7 +114,16 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_proto_codegen(sh: &Shell) {
+pub fn proto(sh: &Shell) -> anyhow::Result<()> {
+    let msg = ">> Generating protobuffer code";
+    crate::status(msg);
+    println!("{}", msg);
+
+    run_proto_codegen(sh, true);
+    Ok(())
+}
+
+fn run_proto_codegen(sh: &Shell, force: bool) {
     let zellij_utils_basedir = crate::project_root().join("zellij-utils");
     let _pd = sh.push_dir(&zellij_utils_basedir);
 
@@ -142,7 +151,7 @@ fn run_proto_codegen(sh: &Shell) {
             .metadata()
             .and_then(|m| m.modified());
         let mut proto_files = vec![];
-        let mut needs_regeneration = false;
+        let mut needs_regeneration = force;
 
         for entry in std::fs::read_dir(&src_dir).unwrap() {
             let entry_path = entry.unwrap().path();

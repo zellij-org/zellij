@@ -2,27 +2,27 @@
 source: zellij-integration-tests/tests/search.rs
 expression: normalized(&grid_snapshot)
 ---
- Zellij (test)  Tab #1 
-┌ SEARCHING: NEEDLE ──────────────────────────────────────────────────────────────────────────────────── SCROLL:  6/21 ┐
-│line16                                                                                                                │
-│line17                                                                                                                │
-│line18                                                                                                                │
-│line19                                                                                                                │
-│line20                                                                                                                │
-│line21                                                                                                                │
-│line22                                                                                                                │
-│line23                                                                                                                │
-│line24                                                                                                                │
-│line25                                                                                                                │
-│line26                                                                                                                │
-│line27                                                                                                                │
-│line28                                                                                                                │
-│line29                                                                                                                │
-│line30                                                                                                                │
-│line31                                                                                                                │
-│line32                                                                                                                │
-│line33                                                                                                                │
-│line34                                                                                                                │
-│█ine35 NEEDLE lower                                                                                                   │
-└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- SEARCHING   ↓↑  Scroll  PgDn|PgUp  Scroll  d|u  Scroll  n  Down  p  Up  c  Case  w  Wrap  o  Whole   
+ Zellij (test)  Tab #1  +                                                                        [ SCROLL 15/19 ]
+line14
+line15
+line16
+line17
+line18
+line19
+line20
+line21
+line22
+line23
+line24
+line25
+line26
+line27
+line28
+line29
+line30
+line31
+line32
+line33
+line34
+█ine35 NEEDLE lower
+ SEARCHING   ↓↑  Scroll  PgDn|PgUp  Scroll  d|u  Scroll  n  Down  p  Up  c  Case  w  Wrap  o  Whole 

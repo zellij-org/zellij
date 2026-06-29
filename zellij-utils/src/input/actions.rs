@@ -14,7 +14,7 @@ use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::mouse::MouseEvent;
-use crate::input::options::OnForceClose;
+use crate::input::options::{OnForceClose, PaneFrameStyle};
 use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -218,6 +218,7 @@ pub enum Action {
     ToggleFocusFullscreen,
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
+    SetPaneFrameStyle(PaneFrameStyle),
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
     ToggleActiveSyncTab,
     /// Open a new pane in the specified direction (relative to focus).
@@ -1007,6 +1008,7 @@ impl Action {
                 None => Ok(vec![Action::ToggleFocusFullscreen]),
             },
             CliAction::TogglePaneFrames => Ok(vec![Action::TogglePaneFrames]),
+            CliAction::SetPaneFrameStyle { style } => Ok(vec![Action::SetPaneFrameStyle(style)]),
             CliAction::ToggleActiveSyncTab { tab_id } => match tab_id {
                 Some(id) => Ok(vec![Action::ToggleActiveSyncTabByTabId { id: id as u64 }]),
                 None => Ok(vec![Action::ToggleActiveSyncTab]),
@@ -1019,6 +1021,7 @@ impl Action {
                 floating,
                 in_place,
                 close_replaced_pane,
+                pane_id,
                 name,
                 close_on_exit,
                 start_suspended,
@@ -1039,6 +1042,18 @@ impl Action {
                 borderless,
                 tab_id,
             } => {
+                let pane_id_to_replace = match pane_id {
+                    Some(pane_id_str) => match PaneId::from_str(&pane_id_str) {
+                        Ok(parsed_pane_id) => Some(parsed_pane_id),
+                        Err(_e) => {
+                            return Err(format!(
+                                "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                                pane_id_str
+                            ))
+                        },
+                    },
+                    None => None,
+                };
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
                 // otherwise the current_dir might override a cwd defined in the alias itself
@@ -1087,7 +1102,7 @@ impl Action {
                         ))
                     } else if in_place {
                         NewPanePlacement::InPlace {
-                            pane_id_to_replace: None,
+                            pane_id_to_replace,
                             close_replaced_pane,
                             borderless,
                         }
@@ -1197,7 +1212,7 @@ impl Action {
                             command: Some(run_command_action),
                             pane_name: name,
                             near_current_pane,
-                            pane_id_to_replace: None, // TODO: support this
+                            pane_id_to_replace,
                             close_replaced_pane,
                             tab_id,
                         }])
@@ -1234,7 +1249,7 @@ impl Action {
                             command: None,
                             pane_name: name,
                             near_current_pane,
-                            pane_id_to_replace: None, // TODO: support this
+                            pane_id_to_replace,
                             close_replaced_pane,
                             tab_id,
                         }])
@@ -3575,6 +3590,7 @@ mod tests {
             floating: false,
             in_place: false,
             close_replaced_pane: false,
+            pane_id: None,
             name: None,
             close_on_exit: false,
             start_suspended: false,
@@ -3617,6 +3633,7 @@ mod tests {
             floating: false,
             in_place: false,
             close_replaced_pane: false,
+            pane_id: None,
             name: None,
             close_on_exit: false,
             start_suspended: false,
@@ -3650,6 +3667,87 @@ mod tests {
     }
 
     #[test]
+    fn test_new_in_place_pane_with_pane_id_to_replace() {
+        let cli_action = CliAction::NewPane {
+            direction: None,
+            command: vec![],
+            plugin: None,
+            cwd: None,
+            floating: false,
+            in_place: true,
+            close_replaced_pane: true,
+            pane_id: Some("terminal_4".to_string()),
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewInPlacePane {
+                pane_id_to_replace, ..
+            } => {
+                assert_eq!(*pane_id_to_replace, Some(PaneId::Terminal(4)));
+            },
+            _ => panic!("Expected NewInPlacePane action"),
+        }
+    }
+
+    #[test]
+    fn test_new_in_place_pane_with_malformed_pane_id() {
+        let cli_action = CliAction::NewPane {
+            direction: None,
+            command: vec![],
+            plugin: None,
+            cwd: None,
+            floating: false,
+            in_place: true,
+            close_replaced_pane: false,
+            pane_id: Some("not_a_pane".to_string()),
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Malformed pane id"));
+    }
+
+    #[test]
     fn test_new_pane_floating_with_tab_id() {
         let cli_action = CliAction::NewPane {
             direction: None,
@@ -3659,6 +3757,7 @@ mod tests {
             floating: true,
             in_place: false,
             close_replaced_pane: false,
+            pane_id: None,
             name: None,
             close_on_exit: false,
             start_suspended: false,
@@ -3701,6 +3800,7 @@ mod tests {
             floating: false,
             in_place: false,
             close_replaced_pane: false,
+            pane_id: None,
             name: None,
             close_on_exit: false,
             start_suspended: false,
@@ -3743,6 +3843,7 @@ mod tests {
             floating: false,
             in_place: false,
             close_replaced_pane: false,
+            pane_id: None,
             name: None,
             close_on_exit: false,
             start_suspended: false,
@@ -3847,6 +3948,7 @@ mod tests {
             floating: false,
             in_place: false,
             close_replaced_pane: false,
+            pane_id: None,
             name: None,
             close_on_exit: false,
             start_suspended: false,
@@ -3889,6 +3991,7 @@ mod tests {
             floating: true,
             in_place: false,
             close_replaced_pane: false,
+            pane_id: None,
             name: None,
             close_on_exit: false,
             start_suspended: false,

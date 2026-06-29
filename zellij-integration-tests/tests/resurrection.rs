@@ -50,7 +50,7 @@ fn quit_and_resurrect_session() {
     let new_pane = zellij.expect_pty_spawn();
     new_pane.output(PROMPT);
     zellij.wait_until("new pane opened before serialization", |grid_snapshot| {
-        grid_snapshot.contains("┐┌")
+        grid_snapshot.contains("│")
     });
 
     zellij.save_session();
@@ -64,7 +64,7 @@ fn quit_and_resurrect_session() {
             grid_snapshot.contains("Zellij (test")
                 && grid_snapshot.contains("alpha")
                 && grid_snapshot.contains("beta")
-                && grid_snapshot.contains("┐┌")
+                && grid_snapshot.contains("│")
                 && grid_snapshot.status_bar_appears()
         },
     );

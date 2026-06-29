@@ -138,7 +138,7 @@ fn return_to_normal_mode() {
     zellij.send_stdin(&keys::ENTER);
 
     let grid_snapshot = zellij.wait_until("returned to normal mode", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(3).row(2))
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(2).row(1))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -187,7 +187,7 @@ fn tmux_mode() {
     right_terminal.output(PROMPT);
 
     let grid_snapshot = zellij.wait_until("right terminal opened via tmux mode", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(63).row(2))
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(62).row(2))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -226,14 +226,14 @@ fn scrolling_inside_a_pane() {
     let right_terminal = zellij.expect_pty_spawn();
     right_terminal.output(PROMPT);
     zellij.wait_until("right terminal prompt rendered", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(63).row(2))
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(62).row(2))
     });
 
-    for line in 1..=21 {
+    for line in 1..=22 {
         right_terminal.output(format!("line{}\r\n", line).as_bytes());
     }
     zellij.wait_until("right terminal filled past its viewport", |grid_snapshot| {
-        grid_snapshot.contains("line21")
+        grid_snapshot.contains("line22")
     });
 
     zellij.send_stdin(&keys::ctrl('s'));
@@ -242,7 +242,7 @@ fn scrolling_inside_a_pane() {
 
     let grid_snapshot =
         zellij.wait_until("scrolled up one line inside the pane", |grid_snapshot| {
-            grid_snapshot.contains("SCROLL:  2/2") && grid_snapshot.contains("PgDn|PgUp")
+            grid_snapshot.contains("SCROLL: 2/2") && grid_snapshot.contains("PgDn|PgUp")
         });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();

@@ -1,6 +1,10 @@
 use crate::output::CharacterChunk;
 use crate::panes::{AnsiCode, RcCharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
 use crate::ui::boundaries::boundary_type;
+use crate::ui::hint_text::{
+    exit_code_segments, hover_segments, rerun_segments, HintExitStatus, HintLevel, HintSegment,
+    HintTier,
+};
 use crate::ClientId;
 use zellij_utils::data::{client_id_to_colors, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
@@ -60,6 +64,7 @@ pub struct FrameParams {
     pub other_cursors_exist_in_session: bool,
     pub pane_is_stacked_under: bool,
     pub pane_is_stacked_over: bool,
+    pub pane_is_stacked: bool,
     pub should_draw_pane_frames: bool,
     pub pane_is_floating: bool,
     pub content_offset: Offset,
@@ -67,6 +72,7 @@ pub struct FrameParams {
     pub pane_is_selectable: bool,
     pub show_help_text: bool,
     pub highlight_tooltip: Option<String>,
+    pub omit_title: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -84,6 +90,7 @@ pub struct PaneFrame {
     is_first_run: bool,
     pane_is_stacked_over: bool,
     pane_is_stacked_under: bool,
+    pane_is_stacked: bool,
     should_draw_pane_frames: bool,
     is_pinned: bool,
     is_floating: bool,
@@ -92,6 +99,7 @@ pub struct PaneFrame {
     is_selectable: bool,
     show_help_text: bool,
     highlight_tooltip: Option<String>,
+    omit_title: bool,
 }
 
 impl PaneFrame {
@@ -115,6 +123,7 @@ impl PaneFrame {
             is_first_run: false,
             pane_is_stacked_over: frame_params.pane_is_stacked_over,
             pane_is_stacked_under: frame_params.pane_is_stacked_under,
+            pane_is_stacked: frame_params.pane_is_stacked,
             should_draw_pane_frames: frame_params.should_draw_pane_frames,
             is_pinned: false,
             is_floating: frame_params.pane_is_floating,
@@ -123,6 +132,7 @@ impl PaneFrame {
             is_selectable: frame_params.pane_is_selectable,
             show_help_text: frame_params.show_help_text,
             highlight_tooltip: frame_params.highlight_tooltip,
+            omit_title: frame_params.omit_title,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -386,6 +396,17 @@ impl PaneFrame {
     }
     fn render_title_middle(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
         // string and length because of color
+        let renders_exit_status_in_title = self.pane_is_stacked_under
+            || self.pane_is_stacked_over
+            || !self.should_draw_pane_frames;
+        if renders_exit_status_in_title && self.exit_status.is_some() {
+            let (first_part, first_part_len) = self.first_exited_held_title_part_full();
+            return if first_part_len <= max_length {
+                Some((first_part, first_part_len))
+            } else {
+                None
+            };
+        }
         if self.is_main_client
             && self.other_focused_clients.is_empty()
             && !self.other_cursors_exist_in_session
@@ -400,15 +421,6 @@ impl PaneFrame {
             self.render_my_and_others_focus(max_length)
         } else if !self.other_focused_clients.is_empty() {
             self.render_other_focused_users(max_length)
-        } else if (self.pane_is_stacked_under || self.pane_is_stacked_over)
-            && self.exit_status.is_some()
-        {
-            let (first_part, first_part_len) = self.first_exited_held_title_part_full();
-            if first_part_len <= max_length {
-                Some((first_part, first_part_len))
-            } else {
-                None
-            }
         } else {
             None
         }
@@ -704,12 +716,236 @@ impl PaneFrame {
             .with_context(|| format!("failed to render title '{}'", self.title))
     }
     fn render_one_line_title(&self) -> Result<Vec<TerminalCharacter>> {
-        let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
+        if self.should_draw_pane_frames {
+            let total_title_length = self.geom.cols.saturating_sub(2);
+            return self
+                .render_title_middle(total_title_length)
+                .map(|(middle, middle_length)| self.title_line_with_middle(middle, &middle_length))
+                .or_else(|| Some(self.title_line_without_middle()))
+                .with_context(|| format!("failed to render title '{}'", self.title));
+        }
 
-        self.render_title_middle(total_title_length)
-            .map(|(middle, middle_length)| self.title_line_with_middle(middle, &middle_length))
-            .or_else(|| Some(self.title_line_without_middle()))
-            .with_context(|| format!("failed to render title '{}'", self.title))
+        let width = self.geom.cols;
+        let title = self.bracketed_pane_title(width);
+        let title_length = title.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let side_budget = width.saturating_sub(title_length) / 2;
+        let focus = self.bracketed_focus_indicator(side_budget);
+        let focus_length = focus.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let scroll =
+            self.bracketed_scroll_indicator(width.saturating_sub(focus_length + title_length));
+        Ok(self.compose_bracketed_title(focus, title, scroll))
+    }
+    fn bracketed_title_part(&self, content: &str) -> (Vec<TerminalCharacter>, usize) {
+        let text = format!(" [ {} ] ", content);
+        (foreground_color(&text, self.color), text.width())
+    }
+    fn bracketed_title_part_from_characters(
+        &self,
+        mut content: Vec<TerminalCharacter>,
+        content_length: usize,
+    ) -> (Vec<TerminalCharacter>, usize) {
+        let mut part = foreground_color(" [ ", self.color);
+        part.append(&mut content);
+        part.append(&mut foreground_color(" ] ", self.color));
+        (part, content_length + 6)
+    }
+    fn plain_title_part(&self, content: &str) -> (Vec<TerminalCharacter>, usize) {
+        let text = format!(" {} ", content);
+        (foreground_color(&text, self.color), text.width())
+    }
+    fn bracketed_pane_title(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let title_padding = 2;
+        if self.title.is_empty() || max_length <= title_padding {
+            return None;
+        }
+        let exit_part = self
+            .exit_status
+            .is_some()
+            .then(|| self.first_exited_held_title_part_full());
+        let exit_length = exit_part.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let content_max_length = max_length.saturating_sub(title_padding + exit_length);
+        let content = if self.title.width() <= content_max_length {
+            self.title.clone()
+        } else {
+            let truncation_budget = content_max_length.saturating_sub(1);
+            let mut truncated = String::new();
+            for character in self.title.chars() {
+                if truncated.width() + character.width().unwrap_or(0) > truncation_budget {
+                    break;
+                }
+                truncated.push(character);
+            }
+            truncated.push('…');
+            truncated
+        };
+        let (mut part, mut length) = self.plain_title_part(&content);
+        if let Some((mut exit, exit_length)) = exit_part {
+            part.append(&mut exit);
+            length += exit_length;
+        }
+        Some((part, length))
+    }
+    fn bracketed_scroll_indicator(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let has_scroll = self.scroll_position.0 > 0 || self.scroll_position.1 > 0;
+        if !(has_scroll && self.is_selectable) {
+            return None;
+        }
+        let full_indication = format!(
+            "SCROLL: {}/{}",
+            self.scroll_position.0, self.scroll_position.1
+        );
+        let (full_part, full_length) = self.bracketed_title_part(&full_indication);
+        if full_length <= max_length {
+            return Some((full_part, full_length));
+        }
+        let short_indication = format!("{}/{}", self.scroll_position.0, self.scroll_position.1);
+        let (short_part, short_length) = self.bracketed_title_part(&short_indication);
+        if short_length <= max_length {
+            return Some((short_part, short_length));
+        }
+        None
+    }
+    fn bracketed_focus_indicator(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        if self.is_main_client
+            && self.other_focused_clients.is_empty()
+            && !self.other_cursors_exist_in_session
+        {
+            None
+        } else if self.is_main_client
+            && self.other_focused_clients.is_empty()
+            && self.other_cursors_exist_in_session
+        {
+            let (full_part, full_length) = self.bracketed_title_part("MY FOCUS");
+            if full_length <= max_length {
+                Some((full_part, full_length))
+            } else {
+                let (short_part, short_length) = self.bracketed_title_part("ME");
+                (short_length <= max_length).then_some((short_part, short_length))
+            }
+        } else if self.is_main_client && !self.other_focused_clients.is_empty() {
+            self.bracketed_focused_users("MY FOCUS AND:", "+", max_length)
+        } else if !self.other_focused_clients.is_empty() {
+            let full_label = if self.other_focused_clients.len() == 1 {
+                "FOCUSED USER:"
+            } else {
+                "FOCUSED USERS:"
+            };
+            self.bracketed_focused_users(full_label, "U:", max_length)
+        } else {
+            None
+        }
+    }
+    fn focused_users_part(&self, label: &str) -> (Vec<TerminalCharacter>, usize) {
+        let mut content = foreground_color(label, self.color);
+        let mut content_length = label.width();
+        for client_id in &self.other_focused_clients {
+            content.push(EMPTY_TERMINAL_CHARACTER);
+            content.append(&mut self.client_cursor(*client_id));
+            content_length += 2;
+        }
+        self.bracketed_title_part_from_characters(content, content_length)
+    }
+    fn focused_users_cursors_part(&self) -> (Vec<TerminalCharacter>, usize) {
+        let mut content = vec![];
+        let mut content_length = 0;
+        for client_id in &self.other_focused_clients {
+            if content_length > 0 {
+                content.push(EMPTY_TERMINAL_CHARACTER);
+                content_length += 1;
+            }
+            content.append(&mut self.client_cursor(*client_id));
+            content_length += 1;
+        }
+        self.bracketed_title_part_from_characters(content, content_length)
+    }
+    fn bracketed_focused_users(
+        &self,
+        full_label: &str,
+        short_label: &str,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let (full_part, full_length) = self.focused_users_part(full_label);
+        if full_length <= max_length {
+            return Some((full_part, full_length));
+        }
+        let (short_part, short_length) = self.focused_users_part(short_label);
+        if short_length <= max_length {
+            return Some((short_part, short_length));
+        }
+        let (cursors_part, cursors_length) = self.focused_users_cursors_part();
+        (cursors_length <= max_length).then_some((cursors_part, cursors_length))
+    }
+    fn compose_bracketed_title(
+        &self,
+        left: Option<(Vec<TerminalCharacter>, usize)>,
+        middle: Option<(Vec<TerminalCharacter>, usize)>,
+        right: Option<(Vec<TerminalCharacter>, usize)>,
+    ) -> Vec<TerminalCharacter> {
+        let width = self.geom.cols;
+        let left_length = left.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let middle_length = middle.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let right_length = right.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let centered_start = (width / 2)
+            .saturating_sub(middle_length / 2)
+            .max(left_length);
+        let middle_start = if middle.is_some() {
+            if right_length > 0 {
+                let scroll_start = width.saturating_sub(right_length);
+                let centered_end = centered_start + middle_length;
+                if centered_end > scroll_start {
+                    scroll_start.saturating_sub(middle_length).max(left_length)
+                } else {
+                    centered_start
+                }
+            } else {
+                centered_start
+            }
+        } else {
+            left_length
+        };
+        let middle_end = if middle.is_some() {
+            middle_start + middle_length
+        } else {
+            left_length
+        };
+        let right_start = width.saturating_sub(right_length).max(middle_end);
+        let fill_character = if self.pane_is_stacked {
+            foreground_color(boundary_type::HORIZONTAL, self.color)
+                .into_iter()
+                .next()
+                .unwrap_or(EMPTY_TERMINAL_CHARACTER)
+        } else {
+            EMPTY_TERMINAL_CHARACTER
+        };
+        let mut placements: Vec<(usize, Vec<TerminalCharacter>, usize)> = vec![];
+        if let Some((characters, length)) = left {
+            placements.push((0, characters, length));
+        }
+        if let Some((characters, length)) = middle {
+            placements.push((middle_start, characters, length));
+        }
+        if let Some((characters, length)) = right {
+            placements.push((right_start, characters, length));
+        }
+        let mut title_line = vec![];
+        let mut col = 0;
+        while col < width {
+            if let Some(index) = placements.iter().position(|(start, _, _)| *start == col) {
+                let (_, mut characters, length) = placements.remove(index);
+                title_line.append(&mut characters);
+                col += length;
+            } else {
+                title_line.push(fill_character.clone());
+                col += 1;
+            }
+        }
+        title_line
     }
     fn render_highlight_tooltip_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
         let max_undertitle_length = self.geom.cols.saturating_sub(2);
@@ -929,6 +1165,9 @@ impl PaneFrame {
     pub fn render(&self) -> Result<(Vec<CharacterChunk>, Option<String>)> {
         let err_context = || "failed to render pane frame";
         let mut character_chunks = vec![];
+        if self.omit_title {
+            return Ok((character_chunks, None));
+        }
         if self.geom.rows == 1 || !self.should_draw_pane_frames {
             // we do this explicitly when not drawing pane frames because this should only happen
             // if this is a stacked pane with pane frames off (and it doesn't necessarily have only
@@ -1038,133 +1277,38 @@ impl PaneFrame {
         }
         Ok((character_chunks, None))
     }
+    fn render_hint_segments(&self, segments: &[HintSegment]) -> (Vec<TerminalCharacter>, usize) {
+        let mut characters = vec![];
+        let mut length = 0;
+        for segment in segments {
+            let color = match segment.level {
+                HintLevel::Plain => self.color,
+                HintLevel::Emphasis => Some(self.style.colors.text_unselected.emphasis_0),
+                HintLevel::Emphasis2 => Some(self.style.colors.text_unselected.emphasis_2),
+                HintLevel::Error => Some(self.style.colors.exit_code_error.base),
+                HintLevel::Success => Some(self.style.colors.exit_code_success.base),
+            };
+            characters.append(&mut foreground_color(&segment.text, color));
+            length += segment.text.width();
+        }
+        (characters, length)
+    }
     fn first_exited_held_title_part_full(&self) -> (Vec<TerminalCharacter>, usize) {
-        // (title part, length)
         match self.exit_status {
             Some(ExitStatus::Code(exit_code)) => {
-                let mut first_part = vec![];
-                let left_bracket = " [ ";
-                let exited_text = "EXIT CODE: ";
-                let exit_code_text = format!("{}", exit_code);
-                let exit_code_color = if exit_code == 0 {
-                    self.style.colors.exit_code_success.base
-                } else {
-                    self.style.colors.exit_code_error.base
-                };
-                let right_bracket = " ] ";
-                first_part.append(&mut foreground_color(left_bracket, self.color));
-                first_part.append(&mut foreground_color(exited_text, self.color));
-                first_part.append(&mut foreground_color(
-                    &exit_code_text,
-                    Some(exit_code_color),
-                ));
-                first_part.append(&mut foreground_color(right_bracket, self.color));
-                (
-                    first_part,
-                    left_bracket.len()
-                        + exited_text.len()
-                        + exit_code_text.len()
-                        + right_bracket.len(),
-                )
+                self.render_hint_segments(&exit_code_segments(HintExitStatus::Code(exit_code)))
             },
             Some(ExitStatus::Exited) => {
-                let mut first_part = vec![];
-                let left_bracket = " [ ";
-                let exited_text = "EXITED";
-                let right_bracket = " ] ";
-                first_part.append(&mut foreground_color(left_bracket, self.color));
-                first_part.append(&mut foreground_color(
-                    exited_text,
-                    Some(self.style.colors.exit_code_error.base),
-                ));
-                first_part.append(&mut foreground_color(right_bracket, self.color));
-                (
-                    first_part,
-                    left_bracket.len() + exited_text.len() + right_bracket.len(),
-                )
+                self.render_hint_segments(&exit_code_segments(HintExitStatus::Exited))
             },
             None => (foreground_color(boundary_type::HORIZONTAL, self.color), 1),
         }
     }
     fn second_held_title_part_full(&self) -> (Vec<TerminalCharacter>, usize) {
-        // (title part, length)
-        let mut second_part = vec![];
-        let left_enter_bracket = if self.is_first_run { " <" } else { "<" };
-        let enter_text = "ENTER";
-        let right_enter_bracket = ">";
-        let enter_tip = if self.is_first_run {
-            " run, "
-        } else {
-            " re-run, "
-        };
-
-        let left_esc_bracket = "<";
-        let esc_text = "ESC";
-        let right_esc_bracket = ">";
-        let esc_tip = " drop to shell, ";
-
-        let left_break_bracket = "<";
-        let break_text = "Ctrl-c";
-        let right_break_bracket = ">";
-        let break_tip = " exit ";
-        second_part.append(&mut foreground_color(left_enter_bracket, self.color));
-        second_part.append(&mut foreground_color(
-            enter_text,
-            Some(self.style.colors.text_unselected.emphasis_0),
-        ));
-        second_part.append(&mut foreground_color(right_enter_bracket, self.color));
-        second_part.append(&mut foreground_color(enter_tip, self.color));
-
-        second_part.append(&mut foreground_color(left_esc_bracket, self.color));
-        second_part.append(&mut foreground_color(
-            esc_text,
-            Some(self.style.colors.text_unselected.emphasis_0),
-        ));
-        second_part.append(&mut foreground_color(right_esc_bracket, self.color));
-        second_part.append(&mut foreground_color(esc_tip, self.color));
-
-        second_part.append(&mut foreground_color(left_break_bracket, self.color));
-        second_part.append(&mut foreground_color(
-            break_text,
-            Some(self.style.colors.text_unselected.emphasis_0),
-        ));
-        second_part.append(&mut foreground_color(right_break_bracket, self.color));
-        second_part.append(&mut foreground_color(break_tip, self.color));
-        (
-            second_part,
-            left_enter_bracket.len()
-                + enter_text.len()
-                + right_enter_bracket.len()
-                + enter_tip.len()
-                + left_esc_bracket.len()
-                + esc_text.len()
-                + right_esc_bracket.len()
-                + esc_tip.len()
-                + left_break_bracket.len()
-                + break_text.len()
-                + right_break_bracket.len()
-                + break_tip.len(),
-        )
+        self.render_hint_segments(&rerun_segments(self.is_first_run, HintTier::Full))
     }
     fn hover_shortcuts_part_full(&self) -> (Vec<TerminalCharacter>, usize) {
-        // (title part, length)
-        let mut hover_shortcuts = vec![];
-        let alt_click_text = " Alt <Click>";
-        let alt_click_tip = " - group,";
-        let alt_right_click_text = " Alt <Right-Click>";
-        let alt_right_click_tip = " - ungroup all ";
-
-        hover_shortcuts.append(&mut foreground_color(alt_click_text, self.color));
-        hover_shortcuts.append(&mut foreground_color(alt_click_tip, self.color));
-        hover_shortcuts.append(&mut foreground_color(alt_right_click_text, self.color));
-        hover_shortcuts.append(&mut foreground_color(alt_right_click_tip, self.color));
-        (
-            hover_shortcuts,
-            alt_click_text.chars().count()
-                + alt_click_tip.chars().count()
-                + alt_right_click_text.chars().count()
-                + alt_right_click_tip.chars().count(),
-        )
+        self.render_hint_segments(&hover_segments(HintTier::Full))
     }
     fn empty_undertitle(&self, max_undertitle_length: usize) -> Vec<TerminalCharacter> {
         let mut left_boundary =

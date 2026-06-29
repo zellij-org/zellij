@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::{
     client_server_contract::client_server_contract::{
         client_to_server_msg, server_to_client_msg, ActionMsg, AttachClientMsg,
@@ -766,6 +768,11 @@ impl From<crate::input::options::Options>
             }),
             mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u32),
             mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u32),
+            pane_frame_style: options.pane_frame_style.map(|s| match s {
+                crate::input::options::PaneFrameStyle::Full => "full".to_owned(),
+                crate::input::options::PaneFrameStyle::Titles => "titles".to_owned(),
+                crate::input::options::PaneFrameStyle::None => "none".to_owned(),
+            }),
         }
     }
 }
@@ -798,6 +805,12 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             theme_dir: options.theme_dir.map(std::path::PathBuf::from),
             mouse_mode: options.mouse_mode,
             pane_frames: options.pane_frames,
+            pane_frame_style: options.pane_frame_style.as_deref().and_then(|s| match s {
+                "full" => Some(crate::input::options::PaneFrameStyle::Full),
+                "titles" => Some(crate::input::options::PaneFrameStyle::Titles),
+                "none" => Some(crate::input::options::PaneFrameStyle::None),
+                _ => None,
+            }),
             mirror_session: options.mirror_session,
             on_force_close: options
                 .on_force_close
@@ -999,6 +1012,7 @@ impl From<crate::input::actions::Action>
             SetLightThemeAction,
             SetPaneBorderlessAction,
             SetPaneColorAction,
+            SetPaneFrameStyleAction,
             ShowFloatingPanesAction,
             SkipConfirmAction,
             StackPanesAction,
@@ -1176,6 +1190,16 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::TogglePaneFrames => {
                 ActionType::TogglePaneFrames(TogglePaneFramesAction {})
+            },
+            crate::input::actions::Action::SetPaneFrameStyle(style) => {
+                let style = match style {
+                    crate::input::options::PaneFrameStyle::Full => "full",
+                    crate::input::options::PaneFrameStyle::Titles => "titles",
+                    crate::input::options::PaneFrameStyle::None => "none",
+                };
+                ActionType::SetPaneFrameStyle(SetPaneFrameStyleAction {
+                    style: style.to_owned(),
+                })
             },
             crate::input::actions::Action::ToggleActiveSyncTab => {
                 ActionType::ToggleActiveSyncTab(ToggleActiveSyncTabAction {})
@@ -2037,6 +2061,13 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::ToggleFocusFullscreen)
             },
             ActionType::TogglePaneFrames(_) => Ok(crate::input::actions::Action::TogglePaneFrames),
+            ActionType::SetPaneFrameStyle(set_pane_frame_style_action) => {
+                let style = crate::input::options::PaneFrameStyle::from_str(
+                    &set_pane_frame_style_action.style,
+                )
+                .map_err(|e| anyhow!("{}", e))?;
+                Ok(crate::input::actions::Action::SetPaneFrameStyle(style))
+            },
             ActionType::ToggleActiveSyncTab(_) => {
                 Ok(crate::input::actions::Action::ToggleActiveSyncTab)
             },

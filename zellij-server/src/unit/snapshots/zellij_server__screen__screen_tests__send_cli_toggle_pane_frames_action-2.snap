@@ -1,9 +1,8 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 1776
 expression: "format!(\"{}\", snapshot)"
 ---
-00 (C):                                        │                                        
+00 (C):                  Pane #1               │                 Pane #2                
 01 (C):                                        │                                        
 02 (C):                                        │                                        
 03 (C):                                        │                                        
@@ -12,5 +11,4 @@ expression: "format!(\"{}\", snapshot)"
 06 (C):                                        │                                        
 07 (C):                                        │                                        
 08 (C):                                        │                                        
-09 (C):                                        │                                        
-
+09 (C):                                        │

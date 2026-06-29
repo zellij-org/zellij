@@ -491,6 +491,7 @@ impl FloatingPanes {
                 mouse_hover_pane_id,
                 current_pane_group.clone(),
                 show_help_text,
+                false,
             );
             for client_id in &connected_clients {
                 let client_mode = self

@@ -6,6 +6,7 @@ pub use super::generated_api::api::{
         SessionManifest as ProtobufSessionManifest,
     },
     input_mode::InputMode as ProtobufInputMode,
+    pane_frame_style::PaneFrameStyle as ProtobufPaneFrameStyle,
     plugin_command::{
         break_panes_to_new_tab_response, break_panes_to_tab_with_id_response,
         break_panes_to_tab_with_index_response, delete_layout_response, dump_layout_response,
@@ -120,16 +121,18 @@ pub use super::generated_api::api::{
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
-        SetPaneBorderlessPayload, SetPaneColorPayload, SetPaneRegexHighlightsPayload,
-        SetSelfMouseSelectionSupportPayload,
+        SetPaneBorderlessPayload, SetPaneColorPayload,
+        SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
+        SetPaneRegexHighlightsPayload, SetSelfMouseSelectionSupportPayload,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload,
         SetTabFitPayload as ProtobufSetTabFitPayload, SetTimeoutPayload, ShowCursorPayload,
         ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
         Size as ProtobufSize, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
-        SwitchTabToIdPayload, SwitchTabToPayload, TogglePaneBorderlessPayload,
-        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        SwitchTabToIdPayload, SwitchTabToPayload, ToggleFloatingPanesPayload,
+        TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
+        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -940,6 +943,20 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for NewTiledPaneInTab"),
             },
+            Some(CommandName::ToggleFloatingPanes) => match protobuf_plugin_command.payload {
+                Some(Payload::ToggleFloatingPanesPayload(payload)) => {
+                    Ok(PluginCommand::ToggleFloatingPanes {
+                        tab_id: payload.tab_id,
+                    })
+                },
+                _ => Ok(PluginCommand::ToggleFloatingPanes { tab_id: None }),
+            },
+            Some(CommandName::NewPane) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    return Err("NewPane should not have a payload");
+                }
+                Ok(PluginCommand::NewPane)
+            },
             Some(CommandName::GoToNextTab) => {
                 if protobuf_plugin_command.payload.is_some() {
                     return Err("GoToNextTab should not have a payload");
@@ -1098,6 +1115,17 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     return Err("TogglePaneFrames should not have a payload");
                 }
                 Ok(PluginCommand::TogglePaneFrames)
+            },
+            Some(CommandName::SetPaneFrameStyle) => match protobuf_plugin_command.payload {
+                Some(Payload::SetPaneFrameStylePayload(payload)) => {
+                    match ProtobufPaneFrameStyle::from_i32(payload.pane_frame_style) {
+                        Some(protobuf_pane_frame_style) => Ok(PluginCommand::SetPaneFrameStyle(
+                            protobuf_pane_frame_style.try_into()?,
+                        )),
+                        None => Err("Malformed SetPaneFrameStyle payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for SetPaneFrameStyle"),
             },
             Some(CommandName::TogglePaneEmbedOrEject) => {
                 if protobuf_plugin_command.payload.is_some() {
@@ -2983,6 +3011,16 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
+            PluginCommand::ToggleFloatingPanes { tab_id } => Ok(ProtobufPluginCommand {
+                name: CommandName::ToggleFloatingPanes as i32,
+                payload: Some(Payload::ToggleFloatingPanesPayload(
+                    ToggleFloatingPanesPayload { tab_id },
+                )),
+            }),
+            PluginCommand::NewPane => Ok(ProtobufPluginCommand {
+                name: CommandName::NewPane as i32,
+                payload: None,
+            }),
             PluginCommand::GoToNextTab => Ok(ProtobufPluginCommand {
                 name: CommandName::GoToNextTab as i32,
                 payload: None,
@@ -3092,6 +3130,15 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::TogglePaneFrames => Ok(ProtobufPluginCommand {
                 name: CommandName::TogglePaneFrames as i32,
                 payload: None,
+            }),
+            PluginCommand::SetPaneFrameStyle(pane_frame_style) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetPaneFrameStyle as i32,
+                payload: Some(Payload::SetPaneFrameStylePayload(
+                    ProtobufSetPaneFrameStylePayload {
+                        pane_frame_style: ProtobufPaneFrameStyle::try_from(pane_frame_style)?
+                            as i32,
+                    },
+                )),
             }),
             PluginCommand::TogglePaneEmbedOrEject => Ok(ProtobufPluginCommand {
                 name: CommandName::TogglePaneEmbedOrEject as i32,
@@ -5263,6 +5310,59 @@ mod tests {
                 assert_eq!(fit, None);
             },
             other => panic!("expected SetTabFit, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn set_pane_frame_style_protobuf_round_trip() {
+        use crate::input::options::PaneFrameStyle;
+        for style in [
+            PaneFrameStyle::Full,
+            PaneFrameStyle::Titles,
+            PaneFrameStyle::None,
+        ] {
+            let original = PluginCommand::SetPaneFrameStyle(style);
+            let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+            let decoded: PluginCommand = protobuf.try_into().expect("decode");
+            match decoded {
+                PluginCommand::SetPaneFrameStyle(decoded_style) => {
+                    assert_eq!(decoded_style, style)
+                },
+                other => panic!("expected SetPaneFrameStyle, got {:?}", other),
+            }
+        }
+    }
+
+    #[test]
+    fn new_pane_protobuf_round_trip() {
+        let original = PluginCommand::NewPane;
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::NewPane => {},
+            other => panic!("expected NewPane, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn toggle_floating_panes_focused_tab_protobuf_round_trip() {
+        let original = PluginCommand::ToggleFloatingPanes { tab_id: None };
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::ToggleFloatingPanes { tab_id } => assert_eq!(tab_id, None),
+            other => panic!("expected ToggleFloatingPanes, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn toggle_floating_panes_with_tab_id_protobuf_round_trip() {
+        let original = PluginCommand::ToggleFloatingPanes { tab_id: Some(2) };
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::ToggleFloatingPanes { tab_id } => assert_eq!(tab_id, Some(2)),
+            other => panic!("expected ToggleFloatingPanes, got {:?}", other),
         }
     }
 }

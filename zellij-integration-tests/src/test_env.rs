@@ -156,6 +156,7 @@ disable_session_metadata true
 visual_bell false
 mouse_mode false
 advanced_mouse_actions false
+pane_frame_style "titles"
 theme "default"
 "#;
 

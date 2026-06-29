@@ -127,6 +127,7 @@ fn new_pane_cli_action(
         floating,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit,
         start_suspended,

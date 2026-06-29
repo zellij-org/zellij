@@ -17,7 +17,7 @@ use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
     Direction, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
-    PluginPermission, RegexHighlight, ResizeStrategy, Style, WebSharing,
+    PluginPermission, RegexHighlight, ResizeStrategy, Style, StyledText, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -30,6 +30,9 @@ use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::{CopyOptions, ScreenInstruction};
+use crate::ui::hint_text::{
+    held_hint_variants, hover_hint_variants, resize_hint_variants, HintExitStatus,
+};
 use crate::ui::{loading_indication::LoadingIndication, pane_boundaries_frame::FrameParams};
 use layout_applier::LayoutApplier;
 use swap_layouts::SwapLayouts;
@@ -64,6 +67,7 @@ use zellij_utils::{
             FloatingPaneLayout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
             TiledPaneLayout,
         },
+        options::PaneFrameStyle,
         parse_keys,
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -158,6 +162,7 @@ pub(crate) struct Tab {
     pub position: usize,
     pub name: String,
     pub prev_name: String,
+    default_name: String,
     pub size: Size,
     pub visible_to: Option<HashSet<ClientId>>,
     tiled_panes: TiledPanes,
@@ -176,7 +181,7 @@ pub(crate) struct Tab {
     default_mode_info: ModeInfo,
     pub style: Style,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
-    draw_pane_frames: bool,
+    pane_frame_style: PaneFrameStyle,
     auto_layout: bool,
     pending_vte_events: HashMap<u32, Vec<VteBytes>>,
     pub selecting_with_mouse_in_pane: Option<PaneId>, // this is only pub for the tests
@@ -207,8 +212,12 @@ pub(crate) struct Tab {
     web_clients_allowed: bool,
     web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
+    plugin_hover_pane_id: HashMap<ClientId, PaneId>,
+    mouse_last_pane_id: HashMap<ClientId, PaneId>,
     mouse_help_text_visible: HashMap<ClientId, bool>,
     last_mouse_activity_time: HashMap<ClientId, Instant>,
+    last_hint_text: HashMap<ClientId, BTreeMap<usize, StyledText>>,
+    last_active_pane_scroll: HashMap<ClientId, Option<(usize, usize)>>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
     mouse_hover_effects: bool,
@@ -620,6 +629,12 @@ pub trait Pane {
     fn progress_animation_offset(&mut self) {} // only relevant for plugins
     fn current_title(&self) -> String;
     fn custom_title(&self) -> Option<String>;
+    fn has_explicit_title(&self) -> bool {
+        false
+    }
+    fn scroll_position(&self) -> (usize, usize) {
+        (0, 0)
+    }
     fn is_held(&self) -> bool {
         false
     }
@@ -736,7 +751,7 @@ impl Tab {
         max_panes: Option<usize>,
         style: Style,
         default_mode_info: ModeInfo,
-        draw_pane_frames: bool,
+        pane_frame_style: PaneFrameStyle,
         auto_layout: bool,
         connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
         session_is_mirrored: bool,
@@ -764,8 +779,13 @@ impl Tab {
         web_server_port: u16,
         mobile_tab_count: usize,
     ) -> Self {
-        let name = if name.is_empty() {
+        let default_name = if name.is_empty() {
             format!("Tab #{}", (id + 1).saturating_sub(mobile_tab_count))
+        } else {
+            String::new()
+        };
+        let name = if name.is_empty() {
+            default_name.clone()
         } else {
             name
         };
@@ -790,7 +810,7 @@ impl Tab {
             character_cell_size.clone(),
             stacked_resize.clone(),
             session_is_mirrored,
-            draw_pane_frames,
+            pane_frame_style,
             default_mode_info.clone(),
             style,
             os_api.clone(),
@@ -824,6 +844,7 @@ impl Tab {
             suppressed_panes: HashMap::new(),
             name: name.clone(),
             prev_name: name,
+            default_name,
             size: initial_size,
             visible_to: None,
             max_panes,
@@ -838,7 +859,7 @@ impl Tab {
             style,
             mode_info,
             default_mode_info,
-            draw_pane_frames,
+            pane_frame_style,
             auto_layout,
             pending_vte_events: HashMap::new(),
             connected_clients,
@@ -865,8 +886,12 @@ impl Tab {
             web_clients_allowed,
             web_sharing,
             mouse_hover_pane_id: HashMap::new(),
+            plugin_hover_pane_id: HashMap::new(),
+            mouse_last_pane_id: HashMap::new(),
             mouse_help_text_visible: HashMap::new(),
             last_mouse_activity_time: HashMap::new(),
+            last_hint_text: HashMap::new(),
+            last_active_pane_scroll: HashMap::new(),
             current_pane_group,
             currently_marking_pane_group,
             advanced_mouse_actions,
@@ -908,7 +933,7 @@ impl Tab {
             &self.display_area,
             &mut self.tiled_panes,
             &mut self.floating_panes,
-            self.draw_pane_frames,
+            self.pane_frame_style,
             &mut self.focus_pane_id,
             &self.os_api,
             self.debug,
@@ -986,7 +1011,7 @@ impl Tab {
             &self.display_area,
             &mut self.tiled_panes,
             &mut self.floating_panes,
-            self.draw_pane_frames,
+            self.pane_frame_style,
             &mut self.focus_pane_id,
             &self.os_api,
             self.debug,
@@ -1032,7 +1057,7 @@ impl Tab {
                     self.viewport.clone(),
                     self.display_area.clone(),
                     &mut self.tiled_panes,
-                    self.draw_pane_frames,
+                    self.pane_frame_style,
                 );
 
                 self.apply_buffered_instructions().non_fatal();
@@ -1079,7 +1104,7 @@ impl Tab {
                 &self.display_area,
                 &mut self.tiled_panes,
                 &mut self.floating_panes,
-                self.draw_pane_frames,
+                self.pane_frame_style,
                 &mut self.focus_pane_id,
                 &self.os_api,
                 self.debug,
@@ -1119,7 +1144,7 @@ impl Tab {
                 &self.display_area,
                 &mut self.tiled_panes,
                 &mut self.floating_panes,
-                self.draw_pane_frames,
+                self.pane_frame_style,
                 &mut self.focus_pane_id,
                 &self.os_api,
                 self.debug,
@@ -1227,6 +1252,7 @@ impl Tab {
             } else {
                 mode_info.web_server_capability = Some(false);
             }
+            mode_info.pane_frame_style = Some(self.pane_frame_style);
             for plugin_id in &tab_plugin_ids {
                 plugin_updates.push((
                     Some(*plugin_id),
@@ -1239,6 +1265,131 @@ impl Tab {
             self.senders
                 .send_to_plugin(PluginInstruction::Update(plugin_updates))
                 .with_context(|| format!("failed to update plugins with mode info"))?;
+        }
+        Ok(())
+    }
+    fn resolve_hint_text(&self, client_id: ClientId) -> BTreeMap<usize, StyledText> {
+        let focused_pane_id = self.get_active_pane_id(client_id);
+        let hovered_pane_id = self.mouse_hover_pane_id.get(&client_id).copied();
+        if let Some(hovered_pane_id) = hovered_pane_id {
+            if Some(hovered_pane_id) != focused_pane_id {
+                return hover_hint_variants();
+            }
+        }
+        if let Some(focused_pane) = self.get_active_pane(client_id) {
+            if focused_pane.is_held() {
+                let exited = focused_pane.exited();
+                let is_first_run = !exited;
+                let exit_status = if exited {
+                    Some(match focused_pane.exit_status() {
+                        Some(exit_code) => HintExitStatus::Code(exit_code),
+                        None => HintExitStatus::Exited,
+                    })
+                } else {
+                    None
+                };
+                return held_hint_variants(is_first_run, exit_status);
+            }
+        }
+        let resize_help_visible = self
+            .mouse_help_text_visible
+            .get(&client_id)
+            .copied()
+            .unwrap_or(false);
+        if resize_help_visible {
+            let selectable_pane_count = self.get_selectable_tiled_panes().count()
+                + self.get_selectable_floating_panes().count();
+            if selectable_pane_count > 1 && !self.is_fullscreen_active() {
+                let focused_pane_is_floating = self.floating_panes.panes_are_visible();
+                return resize_hint_variants(focused_pane_is_floating);
+            }
+        }
+        BTreeMap::new()
+    }
+    pub fn emit_hint_text_if_changed(&mut self) -> Result<()> {
+        let connected_clients: Vec<ClientId> =
+            self.connected_clients.borrow().iter().copied().collect();
+        let mut plugin_updates = vec![];
+        for client_id in connected_clients {
+            let hint_text = self.resolve_hint_text(client_id);
+            if self.last_hint_text.get(&client_id) != Some(&hint_text) {
+                self.last_hint_text.insert(client_id, hint_text.clone());
+                plugin_updates.push((None, Some(client_id), Event::HintText(hint_text)));
+            }
+        }
+        if !plugin_updates.is_empty() {
+            self.senders
+                .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                .with_context(|| format!("failed to update plugins with hint text"))?;
+        }
+        Ok(())
+    }
+    pub fn clear_hint_text_cache(&mut self) {
+        self.last_hint_text.clear();
+    }
+    fn get_selectable_tiled_content_panes(
+        &self,
+    ) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+        self.get_selectable_tiled_panes()
+            .filter(|(_, p)| !p.borderless())
+    }
+    pub fn single_pane_titles(&self) -> bool {
+        self.pane_frame_style.draws_titles()
+            && self.get_selectable_tiled_content_panes().count() == 1
+    }
+    fn tab_name_is_default(&self) -> bool {
+        !self.name.is_empty() && self.name == self.default_name
+    }
+    pub fn single_pane_tab_name(&self) -> Option<String> {
+        if !self.single_pane_titles() {
+            return None;
+        }
+        let (_, pane) = self.get_selectable_tiled_content_panes().next()?;
+        let mut base = if self.tab_name_is_default() && pane.has_explicit_title() {
+            pane.current_title()
+        } else {
+            self.name.clone()
+        };
+        if pane.is_held() && pane.exited() {
+            match pane.exit_status() {
+                Some(exit_code) => base.push_str(&format!(" [ EXIT CODE: {} ] ", exit_code)),
+                None => base.push_str(" [ EXITED ] "),
+            }
+        }
+        Some(base)
+    }
+    fn resolve_active_pane_scroll(&self, _client_id: ClientId) -> Option<(usize, usize)> {
+        if !self.single_pane_titles() {
+            return None;
+        }
+        let (_, pane) = self.get_selectable_tiled_content_panes().next()?;
+        let (position, length) = pane.scroll_position();
+        if position > 0 || length > 0 {
+            Some((position, length))
+        } else {
+            None
+        }
+    }
+    pub fn emit_active_pane_scroll_if_changed(&mut self) -> Result<()> {
+        let connected_clients: Vec<ClientId> =
+            self.connected_clients.borrow().iter().copied().collect();
+        let mut plugin_updates = vec![];
+        for client_id in connected_clients {
+            let active_pane_scroll = self.resolve_active_pane_scroll(client_id);
+            if self.last_active_pane_scroll.get(&client_id) != Some(&active_pane_scroll) {
+                self.last_active_pane_scroll
+                    .insert(client_id, active_pane_scroll);
+                plugin_updates.push((
+                    None,
+                    Some(client_id),
+                    Event::ActivePaneScroll(active_pane_scroll),
+                ));
+            }
+        }
+        if !plugin_updates.is_empty() {
+            self.senders
+                .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                .with_context(|| format!("failed to update plugins with active pane scroll"))?;
         }
         Ok(())
     }
@@ -1314,6 +1465,7 @@ impl Tab {
             .map(|c| c.change_to_default_mode()); // TODO: no races?
         self.connected_clients.borrow_mut().remove(&client_id);
         self.mouse_help_text_visible.remove(&client_id);
+        self.mouse_last_pane_id.remove(&client_id);
         self.last_mouse_activity_time.remove(&client_id);
         self.set_force_render();
     }
@@ -3404,6 +3556,10 @@ impl Tab {
             self.hide_cursor_and_clear_display_as_needed(output);
         }
 
+        self.emit_hint_text_if_changed().with_context(err_context)?;
+        self.emit_active_pane_scroll_if_changed()
+            .with_context(err_context)?;
+
         Ok(())
     }
 
@@ -3605,7 +3761,7 @@ impl Tab {
             self.viewport.clone(),
             self.display_area.clone(),
             &mut self.tiled_panes,
-            self.draw_pane_frames,
+            self.pane_frame_style,
         );
         if let Some(pane_id) = fullscreen_pane_to_restore {
             if self.tiled_panes.panes_contain(&pane_id) {
@@ -4058,7 +4214,7 @@ impl Tab {
             self.viewport.clone(),
             self.display_area.clone(),
             &mut self.tiled_panes,
-            self.draw_pane_frames,
+            self.pane_frame_style,
         );
     }
     pub fn set_mouse_selection_support(&mut self, pane_id: PaneId, selection_support: bool) {
@@ -4799,25 +4955,26 @@ impl Tab {
             let is_flexible_in_stack =
                 p.current_geom().is_stacked() && !p.current_geom().rows.is_fixed();
             let is_stacked_under = stacked_pane_ids_under_flexible_pane.contains(&p.pid());
-            let geom_to_compare_against = if is_stacked_under && !self.draw_pane_frames {
-                // these sort of panes are one-liner panes under a flexible pane in a stack when we
-                // don't draw pane frames - because the whole stack's content is offset to allow
-                // room for the boundary between panes, they are actually drawn 1 line above where
-                // they are
-                let mut geom = p.current_geom();
-                geom.y = geom.y.saturating_sub(p.get_content_offset().bottom);
-                geom
-            } else if is_flexible_in_stack && !self.draw_pane_frames {
-                // these sorts of panes are flexible panes inside a stack when we don't draw pane
-                // frames - because the whole stack's content is offset to give room for the
-                // boundary between panes, we need to take this offset into account when figuring
-                // out whether the position is inside them
-                let mut geom = p.current_geom();
-                geom.rows.decrease_inner(p.get_content_offset().bottom);
-                geom
-            } else {
-                p.current_geom()
-            };
+            let geom_to_compare_against =
+                if is_stacked_under && !self.pane_frame_style.draws_full_frames() {
+                    // these sort of panes are one-liner panes under a flexible pane in a stack when we
+                    // don't draw pane frames - because the whole stack's content is offset to allow
+                    // room for the boundary between panes, they are actually drawn 1 line above where
+                    // they are
+                    let mut geom = p.current_geom();
+                    geom.y = geom.y.saturating_sub(p.get_content_offset().bottom);
+                    geom
+                } else if is_flexible_in_stack && !self.pane_frame_style.draws_full_frames() {
+                    // these sorts of panes are flexible panes inside a stack when we don't draw pane
+                    // frames - because the whole stack's content is offset to give room for the
+                    // boundary between panes, we need to take this offset into account when figuring
+                    // out whether the position is inside them
+                    let mut geom = p.current_geom();
+                    geom.rows.decrease_inner(p.get_content_offset().bottom);
+                    geom
+                } else {
+                    p.current_geom()
+                };
             geom_to_compare_against.contains(point)
         };
 
@@ -4975,6 +5132,7 @@ impl Tab {
             .with_context(|| format!("failed to set visibility of tab to {visible}"))?;
         if !visible {
             self.mouse_hover_pane_id.clear();
+            self.plugin_hover_pane_id.clear();
         }
         Ok(())
     }
@@ -5064,9 +5222,9 @@ impl Tab {
             && column < viewport.x + viewport.cols)
     }
 
-    pub fn set_pane_frames(&mut self, should_set_pane_frames: bool) {
-        self.tiled_panes.set_pane_frames(should_set_pane_frames);
-        self.draw_pane_frames = should_set_pane_frames;
+    pub fn set_pane_frames(&mut self, pane_frame_style: PaneFrameStyle) {
+        self.tiled_panes.set_pane_frames(pane_frame_style);
+        self.pane_frame_style = pane_frame_style;
         self.set_should_clear_display_before_rendering();
         self.set_force_render();
     }
@@ -5847,6 +6005,8 @@ impl Tab {
     }
     pub fn clear_mouse_hover_state(&mut self) {
         self.mouse_hover_pane_id.clear();
+        self.plugin_hover_pane_id.clear();
+        self.mouse_last_pane_id.clear();
         self.mouse_help_text_visible.clear();
     }
     pub fn update_web_sharing(&mut self, web_sharing: WebSharing) {

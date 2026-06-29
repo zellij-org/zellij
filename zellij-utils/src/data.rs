@@ -5,6 +5,7 @@ use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
+pub use crate::input::options::PaneFrameStyle;
 use crate::pane_size::{PaneGeom, Size};
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
@@ -938,6 +939,12 @@ impl From<Metadata> for FileMetadata {
     }
 }
 
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StyledText {
+    pub text: String,
+    pub indices: Vec<Vec<usize>>,
+}
+
 /// These events can be subscribed to with subscribe method exported by `zellij-tile`.
 /// Once subscribed to, they will trigger the `update` method of the `ZellijPlugin` trait.
 #[derive(Debug, Clone, PartialEq, EnumDiscriminants, Display, Serialize, Deserialize)]
@@ -1031,6 +1038,8 @@ pub enum Event {
     /// The host terminal indicated its color palette theme mode (CSI 2031 / DSR 997).
     HostTerminalThemeChanged(HostTerminalThemeMode),
     SoftKeyboardVisibilityChanged(bool),
+    HintText(BTreeMap<usize, StyledText>),
+    ActivePaneScroll(Option<(usize, usize)>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1741,6 +1750,7 @@ pub struct ModeInfo {
     pub web_server_ip: Option<IpAddr>,
     pub web_server_port: Option<u16>,
     pub web_server_capability: Option<bool>,
+    pub pane_frame_style: Option<PaneFrameStyle>,
 }
 
 impl ModeInfo {
@@ -3378,6 +3388,10 @@ pub enum PluginCommand {
     NewTiledPaneInTab {
         tab_position: usize,
     },
+    ToggleFloatingPanes {
+        tab_id: Option<u64>,
+    },
+    NewPane,
     GoToNextTab,
     GoToPreviousTab,
     Resize(Resize),
@@ -3403,6 +3417,7 @@ pub enum PluginCommand {
     PageScrollDown,
     ToggleFocusFullscreen,
     TogglePaneFrames,
+    SetPaneFrameStyle(PaneFrameStyle),
     TogglePaneEmbedOrEject,
     UndoRenamePane,
     CloseFocus,

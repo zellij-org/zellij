@@ -279,6 +279,7 @@ message Action {
     ToggleThemeAction toggle_theme = 139;
     ToggleMobileModeAction toggle_mobile_mode = 140;
     FocusLastPaneAction focus_last_pane = 141;
+    SetPaneFrameStyleAction set_pane_frame_style = 142;
   }
 }
 
@@ -307,6 +308,9 @@ message HalfPageScrollUpAction {}
 message HalfPageScrollDownAction {}
 message ToggleFocusFullscreenAction {}
 message TogglePaneFramesAction {}
+message SetPaneFrameStyleAction {
+  string style = 1;
+}
 message ToggleActiveSyncTabAction {}
 message TogglePaneEmbedOrFloatingAction {}
 message ToggleFloatingPanesAction {}
@@ -1183,6 +1187,7 @@ message Options {
   optional MobileLayout mobile_layout = 48;
   optional uint32 mobile_threshold_cols = 49;
   optional uint32 mobile_threshold_rows = 50;
+  optional string pane_frame_style = 51;
 }
 
 enum OnForceClose {

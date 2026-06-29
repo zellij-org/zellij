@@ -13,7 +13,7 @@ fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
     let terminal = zellij.expect_pty_spawn();
     terminal.output(PROMPT);
     zellij.wait_until("first terminal prompt rendered", |grid_snapshot| {
-        grid_snapshot.cursor_is_at(col(3).row(2))
+        grid_snapshot.cursor_is_at(col(2).row(1))
     });
     let (width_before_split, _) = terminal.wait_for_size("first terminal sized", |_, _| true);
 
@@ -50,7 +50,7 @@ fn key_after_mode_switch_is_interpreted_in_new_mode_not_leaked_to_pane() {
     let second_terminal = zellij.expect_pty_spawn();
     second_terminal.output(PROMPT);
     zellij.wait_until("split-right interpreted in pane mode", |grid_snapshot| {
-        grid_snapshot.cursor_is_at(col(63).row(2))
+        grid_snapshot.cursor_is_at(col(62).row(2))
     });
 
     assert!(!first_terminal.stdin_bytes().contains(&keys::key('r')[0]));
@@ -67,7 +67,7 @@ fn toggle_pane_fullscreen() {
     zellij.send_stdin(&keys::key('f'));
 
     let grid_snapshot = zellij.wait_until("focused pane is fullscreen", |grid_snapshot| {
-        grid_snapshot.cursor_is_at(col(3).row(2))
+        grid_snapshot.cursor_is_at(col(2).row(2))
             && grid_snapshot.contains("LOCK")
             && grid_snapshot.contains("(FULLSCREEN)")
     });
@@ -86,7 +86,7 @@ fn close_pane() {
 
     let grid_snapshot =
         zellij.wait_until("right pane closed, focus back on first", |grid_snapshot| {
-            grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(3).row(2))
+            grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(2).row(1))
         });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -116,7 +116,7 @@ fn pane_closes_when_its_process_exits() {
 
     let grid_snapshot =
         zellij.wait_until("right pane closed, focus back on first", |grid_snapshot| {
-            grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(3).row(2))
+            grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(2).row(1))
         });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -145,6 +145,7 @@ fn toggle_floating_panes() {
 fn undo_rename_pane() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);
+    split_right_and_wait_for_prompt(&zellij);
 
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('c'));
@@ -153,7 +154,9 @@ fn undo_rename_pane() {
     zellij.send_stdin(&keys::ESC);
 
     let grid_snapshot = zellij.wait_until("pane name reverted to default", |grid_snapshot| {
-        grid_snapshot.contains("Pane #1") && grid_snapshot.contains("LOCK")
+        grid_snapshot.contains("Pane #2")
+            && !grid_snapshot.contains("aa")
+            && grid_snapshot.contains("LOCK")
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -200,7 +203,7 @@ fn move_focus_up_in_pane_mode() {
     zellij.send_stdin(&keys::ENTER);
 
     let grid_snapshot = zellij.wait_until("focus moved to the upper pane", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(3).row(2))
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(2).row(2))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -215,14 +218,14 @@ fn move_focus_down_in_pane_mode() {
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('k'));
     zellij.wait_until("focus moved to the upper pane", |grid_snapshot| {
-        grid_snapshot.cursor_is_at(col(3).row(2))
+        grid_snapshot.cursor_is_at(col(2).row(2))
     });
 
     zellij.send_stdin(&keys::key('j'));
     zellij.send_stdin(&keys::ENTER);
 
     let grid_snapshot = zellij.wait_until("focus moved back to the lower pane", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(3).row(13))
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(2).row(13))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -368,7 +371,7 @@ fn move_focus_or_tab_moves_focus_between_panes() {
     zellij.send_stdin(&keys::alt('h'));
 
     let grid_snapshot = zellij.wait_until("focus moved to the left pane", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(3).row(2))
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(2).row(2))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -408,7 +411,7 @@ fn new_pane_in_pane_mode() {
 
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('n'));
-    let grid_snapshot = spawn_second_pane_and_wait_for_grid(&zellij, col(63).row(2));
+    let grid_snapshot = spawn_second_pane_and_wait_for_grid(&zellij, col(62).row(2));
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
@@ -419,7 +422,7 @@ fn new_pane_in_normal_mode() {
     claim_first_terminal_and_wait_for_prompt(&zellij);
 
     zellij.send_stdin(&keys::alt('n'));
-    let grid_snapshot = spawn_second_pane_and_wait_for_grid(&zellij, col(63).row(2));
+    let grid_snapshot = spawn_second_pane_and_wait_for_grid(&zellij, col(62).row(2));
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
@@ -431,7 +434,7 @@ fn split_pane_downward() {
 
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('d'));
-    let grid_snapshot = spawn_second_pane_and_wait_for_grid(&zellij, col(3).row(13));
+    let grid_snapshot = spawn_second_pane_and_wait_for_grid(&zellij, col(2).row(13));
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
@@ -443,7 +446,7 @@ fn new_stacked_pane() {
 
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('s'));
-    let grid_snapshot = spawn_second_pane_and_wait_for_grid(&zellij, col(3).row(3));
+    let grid_snapshot = spawn_second_pane_and_wait_for_grid(&zellij, col(2).row(3));
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
@@ -459,7 +462,7 @@ fn move_focus_left_in_pane_mode() {
     zellij.send_stdin(&keys::ENTER);
 
     let grid_snapshot = zellij.wait_until("focus moved to the left pane", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(3).row(2))
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(2).row(2))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -474,14 +477,14 @@ fn move_focus_right_in_pane_mode() {
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('h'));
     zellij.wait_until("focus moved to the left pane", |grid_snapshot| {
-        grid_snapshot.cursor_is_at(col(3).row(2))
+        grid_snapshot.cursor_is_at(col(2).row(2))
     });
 
     zellij.send_stdin(&keys::key('l'));
     zellij.send_stdin(&keys::ENTER);
 
     let grid_snapshot = zellij.wait_until("focus moved back to the right pane", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(63).row(2))
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(62).row(2))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -498,10 +501,15 @@ fn switch_focus_in_pane_mode() {
     zellij.send_stdin(&keys::ENTER);
 
     let grid_snapshot = zellij.wait_until("focus switched to the other pane", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(3).row(2))
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(2).row(2))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
+}
+
+fn cycle_pane_frames(zellij: &TestSession) {
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('z'));
 }
 
 #[test]
@@ -510,14 +518,129 @@ fn toggle_pane_frames() {
     claim_first_terminal_and_wait_for_prompt(&zellij);
     split_right_and_wait_for_prompt(&zellij);
 
-    zellij.send_stdin(&keys::ctrl('p'));
-    zellij.send_stdin(&keys::key('z'));
+    zellij.wait_until("tiled panes start in titles mode", |grid_snapshot| {
+        grid_snapshot.contains("Pane #1")
+            && grid_snapshot.contains("Pane #2")
+            && !grid_snapshot.contains("┌")
+    });
 
-    let grid_snapshot = zellij.wait_until("pane frames removed from both panes", |grid_snapshot| {
+    cycle_pane_frames(&zellij);
+    zellij.wait_until("titles cycle to frameless", |grid_snapshot| {
         grid_snapshot.status_bar_appears()
             && !grid_snapshot.contains("Pane #1")
             && !grid_snapshot.contains("Pane #2")
+            && !grid_snapshot.contains("┌")
             && grid_snapshot.cursor_is_at(col(62).row(1))
+    });
+
+    cycle_pane_frames(&zellij);
+    zellij.wait_until("frameless cycles to full frames", |grid_snapshot| {
+        grid_snapshot.contains("┌")
+            && grid_snapshot.contains("Pane #1")
+            && grid_snapshot.contains("Pane #2")
+    });
+
+    cycle_pane_frames(&zellij);
+    let grid_snapshot = zellij.wait_until("full frames cycle back to titles", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+            && grid_snapshot.contains("Pane #1")
+            && grid_snapshot.contains("Pane #2")
+            && !grid_snapshot.contains("┌")
+    });
+    assert_snapshot!(normalized(&grid_snapshot));
+    zellij.quit();
+}
+
+#[test]
+fn toggle_frames_with_single_pane() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    zellij.wait_until(
+        "lone pane in titles mode omits its title",
+        |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+                && !grid_snapshot.contains("Pane #1")
+                && !grid_snapshot.contains("┌")
+        },
+    );
+
+    cycle_pane_frames(&zellij);
+    zellij.wait_until("lone frameless pane stays untitled", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+            && !grid_snapshot.contains("Pane #1")
+            && !grid_snapshot.contains("┌")
+    });
+
+    cycle_pane_frames(&zellij);
+    let grid_snapshot =
+        zellij.wait_until("lone pane gains a full frame and title", |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains("┌")
+                && grid_snapshot.contains("Pane #1")
+        });
+    assert_snapshot!(normalized(&grid_snapshot));
+    zellij.quit();
+}
+
+#[test]
+fn toggle_frames_with_floating_pane() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('w'));
+    let floating_terminal = zellij.expect_pty_spawn();
+    floating_terminal.output(PROMPT);
+    zellij.wait_until("floating pane appeared with a frame", |grid_snapshot| {
+        grid_snapshot.contains("STAGGERED") && grid_snapshot.contains("┌")
+    });
+
+    cycle_pane_frames(&zellij);
+    zellij.wait_until(
+        "floating pane keeps its frame in frameless mode",
+        |grid_snapshot| grid_snapshot.status_bar_appears() && grid_snapshot.contains("┌"),
+    );
+
+    cycle_pane_frames(&zellij);
+    let grid_snapshot = zellij.wait_until(
+        "floating pane keeps its frame in full mode",
+        |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains("┌")
+                && grid_snapshot.contains("Pane #1")
+        },
+    );
+    assert_snapshot!(normalized(&grid_snapshot));
+    zellij.quit();
+}
+
+#[test]
+fn toggle_frames_with_stacked_panes() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('s'));
+    spawn_second_pane_and_wait_for_grid(&zellij, col(2).row(3));
+
+    zellij.wait_until("stacked panes show their titles", |grid_snapshot| {
+        grid_snapshot.contains("Pane #1")
+            && grid_snapshot.contains("Pane #2")
+            && !grid_snapshot.contains("┌")
+    });
+
+    cycle_pane_frames(&zellij);
+    zellij.wait_until("stacked panes cycle to frameless", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && !grid_snapshot.contains("┌")
+    });
+
+    cycle_pane_frames(&zellij);
+    let grid_snapshot = zellij.wait_until("stacked panes cycle to full frames", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+            && grid_snapshot.contains("┌")
+            && grid_snapshot.contains("Pane #1")
+            && grid_snapshot.contains("Pane #2")
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();

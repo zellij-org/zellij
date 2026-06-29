@@ -224,7 +224,10 @@ pub fn tab_line(
     mode_info: &ModeInfo,
     hide_swap_layout_indicator: bool,
     background: &PaletteColor,
-) -> Vec<LinePart> {
+    active_pane_scroll: Option<(usize, usize)>,
+    is_alternate_tab: bool,
+    new_tab_button_is_hovered: bool,
+) -> (Vec<LinePart>, Option<(usize, usize)>) {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
     let active_tab = if !tabs_after_active.is_empty() {
@@ -249,6 +252,9 @@ pub fn tab_line(
             )
         })
     };
+    if swap_layout_indicator.is_none() {
+        swap_layout_indicator = active_pane_scroll.map(|scroll| scroll_status(scroll, palette));
+    }
 
     // Drop indicator if it would cause wrapping (active tab always rendered unconditionally)
     let prefix_len = get_current_title_len(&prefix);
@@ -279,6 +285,33 @@ pub fn tab_line(
         tab_index: None,
     }]);
 
+    let supports_arrow_fonts = !capabilities.arrow_fonts;
+    let new_tab_button_background = if supports_arrow_fonts {
+        if new_tab_button_is_hovered {
+            palette.ribbon_unselected.emphasis_1
+        } else {
+            palette.ribbon_unselected.background
+        }
+    } else if is_alternate_tab {
+        palette.ribbon_unselected.emphasis_1
+    } else {
+        palette.ribbon_unselected.background
+    };
+    let new_tab_button = new_tab_button_line_part(palette, capabilities, new_tab_button_background);
+    let used = prefix.iter().map(|p| p.len).sum::<usize>();
+    let current_indicator_len = swap_layout_indicator.as_ref().map(|s| s.len).unwrap_or(0);
+    let room = cols
+        .saturating_sub(used)
+        .saturating_sub(current_indicator_len);
+    let new_tab_button_range = if room >= new_tab_button.len {
+        let button_start = used;
+        let button_end = button_start + new_tab_button.len;
+        prefix.push(new_tab_button);
+        Some((button_start, button_end))
+    } else {
+        None
+    };
+
     if let Some(mut swap_layout_indicator) = swap_layout_indicator.take() {
         let remaining_space = cols
             .saturating_sub(prefix.iter().fold(0, |len, part| len + part.len))
@@ -301,7 +334,7 @@ pub fn tab_line(
         prefix.push(swap_layout_indicator);
     }
 
-    prefix
+    (prefix, new_tab_button_range)
 }
 
 fn swap_layout_status(
@@ -326,6 +359,43 @@ fn swap_layout_status(
             Some(text)
         },
         None => None,
+    }
+}
+
+fn scroll_status(scroll: (usize, usize), palette: Styling) -> LinePart {
+    let (position, length) = scroll;
+    let text = format!("[ SCROLL {}/{} ]", position, length);
+    let text_color = palette.text_unselected.base;
+    let bg_color = palette.text_unselected.background;
+    let styled_text = style!(text_color, bg_color).bold().paint(&text);
+    LinePart {
+        part: styled_text.to_string(),
+        len: text.width(),
+        tab_index: None,
+    }
+}
+
+fn new_tab_button_line_part(
+    palette: Styling,
+    capabilities: PluginCapabilities,
+    background_color: PaletteColor,
+) -> LinePart {
+    let separator = tab_separator(capabilities);
+    let separator_width = separator.width();
+    let foreground_color = palette.ribbon_unselected.base;
+    let separator_fill_color = palette.text_unselected.background;
+    let left_separator = style!(separator_fill_color, background_color).paint(separator);
+    let right_separator = style!(background_color, separator_fill_color).paint(separator);
+    let text = "+";
+    let styled_text = style!(foreground_color, background_color)
+        .bold()
+        .paint(format!(" {} ", text));
+    let part = ANSIStrings(&[left_separator, styled_text, right_separator]).to_string();
+    let len = text.width() + (separator_width * 2) + 2;
+    LinePart {
+        part,
+        len,
+        tab_index: None,
     }
 }
 

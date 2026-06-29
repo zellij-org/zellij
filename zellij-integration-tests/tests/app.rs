@@ -54,7 +54,7 @@ fn resize_terminal_window() {
         zellij.wait_until("app re-rendered at the new window size", |grid_snapshot| {
             grid_snapshot.contains("Ctrl +")
                 && grid_snapshot.tab_bar_appears()
-                && grid_snapshot.cursor_is_at(col(53).row(2))
+                && grid_snapshot.cursor_is_at(col(52).row(2))
         });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -70,7 +70,7 @@ fn status_bar_loads_custom_keybindings() {
 
     let grid_snapshot = zellij.wait_until(
         "status bar reflects the custom keybindings",
-        |grid_snapshot| grid_snapshot.cursor_is_at(col(3).row(2)) && grid_snapshot.contains("LOCK"),
+        |grid_snapshot| grid_snapshot.cursor_is_at(col(2).row(1)) && grid_snapshot.contains("LOCK"),
     );
     assert_snapshot!(normalized(&grid_snapshot));
 }
@@ -91,6 +91,7 @@ fn use_custom_layout_with_relative_path() {
 
     let grid_snapshot = zellij.wait_until("upside-down layout loaded from disk", |grid_snapshot| {
         grid_snapshot.tab_bar_appears()
+            && grid_snapshot.status_bar_appears()
             && grid_snapshot.contains("Zellij (test")
             && grid_snapshot.cursor.is_some()
     });

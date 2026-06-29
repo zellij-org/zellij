@@ -26,7 +26,7 @@ fn open_new_tab_and_wait_for_prompt(zellij: &TestSession, expected_tab: &str) ->
     zellij.wait_until("new tab opened with prompt", move |grid_snapshot| {
         grid_snapshot.status_bar_appears()
             && grid_snapshot.contains(&expected_tab)
-            && grid_snapshot.cursor_is_at(col(3).row(2))
+            && grid_snapshot.cursor_is_at(col(2).row(1))
     });
     terminal
 }
@@ -201,9 +201,8 @@ fn break_pane_into_new_tab() {
     let grid_snapshot = zellij.wait_until("focused pane broken into a new tab", |grid_snapshot| {
         grid_snapshot.status_bar_appears()
             && grid_snapshot.contains("Tab #2")
-            && grid_snapshot.contains("Pane #2")
             && !grid_snapshot.contains("Pane #1")
-            && grid_snapshot.cursor_is_at(col(3).row(2))
+            && grid_snapshot.cursor_is_at(col(2).row(1))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -273,7 +272,7 @@ fn open_new_tab() {
     let grid_snapshot = zellij.wait_until("second tab steady in normal mode", |grid_snapshot| {
         grid_snapshot.status_bar_appears()
             && grid_snapshot.contains("Tab #2")
-            && grid_snapshot.cursor_is_at(col(3).row(2))
+            && grid_snapshot.cursor_is_at(col(2).row(1))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -294,7 +293,7 @@ fn close_tab() {
             grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains("Tab #1")
                 && !grid_snapshot.contains("Tab #2")
-                && grid_snapshot.cursor_is_at(col(3).row(2))
+                && grid_snapshot.cursor_is_at(col(2).row(1))
         },
     );
     assert_snapshot!(normalized(&grid_snapshot));

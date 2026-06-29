@@ -2330,13 +2330,15 @@ pub fn split(direction: SplitDirection, rect: &PaneGeom) -> Option<(PaneGeom, Pa
         SplitDirection::Horizontal => rect.rows,
     };
     if let Some(p) = space.as_percent() {
+        let mut halved = Dimension::percent(p / 2.0);
+        halved.set_inner((space.as_usize() / 2).max(1));
         let first_rect = match direction {
             SplitDirection::Vertical => PaneGeom {
-                cols: Dimension::percent(p / 2.0),
+                cols: halved,
                 ..*rect
             },
             SplitDirection::Horizontal => PaneGeom {
-                rows: Dimension::percent(p / 2.0),
+                rows: halved,
                 ..*rect
             },
         };

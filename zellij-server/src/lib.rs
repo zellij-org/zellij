@@ -40,6 +40,7 @@ use zellij_utils::envs;
 use zellij_utils::pane_size::Size;
 
 use zellij_utils::input::cli_assets::CliAssets;
+use zellij_utils::input::options::PaneFrameStyle;
 
 use wasmi::Engine;
 
@@ -402,6 +403,7 @@ impl SessionMetaData {
                     new_config.options.theme_light.as_deref().unwrap_or("?")
                 );
             }
+            let pane_frame_style = PaneFrameStyle::from_options(&new_config.options);
             self.senders
                 .send_to_screen(ScreenInstruction::Reconfigure {
                     client_id,
@@ -417,7 +419,7 @@ impl SessionMetaData {
                     host_theme_light,
                     simplified_ui: new_config.options.simplified_ui.unwrap_or(false),
                     default_shell: new_config.options.default_shell,
-                    pane_frames: new_config.options.pane_frames.unwrap_or(true),
+                    pane_frame_style,
                     copy_command: new_config.options.copy_command,
                     copy_to_clipboard: new_config.options.copy_clipboard,
                     copy_on_select: new_config.options.copy_on_select.unwrap_or(true),

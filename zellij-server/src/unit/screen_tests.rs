@@ -18,7 +18,7 @@ use zellij_utils::input::layout::{
     RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, TiledPaneLayout,
 };
 use zellij_utils::input::mouse::MouseEvent;
-use zellij_utils::input::options::Options;
+use zellij_utils::input::options::{Options, PaneFrameStyle};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
@@ -262,7 +262,7 @@ fn create_new_screen(
     let max_panes = None;
     let mut mode_info = ModeInfo::default();
     mode_info.session_name = Some("zellij-test".into());
-    let draw_pane_frames = false;
+    let draw_pane_frames = PaneFrameStyle::None;
     let auto_layout = true;
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
@@ -693,6 +693,8 @@ impl MockScreen {
 
         let os_input = FakeInputOutput::default();
         let config_options = Options::default();
+        let mut config = Config::default();
+        config.options.pane_frame_style = Some(PaneFrameStyle::Full);
         let main_client_id = 1;
 
         std::thread::Builder::new()
@@ -734,7 +736,7 @@ impl MockScreen {
             config_options,
             session_metadata,
             last_opened_tab_index: None,
-            config: Config::default(),
+            config,
             advanced_mouse_actions: true,
         }
     }
@@ -3230,6 +3232,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         floating: false,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -3284,6 +3287,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         floating: false,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -3338,6 +3342,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         floating: false,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -3403,6 +3408,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         floating: true,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -5224,6 +5230,7 @@ pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
         floating: false,
         in_place: true,
         close_replaced_pane: true,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -5375,7 +5382,7 @@ fn create_new_screen_with_message_capture(
     let max_panes = None;
     let mut mode_info = ModeInfo::default();
     mode_info.session_name = Some("zellij-test".into());
-    let draw_pane_frames = false;
+    let draw_pane_frames = PaneFrameStyle::None;
     let auto_layout = true;
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
@@ -7949,6 +7956,7 @@ pub fn send_cli_new_pane_action_with_tab_id() {
         floating: false,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -8010,6 +8018,7 @@ pub fn send_cli_new_floating_pane_action_with_tab_id() {
         floating: true,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -8119,6 +8128,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_direction() {
         floating: false,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -8179,6 +8189,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_stacked() {
         floating: false,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -8445,7 +8456,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
     let max_panes = None;
     let mut mode_info = ModeInfo::default();
     mode_info.session_name = Some("zellij-test".into());
-    let draw_pane_frames = false;
+    let draw_pane_frames = PaneFrameStyle::None;
     let auto_layout = true;
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
@@ -9054,7 +9065,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         &client_attributes,
         None,
         mode_info,
-        false,
+        PaneFrameStyle::None,
         true,
         true,
         copy_options,
@@ -9533,7 +9544,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         &client_attributes,
         None, // max_panes
         mode_info,
-        false, // draw_pane_frames
+        PaneFrameStyle::None,
         true,  // auto_layout
         false, // session_is_mirrored
         CopyOptions::default(),

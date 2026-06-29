@@ -23,7 +23,7 @@ fn starts_with_one_terminal() {
     let grid_snapshot = zellij.wait_until("steady loaded state", |grid_snapshot| {
         grid_snapshot.tab_bar_appears()
             && grid_snapshot.status_bar_appears()
-            && grid_snapshot.cursor_is_at(col(3).row(2))
+            && grid_snapshot.cursor_is_at(col(2).row(1))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -35,7 +35,7 @@ fn split_terminals_vertically() {
     claim_first_terminal_and_wait_for_prompt(&zellij);
     split_right_and_wait_for_prompt(&zellij);
     let grid_snapshot = zellij.wait_until("split rendered in normal mode", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(63).row(2))
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(62).row(2))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -58,7 +58,7 @@ fn resize_pane() {
     let cursor_shift_left = (resized_cols.saturating_sub(initial_cols)) as usize;
     let grid_snapshot = zellij.wait_until("resized layout in normal mode", |grid_snapshot| {
         grid_snapshot.status_bar_appears()
-            && grid_snapshot.cursor_is_at(col(63 - cursor_shift_left).row(2))
+            && grid_snapshot.cursor_is_at(col(62 - cursor_shift_left).row(2))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -79,7 +79,7 @@ fn command_pane_closes_on_exit() {
     zellij.wait_until(
         "right terminal closed, focus back on first",
         |grid_snapshot| {
-            !grid_snapshot.contains("about to exit") && grid_snapshot.cursor_is_at(col(3).row(2))
+            !grid_snapshot.contains("about to exit") && grid_snapshot.cursor_is_at(col(2).row(1))
         },
     );
     zellij.quit();
