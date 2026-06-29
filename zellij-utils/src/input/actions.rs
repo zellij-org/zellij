@@ -1008,9 +1008,7 @@ impl Action {
                 None => Ok(vec![Action::ToggleFocusFullscreen]),
             },
             CliAction::TogglePaneFrames => Ok(vec![Action::TogglePaneFrames]),
-            CliAction::SetPaneFrameStyle { style } => {
-                Ok(vec![Action::SetPaneFrameStyle(style)])
-            },
+            CliAction::SetPaneFrameStyle { style } => Ok(vec![Action::SetPaneFrameStyle(style)]),
             CliAction::ToggleActiveSyncTab { tab_id } => match tab_id {
                 Some(id) => Ok(vec![Action::ToggleActiveSyncTabByTabId { id: id as u64 }]),
                 None => Ok(vec![Action::ToggleActiveSyncTab]),

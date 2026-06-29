@@ -13,7 +13,11 @@ fn start_zellij(cols: usize) -> TestSession {
 }
 
 fn sgr_left_click(column: usize, line: usize) -> Vec<u8> {
-    format!("\u{1b}[<0;{};{}M\u{1b}[<0;{};{}m", column, line, column, line).into_bytes()
+    format!(
+        "\u{1b}[<0;{};{}M\u{1b}[<0;{};{}m",
+        column, line, column, line
+    )
+    .into_bytes()
 }
 
 fn display_column_of(line: &str, needle: &str) -> Option<usize> {
@@ -33,12 +37,13 @@ fn claim_first_terminal_and_wait_for_prompt(zellij: &TestSession) -> FakePtyHand
 }
 
 fn click_new_pane_button_in_status_bar(zellij: &TestSession, pane_output: &[u8]) -> FakePtyHandle {
-    let grid_snapshot = zellij.wait_until("status bar shows the new pane button", |grid_snapshot| {
-        grid_snapshot
-            .lines()
-            .last()
-            .is_some_and(|status_bar| status_bar.contains("New Pane"))
-    });
+    let grid_snapshot =
+        zellij.wait_until("status bar shows the new pane button", |grid_snapshot| {
+            grid_snapshot
+                .lines()
+                .last()
+                .is_some_and(|status_bar| status_bar.contains("New Pane"))
+        });
     let status_bar = grid_snapshot.lines().last().cloned().unwrap();
     let new_pane_column = display_column_of(&status_bar, "New Pane")
         .expect("new pane button is on the status bar")
@@ -94,12 +99,13 @@ fn mouse_click_new_pane_in_status_bar_twice_opens_two_panes() {
 }
 
 fn click_floating_ribbon_in_status_bar(zellij: &TestSession) {
-    let grid_snapshot = zellij.wait_until("status bar shows the floating ribbon", |grid_snapshot| {
-        grid_snapshot
-            .lines()
-            .last()
-            .is_some_and(|status_bar| status_bar.contains("Floating"))
-    });
+    let grid_snapshot =
+        zellij.wait_until("status bar shows the floating ribbon", |grid_snapshot| {
+            grid_snapshot
+                .lines()
+                .last()
+                .is_some_and(|status_bar| status_bar.contains("Floating"))
+        });
     let status_bar = grid_snapshot.lines().last().cloned().unwrap();
     let floating_ribbon_column = display_column_of(&status_bar, "Floating")
         .expect("floating ribbon is on the status bar")

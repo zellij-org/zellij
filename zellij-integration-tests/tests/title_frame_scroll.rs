@@ -33,9 +33,10 @@ fn single_pane_scroll_shows_on_the_tab_line() {
     zellij.send_stdin(&keys::ctrl('s'));
     zellij.send_stdin(&keys::ctrl('b'));
 
-    let grid_snapshot = zellij.wait_until("scroll indicator appears on the tab line", |grid_snapshot| {
-        tab_line_shows_scroll(grid_snapshot) && !grid_snapshot.contains(LAST_LINE)
-    });
+    let grid_snapshot = zellij.wait_until(
+        "scroll indicator appears on the tab line",
+        |grid_snapshot| tab_line_shows_scroll(grid_snapshot) && !grid_snapshot.contains(LAST_LINE),
+    );
     assert!(
         !grid_snapshot.contains("SCROLL:"),
         "the single-pane tab-line indicator uses the colon-free format:\n{}",

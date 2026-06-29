@@ -2,10 +2,10 @@ use crate::home::default_layout_dir;
 use crate::input::actions::{Action, RunCommandAction};
 use crate::input::config::{ConversionError, KdlError};
 use crate::input::keybinds::Keybinds;
-pub use crate::input::options::PaneFrameStyle;
 use crate::input::layout::{
     Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
+pub use crate::input::options::PaneFrameStyle;
 use crate::pane_size::{PaneGeom, Size};
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};

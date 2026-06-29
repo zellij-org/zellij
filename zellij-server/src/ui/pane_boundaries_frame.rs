@@ -731,7 +731,8 @@ impl PaneFrame {
         let side_budget = width.saturating_sub(title_length) / 2;
         let focus = self.bracketed_focus_indicator(side_budget);
         let focus_length = focus.as_ref().map(|(_, length)| *length).unwrap_or(0);
-        let scroll = self.bracketed_scroll_indicator(width.saturating_sub(focus_length + title_length));
+        let scroll =
+            self.bracketed_scroll_indicator(width.saturating_sub(focus_length + title_length));
         Ok(self.compose_bracketed_title(focus, title, scroll))
     }
     fn bracketed_title_part(&self, content: &str) -> (Vec<TerminalCharacter>, usize) {
@@ -792,8 +793,10 @@ impl PaneFrame {
         if !(has_scroll && self.is_selectable) {
             return None;
         }
-        let full_indication =
-            format!("SCROLL: {}/{}", self.scroll_position.0, self.scroll_position.1);
+        let full_indication = format!(
+            "SCROLL: {}/{}",
+            self.scroll_position.0, self.scroll_position.1
+        );
         let (full_part, full_length) = self.bracketed_title_part(&full_indication);
         if full_length <= max_length {
             return Some((full_part, full_length));
@@ -838,10 +841,7 @@ impl PaneFrame {
             None
         }
     }
-    fn focused_users_part(
-        &self,
-        label: &str,
-    ) -> (Vec<TerminalCharacter>, usize) {
+    fn focused_users_part(&self, label: &str) -> (Vec<TerminalCharacter>, usize) {
         let mut content = foreground_color(label, self.color);
         let mut content_length = label.width();
         for client_id in &self.other_focused_clients {
@@ -891,7 +891,9 @@ impl PaneFrame {
         let left_length = left.as_ref().map(|(_, length)| *length).unwrap_or(0);
         let middle_length = middle.as_ref().map(|(_, length)| *length).unwrap_or(0);
         let right_length = right.as_ref().map(|(_, length)| *length).unwrap_or(0);
-        let centered_start = (width / 2).saturating_sub(middle_length / 2).max(left_length);
+        let centered_start = (width / 2)
+            .saturating_sub(middle_length / 2)
+            .max(left_length);
         let middle_start = if middle.is_some() {
             if right_length > 0 {
                 let scroll_start = width.saturating_sub(right_length);

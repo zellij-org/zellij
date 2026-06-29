@@ -1,6 +1,5 @@
 use super::Tab;
 use crate::pane_groups::PaneGroups;
-use zellij_utils::input::options::PaneFrameStyle;
 use crate::panes::sixel::SixelImageStore;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
@@ -11,6 +10,7 @@ use zellij_utils::channels::{unbounded, Receiver, SenderWithContext};
 use zellij_utils::data::{Direction, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
+use zellij_utils::input::options::PaneFrameStyle;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 

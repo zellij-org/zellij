@@ -1,6 +1,5 @@
 use crate::os_input_output::AsyncReader;
 use crate::panes::sixel::SixelImageStore;
-use zellij_utils::input::options::PaneFrameStyle;
 use crate::panes::{FloatingPanes, TiledPanes};
 use crate::panes::{LinkHandler, PaneId};
 use crate::plugins::PluginInstruction;
@@ -13,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
+use zellij_utils::input::options::PaneFrameStyle;
 
 use interprocess::local_socket::Stream as LocalSocketStream;
 use zellij_utils::{

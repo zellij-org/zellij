@@ -27,7 +27,6 @@ use zellij_utils::data::{
     FocusOrCreateTabResponse, GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
     GetPaneRunningCommandResponse, HttpVerb, KeyWithModifier, KillSessionsResponse, LayoutInfo,
     LayoutMetadata, LayoutParsingError, MessageToPlugin, NewPanePlacement, NewTabResponse,
-    PaneFrameStyle,
     NewTabUnfocusedResponse, NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
     OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
@@ -38,8 +37,8 @@ use zellij_utils::data::{
     OpenPluginPaneFloatingResponse, OpenTerminalFloatingNearPluginResponse,
     OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
     OpenTerminalNearPluginResponse, OpenTerminalPaneInPlaceOfPaneIdResponse, OpenTerminalResponse,
-    OriginatingPlugin, PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
-    RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
+    OriginatingPlugin, PaneFrameStyle, PaneScrollbackResponse, PermissionStatus, PermissionType,
+    PluginPermission, RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
 };
 use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;

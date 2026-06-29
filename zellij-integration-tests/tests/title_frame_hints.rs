@@ -71,14 +71,16 @@ fn hovering_a_pane_shows_a_hint_on_the_status_bar() {
     let mut zellij = two_pane_session();
 
     zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
-    zellij.wait_until("resize hint shown when hovering the focused pane", |grid_snapshot| {
-        grid_snapshot.contains("resize")
-    });
+    zellij.wait_until(
+        "resize hint shown when hovering the focused pane",
+        |grid_snapshot| grid_snapshot.contains("resize"),
+    );
 
     zellij.send_stdin(&sgr_motion(OTHER_PANE_COLUMN, HOVER_LINE));
-    zellij.wait_until("group hint shown when hovering the other pane", |grid_snapshot| {
-        grid_snapshot.contains("group")
-    });
+    zellij.wait_until(
+        "group hint shown when hovering the other pane",
+        |grid_snapshot| grid_snapshot.contains("group"),
+    );
 
     zellij.quit();
 }
@@ -126,14 +128,16 @@ fn hint_only_re_fires_when_entering_a_different_pane() {
     );
 
     zellij.send_stdin(&sgr_motion(OTHER_PANE_COLUMN, HOVER_LINE));
-    zellij.wait_until("group hint shown when crossing into the other pane", |grid_snapshot| {
-        grid_snapshot.contains("group")
-    });
+    zellij.wait_until(
+        "group hint shown when crossing into the other pane",
+        |grid_snapshot| grid_snapshot.contains("group"),
+    );
 
     zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
-    zellij.wait_until("resize hint shown again when crossing back", |grid_snapshot| {
-        grid_snapshot.contains("resize")
-    });
+    zellij.wait_until(
+        "resize hint shown again when crossing back",
+        |grid_snapshot| grid_snapshot.contains("resize"),
+    );
 
     zellij.quit();
 }
@@ -161,17 +165,18 @@ fn resize_hint_shortens_when_the_status_bar_narrows() {
     let mut zellij = two_pane_session();
 
     zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
-    zellij.wait_until("full-width status bar shows the long resize hint", |grid_snapshot| {
-        grid_snapshot.contains("to resize")
-    });
+    zellij.wait_until(
+        "full-width status bar shows the long resize hint",
+        |grid_snapshot| grid_snapshot.contains("to resize"),
+    );
 
-    zellij.resize(Size {
-        cols: 46,
-        rows: 24,
-    });
-    zellij.wait_until("narrowed status bar shortens the resize hint", |grid_snapshot| {
-        grid_snapshot.contains("drag borders") && !grid_snapshot.contains("to resize")
-    });
+    zellij.resize(Size { cols: 46, rows: 24 });
+    zellij.wait_until(
+        "narrowed status bar shortens the resize hint",
+        |grid_snapshot| {
+            grid_snapshot.contains("drag borders") && !grid_snapshot.contains("to resize")
+        },
+    );
 
     zellij.quit();
 }
@@ -190,11 +195,14 @@ fn resize_hint_absent_with_a_single_pane() {
     });
 
     left_terminal.exit(Some(0));
-    zellij.wait_until("resize hint cleared once a single pane remains", |grid_snapshot| {
-        !grid_snapshot.contains("LEFT_PANE_MARKER")
-            && grid_snapshot.status_bar_appears()
-            && !grid_snapshot.contains("resize")
-    });
+    zellij.wait_until(
+        "resize hint cleared once a single pane remains",
+        |grid_snapshot| {
+            !grid_snapshot.contains("LEFT_PANE_MARKER")
+                && grid_snapshot.status_bar_appears()
+                && !grid_snapshot.contains("resize")
+        },
+    );
 
     zellij.quit();
 }
@@ -211,9 +219,10 @@ fn resize_hint_absent_in_fullscreen() {
 
     zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
     zellij.send_stdin(&sgr_motion(ALTERNATE_FOCUSED_PANE_COLUMN, HOVER_LINE));
-    let grid_snapshot = zellij.wait_until("fullscreen stays settled after hovering", |grid_snapshot| {
-        grid_snapshot.contains("(FULLSCREEN)") && grid_snapshot.contains("LOCK")
-    });
+    let grid_snapshot = zellij
+        .wait_until("fullscreen stays settled after hovering", |grid_snapshot| {
+            grid_snapshot.contains("(FULLSCREEN)") && grid_snapshot.contains("LOCK")
+        });
     assert!(
         !grid_snapshot.contains("resize"),
         "fullscreen must suppress the resize hint:\n{}",

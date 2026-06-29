@@ -1318,7 +1318,8 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::SetPaneFrameStyle as i32,
                 optional_payload: Some(OptionalPayload::SetPaneFrameStylePayload(
                     SetPaneFrameStylePayload {
-                        pane_frame_style: ProtobufPaneFrameStyle::try_from(pane_frame_style)? as i32,
+                        pane_frame_style: ProtobufPaneFrameStyle::try_from(pane_frame_style)?
+                            as i32,
                     },
                 )),
             }),

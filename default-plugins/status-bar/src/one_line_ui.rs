@@ -56,10 +56,10 @@ pub fn one_line_ui(
                     new_pane_hovered,
                     floating_hovered,
                 ) {
-                    new_pane_range =
-                        new_pane.map(|(start, end)| (secondary_offset + start, secondary_offset + end));
-                    floating_range =
-                        floating.map(|(start, end)| (secondary_offset + start, secondary_offset + end));
+                    new_pane_range = new_pane
+                        .map(|(start, end)| (secondary_offset + start, secondary_offset + end));
+                    floating_range = floating
+                        .map(|(start, end)| (secondary_offset + start, secondary_offset + end));
                     line_part_to_render.append(&secondary_info);
                 }
             },

@@ -1,8 +1,8 @@
 use super::{Output, Tab};
 use crate::panes::sixel::SixelImageStore;
-use zellij_utils::input::options::PaneFrameStyle;
 use crate::screen::CopyOptions;
 use crate::Arc;
+use zellij_utils::input::options::PaneFrameStyle;
 
 use crate::{
     os_input_output::ServerOsApi, pane_groups::PaneGroups, panes::PaneId,

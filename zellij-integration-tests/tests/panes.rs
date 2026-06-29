@@ -556,11 +556,14 @@ fn toggle_frames_with_single_pane() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);
 
-    zellij.wait_until("lone pane in titles mode omits its title", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
-            && !grid_snapshot.contains("Pane #1")
-            && !grid_snapshot.contains("┌")
-    });
+    zellij.wait_until(
+        "lone pane in titles mode omits its title",
+        |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+                && !grid_snapshot.contains("Pane #1")
+                && !grid_snapshot.contains("┌")
+        },
+    );
 
     cycle_pane_frames(&zellij);
     zellij.wait_until("lone frameless pane stays untitled", |grid_snapshot| {
@@ -570,11 +573,12 @@ fn toggle_frames_with_single_pane() {
     });
 
     cycle_pane_frames(&zellij);
-    let grid_snapshot = zellij.wait_until("lone pane gains a full frame and title", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
-            && grid_snapshot.contains("┌")
-            && grid_snapshot.contains("Pane #1")
-    });
+    let grid_snapshot =
+        zellij.wait_until("lone pane gains a full frame and title", |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains("┌")
+                && grid_snapshot.contains("Pane #1")
+        });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
@@ -593,16 +597,20 @@ fn toggle_frames_with_floating_pane() {
     });
 
     cycle_pane_frames(&zellij);
-    zellij.wait_until("floating pane keeps its frame in frameless mode", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.contains("┌")
-    });
+    zellij.wait_until(
+        "floating pane keeps its frame in frameless mode",
+        |grid_snapshot| grid_snapshot.status_bar_appears() && grid_snapshot.contains("┌"),
+    );
 
     cycle_pane_frames(&zellij);
-    let grid_snapshot = zellij.wait_until("floating pane keeps its frame in full mode", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
-            && grid_snapshot.contains("┌")
-            && grid_snapshot.contains("Pane #1")
-    });
+    let grid_snapshot = zellij.wait_until(
+        "floating pane keeps its frame in full mode",
+        |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains("┌")
+                && grid_snapshot.contains("Pane #1")
+        },
+    );
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }

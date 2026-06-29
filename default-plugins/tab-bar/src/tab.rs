@@ -120,7 +120,14 @@ pub fn tab_style(
         is_alternate_tab = false;
     }
 
-    render_tab(tabname, tab, is_alternate_tab, is_hovered, palette, separator)
+    render_tab(
+        tabname,
+        tab,
+        is_alternate_tab,
+        is_hovered,
+        palette,
+        separator,
+    )
 }
 
 pub(crate) fn get_tab_to_focus(

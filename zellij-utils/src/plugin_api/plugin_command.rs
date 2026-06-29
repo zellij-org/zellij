@@ -70,7 +70,6 @@ pub use super::generated_api::api::{
         NewTabUnfocusedResponse as ProtobufNewTabUnfocusedResponse,
         NewTabsResponse as ProtobufNewTabsResponse, NewTabsWithLayoutInfoPayload,
         NewTiledPaneInTabPayload, NewTiledPaneInTabResponse as ProtobufNewTiledPaneInTabResponse,
-        ToggleFloatingPanesPayload,
         OpenCommandPaneBackgroundResponse as ProtobufOpenCommandPaneBackgroundResponse,
         OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneFloatingNearPluginResponse as ProtobufOpenCommandPaneFloatingNearPluginResponse,
@@ -130,9 +129,10 @@ pub use super::generated_api::api::{
         ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
         Size as ProtobufSize, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
-        SwitchTabToIdPayload, SwitchTabToPayload, TogglePaneBorderlessPayload,
-        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        SwitchTabToIdPayload, SwitchTabToPayload, ToggleFloatingPanesPayload,
+        TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
+        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -3135,7 +3135,8 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::SetPaneFrameStyle as i32,
                 payload: Some(Payload::SetPaneFrameStylePayload(
                     ProtobufSetPaneFrameStylePayload {
-                        pane_frame_style: ProtobufPaneFrameStyle::try_from(pane_frame_style)? as i32,
+                        pane_frame_style: ProtobufPaneFrameStyle::try_from(pane_frame_style)?
+                            as i32,
                     },
                 )),
             }),

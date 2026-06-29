@@ -1192,8 +1192,7 @@ impl MouseHandler {
             if event.event_type == MouseEventType::Motion && tab.mouse_hover_effects {
                 tab.last_mouse_activity_time
                     .insert(client_id, Instant::now());
-                let entered_pane =
-                    tab.mouse_last_pane_id.get(&client_id) != Some(&pane_id);
+                let entered_pane = tab.mouse_last_pane_id.get(&client_id) != Some(&pane_id);
                 tab.mouse_last_pane_id.insert(client_id, pane_id);
                 if entered_pane {
                     let was_visible = tab

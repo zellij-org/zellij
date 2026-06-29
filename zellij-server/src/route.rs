@@ -795,13 +795,13 @@ pub(crate) fn route_action(
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
-            let explicit_pane_id_to_replace: Option<PaneId> =
-                pane_id_to_replace.and_then(|pane_id_to_replace| pane_id_to_replace.try_into().ok());
+            let explicit_pane_id_to_replace: Option<PaneId> = pane_id_to_replace
+                .and_then(|pane_id_to_replace| pane_id_to_replace.try_into().ok());
             let pane_id = explicit_pane_id_to_replace.or(pane_id);
             let client_tab_index_or_paneid = if let Some(tab_id) = tab_id {
                 ClientTabIndexOrPaneId::TabIndex(tab_id)
-            } else if let Some(pane_id) = pane_id
-                .filter(|_| explicit_pane_id_to_replace.is_some() || near_current_pane)
+            } else if let Some(pane_id) =
+                pane_id.filter(|_| explicit_pane_id_to_replace.is_some() || near_current_pane)
             {
                 ClientTabIndexOrPaneId::PaneId(pane_id)
             } else {

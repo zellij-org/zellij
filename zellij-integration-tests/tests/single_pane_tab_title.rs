@@ -89,12 +89,15 @@ fn tab_name_reverts_when_a_second_pane_is_opened() {
     });
 
     split_right_and_wait_for_prompt(&zellij);
-    let grid_snapshot = zellij.wait_until("tab name reverts once a second pane exists", |grid_snapshot| {
-        grid_snapshot
-            .lines()
-            .first()
-            .is_some_and(|tab_bar| tab_bar.contains("Tab #1"))
-    });
+    let grid_snapshot = zellij.wait_until(
+        "tab name reverts once a second pane exists",
+        |grid_snapshot| {
+            grid_snapshot
+                .lines()
+                .first()
+                .is_some_and(|tab_bar| tab_bar.contains("Tab #1"))
+        },
+    );
     assert!(
         grid_snapshot.contains("my-title"),
         "the original pane keeps its title in its frame:\n{}",

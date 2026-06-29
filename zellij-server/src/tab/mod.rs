@@ -3556,8 +3556,7 @@ impl Tab {
             self.hide_cursor_and_clear_display_as_needed(output);
         }
 
-        self.emit_hint_text_if_changed()
-            .with_context(err_context)?;
+        self.emit_hint_text_if_changed().with_context(err_context)?;
         self.emit_active_pane_scroll_if_changed()
             .with_context(err_context)?;
 
@@ -4956,27 +4955,26 @@ impl Tab {
             let is_flexible_in_stack =
                 p.current_geom().is_stacked() && !p.current_geom().rows.is_fixed();
             let is_stacked_under = stacked_pane_ids_under_flexible_pane.contains(&p.pid());
-            let geom_to_compare_against = if is_stacked_under
-                && !self.pane_frame_style.draws_full_frames()
-            {
-                // these sort of panes are one-liner panes under a flexible pane in a stack when we
-                // don't draw pane frames - because the whole stack's content is offset to allow
-                // room for the boundary between panes, they are actually drawn 1 line above where
-                // they are
-                let mut geom = p.current_geom();
-                geom.y = geom.y.saturating_sub(p.get_content_offset().bottom);
-                geom
-            } else if is_flexible_in_stack && !self.pane_frame_style.draws_full_frames() {
-                // these sorts of panes are flexible panes inside a stack when we don't draw pane
-                // frames - because the whole stack's content is offset to give room for the
-                // boundary between panes, we need to take this offset into account when figuring
-                // out whether the position is inside them
-                let mut geom = p.current_geom();
-                geom.rows.decrease_inner(p.get_content_offset().bottom);
-                geom
-            } else {
-                p.current_geom()
-            };
+            let geom_to_compare_against =
+                if is_stacked_under && !self.pane_frame_style.draws_full_frames() {
+                    // these sort of panes are one-liner panes under a flexible pane in a stack when we
+                    // don't draw pane frames - because the whole stack's content is offset to allow
+                    // room for the boundary between panes, they are actually drawn 1 line above where
+                    // they are
+                    let mut geom = p.current_geom();
+                    geom.y = geom.y.saturating_sub(p.get_content_offset().bottom);
+                    geom
+                } else if is_flexible_in_stack && !self.pane_frame_style.draws_full_frames() {
+                    // these sorts of panes are flexible panes inside a stack when we don't draw pane
+                    // frames - because the whole stack's content is offset to give room for the
+                    // boundary between panes, we need to take this offset into account when figuring
+                    // out whether the position is inside them
+                    let mut geom = p.current_geom();
+                    geom.rows.decrease_inner(p.get_content_offset().bottom);
+                    geom
+                } else {
+                    p.current_geom()
+                };
             geom_to_compare_against.contains(point)
         };
 
