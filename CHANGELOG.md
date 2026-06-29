@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: new title-frames UI (https://github.com/zellij-org/zellij/pull/5318)
 * chore: upgrade wasmi to 1.1.0 (https://github.com/zellij-org/zellij/pull/5319)
 * fix: fragmented STDIN causing "garbage" input on slow SSH connections (https://github.com/zellij-org/zellij/pull/5320)
+* build(deps): bump sysinfo to 0.37 for scan-free targeted process refresh (https://github.com/zellij-org/zellij/pull/5324)
 
 ## [0.44.3] - 2026-05-13
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)
