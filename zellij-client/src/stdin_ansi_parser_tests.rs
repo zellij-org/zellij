@@ -875,3 +875,140 @@ fn kitty_kbd_event_does_not_wedge_subsequent_forward_reply() {
         );
     }
 }
+
+// =====================================================================
+// Regression: an SGR mouse report fragmented across the 50ms idle
+// finalize must not leak as keypresses.
+//
+// Repro of the "stray mouse characters" bug seen on high-latency
+// connections. zellij enables SGR (1006) + any-event (1003) mouse
+// tracking on the outer terminal, so moving the mouse emits a stream of
+// `\x1b[<b;x;yM` reports. A high-latency connection splits one report
+// across two stdin reads with a >50ms gap:
+//
+//     read 1: "\x1b[<35;50;"   →   (idle 50ms → finalize fires)   →   read 2: "20M"
+//
+// Before the fix, `finalize()` drained the half-buffered report and the
+// keyboard parser (called with maybe_more=false) decomposed it into Esc
+// + character keypresses, which the focused pane echoed as the stray
+// `<35;50;20M` on screen. The fix keeps the partial CSI buffered so the
+// completing read reassembles it into a single mouse event.
+// =====================================================================
+
+/// Unit-level guard on the fix: the idle finalize must release only a
+/// parked lone ESC / OSC prefix — never a half-arrived CSI. An SGR mouse
+/// report (`\x1b[<...M`) fragmented by link latency parks in
+/// `partial_csi`; draining it would surface as spurious keypresses.
+#[test]
+fn finalize_does_not_release_a_partial_csi_mouse_report() {
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(b"\x1b[<35;50;");
+    assert!(
+        r1.residue.is_empty(),
+        "partial mouse report must be buffered, not leaked: {:?}",
+        r1.residue
+    );
+    assert!(r1.has_partial_state);
+    assert!(
+        p.finalize().is_empty(),
+        "finalize must NOT release a partial CSI/mouse sequence as keyboard residue"
+    );
+    // The completing read reassembles the whole report into residue,
+    // where the keyboard parser decodes it as a single mouse event.
+    let r2 = p.feed(b"20M");
+    assert_eq!(r2.residue, b"\x1b[<35;50;20M");
+}
+
+/// End-to-end repro: drive the host-reply scrubber AND the keyboard
+/// parser the same way `stdin_loop` + `finalize_events` do, and assert
+/// the fragmented mouse report never surfaces as key events.
+#[test]
+fn fragmented_sgr_mouse_across_idle_finalize_does_not_leak_as_keys() {
+    use zellij_utils::vendored::termwiz::input::{InputEvent, InputParser};
+
+    let mut ansi = StdinAnsiParser::new();
+    let mut keyboard = InputParser::new();
+    let mut events: Vec<InputEvent> = Vec::new();
+
+    // read 1: partial SGR mouse report — no terminating 'M' yet.
+    let r1 = ansi.feed(b"\x1b[<35;50;");
+    keyboard.parse(&r1.residue, |e| events.push(e), true);
+
+    // ~50ms passes with no follow-up read → the stdin loop's idle
+    // finalize fires (this mirrors `finalize_events`: drain the parked
+    // partial and flush it through the keyboard parser, maybe_more=false).
+    let drained = ansi.finalize();
+    keyboard.parse(&drained, |e| events.push(e), false);
+
+    // read 2: the rest of the report finally arrives.
+    let r2 = ansi.feed(b"20M");
+    keyboard.parse(&r2.residue, |e| events.push(e), true);
+
+    // a trailing idle tick — harmless once the report has completed.
+    let drained = ansi.finalize();
+    keyboard.parse(&drained, |e| events.push(e), false);
+
+    let keys: Vec<_> = events
+        .iter()
+        .filter(|e| matches!(e, InputEvent::Key(_)))
+        .collect();
+    assert!(
+        keys.is_empty(),
+        "fragmented SGR mouse report leaked as key events (the \
+         high-latency mouse-character bug): {:?}",
+        events
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| matches!(e, InputEvent::Mouse(_)))
+            .count(),
+        1,
+        "expected exactly one reassembled mouse event, got: {:?}",
+        events
+    );
+}
+
+/// Sibling of the mouse repro for the *other* high-frequency token the
+/// idle finalize used to corrupt: a fragmented OSC query reply. Over a
+/// high-latency connection, zellij's startup probe replies (OSC 10/11/4,
+/// …) can split across reads; an idle tick between fragments must not
+/// commit the
+/// half-reply as keypresses. This is the case that distinguishes the
+/// principled fix (release only a lone ESC) from the weaker "drain only
+/// partial_osc" variant — red under the latter, green under the former.
+#[test]
+fn fragmented_osc_reply_across_idle_finalize_does_not_leak_as_keys() {
+    use zellij_utils::vendored::termwiz::input::{InputEvent, InputParser};
+
+    let mut ansi = StdinAnsiParser::new();
+    let mut keyboard = InputParser::new();
+    let mut events: Vec<InputEvent> = Vec::new();
+    let mut replies = Vec::new();
+
+    // read 1: background-color reply, split before the ST terminator.
+    let r1 = ansi.feed(b"\x1b]11;rgb:0000/0000/");
+    replies.extend(r1.replies);
+    keyboard.parse(&r1.residue, |e| events.push(e), true);
+
+    // ~50ms idle → finalize fires.
+    let drained = ansi.finalize();
+    keyboard.parse(&drained, |e| events.push(e), false);
+
+    // read 2: the tail, including the ST terminator.
+    let r2 = ansi.feed(b"0000\x1b\\");
+    replies.extend(r2.replies);
+    keyboard.parse(&r2.residue, |e| events.push(e), true);
+
+    assert!(
+        events.is_empty(),
+        "fragmented OSC reply leaked as input events: {:?}",
+        events
+    );
+    assert_eq!(
+        replies.len(),
+        1,
+        "OSC reply should reassemble into exactly one HostReply: {:?}",
+        replies
+    );
+}

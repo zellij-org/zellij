@@ -398,17 +398,30 @@ impl StdinAnsiParser {
         out
     }
 
-    /// Drain any speculatively-buffered partial OSC/CSI bytes back into
-    /// keyboard residue. Called from the stdin handler's idle-timeout
-    /// path so a lone trailing ESC (or any unterminated host-reply
-    /// prefix that never received a follow-up byte) reaches the
-    /// keyboard parser instead of being stuck forever waiting for a
-    /// disambiguating byte that is never coming.
+    /// Release buffered partial bytes to the keyboard parser on the idle
+    /// timeout. By design this releases ONLY a parked lone ESC — the sole
+    /// input token whose meaning legitimately depends on a timeout (the
+    /// Escape key vs. the start of an ESC-prefixed sequence).
+    ///
+    /// Every other buffered prefix is a self-delimiting host/mouse
+    /// sequence (`\x1b]…` OSC reply, `\x1b[…` CSI report, `\x1b[<…M` SGR
+    /// mouse): its completion is determined by its own bytes, not by
+    /// timing, so it is never a keypress. It stays buffered until its
+    /// continuation completes it — the common case on a high-latency
+    /// connection that fragments the sequence — bounded by
+    /// `PARTIAL_BUFFER_CAP_BYTES` against a tail that truly never arrives
+    /// (a held CSI also self-flushes the instant a non-parameter byte
+    /// makes it `Malformed` in `strip_replies`, so it cannot trap
+    /// subsequent input). Force-committing such a prefix here is what
+    /// produced the stray `<35;50;20M` mouse characters reported on
+    /// high-latency connections, and the analogous corruption of
+    /// fragmented OSC query replies during startup.
     pub fn finalize(&mut self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(self.partial_osc.len() + self.partial_csi.len());
-        out.append(&mut self.partial_osc);
-        out.append(&mut self.partial_csi);
-        out
+        if self.partial_osc == [0x1b] {
+            self.partial_osc.clear();
+            return vec![0x1b];
+        }
+        Vec::new()
     }
 
     /// Walk `bytes` (with any pending partial buffer prepended) and drop
