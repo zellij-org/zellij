@@ -1959,19 +1959,23 @@ impl Pty {
             .as_ref()
             .map(|os_input| os_input.get_cwds(pids))
             .unwrap_or_default();
-        let ppids_to_cmds = self
+        let panes: Vec<(u32, u32)> = terminal_ids
+            .iter()
+            .filter_map(|id| self.id_to_child_pid.get(id).map(|pid| (*id, *pid)))
+            .collect();
+        let foreground_cmds = self
             .bus
             .os_input
             .as_ref()
-            .map(|os_input| os_input.get_all_cmds_by_ppid(&self.post_command_discovery_hook))
+            .map(|os_input| os_input.get_foreground_cmds(&panes, &self.post_command_discovery_hook))
             .unwrap_or_default();
 
         for terminal_id in terminal_ids {
             let process_id = self.id_to_child_pid.get(&terminal_id);
             let cwd = process_id.and_then(|pid| pids_to_cwds.get(pid));
             let cmd_sysinfo = process_id.and_then(|pid| pids_to_cmds.get(pid));
-            let cmd_ps = process_id.and_then(|pid| ppids_to_cmds.get(&format!("{}", pid)));
-            if let Some(cmd) = cmd_ps {
+            let cmd_foreground = foreground_cmds.get(&terminal_id);
+            if let Some(cmd) = cmd_foreground {
                 terminal_ids_to_commands.insert(terminal_id, cmd.clone());
             } else if let Some(cmd) = cmd_sysinfo {
                 terminal_ids_to_commands.insert(terminal_id, cmd.clone());
@@ -2126,17 +2130,20 @@ impl Pty {
             }
         }
 
-        let ppids_to_cmds = self
+        let panes: Vec<(u32, u32)> = active_terminal_ids
+            .iter()
+            .filter_map(|id| self.id_to_child_pid.get(id).map(|pid| (*id, *pid)))
+            .collect();
+        let foreground_cmds = self
             .bus
             .os_input
             .as_ref()
-            .map(|os_input| os_input.get_all_cmds_by_ppid(&self.post_command_discovery_hook))
+            .map(|os_input| os_input.get_foreground_cmds(&panes, &self.post_command_discovery_hook))
             .unwrap_or_default();
 
         for terminal_id in &active_terminal_ids {
-            let process_id = self.id_to_child_pid.get(terminal_id);
-            let foreground_cmd: Vec<String> = process_id
-                .and_then(|pid| ppids_to_cmds.get(&pid.to_string()))
+            let foreground_cmd: Vec<String> = foreground_cmds
+                .get(terminal_id)
                 .cloned()
                 .unwrap_or_default();
 
@@ -2281,16 +2288,18 @@ impl Pty {
                 if let Some(&child_pid) = self.id_to_child_pid.get(&terminal_id) {
                     // Query OS for current running command
                     if let Some(os_input) = self.bus.os_input.as_ref() {
-                        // First, try to get child process command (e.g., nvim running in bash)
-                        let ppids_to_cmds =
-                            os_input.get_all_cmds_by_ppid(&self.post_command_discovery_hook);
-                        let cmd_ps = ppids_to_cmds.get(&format!("{}", child_pid));
+                        // First, try to get the foreground command (e.g., nvim running in bash)
+                        let foreground_cmds = os_input.get_foreground_cmds(
+                            &[(terminal_id, child_pid)],
+                            &self.post_command_discovery_hook,
+                        );
+                        let cmd_foreground = foreground_cmds.get(&terminal_id);
 
-                        // If no child process, fall back to parent process (e.g., the shell itself)
+                        // If no foreground command, fall back to the shell itself
                         let (_cwds, cmds) = os_input.get_cwds(vec![child_pid]);
                         let cmd_sysinfo = cmds.get(&child_pid);
 
-                        if let Some(command_args) = cmd_ps {
+                        if let Some(command_args) = cmd_foreground {
                             GetPaneRunningCommandResponse::Ok(command_args.clone())
                         } else if let Some(command_args) = cmd_sysinfo {
                             GetPaneRunningCommandResponse::Ok(command_args.clone())

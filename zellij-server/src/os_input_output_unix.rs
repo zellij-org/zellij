@@ -414,6 +414,25 @@ impl UnixPtyBackend {
         }
     }
 
+    /// Return the foreground process group of the controlling terminal behind
+    /// `terminal_id` (i.e. `tcgetpgrp` on the pty master). A process group's leader
+    /// has `pid == pgid`, so the returned value is also the pid of the foreground
+    /// group leader. Returns `None` if the fd is unknown or the syscall fails.
+    pub fn tcgetpgrp(&self, terminal_id: u32) -> Option<i32> {
+        let guard = self.terminal_id_to_raw_fd.lock().ok()?;
+        let fd = match guard.get(&terminal_id) {
+            Some(Some(fd)) => *fd,
+            _ => return None,
+        };
+        // Release the lock before the syscall (as `write_to_tty_stdin` does) rather than hold it
+        // across `tcgetpgrp`. This opens a small TOCTOU window: if the pane is torn down here the
+        // fd could be closed (or reused) before the syscall runs, giving a stale/wrong result.
+        // The syscall is non-blocking and the worst case is a momentarily wrong or missing
+        // foreground command, so we accept the race instead of serializing pty I/O on this lookup.
+        drop(guard);
+        unistd::tcgetpgrp(fd).ok().map(|pgid| pgid.as_raw())
+    }
+
     pub fn kill(&self, pid: u32) -> Result<()> {
         let _ = kill(unistd::Pid::from_raw(pid as i32), Some(Signal::SIGHUP));
         Ok(())
