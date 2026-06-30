@@ -422,6 +422,7 @@ mod tests {
                 forget,
                 None,
                 true, // insecure for tests
+                &[],  // no custom headers
             )
         })
         .await
