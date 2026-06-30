@@ -161,7 +161,11 @@ fn dir_changed_since(dir: &Path, since: std::time::SystemTime) -> bool {
         };
         let path = entry.path();
         if file_type.is_dir() {
-            if path.file_name().map(|name| name == "target").unwrap_or(false) {
+            if path
+                .file_name()
+                .map(|name| name == "target")
+                .unwrap_or(false)
+            {
                 continue;
             }
             if dir_changed_since(&path, since) {
