@@ -1948,6 +1948,9 @@ impl Screen {
             .next()
             .context("screen contained no tabs")
             .with_context(err_context)?;
+
+        let mut tabs_to_update = HashSet::new();
+
         for (client_id, client_mode_info) in client_ids_and_mode_infos {
             let client_tab_history = self.tab_history.entry(client_id).or_insert_with(Vec::new);
             if let Some(client_previous_tab) = client_tab_history.pop() {
@@ -1956,6 +1959,7 @@ impl Screen {
                     client_active_tab
                         .add_client(client_id, Some(client_mode_info))
                         .with_context(err_context)?;
+                    tabs_to_update.insert(client_previous_tab);
                     continue;
                 }
             }
@@ -1965,7 +1969,18 @@ impl Screen {
                 .with_context(err_context)?
                 .add_client(client_id, Some(client_mode_info))
                 .with_context(err_context)?;
+            tabs_to_update.insert(first_tab_index);
         }
+
+        // Closing a tab moves its clients without going through the normal tab-switch path.
+        // Refresh ModeUpdate for the destination tabs so tab-local plugins such as
+        // tab-bar/status-bar do not render stale mode information when they become visible again.
+        for tab_id in tabs_to_update {
+            if let Some(tab) = self.tabs.get_mut(&tab_id) {
+                tab.update_input_modes().with_context(err_context)?;
+            }
+        }
+
         Ok(())
     }
 
