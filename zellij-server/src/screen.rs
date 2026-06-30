@@ -5497,11 +5497,12 @@ impl Screen {
             first_client_id.and_then(|client_id| self.active_tab_ids.get(&client_id));
 
         // Filter tabs based on optional tab_index parameter
-        let tabs_to_process: Vec<_> = self
+        let mut tabs_to_process: Vec<_> = self
             .tabs
             .iter()
             .filter(|(idx, _)| tab_index.map_or(true, |target| **idx == target))
             .collect();
+        tabs_to_process.sort_by_key(|(_, tab)| tab.position);
 
         for (tab_index, tab) in tabs_to_process {
             let tab_is_focused = active_tab_index == Some(&tab_index);
