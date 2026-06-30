@@ -70,4 +70,5 @@ message Styling {
     repeated Color exit_code_success = 13;
     repeated Color exit_code_error = 14;
     repeated Color multiplayer_user_colors = 15;
+    repeated Color pane_selection = 16;
 }

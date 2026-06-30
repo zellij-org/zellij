@@ -6125,6 +6125,7 @@ Config {
                         ),
                     ),
                 },
+                pane_selection: None,
                 ribbon_unselected: StyleDeclaration {
                     base: Rgb(
                         (
@@ -6715,6 +6716,7 @@ Config {
                         ),
                     ),
                 },
+                pane_selection: None,
                 ribbon_unselected: StyleDeclaration {
                     base: Rgb(
                         (
@@ -7305,6 +7307,7 @@ Config {
                         ),
                     ),
                 },
+                pane_selection: None,
                 ribbon_unselected: StyleDeclaration {
                     base: Rgb(
                         (

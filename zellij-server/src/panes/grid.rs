@@ -1583,11 +1583,17 @@ impl Grid {
                 .selection
                 .contains_row(character_chunk.y.saturating_sub(content_y))
             {
-                let background_color = match style.colors.text_selected.background {
+                // Pane-content selection uses its own `pane_selection` style when
+                // set, otherwise falls back to `text_selected` (issue #2160 POC).
+                let selection_style = style
+                    .colors
+                    .pane_selection
+                    .unwrap_or(style.colors.text_selected);
+                let background_color = match selection_style.background {
                     PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
                     PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                 };
-                let foreground_color = match style.colors.text_selected.base {
+                let foreground_color = match selection_style.base {
                     PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
                     PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                 };

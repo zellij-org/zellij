@@ -5508,6 +5508,10 @@ impl Themes {
                         "list_selected",
                     )
                     .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.list_selected))?,
+                    pane_selection: Themes::style_declaration_from_node(
+                        theme_config,
+                        "pane_selection",
+                    )?,
                     frame_unselected: Themes::style_declaration_from_node(
                         theme_config,
                         "frame_unselected",
@@ -5647,6 +5651,14 @@ impl Themes {
                     current_theme_node_children
                         .nodes_mut()
                         .push(frame_unselected_style.to_kdl("frame_unselected"));
+                },
+            }
+            match theme.palette.pane_selection {
+                None => {},
+                Some(pane_selection_style) => {
+                    current_theme_node_children
+                        .nodes_mut()
+                        .push(pane_selection_style.to_kdl("pane_selection"));
                 },
             }
             current_theme_node_children
