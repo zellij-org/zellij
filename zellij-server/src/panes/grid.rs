@@ -4814,9 +4814,7 @@ impl Row {
         terminal_character: TerminalCharacter,
     ) {
         let from_position_accounting_for_widechars = self.position_accounting_for_widechars(from);
-        let to_position_accounting_for_widechars = self.position_accounting_for_widechars(to);
-        let replacement_length = to_position_accounting_for_widechars
-            .saturating_sub(from_position_accounting_for_widechars);
+        let replacement_length = to.saturating_sub(from);
         let mut replace_with = VecDeque::from(vec![terminal_character; replacement_length]);
         self.columns
             .truncate(from_position_accounting_for_widechars);
