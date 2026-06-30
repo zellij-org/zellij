@@ -404,6 +404,7 @@ macro_rules! dump_screen_with_ansi {
         let mut is_first = true;
         let mut buf = String::new();
         let mut last_styles: Option<RcCharacterStyles> = None;
+        let mut emitted_cell = false;
 
         for line in &$lines {
             if line.is_canonical && !is_first {
@@ -429,10 +430,15 @@ macro_rules! dump_screen_with_ansi {
                     last_styles = Some(tc.styles.clone());
                 }
                 buf.push(tc.character);
+                emitted_cell = true;
             }
             is_first = false;
         }
-        buf.push_str("\u{1b}[m");
+
+        if emitted_cell {
+            buf.push_str("\u{1b}[m");
+        }
+
         buf
     }};
 }
