@@ -38,7 +38,7 @@ cargo xtask build
 cargo xtask test
 # Run Zellij (optionally with additional arguments)
 cargo xtask run
-cargo xtask run -l strider
+cargo xtask run -- -l strider
 # Run Clippy
 cargo xtask clippy
 # Install Zellij to some directory
