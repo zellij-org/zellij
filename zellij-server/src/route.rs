@@ -28,7 +28,10 @@ use zellij_utils::{
         actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
     },
-    ipc::{ClientToServerMsg, ExitReason, IpcReceiverWithContext, ResizeCause, ServerToClientMsg},
+    ipc::{
+        ClientToServerMsg, ExitReason, IpcReceiverWithContext, RecvClientMsg, ResizeCause,
+        ServerToClientMsg,
+    },
 };
 
 use crate::ClientId;
@@ -2173,7 +2176,7 @@ pub(crate) fn route_thread_main(
     let mut consecutive_unknown_messages_received = 0;
     'route_loop: loop {
         match receiver.recv_client_msg() {
-            Some((instruction, err_ctx)) => {
+            RecvClientMsg::Message(instruction, err_ctx) => {
                 consecutive_unknown_messages_received = 0;
                 err_ctx.update_thread_ctx();
                 let mut handle_instruction = |instruction: ClientToServerMsg,
@@ -2698,7 +2701,10 @@ pub(crate) fn route_thread_main(
                     break 'route_loop;
                 }
             },
-            None => {
+            RecvClientMsg::IoError => {
+                break 'route_loop;
+            },
+            RecvClientMsg::Malformed => {
                 consecutive_unknown_messages_received += 1;
                 if consecutive_unknown_messages_received == 1 {
                     log::error!("Received unknown message from client.");

@@ -342,6 +342,13 @@ pub struct IpcReceiverWithContext<T> {
     _phantom: PhantomData<T>,
 }
 
+#[derive(Debug)]
+pub enum RecvClientMsg {
+    Message(ClientToServerMsg, ErrorContext),
+    IoError,
+    Malformed,
+}
+
 impl<T> IpcReceiverWithContext<T>
 where
     T: for<'de> Deserialize<'de> + Serialize,
@@ -361,16 +368,22 @@ where
         }
     }
 
-    pub fn recv_client_msg(&mut self) -> Option<(ClientToServerMsg, ErrorContext)> {
+    pub fn recv_client_msg(&mut self) -> RecvClientMsg {
         match read_protobuf_message::<ProtoClientToServerMsg>(&mut self.receiver) {
             Ok(proto_msg) => match proto_msg.try_into() {
-                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+                Ok(rust_msg) => RecvClientMsg::Message(rust_msg, ErrorContext::default()),
                 Err(e) => {
                     warn!("Error converting protobuf to ClientToServerMsg: {:?}", e);
-                    None
+                    RecvClientMsg::Malformed
                 },
             },
-            Err(_e) => None,
+            Err(e) => {
+                if e.downcast_ref::<std::io::Error>().is_some() {
+                    RecvClientMsg::IoError
+                } else {
+                    RecvClientMsg::Malformed
+                }
+            },
         }
     }
 
