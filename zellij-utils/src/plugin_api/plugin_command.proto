@@ -218,6 +218,8 @@ enum CommandName {
   SetPaneFrameStyle = 224;
   ToggleFloatingPanes = 225;
   NewPane = 226;
+  Paste = 227;
+  PasteToPaneId = 228;
 }
 
 message PluginCommand {
@@ -379,6 +381,8 @@ message PluginCommand {
     NewTiledPaneInTabPayload new_tiled_pane_in_tab_payload = 169;
     SetPaneFrameStylePayload set_pane_frame_style_payload = 170;
     ToggleFloatingPanesPayload toggle_floating_panes_payload = 171;
+    string paste_payload = 172;
+    PasteToPaneIdPayload paste_to_pane_id_payload = 173;
   }
 }
 
@@ -631,6 +635,11 @@ message CloseTabWithIndexPayload {
 
 message WriteCharsToPaneIdPayload {
   string chars_to_write = 1;
+  PaneId pane_id = 2;
+}
+
+message PasteToPaneIdPayload {
+  string chars_to_paste = 1;
   PaneId pane_id = 2;
 }
 

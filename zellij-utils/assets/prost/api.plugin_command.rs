@@ -323,6 +323,10 @@ pub mod plugin_command {
         SetPaneFrameStylePayload(super::SetPaneFrameStylePayload),
         #[prost(message, tag="171")]
         ToggleFloatingPanesPayload(super::ToggleFloatingPanesPayload),
+        #[prost(string, tag="172")]
+        PastePayload(::prost::alloc::string::String),
+        #[prost(message, tag="173")]
+        PasteToPaneIdPayload(super::PasteToPaneIdPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -722,6 +726,14 @@ pub struct CloseTabWithIndexPayload {
 pub struct WriteCharsToPaneIdPayload {
     #[prost(string, tag="1")]
     pub chars_to_write: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PasteToPaneIdPayload {
+    #[prost(string, tag="1")]
+    pub chars_to_paste: ::prost::alloc::string::String,
     #[prost(message, optional, tag="2")]
     pub pane_id: ::core::option::Option<PaneId>,
 }
@@ -2249,6 +2261,8 @@ pub enum CommandName {
     SetPaneFrameStyle = 224,
     ToggleFloatingPanes = 225,
     NewPane = 226,
+    Paste = 227,
+    PasteToPaneId = 228,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2461,6 +2475,8 @@ impl CommandName {
             CommandName::SetPaneFrameStyle => "SetPaneFrameStyle",
             CommandName::ToggleFloatingPanes => "ToggleFloatingPanes",
             CommandName::NewPane => "NewPane",
+            CommandName::Paste => "Paste",
+            CommandName::PasteToPaneId => "PasteToPaneId",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2670,6 +2686,8 @@ impl CommandName {
             "SetPaneFrameStyle" => Some(Self::SetPaneFrameStyle),
             "ToggleFloatingPanes" => Some(Self::ToggleFloatingPanes),
             "NewPane" => Some(Self::NewPane),
+            "Paste" => Some(Self::Paste),
+            "PasteToPaneId" => Some(Self::PasteToPaneId),
             _ => None,
         }
     }
