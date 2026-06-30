@@ -6102,3 +6102,44 @@ fn csi_5n_status_query_still_handled_locally() {
         "DSR 5 must still produce its local 'all good' reply"
     );
 }
+
+#[test]
+fn line_wrap_inside_scroll_region_scrolls_region() {
+    // Set up a 10-row, 10-col grid with scroll region rows 1-8 (0-based: 0-7).
+    // Fill to the bottom of the scroll region, then print a line long enough
+    // to trigger autowrap. The wrap should scroll within the region (like a
+    // newline does), NOT move the cursor past the region boundary.
+    let cols = 10;
+
+    // Fill viewport first so all 10 rows exist, then set scroll region.
+    let mut content: Vec<u8> = Vec::new();
+    // Fill all 10 rows with placeholder content
+    content.extend_from_slice(b".\r\n.\r\n.\r\n.\r\n.\r\n.\r\n.\r\n.\r\n.\r\n.");
+    // Set scroll region rows 1-8 (1-based), which is 0-7 in 0-based.
+    // DECSTBM moves cursor to (0,0).
+    content.extend_from_slice(b"\x1b[1;8r");
+    // Fill the 8 rows of the scroll region
+    content.extend_from_slice(b"AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\r\nFFF\r\nGGG\r\n");
+    // Now on row 7 (last row of scroll region). Print exactly 10 chars.
+    content.extend_from_slice(b"HHHHHHHHHH"); // fills the row
+    content.extend_from_slice(b"X"); // 11th char triggers line_wrap
+
+    let grid = create_grid_with_size_and_raw(10, cols, &content);
+
+    // The cursor should still be within the scroll region (row <= 7)
+    assert!(
+        grid.cursor.y <= 7,
+        "cursor escaped scroll region: cursor.y = {} (should be <= 7)",
+        grid.cursor.y
+    );
+
+    // "AAA" should have been scrolled off the top of the region
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[0], "BBB", "first visible row after scroll");
+    assert_eq!(vp[6], "HHHHHHHHHH", "wrapped line's first part");
+    assert_eq!(vp[7], "X", "wrapped character on new line");
+
+    // Rows 8 and 9 (outside scroll region) should retain original content
+    assert_eq!(vp[8], ".", "row below scroll region should be untouched");
+    assert_eq!(vp[9], ".", "last row should be untouched");
+}
