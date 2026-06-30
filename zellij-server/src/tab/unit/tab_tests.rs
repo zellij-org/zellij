@@ -218,6 +218,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        true,  // allow_osc_passthrough
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -305,6 +306,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        true,  // allow_osc_passthrough
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -398,6 +400,7 @@ fn create_new_tab_with_cell_size(
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        true,  // allow_osc_passthrough
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -15699,7 +15702,8 @@ pub fn bell_in_unfocused_pane_sets_notification() {
     tab.handle_pty_bytes(2, vec![7u8]).unwrap();
 
     // Now call check_and_handle_bell_notifications as non-active tab
-    let (new_panes, tab_newly_set) = tab.check_and_handle_bell_notifications(false);
+    let (new_panes, tab_newly_set, _had_audio_bell) =
+        tab.check_and_handle_bell_notifications(false);
 
     assert!(
         new_panes.contains(&new_pane_id),

@@ -1981,6 +1981,8 @@ pub struct Options {
     pub mobile_threshold_rows: ::core::option::Option<u32>,
     #[prost(string, optional, tag="51")]
     pub pane_frame_style: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="52")]
+    pub allow_osc_passthrough: ::core::option::Option<bool>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]

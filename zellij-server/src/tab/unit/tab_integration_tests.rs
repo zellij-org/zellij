@@ -276,6 +276,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        true,  // allow_osc_passthrough
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -364,6 +365,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        true,  // allow_osc_passthrough
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -471,6 +473,7 @@ fn create_new_tab_with_swap_layouts(
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        true,  // allow_osc_passthrough
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -575,6 +578,7 @@ fn create_new_tab_with_os_api(
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        true,  // allow_osc_passthrough
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -665,6 +669,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        true,  // allow_osc_passthrough
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -769,6 +774,7 @@ fn create_new_tab_with_mock_pty_writer(
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        true,  // allow_osc_passthrough
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -864,6 +870,7 @@ fn create_new_tab_with_sixel_support(
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        true,  // allow_osc_passthrough
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -12757,6 +12764,7 @@ fn create_new_tab_with_plugin_receiver(
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        true,  // allow_osc_passthrough
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -14542,6 +14550,7 @@ fn create_new_tab_with_server_receiver(
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        true,  // allow_osc_passthrough
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         8080,
         0, // mobile_tab_count
@@ -15029,5 +15038,400 @@ fn hidden_cursor_still_emits_cup_for_host_terminal_positioning() {
     assert!(
         !client_output.contains("\u{1b}[?25h"),
         "Show-cursor sequence must not be present when app has hidden the cursor"
+    );
+}
+
+// ========================================================================
+// OSC 9 / OSC 777 Desktop Notification Integration Tests
+// ========================================================================
+
+/// Build a stand-alone Grid for direct VTE-parser tests (no Tab plumbing).
+fn build_test_grid() -> crate::panes::grid::Grid {
+    use crate::panes::grid::Grid;
+    use crate::panes::link_handler::LinkHandler;
+
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
+
+    Grid::new(
+        24,
+        80,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
+        sixel_image_store,
+        Style::default(),
+        false, // debug
+        true,  // arrow_fonts
+        true,  // styled_underlines
+        true,  // osc8_hyperlinks
+        false, // explicitly_disable_kitty_keyboard_protocol
+    )
+}
+
+#[test]
+fn osc9_grid_parses_and_stores_notification() {
+    // Direct Grid-level test: feed OSC 9 bytes, verify queue + ring_bell.
+    let mut grid = build_test_grid();
+    let mut vte_parser = vte::Parser::new();
+    for &byte in b"\x1b]9;Build complete\x07" {
+        vte_parser.advance(&mut grid, byte);
+    }
+
+    assert_eq!(
+        grid.pending_desktop_notifications.len(),
+        1,
+        "OSC 9 should produce exactly one pending notification"
+    );
+    let (payload, terminator) = grid.pending_desktop_notifications.first().unwrap();
+    assert_eq!(payload, "9;Build complete", "Payload prefixed with '9;'");
+    assert_eq!(terminator, "\x07", "BEL terminator preserved");
+    assert!(
+        grid.pending_visual_bell,
+        "OSC 9 must set pending_visual_bell for the in-Zellij indicator",
+    );
+    assert!(
+        !grid.ring_bell,
+        "OSC 9 must NOT set ring_bell — that would forward `\\u{{7}}` to the host",
+    );
+}
+
+#[test]
+fn osc9_grid_st_terminator_preserved() {
+    // ST-terminated OSC 9 should record terminator as ESC \\.
+    let mut grid = build_test_grid();
+    let mut vte_parser = vte::Parser::new();
+    for &byte in b"\x1b]9;hello\x1b\\" {
+        vte_parser.advance(&mut grid, byte);
+    }
+
+    assert_eq!(grid.pending_desktop_notifications.len(), 1);
+    let (payload, terminator) = grid.pending_desktop_notifications.first().unwrap();
+    assert_eq!(payload, "9;hello");
+    assert_eq!(terminator, "\x1b\\", "ST terminator preserved");
+    assert!(grid.pending_visual_bell);
+    assert!(
+        !grid.ring_bell,
+        "ST-terminated OSC 9 has no BEL byte in input, must not synthesize one",
+    );
+}
+
+#[test]
+fn osc9_empty_body_triggers_bell_but_no_push() {
+    // Empty body — visual indicator fires, but nothing is queued for forward.
+    let mut grid = build_test_grid();
+    let mut vte_parser = vte::Parser::new();
+    for &byte in b"\x1b]9;\x07" {
+        vte_parser.advance(&mut grid, byte);
+    }
+
+    assert!(
+        grid.pending_desktop_notifications.is_empty(),
+        "Empty OSC 9 body should not enqueue"
+    );
+    assert!(
+        grid.pending_visual_bell,
+        "Empty OSC 9 still triggers the visual indicator",
+    );
+    assert!(!grid.ring_bell);
+}
+
+#[test]
+fn osc777_grid_parses_and_stores_notification() {
+    // OSC 777 with title + body — payload is "777;notify;<title>;<body>".
+    let mut grid = build_test_grid();
+    let mut vte_parser = vte::Parser::new();
+    for &byte in b"\x1b]777;notify;Build Done;Tests passed\x07" {
+        vte_parser.advance(&mut grid, byte);
+    }
+
+    assert_eq!(
+        grid.pending_desktop_notifications.len(),
+        1,
+        "OSC 777 notify should produce one pending notification"
+    );
+    let (payload, terminator) = grid.pending_desktop_notifications.first().unwrap();
+    assert_eq!(payload, "777;notify;Build Done;Tests passed");
+    assert_eq!(terminator, "\x07");
+    assert!(grid.pending_visual_bell);
+    assert!(!grid.ring_bell);
+}
+
+#[test]
+fn osc777_unknown_subcommand_ignored() {
+    // OSC 777 sub-commands other than `notify` are not in scope; queue should stay empty
+    // and neither bell flag should fire.
+    let mut grid = build_test_grid();
+    let mut vte_parser = vte::Parser::new();
+    for &byte in b"\x1b]777;Beep\x07" {
+        vte_parser.advance(&mut grid, byte);
+    }
+
+    assert!(
+        grid.pending_desktop_notifications.is_empty(),
+        "Non-notify OSC 777 sub-commands must not enqueue"
+    );
+    assert!(
+        !grid.pending_visual_bell,
+        "Non-notify OSC 777 should not fire the visual indicator either",
+    );
+    assert!(!grid.ring_bell);
+}
+
+#[test]
+fn osc777_st_terminator_preserved() {
+    let mut grid = build_test_grid();
+    let mut vte_parser = vte::Parser::new();
+    for &byte in b"\x1b]777;notify;Title;Body\x1b\\" {
+        vte_parser.advance(&mut grid, byte);
+    }
+
+    let (payload, terminator) = grid.pending_desktop_notifications.first().unwrap();
+    assert_eq!(payload, "777;notify;Title;Body");
+    assert_eq!(terminator, "\x1b\\");
+}
+
+#[test]
+fn osc9_forwarded_through_tab_without_namespacing() {
+    // End-to-end: Tab should wrap the OSC 9 entry as `\x1b]9;<body>\x07`
+    // with no namespacing, and route via ServerInstruction::Render.
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, server_receiver) = create_new_tab_with_server_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(1, Vec::from("\x1b]9;hello world\x07"))
+        .unwrap();
+
+    let output = collect_render_output(&server_receiver);
+    assert!(
+        output.contains("\x1b]9;hello world\x07"),
+        "OSC 9 should be forwarded verbatim, got: {:?}",
+        output
+    );
+    assert!(
+        !output.contains("\x1b]99;"),
+        "OSC 9 must not be wrapped as OSC 99, got: {:?}",
+        output
+    );
+    assert!(
+        !output.contains("i=p1."),
+        "OSC 9 must not receive namespacing, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn osc777_forwarded_through_tab_without_namespacing() {
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, server_receiver) = create_new_tab_with_server_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(
+        1,
+        Vec::from("\x1b]777;notify;Build Done;All tests passed\x07"),
+    )
+    .unwrap();
+
+    let output = collect_render_output(&server_receiver);
+    assert!(
+        output.contains("\x1b]777;notify;Build Done;All tests passed\x07"),
+        "OSC 777 should be forwarded verbatim, got: {:?}",
+        output
+    );
+    assert!(
+        !output.contains("i=p1."),
+        "OSC 777 must not receive namespacing, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn osc9_passthrough_disabled_drops_bytes_but_keeps_visual_bell() {
+    // With allow_osc_passthrough=false the OSC bytes should NOT appear in
+    // forwarded output, AND the visual-indicator pipeline should fire
+    // through the `pending_visual_bell` path (NOT the `ring_bell`
+    // audio-bell path, which would forward `\u{7}` to the host).
+    //
+    // This is a regression test for the audio-bell side-effect originally
+    // flagged in zellij-org/zellij#5166 review (yamam): OSC 9 / OSC 777
+    // are unidirectional desktop notifications, so synthesising an ANSI
+    // BEL on top would be a double-notification.
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, server_receiver) = create_new_tab_with_server_receiver(size, ModeInfo::default());
+    tab.update_allow_osc_passthrough(false);
+
+    tab.handle_pty_bytes(1, Vec::from("\x1b]9;should be dropped\x07"))
+        .unwrap();
+
+    // Drive the bell pipeline the way `Screen::render` does. The visual
+    // pipeline must record an event, but `had_audio_bell` and
+    // `tab_bell_ring` must both stay false because the desktop
+    // notification IS the alert.
+    let (_new_panes, _tab_newly_set, had_audio_bell) =
+        tab.check_and_handle_bell_notifications(true);
+    assert!(
+        !had_audio_bell,
+        "OSC 9 must not produce an audio bell (no `\\u{{7}}` forwarding to host)",
+    );
+    assert!(
+        !tab.tab_bell_ring,
+        "tab_bell_ring must stay false for OSC 9 / 777 — it's the visual indicator, not the host bell",
+    );
+
+    let output = collect_render_output(&server_receiver);
+    assert!(
+        !output.contains("\x1b]9;"),
+        "OSC 9 bytes must not be forwarded when passthrough is off, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn osc9_does_not_synthesize_audio_bell_on_host() {
+    // Even with default (passthrough on) config, OSC 9 must not cause an
+    // ANSI BEL to be forwarded to the host terminal — the desktop
+    // notification itself is the alert, and an extra audio bell would
+    // also be wrong for ST-terminated OSC 9 which has no BEL in input.
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, _server_receiver) =
+        create_new_tab_with_server_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(1, Vec::from("\x1b]9;build done\x07"))
+        .unwrap();
+    let (_new_panes, _tab_newly_set, had_audio_bell) =
+        tab.check_and_handle_bell_notifications(true);
+    assert!(
+        !had_audio_bell,
+        "BEL-terminated OSC 9 must not trigger audio-bell forwarding to host",
+    );
+
+    // ST-terminated form — even more obvious: there's no BEL byte in the
+    // input at all, so synthesizing one would be a clear bug.
+    tab.handle_pty_bytes(1, Vec::from("\x1b]9;build done\x1b\\"))
+        .unwrap();
+    let (_new_panes, _tab_newly_set, had_audio_bell) =
+        tab.check_and_handle_bell_notifications(true);
+    assert!(
+        !had_audio_bell,
+        "ST-terminated OSC 9 must not synthesize an audio BEL out of thin air",
+    );
+}
+
+#[test]
+fn osc777_does_not_synthesize_audio_bell_on_host() {
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, _server_receiver) =
+        create_new_tab_with_server_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(1, Vec::from("\x1b]777;notify;Build Done;Tests passed\x07"))
+        .unwrap();
+    let (_new_panes, _tab_newly_set, had_audio_bell) =
+        tab.check_and_handle_bell_notifications(true);
+    assert!(
+        !had_audio_bell,
+        "OSC 777 notify must not trigger audio-bell forwarding to host",
+    );
+}
+
+#[test]
+fn real_bel_byte_still_triggers_audio_bell() {
+    // Sanity check: the visual-only path for OSC 9 / 777 must NOT
+    // accidentally regress the existing behavior for a literal BEL byte
+    // (0x07) coming through the pane's PTY. A real BEL should still set
+    // `had_audio_bell` / `tab_bell_ring` so the host's audible bell can
+    // ring.
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, _server_receiver) =
+        create_new_tab_with_server_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(1, vec![0x07_u8]).unwrap();
+    let (_new_panes, _tab_newly_set, had_audio_bell) =
+        tab.check_and_handle_bell_notifications(true);
+    assert!(
+        had_audio_bell,
+        "A literal BEL byte must still trigger audio-bell forwarding to host",
+    );
+    assert!(
+        tab.tab_bell_ring,
+        "tab_bell_ring must still fire for a literal BEL byte",
+    );
+}
+
+#[test]
+fn osc777_passthrough_disabled_drops_bytes() {
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, server_receiver) = create_new_tab_with_server_receiver(size, ModeInfo::default());
+    tab.update_allow_osc_passthrough(false);
+
+    tab.handle_pty_bytes(1, Vec::from("\x1b]777;notify;dropped;dropped body\x07"))
+        .unwrap();
+
+    let output = collect_render_output(&server_receiver);
+    assert!(
+        !output.contains("\x1b]777;"),
+        "OSC 777 bytes must not be forwarded when passthrough is off, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn osc9_does_not_interfere_with_osc99() {
+    // Mixed payload: an OSC 99 followed by an OSC 9. Both must pass through
+    // their respective wrappers without contamination.
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, server_receiver) = create_new_tab_with_server_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(
+        1,
+        Vec::from("\x1b]99;i=alpha:p=title;OSC99 body\x07\x1b]9;OSC9 body\x07"),
+    )
+    .unwrap();
+
+    let output = collect_render_output(&server_receiver);
+    // OSC 99 — namespaced
+    assert!(
+        output.contains("i=p1.alpha"),
+        "OSC 99 namespacing must remain intact, got: {:?}",
+        output
+    );
+    assert!(
+        output.contains("OSC99 body"),
+        "OSC 99 body must be present, got: {:?}",
+        output
+    );
+    // OSC 9 — verbatim, not wrapped as OSC 99
+    assert!(
+        output.contains("\x1b]9;OSC9 body\x07"),
+        "OSC 9 must be forwarded verbatim, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn osc99_passthrough_flag_does_not_affect_osc99() {
+    // The allow_osc_passthrough flag is scoped to OSC 9/777. OSC 99 is
+    // governed by its own (always-on) protocol contract from PR #4931.
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, server_receiver) = create_new_tab_with_server_receiver(size, ModeInfo::default());
+    tab.update_allow_osc_passthrough(false);
+
+    tab.handle_pty_bytes(1, Vec::from("\x1b]99;i=foo:p=title;still works\x07"))
+        .unwrap();
+
+    let output = collect_render_output(&server_receiver);
+    assert!(
+        output.contains("\x1b]99;"),
+        "OSC 99 must still pass through when allow_osc_passthrough=false"
+    );
+    assert!(
+        output.contains("i=p1.foo"),
+        "OSC 99 namespacing remains active"
+    );
+    assert!(
+        output.contains("still works"),
+        "OSC 99 body still forwarded"
     );
 }

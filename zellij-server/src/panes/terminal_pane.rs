@@ -860,6 +860,12 @@ impl Pane for TerminalPane {
     fn get_bell_notification(&self) -> bool {
         self.has_bell_notification
     }
+    fn has_pending_visual_bell(&self) -> bool {
+        self.grid.pending_visual_bell
+    }
+    fn consume_pending_visual_bell(&mut self) {
+        self.grid.pending_visual_bell = false;
+    }
     fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
         self.pane_frame_color_override = Some((self.style.colors.exit_code_error.base, error_text));
     }
