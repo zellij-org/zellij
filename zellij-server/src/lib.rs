@@ -1260,19 +1260,15 @@ pub fn start_server_impl(
                         );
                     },
                     None => {
-                        // send to all clients, this pipe might not have been associated yet
-                        let client_ids = session_state.read().unwrap().client_ids();
-                        for client_id in client_ids {
-                            send_to_client!(
-                                client_id,
-                                os_input,
-                                ServerToClientMsg::UnblockCliPipeInput {
-                                    pipe_name: pipe_name.clone()
-                                },
-                                session_state,
-                                session_data
-                            );
-                        }
+                        // `UnblockCliPipeInput` is a response for one CLI pipe client, identified
+                        // by `pipe_name`. If the pipe is no longer associated with a client, the
+                        // original CLI client has already disconnected or its association has been
+                        // cleaned up. Broadcasting this response to all clients can leak unrelated
+                        // pipe messages to ordinary/probe clients (eg. assert_socket), so drop it.
+                        log::warn!(
+                            "Dropping UnblockCliPipeInput for unassociated pipe: {}",
+                            pipe_name
+                        );
                     },
                 }
             },
@@ -1292,20 +1288,12 @@ pub fn start_server_impl(
                         );
                     },
                     None => {
-                        // send to all clients, this pipe might not have been associated yet
-                        let client_ids = session_state.read().unwrap().client_ids();
-                        for client_id in client_ids {
-                            send_to_client!(
-                                client_id,
-                                os_input,
-                                ServerToClientMsg::CliPipeOutput {
-                                    pipe_name: pipe_name.clone(),
-                                    output: output.clone()
-                                },
-                                session_state,
-                                session_data
-                            );
-                        }
+                        // `CliPipeOutput` is also addressed to the CLI client associated with this
+                        // pipe. If no association exists, there is no correct recipient.
+                        log::warn!(
+                            "Dropping CliPipeOutput for unassociated pipe: {}",
+                            pipe_name
+                        );
                     },
                 }
             },
