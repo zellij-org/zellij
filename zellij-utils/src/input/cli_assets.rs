@@ -4,7 +4,7 @@ use crate::pane_size::Size;
 use crate::{
     home::{find_default_config_dir, get_theme_dir},
     input::{config::Config, layout::Layout, theme::Themes},
-    setup::get_default_themes,
+    setup::{get_default_themes, themes_with_defaults},
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -63,9 +63,10 @@ impl CliAssets {
             layout.recursively_add_start_suspended(Some(false));
         }
 
-        config_with_merged_layout_opts.themes = config_with_merged_layout_opts
-            .themes
-            .merge(get_default_themes());
+        config_with_merged_layout_opts.themes = themes_with_defaults(
+            get_default_themes(),
+            config_with_merged_layout_opts.themes.clone(),
+        );
 
         let user_theme_dir = self
             .configuration_options
