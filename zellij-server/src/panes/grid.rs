@@ -1685,7 +1685,8 @@ impl Grid {
     }
     /// Dumps all lines above terminal vieport and the viewport itself to a string
     pub fn dump_screen(&self, full: bool) -> String {
-        let viewport: String = dump_screen!(self.viewport);
+        let viewport_rows: Vec<&Row> = self.viewport.iter().take(self.height).collect();
+        let viewport: String = dump_screen!(viewport_rows);
         if !full {
             return viewport;
         }
@@ -1698,7 +1699,8 @@ impl Grid {
     }
     /// Dumps all lines (with ansi) above terminal viewport and the viewport itself to a string
     pub fn dump_screen_with_ansi(&self, full: bool) -> String {
-        let viewport: String = dump_screen_with_ansi!(self.viewport);
+        let viewport_rows: Vec<&Row> = self.viewport.iter().take(self.height).collect();
+        let viewport: String = dump_screen_with_ansi!(viewport_rows);
         if !full {
             return viewport;
         }

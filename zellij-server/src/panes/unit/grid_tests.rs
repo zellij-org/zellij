@@ -3023,6 +3023,60 @@ pub fn alternate_screen_change_size() {
     assert_eq!(grid.scrollback_position_and_length(), (0, 0))
 }
 
+/// Minimal regression test: viewport has more rows than self.height
+/// (simulating stale alt-screen rows after resize). Assert that
+/// dump_screen / dump_screen_with_ansi never include rows beyond height.
+#[test]
+pub fn dump_screen_stale_rows_not_leaked() {
+    use super::super::{Row, TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
+    use std::collections::VecDeque;
+
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        5,
+        20,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true, true, true, false,
+    );
+
+    // Populate viewport: initial row + 6 pushed → 7 total rows, height=5 → 2 stale.
+    for label in &["VIS-0", "VIS-1", "VIS-2", "VIS-3", "STALE-0", "STALE-1"] {
+        let mut columns: VecDeque<TerminalCharacter> = label
+            .bytes()
+            .map(|b| TerminalCharacter::new_styled(b as char, Default::default()))
+            .collect();
+        while columns.len() < grid.width {
+            columns.push_back(EMPTY_TERMINAL_CHARACTER);
+        }
+        grid.viewport.push_back(Row::from_columns(columns).canonical());
+    }
+    // 1 (initial row) + 6 = 7
+    assert_eq!(grid.viewport.len(), 7);
+    assert_eq!(grid.height, 5);
+    assert!(grid.viewport.len() > grid.height);
+
+    // dump_screen(false): visible rows appear, stale rows do not
+    let plain = grid.dump_screen(false);
+    assert!(plain.contains("VIS-0"), "visible row VIS-0 should be in plain dump");
+    assert!(plain.contains("VIS-3"), "visible row VIS-3 should be in plain dump");
+    assert!(!plain.contains("STALE-0"), "stale row STALE-0 must not appear");
+    assert!(!plain.contains("STALE-1"), "stale row STALE-1 must not appear");
+
+    // dump_screen_with_ansi(false): same check
+    let ansi = grid.dump_screen_with_ansi(false);
+    assert!(ansi.contains("VIS-0"), "visible row VIS-0 should be in ansi dump");
+    assert!(ansi.contains("VIS-3"), "visible row VIS-3 should be in ansi dump");
+    assert!(!ansi.contains("STALE-0"), "stale row STALE-0 must not appear in ansi dump");
+    assert!(!ansi.contains("STALE-1"), "stale row STALE-1 must not appear in ansi dump");
+}
+
 #[test]
 pub fn fzf_fullscreen() {
     let mut vte_parser = vte::Parser::new();
