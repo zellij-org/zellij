@@ -383,15 +383,22 @@ macro_rules! dump_screen {
     ($lines:expr) => {{
         let mut is_first = true;
         let mut buf = String::with_capacity($lines.iter().map(|l| l.len()).sum());
+        let mut lines = $lines.iter().peekable();
 
-        for line in &$lines {
+        while let Some(line) = lines.next() {
             if line.is_canonical && !is_first {
                 buf.push_str("\n");
             }
             let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
+            let next_line_is_wrap = lines.peek().map(|l| !l.is_canonical).unwrap_or(false);
             // Replace the spaces at the end of the line. Sometimes, the lines are
-            // collected with spaces until the end of the panel.
-            buf.push_str(&s.trim_end_matches(' '));
+            // collected with spaces until the end of the panel. Preserve them when
+            // the next line is a wrapped continuation.
+            if next_line_is_wrap {
+                buf.push_str(&s);
+            } else {
+                buf.push_str(&s.trim_end_matches(' '));
+            }
             is_first = false;
         }
         buf
@@ -404,23 +411,28 @@ macro_rules! dump_screen_with_ansi {
         let mut is_first = true;
         let mut buf = String::new();
         let mut last_styles: Option<RcCharacterStyles> = None;
+        let mut lines = $lines.iter().peekable();
 
-        for line in &$lines {
+        while let Some(line) = lines.next() {
             if line.is_canonical && !is_first {
                 buf.push_str("\n");
                 last_styles = None;
             }
 
-            let last_non_space = line
-                .columns
-                .iter()
-                .rposition(|tc| {
-                    let space = tc.character == ' ';
-                    let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
-                    !space || styled // it's, something drawable
-                })
-                .map(|i| i + 1)
-                .unwrap_or(0);
+            let next_line_is_wrap = lines.peek().map(|l| !l.is_canonical).unwrap_or(false);
+            let last_non_space = if next_line_is_wrap {
+                line.columns.len()
+            } else {
+                line.columns
+                    .iter()
+                    .rposition(|tc| {
+                        let space = tc.character == ' ';
+                        let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
+                        !space || styled // it's, something drawable
+                    })
+                    .map(|i| i + 1)
+                    .unwrap_or(0)
+            };
 
             for tc in line.columns.iter().take(last_non_space) {
                 // Only output style codes if style changed
