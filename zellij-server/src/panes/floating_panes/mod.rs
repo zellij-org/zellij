@@ -734,7 +734,7 @@ impl FloatingPanes {
             display_area,
             viewport,
         );
-        if let Some(pane_id) = floating_pane_grid.pane_id_on_edge(direction) {
+        if let Some(pane_id) = floating_pane_grid.pane_id_on_edge(direction, &self.z_indices) {
             self.focus_pane(pane_id, client_id);
             self.set_force_render();
         }
