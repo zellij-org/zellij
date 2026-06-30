@@ -31,7 +31,9 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
 
     // Build all plugins in a single invocation so Cargo can unify transitive dependency
     // features across all of them and compile shared crates (e.g. zellij-utils) only once.
-    if !flags.no_plugins {
+    let build_plugins =
+        !flags.no_plugins && (flags.release || plugins_force() || plugin_sources_changed());
+    if build_plugins {
         let plugin_members: Vec<&WorkspaceMember> = crate::workspace_members()
             .iter()
             .filter(|m| m.build && m.crate_name.contains("plugins"))
@@ -66,8 +68,14 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
                         .1;
                     move_plugin_to_assets(sh, plugin_name)?;
                 }
+            } else {
+                write_plugin_stamp(sh);
             }
         }
+    } else if !flags.no_plugins {
+        let msg = ">> Plugins unchanged since last build, skipping (set ZELLIJ_FORCE_PLUGINS=1 to rebuild)";
+        crate::status(msg);
+        eprintln!("{}", msg);
     }
 
     // Build non-plugin crates (native target).
@@ -112,6 +120,60 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn plugins_force() -> bool {
+    std::env::var_os("ZELLIJ_FORCE_PLUGINS").is_some()
+}
+
+fn plugin_stamp_path() -> PathBuf {
+    PathBuf::from(
+        std::env::var_os("CARGO_TARGET_DIR")
+            .unwrap_or(crate::project_root().join("target").into_os_string()),
+    )
+    .join(".xtask-plugins-stamp")
+}
+
+fn write_plugin_stamp(sh: &Shell) {
+    let _ = sh.write_file(plugin_stamp_path(), b"");
+}
+
+fn plugin_sources_changed() -> bool {
+    let stamp_time = match std::fs::metadata(plugin_stamp_path()).and_then(|m| m.modified()) {
+        Ok(stamp_time) => stamp_time,
+        Err(_) => return true,
+    };
+    let root = crate::project_root();
+    ["default-plugins", "zellij-tile", "zellij-tile-utils"]
+        .iter()
+        .any(|dir| dir_changed_since(&root.join(dir), stamp_time))
+}
+
+fn dir_changed_since(dir: &Path, since: std::time::SystemTime) -> bool {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return false,
+    };
+    for entry in entries.flatten() {
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        if file_type.is_dir() {
+            if path.file_name().map(|name| name == "target").unwrap_or(false) {
+                continue;
+            }
+            if dir_changed_since(&path, since) {
+                return true;
+            }
+        } else if let Ok(modified) = entry.metadata().and_then(|m| m.modified()) {
+            if modified > since {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 pub fn proto(sh: &Shell) -> anyhow::Result<()> {
