@@ -1583,20 +1583,40 @@ impl Grid {
                 .selection
                 .contains_row(character_chunk.y.saturating_sub(content_y))
             {
-                let background_color = match style.colors.text_selected.background {
+                // Pane-content selection uses its own `pane_selection` style when
+                // set, otherwise falls back to `text_selected` (issue #2160 POC).
+                let selection_style = style
+                    .colors
+                    .pane_selection
+                    .unwrap_or(style.colors.text_selected);
+                let background_color = match selection_style.background {
                     PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
                     PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                 };
-                let foreground_color = match style.colors.text_selected.base {
-                    PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
-                    PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                let selection_alpha = style.colors.pane_selection_alpha;
+                // With `alpha`, the selection color is composited over each cell
+                // (both fg and bg) in the output layer, so we leave the foreground
+                // for that blend. Without `alpha`, `keep_foreground` preserves the
+                // cell's own foreground and only recolors the background (like macOS
+                // Terminal). Either is only ever set when `pane_selection` is `Some`,
+                // so the `text_selected` fallback above is unaffected.
+                let foreground_color = if selection_alpha.is_some()
+                    || style.colors.pane_selection_keep_foreground
+                {
+                    None
+                } else {
+                    Some(match selection_style.base {
+                        PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                        PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                    })
                 };
 
                 character_chunk.add_selection_and_colors(
                     HighlightSelection {
                         selection: self.selection,
                         bg: Some(background_color),
-                        fg: Some(foreground_color),
+                        fg: foreground_color,
+                        alpha: selection_alpha,
                         bold: false,
                         italic: false,
                         underline: false,
@@ -1633,6 +1653,7 @@ impl Grid {
                                 selection: *res,
                                 bg: Some(background_color),
                                 fg: Some(foreground_color),
+                                alpha: None,
                                 bold: false,
                                 italic: false,
                                 underline: false,
@@ -2554,6 +2575,7 @@ impl Grid {
                                                 selection: sel,
                                                 bg: compiled.bg,
                                                 fg: compiled.fg,
+                                                alpha: None,
                                                 bold: compiled.bold,
                                                 italic: compiled.italic,
                                                 underline: compiled.underline,
@@ -2587,6 +2609,7 @@ impl Grid {
                                 selection: sel,
                                 bg: compiled.bg,
                                 fg: compiled.fg,
+                                alpha: None,
                                 bold: compiled.bold,
                                 italic: compiled.italic,
                                 underline: compiled.underline,

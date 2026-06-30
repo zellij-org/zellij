@@ -5388,6 +5388,63 @@ impl Themes {
         }
     }
 
+    /// Parse the `pane_selection` style. Unlike other components, its `base`
+    /// (foreground) is optional: when omitted, each cell keeps its own
+    /// foreground and only the background is recolored — a terminal-native
+    /// selection (like macOS Terminal). An optional `alpha` (0.0–1.0) instead
+    /// alpha-composites the `background` color over each cell. Returns the
+    /// style, a flag marking whether the foreground should be preserved, and
+    /// the parsed alpha (as 0–255).
+    fn pane_selection_from_node(
+        style_node: &KdlNode,
+    ) -> Result<(Option<StyleDeclaration>, bool, Option<u8>), ConfigError> {
+        let descriptor_node = kdl_child_with_name!(style_node, "pane_selection");
+        match descriptor_node {
+            None => Ok((None, false, None)),
+            Some(descriptor) => {
+                let colors = kdl_children_or_error!(
+                    descriptor,
+                    "Missing colors for pane_selection"
+                );
+                let parsed_base = PaletteColor::try_from(("base", colors)).ok();
+                let keep_foreground = parsed_base.is_none();
+                let background =
+                    PaletteColor::try_from(("background", colors)).unwrap_or_default();
+                // `alpha` (0.0–1.0) -> 0–255 weight of the selection color in the
+                // composite. Integers (e.g. `alpha 0` / `alpha 1`) are accepted too.
+                let alpha = colors
+                    .get("alpha")
+                    .and_then(|n| n.entries().first())
+                    .and_then(|e| {
+                        e.value()
+                            .as_f64()
+                            .or_else(|| e.value().as_i64().map(|i| i as f64))
+                    })
+                    .map(|f| (f.clamp(0.0, 1.0) * 255.0).round() as u8);
+                // Selection only renders base+background; default the (unused)
+                // emphases. With no `base`, fold it onto `background` as a
+                // harmless placeholder — render ignores it when keeping fg.
+                let base = parsed_base.unwrap_or(background);
+                Ok((
+                    Some(StyleDeclaration {
+                        base,
+                        background,
+                        emphasis_0: PaletteColor::try_from(("emphasis_0", colors))
+                            .unwrap_or(base),
+                        emphasis_1: PaletteColor::try_from(("emphasis_1", colors))
+                            .unwrap_or(base),
+                        emphasis_2: PaletteColor::try_from(("emphasis_2", colors))
+                            .unwrap_or(base),
+                        emphasis_3: PaletteColor::try_from(("emphasis_3", colors))
+                            .unwrap_or(base),
+                    }),
+                    keep_foreground,
+                    alpha,
+                ))
+            },
+        }
+    }
+
     fn multiplayer_colors(style_node: &KdlNode) -> Result<MultiplayerColors, ConfigError> {
         let descriptor_node = kdl_child_with_name!(style_node, "multiplayer_user_colors");
         match descriptor_node {
@@ -5461,6 +5518,8 @@ impl Themes {
                 }
             } else {
                 // Newer theme definition with named styles
+                let (pane_selection, pane_selection_keep_foreground, pane_selection_alpha) =
+                    Themes::pane_selection_from_node(theme_config)?;
                 let s = Styling {
                     text_unselected: Themes::style_declaration_from_node(
                         theme_config,
@@ -5508,6 +5567,9 @@ impl Themes {
                         "list_selected",
                     )
                     .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.list_selected))?,
+                    pane_selection,
+                    pane_selection_keep_foreground,
+                    pane_selection_alpha,
                     frame_unselected: Themes::style_declaration_from_node(
                         theme_config,
                         "frame_unselected",
@@ -5647,6 +5709,31 @@ impl Themes {
                     current_theme_node_children
                         .nodes_mut()
                         .push(frame_unselected_style.to_kdl("frame_unselected"));
+                },
+            }
+            match theme.palette.pane_selection {
+                None => {},
+                Some(pane_selection_style) => {
+                    let mut node = if theme.palette.pane_selection_keep_foreground {
+                        // Foreground-preserving selection: emit only `background`
+                        // (no `base`) so it round-trips back to keep_foreground.
+                        let mut node = KdlNode::new("pane_selection");
+                        let mut doc = KdlDocument::new();
+                        doc.nodes_mut()
+                            .push(pane_selection_style.background.to_kdl("background"));
+                        node.set_children(doc);
+                        node
+                    } else {
+                        pane_selection_style.to_kdl("pane_selection")
+                    };
+                    if let Some(alpha) = theme.palette.pane_selection_alpha {
+                        let mut alpha_node = KdlNode::new("alpha");
+                        alpha_node.push(KdlValue::from(alpha as f64 / 255.0));
+                        if let Some(children) = node.children_mut() {
+                            children.nodes_mut().push(alpha_node);
+                        }
+                    }
+                    current_theme_node_children.nodes_mut().push(node);
                 },
             }
             current_theme_node_children

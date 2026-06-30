@@ -6125,6 +6125,9 @@ Config {
                         ),
                     ),
                 },
+                pane_selection: None,
+                pane_selection_keep_foreground: false,
+                pane_selection_alpha: None,
                 ribbon_unselected: StyleDeclaration {
                     base: Rgb(
                         (
@@ -6715,6 +6718,9 @@ Config {
                         ),
                     ),
                 },
+                pane_selection: None,
+                pane_selection_keep_foreground: false,
+                pane_selection_alpha: None,
                 ribbon_unselected: StyleDeclaration {
                     base: Rgb(
                         (
@@ -7305,6 +7311,9 @@ Config {
                         ),
                     ),
                 },
+                pane_selection: None,
+                pane_selection_keep_foreground: false,
+                pane_selection_alpha: None,
                 ribbon_unselected: StyleDeclaration {
                     base: Rgb(
                         (

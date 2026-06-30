@@ -111,6 +111,12 @@ impl TryFrom<ProtobufStyling> for Styling {
             None
         };
 
+        let pane_selection = if proto.pane_selection.len() > 0 {
+            Some(color_definitions!(proto, pane_selection, 6))
+        } else {
+            None
+        };
+
         Ok(Styling {
             text_unselected: color_definitions!(proto, text_unselected, 6),
             text_selected: color_definitions!(proto, text_selected, 6),
@@ -121,6 +127,12 @@ impl TryFrom<ProtobufStyling> for Styling {
             table_cell_selected: color_definitions!(proto, table_cell_selected, 6),
             list_unselected: color_definitions!(proto, list_unselected, 6),
             list_selected: color_definitions!(proto, list_selected, 6),
+            pane_selection,
+            // Pane-content selection is drawn only by the server/web-client (never by
+            // plugins), so these render-time settings are intentionally not part of the
+            // plugin theme protobuf; they are resolved from the in-process config style.
+            pane_selection_keep_foreground: false,
+            pane_selection_alpha: None,
             frame_unselected,
             frame_selected: color_definitions!(proto, frame_selected, 6),
             frame_highlight: color_definitions!(proto, frame_highlight, 6),
@@ -174,6 +186,11 @@ impl TryFrom<Styling> for ProtobufStyling {
             Some(frame_unselected) => frame_unselected.try_into(),
         };
 
+        let pane_selection_vec = match style.pane_selection {
+            None => Ok(Vec::new()),
+            Some(pane_selection) => pane_selection.try_into(),
+        };
+
         Ok(ProtobufStyling {
             text_unselected: style.text_unselected.try_into()?,
             text_selected: style.text_selected.try_into()?,
@@ -184,6 +201,7 @@ impl TryFrom<Styling> for ProtobufStyling {
             table_cell_selected: style.table_cell_selected.try_into()?,
             list_unselected: style.list_unselected.try_into()?,
             list_selected: style.list_selected.try_into()?,
+            pane_selection: pane_selection_vec?,
             frame_unselected: frame_unselected_vec?,
             frame_selected: style.frame_selected.try_into()?,
             frame_highlight: style.frame_highlight.try_into()?,
