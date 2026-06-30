@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: FocusLastPane bindable action (https://github.com/zellij-org/zellij/pull/4241)
 * fix: live reload on theme dir changes (https://github.com/zellij-org/zellij/pull/5135)
 * feat: new title-frames UI (https://github.com/zellij-org/zellij/pull/5318)
+* chore: upgrade wasmi to 1.1.0 (https://github.com/zellij-org/zellij/pull/5319)
 
 ## [0.44.3] - 2026-05-13
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)
