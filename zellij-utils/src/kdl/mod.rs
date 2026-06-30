@@ -1346,6 +1346,9 @@ impl Action {
             Action::TogglePanePinned => Some(KdlNode::new("TogglePanePinned")),
             Action::TogglePaneInGroup => Some(KdlNode::new("TogglePaneInGroup")),
             Action::ToggleGroupMarking => Some(KdlNode::new("ToggleGroupMarking")),
+            Action::SetDarkTheme => Some(KdlNode::new("SetDarkTheme")),
+            Action::SetLightTheme => Some(KdlNode::new("SetLightTheme")),
+            Action::ToggleTheme => Some(KdlNode::new("ToggleTheme")),
             _ => None,
         }
     }
@@ -1613,6 +1616,15 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "Detach" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "SetDarkTheme" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "SetLightTheme" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "ToggleTheme" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
             "SwitchSession" => {
                 let name = kdl_get_string_property_or_child_value!(kdl_action, "name")
                     .map(|s| s.to_string())
@@ -6677,6 +6689,57 @@ fn keybinds_to_string_with_multiple_actions() {
         "Deserialized serialized config equals original config"
     );
     insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn can_bind_theme_actions() {
+    // Regression test for https://github.com/zellij-org/zellij/issues/5297
+    // SetDarkTheme / SetLightTheme / ToggleTheme work via the CLI but used to be
+    // rejected by the keybinding parser with "Unsupported action".
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Ctrl t" { ToggleTheme; }
+                bind "Ctrl d" { SetDarkTheme; }
+                bind "Ctrl l" { SetLightTheme; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let ctrl_t = KeyWithModifier::new(BareKey::Char('t')).with_ctrl_modifier();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &ctrl_t),
+        Some(&vec![Action::ToggleTheme])
+    );
+    let ctrl_d = KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &ctrl_d),
+        Some(&vec![Action::SetDarkTheme])
+    );
+    let ctrl_l = KeyWithModifier::new(BareKey::Char('l')).with_ctrl_modifier();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &ctrl_l),
+        Some(&vec![Action::SetLightTheme])
+    );
+    // The bindings must also survive a serialize -> deserialize round-trip.
+    let serialized = Keybinds::to_kdl(&deserialized, true);
+    let deserialized_from_serialized = Keybinds::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("keybinds")
+            .unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized);
 }
 
 #[test]
