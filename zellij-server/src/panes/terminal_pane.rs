@@ -147,7 +147,13 @@ pub struct TerminalPane {
     // possible user instruction to be re-run, or that the command has not yet been run
     banner: Option<String>, // a banner to be rendered inside this TerminalPane, used for panes
     // held on startup and can possibly be used to display some errors
+    // Transient frame override (bell flash, exit-code error, highlight) — cleared by
+    // clear_pane_frame_color_override.
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
+    // Persistent, user-requested frame color (`set-pane-color --frame`). Kept separate
+    // from the transient override above so a bell/highlight (and its clear) does not
+    // wipe it; frame_color_override() falls back to this when the transient is None.
+    frame_color_user_override: Option<PaletteColor>,
     has_bell_notification: bool,
     invoked_with: Option<Run>,
     #[allow(dead_code)]
@@ -863,6 +869,12 @@ impl Pane for TerminalPane {
     fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
         self.pane_frame_color_override = Some((self.style.colors.exit_code_error.base, error_text));
     }
+    fn set_frame_color_override(&mut self, color: PaletteColor) {
+        self.frame_color_user_override = Some(color);
+    }
+    fn clear_frame_color_user_override(&mut self) {
+        self.frame_color_user_override = None;
+    }
     fn add_highlight_pane_frame_color_override(
         &mut self,
         text: Option<String>,
@@ -876,9 +888,12 @@ impl Pane for TerminalPane {
         self.pane_frame_color_override = None;
     }
     fn frame_color_override(&self) -> Option<PaletteColor> {
+        // Transient override (bell/highlight/error) wins while present; otherwise fall
+        // back to the persistent user color so a cleared bell restores it.
         self.pane_frame_color_override
             .as_ref()
             .map(|(color, _text)| *color)
+            .or(self.frame_color_user_override)
     }
     fn invoked_with(&self) -> &Option<Run> {
         &self.invoked_with
@@ -1142,6 +1157,7 @@ impl TerminalPane {
             is_held: None,
             banner: None,
             pane_frame_color_override: None,
+            frame_color_user_override: None,
             has_bell_notification: false,
             invoked_with,
             arrow_fonts,

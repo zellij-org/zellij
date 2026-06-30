@@ -724,6 +724,7 @@ message SetPaneColorAction {
   PaneId pane_id = 1;
   optional string fg = 2;
   optional string bg = 3;
+  optional string frame = 4;
 }
 
 // Supporting enums and messages
