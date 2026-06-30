@@ -4817,9 +4817,14 @@ impl Keybinds {
                 Keybinds::input_mode_keybindings(mode, &mut keybinds_from_config)?;
             Keybinds::bind_keys_in_block(mode, &mut input_mode_keybinds, config_options)?;
         }
-        if let Some(global_unbind) = kdl_keybinds.children().and_then(|c| c.get("unbind")) {
-            Keybinds::unbind_keys_in_all_modes(global_unbind, &mut keybinds_from_config)?;
-        };
+        // Apply *every* top-level `unbind` node, not just the first. `KdlDocument::get`
+        // returns only the first node of a given name, so previously a second/third
+        // `unbind` line was silently dropped.
+        if let Some(children) = kdl_keybinds.children() {
+            for global_unbind in children.nodes().iter().filter(|n| kdl_name!(n) == "unbind") {
+                Keybinds::unbind_keys_in_all_modes(global_unbind, &mut keybinds_from_config)?;
+            }
+        }
         Ok(keybinds_from_config)
     }
     fn bind_actions_for_each_key(
