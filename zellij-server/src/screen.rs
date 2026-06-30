@@ -4230,29 +4230,12 @@ impl Screen {
             mode_info.session_name = Some(self.session_name.clone());
         }
 
-        let err_context = || {
-            format!(
-                "failed to change from mode '{:?}' to mode '{:?}' for client {client_id}",
-                previous_mode, new_mode
-            )
-        };
-
         // If we leave the Search-related modes, we need to clear all previous searches
         let search_related_modes = [InputMode::EnterSearch, InputMode::Search, InputMode::Scroll];
         if search_related_modes.contains(&previous_mode)
             && !search_related_modes.contains(&mode_info.mode)
         {
             active_tab!(self, client_id, |tab: &mut Tab| tab.clear_search(client_id));
-        }
-
-        if previous_mode == InputMode::Scroll
-            && (mode_info.mode == InputMode::Normal || mode_info.mode == InputMode::Locked)
-        {
-            if let Ok(active_tab) = self.get_active_tab_mut(client_id) {
-                active_tab
-                    .clear_active_terminal_scroll(client_id)
-                    .with_context(err_context)?;
-            }
         }
 
         if mode_info.mode == InputMode::RenameTab {
