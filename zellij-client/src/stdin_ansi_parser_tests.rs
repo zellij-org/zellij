@@ -905,12 +905,20 @@ fn assert_held_across_idle(parser: &mut StdinAnsiParser) {
 fn fragmented_osc4_reply_is_retained_not_leaked() {
     let mut p = StdinAnsiParser::new();
     let r1 = p.feed(b"\x1b]4;1;rgb:1111");
-    assert!(r1.residue.is_empty(), "incomplete OSC 4 must not leak: {:?}", r1.residue);
+    assert!(
+        r1.residue.is_empty(),
+        "incomplete OSC 4 must not leak: {:?}",
+        r1.residue
+    );
     assert!(r1.replies.is_empty());
     assert_held_across_idle(&mut p);
 
     let r2 = p.feed(b"/2222/3333\x1b\\");
-    assert!(r2.residue.is_empty(), "completion must not leak: {:?}", r2.residue);
+    assert!(
+        r2.residue.is_empty(),
+        "completion must not leak: {:?}",
+        r2.residue
+    );
     assert_eq!(r2.replies.len(), 1, "the rejoined OSC 4 classifies once");
     match &r2.replies[0] {
         HostReply::ColorRegisters(regs) => {
@@ -944,7 +952,10 @@ fn esc_companion_chord_is_not_held_as_reply() {
 
     let mut split = StdinAnsiParser::new();
     let r1 = split.feed(b"\x1b");
-    assert!(r1.residue.is_empty(), "lone ESC must park until disambiguated");
+    assert!(
+        r1.residue.is_empty(),
+        "lone ESC must park until disambiguated"
+    );
     assert_eq!(split.pending_partial(), PendingPartial::LoneEsc);
     let r2 = split.feed(b"a");
     let mut combined = r1.residue.clone();
@@ -1017,7 +1028,11 @@ fn kitty_keyboard_variants_whole_and_fragmented() {
 
         let mut whole = StdinAnsiParser::new();
         let out = whole.feed(seq);
-        assert_eq!(out.residue, seq, "{}: whole residue must equal the sequence", pretty);
+        assert_eq!(
+            out.residue, seq,
+            "{}: whole residue must equal the sequence",
+            pretty
+        );
         assert!(out.replies.is_empty(), "{}: a key is never a reply", pretty);
 
         for split in 2..seq.len() {
@@ -1141,7 +1156,10 @@ fn paste_markers_fragmented_still_toggle_paste_mode() {
         let r2 = p.feed(tail);
         let mut start = r1.residue.clone();
         start.extend_from_slice(&r2.residue);
-        assert_eq!(start, b"\x1b[200~", "start marker passes through to residue");
+        assert_eq!(
+            start, b"\x1b[200~",
+            "start marker passes through to residue"
+        );
 
         let body = p.feed(b"\x1b]0;x\x1b\\");
         assert_eq!(body.residue, b"\x1b]0;x\x1b\\");
@@ -1195,7 +1213,10 @@ fn last_resort_force_drain_recovers_a_never_terminated_partial() {
 fn unsolicited_theme_notification_classifies_without_outstanding_query() {
     let mut p = StdinAnsiParser::new();
     let out = p.feed(b"\x1b[?997;1n");
-    assert!(out.residue.is_empty(), "the notification must not leak as residue");
+    assert!(
+        out.residue.is_empty(),
+        "the notification must not leak as residue"
+    );
     assert_eq!(out.replies.len(), 1);
     match &out.replies[0] {
         HostReply::HostTerminalThemeChanged(mode) => {
