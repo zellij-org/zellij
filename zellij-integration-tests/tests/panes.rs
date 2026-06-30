@@ -150,9 +150,17 @@ fn undo_rename_pane() {
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('c'));
     zellij.send_stdin(b"aa");
-    zellij.send_stdin(&keys::ESC);
-    zellij.send_stdin(&keys::ESC);
 
+    zellij.wait_until("typed name applied in rename mode", |grid_snapshot| {
+        grid_snapshot.contains("aa") && grid_snapshot.contains("RENAMING PANE")
+    });
+
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("rename undone, back in pane mode", |grid_snapshot| {
+        grid_snapshot.contains("Pane #2") && !grid_snapshot.contains("aa")
+    });
+
+    zellij.send_stdin(&keys::ESC);
     let grid_snapshot = zellij.wait_until("pane name reverted to default", |grid_snapshot| {
         grid_snapshot.contains("Pane #2")
             && !grid_snapshot.contains("aa")
