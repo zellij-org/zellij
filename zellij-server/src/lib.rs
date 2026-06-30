@@ -1458,6 +1458,11 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::DetachSession(client_ids, completion_tx) => {
+                let client_ids = if client_ids.is_empty() {
+                    session_state.read().unwrap().client_ids()
+                } else {
+                    client_ids
+                };
                 for client_id in &client_ids {
                     let _ = os_input.send_to_client(
                         *client_id,
