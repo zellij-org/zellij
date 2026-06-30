@@ -204,6 +204,37 @@ pub struct ParseOutput {
 /// bounded.
 const PARTIAL_BUFFER_CAP_BYTES: usize = 100 * 1024 * 1024;
 
+const PASTE_START_MARKER: &[u8] = b"\x1b[200~";
+const PASTE_END_MARKER: &[u8] = b"\x1b[201~";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PendingPartial {
+    None,
+    LoneEsc,
+    ReplyInProgress,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MarkerMatch {
+    Complete,
+    Prefix,
+    No,
+}
+
+fn marker_match(buf: &[u8], marker: &[u8]) -> MarkerMatch {
+    if buf.len() >= marker.len() {
+        if &buf[..marker.len()] == marker {
+            MarkerMatch::Complete
+        } else {
+            MarkerMatch::No
+        }
+    } else if marker.starts_with(buf) {
+        MarkerMatch::Prefix
+    } else {
+        MarkerMatch::No
+    }
+}
+
 /// Outcome of a single OSC/CSI walk over a byte buffer. Distinguishing
 /// "needs more bytes" from "malformed" is what lets the residue
 /// scrubber buffer partial sequences across `feed()` calls instead of
@@ -232,6 +263,8 @@ pub struct StdinAnsiParser {
     partial_osc: Vec<u8>,
     /// Same for CSI device-control reports.
     partial_csi: Vec<u8>,
+    partial_paste: Vec<u8>,
+    in_bracketed_paste: bool,
 }
 
 impl std::fmt::Debug for StdinAnsiParser {
@@ -251,6 +284,8 @@ impl StdinAnsiParser {
             active_forward: None,
             partial_osc: Vec::new(),
             partial_csi: Vec::new(),
+            partial_paste: Vec::new(),
+            in_bracketed_paste: false,
         }
     }
 
@@ -394,20 +429,43 @@ impl StdinAnsiParser {
         // rather than leaking into residue.
         residue.extend(self.strip_replies(bytes));
         out.residue = residue;
-        out.has_partial_state = !self.partial_osc.is_empty() || !self.partial_csi.is_empty();
+        out.has_partial_state = !self.partial_osc.is_empty()
+            || !self.partial_csi.is_empty()
+            || !self.partial_paste.is_empty();
         out
     }
 
-    /// Drain any speculatively-buffered partial OSC/CSI bytes back into
-    /// keyboard residue. Called from the stdin handler's idle-timeout
-    /// path so a lone trailing ESC (or any unterminated host-reply
-    /// prefix that never received a follow-up byte) reaches the
-    /// keyboard parser instead of being stuck forever waiting for a
-    /// disambiguating byte that is never coming.
-    pub fn finalize(&mut self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(self.partial_osc.len() + self.partial_csi.len());
+    pub fn pending_partial(&self) -> PendingPartial {
+        if !self.partial_paste.is_empty() {
+            PendingPartial::ReplyInProgress
+        } else if self.partial_csi.is_empty() && self.partial_osc.is_empty() {
+            PendingPartial::None
+        } else if self.partial_csi.is_empty() && self.partial_osc == [0x1b] {
+            PendingPartial::LoneEsc
+        } else {
+            PendingPartial::ReplyInProgress
+        }
+    }
+
+    pub fn finalize_lone_esc(&mut self) -> Vec<u8> {
+        if self.partial_csi.is_empty()
+            && self.partial_paste.is_empty()
+            && self.partial_osc == [0x1b]
+        {
+            std::mem::take(&mut self.partial_osc)
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub fn finalize_force(&mut self) -> Vec<u8> {
+        self.in_bracketed_paste = false;
+        let mut out = Vec::with_capacity(
+            self.partial_osc.len() + self.partial_csi.len() + self.partial_paste.len(),
+        );
         out.append(&mut self.partial_osc);
         out.append(&mut self.partial_csi);
+        out.append(&mut self.partial_paste);
         out
     }
 
@@ -426,16 +484,51 @@ impl StdinAnsiParser {
         // partial_csi) is non-empty at any time — the previous walk
         // either completed all sequences or stopped at exactly one
         // unterminated tail.
-        let mut working: Vec<u8> =
-            Vec::with_capacity(self.partial_osc.len() + self.partial_csi.len() + bytes.len());
+        let mut working: Vec<u8> = Vec::with_capacity(
+            self.partial_osc.len() + self.partial_csi.len() + self.partial_paste.len() + bytes.len(),
+        );
         working.append(&mut self.partial_osc);
         working.append(&mut self.partial_csi);
+        working.append(&mut self.partial_paste);
         working.extend_from_slice(bytes);
 
         let mut out = Vec::with_capacity(working.len());
         let mut i = 0;
         while i < working.len() {
             let rest = &working[i..];
+            if self.in_bracketed_paste {
+                if rest[0] == 0x1b {
+                    match marker_match(rest, PASTE_END_MARKER) {
+                        MarkerMatch::Complete => {
+                            out.extend_from_slice(PASTE_END_MARKER);
+                            self.in_bracketed_paste = false;
+                            i += PASTE_END_MARKER.len();
+                            continue;
+                        },
+                        MarkerMatch::Prefix => {
+                            let tail = rest.to_vec();
+                            if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
+                                out.extend_from_slice(&tail);
+                            } else {
+                                self.partial_paste = tail;
+                            }
+                            return out;
+                        },
+                        MarkerMatch::No => {},
+                    }
+                }
+                out.push(working[i]);
+                i += 1;
+                continue;
+            }
+            if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b'[' {
+                if let MarkerMatch::Complete = marker_match(rest, PASTE_START_MARKER) {
+                    out.extend_from_slice(PASTE_START_MARKER);
+                    self.in_bracketed_paste = true;
+                    i += PASTE_START_MARKER.len();
+                    continue;
+                }
+            }
             // OSC: ESC ] ... (BEL | ESC \)
             if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b']' {
                 match osc_status(rest) {
