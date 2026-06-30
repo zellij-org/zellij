@@ -477,3 +477,27 @@ fn osc7_then_poll_skips_terminal() {
         "poll after osc7 should skip terminal since flag was cleared"
     );
 }
+
+#[test]
+fn cmd_is_shell_distinguishes_shells_from_command_panes() {
+    let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+    // Shells (incl. absolute paths and login-shell argv[0]) — we DO see through
+    // these to the program running in them.
+    assert!(cmd_is_shell(&s(&["zsh"])));
+    assert!(cmd_is_shell(&s(&["/bin/bash", "-l"])));
+    assert!(cmd_is_shell(&s(&["-zsh"])));
+    assert!(cmd_is_shell(&s(&["/usr/bin/fish"])));
+    assert!(cmd_is_shell(&s(&["dash"])));
+    // Command panes / programs — must NOT be treated as shells, so they aren't
+    // "seen through" to a spawned subprocess (the #2160 dump-layout masking bug).
+    assert!(!cmd_is_shell(&s(&[
+        "claude",
+        "--dangerously-skip-permissions",
+        "--resume",
+        "x"
+    ])));
+    assert!(!cmd_is_shell(&s(&["npm", "exec", "@playwright/mcp@latest"])));
+    assert!(!cmd_is_shell(&s(&["caffeinate"])));
+    assert!(!cmd_is_shell(&s(&["nvim"])));
+    assert!(!cmd_is_shell(&s(&[])));
+}

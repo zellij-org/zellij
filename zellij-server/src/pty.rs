@@ -1971,9 +1971,16 @@ impl Pty {
             let cwd = process_id.and_then(|pid| pids_to_cwds.get(pid));
             let cmd_sysinfo = process_id.and_then(|pid| pids_to_cmds.get(pid));
             let cmd_ps = process_id.and_then(|pid| ppids_to_cmds.get(&format!("{}", pid)));
-            if let Some(cmd) = cmd_ps {
-                terminal_ids_to_commands.insert(terminal_id, cmd.clone());
-            } else if let Some(cmd) = cmd_sysinfo {
+            // Only "see through" to a child process when the pane's own process is a
+            // shell (e.g. nvim in bash). Otherwise report the pane process itself, so a
+            // command pane (e.g. `claude`) isn't masked by a subprocess it spawned.
+            let child_is_shell = cmd_sysinfo.map(|c| cmd_is_shell(c)).unwrap_or(false);
+            let chosen = if child_is_shell {
+                cmd_ps.or(cmd_sysinfo)
+            } else {
+                cmd_sysinfo.or(cmd_ps)
+            };
+            if let Some(cmd) = chosen {
                 terminal_ids_to_commands.insert(terminal_id, cmd.clone());
             }
             if let Some(cwd) = cwd {
@@ -2290,9 +2297,18 @@ impl Pty {
                         let (_cwds, cmds) = os_input.get_cwds(vec![child_pid]);
                         let cmd_sysinfo = cmds.get(&child_pid);
 
-                        if let Some(command_args) = cmd_ps {
-                            GetPaneRunningCommandResponse::Ok(command_args.clone())
-                        } else if let Some(command_args) = cmd_sysinfo {
+                        // Only "see through" to a child process when the pane's own
+                        // process is a shell (e.g. nvim in bash); otherwise report the
+                        // pane process itself, so a command pane (e.g. `claude`) isn't
+                        // masked by a subprocess it spawned (an MCP server, etc).
+                        let child_is_shell =
+                            cmd_sysinfo.map(|c| cmd_is_shell(c)).unwrap_or(false);
+                        let chosen = if child_is_shell {
+                            cmd_ps.or(cmd_sysinfo)
+                        } else {
+                            cmd_sysinfo.or(cmd_ps)
+                        };
+                        if let Some(command_args) = chosen {
                             GetPaneRunningCommandResponse::Ok(command_args.clone())
                         } else {
                             GetPaneRunningCommandResponse::Err(format!(
@@ -2381,6 +2397,28 @@ fn send_command_not_found_to_screen(
         ))
         .with_context(err_context)?;
     Ok(())
+}
+
+// True when this command line is a shell. Used to decide whether to "see through"
+// a pane's process to a child it spawned: we only do that for shells (e.g. nvim
+// running in bash). A command pane (e.g. `claude`) should report itself, not a
+// subprocess it launched (an MCP server, caffeinate, ...).
+fn cmd_is_shell(cmd: &[String]) -> bool {
+    let first = match cmd.first() {
+        Some(f) => f,
+        None => return false,
+    };
+    let base = first
+        .rsplit(|c| c == '/' || c == '\\')
+        .next()
+        .unwrap_or(first.as_str())
+        .trim_start_matches('-'); // login shells set argv[0] to e.g. "-zsh"
+    matches!(
+        base,
+        "sh" | "bash" | "zsh" | "fish" | "dash" | "ksh" | "ksh93" | "mksh"
+            | "tcsh" | "csh" | "ash" | "nu" | "xonsh" | "elvish"
+            | "pwsh" | "pwsh.exe" | "powershell" | "powershell.exe"
+    )
 }
 
 #[cfg(not(windows))]
