@@ -51,7 +51,11 @@ const EXIT_ALTERNATE_SCREEN: &str = "\u{1b}[?1049l";
 const ENABLE_BRACKETED_PASTE: &str = "\u{1b}[?2004h";
 const RESET_STYLE: &str = "\u{1b}[m";
 const SHOW_CURSOR: &str = "\u{1b}[?25h";
-const ENTER_KITTY_KEYBOARD_MODE: &str = "\u{1b}[>1u";
+// Flag 17 = DISAMBIGUATE_ESCAPE_CODES (1) | REPORT_ASSOCIATED_TEXT (16).
+// Requesting the associated-text bit lets us recover the OS-produced
+// character for AltGr glyphs and other keymap-resolved keystrokes.
+// Terminals that don't support flag 16 silently ignore it per Kitty spec.
+const ENTER_KITTY_KEYBOARD_MODE: &str = "\u{1b}[>17u";
 const EXIT_KITTY_KEYBOARD_MODE: &str = "\u{1b}[<1u";
 const CLEAR_CLIENT_TERMINAL_ATTRIBUTES: &str = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
 /// Subscribe to host color-palette theme notifications (CSI 2031). Hosts
