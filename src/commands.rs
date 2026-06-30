@@ -90,7 +90,7 @@ pub(crate) fn delete_all_sessions(yes: bool, force: bool) {
         .map(|s| s.0.clone())
         .collect();
     let (_live_sessions, resurrectable_map) =
-        scan_session_list_default_dirs(&String::new(), &[], &BTreeMap::new());
+        scan_session_list_default_dirs(&String::new(), None, &BTreeMap::new());
     let mut resurrectable_sessions: Vec<(String, Duration)> =
         resurrectable_map.into_iter().collect();
     if force {

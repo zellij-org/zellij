@@ -4344,15 +4344,18 @@ fn get_session_list(env: &PluginEnv) {
 
     let response = match session_scan_state() {
         Some(state) => {
-            let (session_name, available_layouts, plugin_list) = {
+            let (session_name, current_session_info, plugin_list) = {
                 let name = state.current_session_name.lock().unwrap().clone();
                 let info = state.current_session_info.lock().unwrap().clone();
                 let plugins = state.current_session_plugin_list.lock().unwrap().clone();
-                (name, info.available_layouts, plugins)
+                (name, info, plugins)
             };
 
-            let (live_sessions_map, resurrectable_sessions_map) =
-                scan_session_list_default_dirs(&session_name, &available_layouts, &plugin_list);
+            let (live_sessions_map, resurrectable_sessions_map) = scan_session_list_default_dirs(
+                &session_name,
+                Some(&current_session_info),
+                &plugin_list,
+            );
 
             let _ = env
                 .senders
