@@ -577,6 +577,16 @@ pub(crate) struct SessionState {
     /// empty synthetic reply so `Screen`'s `forward_in_flight` slot
     /// releases and the queued forwards keep moving.
     forwards_in_flight: HashMap<u32, ClientId>,
+    next_client_id: ClientId,
+}
+
+fn next_non_zero_client_id(client_id: ClientId) -> ClientId {
+    let next_client_id = client_id.wrapping_add(1);
+    if next_client_id == 0 {
+        1
+    } else {
+        next_client_id
+    }
 }
 
 impl SessionState {
@@ -587,6 +597,7 @@ impl SessionState {
             watchers: HashMap::new(),
             last_active_client: None,
             forwards_in_flight: HashMap::new(),
+            next_client_id: 1,
         }
     }
     pub fn new_client(&mut self) -> ClientId {
@@ -597,15 +608,20 @@ impl SessionState {
             .chain(self.watchers.keys().copied())
             .collect();
 
-        let mut next_client_id = 1;
+        let start_client_id = self.next_client_id;
+        let mut next_client_id = self.next_client_id;
         loop {
             if all_ids.contains(&next_client_id) {
-                next_client_id += 1;
+                next_client_id = next_non_zero_client_id(next_client_id);
+                if next_client_id == start_client_id {
+                    panic!("no available client ids");
+                }
             } else {
                 break;
             }
         }
         self.clients.insert(next_client_id, None);
+        self.next_client_id = next_non_zero_client_id(next_client_id);
         next_client_id
     }
     pub fn associate_pipe_with_client(&mut self, pipe_id: String, client_id: ClientId) {
