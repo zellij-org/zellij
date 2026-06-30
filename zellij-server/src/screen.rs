@@ -6498,6 +6498,12 @@ pub(crate) fn screen_thread_main(
                     },
                 }
 
+                if let Some(pending_events) = pending_events_waiting_for_pane.remove(&pid) {
+                    for event in pending_events {
+                        screen.bus.senders.send_to_screen(event).non_fatal();
+                    }
+                }
+
                 screen.render(None)?;
             },
             ScreenInstruction::TogglePaneEmbedOrFloating(
