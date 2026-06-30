@@ -424,6 +424,8 @@ pub mod action {
         AreFloatingPanesVisiblePayload(super::AreFloatingPanesVisiblePayload),
         #[prost(message, tag="61")]
         SetPaneFrameStylePayload(super::SetPaneFrameStylePayload),
+        #[prost(message, tag="62")]
+        EditScrollbackPayload(super::EditScrollbackPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -640,6 +642,12 @@ pub struct DumpScreenPayload {
     #[prost(bool, tag="4")]
     pub dump_to_stdout: bool,
     #[prost(bool, tag="5")]
+    pub ansi: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EditScrollbackPayload {
+    #[prost(bool, tag="1")]
     pub ansi: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]

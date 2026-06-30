@@ -13,6 +13,7 @@ pub use super::generated_api::api::{
         CommandOrPlugin as ProtobufCommandOrPlugin,
         DumpScreenPayload,
         EditFilePayload,
+        EditScrollbackPayload,
         FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates,
         FloatingPaneLayout as ProtobufFloatingPaneLayout,
         FloatingPlacement as ProtobufFloatingPlacement,
@@ -235,8 +236,11 @@ impl TryFrom<ProtobufAction> for Action {
                 _ => Err("Wrong payload for Action::DumpScreen"),
             },
             Some(ProtobufActionName::EditScrollback) => match protobuf_action.optional_payload {
-                Some(_) => Err("EditScrollback should not have a payload"),
+                Some(OptionalPayload::EditScrollbackPayload(payload)) => {
+                    Ok(Action::EditScrollback { ansi: payload.ansi })
+                },
                 None => Ok(Action::EditScrollback { ansi: false }),
+                Some(_) => Err("Wrong payload for Action::EditScrollback"),
             },
             Some(ProtobufActionName::ScrollUp) => match protobuf_action.optional_payload {
                 Some(_) => Err("ScrollUp should not have a payload"),
@@ -1252,9 +1256,11 @@ impl TryFrom<Action> for ProtobufAction {
                     })),
                 })
             },
-            Action::EditScrollback { .. } => Ok(ProtobufAction {
+            Action::EditScrollback { ansi } => Ok(ProtobufAction {
                 name: ProtobufActionName::EditScrollback as i32,
-                optional_payload: None,
+                optional_payload: Some(OptionalPayload::EditScrollbackPayload(
+                    EditScrollbackPayload { ansi },
+                )),
             }),
             Action::ScrollUp => Ok(ProtobufAction {
                 name: ProtobufActionName::ScrollUp as i32,
