@@ -574,27 +574,7 @@ impl ServerOsApi for ServerOsInputOutput {
                 if command.is_empty() {
                     continue;
                 }
-                match post_hook {
-                    Some(post_hook) => {
-                        let stringified = command.join(" ");
-                        let cmd = match run_command_hook(&stringified, post_hook) {
-                            Ok(command) => command,
-                            Err(e) => {
-                                log::error!("Post command hook failed to run: {}", e);
-                                stringified.to_owned()
-                            },
-                        };
-                        let line_parts: Vec<String> = cmd
-                            .trim()
-                            .split_ascii_whitespace()
-                            .map(|p| p.to_owned())
-                            .collect();
-                        cmds.insert(ppid_str, line_parts);
-                    },
-                    None => {
-                        cmds.insert(ppid_str, command);
-                    },
-                }
+                cmds.insert(ppid_str, apply_post_command_hook(command, post_hook));
             }
         }
         cmds
@@ -649,23 +629,7 @@ impl ServerOsApi for ServerOsInputOutput {
             if command.is_empty() {
                 continue;
             }
-            let command = match post_hook {
-                Some(post_hook) => {
-                    let stringified = command.join(" ");
-                    let cmd = match run_command_hook(&stringified, post_hook) {
-                        Ok(command) => command,
-                        Err(e) => {
-                            log::error!("Post command hook failed to run: {}", e);
-                            stringified
-                        },
-                    };
-                    cmd.trim()
-                        .split_ascii_whitespace()
-                        .map(|p| p.to_owned())
-                        .collect()
-                },
-                None => command,
-            };
+            let command = apply_post_command_hook(command, post_hook);
             cmds.insert(terminal_id, command);
         }
         cmds
@@ -777,6 +741,26 @@ impl Drop for ResizeCache {
                 log::error!("Failed to apply cached resizes: {}", e);
             });
     }
+}
+
+/// Apply the post-command-discovery `post_hook` to a discovered command, returning the
+/// (possibly rewritten) command in argv form. With no hook the command is returned unchanged.
+fn apply_post_command_hook(command: Vec<String>, post_hook: &Option<String>) -> Vec<String> {
+    let Some(post_hook) = post_hook else {
+        return command;
+    };
+    let stringified = command.join(" ");
+    let cmd = match run_command_hook(&stringified, post_hook) {
+        Ok(command) => command,
+        Err(e) => {
+            Err::<(), _>(anyhow!("post command discovery hook failed to run: {e}")).non_fatal();
+            stringified
+        },
+    };
+    cmd.trim()
+        .split_ascii_whitespace()
+        .map(|p| p.to_owned())
+        .collect()
 }
 
 #[cfg(not(windows))]
