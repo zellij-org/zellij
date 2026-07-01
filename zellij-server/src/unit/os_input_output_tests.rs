@@ -201,3 +201,41 @@ fn spawn_and_read_output() {
         output_str
     );
 }
+
+#[cfg(not(windows))]
+#[test]
+fn spawn_terminal_with_inaccessible_cwd_returns_error() {
+    use crate::panes::PaneId;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use zellij_utils::input::command::TerminalAction;
+
+    let server = make_server();
+    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    let inaccessible_dir = temp_dir.path().join("inaccessible");
+    fs::create_dir(&inaccessible_dir).expect("failed to create inaccessible dir");
+    let original_permissions = fs::metadata(&inaccessible_dir)
+        .expect("failed to stat inaccessible dir")
+        .permissions();
+    fs::set_permissions(&inaccessible_dir, fs::Permissions::from_mode(0o000))
+        .expect("failed to make dir inaccessible");
+
+    let cmd = RunCommand {
+        command: PathBuf::from("echo"),
+        args: vec!["hello".to_string()],
+        cwd: Some(inaccessible_dir.clone()),
+        ..Default::default()
+    };
+    let action = TerminalAction::RunCommand(cmd);
+    let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> =
+        Box::new(|_pane_id, _exit_status, _run_command| {});
+
+    let spawn_result = server.spawn_terminal(action, quit_cb, None);
+
+    fs::set_permissions(&inaccessible_dir, original_permissions)
+        .expect("failed to restore dir permissions");
+    assert!(
+        spawn_result.is_err(),
+        "spawning with an inaccessible cwd should return an error"
+    );
+}
