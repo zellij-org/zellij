@@ -348,6 +348,18 @@ pub trait ServerOsApi: Send + Sync {
     fn get_all_cmds_by_ppid(&self, _post_hook: &Option<String>) -> HashMap<String, Vec<String>> {
         HashMap::new()
     }
+    /// For each `(terminal_id, shell_pid)` pane, return the foreground command running in its
+    /// controlling terminal, keyed by `terminal_id`. This is `O(panes)` and performs no full
+    /// process-table scan. Panes whose foreground process group is led by the shell itself
+    /// (idle prompt, or a command sharing the shell's group without job control) are omitted,
+    /// so the caller falls back to reporting the shell.
+    fn get_foreground_cmds(
+        &self,
+        _panes: &[(u32, u32)],
+        _post_hook: &Option<String>,
+    ) -> HashMap<u32, Vec<String>> {
+        HashMap::new()
+    }
     /// Writes the given buffer to a string
     fn write_to_file(&mut self, buf: String, file: Option<String>) -> Result<()>;
 
@@ -545,54 +557,6 @@ impl ServerOsApi for ServerOsInputOutput {
 
         (cwds, cmds)
     }
-    #[cfg(unix)]
-    fn get_all_cmds_by_ppid(&self, post_hook: &Option<String>) -> HashMap<String, Vec<String>> {
-        // the key is the stringified ppid
-        let mut cmds = HashMap::new();
-        if let Some(output) = Command::new("ps")
-            .args(vec!["-ao", "ppid,args"])
-            .output()
-            .ok()
-        {
-            let output = String::from_utf8(output.stdout.clone())
-                .unwrap_or_else(|_| String::from_utf8_lossy(&output.stdout).to_string());
-            for line in output.lines() {
-                let line_parts: Vec<String> = line
-                    .trim()
-                    .split_ascii_whitespace()
-                    .map(|p| p.to_owned())
-                    .collect();
-                let mut line_parts = line_parts.into_iter();
-                let ppid = line_parts.next();
-                if let Some(ppid) = ppid {
-                    match &post_hook {
-                        Some(post_hook) => {
-                            let command: Vec<String> = line_parts.clone().collect();
-                            let stringified = command.join(" ");
-                            let cmd = match run_command_hook(&stringified, post_hook) {
-                                Ok(command) => command,
-                                Err(e) => {
-                                    log::error!("Post command hook failed to run: {}", e);
-                                    stringified.to_owned()
-                                },
-                            };
-                            let line_parts: Vec<String> = cmd
-                                .trim()
-                                .split_ascii_whitespace()
-                                .map(|p| p.to_owned())
-                                .collect();
-                            cmds.insert(ppid.into(), line_parts);
-                        },
-                        None => {
-                            cmds.insert(ppid.into(), line_parts.collect());
-                        },
-                    }
-                }
-            }
-        }
-        cmds
-    }
-
     #[cfg(not(unix))]
     fn get_all_cmds_by_ppid(&self, post_hook: &Option<String>) -> HashMap<String, Vec<String>> {
         let mut system_info = System::new();
@@ -610,27 +574,80 @@ impl ServerOsApi for ServerOsInputOutput {
                 if command.is_empty() {
                     continue;
                 }
-                match post_hook {
-                    Some(post_hook) => {
-                        let stringified = command.join(" ");
-                        let cmd = match run_command_hook(&stringified, post_hook) {
-                            Ok(command) => command,
-                            Err(e) => {
-                                log::error!("Post command hook failed to run: {}", e);
-                                stringified.to_owned()
-                            },
-                        };
-                        let line_parts: Vec<String> = cmd
-                            .trim()
-                            .split_ascii_whitespace()
-                            .map(|p| p.to_owned())
-                            .collect();
-                        cmds.insert(ppid_str, line_parts);
-                    },
-                    None => {
-                        cmds.insert(ppid_str, command);
-                    },
+                cmds.insert(ppid_str, apply_post_command_hook(command, post_hook));
+            }
+        }
+        cmds
+    }
+
+    #[cfg(unix)]
+    fn get_foreground_cmds(
+        &self,
+        panes: &[(u32, u32)],
+        post_hook: &Option<String>,
+    ) -> HashMap<u32, Vec<String>> {
+        // Resolve each pane's foreground command via `tcgetpgrp` on the pty master: the
+        // foreground process group leader has `pid == pgid`, so the returned pgid is the pid we
+        // want. When it equals the shell's pid the shell itself is in the foreground (idle, or a
+        // command sharing the shell's group without job control) and we omit the pane so the
+        // caller falls back to the shell command. No full process-table scan.
+        let mut terminal_to_fg_pid: HashMap<u32, u32> = HashMap::new();
+        for &(terminal_id, shell_pid) in panes {
+            if let Some(fpgid) = self.pty_backend.tcgetpgrp(terminal_id) {
+                if fpgid > 0 && fpgid as u32 != shell_pid {
+                    terminal_to_fg_pid.insert(terminal_id, fpgid as u32);
                 }
+            }
+        }
+        if terminal_to_fg_pid.is_empty() {
+            return HashMap::new();
+        }
+
+        // Refresh the foreground pids.
+        let sysinfo_pids: Vec<sysinfo::Pid> = terminal_to_fg_pid
+            .values()
+            .map(|&p| sysinfo::Pid::from_u32(p))
+            .collect();
+        let mut system_info = System::new();
+        let refresh_kind = ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always);
+        system_info.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&sysinfo_pids),
+            false,
+            refresh_kind,
+        );
+
+        let mut cmds = HashMap::new();
+        for (terminal_id, fg_pid) in terminal_to_fg_pid {
+            let Some(process) = system_info.process(sysinfo::Pid::from_u32(fg_pid)) else {
+                continue;
+            };
+            let command: Vec<String> = process
+                .cmd()
+                .iter()
+                .map(|s| s.to_string_lossy().into_owned())
+                .collect();
+            if command.is_empty() {
+                continue;
+            }
+            let command = apply_post_command_hook(command, post_hook);
+            cmds.insert(terminal_id, command);
+        }
+        cmds
+    }
+
+    #[cfg(not(unix))]
+    fn get_foreground_cmds(
+        &self,
+        panes: &[(u32, u32)],
+        post_hook: &Option<String>,
+    ) -> HashMap<u32, Vec<String>> {
+        // Use ppid-based discovery on Windows, because it has no controlling-terminal
+        // foreground group.
+        let ppids_to_cmds = self.get_all_cmds_by_ppid(post_hook);
+        let mut cmds = HashMap::new();
+        for &(terminal_id, shell_pid) in panes {
+            if let Some(cmd) = ppids_to_cmds.get(&shell_pid.to_string()) {
+                cmds.insert(terminal_id, cmd.clone());
             }
         }
         cmds
@@ -724,6 +741,26 @@ impl Drop for ResizeCache {
                 log::error!("Failed to apply cached resizes: {}", e);
             });
     }
+}
+
+/// Apply the post-command-discovery `post_hook` to a discovered command, returning the
+/// (possibly rewritten) command in argv form. With no hook the command is returned unchanged.
+fn apply_post_command_hook(command: Vec<String>, post_hook: &Option<String>) -> Vec<String> {
+    let Some(post_hook) = post_hook else {
+        return command;
+    };
+    let stringified = command.join(" ");
+    let cmd = match run_command_hook(&stringified, post_hook) {
+        Ok(command) => command,
+        Err(e) => {
+            Err::<(), _>(anyhow!("post command discovery hook failed to run: {e}")).non_fatal();
+            stringified
+        },
+    };
+    cmd.trim()
+        .split_ascii_whitespace()
+        .map(|p| p.to_owned())
+        .collect()
 }
 
 #[cfg(not(windows))]
