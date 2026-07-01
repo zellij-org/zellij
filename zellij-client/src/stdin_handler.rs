@@ -194,13 +194,11 @@ pub(crate) fn stdin_loop(
 
                         // Residue contains no OSC or whitelisted CSI
                         // reports — `StdinAnsiParser::feed` strips both
-                        // before the keyboard parser sees the bytes, so
-                        // every termwiz event is a key/mouse/paste/etc.
-                        // Each event takes only the bytes it consumed, so a
-                        // key that shares a read with mouse-motion reports
-                        // keeps just its own bytes and never the raw
-                        // `\x1b[<...M` sequences, which would otherwise be
-                        // forwarded into the focused pane as garbage (#4894).
+                        // before the keyboard parser sees the bytes.
+                        // Every termwiz event is a key/mouse/paste/etc.
+                        // Each event drains only the bytes it consumed, so a
+                        // keystroke sharing a read with mouse reports keeps its
+                        // own bytes instead of the raw mouse sequences.
                         for (input_event, consumed) in events.into_iter() {
                             let take = consumed.min(current_buffer.len());
                             let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
@@ -307,10 +305,10 @@ fn drain_partial_to_keyboard(
         },
         false,
     );
-    // Residue contains no OSC or whitelisted CSI reports — every termwiz
-    // event drained on idle is a key/mouse/paste/etc. Each event takes
-    // only the bytes it consumed so mouse reports never ride along on a
-    // neighbouring keystroke (#4894).
+    // Residue contains no OSC or whitelisted CSI reports — every
+    // termwiz event drained on idle is a key/mouse/paste/etc. Each event
+    // drains only the bytes it consumed so mouse reports do not ride along
+    // on a neighbouring keystroke.
     for (input_event, consumed) in events {
         let take = consumed.min(current_buffer.len());
         let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();

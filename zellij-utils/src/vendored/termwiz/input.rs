@@ -1595,13 +1595,8 @@ impl InputParser {
     }
 
     fn dispatch_callback<F: FnMut(InputEvent, usize)>(&mut self, mut callback: F, event: InputEvent) {
-        // `self.buf` has already been advanced past this event's bytes by the
-        // caller, so `self.buf.len()` is the post-consumption remainder; the
-        // `parse_with_consumed` wrapper turns successive remainders into the
-        // per-event consumed-byte count. When this arm emits two events (a
-        // parked Esc plus the following key), the first carries the whole
-        // delta and the second carries zero, which keeps the running total
-        // exact.
+        // `self.buf` is already advanced past this event, so `self.buf.len()` is
+        // the remainder `parse_with_consumed` diffs into a per-event byte count.
         match (self.state, &event) {
             (
                 InputState::Normal,
@@ -1861,22 +1856,17 @@ impl InputParser {
     /// immediately available, you should follow up with a call to parse
     /// with an empty slice and `maybe_more=false` to allow the partial
     /// data to be recognized and processed.
-    pub fn parse<F: FnMut(InputEvent)>(&mut self, bytes: &[u8], mut callback: F, maybe_more: bool) {
+    pub fn parse<F: FnMut(InputEvent)>(&mut self, bytes: &[u8], callback: F, maybe_more: bool) {
+        // rebind (not `mut callback: F`) to keep the upstream signature intact
+        let mut callback = callback;
         self.parse_with_consumed(bytes, |event, _consumed| callback(event), maybe_more);
     }
 
-    /// Like [`InputParser::parse`], but the callback additionally receives the
-    /// number of input bytes consumed to produce each event.
-    ///
-    /// The stdin loop uses this to attribute the correct raw bytes to each
-    /// event. Without it, a single read that decodes into several events (for
-    /// example a typed `a` immediately followed by mouse-motion reports:
-    /// `a\x1b[<35;52;16M\x1b[<35;49;16M`) would hand *all* of the read's bytes
-    /// to the first event. Forwarding that key's raw bytes then leaks the
-    /// trailing `\x1b[<...M` mouse sequences into the focused pane, which is
-    /// the "typing while moving the mouse" garbage of #4894. With the
-    /// per-event count the `a` keeps only its own byte and each mouse report
-    /// keeps its own bytes (which the server discards for mouse events).
+    /// Like [`InputParser::parse`], but the callback also receives the number
+    /// of input bytes consumed for each event. Lets a caller give each event
+    /// only its own raw bytes when one read decodes into several (e.g. a
+    /// keystroke followed by mouse-motion reports) instead of lumping them all
+    /// onto the first event.
     pub fn parse_with_consumed<F: FnMut(InputEvent, usize)>(
         &mut self,
         bytes: &[u8],
@@ -1884,9 +1874,8 @@ impl InputParser {
         maybe_more: bool,
     ) {
         self.buf.extend_with(bytes);
-        // `process_bytes` reports, for each event, the number of bytes still
-        // buffered *after* that event was consumed. The difference between
-        // successive remainders is exactly the bytes that event consumed.
+        // `process_bytes` reports the bytes still buffered after each event; the
+        // drop between successive remainders is what that event consumed.
         let mut prev_remaining = self.buf.len();
         self.process_bytes(
             |event, remaining| {
@@ -2003,11 +1992,9 @@ mod test {
         );
     }
 
-    /// Mirror how `stdin_handler` attributes raw bytes to events: feed
-    /// `bytes` through `parse_with_consumed`, then drain that many bytes per
-    /// event from a copy of the input. The returned raw slice for each event
-    /// is exactly what the client forwards as that event's bytes, so these
-    /// assertions catch the #4894 leak at its source.
+    /// Mirror how `stdin_handler` attributes raw bytes: parse with consumed
+    /// counts, then drain that many bytes per event from a copy of the input,
+    /// returning the raw slice each event would forward.
     fn parse_with_raw_bytes(bytes: &[u8], maybe_more: bool) -> Vec<(InputEvent, Vec<u8>)> {
         let mut p = InputParser::new();
         let mut collected: Vec<(InputEvent, usize)> = Vec::new();
@@ -2025,9 +2012,8 @@ mod test {
 
     #[test]
     fn typed_char_keeps_only_its_own_bytes_before_mouse_reports() {
-        // The #4894 reproduction: a keystroke arrives in the same read as two
-        // SGR mouse-motion reports. Each event must keep only the bytes it
-        // consumed, so the key forwards `a` and never the raw `\x1b[<...M`
+        // A keystroke sharing one read with two mouse reports: each event keeps
+        // only the bytes it consumed, so the key forwards `a`, not the mouse
         // sequences that used to leak into the pane.
         let events = parse_with_raw_bytes(b"a\x1b[<35;52;16M\x1b[<35;49;16M", MAYBE_MORE);
         assert_eq!(events.len(), 3, "expected key + 2 mouse events, got {:?}", events);
