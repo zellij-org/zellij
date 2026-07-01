@@ -183,11 +183,11 @@ pub(crate) fn stdin_loop(
                         // Ambiguous events (if any) will be finalized later only if 50ms
                         // passes with no new input
                         let maybe_more = true;
-                        let mut events = vec![];
-                        input_parser.parse(
+                        let mut events: Vec<(InputEvent, usize)> = vec![];
+                        input_parser.parse_with_consumed(
                             &residue,
-                            |input_event: InputEvent| {
-                                events.push(input_event);
+                            |input_event: InputEvent, consumed: usize| {
+                                events.push((input_event, consumed));
                             },
                             maybe_more,
                         );
@@ -196,12 +196,14 @@ pub(crate) fn stdin_loop(
                         // reports — `StdinAnsiParser::feed` strips both
                         // before the keyboard parser sees the bytes.
                         // Every termwiz event is a key/mouse/paste/etc.
-                        for input_event in events.into_iter() {
+                        // Each event drains only the bytes it consumed, so a
+                        // keystroke sharing a read with mouse reports keeps its
+                        // own bytes instead of the raw mouse sequences.
+                        for (input_event, consumed) in events.into_iter() {
+                            let take = consumed.min(current_buffer.len());
+                            let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
                             send_input_instructions
-                                .send(InputInstruction::KeyEvent(
-                                    input_event,
-                                    current_buffer.drain(..).collect(),
-                                ))
+                                .send(InputInstruction::KeyEvent(input_event, raw_bytes))
                                 .unwrap();
                         }
 
@@ -295,20 +297,23 @@ fn drain_partial_to_keyboard(
         current_buffer.extend_from_slice(&drained);
     }
 
-    let mut events = vec![];
-    input_parser.parse(
+    let mut events: Vec<(InputEvent, usize)> = vec![];
+    input_parser.parse_with_consumed(
         &drained,
-        |input_event: InputEvent| {
-            events.push(input_event);
+        |input_event: InputEvent, consumed: usize| {
+            events.push((input_event, consumed));
         },
         false,
     );
-    for input_event in events {
+    // Residue contains no OSC or whitelisted CSI reports — every
+    // termwiz event drained on idle is a key/mouse/paste/etc. Each event
+    // drains only the bytes it consumed so mouse reports do not ride along
+    // on a neighbouring keystroke.
+    for (input_event, consumed) in events {
+        let take = consumed.min(current_buffer.len());
+        let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
         send_input_instructions
-            .send(InputInstruction::KeyEvent(
-                input_event,
-                current_buffer.drain(..).collect(),
-            ))
+            .send(InputInstruction::KeyEvent(input_event, raw_bytes))
             .unwrap();
     }
 }
