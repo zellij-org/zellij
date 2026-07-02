@@ -196,6 +196,7 @@ pub(crate) struct Tab {
     reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>>,
     stack_lists: HashMap<StackListId, StackList>,
     stack_list_of_member: HashMap<PaneId, StackListId>,
+    stack_list_parked_pairs: HashMap<PaneId, PaneId>,
     next_stack_list_id: StackListId,
     stack_list_session_is_mirrored: bool,
     max_panes: Option<usize>,
@@ -881,6 +882,7 @@ impl Tab {
             reserved_top_rows,
             stack_lists: HashMap::new(),
             stack_list_of_member: HashMap::new(),
+            stack_list_parked_pairs: HashMap::new(),
             next_stack_list_id: 0,
             stack_list_session_is_mirrored: session_is_mirrored,
             name: name.clone(),
@@ -1022,14 +1024,11 @@ impl Tab {
         if current_visible == target_member {
             return;
         }
-        let visible_parks_a_different_pane = self
+        let pane_parked_by_current_visible = self
             .suppressed_panes
             .get(&current_visible)
-            .map(|(_, parked)| parked.pid() != current_visible)
-            .unwrap_or(false);
-        if visible_parks_a_different_pane {
-            return;
-        }
+            .map(|(_, parked)| parked.pid())
+            .filter(|parked_pid| *parked_pid != current_visible);
         let target_box = match self.suppressed_panes.remove(&target_member) {
             Some((_is_scrollback_editor, pane)) => pane,
             None => {
@@ -1043,6 +1042,15 @@ impl Tab {
         let removed_visible = self.tiled_panes.replace_pane(current_visible, target_box);
         if let Some(removed_visible) = removed_visible {
             self.insert_suppressed_pane(current_visible, (false, removed_visible));
+            if let Some(parked_pid) = pane_parked_by_current_visible {
+                self.stack_list_parked_pairs
+                    .insert(current_visible, parked_pid);
+            }
+        }
+        if let Some(parked_pid) = self.stack_list_parked_pairs.remove(&target_member) {
+            if let Some(parked_entry) = self.suppressed_panes.remove(&parked_pid) {
+                self.suppressed_panes.insert(target_member, parked_entry);
+            }
         }
         if let Some(list) = self.stack_lists.get_mut(&stack_list_id) {
             list.visible = target_member;
@@ -1152,6 +1160,11 @@ impl Tab {
                 },
             };
             let removed_visible = self.tiled_panes.replace_pane(id, target_box);
+            if let Some(parked_pid) = self.stack_list_parked_pairs.remove(&promote_target) {
+                if let Some(parked_entry) = self.suppressed_panes.remove(&parked_pid) {
+                    self.suppressed_panes.insert(promote_target, parked_entry);
+                }
+            }
             self.stack_list_of_member.remove(&id);
             self.reserved_top_rows.borrow_mut().remove(&id);
             if let Some(list) = self.stack_lists.get_mut(&stack_list_id) {
@@ -1175,27 +1188,45 @@ impl Tab {
             removed_visible
         } else {
             let removed = self.suppressed_panes.remove(&id).map(|(_, p)| p);
+            let substitute_member = self
+                .stack_list_parked_pairs
+                .remove(&id)
+                .filter(|parked_pid| self.suppressed_panes.contains_key(parked_pid));
             self.stack_list_of_member.remove(&id);
             self.reserved_top_rows.borrow_mut().remove(&id);
-            if let Some(list) = self.stack_lists.get_mut(&stack_list_id) {
-                list.members.retain(|m| *m != id);
-            }
-            let member_count = self
-                .stack_lists
-                .get(&stack_list_id)
-                .map(|l| l.members.len())
-                .unwrap_or(0);
-            if member_count <= 1 {
-                self.dissolve_stack_list(stack_list_id);
-            } else {
-                let visible = self.stack_lists.get(&stack_list_id).map(|l| l.visible);
-                if let Some(visible) = visible {
-                    self.reserved_top_rows
-                        .borrow_mut()
-                        .insert(visible, Self::stack_list_reserved_rows(member_count));
+            if let Some(substitute_member) = substitute_member {
+                self.stack_list_of_member
+                    .insert(substitute_member, stack_list_id);
+                if let Some(list) = self.stack_lists.get_mut(&stack_list_id) {
+                    for member in list.members.iter_mut() {
+                        if *member == id {
+                            *member = substitute_member;
+                        }
+                    }
                 }
                 self.tiled_panes.reapply_pane_frames();
                 self.resize_stack_list_hidden_members(stack_list_id);
+            } else {
+                if let Some(list) = self.stack_lists.get_mut(&stack_list_id) {
+                    list.members.retain(|m| *m != id);
+                }
+                let member_count = self
+                    .stack_lists
+                    .get(&stack_list_id)
+                    .map(|l| l.members.len())
+                    .unwrap_or(0);
+                if member_count <= 1 {
+                    self.dissolve_stack_list(stack_list_id);
+                } else {
+                    let visible = self.stack_lists.get(&stack_list_id).map(|l| l.visible);
+                    if let Some(visible) = visible {
+                        self.reserved_top_rows
+                            .borrow_mut()
+                            .insert(visible, Self::stack_list_reserved_rows(member_count));
+                    }
+                    self.tiled_panes.reapply_pane_frames();
+                    self.resize_stack_list_hidden_members(stack_list_id);
+                }
             }
             removed
         };
@@ -1240,6 +1271,7 @@ impl Tab {
             let mut reserved = self.reserved_top_rows.borrow_mut();
             for member in &list.members {
                 self.stack_list_of_member.remove(member);
+                self.stack_list_parked_pairs.remove(member);
                 reserved.remove(member);
             }
             drop(reserved);
@@ -1251,6 +1283,7 @@ impl Tab {
         let mut reserved = self.reserved_top_rows.borrow_mut();
         for member in members {
             self.stack_list_of_member.remove(member);
+            self.stack_list_parked_pairs.remove(member);
             reserved.remove(member);
         }
     }
@@ -1283,6 +1316,11 @@ impl Tab {
                 geom.logical_position = pane.position_and_size().logical_position;
                 pane.set_geom(geom);
                 self.tiled_panes.add_pane_with_existing_geom(*member, pane);
+                if let Some(parked_pid) = self.stack_list_parked_pairs.remove(member) {
+                    if let Some(parked_entry) = self.suppressed_panes.remove(&parked_pid) {
+                        self.suppressed_panes.insert(*member, parked_entry);
+                    }
+                }
             }
         }
         self.drop_stack_list_ledger(stack_list_id, &members);
@@ -1338,7 +1376,15 @@ impl Tab {
                     continue;
                 }
                 if let Some(pane) = self.tiled_panes.extract_pane(*id) {
+                    let pane_parked_by_member = self
+                        .suppressed_panes
+                        .get(id)
+                        .map(|(_, parked)| parked.pid())
+                        .filter(|parked_pid| parked_pid != id);
                     self.insert_suppressed_pane(*id, (false, pane));
+                    if let Some(parked_pid) = pane_parked_by_member {
+                        self.stack_list_parked_pairs.insert(*id, parked_pid);
+                    }
                 }
             }
             if let Some(vpane) = self.tiled_panes.get_pane_mut(visible) {
