@@ -963,94 +963,6 @@ impl Tab {
             right: 1,
         }
     }
-    fn create_stack_list(
-        &mut self,
-        root_pane_id: PaneId,
-        new_pane: Box<dyn Pane>,
-        new_pane_id: PaneId,
-        client_id: Option<ClientId>,
-    ) -> bool {
-        if !self.tiled_panes.panes_contain(&root_pane_id) {
-            return false;
-        }
-        let removed_root = self.tiled_panes.replace_pane(root_pane_id, new_pane);
-        let removed_root = match removed_root {
-            Some(removed_root) => removed_root,
-            None => {
-                log::error!("Failed to create stack list: root pane could not be replaced");
-                return false;
-            },
-        };
-        let stack_list_id = self.next_stack_list_id;
-        self.next_stack_list_id += 1;
-        let members = vec![root_pane_id, new_pane_id];
-        for member in &members {
-            self.stack_list_of_member.insert(*member, stack_list_id);
-        }
-        self.stack_lists.insert(
-            stack_list_id,
-            StackList {
-                members: members.clone(),
-                visible: new_pane_id,
-            },
-        );
-        self.insert_suppressed_pane(root_pane_id, (false, removed_root));
-        self.reserved_top_rows
-            .borrow_mut()
-            .insert(new_pane_id, Self::stack_list_reserved_rows(members.len()));
-        if let Some(client_id) = client_id {
-            self.tiled_panes.focus_pane(new_pane_id, client_id);
-        }
-        self.tiled_panes.reapply_pane_frames();
-        self.resize_stack_list_hidden_members(stack_list_id);
-        self.force_render_stack_list_members();
-        self.set_should_clear_display_before_rendering();
-        true
-    }
-    fn add_to_stack_list(
-        &mut self,
-        stack_list_id: StackListId,
-        new_pane: Box<dyn Pane>,
-        new_pane_id: PaneId,
-        client_id: Option<ClientId>,
-    ) -> bool {
-        let current_visible = match self.stack_lists.get(&stack_list_id) {
-            Some(list) => list.visible,
-            None => return false,
-        };
-        let removed_visible = self.tiled_panes.replace_pane(current_visible, new_pane);
-        let removed_visible = match removed_visible {
-            Some(removed_visible) => removed_visible,
-            None => {
-                log::error!("Failed to add to stack list: visible pane could not be replaced");
-                return false;
-            },
-        };
-        self.insert_suppressed_pane(current_visible, (false, removed_visible));
-        if let Some(list) = self.stack_lists.get_mut(&stack_list_id) {
-            list.members.push(new_pane_id);
-            list.visible = new_pane_id;
-        }
-        self.stack_list_of_member.insert(new_pane_id, stack_list_id);
-        let member_count = self
-            .stack_lists
-            .get(&stack_list_id)
-            .map(|l| l.members.len())
-            .unwrap_or(0);
-        {
-            let mut reserved = self.reserved_top_rows.borrow_mut();
-            reserved.remove(&current_visible);
-            reserved.insert(new_pane_id, Self::stack_list_reserved_rows(member_count));
-        }
-        if let Some(client_id) = client_id {
-            self.tiled_panes.focus_pane(new_pane_id, client_id);
-        }
-        self.tiled_panes.reapply_pane_frames();
-        self.resize_stack_list_hidden_members(stack_list_id);
-        self.force_render_stack_list_members();
-        self.set_should_clear_display_before_rendering();
-        true
-    }
     fn select_stack_list_member(
         &mut self,
         stack_list_id: StackListId,
@@ -1245,6 +1157,57 @@ impl Tab {
             }
             drop(reserved);
             self.tiled_panes.reapply_pane_frames();
+        }
+    }
+    fn drop_stack_list_ledger(&mut self, stack_list_id: StackListId, members: &[PaneId]) {
+        self.stack_lists.remove(&stack_list_id);
+        let mut reserved = self.reserved_top_rows.borrow_mut();
+        for member in members {
+            self.stack_list_of_member.remove(member);
+            reserved.remove(member);
+        }
+    }
+    fn degroupify(&mut self, stack_list_id: StackListId) {
+        let (members, visible) = match self.stack_lists.get(&stack_list_id) {
+            Some(list) => (list.members.clone(), list.visible),
+            None => return,
+        };
+        let n = members.len();
+        if n == 0 || !self.tiled_panes.panes_contain(&visible) {
+            self.drop_stack_list_ledger(stack_list_id, &members);
+            return;
+        }
+        let geoms = self.tiled_panes.stack_panes(visible, n);
+        if geoms.len() != n {
+            log::error!("degroupify: could not compute classic stack geoms");
+            return;
+        }
+        for (i, member) in members.iter().enumerate() {
+            let mut geom = geoms[i];
+            if *member == visible {
+                geom.logical_position = self
+                    .tiled_panes
+                    .get_pane(*member)
+                    .and_then(|p| p.position_and_size().logical_position);
+                self.tiled_panes.set_geom_for_pane_with_id(member, geom);
+            } else if let Some((_is_scrollback_editor, mut pane)) =
+                self.suppressed_panes.remove(member)
+            {
+                geom.logical_position = pane.position_and_size().logical_position;
+                pane.set_geom(geom);
+                self.tiled_panes.add_pane_with_existing_geom(*member, pane);
+            }
+        }
+        self.drop_stack_list_ledger(stack_list_id, &members);
+        self.tiled_panes.expand_pane_in_stack(visible);
+        self.tiled_panes.reapply_pane_frames();
+        self.set_force_render();
+        self.set_should_clear_display_before_rendering();
+    }
+    fn degroupify_all(&mut self) {
+        let ids: Vec<StackListId> = self.stack_lists.keys().copied().collect();
+        for id in ids {
+            self.degroupify(id);
         }
     }
     fn groupify_all(&mut self) {
@@ -3100,6 +3063,9 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.toggle_active_pane_fullscreen(client_id);
         }
+        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+            self.degroupify_all();
+        }
         if self.tiled_panes.can_split_pane_horizontally(client_id) {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_terminal_position = self.get_next_terminal_position();
@@ -3166,6 +3132,9 @@ impl Tab {
             .with_context(err_context)?;
         if self.tiled_panes.fullscreen_is_active() {
             self.toggle_active_pane_fullscreen(client_id);
+        }
+        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+            self.degroupify_all();
         }
         if self.tiled_panes.can_split_pane_vertically(client_id) {
             if let PaneId::Terminal(term_pid) = pid {
@@ -4350,6 +4319,9 @@ impl Tab {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
+            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+                self.degroupify_all();
+            }
             match self.tiled_panes.resize_active_pane(client_id, &strategy) {
                 Ok(_) => {
                     self.swap_layouts.set_is_tiled_damaged();
@@ -6360,6 +6332,9 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
+        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+            self.degroupify_all();
+        }
         let should_auto_layout =
             self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !without_relayout;
         if self.tiled_panes.has_room_for_new_pane() {
@@ -6395,17 +6370,8 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
-        if self.stacked_pane_list_is_active() {
-            match self.stack_list_id_of_member(&root_pane_id) {
-                Some(stack_list_id) => {
-                    self.add_to_stack_list(stack_list_id, pane, pane_id, None);
-                },
-                None => {
-                    self.create_stack_list(root_pane_id, pane, pane_id, None);
-                },
-            }
-            self.swap_layouts.set_is_tiled_damaged();
-            return Ok(());
+        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+            self.degroupify_all();
         }
         self.tiled_panes
             .add_pane_to_stack_of_pane_id(pane_id, pane, root_pane_id);
@@ -6424,25 +6390,8 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
-        if self.stacked_pane_list_is_active() {
-            let root_pane_id = self.tiled_panes.get_active_pane_id(client_id);
-            match root_pane_id.and_then(|id| {
-                self.stack_list_id_of_member(&id).map(|sid| (id, sid))
-            }) {
-                Some((_root_pane_id, stack_list_id)) => {
-                    self.add_to_stack_list(stack_list_id, pane, pane_id, Some(client_id));
-                },
-                None => match root_pane_id {
-                    Some(root_pane_id) => {
-                        self.create_stack_list(root_pane_id, pane, pane_id, Some(client_id));
-                    },
-                    None => {
-                        log::error!("Cannot create stack list: no active pane for client");
-                    },
-                },
-            }
-            self.swap_layouts.set_is_tiled_damaged();
-            return Ok(());
+        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+            self.degroupify_all();
         }
         self.tiled_panes
             .add_pane_to_stack_of_active_pane(pane_id, pane, client_id);
@@ -6516,6 +6465,9 @@ impl Tab {
     }
     pub fn resize_pane_with_id(&mut self, strategy: ResizeStrategy, pane_id: PaneId) -> Result<()> {
         let err_context = || format!("unable to resize pane");
+        if self.stacked_pane_list_is_active() && self.pane_is_stack_list_member(&pane_id) {
+            self.degroupify_all();
+        }
         if self.floating_panes.panes_contain(&pane_id) {
             let successfully_resized = self
                 .floating_panes
