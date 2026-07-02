@@ -744,6 +744,7 @@ pub enum ScreenInstruction {
         rounded_corners: bool,
         hide_session_name: bool,
         stacked_resize: bool,
+        stacked_pane_list: bool,
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
         mouse_hover_effects: bool,
@@ -1411,6 +1412,7 @@ pub(crate) struct Screen {
     pixel_dimensions: PixelDimensions,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
+    stacked_pane_list: Rc<RefCell<bool>>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
@@ -1549,6 +1551,7 @@ impl Screen {
         layout_dir: Option<PathBuf>,
         explicitly_disable_kitty_keyboard_protocol: bool,
         stacked_resize: bool,
+        stacked_pane_list: bool,
         default_editor: Option<PathBuf>,
         web_clients_allowed: bool,
         web_sharing: WebSharing,
@@ -1573,6 +1576,7 @@ impl Screen {
             pixel_dimensions: Default::default(),
             character_cell_size: Rc::new(RefCell::new(None)),
             stacked_resize: Rc::new(RefCell::new(stacked_resize)),
+            stacked_pane_list: Rc::new(RefCell::new(stacked_pane_list)),
             sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
@@ -3305,6 +3309,7 @@ impl Screen {
             self.size,
             self.character_cell_size.clone(),
             self.stacked_resize.clone(),
+            self.stacked_pane_list.clone(),
             self.sixel_image_store.clone(),
             self.bus
                 .os_input
@@ -5027,6 +5032,7 @@ impl Screen {
         rounded_corners: bool,
         hide_session_name: bool,
         stacked_resize: bool,
+        stacked_pane_list: bool,
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
         mouse_hover_effects: bool,
@@ -5064,6 +5070,9 @@ impl Screen {
             .update_hide_session_name(hide_session_name);
         {
             *self.stacked_resize.borrow_mut() = stacked_resize;
+        }
+        {
+            *self.stacked_pane_list.borrow_mut() = stacked_pane_list;
         }
         if let Some(copy_to_clipboard) = copy_to_clipboard {
             self.copy_options.clipboard = copy_to_clipboard;
@@ -6191,6 +6200,7 @@ pub(crate) fn screen_thread_main(
         .unwrap_or(false); // by default, we try to support this if the terminal supports it and
                            // the program running inside a pane requests it
     let stacked_resize = config_options.stacked_resize.unwrap_or(true);
+    let stacked_pane_list = config_options.stacked_pane_list.unwrap_or(true);
     let web_clients_allowed = config_options
         .web_sharing
         .map(|s| s.web_clients_allowed())
@@ -6234,6 +6244,7 @@ pub(crate) fn screen_thread_main(
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
+        stacked_pane_list,
         default_editor,
         web_clients_allowed,
         web_sharing,
@@ -9379,6 +9390,7 @@ pub(crate) fn screen_thread_main(
                 rounded_corners,
                 hide_session_name,
                 stacked_resize,
+                stacked_pane_list,
                 default_editor,
                 advanced_mouse_actions,
                 mouse_hover_effects,
@@ -9403,6 +9415,7 @@ pub(crate) fn screen_thread_main(
                         rounded_corners,
                         hide_session_name,
                         stacked_resize,
+                        stacked_pane_list,
                         default_editor,
                         advanced_mouse_actions,
                         mouse_hover_effects,

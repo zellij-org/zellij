@@ -63,6 +63,8 @@ pub struct TiledPanes {
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
+    stacked_pane_list: Rc<RefCell<bool>>,
+    reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>>,
     default_mode_info: ModeInfo,
     style: Style,
     session_is_mirrored: bool,
@@ -87,6 +89,8 @@ impl TiledPanes {
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         stacked_resize: Rc<RefCell<bool>>,
+        stacked_pane_list: Rc<RefCell<bool>>,
+        reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>>,
         session_is_mirrored: bool,
         pane_frame_style: PaneFrameStyle,
         default_mode_info: ModeInfo,
@@ -103,6 +107,8 @@ impl TiledPanes {
             mode_info,
             character_cell_size,
             stacked_resize,
+            stacked_pane_list,
+            reserved_top_rows,
             default_mode_info,
             style,
             session_is_mirrored,
@@ -570,13 +576,23 @@ impl TiledPanes {
                 .positions_and_sizes_of_all_stacks()
                 .unwrap_or_else(|| Default::default())
         };
+        let reserved_top_rows = { self.reserved_top_rows.borrow().clone() };
         for pane in self.panes.values_mut() {
             if !pane.borderless() {
                 pane.set_frame(draws_full_frames);
             }
 
+            let reserved_rows = reserved_top_rows.get(&pane.pid()).copied().unwrap_or(0);
+
             #[allow(clippy::if_same_then_else)]
-            if draws_full_frames && !pane.borderless() {
+            if reserved_rows > 0 {
+                pane.set_content_offset(Offset {
+                    top: 1 + reserved_rows,
+                    bottom: 1,
+                    left: 1,
+                    right: 1,
+                });
+            } else if draws_full_frames && !pane.borderless() {
                 pane.set_content_offset(Offset::frame(1));
             } else if draws_full_frames && pane.borderless() {
                 pane.set_content_offset(Offset::default());
@@ -1124,6 +1140,16 @@ impl TiledPanes {
                         && help_text_visible.get(client_id).copied().unwrap_or(false)
                 }) && selectable_pane_count > 1
                     && self.fullscreen_is_active.is_none();
+                let reserved_rows_for_pane =
+                    { self.reserved_top_rows.borrow().get(&pane.pid()).copied() }.unwrap_or(0);
+                let visible_member_frame_override = if reserved_rows_for_pane > 0 {
+                    let mut geom = pane.current_geom();
+                    geom.y += reserved_rows_for_pane;
+                    geom.rows.decrease_inner(reserved_rows_for_pane);
+                    Some(geom)
+                } else {
+                    None
+                };
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane,
                     output,
@@ -1139,6 +1165,7 @@ impl TiledPanes {
                     show_help_text,
                     omit_pane_title,
                 );
+                pane_contents_and_ui.set_frame_geom_override(visible_member_frame_override);
                 for client_id in &connected_clients {
                     let client_mode = self
                         .mode_info
@@ -1240,6 +1267,10 @@ impl TiledPanes {
     }
     pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()
+    }
+    pub fn position_and_size_of_stack(&mut self, pane_id: &PaneId) -> Option<PaneGeom> {
+        StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+            .position_and_size_of_stack(pane_id)
     }
     pub fn set_geom_for_pane_with_run(
         &mut self,

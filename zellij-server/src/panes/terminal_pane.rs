@@ -434,7 +434,9 @@ impl Pane for TerminalPane {
             normal_title
         };
 
-        let frame_geom = self.current_geom();
+        let frame_geom = frame_params
+            .frame_geom_override
+            .unwrap_or_else(|| self.current_geom());
         let is_pinned = frame_geom.is_pinned;
         let mut frame = PaneFrame::new(
             frame_geom.into(),

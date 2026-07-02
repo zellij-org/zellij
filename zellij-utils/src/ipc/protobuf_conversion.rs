@@ -739,6 +739,7 @@ impl From<crate::input::options::Options>
                 crate::data::WebSharing::Disabled => ProtoWebSharing::Disabled as i32,
             }),
             stacked_resize: options.stacked_resize,
+            stacked_pane_list: options.stacked_pane_list,
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
@@ -858,6 +859,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 })
                 .transpose()?,
             stacked_resize: options.stacked_resize,
+            stacked_pane_list: options.stacked_pane_list,
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,

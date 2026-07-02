@@ -8,7 +8,7 @@ use crate::ui::hint_text::{
 use crate::ClientId;
 use zellij_utils::data::{client_id_to_colors, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
-use zellij_utils::pane_size::{Offset, Viewport};
+use zellij_utils::pane_size::{Offset, PaneGeom, Viewport};
 use zellij_utils::position::Position;
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -73,6 +73,7 @@ pub struct FrameParams {
     pub show_help_text: bool,
     pub highlight_tooltip: Option<String>,
     pub omit_title: bool,
+    pub frame_geom_override: Option<PaneGeom>,
 }
 
 #[derive(Default, PartialEq)]

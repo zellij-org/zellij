@@ -7,6 +7,7 @@ use crate::ClientId;
 use std::collections::{HashMap, HashSet};
 use zellij_utils::data::{client_id_to_colors, InputMode, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
+use zellij_utils::pane_size::PaneGeom;
 pub struct PaneContentsAndUi<'a> {
     pane: &'a mut Box<dyn Pane>,
     output: &'a mut Output,
@@ -21,6 +22,7 @@ pub struct PaneContentsAndUi<'a> {
     current_pane_group: HashMap<ClientId, Vec<PaneId>>,
     show_help_text: bool,
     omit_title: bool,
+    frame_geom_override: Option<PaneGeom>,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -69,7 +71,11 @@ impl<'a> PaneContentsAndUi<'a> {
             current_pane_group,
             show_help_text,
             omit_title,
+            frame_geom_override: None,
         }
+    }
+    pub fn set_frame_geom_override(&mut self, frame_geom_override: Option<PaneGeom>) {
+        self.frame_geom_override = frame_geom_override;
     }
     pub fn render_pane_contents_to_multiple_clients(
         &mut self,
@@ -264,6 +270,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 show_help_text: self.show_help_text,
                 highlight_tooltip: highlight_tooltip.clone(),
                 omit_title: self.omit_title,
+                frame_geom_override: self.frame_geom_override,
             }
         } else {
             FrameParams {
@@ -286,6 +293,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 show_help_text: self.show_help_text,
                 highlight_tooltip,
                 omit_title: self.omit_title,
+                frame_geom_override: self.frame_geom_override,
             }
         };
 

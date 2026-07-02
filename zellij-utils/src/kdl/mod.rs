@@ -2809,6 +2809,9 @@ impl Options {
             };
         let stacked_resize =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "stacked_resize").map(|(v, _)| v);
+        let stacked_pane_list =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "stacked_pane_list")
+                .map(|(v, _)| v);
         let show_startup_tips =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_startup_tips")
                 .map(|(v, _)| v);
@@ -2938,6 +2941,7 @@ impl Options {
             web_server,
             web_sharing,
             stacked_resize,
+            stacked_pane_list,
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
@@ -4069,6 +4073,34 @@ impl Options {
             None
         }
     }
+    fn stacked_pane_list_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Whether stacked panes display as a list with the expanded pane pinned to the bottom",
+            "// Default: true",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("stacked_pane_list");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(stacked_pane_list) = self.stacked_pane_list {
+            let mut node = create_node(stacked_pane_list);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn show_startup_tips_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -4570,6 +4602,9 @@ impl Options {
         }
         if let Some(stacked_resize) = self.stacked_resize_to_kdl(add_comments) {
             nodes.push(stacked_resize);
+        }
+        if let Some(stacked_pane_list) = self.stacked_pane_list_to_kdl(add_comments) {
+            nodes.push(stacked_pane_list);
         }
         if let Some(show_startup_tips) = self.show_startup_tips_to_kdl(add_comments) {
             nodes.push(show_startup_tips);

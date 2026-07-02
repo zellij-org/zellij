@@ -329,6 +329,10 @@ pub struct Options {
     #[serde(default)]
     pub stacked_resize: Option<bool>,
 
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub stacked_pane_list: Option<bool>,
+
     /// Whether to show startup tips when starting a new session
     /// default is true
     #[clap(long, value_parser)]
@@ -490,6 +494,7 @@ impl Options {
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
+        let stacked_pane_list = other.stacked_pane_list.or(self.stacked_pane_list);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
@@ -551,6 +556,7 @@ impl Options {
             web_server,
             web_sharing,
             stacked_resize,
+            stacked_pane_list,
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
@@ -633,6 +639,7 @@ impl Options {
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
+        let stacked_pane_list = other.stacked_pane_list.or(self.stacked_pane_list);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
@@ -694,6 +701,7 @@ impl Options {
             web_server,
             web_sharing,
             stacked_resize,
+            stacked_pane_list,
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
