@@ -105,6 +105,7 @@ pub struct PaneFrame {
     omit_title: bool,
     stack_list_entry_width: Option<usize>,
     stack_list_entry_is_selected: bool,
+    color_override: Option<PaletteColor>,
 }
 
 impl PaneFrame {
@@ -140,6 +141,7 @@ impl PaneFrame {
             omit_title: frame_params.omit_title,
             stack_list_entry_width: frame_params.stack_list_entry_width,
             stack_list_entry_is_selected: frame_params.stack_list_entry_is_selected,
+            color_override: None,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -157,6 +159,7 @@ impl PaneFrame {
     }
     pub fn override_color(&mut self, color: PaletteColor) {
         self.color = Some(color);
+        self.color_override = Some(color);
     }
     fn client_cursor(&self, client_id: ClientId) -> Vec<TerminalCharacter> {
         let color = client_id_to_colors(client_id, self.style.colors.multiplayer_user_colors);
@@ -752,11 +755,11 @@ impl PaneFrame {
         }
         if self.stack_list_entry_is_selected {
             line.append(&mut foreground_color(left_bracket, self.color));
-            line.append(&mut foreground_color(&padded_content, None));
+            line.append(&mut foreground_color(&padded_content, self.color_override));
             line.append(&mut foreground_color(right_bracket, self.color));
         } else {
             let unbracketed = format!("  {}  ", padded_content);
-            line.append(&mut foreground_color(&unbracketed, None));
+            line.append(&mut foreground_color(&unbracketed, self.color_override));
         }
         let mut occupied_columns = entry_start + entry_length;
         while occupied_columns < usable_cols {

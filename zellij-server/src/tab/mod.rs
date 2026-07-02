@@ -952,6 +952,12 @@ impl Tab {
     fn stack_list_id_of_member(&self, pane_id: &PaneId) -> Option<StackListId> {
         self.stack_list_of_member.get(pane_id).copied()
     }
+    fn suppressed_stack_list_members(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+        self.suppressed_panes
+            .iter()
+            .filter(|(pane_id, _)| self.stack_list_of_member.contains_key(pane_id))
+            .map(|(pane_id, (_, pane))| (pane_id, pane))
+    }
     fn stack_list_reserved_rows(member_count: usize) -> usize {
         member_count + 1
     }
@@ -1372,7 +1378,14 @@ impl Tab {
                         self.suppressed_panes.get(member).map(|(_, p)| &**p)
                     }
                 })
-                .map(|pane| pane.current_title().width())
+                .map(|pane| {
+                    let bell_indicator_width = if pane.get_bell_notification() {
+                        " [!]".width()
+                    } else {
+                        0
+                    };
+                    pane.current_title().width() + bell_indicator_width
+                })
                 .max()
                 .unwrap_or(0);
             for (rank, member) in list.members.iter().enumerate() {
@@ -3265,6 +3278,7 @@ impl Tab {
             .tiled_panes
             .get_panes()
             .chain(self.floating_panes.get_panes())
+            .chain(self.suppressed_stack_list_members())
             .filter(|(_, pane)| pane.has_bell())
             .map(|(pane_id, _)| *pane_id)
             .collect();
@@ -3314,6 +3328,7 @@ impl Tab {
             .tiled_panes
             .get_panes()
             .chain(self.floating_panes.get_panes())
+            .chain(self.suppressed_stack_list_members())
             .filter(|(_, pane)| pane.has_bell())
             .map(|(pane_id, _)| *pane_id)
             .collect();
