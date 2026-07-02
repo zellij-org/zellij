@@ -723,8 +723,9 @@ impl PaneFrame {
             .with_context(|| format!("failed to render title '{}'", self.title))
     }
     fn render_stack_list_entry(&self, entry_width: usize) -> Vec<TerminalCharacter> {
+        let usable_cols = self.geom.cols.saturating_sub(2);
         let bracket_overhead = "[  ]".width();
-        let inner_width = entry_width.min(self.geom.cols.saturating_sub(bracket_overhead));
+        let inner_width = entry_width.min(usable_cols.saturating_sub(bracket_overhead));
         let content = if self.title.width() <= inner_width {
             self.title.clone()
         } else {
@@ -744,8 +745,8 @@ impl PaneFrame {
         let left_bracket = "[ ";
         let right_bracket = " ]";
         let entry_length = left_bracket.width() + padded_content.width() + right_bracket.width();
-        let entry_start = self.geom.cols.saturating_sub(entry_length) / 2;
-        let mut line = Vec::with_capacity(self.geom.cols);
+        let entry_start = usable_cols.saturating_sub(entry_length) / 2;
+        let mut line = Vec::with_capacity(usable_cols);
         for _ in 0..entry_start {
             line.push(EMPTY_TERMINAL_CHARACTER);
         }
@@ -758,7 +759,7 @@ impl PaneFrame {
             line.append(&mut foreground_color(&unbracketed, None));
         }
         let mut occupied_columns = entry_start + entry_length;
-        while occupied_columns < self.geom.cols {
+        while occupied_columns < usable_cols {
             line.push(EMPTY_TERMINAL_CHARACTER);
             occupied_columns += 1;
         }
@@ -1220,7 +1221,7 @@ impl PaneFrame {
         if let Some(entry_width) = self.stack_list_entry_width {
             character_chunks.push(CharacterChunk::new(
                 self.render_stack_list_entry(entry_width),
-                self.geom.x,
+                self.geom.x + 1,
                 self.geom.y,
             ));
             return Ok((character_chunks, None));

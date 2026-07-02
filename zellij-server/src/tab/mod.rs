@@ -1417,14 +1417,15 @@ impl Tab {
                     )?;
                 }
             }
-            let padding_row = vec![EMPTY_TERMINAL_CHARACTER; rect.cols.as_usize()];
+            let padding_width = rect.cols.as_usize().saturating_sub(2);
+            let padding_row = vec![EMPTY_TERMINAL_CHARACTER; padding_width];
             let padding_row_y = rect.y + list.members.len();
             for (client_id, _client_mode) in &client_modes {
                 output.add_character_chunks_to_client(
                     *client_id,
                     vec![CharacterChunk::new(
                         padding_row.clone(),
-                        rect.x,
+                        rect.x + 1,
                         padding_row_y,
                     )],
                     None,
