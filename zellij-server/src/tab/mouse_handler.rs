@@ -417,9 +417,10 @@ impl MouseHandler {
         client_id: ClientId,
     ) -> Option<ClickedPaneDetails> {
         let is_floating = tab.floating_panes.panes_contain(&pane_id);
+        let is_hidden_stack_list_member = tab.pane_is_hidden_stack_list_member(&pane_id);
         let pane = Self::get_pane_at(tab, position, false).ok()??;
 
-        let on_frame = pane.position_is_on_frame(position);
+        let on_frame = !is_hidden_stack_list_member && pane.position_is_on_frame(position);
         let frame_intercepted = on_frame && pane.intercept_mouse_event_on_frame(event, client_id);
         let edge = if on_frame {
             pane.get_edge_at_position(position)
@@ -1053,6 +1054,10 @@ impl MouseHandler {
             return Self::execute_update_hover(tab, Some(pane_id), Some(position), client_id);
         }
 
+        if tab.pane_is_hidden_stack_list_member(&pane_id) {
+            return Self::execute_update_hover(tab, Some(pane_id), Some(position), client_id);
+        }
+
         let active_pane_id = tab.get_active_pane_id(client_id);
         if active_pane_id == Some(pane_id) {
             return Self::execute_update_hover(tab, Some(pane_id), Some(position), client_id);
@@ -1543,7 +1548,9 @@ impl MouseHandler {
             }
         }
         if let Some(clicked_pane) = tab.get_pane_id_at(point, true).with_context(err_context)? {
-            tab.tiled_panes.focus_pane(clicked_pane, client_id);
+            if !tab.focus_hidden_stack_list_member(clicked_pane, client_id) {
+                tab.tiled_panes.focus_pane(clicked_pane, client_id);
+            }
             tab.set_pane_active_at(clicked_pane);
             if tab.floating_panes.panes_are_visible() {
                 tab.hide_floating_panes();
@@ -1737,7 +1744,11 @@ impl MouseHandler {
             .get_pane_id_at(point, search_selectable)
             .with_context(err_context)?
         {
-            Ok(tab.tiled_panes.get_pane_mut(pane_id))
+            if tab.tiled_panes.panes_contain(&pane_id) {
+                Ok(tab.tiled_panes.get_pane_mut(pane_id))
+            } else {
+                Ok(tab.get_pane_with_id_mut(pane_id))
+            }
         } else {
             Ok(None)
         }

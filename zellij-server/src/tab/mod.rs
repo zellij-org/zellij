@@ -952,6 +952,45 @@ impl Tab {
     fn stack_list_id_of_member(&self, pane_id: &PaneId) -> Option<StackListId> {
         self.stack_list_of_member.get(pane_id).copied()
     }
+    pub fn pane_is_hidden_stack_list_member(&self, pane_id: &PaneId) -> bool {
+        self.stack_list_id_of_member(pane_id)
+            .and_then(|stack_list_id| self.stack_lists.get(&stack_list_id))
+            .map(|list| list.visible != *pane_id)
+            .unwrap_or(false)
+    }
+    pub fn focus_hidden_stack_list_member(
+        &mut self,
+        pane_id: PaneId,
+        client_id: ClientId,
+    ) -> bool {
+        if !self.pane_is_hidden_stack_list_member(&pane_id) {
+            return false;
+        }
+        match self.stack_list_id_of_member(&pane_id) {
+            Some(stack_list_id) => {
+                self.select_stack_list_member(stack_list_id, pane_id, Some(client_id));
+                true
+            },
+            None => false,
+        }
+    }
+    fn stack_list_member_at_point(&self, pane_id: PaneId, point: &Position) -> PaneId {
+        let Some(stack_list_id) = self.stack_list_id_of_member(&pane_id) else {
+            return pane_id;
+        };
+        let Some(list) = self.stack_lists.get(&stack_list_id) else {
+            return pane_id;
+        };
+        let Some(pane) = self.tiled_panes.get_pane(pane_id) else {
+            return pane_id;
+        };
+        let geom = pane.current_geom();
+        if point.line() < geom.y as isize {
+            return pane_id;
+        }
+        let rank = (point.line() - geom.y as isize) as usize;
+        list.members.get(rank).copied().unwrap_or(pane_id)
+    }
     fn suppressed_stack_list_members(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.suppressed_panes
             .iter()
@@ -5559,16 +5598,24 @@ impl Tab {
             geom_to_compare_against.contains(point)
         };
 
-        if search_selectable {
-            Ok(self
-                .get_selectable_tiled_panes()
+        let found_pane_id = if search_selectable {
+            self.get_selectable_tiled_panes()
                 .find(|(_, p)| pane_contains_point(p, point, &stacked_pane_ids_under_flexible_pane))
-                .map(|(&id, _)| id))
+                .map(|(&id, _)| id)
         } else {
-            Ok(self
-                .get_tiled_panes()
+            self.get_tiled_panes()
                 .find(|(_, p)| pane_contains_point(p, point, &stacked_pane_ids_under_flexible_pane))
-                .map(|(&id, _)| id))
+                .map(|(&id, _)| id)
+        };
+        let resolved_pane_id = found_pane_id.map(|id| self.stack_list_member_at_point(id, point));
+        if search_selectable {
+            Ok(resolved_pane_id.filter(|id| {
+                self.get_pane_with_id(*id)
+                    .map(|p| p.selectable())
+                    .unwrap_or(false)
+            }))
+        } else {
+            Ok(resolved_pane_id)
         }
     }
 

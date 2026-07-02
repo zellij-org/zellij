@@ -261,6 +261,17 @@ impl<'a> PaneContentsAndUi<'a> {
             None
         };
         let pane_is_stacked = self.pane.current_geom().is_stacked();
+        let pane_is_in_group = self
+            .current_pane_group
+            .get(&client_id)
+            .map(|p| p.contains(&self.pane.pid()))
+            .unwrap_or(false);
+        let stack_list_entry_is_emphasized = self.stack_list_entry_width.is_some()
+            && (pane_is_in_group
+                || (self
+                    .mouse_is_hovering_over_pane_for_clients
+                    .contains(&client_id)
+                    && !pane_focused_for_client_id));
         let frame_params = if session_is_mirrored {
             FrameParams {
                 focused_client,
@@ -285,6 +296,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 frame_geom_override: self.frame_geom_override,
                 stack_list_entry_width: self.stack_list_entry_width,
                 stack_list_entry_is_selected: self.stack_list_entry_is_selected,
+                stack_list_entry_is_emphasized,
             }
         } else {
             FrameParams {
@@ -310,6 +322,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 frame_geom_override: self.frame_geom_override,
                 stack_list_entry_width: self.stack_list_entry_width,
                 stack_list_entry_is_selected: self.stack_list_entry_is_selected,
+                stack_list_entry_is_emphasized,
             }
         };
 

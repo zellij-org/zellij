@@ -76,6 +76,7 @@ pub struct FrameParams {
     pub frame_geom_override: Option<PaneGeom>,
     pub stack_list_entry_width: Option<usize>,
     pub stack_list_entry_is_selected: bool,
+    pub stack_list_entry_is_emphasized: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -105,6 +106,7 @@ pub struct PaneFrame {
     omit_title: bool,
     stack_list_entry_width: Option<usize>,
     stack_list_entry_is_selected: bool,
+    stack_list_entry_is_emphasized: bool,
     color_override: Option<PaletteColor>,
 }
 
@@ -141,6 +143,7 @@ impl PaneFrame {
             omit_title: frame_params.omit_title,
             stack_list_entry_width: frame_params.stack_list_entry_width,
             stack_list_entry_is_selected: frame_params.stack_list_entry_is_selected,
+            stack_list_entry_is_emphasized: frame_params.stack_list_entry_is_emphasized,
             color_override: None,
         }
     }
@@ -753,13 +756,18 @@ impl PaneFrame {
         for _ in 0..entry_start {
             line.push(EMPTY_TERMINAL_CHARACTER);
         }
+        let content_color = if self.stack_list_entry_is_emphasized {
+            self.color
+        } else {
+            self.color_override
+        };
         if self.stack_list_entry_is_selected {
             line.append(&mut foreground_color(left_bracket, self.color));
-            line.append(&mut foreground_color(&padded_content, self.color_override));
+            line.append(&mut foreground_color(&padded_content, content_color));
             line.append(&mut foreground_color(right_bracket, self.color));
         } else {
             let unbracketed = format!("  {}  ", padded_content);
-            line.append(&mut foreground_color(&unbracketed, self.color_override));
+            line.append(&mut foreground_color(&unbracketed, content_color));
         }
         let mut occupied_columns = entry_start + entry_length;
         while occupied_columns < usable_cols {
