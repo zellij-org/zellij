@@ -12,6 +12,7 @@ use copy_command::CopyCommand;
 pub use mouse_handler::{MouseEffect, MouseHandler, PaneEdge, PaneResizeState};
 use std::env::temp_dir;
 use std::net::IpAddr;
+use unicode_width::UnicodeWidthStr;
 use std::path::PathBuf;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
@@ -49,7 +50,7 @@ use crate::{
     panes::grid::namespace_notification_id,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
-    panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
+    panes::{LinkHandler, PaneId, PluginPane, TerminalPane, EMPTY_TERMINAL_CHARACTER},
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
@@ -951,9 +952,12 @@ impl Tab {
     fn stack_list_id_of_member(&self, pane_id: &PaneId) -> Option<StackListId> {
         self.stack_list_of_member.get(pane_id).copied()
     }
+    fn stack_list_reserved_rows(member_count: usize) -> usize {
+        member_count + 1
+    }
     fn stack_list_visible_content_offset(member_count: usize) -> Offset {
         Offset {
-            top: 1 + member_count,
+            top: 1 + Self::stack_list_reserved_rows(member_count),
             bottom: 1,
             left: 1,
             right: 1,
@@ -993,7 +997,7 @@ impl Tab {
         self.insert_suppressed_pane(root_pane_id, (false, removed_root));
         self.reserved_top_rows
             .borrow_mut()
-            .insert(new_pane_id, members.len());
+            .insert(new_pane_id, Self::stack_list_reserved_rows(members.len()));
         if let Some(client_id) = client_id {
             self.tiled_panes.focus_pane(new_pane_id, client_id);
         }
@@ -1036,7 +1040,7 @@ impl Tab {
         {
             let mut reserved = self.reserved_top_rows.borrow_mut();
             reserved.remove(&current_visible);
-            reserved.insert(new_pane_id, member_count);
+            reserved.insert(new_pane_id, Self::stack_list_reserved_rows(member_count));
         }
         if let Some(client_id) = client_id {
             self.tiled_panes.focus_pane(new_pane_id, client_id);
@@ -1085,7 +1089,7 @@ impl Tab {
         {
             let mut reserved = self.reserved_top_rows.borrow_mut();
             reserved.remove(&current_visible);
-            reserved.insert(target_member, member_count);
+            reserved.insert(target_member, Self::stack_list_reserved_rows(member_count));
         }
         if let Some(client_id) = client_id {
             self.tiled_panes.focus_pane(target_member, client_id);
@@ -1189,7 +1193,7 @@ impl Tab {
                 .unwrap_or(0);
             self.reserved_top_rows
                 .borrow_mut()
-                .insert(promote_target, member_count);
+                .insert(promote_target, Self::stack_list_reserved_rows(member_count));
             if member_count <= 1 {
                 self.dissolve_stack_list(stack_list_id);
             } else {
@@ -1222,7 +1226,7 @@ impl Tab {
                 if let Some(visible) = visible {
                     self.reserved_top_rows
                         .borrow_mut()
-                        .insert(visible, member_count);
+                        .insert(visible, Self::stack_list_reserved_rows(member_count));
                 }
                 self.tiled_panes.reapply_pane_frames();
                 self.resize_stack_list_hidden_members(stack_list_id);
@@ -1308,7 +1312,7 @@ impl Tab {
             );
             self.reserved_top_rows
                 .borrow_mut()
-                .insert(visible, member_count);
+                .insert(visible, Self::stack_list_reserved_rows(member_count));
             self.resize_stack_list_hidden_members(stack_list_id);
             converted_any = true;
         }
@@ -1395,6 +1399,19 @@ impl Tab {
                 Some(p) => p.position_and_size(),
                 None => continue,
             };
+            let widest_member_title = list
+                .members
+                .iter()
+                .filter_map(|member| {
+                    if *member == list.visible {
+                        self.tiled_panes.get_pane(*member).map(|p| &**p)
+                    } else {
+                        self.suppressed_panes.get(member).map(|(_, p)| &**p)
+                    }
+                })
+                .map(|pane| pane.current_title().width())
+                .max()
+                .unwrap_or(0);
             for (rank, member) in list.members.iter().enumerate() {
                 let mut header_geom = rect;
                 header_geom.y = rect.y + rank;
@@ -1425,6 +1442,8 @@ impl Tab {
                     false,
                 );
                 pane_contents_and_ui.set_frame_geom_override(Some(header_geom));
+                pane_contents_and_ui
+                    .set_stack_list_entry(Some(widest_member_title), *member == list.visible);
                 for (client_id, client_mode) in &client_modes {
                     pane_contents_and_ui.render_pane_frame(
                         *client_id,
@@ -1434,6 +1453,19 @@ impl Tab {
                         true,
                     )?;
                 }
+            }
+            let padding_row = vec![EMPTY_TERMINAL_CHARACTER; rect.cols.as_usize()];
+            let padding_row_y = rect.y + list.members.len();
+            for (client_id, _client_mode) in &client_modes {
+                output.add_character_chunks_to_client(
+                    *client_id,
+                    vec![CharacterChunk::new(
+                        padding_row.clone(),
+                        rect.x,
+                        padding_row_y,
+                    )],
+                    None,
+                )?;
             }
         }
         Ok(())

@@ -74,6 +74,8 @@ pub struct FrameParams {
     pub highlight_tooltip: Option<String>,
     pub omit_title: bool,
     pub frame_geom_override: Option<PaneGeom>,
+    pub stack_list_entry_width: Option<usize>,
+    pub stack_list_entry_is_selected: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -101,6 +103,8 @@ pub struct PaneFrame {
     show_help_text: bool,
     highlight_tooltip: Option<String>,
     omit_title: bool,
+    stack_list_entry_width: Option<usize>,
+    stack_list_entry_is_selected: bool,
 }
 
 impl PaneFrame {
@@ -134,6 +138,8 @@ impl PaneFrame {
             show_help_text: frame_params.show_help_text,
             highlight_tooltip: frame_params.highlight_tooltip,
             omit_title: frame_params.omit_title,
+            stack_list_entry_width: frame_params.stack_list_entry_width,
+            stack_list_entry_is_selected: frame_params.stack_list_entry_is_selected,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -716,6 +722,48 @@ impl PaneFrame {
             .or_else(|| Some(self.title_line_without_middle()))
             .with_context(|| format!("failed to render title '{}'", self.title))
     }
+    fn render_stack_list_entry(&self, entry_width: usize) -> Vec<TerminalCharacter> {
+        let bracket_overhead = "[  ]".width();
+        let inner_width = entry_width.min(self.geom.cols.saturating_sub(bracket_overhead));
+        let content = if self.title.width() <= inner_width {
+            self.title.clone()
+        } else {
+            let truncation_budget = inner_width.saturating_sub(1);
+            let mut truncated = String::new();
+            for character in self.title.chars() {
+                if truncated.width() + character.width().unwrap_or(0) > truncation_budget {
+                    break;
+                }
+                truncated.push(character);
+            }
+            truncated.push('…');
+            truncated
+        };
+        let padding = " ".repeat(inner_width.saturating_sub(content.width()));
+        let padded_content = format!("{}{}", content, padding);
+        let left_bracket = "[ ";
+        let right_bracket = " ]";
+        let entry_length = left_bracket.width() + padded_content.width() + right_bracket.width();
+        let entry_start = self.geom.cols.saturating_sub(entry_length) / 2;
+        let mut line = Vec::with_capacity(self.geom.cols);
+        for _ in 0..entry_start {
+            line.push(EMPTY_TERMINAL_CHARACTER);
+        }
+        if self.stack_list_entry_is_selected {
+            line.append(&mut foreground_color(left_bracket, self.color));
+            line.append(&mut foreground_color(&padded_content, None));
+            line.append(&mut foreground_color(right_bracket, self.color));
+        } else {
+            let unbracketed = format!("  {}  ", padded_content);
+            line.append(&mut foreground_color(&unbracketed, None));
+        }
+        let mut occupied_columns = entry_start + entry_length;
+        while occupied_columns < self.geom.cols {
+            line.push(EMPTY_TERMINAL_CHARACTER);
+            occupied_columns += 1;
+        }
+        line
+    }
     fn render_one_line_title(&self) -> Result<Vec<TerminalCharacter>> {
         if self.should_draw_pane_frames {
             let total_title_length = self.geom.cols.saturating_sub(2);
@@ -1167,6 +1215,14 @@ impl PaneFrame {
         let err_context = || "failed to render pane frame";
         let mut character_chunks = vec![];
         if self.omit_title {
+            return Ok((character_chunks, None));
+        }
+        if let Some(entry_width) = self.stack_list_entry_width {
+            character_chunks.push(CharacterChunk::new(
+                self.render_stack_list_entry(entry_width),
+                self.geom.x,
+                self.geom.y,
+            ));
             return Ok((character_chunks, None));
         }
         if self.geom.rows == 1 || !self.should_draw_pane_frames {

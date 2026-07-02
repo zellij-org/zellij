@@ -23,6 +23,8 @@ pub struct PaneContentsAndUi<'a> {
     show_help_text: bool,
     omit_title: bool,
     frame_geom_override: Option<PaneGeom>,
+    stack_list_entry_width: Option<usize>,
+    stack_list_entry_is_selected: bool,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -72,10 +74,20 @@ impl<'a> PaneContentsAndUi<'a> {
             show_help_text,
             omit_title,
             frame_geom_override: None,
+            stack_list_entry_width: None,
+            stack_list_entry_is_selected: false,
         }
     }
     pub fn set_frame_geom_override(&mut self, frame_geom_override: Option<PaneGeom>) {
         self.frame_geom_override = frame_geom_override;
+    }
+    pub fn set_stack_list_entry(
+        &mut self,
+        stack_list_entry_width: Option<usize>,
+        stack_list_entry_is_selected: bool,
+    ) {
+        self.stack_list_entry_width = stack_list_entry_width;
+        self.stack_list_entry_is_selected = stack_list_entry_is_selected;
     }
     pub fn render_pane_contents_to_multiple_clients(
         &mut self,
@@ -271,6 +283,8 @@ impl<'a> PaneContentsAndUi<'a> {
                 highlight_tooltip: highlight_tooltip.clone(),
                 omit_title: self.omit_title,
                 frame_geom_override: self.frame_geom_override,
+                stack_list_entry_width: self.stack_list_entry_width,
+                stack_list_entry_is_selected: self.stack_list_entry_is_selected,
             }
         } else {
             FrameParams {
@@ -294,6 +308,8 @@ impl<'a> PaneContentsAndUi<'a> {
                 highlight_tooltip,
                 omit_title: self.omit_title,
                 frame_geom_override: self.frame_geom_override,
+                stack_list_entry_width: self.stack_list_entry_width,
+                stack_list_entry_is_selected: self.stack_list_entry_is_selected,
             }
         };
 
