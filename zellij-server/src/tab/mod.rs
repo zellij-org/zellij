@@ -169,6 +169,12 @@ impl StackList {
     }
 }
 
+enum StackListRemoval {
+    NotRemoved,
+    DissolvedInPlace,
+    Removed(Option<Box<dyn Pane>>),
+}
+
 enum BufferedTabInstruction {
     SetPaneSelectable(PaneId, bool),
     HandlePtyBytes(u32, VteBytes),
@@ -949,6 +955,9 @@ impl Tab {
     pub fn pane_is_stack_list_member(&self, pane_id: &PaneId) -> bool {
         self.stack_list_of_member.contains_key(pane_id)
     }
+    pub fn has_stack_lists(&self) -> bool {
+        !self.stack_lists.is_empty()
+    }
     fn stack_list_id_of_member(&self, pane_id: &PaneId) -> Option<StackListId> {
         self.stack_list_of_member.get(pane_id).copied()
     }
@@ -991,7 +1000,7 @@ impl Tab {
         let rank = (point.line() - geom.y as isize) as usize;
         list.members.get(rank).copied().unwrap_or(pane_id)
     }
-    fn suppressed_stack_list_members(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+    pub fn suppressed_stack_list_members(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.suppressed_panes
             .iter()
             .filter(|(pane_id, _)| self.stack_list_of_member.contains_key(pane_id))
@@ -999,14 +1008,6 @@ impl Tab {
     }
     fn stack_list_reserved_rows(member_count: usize) -> usize {
         member_count + 1
-    }
-    fn stack_list_visible_content_offset(member_count: usize) -> Offset {
-        Offset {
-            top: 1 + Self::stack_list_reserved_rows(member_count),
-            bottom: 1,
-            left: 1,
-            right: 1,
-        }
     }
     fn select_stack_list_member(
         &mut self,
@@ -1019,6 +1020,14 @@ impl Tab {
             None => return,
         };
         if current_visible == target_member {
+            return;
+        }
+        let visible_parks_a_different_pane = self
+            .suppressed_panes
+            .get(&current_visible)
+            .map(|(_, parked)| parked.pid() != current_visible)
+            .unwrap_or(false);
+        if visible_parks_a_different_pane {
             return;
         }
         let target_box = match self.suppressed_panes.remove(&target_member) {
@@ -1053,7 +1062,7 @@ impl Tab {
         }
         self.tiled_panes.reapply_pane_frames();
         self.resize_stack_list_hidden_members(stack_list_id);
-        self.force_render_stack_list_members();
+        self.set_force_render();
         self.set_should_clear_display_before_rendering();
     }
     fn move_focus_within_stack_list(&mut self, client_id: ClientId, down: bool) -> bool {
@@ -1093,20 +1102,31 @@ impl Tab {
         true
     }
     fn close_stack_list_member(&mut self, id: PaneId, exit_status: Option<i32>) -> bool {
+        match self.remove_stack_list_member(id) {
+            StackListRemoval::Removed(removed) => {
+                if let (Some(exit_status), Some(mut removed)) = (exit_status, removed) {
+                    removed.update_exit_status(exit_status);
+                }
+                true
+            },
+            StackListRemoval::DissolvedInPlace | StackListRemoval::NotRemoved => false,
+        }
+    }
+    fn remove_stack_list_member(&mut self, id: PaneId) -> StackListRemoval {
         let stack_list_id = match self.stack_list_id_of_member(&id) {
             Some(sid) => sid,
-            None => return false,
+            None => return StackListRemoval::NotRemoved,
         };
         let is_visible = self
             .stack_lists
             .get(&stack_list_id)
             .map(|l| l.visible == id)
             .unwrap_or(false);
-        if is_visible {
+        let removed = if is_visible {
             let (members, rank) = {
                 let list = match self.stack_lists.get(&stack_list_id) {
                     Some(l) => l,
-                    None => return false,
+                    None => return StackListRemoval::NotRemoved,
                 };
                 (list.members.clone(), list.rank_of(&id).unwrap_or(0))
             };
@@ -1121,22 +1141,17 @@ impl Tab {
                 None => {
                     self.dissolve_stack_list(stack_list_id);
                     self.reserved_top_rows.borrow_mut().remove(&id);
-                    return false;
+                    return StackListRemoval::DissolvedInPlace;
                 },
             };
             let target_box = match self.suppressed_panes.remove(&promote_target) {
                 Some((_is_scrollback_editor, pane)) => pane,
                 None => {
                     log::error!("stack-list promote target not found in suppressed panes");
-                    return false;
+                    return StackListRemoval::NotRemoved;
                 },
             };
-            let mut removed_visible = self.tiled_panes.replace_pane(id, target_box);
-            if let Some(exit_status) = exit_status {
-                if let Some(removed_visible) = removed_visible.as_mut() {
-                    removed_visible.update_exit_status(exit_status);
-                }
-            }
+            let removed_visible = self.tiled_panes.replace_pane(id, target_box);
             self.stack_list_of_member.remove(&id);
             self.reserved_top_rows.borrow_mut().remove(&id);
             if let Some(list) = self.stack_lists.get_mut(&stack_list_id) {
@@ -1157,15 +1172,9 @@ impl Tab {
                 self.tiled_panes.reapply_pane_frames();
                 self.resize_stack_list_hidden_members(stack_list_id);
             }
-            self.force_render_stack_list_members();
-            self.set_should_clear_display_before_rendering();
+            removed_visible
         } else {
-            let mut removed = self.suppressed_panes.remove(&id).map(|(_, p)| p);
-            if let Some(exit_status) = exit_status {
-                if let Some(removed) = removed.as_mut() {
-                    removed.update_exit_status(exit_status);
-                }
-            }
+            let removed = self.suppressed_panes.remove(&id).map(|(_, p)| p);
             self.stack_list_of_member.remove(&id);
             self.reserved_top_rows.borrow_mut().remove(&id);
             if let Some(list) = self.stack_lists.get_mut(&stack_list_id) {
@@ -1188,10 +1197,43 @@ impl Tab {
                 self.tiled_panes.reapply_pane_frames();
                 self.resize_stack_list_hidden_members(stack_list_id);
             }
-            self.force_render_stack_list_members();
+            removed
+        };
+        self.set_force_render();
+        self.set_should_clear_display_before_rendering();
+        StackListRemoval::Removed(removed)
+    }
+    fn track_stack_list_member_id_swap(&mut self, old_id: PaneId, new_id: PaneId) {
+        let stack_list_id = match self.stack_list_id_of_member(&old_id) {
+            Some(sid) => sid,
+            None => return,
+        };
+        self.stack_list_of_member.remove(&old_id);
+        self.stack_list_of_member.insert(new_id, stack_list_id);
+        let mut swapped_visible_member = false;
+        if let Some(list) = self.stack_lists.get_mut(&stack_list_id) {
+            for member in list.members.iter_mut() {
+                if *member == old_id {
+                    *member = new_id;
+                }
+            }
+            if list.visible == old_id {
+                list.visible = new_id;
+                swapped_visible_member = true;
+            }
+        }
+        {
+            let mut reserved = self.reserved_top_rows.borrow_mut();
+            if let Some(reserved_rows) = reserved.remove(&old_id) {
+                reserved.insert(new_id, reserved_rows);
+            }
+        }
+        if swapped_visible_member {
+            self.tiled_panes.reapply_pane_frames();
+            self.resize_stack_list_hidden_members(stack_list_id);
+            self.set_force_render();
             self.set_should_clear_display_before_rendering();
         }
-        true
     }
     fn dissolve_stack_list(&mut self, stack_list_id: StackListId) {
         if let Some(list) = self.stack_lists.remove(&stack_list_id) {
@@ -1326,28 +1368,24 @@ impl Tab {
         }
         if converted_any {
             self.tiled_panes.reapply_pane_frames();
-            self.force_render_stack_list_members();
+            self.set_force_render();
             self.set_should_clear_display_before_rendering();
         }
     }
-    fn force_render_stack_list_members(&mut self) {
-        self.set_force_render();
-        let member_ids: Vec<PaneId> = self.stack_list_of_member.keys().copied().collect();
-        for member in member_ids {
-            if let Some((_is_scrollback_editor, pane)) = self.suppressed_panes.get_mut(&member) {
-                pane.set_should_render(true);
-                pane.render_full_viewport();
-            }
+    fn resize_all_stack_list_hidden_members(&mut self) {
+        let ids: Vec<StackListId> = self.stack_lists.keys().copied().collect();
+        for id in ids {
+            self.resize_stack_list_hidden_members(id);
         }
     }
     fn resize_stack_list_hidden_members(&mut self, stack_list_id: StackListId) {
-        let (visible_geom, member_count, hidden_members) = {
+        let (visible_geom, visible_offset, hidden_members) = {
             let list = match self.stack_lists.get(&stack_list_id) {
                 Some(l) => l,
                 None => return,
             };
-            let geom = match self.tiled_panes.get_pane(list.visible) {
-                Some(p) => p.position_and_size(),
+            let (geom, offset) = match self.tiled_panes.get_pane(list.visible) {
+                Some(p) => (p.position_and_size(), p.get_content_offset()),
                 None => return,
             };
             let hidden: Vec<PaneId> = list
@@ -1356,12 +1394,12 @@ impl Tab {
                 .copied()
                 .filter(|m| *m != list.visible)
                 .collect();
-            (geom, list.members.len(), hidden)
+            (geom, offset, hidden)
         };
         for member in hidden_members {
             if let Some((_is_scrollback_editor, pane)) = self.suppressed_panes.get_mut(&member) {
                 pane.set_geom(visible_geom);
-                pane.set_content_offset(Tab::stack_list_visible_content_offset(member_count));
+                pane.set_content_offset(visible_offset);
                 let _ = resize_pty!(pane, self.os_api, self.senders, self.character_cell_size);
             }
         }
@@ -1705,6 +1743,9 @@ impl Tab {
     fn relayout_tiled_panes(&mut self, search_backwards: bool) -> Result<()> {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
+        }
+        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+            self.degroupify_all();
         }
         if let Some(layout_candidate) = self
             .swap_layouts
@@ -2101,7 +2142,9 @@ impl Tab {
                 }
             }
         } else if let Some(focused_pane_id) = self.tiled_panes.focused_pane_id(client_id) {
-            if self.get_selectable_tiled_panes().count() <= 1 {
+            if self.get_selectable_tiled_panes().count() <= 1
+                && !self.pane_is_stack_list_member(&focused_pane_id)
+            {
                 // don't close the only pane on screen...
                 return Ok(());
             }
@@ -2143,13 +2186,19 @@ impl Tab {
                 self.add_tiled_pane(floating_pane_to_embed, pane_id, false, client_id)?;
             }
         } else if self.tiled_panes.panes_contain(&pane_id) {
-            if self.get_selectable_tiled_panes().count() <= 1 {
+            if self.get_selectable_tiled_panes().count() <= 1
+                && !self.pane_is_stack_list_member(&pane_id)
+            {
                 log::error!("Cannot float the last tiled pane...");
                 // don't close the only pane on screen...
                 return Ok(());
             }
             if let Some(embedded_pane_to_float) = self.extract_pane(pane_id, true) {
                 self.add_floating_pane(embedded_pane_to_float, pane_id, None, true, client_id)?;
+            }
+        } else if self.pane_is_hidden_stack_list_member(&pane_id) {
+            if let Some(hidden_member_to_float) = self.extract_pane(pane_id, true) {
+                self.add_floating_pane(hidden_member_to_float, pane_id, None, true, client_id)?;
             }
         }
         Ok(())
@@ -2815,6 +2864,10 @@ impl Tab {
                 };
                 match replaced_pane {
                     Some(replaced_pane) => {
+                        self.track_stack_list_member_id_swap(
+                            replaced_pane.pid(),
+                            PaneId::Terminal(pid),
+                        );
                         self.insert_scrollback_editor_replaced_pane(replaced_pane, pid);
                         self.get_active_pane(client_id)
                             .with_context(|| format!("no active pane found for client {client_id}"))
@@ -2883,6 +2936,10 @@ impl Tab {
                             self.character_cell_size
                         )
                         .non_fatal();
+                        self.track_stack_list_member_id_swap(
+                            pane_id_to_replace,
+                            PaneId::Terminal(pid),
+                        );
                         self.insert_scrollback_editor_replaced_pane(replaced_pane, pid);
                     },
                     None => {
@@ -2946,6 +3003,12 @@ impl Tab {
                     self.tiled_panes
                         .replace_pane(old_pane_id, Box::new(new_pane))
                 };
+                if replaced_pane.is_some() {
+                    self.track_stack_list_member_id_swap(
+                        old_pane_id,
+                        PaneId::Terminal(new_pane_id),
+                    );
+                }
                 if close_replaced_pane {
                     if let Some(pid) = replaced_pane.as_ref().map(|p| p.pid()) {
                         self.senders
@@ -3016,6 +3079,9 @@ impl Tab {
                     self.tiled_panes
                         .replace_pane(old_pane_id, Box::new(new_pane))
                 };
+                if replaced_pane.is_some() {
+                    self.track_stack_list_member_id_swap(old_pane_id, PaneId::Plugin(plugin_pid));
+                }
                 if close_replaced_pane {
                     drop(replaced_pane);
                 } else {
@@ -3052,6 +3118,7 @@ impl Tab {
         pane_to_replace_with: Box<dyn Pane>,
         completion_tx: Option<NotificationEnd>,
     ) {
+        let replacement_pane_id = pane_to_replace_with.pid();
         let mut replaced_pane = if self.floating_panes.panes_contain(&pane_id_to_replace) {
             self.floating_panes
                 .replace_pane(pane_id_to_replace, pane_to_replace_with)
@@ -3060,6 +3127,9 @@ impl Tab {
             self.tiled_panes
                 .replace_pane(pane_id_to_replace, pane_to_replace_with)
         };
+        if replaced_pane.is_some() {
+            self.track_stack_list_member_id_swap(pane_id_to_replace, replacement_pane_id);
+        }
         if let Some(replaced_pane) = replaced_pane.take() {
             let pane_id = replaced_pane.pid();
             let _ = self
@@ -3660,7 +3730,13 @@ impl Tab {
         // returns true if a UI update should be triggered (eg. when closing a command pane with
         // ctrl-c)
         let mut should_trigger_ui_change = false;
-        let pane_ids = self.get_static_and_floating_pane_ids();
+        let mut pane_ids = self.get_static_and_floating_pane_ids();
+        pane_ids.extend(
+            self.stack_list_of_member
+                .keys()
+                .filter(|member| self.pane_is_hidden_stack_list_member(member))
+                .copied(),
+        );
         for pane_id in pane_ids {
             let ui_change_triggered = self
                 .write_to_pane_id(
@@ -3980,9 +4056,18 @@ impl Tab {
         if self.floating_panes.panes_are_visible() {
             return;
         }
+        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+            self.degroupify_all();
+        }
         self.tiled_panes.toggle_active_pane_fullscreen(client_id);
     }
     pub fn toggle_pane_fullscreen(&mut self, pane_id: PaneId) {
+        if self.pane_is_hidden_stack_list_member(&pane_id) {
+            self.make_hidden_stack_list_member_visible(pane_id);
+        }
+        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+            self.degroupify_all();
+        }
         if self.tiled_panes.panes_contain(&pane_id) {
             self.tiled_panes.toggle_pane_fullscreen(pane_id);
         } else {
@@ -4047,6 +4132,12 @@ impl Tab {
     pub fn set_force_render(&mut self) {
         self.tiled_panes.set_force_render();
         self.floating_panes.set_force_render();
+        for member in self.stack_list_of_member.keys() {
+            if let Some((_is_scrollback_editor, pane)) = self.suppressed_panes.get_mut(member) {
+                pane.set_should_render(true);
+                pane.render_full_viewport();
+            }
+        }
     }
     pub fn set_should_clear_display_before_rendering(&mut self) {
         self.should_clear_display_before_rendering = true;
@@ -4360,6 +4451,7 @@ impl Tab {
                 self.tiled_panes.toggle_pane_fullscreen(pane_id);
             }
         }
+        self.resize_all_stack_list_hidden_members();
         Ok(())
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
@@ -4560,6 +4652,9 @@ impl Tab {
             self.floating_panes
                 .move_active_pane(search_backwards, &mut self.os_api, client_id);
         } else {
+            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+                self.degroupify_all();
+            }
             self.tiled_panes
                 .move_active_pane(search_backwards, client_id);
         }
@@ -4575,6 +4670,9 @@ impl Tab {
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.move_pane(search_backwards, pane_id);
         } else {
+            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+                self.degroupify_all();
+            }
             self.tiled_panes.move_pane(search_backwards, pane_id);
         }
     }
@@ -4590,6 +4688,9 @@ impl Tab {
             self.floating_panes
                 .move_active_pane(search_backwards, &mut self.os_api, client_id);
         } else {
+            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+                self.degroupify_all();
+            }
             self.tiled_panes
                 .move_active_pane(search_backwards, client_id);
         }
@@ -4606,6 +4707,9 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
+            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+                self.degroupify_all();
+            }
             self.tiled_panes.move_active_pane_down(client_id);
         }
     }
@@ -4620,6 +4724,9 @@ impl Tab {
             }
             if self.tiled_panes.fullscreen_is_active() {
                 return;
+            }
+            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+                self.degroupify_all();
             }
             self.tiled_panes.move_pane_down(pane_id);
         }
@@ -4636,6 +4743,9 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
+            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+                self.degroupify_all();
+            }
             self.tiled_panes.move_active_pane_up(client_id);
         }
     }
@@ -4650,6 +4760,9 @@ impl Tab {
             }
             if self.tiled_panes.fullscreen_is_active() {
                 return;
+            }
+            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+                self.degroupify_all();
             }
             self.tiled_panes.move_pane_up(pane_id);
         }
@@ -4666,6 +4779,9 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
+            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+                self.degroupify_all();
+            }
             self.tiled_panes.move_active_pane_right(client_id);
         }
     }
@@ -4680,6 +4796,9 @@ impl Tab {
             }
             if self.tiled_panes.fullscreen_is_active() {
                 return;
+            }
+            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+                self.degroupify_all();
             }
             self.tiled_panes.move_pane_right(pane_id);
         }
@@ -4696,6 +4815,9 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
+            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+                self.degroupify_all();
+            }
             self.tiled_panes.move_active_pane_left(client_id);
         }
     }
@@ -4711,11 +4833,17 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
+            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+                self.degroupify_all();
+            }
             self.tiled_panes.move_pane_left(pane_id);
         }
     }
     fn close_down_to_max_terminals(&mut self) -> Result<()> {
         if let Some(max_panes) = self.max_panes {
+            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+                self.degroupify_all();
+            }
             let terminals = self.get_tiled_pane_ids();
             for &pid in terminals.iter().skip(max_panes - 1) {
                 self.senders
@@ -4831,7 +4959,15 @@ impl Tab {
         ignore_suppressed_panes: bool,
         exit_status: Option<i32>,
     ) {
-        if !ignore_suppressed_panes && self.pane_is_stack_list_member(&id) {
+        let id_parks_a_different_pane = self
+            .suppressed_panes
+            .get(&id)
+            .map(|(_, parked)| parked.pid() != id)
+            .unwrap_or(false);
+        if !ignore_suppressed_panes
+            && !id_parks_a_different_pane
+            && self.pane_is_stack_list_member(&id)
+        {
             if self.close_stack_list_member(id, exit_status) {
                 let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
                     None,
@@ -4891,6 +5027,7 @@ impl Tab {
                 // confusing
                 let _ = self.relayout_tiled_panes(false);
             }
+            self.resize_all_stack_list_hidden_members();
             closed_pane
         };
         if let Some(exit_status) = exit_status {
@@ -4915,6 +5052,21 @@ impl Tab {
         id: PaneId,
         dont_swap_if_suppressed: bool,
     ) -> Option<Box<dyn Pane>> {
+        let id_parks_a_different_pane = self
+            .suppressed_panes
+            .get(&id)
+            .map(|(_, parked)| parked.pid() != id)
+            .unwrap_or(false);
+        if self.pane_is_stack_list_member(&id)
+            && (dont_swap_if_suppressed || !id_parks_a_different_pane)
+        {
+            if let StackListRemoval::Removed(removed) = self.remove_stack_list_member(id) {
+                return removed.map(|mut pane| {
+                    pane.reset_logical_position();
+                    pane
+                });
+            }
+        }
         if !dont_swap_if_suppressed && self.suppressed_panes.contains_key(&id) {
             // this is done for the scrollback editor
             return match self.replace_pane_with_suppressed_pane(id) {
@@ -4969,6 +5121,7 @@ impl Tab {
                 // confusing
                 let _ = self.relayout_tiled_panes(false);
             }
+            self.resize_all_stack_list_hidden_members();
             // we do this so that the logical index will not affect ordering in the target tab
             if let Some(closed_pane) = closed_pane.as_mut() {
                 closed_pane.reset_logical_position();
@@ -5033,6 +5186,9 @@ impl Tab {
                 } else {
                     self.tiled_panes.replace_pane(pane_id, suppressed_pane)
                 };
+                if replaced_pane.is_some() {
+                    self.track_stack_list_member_id_swap(pane_id, suppressed_pane_id);
+                }
                 if let Some(suppressed_pane) = self
                     .floating_panes
                     .get_pane(suppressed_pane_id)
@@ -5256,6 +5412,7 @@ impl Tab {
         completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         if let PaneId::Terminal(_terminal_pane_id) = pane_id {
+            self.make_hidden_stack_list_member_visible(pane_id);
             let mut file = temp_dir();
             file.push(format!("{}.dump", Uuid::new_v4()));
             self.dump_terminal_screen(Some(String::from(file.to_string_lossy())), pane_id, true)
@@ -5280,6 +5437,7 @@ impl Tab {
         completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         if let PaneId::Terminal(_terminal_pane_id) = pane_id {
+            self.make_hidden_stack_list_member_visible(pane_id);
             let mut file = temp_dir();
             file.push(format!("{}.dump", Uuid::new_v4()));
             self.dump_with_ansi_terminal_screen(
@@ -6149,6 +6307,9 @@ impl Tab {
         client_id: ClientId,
     ) -> Result<()> {
         // TODO: should error if pane is not selectable
+        if self.focus_hidden_stack_list_member(pane_id, client_id) {
+            return Ok(());
+        }
         self.tiled_panes
             .focus_pane_if_exists(pane_id, client_id)
             .map(|_| self.hide_floating_panes())
@@ -6184,6 +6345,7 @@ impl Tab {
                             };
                             if let Some(replaced_pane) = replaced_pane {
                                 let is_scrollback_editor = false;
+                                self.track_stack_list_member_id_swap(replaced_pane.pid(), pane_id);
                                 self.insert_suppressed_pane(
                                     pane_id,
                                     (is_scrollback_editor, replaced_pane),
@@ -6202,6 +6364,10 @@ impl Tab {
             })
     }
     pub fn focus_suppressed_pane_for_all_clients(&mut self, pane_id: PaneId) {
+        if self.make_hidden_stack_list_member_visible(pane_id) {
+            self.tiled_panes.focus_pane_for_all_clients(pane_id);
+            return;
+        }
         match self.suppressed_panes.remove(&pane_id) {
             Some(pane) => {
                 self.show_floating_panes();
@@ -6223,8 +6389,23 @@ impl Tab {
             self.insert_suppressed_pane(pane_id, (false, pane));
         }
     }
+    fn make_hidden_stack_list_member_visible(&mut self, pane_id: PaneId) -> bool {
+        if !self.pane_is_hidden_stack_list_member(&pane_id) {
+            return false;
+        }
+        match self.stack_list_id_of_member(&pane_id) {
+            Some(stack_list_id) => {
+                self.select_stack_list_member(stack_list_id, pane_id, None);
+                true
+            },
+            None => false,
+        }
+    }
     pub fn unsuppress_pane(&mut self, pane_id: PaneId, should_float_if_hidden: bool) {
         // removes a pane from being suppressed (hidden) but does not focus it
+        if self.make_hidden_stack_list_member_visible(pane_id) {
+            return;
+        }
         match self
             .suppressed_panes
             .extract_if(|_key, (_, pane)| pane.pid() == pane_id)
@@ -6246,6 +6427,9 @@ impl Tab {
     }
     pub fn unsuppress_or_expand_pane(&mut self, pane_id: PaneId, should_float_if_hidden: bool) {
         // removes a pane from being suppressed (hidden) but does not focus it
+        if self.make_hidden_stack_list_member_visible(pane_id) {
+            return;
+        }
         match self
             .suppressed_panes
             .extract_if(|_key, (_, pane)| pane.pid() == pane_id)
@@ -6410,6 +6594,7 @@ impl Tab {
             } else {
                 self.tiled_panes.insert_pane(pane_id, pane, client_id);
             }
+            self.tiled_panes.reapply_pane_frames();
             self.set_should_clear_display_before_rendering();
             if let Some(client_id) = client_id {
                 self.tiled_panes.focus_pane(pane_id, client_id);
@@ -6657,7 +6842,10 @@ impl Tab {
         }
     }
     pub fn extract_suppressed_panes(&mut self) -> SuppressedPanes {
-        self.suppressed_panes.drain().collect()
+        let stack_list_members = &self.stack_list_of_member;
+        self.suppressed_panes
+            .extract_if(|key, _| !stack_list_members.contains_key(key))
+            .collect()
     }
     pub fn add_suppressed_panes(&mut self, mut suppressed_panes: SuppressedPanes) {
         for (pane_id, suppressed_pane_entry) in suppressed_panes.drain() {
@@ -6677,6 +6865,9 @@ impl Tab {
         }
     }
     pub fn has_room_for_stack(&mut self, root_pane_id: PaneId, stack_size: usize) -> bool {
+        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+            self.degroupify_all();
+        }
         if self.floating_panes.panes_contain(&root_pane_id)
             || self.suppressed_panes.contains_key(&root_pane_id)
         {
@@ -6702,6 +6893,9 @@ impl Tab {
         if panes_to_stack.is_empty() {
             // nothing to do
             return;
+        }
+        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+            self.degroupify_all();
         }
         self.swap_layouts.set_is_tiled_damaged(); // TODO: verify we can do all the below first
         if self.pane_is_stacked(root_pane_id) {
@@ -6985,6 +7179,12 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             return;
         }
+        if !self.floating_panes.panes_contain(&pane_id)
+            && self.stacked_pane_list_is_active()
+            && !self.stack_lists.is_empty()
+        {
+            self.degroupify_all();
+        }
         match direction {
             Some(Direction::Left) => {
                 if self.floating_panes.panes_contain(&pane_id) {
@@ -7043,6 +7243,9 @@ impl Tab {
         if self.floating_panes.panes_contain(&pane_id) {
             self.floating_panes.move_pane(search_backwards, pane_id);
         } else {
+            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
+                self.degroupify_all();
+            }
             self.tiled_panes.move_pane(search_backwards, pane_id);
         }
     }

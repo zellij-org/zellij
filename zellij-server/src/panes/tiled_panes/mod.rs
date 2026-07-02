@@ -576,7 +576,11 @@ impl TiledPanes {
                 .positions_and_sizes_of_all_stacks()
                 .unwrap_or_else(|| Default::default())
         };
-        let reserved_top_rows = { self.reserved_top_rows.borrow().clone() };
+        let reserved_top_rows = if self.fullscreen_is_active.is_some() {
+            HashMap::new()
+        } else {
+            self.reserved_top_rows.borrow().clone()
+        };
         for pane in self.panes.values_mut() {
             if !pane.borderless() {
                 pane.set_frame(draws_full_frames);
@@ -586,12 +590,24 @@ impl TiledPanes {
 
             #[allow(clippy::if_same_then_else)]
             if reserved_rows > 0 {
-                pane.set_content_offset(Offset {
-                    top: 1 + reserved_rows,
-                    bottom: 1,
-                    left: 1,
-                    right: 1,
-                });
+                if draws_full_frames && !pane.borderless() {
+                    pane.set_content_offset(Offset {
+                        top: 1 + reserved_rows,
+                        bottom: 1,
+                        left: 1,
+                        right: 1,
+                    });
+                } else {
+                    let position_and_size = pane.current_geom();
+                    let (pane_columns_offset, pane_rows_offset) =
+                        pane_content_offset(&position_and_size, &viewport);
+                    pane.set_content_offset(Offset {
+                        top: 1 + reserved_rows,
+                        bottom: pane_rows_offset,
+                        left: 0,
+                        right: pane_columns_offset,
+                    });
+                }
             } else if draws_full_frames && !pane.borderless() {
                 pane.set_content_offset(Offset::frame(1));
             } else if draws_full_frames && pane.borderless() {
@@ -1140,8 +1156,11 @@ impl TiledPanes {
                         && help_text_visible.get(client_id).copied().unwrap_or(false)
                 }) && selectable_pane_count > 1
                     && self.fullscreen_is_active.is_none();
-                let reserved_rows_for_pane =
-                    { self.reserved_top_rows.borrow().get(&pane.pid()).copied() }.unwrap_or(0);
+                let reserved_rows_for_pane = if self.fullscreen_is_active.is_some() {
+                    0
+                } else {
+                    { self.reserved_top_rows.borrow().get(&pane.pid()).copied() }.unwrap_or(0)
+                };
                 let visible_member_frame_override = if reserved_rows_for_pane > 0 {
                     let mut geom = pane.current_geom();
                     geom.y += reserved_rows_for_pane;

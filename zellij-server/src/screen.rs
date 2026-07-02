@@ -2026,6 +2026,9 @@ impl Screen {
                     .with_context(err_context)?;
             }
             destination_tab.set_force_render();
+            if destination_tab.has_stack_lists() {
+                destination_tab.set_should_clear_display_before_rendering();
+            }
             destination_tab.visible(true).with_context(err_context)?;
         }
         Ok(())
@@ -4609,12 +4612,13 @@ impl Screen {
     ) -> Result<()> {
         let err_context = || "failed break pane out of tab".to_string();
         let active_tab = self.get_active_tab_mut(client_id)?;
+        let active_pane_id = active_tab
+            .get_active_pane_id(client_id)
+            .with_context(err_context)?;
         if active_tab.get_selectable_tiled_panes_count() > 1
             || active_tab.get_visible_selectable_floating_panes_count() > 0
+            || active_tab.pane_is_stack_list_member(&active_pane_id)
         {
-            let active_pane_id = active_tab
-                .get_active_pane_id(client_id)
-                .with_context(err_context)?;
             let active_pane = active_tab
                 .extract_pane(active_pane_id, false)
                 .with_context(err_context)?;
@@ -4655,9 +4659,6 @@ impl Screen {
                 None,
             ))?;
         } else {
-            let active_pane_id = active_tab
-                .get_active_pane_id(client_id)
-                .with_context(err_context)?;
             self.bus
                 .senders
                 .send_to_background_jobs(BackgroundJob::DisplayPaneError(
@@ -6085,6 +6086,11 @@ fn find_already_running_panes(
     let running_tiled_instructions: Vec<Option<Run>> = active_tab
         .get_tiled_panes()
         .map(|(_, pane)| pane.invoked_with().clone())
+        .chain(
+            active_tab
+                .suppressed_stack_list_members()
+                .map(|(_, pane)| pane.invoked_with().clone()),
+        )
         .collect();
 
     let mut tiled_to_ignore = Vec::new();
