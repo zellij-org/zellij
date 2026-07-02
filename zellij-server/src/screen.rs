@@ -4845,7 +4845,7 @@ impl Screen {
             return Ok(());
         }
         let screen_size = self.size;
-        if let Some(new_active_tab) = self.get_indexed_tab_mut(tab_index) {
+        if let Some(new_active_tab) = self.get_tab_by_position_mut(tab_index) {
             for (pane_was_floating, mut pane) in extracted_panes {
                 let pane_id = pane.pid();
                 if pane_was_floating {
