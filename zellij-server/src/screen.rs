@@ -9112,32 +9112,32 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 mut completion_tx,
             } => {
-                // Verify tab exists
-                if screen.get_tab_by_id(tab_id).is_none() {
-                    log::error!("Tab with ID {} not found", tab_id);
+                match screen.get_tab_position_by_id(tab_id) {
+                    Some(position) => {
+                        // The helper takes a display position, not a tab id
+                        screen.break_multiple_panes_to_tab_with_index(
+                            pane_ids,
+                            position,
+                            should_change_focus_to_target_tab,
+                            client_id,
+                        )?;
+                        // Set affected tab ID (tab_id is the ID here)
+                        completion_tx
+                            .as_mut()
+                            .map(|c| c.set_affected_tab_id(tab_id));
+                        let pane_group = screen.get_client_pane_group(&client_id);
+                        if !pane_group.is_empty() {
+                            let _ = screen.bus.senders.send_to_background_jobs(
+                                BackgroundJob::HighlightPanesWithMessage(
+                                    pane_group.iter().copied().collect(),
+                                    "BROKEN OUT".to_owned(),
+                                ),
+                            );
+                        }
+                        screen.clear_pane_group(&client_id);
+                    },
                     // Don't set affected_tab_id, it will remain None to signal failure
-                } else {
-                    // break_multiple_panes_to_tab_with_index uses tab ID
-                    screen.break_multiple_panes_to_tab_with_index(
-                        pane_ids,
-                        tab_id,
-                        should_change_focus_to_target_tab,
-                        client_id,
-                    )?;
-                    // Set affected tab ID (tab_id is the ID here)
-                    completion_tx
-                        .as_mut()
-                        .map(|c| c.set_affected_tab_id(tab_id));
-                    let pane_group = screen.get_client_pane_group(&client_id);
-                    if !pane_group.is_empty() {
-                        let _ = screen.bus.senders.send_to_background_jobs(
-                            BackgroundJob::HighlightPanesWithMessage(
-                                pane_group.iter().copied().collect(),
-                                "BROKEN OUT".to_owned(),
-                            ),
-                        );
-                    }
-                    screen.clear_pane_group(&client_id);
+                    None => log::error!("Tab with ID {} not found", tab_id),
                 }
             },
             ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission) => {
