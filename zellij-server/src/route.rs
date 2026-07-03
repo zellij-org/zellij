@@ -2585,10 +2585,12 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::FirstClientConnected {
                             cli_assets,
                             is_web_client,
+                            window_size,
                         } => {
                             let new_client_instruction = ServerInstruction::FirstClientConnected(
                                 cli_assets,
                                 is_web_client,
+                                window_size,
                                 client_id,
                             );
                             to_server
@@ -2600,6 +2602,7 @@ pub(crate) fn route_thread_main(
                             tab_position_to_focus,
                             pane_to_focus: pane_id_to_focus,
                             is_web_client,
+                            window_size,
                         } => {
                             let allow_web_connections = session_data
                                 .read()
@@ -2615,6 +2618,7 @@ pub(crate) fn route_thread_main(
                                     tab_position_to_focus,
                                     pane_id_to_focus.map(|p| (p.pane_id, p.is_plugin)),
                                     is_web_client,
+                                    window_size,
                                     client_id,
                                 );
                                 to_server

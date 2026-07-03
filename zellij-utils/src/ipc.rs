@@ -2,7 +2,7 @@
 use crate::{
     data::{ClientId, ConnectToSession, HostTerminalThemeMode, KeyWithModifier, PaneId, Style},
     errors::{prelude::*, ErrorContext},
-    input::{actions::Action, cli_assets::CliAssets},
+    input::{actions::Action, cli_assets::CliAssets, options::WindowSize},
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::Stream as LocalSocketStream;
@@ -127,12 +127,18 @@ pub enum ClientToServerMsg {
     FirstClientConnected {
         cli_assets: CliAssets,
         is_web_client: bool,
+        // per-attach window_size override for the session-creating client
+        // (None => use the configured window_size)
+        window_size: Option<WindowSize>,
     },
     AttachClient {
         cli_assets: CliAssets,
         tab_position_to_focus: Option<usize>,
         pane_to_focus: Option<PaneReference>,
         is_web_client: bool,
+        // per-attach override for how the session is sized (smallest/largest/latest);
+        // None falls back to the configured window_size
+        window_size: Option<WindowSize>,
     },
     AttachWatcherClient {
         terminal_size: Size,

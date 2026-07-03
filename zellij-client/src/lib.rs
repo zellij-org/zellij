@@ -155,7 +155,11 @@ use zellij_utils::{
     data::{ClientId, ConnectToSession, KeyWithModifier, LayoutInfo, LayoutMetadata},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{cli_assets::CliAssets, config::Config, options::Options},
+    input::{
+        cli_assets::CliAssets,
+        config::Config,
+        options::{Options, WindowSize},
+    },
     ipc::{ClientToServerMsg, ExitReason, ResizeCause, ServerToClientMsg},
     nested_session,
     pane_size::Size,
@@ -912,6 +916,7 @@ pub fn start_client(
     info: ClientInfo,
     tab_position_to_focus: Option<usize>,
     pane_id_to_focus: Option<(u32, bool)>, // (pane_id, is_plugin)
+    window_size: Option<WindowSize>,       // per-attach window_size override (None => use config)
     is_a_reconnect: bool,
     start_detached_and_exit: bool,
 ) -> Option<ConnectToSession> {
@@ -1019,6 +1024,7 @@ pub fn start_client(
                         zellij_utils::ipc::PaneReference { pane_id, is_plugin }
                     }),
                     is_web_client,
+                    window_size,
                 },
                 ipc_pipe,
             )
@@ -1075,6 +1081,7 @@ pub fn start_client(
                 ClientToServerMsg::FirstClientConnected {
                     cli_assets,
                     is_web_client,
+                    window_size,
                 },
                 ipc_pipe,
             )
@@ -1131,6 +1138,7 @@ pub fn start_client(
                 ClientToServerMsg::FirstClientConnected {
                     cli_assets,
                     is_web_client,
+                    window_size,
                 },
                 ipc_pipe,
             )
@@ -1527,6 +1535,8 @@ pub fn start_server_detached(
     config.env.set_vars();
 
     let should_start_web_server = config_options.web_server.map(|w| w).unwrap_or(false);
+    // detached server start: no attaching client, so use the configured window_size
+    let window_size: Option<WindowSize> = None;
 
     let (first_msg, ipc_pipe) = match info {
         ClientInfo::Resurrect(name, path_to_layout, force_run_commands, cwd) => {
@@ -1568,6 +1578,7 @@ pub fn start_server_detached(
                 ClientToServerMsg::FirstClientConnected {
                     cli_assets,
                     is_web_client,
+                    window_size,
                 },
                 ipc_pipe,
             )
@@ -1624,6 +1635,7 @@ pub fn start_server_detached(
                 ClientToServerMsg::FirstClientConnected {
                     cli_assets,
                     is_web_client,
+                    window_size,
                 },
                 ipc_pipe,
             )

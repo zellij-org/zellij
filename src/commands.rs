@@ -664,6 +664,9 @@ pub(crate) fn start_client(opts: CliArgs) {
                     forget: false,
                     ca_cert: None,
                     insecure: false,
+                    // The server persists the window_size mode for the session, so a
+                    // reconnect need not re-assert it.
+                    window_size: None,
                 }));
             } else {
                 opts.command = None;
@@ -698,6 +701,7 @@ pub(crate) fn start_client(opts: CliArgs) {
             forget,
             ca_cert,
             insecure,
+            window_size,
         })) = opts.command.clone()
         {
             if let Some(remote_session_url) = session_name.as_ref().and_then(|s| {
@@ -815,6 +819,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     client,
                     tab_position_to_focus,
                     pane_id_to_focus,
+                    window_size,
                     is_a_reconnect,
                     should_create_detached,
                 );
@@ -830,6 +835,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     ClientInfo::New(session_name, layout_info, new_session_cwd),
                     None,
                     None,
+                    None, // window_size (new session takes the creating client's size anyway)
                     is_a_reconnect,
                     should_create_detached,
                 );
@@ -863,6 +869,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 client,
                                 None,
                                 None,
+                                None, // window_size (config-driven auto-attach uses the configured value)
                                 is_a_reconnect,
                                 should_create_detached,
                             );
@@ -877,6 +884,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 ClientInfo::New(session_name.clone(), layout_info, new_session_cwd),
                                 None,
                                 None,
+                                None, // window_size (new session takes the creating client's size anyway)
                                 is_a_reconnect,
                                 should_create_detached,
                             );
@@ -900,6 +908,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     ClientInfo::New(session_name, layout_info, new_session_cwd),
                     None,
                     None,
+                    None, // window_size (new session takes the creating client's size anyway)
                     is_a_reconnect,
                     should_create_detached,
                 );
@@ -1007,6 +1016,7 @@ pub(crate) fn watch_session(session_name: Option<String>, opts: CliArgs) {
         client_info,
         None,  // tab_position_to_focus
         None,  // pane_id_to_focus
+        None,  // window_size
         false, // is_a_reconnect
         false, // should_create_detached
     );

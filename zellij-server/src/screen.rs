@@ -53,7 +53,7 @@ use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::{shortcut_for_action, Keybinds};
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::options::{
-    Clipboard, MobileLayoutConfiguration, NestedSessionHandling, PaneFrameStyle,
+    Clipboard, MobileLayoutConfiguration, NestedSessionHandling, PaneFrameStyle, WindowSize,
 };
 use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
@@ -590,6 +590,7 @@ pub enum ScreenInstruction {
         Size,                // client viewport size
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
+        Option<WindowSize>,  // per-attach window_size override (None => keep session's)
     ),
     RemoveClient(ClientId),
     SuppressRenderUntilMobile(ClientId),
@@ -1493,6 +1494,11 @@ pub(crate) struct Screen {
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_ids: BTreeMap<ClientId, usize>,
     client_sizes: HashMap<ClientId, Size>,
+    // tmux `window-size` parity; sticky for the session
+    window_size: WindowSize,
+    // drives tab sizing under `window_size` latest. Distinct from lib.rs's Key-only
+    // `last_active_client`: this tracks broader activity (attach/resize/mouse, not hover).
+    last_interacting_client: Option<ClientId>,
     global_last_active_tab_id: usize,
     tab_history: BTreeMap<ClientId, Vec<usize>>,
     pane_history: BTreeMap<ClientId, Vec<PaneId>>,
@@ -1671,6 +1677,8 @@ impl Screen {
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
             active_tab_ids: BTreeMap::new(),
             client_sizes: HashMap::new(),
+            window_size: WindowSize::default(),
+            last_interacting_client: None,
             global_last_active_tab_id: 0,
             tabs: BTreeMap::new(),
             last_single_pane_tab_names: HashMap::new(),
@@ -2496,6 +2504,22 @@ impl Screen {
         self.client_sizes.insert(client_id, size);
     }
 
+    // Mark a client active; under `window_size` latest, refit its tab to its viewport.
+    // Cheap to call on every input event (no-op if already active).
+    pub fn mark_client_active(&mut self, client_id: ClientId) -> Result<()> {
+        if self.last_interacting_client == Some(client_id) {
+            return Ok(());
+        }
+        self.last_interacting_client = Some(client_id);
+        if self.window_size == WindowSize::Latest {
+            if let Some(tab_id) = self.active_tab_ids.get(&client_id).copied() {
+                self.recompute_tab_size(tab_id)?;
+            }
+        }
+        self.generate_and_report_tab_state()?; // refresh the active-client indicator
+        Ok(())
+    }
+
     pub fn recompute_tab_size(&mut self, tab_id: usize) -> Result<()> {
         let err_context = || format!("failed to recompute size for tab {tab_id}");
 
@@ -2519,6 +2543,27 @@ impl Screen {
             return Ok(());
         }
 
+        // Latest: size to the most-recently-active client viewing this tab; falls
+        // through to smallest/largest below if that client is gone.
+        if self.window_size == WindowSize::Latest {
+            if let Some(active) = self.last_interacting_client {
+                if self.active_tab_ids.get(&active) == Some(&tab_id) {
+                    if let Some(&new_size) = self.client_sizes.get(&active) {
+                        if let Some(tab) = self.tabs.get_mut(&tab_id) {
+                            if tab.size != new_size {
+                                tab.resize_whole_tab(new_size).with_context(err_context)?;
+                                // clear so a smaller client doesn't keep stale rows
+                                tab.set_should_clear_display_before_rendering();
+                                tab.set_force_render();
+                            }
+                        }
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        // Smallest / Largest: min/max viewport per axis across clients on this tab.
         let mut rows: Vec<usize> = Vec::new();
         let mut cols: Vec<usize> = Vec::new();
         for (client_id, active_tab) in self.active_tab_ids.iter() {
@@ -2534,13 +2579,20 @@ impl Screen {
         }
         rows.sort_unstable();
         cols.sort_unstable();
+        let idx = if self.window_size == WindowSize::Largest {
+            rows.len() - 1
+        } else {
+            0
+        };
         let new_size = Size {
-            rows: rows[0],
-            cols: cols[0],
+            rows: rows[idx],
+            cols: cols[idx],
         };
         if let Some(tab) = self.tabs.get_mut(&tab_id) {
             if tab.size != new_size {
                 tab.resize_whole_tab(new_size).with_context(err_context)?;
+                // clear so a smaller client (under `largest`) doesn't keep stale rows
+                tab.set_should_clear_display_before_rendering();
                 tab.set_force_render();
             }
         }
@@ -4042,7 +4094,42 @@ impl Screen {
             }
 
             if non_watcher_output_was_dirty || has_bell {
-                let mut serialized_output = output.serialize().context(err_context)?;
+                // A client smaller than the grid garbles the shared render, so crop it
+                // through the watcher path; larger/equal clients keep the plain path.
+                let undersized: Vec<(ClientId, Size)> = {
+                    let connected = self.connected_clients.borrow();
+                    connected
+                        .keys()
+                        .filter(|id| !self.watcher_clients.contains_key(id))
+                        .filter_map(|id| {
+                            let client_size = *self.client_sizes.get(id)?;
+                            let tab_id = *self.active_tab_ids.get(id)?;
+                            let grid_size = self.tabs.get(&tab_id)?.size;
+                            let needs_crop = client_size.cols < grid_size.cols
+                                || client_size.rows < grid_size.rows;
+                            needs_crop.then_some((*id, grid_size))
+                        })
+                        .collect()
+                };
+                let mut serialized_output = if undersized.is_empty() {
+                    output.serialize().context(err_context)?
+                } else {
+                    // crop each undersized client from a clone, override the base render
+                    let mut overrides: HashMap<ClientId, String> = HashMap::new();
+                    for (client_id, grid_size) in &undersized {
+                        let client_size = self.client_sizes.get(client_id).copied();
+                        let mut per_client = output.clone();
+                        let mut sized = per_client
+                            .serialize_with_size(client_size, Some(*grid_size))
+                            .context(err_context)?;
+                        if let Some(rendered) = sized.remove(client_id) {
+                            overrides.insert(*client_id, rendered);
+                        }
+                    }
+                    let mut base = output.serialize().context(err_context)?;
+                    base.extend(overrides);
+                    base
+                };
                 self.mobile_render_gate
                     .blank_gated_clients(&mut serialized_output);
                 if !serialized_output.is_empty() {
@@ -4713,6 +4800,10 @@ impl Screen {
         self.connected_clients.borrow_mut().remove(&client_id);
         self.client_sizes.remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
+        // if the `latest` driver left, drop the stale pointer so recompute falls back
+        if self.last_interacting_client == Some(client_id) {
+            self.last_interacting_client = None;
+        }
         if let Some(prev_tab_id) = previously_active_tab_id {
             self.recompute_tab_size(prev_tab_id)
                 .with_context(err_context)?;
@@ -4809,6 +4900,7 @@ impl Screen {
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
                 is_flashing_bell: tab.tab_bell_flash
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
+                is_active_client: false,
             };
             tab_infos_for_screen_state.insert(tab.position, tab_info_for_screen);
         }
@@ -4866,6 +4958,8 @@ impl Screen {
                     tab_id: tab.id,
                     has_bell_notification: tab.tab_has_pending_bell && *active_tab_index != tab.id,
                     is_flashing_bell: tab.tab_bell_flash && *active_tab_index != tab.id,
+                    is_active_client: self.window_size == WindowSize::Latest
+                        && self.last_interacting_client == Some(*client_id),
                 };
                 plugin_tab_updates.push(tab_info_for_plugins);
             }
@@ -6917,6 +7011,7 @@ impl Screen {
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
                 is_flashing_bell: tab.tab_bell_flash
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
+                is_active_client: false,
             }
         })
     }
@@ -7435,6 +7530,7 @@ pub(crate) fn screen_thread_main(
     );
     screen.host_theme_dark_styling = host_theme_dark_styling;
     screen.host_theme_light_styling = host_theme_light_styling;
+    screen.window_size = config_options.window_size.unwrap_or_default();
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
     let mut pending_tab_switches: HashSet<(usize, ClientId)> = HashSet::new(); // usize is the
@@ -7796,6 +7892,8 @@ pub(crate) fn screen_thread_main(
                         continue;
                     }
                 }
+                // Typing makes this device the active one (for `window_size latest`).
+                screen.mark_client_active(client_id)?;
                 let mut state_changed = false;
                 let client_input_mode = screen.get_client_input_mode(client_id);
                 match client_input_mode {
@@ -9203,6 +9301,8 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::RecomputeTabSize(client_id, new_size) => {
                 screen.set_client_size(client_id, new_size);
+                // A resizing client becomes the active one for `window_size latest`.
+                screen.last_interacting_client = Some(client_id);
                 let active_tab_id = screen.active_tab_ids.get(&client_id).copied();
                 if let Some(tab_id) = active_tab_id {
                     screen.recompute_tab_size(tab_id)?;
@@ -9320,6 +9420,19 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                // Interaction marks the client active (`window_size` latest), but bare
+                // hover motion doesn't count -- otherwise sweeping the mouse across two
+                // differently-sized clients would refit on every motion event and tear.
+                // Click/drag/scroll begin with a Press, which still marks it active.
+                let is_bare_motion = event.event_type == MouseEventType::Motion
+                    && !event.left
+                    && !event.right
+                    && !event.middle
+                    && !event.wheel_up
+                    && !event.wheel_down;
+                if !is_bare_motion {
+                    screen.mark_client_active(client_id)?;
+                }
                 screen.handle_mouse_event(event, client_id);
             },
             ScreenInstruction::Copy(
@@ -9348,8 +9461,14 @@ pub(crate) fn screen_thread_main(
                 client_size,
                 tab_position_to_focus,
                 pane_id_to_focus,
+                window_size,
             ) => {
                 screen.set_client_size(client_id, client_size);
+                // set both before `add_client` (which recomputes tab sizes)
+                if let Some(window_size) = window_size {
+                    screen.window_size = window_size;
+                }
+                screen.last_interacting_client = Some(client_id);
                 screen.add_client(client_id, is_web_client)?;
                 let pane_id = pane_id_to_focus.map(|(pane_id, is_plugin)| {
                     if is_plugin {

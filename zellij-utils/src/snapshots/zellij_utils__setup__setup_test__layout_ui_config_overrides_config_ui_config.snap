@@ -6065,6 +6065,7 @@ Config {
         stacked_pane_list: None,
         show_startup_tips: None,
         show_release_notes: None,
+        window_size: None,
         advanced_mouse_actions: None,
         mouse_scroll_resize: None,
         mouse_hover_effects: None,

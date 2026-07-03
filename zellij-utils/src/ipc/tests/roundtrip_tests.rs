@@ -15,7 +15,7 @@ use crate::input::layout::{
 use crate::input::mouse::{MouseEvent, MouseEventType};
 use crate::input::options::{
     Clipboard, MobileLayoutConfiguration, NestedSessionHandling, OnForceClose, Options,
-    PaneFrameStyle,
+    PaneFrameStyle, WindowSize,
 };
 use crate::ipc::{
     ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ResizeCause,
@@ -401,10 +401,17 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets::default(),
         is_web_client: false,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets::default(),
         is_web_client: true,
+        window_size: None,
+    });
+    test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
+        cli_assets: CliAssets::default(),
+        is_web_client: false,
+        window_size: Some(WindowSize::Smallest),
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -421,6 +428,7 @@ fn test_client_messages() {
             cwd: Some(PathBuf::from("/path/to/cwd")),
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -437,6 +445,7 @@ fn test_client_messages() {
             cwd: Some(PathBuf::from("/path/to/cwd")),
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -481,6 +490,7 @@ fn test_client_messages() {
                 stacked_pane_list: Some(true),
                 show_startup_tips: Some(true),
                 show_release_notes: Some(true),
+                window_size: Some(WindowSize::Latest),
                 advanced_mouse_actions: Some(true),
                 mouse_scroll_resize: Some(true),
                 web_server_ip: Some("1.1.1.1".parse().unwrap()),
@@ -508,6 +518,7 @@ fn test_client_messages() {
             cwd: Some(PathBuf::from("/path/to/cwd")),
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -518,6 +529,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -528,6 +540,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -538,6 +551,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -548,6 +562,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -558,6 +573,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -568,6 +584,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -578,6 +595,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -588,6 +606,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -598,6 +617,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -608,6 +628,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -618,6 +639,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -628,6 +650,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -638,6 +661,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -648,6 +672,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -658,6 +683,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -668,6 +694,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -678,6 +705,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -688,6 +716,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -698,6 +727,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -708,6 +738,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -718,6 +749,7 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets {
@@ -728,18 +760,21 @@ fn test_client_messages() {
             ..Default::default()
         },
         is_web_client: true,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::AttachClient {
         cli_assets: CliAssets::default(),
         tab_position_to_focus: None,
         pane_to_focus: None,
         is_web_client: false,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::AttachClient {
         cli_assets: CliAssets::default(),
         tab_position_to_focus: Some(0),
         pane_to_focus: None,
         is_web_client: false,
+        window_size: Some(WindowSize::Latest),
     });
     test_client_roundtrip!(ClientToServerMsg::AttachClient {
         cli_assets: CliAssets::default(),
@@ -749,6 +784,7 @@ fn test_client_messages() {
             is_plugin: false,
         }),
         is_web_client: false,
+        window_size: None,
     });
     test_client_roundtrip!(ClientToServerMsg::AttachClient {
         cli_assets: CliAssets::default(),
@@ -758,6 +794,7 @@ fn test_client_messages() {
             is_plugin: true,
         }),
         is_web_client: true,
+        window_size: Some(WindowSize::Latest),
     });
     test_client_roundtrip!(ClientToServerMsg::AttachClient {
         cli_assets: CliAssets {
@@ -770,6 +807,7 @@ fn test_client_messages() {
         tab_position_to_focus: None,
         pane_to_focus: None,
         is_web_client: false,
+        window_size: None,
     });
     // TODO: Action
     test_client_roundtrip!(ClientToServerMsg::Action {

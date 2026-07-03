@@ -64,6 +64,7 @@ enum ResizeCause {
 message FirstClientConnectedMsg {
   CliAssets cli_assets = 1;
   bool is_web_client = 2;
+  optional string window_size = 3;
 }
 
 message AttachClientMsg {
@@ -71,6 +72,7 @@ message AttachClientMsg {
   optional uint32 tab_position_to_focus = 2;
   optional PaneReference pane_to_focus = 3;
   bool is_web_client = 4;
+  optional string window_size = 5;
 }
 
 message AttachWatcherClientMsg {
