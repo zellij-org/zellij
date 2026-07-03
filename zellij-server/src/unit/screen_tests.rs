@@ -306,6 +306,7 @@ fn create_new_screen(
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
+        false,
         None,
         false,
         web_sharing,
@@ -695,6 +696,7 @@ impl MockScreen {
         let config_options = Options::default();
         let mut config = Config::default();
         config.options.pane_frame_style = Some(PaneFrameStyle::Full);
+        config.options.stacked_pane_list = Some(false);
         let main_client_id = 1;
 
         std::thread::Builder::new()
@@ -5425,6 +5427,7 @@ fn create_new_screen_with_message_capture(
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
+        false,
         None,
         false,
         web_sharing,
@@ -8499,6 +8502,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
+        false,
         None,
         false,
         web_sharing,
@@ -9082,6 +9086,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         None,
         false,
         true,
+        false,
         None,
         false,
         web_sharing,
@@ -9561,6 +9566,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         None,  // layout_dir
         false, // explicitly_disable_kitty_keyboard_protocol
         true,  // stacked_resize
+        false,
         None,
         false,
         WebSharing::Off,

@@ -37,6 +37,7 @@ Options {
     web_server: None,
     web_sharing: None,
     stacked_resize: None,
+    stacked_pane_list: None,
     show_startup_tips: None,
     show_release_notes: None,
     advanced_mouse_actions: None,
