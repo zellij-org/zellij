@@ -2870,8 +2870,19 @@ impl Options {
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_click_through")
                 .map(|(v, _)| v);
         let mouse_scroll_lines =
-            kdl_property_first_arg_as_i64_or_error!(kdl_options, "mouse_scroll_lines")
-                .map(|(mouse_scroll_lines, _entry)| mouse_scroll_lines as usize);
+            match kdl_property_first_arg_as_i64_or_error!(kdl_options, "mouse_scroll_lines") {
+                Some((value, _)) if value >= 1 => Some(value as usize),
+                Some((value, entry)) => {
+                    return Err(kdl_parsing_error!(
+                        format!(
+                            "mouse_scroll_lines must be a positive integer, found '{}'",
+                            value
+                        ),
+                        entry
+                    ));
+                },
+                None => None,
+            };
         let mobile_layout =
             match kdl_property_first_arg_as_string_or_error!(kdl_options, "mobile_layout") {
                 Some((value, entry)) => {
