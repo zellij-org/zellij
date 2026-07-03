@@ -230,6 +230,7 @@ struct MouseEventContext {
     pinned_unselectable: Option<PaneId>,
     focus_follows_mouse: bool,
     mouse_click_through: bool,
+    mouse_scroll_lines: usize,
 }
 
 fn edge_and_delta_to_strategies(
@@ -405,6 +406,7 @@ impl MouseHandler {
             pinned_unselectable,
             focus_follows_mouse: tab.focus_follows_mouse,
             mouse_click_through: tab.mouse_click_through,
+            mouse_scroll_lines: tab.mouse_scroll_lines,
         })
     }
 
@@ -1287,10 +1289,16 @@ impl MouseHandler {
                     }
                 }
                 if event.wheel_up {
-                    return Ok(MouseAction::ScrollUp { pane_id, lines: 3 });
+                    return Ok(MouseAction::ScrollUp {
+                        pane_id,
+                        lines: ctx.mouse_scroll_lines,
+                    });
                 }
                 if event.wheel_down {
-                    return Ok(MouseAction::ScrollDown { pane_id, lines: 3 });
+                    return Ok(MouseAction::ScrollDown {
+                        pane_id,
+                        lines: ctx.mouse_scroll_lines,
+                    });
                 }
             }
             return Ok(MouseAction::NoAction);

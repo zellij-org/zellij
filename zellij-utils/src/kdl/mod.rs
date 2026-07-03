@@ -2869,6 +2869,9 @@ impl Options {
         let mouse_click_through =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_click_through")
                 .map(|(v, _)| v);
+        let mouse_scroll_lines =
+            kdl_property_first_arg_as_i64_or_error!(kdl_options, "mouse_scroll_lines")
+                .map(|(mouse_scroll_lines, _entry)| mouse_scroll_lines as usize);
         let mobile_layout =
             match kdl_property_first_arg_as_string_or_error!(kdl_options, "mobile_layout") {
                 Some((value, entry)) => {
@@ -2945,6 +2948,7 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            mouse_scroll_lines,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -4252,6 +4256,34 @@ impl Options {
             None
         }
     }
+    fn mouse_scroll_lines_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// How many lines to scroll for each mouse wheel scroll event",
+            "// Valid values: positive integers",
+            "// Default value: 3",
+        );
+
+        let create_node = |node_value: usize| -> KdlNode {
+            let mut node = KdlNode::new("mouse_scroll_lines");
+            node.push(KdlValue::Base10(node_value as i64));
+            node
+        };
+        if let Some(mouse_scroll_lines) = self.mouse_scroll_lines {
+            let mut node = create_node(mouse_scroll_lines);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(3);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn web_server_ip_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -4591,6 +4623,9 @@ impl Options {
         }
         if let Some(mouse_click_through) = self.mouse_click_through_to_kdl(add_comments) {
             nodes.push(mouse_click_through);
+        }
+        if let Some(mouse_scroll_lines) = self.mouse_scroll_lines_to_kdl(add_comments) {
+            nodes.push(mouse_scroll_lines);
         }
         if let Some(web_server_ip) = self.web_server_ip_to_kdl(add_comments) {
             nodes.push(web_server_ip);
@@ -7332,6 +7367,7 @@ fn config_options_to_string() {
         support_kitty_keyboard_protocol false
         web_server true
         web_sharing "disabled"
+        mouse_scroll_lines 5
         mobile_layout "always"
         mobile_threshold_cols 72
         mobile_threshold_rows 0
@@ -7382,6 +7418,7 @@ fn config_options_to_string_with_comments() {
         support_kitty_keyboard_protocol false
         web_server true
         web_sharing "disabled"
+        mouse_scroll_lines 5
         mobile_layout "always"
         mobile_threshold_cols 72
         mobile_threshold_rows 0

@@ -757,6 +757,7 @@ impl From<crate::input::options::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
+            mouse_scroll_lines: options.mouse_scroll_lines.map(|s| s as u32),
             mobile_layout: options.mobile_layout.map(|m| {
                 use crate::client_server_contract::client_server_contract::MobileLayout as ProtoMobileLayout;
                 use crate::input::options::MobileLayoutConfiguration;
@@ -876,6 +877,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
+            mouse_scroll_lines: options.mouse_scroll_lines.map(|s| s as usize),
             mobile_layout: options
                 .mobile_layout
                 .map(|m| match ProtoMobileLayout::from_i32(m) {

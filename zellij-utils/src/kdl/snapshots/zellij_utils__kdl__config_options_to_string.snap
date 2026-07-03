@@ -31,6 +31,8 @@ disable_session_metadata true
 support_kitty_keyboard_protocol false
 web_server true
 web_sharing "disabled"
+mouse_scroll_lines 5
 mobile_layout "always"
 mobile_threshold_cols 72
 mobile_threshold_rows 0
+
