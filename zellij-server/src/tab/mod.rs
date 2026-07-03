@@ -1008,6 +1008,76 @@ impl Tab {
             .filter(|(pane_id, _)| self.stack_list_of_member.contains_key(pane_id))
             .map(|(pane_id, (_, pane))| (pane_id, pane))
     }
+    pub fn stack_list_serialization_geoms(&self) -> HashMap<PaneId, PaneGeom> {
+        let mut synthetic_geoms = HashMap::new();
+        if self.stack_lists.is_empty() {
+            return synthetic_geoms;
+        }
+        let mut next_synthetic_stack_id = self
+            .tiled_panes
+            .get_panes()
+            .filter_map(|(_, pane)| pane.position_and_size().stacked)
+            .max()
+            .map(|highest_stack_id| highest_stack_id + 1)
+            .unwrap_or(0);
+        for list in self.stack_lists.values() {
+            let Some(visible_pane) = self.tiled_panes.get_pane(list.visible) else {
+                continue;
+            };
+            let full_rect = visible_pane.position_and_size();
+            let collapsed_member_count = list.members.len().saturating_sub(1);
+            let mut running_y = full_rect.y;
+            for member in &list.members {
+                let mut member_geom = full_rect;
+                member_geom.stacked = Some(next_synthetic_stack_id);
+                member_geom.y = running_y;
+                if *member == list.visible {
+                    member_geom.rows.set_inner(
+                        full_rect
+                            .rows
+                            .as_usize()
+                            .saturating_sub(collapsed_member_count),
+                    );
+                } else {
+                    member_geom.rows = Dimension::fixed(1);
+                    member_geom.logical_position = self
+                        .suppressed_panes
+                        .get(member)
+                        .and_then(|(_, pane)| pane.position_and_size().logical_position);
+                }
+                running_y += member_geom.rows.as_usize();
+                synthetic_geoms.insert(*member, member_geom);
+            }
+            next_synthetic_stack_id += 1;
+        }
+        synthetic_geoms
+    }
+    pub fn hidden_stack_list_members_for_serialization(
+        &self,
+    ) -> Vec<(PaneId, &Box<dyn Pane>, PaneGeom)> {
+        let synthetic_geoms = self.stack_list_serialization_geoms();
+        let mut hidden_members = vec![];
+        for list in self.stack_lists.values() {
+            for member in &list.members {
+                if *member == list.visible {
+                    continue;
+                }
+                let Some(member_geom) = synthetic_geoms.get(member) else {
+                    continue;
+                };
+                let resolved_pane = self
+                    .stack_list_parked_pairs
+                    .get(member)
+                    .and_then(|parked_pid| self.suppressed_panes.get(parked_pid))
+                    .filter(|(is_scrollback_editor, _)| *is_scrollback_editor)
+                    .or_else(|| self.suppressed_panes.get(member));
+                if let Some((_, pane)) = resolved_pane {
+                    hidden_members.push((pane.pid(), pane, *member_geom));
+                }
+            }
+        }
+        hidden_members
+    }
     fn stack_list_reserved_rows(member_count: usize) -> usize {
         member_count
     }

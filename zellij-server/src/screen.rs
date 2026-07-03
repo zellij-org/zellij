@@ -5538,6 +5538,7 @@ impl Screen {
                 );
             }
 
+            let stack_list_geoms = tab.stack_list_serialization_geoms();
             let tiled_panes: Vec<PaneLayoutMetadata> = tab
                 .get_tiled_panes()
                 .map(|(pane_id, p)| {
@@ -5547,13 +5548,26 @@ impl Screen {
                     // when dumping the layout we want the "real" pane and not the
                     // editor pane
                     match suppressed_panes.remove(pane_id) {
-                        Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => {
-                            (suppressed_pane.pid(), suppressed_pane)
-                        },
-                        _ => (*pane_id, p),
+                        Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => (
+                            suppressed_pane.pid(),
+                            suppressed_pane,
+                            stack_list_geoms
+                                .get(pane_id)
+                                .copied()
+                                .unwrap_or_else(|| suppressed_pane.position_and_size()),
+                        ),
+                        _ => (
+                            *pane_id,
+                            p,
+                            stack_list_geoms
+                                .get(pane_id)
+                                .copied()
+                                .unwrap_or_else(|| p.position_and_size()),
+                        ),
                     }
                 })
-                .map(|(pane_id, p)| {
+                .chain(tab.hidden_stack_list_members_for_serialization())
+                .map(|(pane_id, p, geom)| {
                     let focused_clients: Vec<ClientId> = active_pane_ids
                         .iter()
                         .filter_map(|(c_id, p_id)| {
@@ -5563,7 +5577,7 @@ impl Screen {
                     let (default_fg, default_bg) = p.get_pane_default_colors();
                     PaneLayoutMetadata::new(
                         pane_id,
-                        p.position_and_size(),
+                        geom,
                         p.borderless(),
                         p.invoked_with().clone(),
                         p.custom_title(),
