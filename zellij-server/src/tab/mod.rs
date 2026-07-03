@@ -1335,6 +1335,13 @@ impl Tab {
             self.degroupify(id);
         }
     }
+    pub fn sync_stacked_pane_list_mode(&mut self) {
+        if self.stacked_pane_list_is_active() {
+            self.groupify_all();
+        } else if self.has_stack_lists() {
+            self.degroupify_all();
+        }
+    }
     fn groupify_all(&mut self) {
         if self.tiled_panes.fullscreen_is_active() {
             return;

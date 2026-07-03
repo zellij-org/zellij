@@ -5091,6 +5091,7 @@ impl Screen {
             tab.update_mouse_hover_effects(mouse_hover_effects);
             tab.update_focus_follows_mouse(focus_follows_mouse);
             tab.update_mouse_click_through(mouse_click_through);
+            tab.sync_stacked_pane_list_mode();
         }
 
         // Clear hover state when disabled
