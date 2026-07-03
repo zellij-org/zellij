@@ -50,7 +50,7 @@ use crate::{
     panes::grid::namespace_notification_id,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
-    panes::{LinkHandler, PaneId, PluginPane, TerminalPane, EMPTY_TERMINAL_CHARACTER},
+    panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
@@ -1009,7 +1009,7 @@ impl Tab {
             .map(|(pane_id, (_, pane))| (pane_id, pane))
     }
     fn stack_list_reserved_rows(member_count: usize) -> usize {
-        member_count + 1
+        member_count
     }
     fn select_stack_list_member(
         &mut self,
@@ -1559,20 +1559,6 @@ impl Tab {
                         true,
                     )?;
                 }
-            }
-            let padding_width = rect.cols.as_usize().saturating_sub(2);
-            let padding_row = vec![EMPTY_TERMINAL_CHARACTER; padding_width];
-            let padding_row_y = rect.y + list.members.len();
-            for (client_id, _client_mode) in &client_modes {
-                output.add_character_chunks_to_client(
-                    *client_id,
-                    vec![CharacterChunk::new(
-                        padding_row.clone(),
-                        rect.x + 1,
-                        padding_row_y,
-                    )],
-                    None,
-                )?;
             }
         }
         Ok(())

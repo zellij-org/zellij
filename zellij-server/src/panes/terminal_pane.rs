@@ -422,7 +422,9 @@ impl Pane for TerminalPane {
         } else {
             self.pane_name.clone()
         };
-        let pane_title = if let Some(text_color_override) = self
+        let pane_title = if frame_params.blank_title {
+            String::new()
+        } else if let Some(text_color_override) = self
             .pane_frame_color_override
             .as_ref()
             .and_then(|(_color, text)| text.as_ref())

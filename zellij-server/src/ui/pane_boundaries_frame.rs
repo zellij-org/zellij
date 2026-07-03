@@ -99,6 +99,7 @@ pub struct FrameParams {
     pub stack_list_entry_width: Option<usize>,
     pub stack_list_entry_is_selected: bool,
     pub stack_list_entry_is_emphasized: bool,
+    pub blank_title: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -794,9 +795,9 @@ impl PaneFrame {
             self.color_override
         };
         if self.stack_list_entry_is_selected {
-            line.append(&mut foreground_color(left_bracket, self.color));
-            line.append(&mut foreground_color(&padded_content, content_color));
-            line.append(&mut foreground_color(right_bracket, self.color));
+            line.append(&mut foreground_color(left_bracket, self.color_override));
+            line.append(&mut foreground_color(&padded_content, self.color));
+            line.append(&mut foreground_color(right_bracket, self.color_override));
         } else {
             let unbracketed = format!("  {}  ", padded_content);
             if self.stack_list_entry_is_emphasized {

@@ -25,6 +25,7 @@ pub struct PaneContentsAndUi<'a> {
     frame_geom_override: Option<PaneGeom>,
     stack_list_entry_width: Option<usize>,
     stack_list_entry_is_selected: bool,
+    blank_title: bool,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -76,10 +77,14 @@ impl<'a> PaneContentsAndUi<'a> {
             frame_geom_override: None,
             stack_list_entry_width: None,
             stack_list_entry_is_selected: false,
+            blank_title: false,
         }
     }
     pub fn set_frame_geom_override(&mut self, frame_geom_override: Option<PaneGeom>) {
         self.frame_geom_override = frame_geom_override;
+    }
+    pub fn set_blank_title(&mut self, blank_title: bool) {
+        self.blank_title = blank_title;
     }
     pub fn set_stack_list_entry(
         &mut self,
@@ -297,6 +302,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 stack_list_entry_width: self.stack_list_entry_width,
                 stack_list_entry_is_selected: self.stack_list_entry_is_selected,
                 stack_list_entry_is_emphasized,
+                blank_title: self.blank_title,
             }
         } else {
             FrameParams {
@@ -323,6 +329,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 stack_list_entry_width: self.stack_list_entry_width,
                 stack_list_entry_is_selected: self.stack_list_entry_is_selected,
                 stack_list_entry_is_emphasized,
+                blank_title: self.blank_title,
             }
         };
 

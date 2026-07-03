@@ -1185,6 +1185,7 @@ impl TiledPanes {
                     omit_pane_title && reserved_rows_for_pane == 0,
                 );
                 pane_contents_and_ui.set_frame_geom_override(visible_member_frame_override);
+                pane_contents_and_ui.set_blank_title(reserved_rows_for_pane > 0);
                 for client_id in &connected_clients {
                     let client_mode = self
                         .mode_info
