@@ -32,6 +32,28 @@ fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
     colored_string
 }
 
+fn dimmed_foreground_color(
+    characters: &str,
+    color: Option<PaletteColor>,
+) -> Vec<TerminalCharacter> {
+    let mut colored_string = Vec::new();
+    for character in characters.chars() {
+        let mut styles = RcCharacterStyles::reset();
+        styles.update(|styles| {
+            styles.dim = Some(AnsiCode::On);
+            match color {
+                Some(palette_color) => {
+                    styles.foreground = Some(AnsiCode::from(palette_color));
+                },
+                None => {},
+            }
+        });
+        let terminal_character = TerminalCharacter::new_styled(character, styles);
+        colored_string.push(terminal_character);
+    }
+    colored_string
+}
+
 fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<TerminalCharacter> {
     let mut colored_string = Vec::new();
     for character in characters.chars() {
@@ -752,9 +774,19 @@ impl PaneFrame {
         let right_bracket = " ]";
         let entry_length = left_bracket.width() + padded_content.width() + right_bracket.width();
         let entry_start = usable_cols.saturating_sub(entry_length) / 2;
+        let selection_sign = "<↓↑> ";
+        let selection_sign_width =
+            if self.stack_list_entry_is_selected && entry_start >= selection_sign.width() {
+                selection_sign.width()
+            } else {
+                0
+            };
         let mut line = Vec::with_capacity(usable_cols);
-        for _ in 0..entry_start {
+        for _ in 0..entry_start.saturating_sub(selection_sign_width) {
             line.push(EMPTY_TERMINAL_CHARACTER);
+        }
+        if selection_sign_width > 0 {
+            line.append(&mut foreground_color(selection_sign, self.color));
         }
         let content_color = if self.stack_list_entry_is_emphasized {
             self.color
@@ -767,7 +799,11 @@ impl PaneFrame {
             line.append(&mut foreground_color(right_bracket, self.color));
         } else {
             let unbracketed = format!("  {}  ", padded_content);
-            line.append(&mut foreground_color(&unbracketed, content_color));
+            if self.stack_list_entry_is_emphasized {
+                line.append(&mut foreground_color(&unbracketed, content_color));
+            } else {
+                line.append(&mut dimmed_foreground_color(&unbracketed, content_color));
+            }
         }
         let mut occupied_columns = entry_start + entry_length;
         while occupied_columns < usable_cols {

@@ -1182,7 +1182,7 @@ impl TiledPanes {
                     &mouse_hover_pane_id,
                     current_pane_group.clone(),
                     show_help_text,
-                    omit_pane_title,
+                    omit_pane_title && reserved_rows_for_pane == 0,
                 );
                 pane_contents_and_ui.set_frame_geom_override(visible_member_frame_override);
                 for client_id in &connected_clients {
