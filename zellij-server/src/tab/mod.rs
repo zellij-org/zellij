@@ -4294,7 +4294,7 @@ impl Tab {
             hide_cursor,
         );
         if self.should_clear_display_before_rendering {
-            let clear_display = "\u{1b}[2J";
+            let clear_display = "\u{1b}[m\u{1b}[2J";
             output.add_pre_vte_instruction_to_multiple_clients(
                 connected_clients.iter().copied(),
                 clear_display,

@@ -601,8 +601,9 @@ impl TiledPanes {
                     let position_and_size = pane.current_geom();
                     let (pane_columns_offset, pane_rows_offset) =
                         pane_content_offset(&position_and_size, &viewport);
+                    let visible_member_title_rows = if draws_full_frames { 1 } else { 0 };
                     pane.set_content_offset(Offset {
-                        top: 1 + reserved_rows,
+                        top: visible_member_title_rows + reserved_rows,
                         bottom: pane_rows_offset,
                         left: 0,
                         right: pane_columns_offset,
@@ -1213,7 +1214,9 @@ impl TiledPanes {
                                 pane_is_selectable,
                             )
                             .with_context(err_context)?;
-                    } else if self.pane_frame_style.draws_titles() || pane_is_stacked {
+                    } else if (self.pane_frame_style.draws_titles() || pane_is_stacked)
+                        && reserved_rows_for_pane == 0
+                    {
                         pane_contents_and_ui
                             .render_pane_frame(
                                 *client_id,

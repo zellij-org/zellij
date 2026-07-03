@@ -782,8 +782,13 @@ impl PaneFrame {
             } else {
                 0
             };
+        let left_budget = entry_start.saturating_sub(selection_sign_width);
+        let (mut focus_part, focus_length) = self
+            .bracketed_focus_indicator(left_budget)
+            .unwrap_or((vec![], 0));
         let mut line = Vec::with_capacity(usable_cols);
-        for _ in 0..entry_start.saturating_sub(selection_sign_width) {
+        line.append(&mut focus_part);
+        for _ in focus_length..left_budget {
             line.push(EMPTY_TERMINAL_CHARACTER);
         }
         if selection_sign_width > 0 {
@@ -807,10 +812,22 @@ impl PaneFrame {
             }
         }
         let mut occupied_columns = entry_start + entry_length;
-        while occupied_columns < usable_cols {
+        let (mut scroll_part, scroll_length) = self
+            .bracketed_scroll_indicator(usable_cols.saturating_sub(occupied_columns))
+            .unwrap_or((vec![], 0));
+        if self.exit_status.is_some() {
+            let (mut exit_part, exit_length) = self.first_exited_held_title_part_full();
+            if occupied_columns + 1 + exit_length + scroll_length <= usable_cols {
+                line.push(EMPTY_TERMINAL_CHARACTER);
+                line.append(&mut exit_part);
+                occupied_columns += 1 + exit_length;
+            }
+        }
+        while occupied_columns < usable_cols.saturating_sub(scroll_length) {
             line.push(EMPTY_TERMINAL_CHARACTER);
             occupied_columns += 1;
         }
+        line.append(&mut scroll_part);
         line
     }
     fn render_one_line_title(&self) -> Result<Vec<TerminalCharacter>> {
