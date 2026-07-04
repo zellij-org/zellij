@@ -238,15 +238,13 @@ fn closing_the_visible_member_promotes_its_neighbor() {
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('x'));
 
-    let grid_snapshot = zellij.wait_until(
-        "third member closed, second promoted",
-        |grid_snapshot| {
+    let grid_snapshot =
+        zellij.wait_until("third member closed, second promoted", |grid_snapshot| {
             grid_snapshot.status_bar_appears()
                 && !grid_snapshot.contains("Pane #3")
                 && grid_snapshot.contains("[ Pane #2 ]")
                 && grid_snapshot.contains("second-member")
-        },
-    );
+        });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
@@ -392,9 +390,12 @@ fn alt_clicking_a_hidden_entry_marks_it_without_selecting() {
     let (entry_column, entry_line) = entry_click_coordinates(&grid_snapshot, "Pane #1");
     zellij.send_stdin(&sgr_alt_left_click(entry_column, entry_line));
 
-    zellij.wait_until("hidden member marked, selection unchanged", |grid_snapshot| {
-        grid_snapshot.contains("GROUP ACTIONS") && grid_snapshot.contains("[ Pane #3 ]")
-    });
+    zellij.wait_until(
+        "hidden member marked, selection unchanged",
+        |grid_snapshot| {
+            grid_snapshot.contains("GROUP ACTIONS") && grid_snapshot.contains("[ Pane #3 ]")
+        },
+    );
     zellij.quit();
 }
 
@@ -446,15 +447,15 @@ fn entries_share_a_uniform_width_sized_by_the_widest_title() {
         .iter()
         .find(|line| line.contains("member-command"))
         .expect("hidden entry is on a header row");
-    let selected_title_column = display_column_of(selected_entry_line, "Pane #1")
-        .expect("selected title is on the line");
+    let selected_title_column =
+        display_column_of(selected_entry_line, "Pane #1").expect("selected title is on the line");
     let hidden_title_column = display_column_of(hidden_entry_line, "member-command")
         .expect("hidden title is on the line");
     assert_eq!(selected_title_column, hidden_title_column);
 
     let widest_title_width = "member-command".chars().count();
-    let closing_bracket_column = display_column_of(selected_entry_line, "]")
-        .expect("selected entry has a closing bracket");
+    let closing_bracket_column =
+        display_column_of(selected_entry_line, "]").expect("selected entry has a closing bracket");
     assert_eq!(
         closing_bracket_column,
         selected_title_column + widest_title_width + 1
@@ -483,17 +484,21 @@ fn a_hidden_held_members_exit_code_shows_on_its_entry() {
         })
         .expect("one member runs a command")
         .clone();
-    zellij.wait_until("stack list rendered with the command entry", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
-            && grid_snapshot.contains("member-command")
-            && grid_snapshot.contains("[ Pane #1")
-    });
+    zellij.wait_until(
+        "stack list rendered with the command entry",
+        |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains("member-command")
+                && grid_snapshot.contains("[ Pane #1")
+        },
+    );
 
     command_member.exit(Some(2));
 
-    let grid_snapshot = zellij.wait_until("exit code rendered on the hidden entry", |grid_snapshot| {
-        grid_snapshot.contains("EXIT CODE: 2") && grid_snapshot.contains("[ Pane #1")
-    });
+    let grid_snapshot =
+        zellij.wait_until("exit code rendered on the hidden entry", |grid_snapshot| {
+            grid_snapshot.contains("EXIT CODE: 2") && grid_snapshot.contains("[ Pane #1")
+        });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
@@ -561,9 +566,10 @@ fn build_two_member_stack_with_scrollback_editor() -> (TestSession, FakePtyHandl
     zellij.send_stdin(&keys::key('e'));
     let editor = zellij.expect_pty_spawn();
     editor.output(b"editor-open");
-    zellij.wait_until("scrollback editor opened on the visible member", |grid_snapshot| {
-        grid_snapshot.contains("editor-open")
-    });
+    zellij.wait_until(
+        "scrollback editor opened on the visible member",
+        |grid_snapshot| grid_snapshot.contains("editor-open"),
+    );
     (zellij, editor)
 }
 
@@ -713,16 +719,17 @@ fn moving_the_visible_member_reorders_the_list() {
     zellij.send_stdin(&keys::key('k'));
     zellij.send_stdin(&keys::ctrl('h'));
 
-    let grid_snapshot = zellij.wait_until("visible member moved above its neighbor", |grid_snapshot| {
-        let lines = grid_snapshot.lines();
-        let row_of = |needle: &str| lines.iter().position(|line| line.contains(needle));
-        grid_snapshot.contains("<g> LOCK")
-            && grid_snapshot.contains("third-member")
-            && matches!(
-                (row_of("[ Pane #3 ]"), row_of("Pane #2")),
-                (Some(selected_row), Some(hidden_row)) if selected_row < hidden_row
-            )
-    });
+    let grid_snapshot =
+        zellij.wait_until("visible member moved above its neighbor", |grid_snapshot| {
+            let lines = grid_snapshot.lines();
+            let row_of = |needle: &str| lines.iter().position(|line| line.contains(needle));
+            grid_snapshot.contains("<g> LOCK")
+                && grid_snapshot.contains("third-member")
+                && matches!(
+                    (row_of("[ Pane #3 ]"), row_of("Pane #2")),
+                    (Some(selected_row), Some(hidden_row)) if selected_row < hidden_row
+                )
+        });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }

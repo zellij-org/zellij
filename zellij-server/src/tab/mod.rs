@@ -12,8 +12,8 @@ use copy_command::CopyCommand;
 pub use mouse_handler::{MouseEffect, MouseHandler, PaneEdge, PaneResizeState};
 use std::env::temp_dir;
 use std::net::IpAddr;
-use unicode_width::UnicodeWidthStr;
 use std::path::PathBuf;
+use unicode_width::UnicodeWidthStr;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
@@ -972,11 +972,7 @@ impl Tab {
             .map(|list| list.visible != *pane_id)
             .unwrap_or(false)
     }
-    pub fn focus_hidden_stack_list_member(
-        &mut self,
-        pane_id: PaneId,
-        client_id: ClientId,
-    ) -> bool {
+    pub fn focus_hidden_stack_list_member(&mut self, pane_id: PaneId, client_id: ClientId) -> bool {
         self.swap_in_hidden_stack_list_member(pane_id, Some(client_id))
     }
     fn swap_in_hidden_stack_list_member(
@@ -5010,11 +5006,11 @@ impl Tab {
                     None,
                     Event::PaneClosed(id.into()),
                 )]));
-                let _ = self
-                    .senders
-                    .send_to_screen(ScreenInstruction::NotifyPaneClosedToSubscribers {
-                        pane_id: id.into(),
-                    });
+                let _ =
+                    self.senders
+                        .send_to_screen(ScreenInstruction::NotifyPaneClosedToSubscribers {
+                            pane_id: id.into(),
+                        });
                 return;
             }
         }

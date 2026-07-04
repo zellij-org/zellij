@@ -744,7 +744,9 @@ impl PaneFrame {
     fn render_stack_list_entry(&self, entry: &StackListEntry) -> Vec<TerminalCharacter> {
         let usable_cols = self.geom.cols.saturating_sub(2);
         let bracket_overhead = "[  ]".width();
-        let inner_width = entry.width.min(usable_cols.saturating_sub(bracket_overhead));
+        let inner_width = entry
+            .width
+            .min(usable_cols.saturating_sub(bracket_overhead));
         let content = if entry.label.width() <= inner_width {
             entry.label.clone()
         } else {
