@@ -9834,6 +9834,66 @@ fn moving_panes_between_tabs_with_focus_change_recomputes_both() {
 }
 
 #[test]
+fn break_pane_to_tab_after_closing_middle_tab() {
+    // Regression test: `break_multiple_panes_to_tab_with_index` resolved its
+    // destination by tab id (the `BTreeMap` key) instead of display position.
+    // Once a middle tab is closed, position and id diverge, so the destination
+    // lookup hit an empty id slot and the extracted pane was silently dropped.
+    let size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(size, true, true);
+
+    // Three tabs (ids 0/1/2, positions 0/1/2)
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+
+    // Close the middle tab (id 1)
+    // Remaining tabs (ids 0/2, positions 0/1)
+    screen.go_to_tab(2, 1).expect("TEST"); // focus position 2 (1-based) = middle
+    screen.close_tab(1).expect("TEST");
+    assert_eq!(
+        screen.tabs.len(),
+        2,
+        "Two tabs left after closing the middle one"
+    );
+
+    // Put a pane on the first tab
+    let pane_to_move = PaneId::Terminal(42);
+    screen.go_to_tab(1, 1).expect("TEST"); // focus position 1 (1-based) = first tab
+    {
+        let active_tab = screen.get_active_tab_mut(1).unwrap();
+        active_tab
+            .new_pane(
+                pane_to_move,
+                None,
+                None,
+                false,
+                true,
+                NewPanePlacement::default(),
+                Some(1),
+                None,
+            )
+            .unwrap();
+    }
+
+    // Break the pane to display position 1 (0-based) = last tab
+    screen
+        .break_multiple_panes_to_tab_with_index(vec![pane_to_move], 1, false, 1)
+        .expect("TEST");
+
+    // The pane must land on the tab at display position 1 (id 2), not be dropped.
+    let dest = screen
+        .tabs
+        .values()
+        .find(|t| t.position == 1)
+        .expect("a tab at display position 1");
+    assert!(
+        dest.has_pane_with_pid(&pane_to_move),
+        "pane should move to the tab at display position 1, not be dropped"
+    );
+}
+
+#[test]
 fn detaching_client_grows_vacated_tab_back() {
     let initial_size = Size {
         cols: 200,
