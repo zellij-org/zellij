@@ -4499,7 +4499,11 @@ impl Tab {
                 PaneId::Terminal(_) => true,
             })
             .count();
-        tiled_panes_count + floating_panes_count + 1
+        let hidden_stack_list_members_count = self
+            .suppressed_stack_list_members()
+            .filter(|(pane_id, _)| matches!(pane_id, PaneId::Terminal(_)))
+            .count();
+        tiled_panes_count + floating_panes_count + hidden_stack_list_members_count + 1
     }
     pub fn has_selectable_panes(&self) -> bool {
         let selectable_tiled_panes = self.tiled_panes.get_panes().filter(|(_, p)| p.selectable());

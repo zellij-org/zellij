@@ -703,7 +703,8 @@ fn stack_layout_from_manifest(
         }
     }
     let mut stack_nodes = vec![];
-    for (_stack_id, stacked_panes) in children_stacks.into_iter() {
+    for (_stack_id, mut stacked_panes) in children_stacks.into_iter() {
+        stacked_panes.sort_by_key(|p| p.geom.y);
         stack_nodes.push(TiledPaneLayout {
             split_size,
             children: stacked_panes
