@@ -43,7 +43,7 @@ fn single_pane_scroll_shows_on_the_tab_line() {
         grid_snapshot.text
     );
 
-    zellij.send_stdin(&keys::ESC);
+    zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("back in the base mode after scrolling", |grid_snapshot| {
         grid_snapshot.status_bar_appears()
     });

@@ -308,11 +308,21 @@ fn undo_rename_tab() {
     zellij.send_stdin(&keys::ctrl('t'));
     zellij.send_stdin(&keys::key('r'));
     zellij.send_stdin(b"aa");
-    zellij.send_stdin(&keys::ESC);
-    zellij.send_stdin(&keys::ESC);
 
+    zellij.wait_until("typed name applied in rename mode", |grid_snapshot| {
+        grid_snapshot.contains("aa") && grid_snapshot.contains("RENAMING TAB")
+    });
+
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("rename undone, back in tab mode", |grid_snapshot| {
+        grid_snapshot.contains("Tab #1") && !grid_snapshot.contains("aa")
+    });
+
+    zellij.send_stdin(&keys::ESC);
     let grid_snapshot = zellij.wait_until("tab name reverted to default", |grid_snapshot| {
-        grid_snapshot.contains("Tab #1") && grid_snapshot.contains("LOCK")
+        grid_snapshot.contains("Tab #1")
+            && !grid_snapshot.contains("aa")
+            && grid_snapshot.contains("LOCK")
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
