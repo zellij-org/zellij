@@ -1399,6 +1399,8 @@ impl Tab {
         self.set_force_render();
         self.set_should_clear_display_before_rendering();
     }
+    // the classic layout solver cannot see suppressed stack-list members; dissolve
+    // lists into in-grid stacks first, groupify_all re-forms them on mode entry
     fn degroupify_all(&mut self) {
         let ids: Vec<StackListId> = self.stack_lists.keys().copied().collect();
         for id in ids {
@@ -1412,6 +1414,8 @@ impl Tab {
             self.degroupify_all();
         }
     }
+    // the inverse of degroupify_all: adopts classic in-grid stacks into stack
+    // lists, suppressing all but the visible member of each
     fn groupify_all(&mut self) {
         if self.tiled_panes.fullscreen_is_active() {
             return;
