@@ -977,12 +977,19 @@ impl Tab {
         pane_id: PaneId,
         client_id: ClientId,
     ) -> bool {
+        self.swap_in_hidden_stack_list_member(pane_id, Some(client_id))
+    }
+    fn swap_in_hidden_stack_list_member(
+        &mut self,
+        pane_id: PaneId,
+        client_id: Option<ClientId>,
+    ) -> bool {
         if !self.pane_is_hidden_stack_list_member(&pane_id) {
             return false;
         }
         match self.stack_list_id_of_member(&pane_id) {
             Some(stack_list_id) => {
-                self.select_stack_list_member(stack_list_id, pane_id, Some(client_id));
+                self.select_stack_list_member(stack_list_id, pane_id, client_id);
                 true
             },
             None => false,
@@ -1081,8 +1088,33 @@ impl Tab {
         }
         hidden_members
     }
-    fn stack_list_reserved_rows(member_count: usize) -> usize {
-        member_count
+    fn pane_parked_by(&self, id: &PaneId) -> Option<PaneId> {
+        self.suppressed_panes
+            .get(id)
+            .map(|(_, parked)| parked.pid())
+            .filter(|parked_pid| parked_pid != id)
+    }
+    fn adopt_parked_pair(&mut self, member: PaneId) {
+        if let Some(parked_pid) = self.stack_list_parked_pairs.remove(&member) {
+            if let Some(parked_entry) = self.suppressed_panes.remove(&parked_pid) {
+                self.suppressed_panes.insert(member, parked_entry);
+            }
+        }
+    }
+    fn refresh_or_dissolve_stack_list(&mut self, stack_list_id: StackListId) {
+        let (member_count, visible) = match self.stack_lists.get(&stack_list_id) {
+            Some(list) => (list.members.len(), list.visible),
+            None => return,
+        };
+        if member_count <= 1 {
+            self.dissolve_stack_list(stack_list_id);
+        } else {
+            self.reserved_top_rows
+                .borrow_mut()
+                .insert(visible, member_count);
+            self.tiled_panes.reapply_pane_frames();
+            self.resize_stack_list_hidden_members(stack_list_id);
+        }
     }
     fn select_stack_list_member(
         &mut self,
@@ -1097,11 +1129,7 @@ impl Tab {
         if current_visible == target_member {
             return;
         }
-        let pane_parked_by_current_visible = self
-            .suppressed_panes
-            .get(&current_visible)
-            .map(|(_, parked)| parked.pid())
-            .filter(|parked_pid| *parked_pid != current_visible);
+        let pane_parked_by_current_visible = self.pane_parked_by(&current_visible);
         let target_box = match self.suppressed_panes.remove(&target_member) {
             Some((_is_scrollback_editor, pane)) => pane,
             None => {
@@ -1120,29 +1148,15 @@ impl Tab {
                     .insert(current_visible, parked_pid);
             }
         }
-        if let Some(parked_pid) = self.stack_list_parked_pairs.remove(&target_member) {
-            if let Some(parked_entry) = self.suppressed_panes.remove(&parked_pid) {
-                self.suppressed_panes.insert(target_member, parked_entry);
-            }
-        }
+        self.adopt_parked_pair(target_member);
         if let Some(list) = self.stack_lists.get_mut(&stack_list_id) {
             list.visible = target_member;
         }
-        let member_count = self
-            .stack_lists
-            .get(&stack_list_id)
-            .map(|l| l.members.len())
-            .unwrap_or(0);
-        {
-            let mut reserved = self.reserved_top_rows.borrow_mut();
-            reserved.remove(&current_visible);
-            reserved.insert(target_member, Self::stack_list_reserved_rows(member_count));
-        }
+        self.reserved_top_rows.borrow_mut().remove(&current_visible);
         if let Some(client_id) = client_id {
             self.tiled_panes.focus_pane(target_member, client_id);
         }
-        self.tiled_panes.reapply_pane_frames();
-        self.resize_stack_list_hidden_members(stack_list_id);
+        self.refresh_or_dissolve_stack_list(stack_list_id);
         self.set_force_render();
         self.set_should_clear_display_before_rendering();
     }
@@ -1233,31 +1247,14 @@ impl Tab {
                 },
             };
             let removed_visible = self.tiled_panes.replace_pane(id, target_box);
-            if let Some(parked_pid) = self.stack_list_parked_pairs.remove(&promote_target) {
-                if let Some(parked_entry) = self.suppressed_panes.remove(&parked_pid) {
-                    self.suppressed_panes.insert(promote_target, parked_entry);
-                }
-            }
+            self.adopt_parked_pair(promote_target);
             self.stack_list_of_member.remove(&id);
             self.reserved_top_rows.borrow_mut().remove(&id);
             if let Some(list) = self.stack_lists.get_mut(&stack_list_id) {
                 list.members.retain(|m| *m != id);
                 list.visible = promote_target;
             }
-            let member_count = self
-                .stack_lists
-                .get(&stack_list_id)
-                .map(|l| l.members.len())
-                .unwrap_or(0);
-            self.reserved_top_rows
-                .borrow_mut()
-                .insert(promote_target, Self::stack_list_reserved_rows(member_count));
-            if member_count <= 1 {
-                self.dissolve_stack_list(stack_list_id);
-            } else {
-                self.tiled_panes.reapply_pane_frames();
-                self.resize_stack_list_hidden_members(stack_list_id);
-            }
+            self.refresh_or_dissolve_stack_list(stack_list_id);
             removed_visible
         } else {
             let removed = self.suppressed_panes.remove(&id).map(|(_, p)| p);
@@ -1277,30 +1274,10 @@ impl Tab {
                         }
                     }
                 }
-                self.tiled_panes.reapply_pane_frames();
-                self.resize_stack_list_hidden_members(stack_list_id);
-            } else {
-                if let Some(list) = self.stack_lists.get_mut(&stack_list_id) {
-                    list.members.retain(|m| *m != id);
-                }
-                let member_count = self
-                    .stack_lists
-                    .get(&stack_list_id)
-                    .map(|l| l.members.len())
-                    .unwrap_or(0);
-                if member_count <= 1 {
-                    self.dissolve_stack_list(stack_list_id);
-                } else {
-                    let visible = self.stack_lists.get(&stack_list_id).map(|l| l.visible);
-                    if let Some(visible) = visible {
-                        self.reserved_top_rows
-                            .borrow_mut()
-                            .insert(visible, Self::stack_list_reserved_rows(member_count));
-                    }
-                    self.tiled_panes.reapply_pane_frames();
-                    self.resize_stack_list_hidden_members(stack_list_id);
-                }
+            } else if let Some(list) = self.stack_lists.get_mut(&stack_list_id) {
+                list.members.retain(|m| *m != id);
             }
+            self.refresh_or_dissolve_stack_list(stack_list_id);
             removed
         };
         self.set_force_render();
@@ -1333,21 +1310,15 @@ impl Tab {
             }
         }
         if swapped_visible_member {
-            self.tiled_panes.reapply_pane_frames();
-            self.resize_stack_list_hidden_members(stack_list_id);
+            self.refresh_or_dissolve_stack_list(stack_list_id);
             self.set_force_render();
             self.set_should_clear_display_before_rendering();
         }
     }
     fn dissolve_stack_list(&mut self, stack_list_id: StackListId) {
-        if let Some(list) = self.stack_lists.remove(&stack_list_id) {
-            let mut reserved = self.reserved_top_rows.borrow_mut();
-            for member in &list.members {
-                self.stack_list_of_member.remove(member);
-                self.stack_list_parked_pairs.remove(member);
-                reserved.remove(member);
-            }
-            drop(reserved);
+        if let Some(list) = self.stack_lists.get(&stack_list_id) {
+            let members = list.members.clone();
+            self.drop_stack_list_ledger(stack_list_id, &members);
             self.tiled_panes.reapply_pane_frames();
         }
     }
@@ -1389,11 +1360,7 @@ impl Tab {
                 geom.logical_position = pane.position_and_size().logical_position;
                 pane.set_geom(geom);
                 self.tiled_panes.add_pane_with_existing_geom(*member, pane);
-                if let Some(parked_pid) = self.stack_list_parked_pairs.remove(member) {
-                    if let Some(parked_entry) = self.suppressed_panes.remove(&parked_pid) {
-                        self.suppressed_panes.insert(*member, parked_entry);
-                    }
-                }
+                self.adopt_parked_pair(*member);
             }
         }
         self.drop_stack_list_ledger(stack_list_id, &members);
@@ -1408,6 +1375,11 @@ impl Tab {
         let ids: Vec<StackListId> = self.stack_lists.keys().copied().collect();
         for id in ids {
             self.degroupify(id);
+        }
+    }
+    fn dissolve_stack_lists_for_classic_mutation(&mut self) {
+        if self.stacked_pane_list_is_active() {
+            self.degroupify_all();
         }
     }
     pub fn sync_stacked_pane_list_mode(&mut self) {
@@ -1460,11 +1432,7 @@ impl Tab {
                     continue;
                 }
                 if let Some(pane) = self.tiled_panes.extract_pane(*id) {
-                    let pane_parked_by_member = self
-                        .suppressed_panes
-                        .get(id)
-                        .map(|(_, parked)| parked.pid())
-                        .filter(|parked_pid| parked_pid != id);
+                    let pane_parked_by_member = self.pane_parked_by(id);
                     self.insert_suppressed_pane(*id, (false, pane));
                     if let Some(parked_pid) = pane_parked_by_member {
                         self.stack_list_parked_pairs.insert(*id, parked_pid);
@@ -1482,7 +1450,6 @@ impl Tab {
             for id in &ordered_ids {
                 self.stack_list_of_member.insert(*id, stack_list_id);
             }
-            let member_count = ordered_ids.len();
             self.stack_lists.insert(
                 stack_list_id,
                 StackList {
@@ -1490,14 +1457,10 @@ impl Tab {
                     visible,
                 },
             );
-            self.reserved_top_rows
-                .borrow_mut()
-                .insert(visible, Self::stack_list_reserved_rows(member_count));
-            self.resize_stack_list_hidden_members(stack_list_id);
+            self.refresh_or_dissolve_stack_list(stack_list_id);
             converted_any = true;
         }
         if converted_any {
-            self.tiled_panes.reapply_pane_frames();
             self.set_force_render();
             self.set_should_clear_display_before_rendering();
         }
@@ -1853,9 +1816,7 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
-        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-            self.degroupify_all();
-        }
+        self.dissolve_stack_lists_for_classic_mutation();
         if let Some(layout_candidate) = self
             .swap_layouts
             .swap_tiled_panes(&self.tiled_panes, search_backwards)
@@ -3295,9 +3256,7 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.toggle_active_pane_fullscreen(client_id);
         }
-        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-            self.degroupify_all();
-        }
+        self.dissolve_stack_lists_for_classic_mutation();
         if self.tiled_panes.can_split_pane_horizontally(client_id) {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_terminal_position = self.get_next_terminal_position();
@@ -3365,9 +3324,7 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.toggle_active_pane_fullscreen(client_id);
         }
-        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-            self.degroupify_all();
-        }
+        self.dissolve_stack_lists_for_classic_mutation();
         if self.tiled_panes.can_split_pane_vertically(client_id) {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_terminal_position = self.get_next_terminal_position();
@@ -4165,18 +4122,14 @@ impl Tab {
         if self.floating_panes.panes_are_visible() {
             return;
         }
-        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-            self.degroupify_all();
-        }
+        self.dissolve_stack_lists_for_classic_mutation();
         self.tiled_panes.toggle_active_pane_fullscreen(client_id);
     }
     pub fn toggle_pane_fullscreen(&mut self, pane_id: PaneId) {
         if self.pane_is_hidden_stack_list_member(&pane_id) {
             self.make_hidden_stack_list_member_visible(pane_id);
         }
-        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-            self.degroupify_all();
-        }
+        self.dissolve_stack_lists_for_classic_mutation();
         if self.tiled_panes.panes_contain(&pane_id) {
             self.tiled_panes.toggle_pane_fullscreen(pane_id);
         } else {
@@ -4579,9 +4532,7 @@ impl Tab {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
-            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-                self.degroupify_all();
-            }
+            self.dissolve_stack_lists_for_classic_mutation();
             match self.tiled_panes.resize_active_pane(client_id, &strategy) {
                 Ok(_) => {
                     self.swap_layouts.set_is_tiled_damaged();
@@ -4765,9 +4716,7 @@ impl Tab {
             self.floating_panes
                 .move_active_pane(search_backwards, &mut self.os_api, client_id);
         } else {
-            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-                self.degroupify_all();
-            }
+            self.dissolve_stack_lists_for_classic_mutation();
             self.tiled_panes
                 .move_active_pane(search_backwards, client_id);
         }
@@ -4783,9 +4732,7 @@ impl Tab {
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.move_pane(search_backwards, pane_id);
         } else {
-            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-                self.degroupify_all();
-            }
+            self.dissolve_stack_lists_for_classic_mutation();
             self.tiled_panes.move_pane(search_backwards, pane_id);
         }
     }
@@ -4801,9 +4748,7 @@ impl Tab {
             self.floating_panes
                 .move_active_pane(search_backwards, &mut self.os_api, client_id);
         } else {
-            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-                self.degroupify_all();
-            }
+            self.dissolve_stack_lists_for_classic_mutation();
             self.tiled_panes
                 .move_active_pane(search_backwards, client_id);
         }
@@ -4820,9 +4765,7 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
-            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-                self.degroupify_all();
-            }
+            self.dissolve_stack_lists_for_classic_mutation();
             self.tiled_panes.move_active_pane_down(client_id);
         }
     }
@@ -4838,9 +4781,7 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
-            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-                self.degroupify_all();
-            }
+            self.dissolve_stack_lists_for_classic_mutation();
             self.tiled_panes.move_pane_down(pane_id);
         }
     }
@@ -4856,9 +4797,7 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
-            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-                self.degroupify_all();
-            }
+            self.dissolve_stack_lists_for_classic_mutation();
             self.tiled_panes.move_active_pane_up(client_id);
         }
     }
@@ -4874,9 +4813,7 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
-            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-                self.degroupify_all();
-            }
+            self.dissolve_stack_lists_for_classic_mutation();
             self.tiled_panes.move_pane_up(pane_id);
         }
     }
@@ -4892,9 +4829,7 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
-            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-                self.degroupify_all();
-            }
+            self.dissolve_stack_lists_for_classic_mutation();
             self.tiled_panes.move_active_pane_right(client_id);
         }
     }
@@ -4910,9 +4845,7 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
-            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-                self.degroupify_all();
-            }
+            self.dissolve_stack_lists_for_classic_mutation();
             self.tiled_panes.move_pane_right(pane_id);
         }
     }
@@ -4928,9 +4861,7 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
-            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-                self.degroupify_all();
-            }
+            self.dissolve_stack_lists_for_classic_mutation();
             self.tiled_panes.move_active_pane_left(client_id);
         }
     }
@@ -4946,17 +4877,13 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return;
             }
-            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-                self.degroupify_all();
-            }
+            self.dissolve_stack_lists_for_classic_mutation();
             self.tiled_panes.move_pane_left(pane_id);
         }
     }
     fn close_down_to_max_terminals(&mut self) -> Result<()> {
         if let Some(max_panes) = self.max_panes {
-            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-                self.degroupify_all();
-            }
+            self.dissolve_stack_lists_for_classic_mutation();
             let terminals = self.get_tiled_pane_ids();
             for &pid in terminals.iter().skip(max_panes - 1) {
                 self.senders
@@ -5072,11 +4999,7 @@ impl Tab {
         ignore_suppressed_panes: bool,
         exit_status: Option<i32>,
     ) {
-        let id_parks_a_different_pane = self
-            .suppressed_panes
-            .get(&id)
-            .map(|(_, parked)| parked.pid() != id)
-            .unwrap_or(false);
+        let id_parks_a_different_pane = self.pane_parked_by(&id).is_some();
         if !ignore_suppressed_panes
             && !id_parks_a_different_pane
             && self.pane_is_stack_list_member(&id)
@@ -5165,11 +5088,7 @@ impl Tab {
         id: PaneId,
         dont_swap_if_suppressed: bool,
     ) -> Option<Box<dyn Pane>> {
-        let id_parks_a_different_pane = self
-            .suppressed_panes
-            .get(&id)
-            .map(|(_, parked)| parked.pid() != id)
-            .unwrap_or(false);
+        let id_parks_a_different_pane = self.pane_parked_by(&id).is_some();
         if self.pane_is_stack_list_member(&id)
             && (dont_swap_if_suppressed || !id_parks_a_different_pane)
         {
@@ -6503,16 +6422,7 @@ impl Tab {
         }
     }
     fn make_hidden_stack_list_member_visible(&mut self, pane_id: PaneId) -> bool {
-        if !self.pane_is_hidden_stack_list_member(&pane_id) {
-            return false;
-        }
-        match self.stack_list_id_of_member(&pane_id) {
-            Some(stack_list_id) => {
-                self.select_stack_list_member(stack_list_id, pane_id, None);
-                true
-            },
-            None => false,
-        }
+        self.swap_in_hidden_stack_list_member(pane_id, None)
     }
     pub fn unsuppress_pane(&mut self, pane_id: PaneId, should_float_if_hidden: bool) {
         // removes a pane from being suppressed (hidden) but does not focus it
@@ -6692,9 +6602,7 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
-        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-            self.degroupify_all();
-        }
+        self.dissolve_stack_lists_for_classic_mutation();
         let should_auto_layout =
             self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !without_relayout;
         if self.tiled_panes.has_room_for_new_pane() {
@@ -6731,9 +6639,7 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
-        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-            self.degroupify_all();
-        }
+        self.dissolve_stack_lists_for_classic_mutation();
         self.tiled_panes
             .add_pane_to_stack_of_pane_id(pane_id, pane, root_pane_id);
         self.set_should_clear_display_before_rendering();
@@ -6751,9 +6657,7 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
-        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-            self.degroupify_all();
-        }
+        self.dissolve_stack_lists_for_classic_mutation();
         self.tiled_panes
             .add_pane_to_stack_of_active_pane(pane_id, pane, client_id);
         self.tiled_panes.focus_pane(pane_id, client_id);
@@ -6826,8 +6730,8 @@ impl Tab {
     }
     pub fn resize_pane_with_id(&mut self, strategy: ResizeStrategy, pane_id: PaneId) -> Result<()> {
         let err_context = || format!("unable to resize pane");
-        if self.stacked_pane_list_is_active() && self.pane_is_stack_list_member(&pane_id) {
-            self.degroupify_all();
+        if self.pane_is_stack_list_member(&pane_id) {
+            self.dissolve_stack_lists_for_classic_mutation();
         }
         if self.floating_panes.panes_contain(&pane_id) {
             let successfully_resized = self
@@ -6978,9 +6882,7 @@ impl Tab {
         }
     }
     pub fn has_room_for_stack(&mut self, root_pane_id: PaneId, stack_size: usize) -> bool {
-        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-            self.degroupify_all();
-        }
+        self.dissolve_stack_lists_for_classic_mutation();
         if self.floating_panes.panes_contain(&root_pane_id)
             || self.suppressed_panes.contains_key(&root_pane_id)
         {
@@ -7007,9 +6909,7 @@ impl Tab {
             // nothing to do
             return;
         }
-        if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-            self.degroupify_all();
-        }
+        self.dissolve_stack_lists_for_classic_mutation();
         self.swap_layouts.set_is_tiled_damaged(); // TODO: verify we can do all the below first
         if self.pane_is_stacked(root_pane_id) {
             for pane in panes_to_stack.drain(..) {
@@ -7292,11 +7192,8 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             return;
         }
-        if !self.floating_panes.panes_contain(&pane_id)
-            && self.stacked_pane_list_is_active()
-            && !self.stack_lists.is_empty()
-        {
-            self.degroupify_all();
+        if !self.floating_panes.panes_contain(&pane_id) {
+            self.dissolve_stack_lists_for_classic_mutation();
         }
         match direction {
             Some(Direction::Left) => {
@@ -7356,9 +7253,7 @@ impl Tab {
         if self.floating_panes.panes_contain(&pane_id) {
             self.floating_panes.move_pane(search_backwards, pane_id);
         } else {
-            if self.stacked_pane_list_is_active() && !self.stack_lists.is_empty() {
-                self.degroupify_all();
-            }
+            self.dissolve_stack_lists_for_classic_mutation();
             self.tiled_panes.move_pane(search_backwards, pane_id);
         }
     }

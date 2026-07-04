@@ -182,7 +182,8 @@ fn up_and_down_move_the_selection_through_the_list() {
 
     zellij.send_stdin(&keys::alt('k'));
     let middle_member_selected = zellij.wait_until("middle member swapped in", |grid_snapshot| {
-        grid_snapshot.contains("[ Pane #2 ]")
+        grid_snapshot.contains("<g> LOCK")
+            && grid_snapshot.contains("[ Pane #2 ]")
             && grid_snapshot.contains("second-member")
             && !grid_snapshot.contains("[ Pane #3 ]")
     });
@@ -346,6 +347,7 @@ fn fullscreen_suspends_the_list_and_restores_it() {
     zellij.send_stdin(&keys::key('f'));
     let grid_snapshot = zellij.wait_until("list restored after fullscreen", |grid_snapshot| {
         grid_snapshot.status_bar_appears()
+            && !grid_snapshot.contains("(FULLSCREEN)")
             && grid_snapshot.contains("Pane #1")
             && grid_snapshot.contains("Pane #2")
             && grid_snapshot.contains("[ Pane #3 ]")
@@ -369,7 +371,9 @@ fn clicking_a_hidden_entry_swaps_it_in() {
     zellij.send_stdin(&sgr_left_click(entry_column, entry_line));
 
     let swapped_in = zellij.wait_until("clicked member swapped in", |grid_snapshot| {
-        grid_snapshot.contains("[ Pane #1 ]") && grid_snapshot.contains("first-member")
+        grid_snapshot.contains("<g> LOCK")
+            && grid_snapshot.contains("[ Pane #1 ]")
+            && grid_snapshot.contains("first-member")
     });
     assert_snapshot!(normalized(&swapped_in));
     zellij.quit();
@@ -538,6 +542,188 @@ fn hidden_members_follow_whole_tab_resizes() {
             (cols, rows) == (resized_cols, resized_rows)
         });
     }
+    zellij.quit();
+}
+
+fn build_two_member_stack_with_scrollback_editor() -> (TestSession, FakePtyHandle) {
+    let zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config("scrollback_editor \"fake-editor\"")
+        .start();
+    let first_member = claim_first_terminal_and_wait_for_prompt(&zellij);
+    first_member.output(b"first-member\r\n$ ");
+    let second_member = add_stacked_pane_and_wait_for_selected_entry(&zellij, "Pane #2");
+    second_member.output(b"second-member\r\n$ ");
+    zellij.wait_until("second member content rendered", |grid_snapshot| {
+        grid_snapshot.contains("second-member")
+    });
+
+    zellij.send_stdin(&keys::ctrl('s'));
+    zellij.send_stdin(&keys::key('e'));
+    let editor = zellij.expect_pty_spawn();
+    editor.output(b"editor-open");
+    zellij.wait_until("scrollback editor opened on the visible member", |grid_snapshot| {
+        grid_snapshot.contains("editor-open")
+    });
+    (zellij, editor)
+}
+
+#[test]
+fn a_scrollback_editor_follows_its_member_through_selection_changes() {
+    let (mut zellij, editor) = build_two_member_stack_with_scrollback_editor();
+
+    zellij.send_stdin(&keys::alt('k'));
+    zellij.wait_until("editor member swapped out", |grid_snapshot| {
+        grid_snapshot.contains("first-member") && !grid_snapshot.contains("editor-open")
+    });
+
+    zellij.send_stdin(&keys::alt('j'));
+    zellij.wait_until("editor member swapped back in", |grid_snapshot| {
+        grid_snapshot.contains("editor-open")
+    });
+
+    editor.exit(Some(0));
+    zellij.wait_until("editor closed back into its member", |grid_snapshot| {
+        grid_snapshot.contains("[ Pane #2 ]")
+            && grid_snapshot.contains("second-member")
+            && !grid_snapshot.contains("editor-open")
+    });
+    zellij.quit();
+}
+
+#[test]
+fn a_hidden_scrollback_editor_pair_survives_fullscreen() {
+    let (mut zellij, editor) = build_two_member_stack_with_scrollback_editor();
+
+    zellij.send_stdin(&keys::alt('k'));
+    zellij.wait_until("editor member swapped out", |grid_snapshot| {
+        grid_snapshot.contains("first-member") && !grid_snapshot.contains("editor-open")
+    });
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('f'));
+    zellij.wait_until("member fullscreened over the list", |grid_snapshot| {
+        grid_snapshot.contains("(FULLSCREEN)")
+    });
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('f'));
+    zellij.wait_until("list re-formed after fullscreen", |grid_snapshot| {
+        grid_snapshot.contains("[ Pane #1") && grid_snapshot.contains("first-member")
+    });
+
+    zellij.send_stdin(&keys::alt('j'));
+    zellij.wait_until("editor member swapped back in", |grid_snapshot| {
+        grid_snapshot.contains("editor-open")
+    });
+
+    editor.exit(Some(0));
+    zellij.wait_until("editor closed back into its member", |grid_snapshot| {
+        grid_snapshot.contains("[ Pane #2 ]") && grid_snapshot.contains("second-member")
+    });
+    zellij.quit();
+}
+
+#[test]
+fn closing_a_hidden_editor_member_substitutes_its_parked_pane() {
+    let (mut zellij, editor) = build_two_member_stack_with_scrollback_editor();
+
+    zellij.send_stdin(&keys::alt('k'));
+    zellij.wait_until("editor member swapped out", |grid_snapshot| {
+        grid_snapshot.contains("first-member") && !grid_snapshot.contains("editor-open")
+    });
+
+    editor.exit(Some(0));
+    zellij.wait_until("parked pane substituted on the entry", |grid_snapshot| {
+        grid_snapshot.contains("Pane #2") && !grid_snapshot.contains("fake-editor")
+    });
+
+    zellij.send_stdin(&keys::alt('j'));
+    zellij.wait_until("substituted member swapped in", |grid_snapshot| {
+        grid_snapshot.contains("[ Pane #2 ]") && grid_snapshot.contains("second-member")
+    });
+    zellij.quit();
+}
+
+#[test]
+fn splitting_a_new_pane_reforms_the_list_around_it() {
+    let mut zellij = start_zellij();
+    build_three_member_stack(&zellij);
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('d'));
+    let new_pane = zellij.expect_pty_spawn();
+    new_pane.output(PROMPT);
+
+    let grid_snapshot = zellij.wait_until("list re-formed above the new pane", |grid_snapshot| {
+        grid_snapshot.contains("<g> LOCK")
+            && grid_snapshot.contains("Pane #1")
+            && grid_snapshot.contains("Pane #2")
+            && grid_snapshot.contains("[ Pane #3 ]")
+            && grid_snapshot.contains("Pane #4")
+    });
+    assert_snapshot!(normalized(&grid_snapshot));
+    zellij.quit();
+}
+
+#[test]
+fn resizing_the_visible_member_keeps_the_list() {
+    let mut zellij = start_zellij();
+    let first_member = claim_first_terminal_and_wait_for_prompt(&zellij);
+    first_member.output(b"first-member\r\n$ ");
+    let _lower_terminal = split_down_and_wait_for_prompt(&zellij);
+    add_stacked_pane_and_wait_for_selected_entry(&zellij, "Pane #3");
+    let before_resize = zellij.wait_until("list settled before resize", |grid_snapshot| {
+        grid_snapshot.contains("<g> LOCK") && grid_snapshot.contains("[ Pane #3 ]")
+    });
+    let entry_row_before = before_resize
+        .lines()
+        .iter()
+        .position(|line| line.contains("[ Pane #3 ]"))
+        .expect("selected entry is on a header row");
+
+    zellij.send_stdin(&keys::ctrl('n'));
+    zellij.send_stdin(&keys::key('k'));
+    zellij.send_stdin(&keys::ctrl('n'));
+
+    let grid_snapshot = zellij.wait_until("stack region grew upward", move |grid_snapshot| {
+        grid_snapshot.contains("<g> LOCK")
+            && grid_snapshot.contains("Pane #2")
+            && grid_snapshot
+                .lines()
+                .iter()
+                .position(|line| line.contains("[ Pane #3 ]"))
+                .map_or(false, |entry_row| entry_row < entry_row_before)
+    });
+    assert_snapshot!(normalized(&grid_snapshot));
+    zellij.quit();
+}
+
+#[test]
+fn moving_the_visible_member_reorders_the_list() {
+    let mut zellij = start_zellij();
+    let first_member = claim_first_terminal_and_wait_for_prompt(&zellij);
+    first_member.output(b"first-member\r\n$ ");
+    let _lower_terminal = split_down_and_wait_for_prompt(&zellij);
+    let third_member = add_stacked_pane_and_wait_for_selected_entry(&zellij, "Pane #3");
+    third_member.output(b"third-member\r\n$ ");
+    zellij.wait_until("third member content rendered", |grid_snapshot| {
+        grid_snapshot.contains("third-member")
+    });
+
+    zellij.send_stdin(&keys::ctrl('h'));
+    zellij.send_stdin(&keys::key('k'));
+    zellij.send_stdin(&keys::ctrl('h'));
+
+    let grid_snapshot = zellij.wait_until("visible member moved above its neighbor", |grid_snapshot| {
+        let lines = grid_snapshot.lines();
+        let row_of = |needle: &str| lines.iter().position(|line| line.contains(needle));
+        grid_snapshot.contains("<g> LOCK")
+            && grid_snapshot.contains("third-member")
+            && matches!(
+                (row_of("[ Pane #3 ]"), row_of("Pane #2")),
+                (Some(selected_row), Some(hidden_row)) if selected_row < hidden_row
+            )
+    });
+    assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
 

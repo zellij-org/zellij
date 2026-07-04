@@ -2,7 +2,7 @@ use crate::output::Output;
 use crate::panes::PaneId;
 use crate::tab::Pane;
 use crate::ui::boundaries::Boundaries;
-use crate::ui::pane_boundaries_frame::FrameParams;
+use crate::ui::pane_boundaries_frame::{FrameParams, StackListEntry};
 use crate::ClientId;
 use std::collections::{HashMap, HashSet};
 use zellij_utils::data::{client_id_to_colors, InputMode, PaletteColor, Style};
@@ -271,15 +271,16 @@ impl<'a> PaneContentsAndUi<'a> {
             .get(&client_id)
             .map(|p| p.contains(&self.pane.pid()))
             .unwrap_or(false);
-        let stack_list_entry_label = self
-            .stack_list_entry_width
-            .map(|_| self.pane.stack_list_entry_label());
-        let stack_list_entry_is_emphasized = self.stack_list_entry_width.is_some()
-            && (pane_is_in_group
+        let stack_list_entry = self.stack_list_entry_width.map(|width| StackListEntry {
+            width,
+            label: self.pane.stack_list_entry_label(),
+            is_selected: self.stack_list_entry_is_selected,
+            is_emphasized: pane_is_in_group
                 || (self
                     .mouse_is_hovering_over_pane_for_clients
                     .contains(&client_id)
-                    && !pane_focused_for_client_id));
+                    && !pane_focused_for_client_id),
+        });
         let frame_params = if session_is_mirrored {
             FrameParams {
                 focused_client,
@@ -302,10 +303,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 highlight_tooltip: highlight_tooltip.clone(),
                 omit_title: self.omit_title,
                 frame_geom_override: self.frame_geom_override,
-                stack_list_entry_width: self.stack_list_entry_width,
-                stack_list_entry_label: stack_list_entry_label.clone(),
-                stack_list_entry_is_selected: self.stack_list_entry_is_selected,
-                stack_list_entry_is_emphasized,
+                stack_list_entry: stack_list_entry.clone(),
                 blank_title: self.blank_title,
             }
         } else {
@@ -330,10 +328,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 highlight_tooltip,
                 omit_title: self.omit_title,
                 frame_geom_override: self.frame_geom_override,
-                stack_list_entry_width: self.stack_list_entry_width,
-                stack_list_entry_label,
-                stack_list_entry_is_selected: self.stack_list_entry_is_selected,
-                stack_list_entry_is_emphasized,
+                stack_list_entry,
                 blank_title: self.blank_title,
             }
         };

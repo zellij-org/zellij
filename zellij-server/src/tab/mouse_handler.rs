@@ -1744,11 +1744,7 @@ impl MouseHandler {
             .get_pane_id_at(point, search_selectable)
             .with_context(err_context)?
         {
-            if tab.tiled_panes.panes_contain(&pane_id) {
-                Ok(tab.tiled_panes.get_pane_mut(pane_id))
-            } else {
-                Ok(tab.get_pane_with_id_mut(pane_id))
-            }
+            Ok(tab.get_pane_with_id_mut(pane_id))
         } else {
             Ok(None)
         }

@@ -5547,24 +5547,18 @@ impl Screen {
                     // is currently only the case the scrollback editing panes, and
                     // when dumping the layout we want the "real" pane and not the
                     // editor pane
-                    match suppressed_panes.remove(pane_id) {
-                        Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => (
-                            suppressed_pane.pid(),
-                            suppressed_pane,
-                            stack_list_geoms
-                                .get(pane_id)
-                                .copied()
-                                .unwrap_or_else(|| suppressed_pane.position_and_size()),
-                        ),
-                        _ => (
-                            *pane_id,
-                            p,
-                            stack_list_geoms
-                                .get(pane_id)
-                                .copied()
-                                .unwrap_or_else(|| p.position_and_size()),
-                        ),
-                    }
+                    let geom_override = stack_list_geoms.get(pane_id).copied();
+                    let (pane_id, p) = match suppressed_panes.remove(pane_id) {
+                        Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => {
+                            (suppressed_pane.pid(), suppressed_pane)
+                        },
+                        _ => (*pane_id, p),
+                    };
+                    (
+                        pane_id,
+                        p,
+                        geom_override.unwrap_or_else(|| p.position_and_size()),
+                    )
                 })
                 .chain(tab.hidden_stack_list_members_for_serialization())
                 .map(|(pane_id, p, geom)| {
