@@ -97,6 +97,7 @@ pub struct FrameParams {
     pub omit_title: bool,
     pub frame_geom_override: Option<PaneGeom>,
     pub stack_list_entry_width: Option<usize>,
+    pub stack_list_entry_label: Option<String>,
     pub stack_list_entry_is_selected: bool,
     pub stack_list_entry_is_emphasized: bool,
     pub blank_title: bool,
@@ -128,6 +129,7 @@ pub struct PaneFrame {
     highlight_tooltip: Option<String>,
     omit_title: bool,
     stack_list_entry_width: Option<usize>,
+    stack_list_entry_label: Option<String>,
     stack_list_entry_is_selected: bool,
     stack_list_entry_is_emphasized: bool,
     color_override: Option<PaletteColor>,
@@ -165,6 +167,7 @@ impl PaneFrame {
             highlight_tooltip: frame_params.highlight_tooltip,
             omit_title: frame_params.omit_title,
             stack_list_entry_width: frame_params.stack_list_entry_width,
+            stack_list_entry_label: frame_params.stack_list_entry_label,
             stack_list_entry_is_selected: frame_params.stack_list_entry_is_selected,
             stack_list_entry_is_emphasized: frame_params.stack_list_entry_is_emphasized,
             color_override: None,
@@ -752,15 +755,16 @@ impl PaneFrame {
             .with_context(|| format!("failed to render title '{}'", self.title))
     }
     fn render_stack_list_entry(&self, entry_width: usize) -> Vec<TerminalCharacter> {
+        let label = self.stack_list_entry_label.as_ref().unwrap_or(&self.title);
         let usable_cols = self.geom.cols.saturating_sub(2);
         let bracket_overhead = "[  ]".width();
         let inner_width = entry_width.min(usable_cols.saturating_sub(bracket_overhead));
-        let content = if self.title.width() <= inner_width {
-            self.title.clone()
+        let content = if label.width() <= inner_width {
+            label.clone()
         } else {
             let truncation_budget = inner_width.saturating_sub(1);
             let mut truncated = String::new();
-            for character in self.title.chars() {
+            for character in label.chars() {
                 if truncated.width() + character.width().unwrap_or(0) > truncation_budget {
                     break;
                 }

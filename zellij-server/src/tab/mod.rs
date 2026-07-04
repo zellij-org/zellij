@@ -659,6 +659,9 @@ pub trait Pane {
     fn start_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
     fn progress_animation_offset(&mut self) {} // only relevant for plugins
     fn current_title(&self) -> String;
+    fn stack_list_entry_label(&self) -> String {
+        self.current_title()
+    }
     fn custom_title(&self) -> Option<String>;
     fn has_explicit_title(&self) -> bool {
         false
@@ -1582,14 +1585,7 @@ impl Tab {
                         self.suppressed_panes.get(member).map(|(_, p)| &**p)
                     }
                 })
-                .map(|pane| {
-                    let bell_indicator_width = if pane.get_bell_notification() {
-                        " [!]".width()
-                    } else {
-                        0
-                    };
-                    pane.current_title().width() + bell_indicator_width
-                })
+                .map(|pane| pane.stack_list_entry_label().width())
                 .max()
                 .unwrap_or(0);
             for (rank, member) in list.members.iter().enumerate() {

@@ -271,6 +271,9 @@ impl<'a> PaneContentsAndUi<'a> {
             .get(&client_id)
             .map(|p| p.contains(&self.pane.pid()))
             .unwrap_or(false);
+        let stack_list_entry_label = self
+            .stack_list_entry_width
+            .map(|_| self.pane.stack_list_entry_label());
         let stack_list_entry_is_emphasized = self.stack_list_entry_width.is_some()
             && (pane_is_in_group
                 || (self
@@ -300,6 +303,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 omit_title: self.omit_title,
                 frame_geom_override: self.frame_geom_override,
                 stack_list_entry_width: self.stack_list_entry_width,
+                stack_list_entry_label: stack_list_entry_label.clone(),
                 stack_list_entry_is_selected: self.stack_list_entry_is_selected,
                 stack_list_entry_is_emphasized,
                 blank_title: self.blank_title,
@@ -327,6 +331,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 omit_title: self.omit_title,
                 frame_geom_override: self.frame_geom_override,
                 stack_list_entry_width: self.stack_list_entry_width,
+                stack_list_entry_label,
                 stack_list_entry_is_selected: self.stack_list_entry_is_selected,
                 stack_list_entry_is_emphasized,
                 blank_title: self.blank_title,
