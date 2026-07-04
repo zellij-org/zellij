@@ -33,6 +33,10 @@ struct State {
     tab_line: Vec<LinePart>,
     hide_swap_layout_indication: bool,
     cached_keybinds: KeybindsVec,
+    active_pane_scroll: Option<(usize, usize)>,
+    new_tab_button_range: Option<(usize, usize)>,
+    hovered_tab_idx: Option<usize>,
+    hovered_new_tab_button: bool,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -51,6 +55,7 @@ impl ZellijPlugin for State {
             EventType::ModeUpdate,
             EventType::Mouse,
             EventType::InitialKeybinds,
+            EventType::ActivePaneScroll,
         ]);
     }
 
@@ -89,11 +94,46 @@ impl ZellijPlugin for State {
                     eprintln!("Could not find active tab.");
                 }
             },
+            Event::ActivePaneScroll(scroll) => {
+                if self.active_pane_scroll != scroll {
+                    should_render = true;
+                }
+                self.active_pane_scroll = scroll;
+            },
             Event::Mouse(me) => match me {
                 Mouse::LeftClick(_, col) => {
+                    if let Some((start, end)) = self.new_tab_button_range {
+                        if col >= start && col < end {
+                            new_tab::<&str>(None, None);
+                            return should_render;
+                        }
+                    }
                     let tab_to_focus = get_tab_to_focus(&self.tab_line, self.active_tab_idx, col);
                     if let Some(idx) = tab_to_focus {
                         switch_tab_to(idx.try_into().unwrap());
+                    }
+                },
+                Mouse::Hover(_, col) => {
+                    let simplified_ui = self.mode_info.capabilities.arrow_fonts;
+                    let mut new_hovered_new_tab_button = false;
+                    let mut new_hovered_tab_idx = None;
+                    if !simplified_ui {
+                        if let Some((start, end)) = self.new_tab_button_range {
+                            if col >= start && col < end {
+                                new_hovered_new_tab_button = true;
+                            }
+                        }
+                        if !new_hovered_new_tab_button {
+                            new_hovered_tab_idx =
+                                get_tab_to_focus(&self.tab_line, self.active_tab_idx, col);
+                        }
+                    }
+                    if self.hovered_new_tab_button != new_hovered_new_tab_button
+                        || self.hovered_tab_idx != new_hovered_tab_idx
+                    {
+                        self.hovered_new_tab_button = new_hovered_new_tab_button;
+                        self.hovered_tab_idx = new_hovered_tab_idx;
+                        should_render = true;
                     }
                 },
                 Mouse::ScrollUp(_) => {
@@ -133,10 +173,12 @@ impl ZellijPlugin for State {
             } else if t.active {
                 active_tab_index = t.position;
             }
+            let is_hovered = self.hovered_tab_idx == Some(t.position + 1);
             let tab = tab_style(
                 tabname,
                 t,
                 is_alternate_tab,
+                is_hovered,
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
             );
@@ -146,7 +188,7 @@ impl ZellijPlugin for State {
 
         let background = self.mode_info.style.colors.text_unselected.background;
 
-        self.tab_line = tab_line(
+        let (line, new_tab_button_range) = tab_line(
             self.mode_info.session_name.as_deref(),
             all_tabs,
             active_tab_index,
@@ -158,7 +200,12 @@ impl ZellijPlugin for State {
             &self.mode_info,
             self.hide_swap_layout_indication,
             &background,
+            self.active_pane_scroll,
+            is_alternate_tab,
+            self.hovered_new_tab_button,
         );
+        self.tab_line = line;
+        self.new_tab_button_range = new_tab_button_range;
 
         let output = self
             .tab_line

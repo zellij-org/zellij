@@ -258,6 +258,21 @@ impl FloatingPanes {
     pub fn panes_contain(&self, pane_id: &PaneId) -> bool {
         self.panes.contains_key(pane_id)
     }
+    pub fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) {
+        self.active_panes.insert_silent(client_id, pane_id);
+    }
+    pub fn clear_shadow_focus(&mut self, client_id: ClientId) -> Option<PaneId> {
+        self.active_panes.remove_silent(&client_id)
+    }
+    pub fn is_shadow_focus_client(&self, client_id: &ClientId) -> bool {
+        self.active_panes.is_shadow_client(client_id)
+    }
+    pub fn shadow_focus_clients(&self) -> Vec<ClientId> {
+        self.active_panes.iter_shadow_clients().copied().collect()
+    }
+    pub fn has_shadow_focus_on(&self, client_id: ClientId, pane_id: PaneId) -> bool {
+        self.active_panes.has_shadow_focus_on(client_id, pane_id)
+    }
     pub fn find_room_for_new_pane(&mut self) -> Option<PaneGeom> {
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
@@ -454,7 +469,11 @@ impl FloatingPanes {
             let mut active_panes = active_panes.clone();
             let multiple_users_exist_in_session =
                 { self.connected_clients_in_app.borrow().len() > 1 };
-            active_panes.retain(|c_id, _| self.connected_clients.borrow().contains(c_id));
+            let connected = self.connected_clients.borrow();
+            active_panes.retain(|c_id, _| {
+                connected.contains(c_id) || self.active_panes.is_shadow_client(c_id)
+            });
+            drop(connected);
             let pane_is_selectable = pane.selectable();
             let show_help_text = active_panes.iter().any(|(client_id, pane_id)| {
                 pane_id == &pane.pid() && help_text_visible.get(client_id).copied().unwrap_or(false)
@@ -472,6 +491,7 @@ impl FloatingPanes {
                 mouse_hover_pane_id,
                 current_pane_group.clone(),
                 show_help_text,
+                false,
             );
             for client_id in &connected_clients {
                 let client_mode = self
@@ -720,6 +740,13 @@ impl FloatingPanes {
         }
     }
 
+    pub fn focus_last_pane(&mut self, client_id: ClientId) {
+        if let Some(pane_id) = self.active_panes.get_last(&client_id).copied() {
+            self.focus_pane(pane_id, client_id);
+            self.set_force_render();
+        }
+    }
+
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.active_panes.get(&client_id) {
             self.move_pane_down(*active_pane_id);
@@ -903,8 +930,14 @@ impl FloatingPanes {
             .last()
             .map(|(pane_id, _pane)| **pane_id);
 
+        let connected_clients: HashSet<ClientId> =
+            self.connected_clients.borrow().iter().copied().collect();
         for (client_id, active_pane_id) in active_panes {
             if active_pane_id == pane_id {
+                if !connected_clients.contains(&client_id) {
+                    self.active_panes.remove_silent(&client_id);
+                    continue;
+                }
                 match next_active_pane_id {
                     Some(next_active_pane_id) => {
                         self.active_panes
@@ -932,6 +965,11 @@ impl FloatingPanes {
         self.set_force_render();
     }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        if let Some(focused_pane) = self.active_panes.get(&client_id) {
+            if pane_id != *focused_pane {
+                self.active_panes.set_last_pane(client_id, *focused_pane);
+            }
+        }
         let pane_is_selectable = self
             .panes
             .get(&pane_id)
@@ -1185,10 +1223,17 @@ impl FloatingPanes {
             .filter(|(_cid, pid)| **pid == from_pane_id)
             .map(|(cid, _pid)| *cid)
             .collect();
+        let connected_clients: HashSet<ClientId> =
+            self.connected_clients.borrow().iter().copied().collect();
         for client_id in clients_in_pane {
-            self.active_panes.remove(&client_id, &mut self.panes);
-            self.active_panes
-                .insert(client_id, to_pane_id, &mut self.panes);
+            if connected_clients.contains(&client_id) {
+                self.active_panes.remove(&client_id, &mut self.panes);
+                self.active_panes
+                    .insert(client_id, to_pane_id, &mut self.panes);
+            } else {
+                self.active_panes.remove_silent(&client_id);
+                self.active_panes.insert_silent(client_id, to_pane_id);
+            }
         }
     }
     pub fn reapply_pane_focus(&mut self) {

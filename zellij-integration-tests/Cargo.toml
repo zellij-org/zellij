@@ -1,0 +1,23 @@
+[package]
+name = "zellij-integration-tests"
+description = "In-process whole-app integration test harness for Zellij"
+publish = false
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+zellij-client = { path = "../zellij-client", version = "0.45.0" }
+zellij-server = { path = "../zellij-server", version = "0.45.0" }
+zellij-utils = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+crossbeam = { version = "0.8", default-features = false, features = ["crossbeam-channel", "std"] }
+interprocess = { workspace = true }
+insta = { version = "1.6.0", features = ["backtrace"] }
+log = { workspace = true }
+regex = { workspace = true }
+tokio = { workspace = true }
+vte = { workspace = true }

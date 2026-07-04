@@ -5,7 +5,8 @@ use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
-use crate::pane_size::PaneGeom;
+pub use crate::input::options::PaneFrameStyle;
+use crate::pane_size::{PaneGeom, Size};
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
 use clap::ArgEnum;
@@ -894,8 +895,10 @@ impl fmt::Display for ResizeStrategy {
 // left click) and the `ScrollUp` and `ScrollDown` events could probably be
 // merged into a single `Scroll(isize)` event.
 pub enum Mouse {
-    ScrollUp(usize),          // number of lines
-    ScrollDown(usize),        // number of lines
+    ScrollUp(usize),   // number of lines
+    ScrollDown(usize), // number of lines
+    ScrollLeft(usize),
+    ScrollRight(usize),
     LeftClick(isize, usize),  // line and column
     RightClick(isize, usize), // line and column
     Hold(isize, usize),       // line and column
@@ -934,6 +937,12 @@ impl From<Metadata> for FileMetadata {
             len: metadata.len(),
         }
     }
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StyledText {
+    pub text: String,
+    pub indices: Vec<Vec<usize>>,
 }
 
 /// These events can be subscribed to with subscribe method exported by `zellij-tile`.
@@ -1028,6 +1037,9 @@ pub enum Event {
     InitialKeybinds(KeybindsVec),
     /// The host terminal indicated its color palette theme mode (CSI 2031 / DSR 997).
     HostTerminalThemeChanged(HostTerminalThemeMode),
+    SoftKeyboardVisibilityChanged(bool),
+    HintText(BTreeMap<usize, StyledText>),
+    ActivePaneScroll(Option<(usize, usize)>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1738,6 +1750,7 @@ pub struct ModeInfo {
     pub web_server_ip: Option<IpAddr>,
     pub web_server_port: Option<u16>,
     pub web_server_capability: Option<bool>,
+    pub pane_frame_style: Option<PaneFrameStyle>,
 }
 
 impl ModeInfo {
@@ -2432,6 +2445,7 @@ pub struct PaneContents {
     pub lines_below_viewport: Vec<String>,
     pub viewport: Vec<String>,
     pub selected_text: Option<SelectedText>,
+    pub cursor: Option<(usize, usize)>,
 }
 
 /// Extract text from a line between two column positions, accounting for wide characters
@@ -2526,6 +2540,7 @@ impl PaneContents {
             selected_text: SelectedText::from_positions(selection_start, selection_end),
             lines_above_viewport,
             lines_below_viewport,
+            cursor: None,
         }
     }
 
@@ -3366,12 +3381,24 @@ pub enum PluginCommand {
         name: Option<String>,
         cwd: Option<String>,
     },
+    NewTabUnfocused {
+        name: Option<String>,
+        cwd: Option<String>,
+    },
+    NewTiledPaneInTab {
+        tab_position: usize,
+    },
+    ToggleFloatingPanes {
+        tab_id: Option<u64>,
+    },
+    NewPane,
     GoToNextTab,
     GoToPreviousTab,
     Resize(Resize),
     ResizeWithDirection(ResizeStrategy),
     FocusNextPane,
     FocusPreviousPane,
+    FocusLastPane,
     MoveFocus(Direction),
     MoveFocusOrTab(Direction),
     Detach,
@@ -3390,6 +3417,7 @@ pub enum PluginCommand {
     PageScrollDown,
     ToggleFocusFullscreen,
     TogglePaneFrames,
+    SetPaneFrameStyle(PaneFrameStyle),
     TogglePaneEmbedOrEject,
     UndoRenamePane,
     CloseFocus,
@@ -3610,6 +3638,13 @@ pub enum PluginCommand {
     KillSessionsAndReply(Vec<String>), // one or more session names; sends a response back
     DeleteDeadSessionAndReply(String), // session name; sends a response back
     DeleteAllDeadSessionsAndReply,     // no payload; sends a response back
+    SetSoftKeyboard(bool),
+    SetTabFit {
+        tab_id: usize,
+        fit: Option<(PaneId, Size)>,
+    },
+    SetShadowFocus(PaneId),
+    ExitMobileMode,
 }
 
 // Response type for plugin API methods that open a pane in a new tab
@@ -3621,6 +3656,7 @@ pub struct OpenPaneInNewTabResponse {
 
 // Response types for plugin API methods that create tabs
 pub type NewTabResponse = Option<usize>;
+pub type NewTabUnfocusedResponse = Option<usize>;
 pub type NewTabsResponse = Vec<usize>;
 pub type FocusOrCreateTabResponse = Option<usize>;
 pub type BreakPanesToNewTabResponse = Option<usize>;
@@ -3641,6 +3677,7 @@ pub type OpenTerminalInPlaceResponse = Option<PaneId>;
 pub type OpenTerminalNearPluginResponse = Option<PaneId>;
 pub type OpenTerminalFloatingNearPluginResponse = Option<PaneId>;
 pub type OpenTerminalInPlaceOfPluginResponse = Option<PaneId>;
+pub type NewTiledPaneInTabResponse = Option<PaneId>;
 
 pub type OpenCommandPaneResponse = Option<PaneId>;
 pub type OpenCommandPaneFloatingResponse = Option<PaneId>;

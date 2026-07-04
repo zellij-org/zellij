@@ -1,5 +1,6 @@
 use std::ops::Bound;
 use std::ops::RangeBounds;
+use zellij_utils::data::StyledText;
 
 #[derive(Debug, Default, Clone)]
 pub struct Text {
@@ -7,6 +8,17 @@ pub struct Text {
     selected: bool,
     opaque: bool,
     indices: Vec<Vec<usize>>,
+}
+
+impl From<StyledText> for Text {
+    fn from(styled_text: StyledText) -> Self {
+        Text {
+            text: styled_text.text,
+            selected: false,
+            opaque: false,
+            indices: styled_text.indices,
+        }
+    }
 }
 
 impl Text {

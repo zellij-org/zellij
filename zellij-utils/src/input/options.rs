@@ -16,6 +16,65 @@ pub enum OnForceClose {
     Detach,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ArgEnum)]
+pub enum MobileLayoutConfiguration {
+    #[serde(alias = "web")]
+    Web,
+    #[serde(alias = "always")]
+    Always,
+    #[serde(alias = "never")]
+    Never,
+}
+
+impl Default for MobileLayoutConfiguration {
+    fn default() -> Self {
+        Self::Web
+    }
+}
+
+impl FromStr for MobileLayoutConfiguration {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Web" | "web" => Ok(Self::Web),
+            "Always" | "always" => Ok(Self::Always),
+            "Never" | "never" => Ok(Self::Never),
+            _ => Err(format!("No such mobile_layout: {}", s)),
+        }
+    }
+}
+
+impl MobileLayoutConfiguration {
+    pub fn should_route_to_mobile(
+        self,
+        is_web_client: bool,
+        viewport_cols: usize,
+        viewport_rows: usize,
+        threshold_cols: u16,
+        threshold_rows: u16,
+    ) -> bool {
+        let cols_reported = viewport_cols > 0;
+        let rows_reported = viewport_rows > 0;
+        let cols_match =
+            cols_reported && (threshold_cols == 0 || viewport_cols <= threshold_cols as usize);
+        let rows_match =
+            rows_reported && (threshold_rows == 0 || viewport_rows <= threshold_rows as usize);
+        let size_match = cols_match || rows_match;
+        match self {
+            MobileLayoutConfiguration::Always => size_match,
+            MobileLayoutConfiguration::Never => false,
+            MobileLayoutConfiguration::Web => is_web_client && size_match,
+        }
+    }
+
+    pub fn may_route_web_client_to_mobile(self) -> bool {
+        matches!(
+            self,
+            MobileLayoutConfiguration::Web | MobileLayoutConfiguration::Always
+        )
+    }
+}
+
 impl Default for OnForceClose {
     fn default() -> Self {
         Self::Detach
@@ -30,6 +89,56 @@ impl FromStr for OnForceClose {
             "quit" => Ok(Self::Quit),
             "detach" => Ok(Self::Detach),
             e => Err(e.to_string().into()),
+        }
+    }
+}
+
+#[derive(ArgEnum, Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PaneFrameStyle {
+    Full,
+    Titles,
+    None,
+}
+
+impl Default for PaneFrameStyle {
+    fn default() -> Self {
+        PaneFrameStyle::Titles
+    }
+}
+
+impl PaneFrameStyle {
+    pub fn draws_full_frames(&self) -> bool {
+        matches!(self, PaneFrameStyle::Full)
+    }
+
+    pub fn draws_titles(&self) -> bool {
+        matches!(self, PaneFrameStyle::Titles)
+    }
+
+    pub fn from_options(options: &Options) -> Self {
+        if options.pane_frames == Some(false) {
+            return PaneFrameStyle::None;
+        }
+        match options.pane_frame_style {
+            Some(PaneFrameStyle::Full) => PaneFrameStyle::Full,
+            _ => PaneFrameStyle::Titles,
+        }
+    }
+}
+
+impl FromStr for PaneFrameStyle {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "full" => Ok(PaneFrameStyle::Full),
+            "titles" => Ok(PaneFrameStyle::Titles),
+            "none" => Ok(PaneFrameStyle::None),
+            e => Err(format!(
+                "Unknown pane frame style: '{}' (expected 'full', 'titles' or 'none')",
+                e
+            )
+            .into()),
         }
     }
 }
@@ -87,6 +196,9 @@ pub struct Options {
     #[serde(default)]
     /// Set display of the pane frames (true or false)
     pub pane_frames: Option<bool>,
+    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[serde(default)]
+    pub pane_frame_style: Option<PaneFrameStyle>,
     #[clap(long, value_parser)]
     #[serde(default)]
     /// Mirror session when multiple users are connected (true or false)
@@ -217,6 +329,10 @@ pub struct Options {
     #[serde(default)]
     pub stacked_resize: Option<bool>,
 
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub stacked_pane_list: Option<bool>,
+
     /// Whether to show startup tips when starting a new session
     /// default is true
     #[clap(long, value_parser)]
@@ -278,6 +394,21 @@ pub struct Options {
     /// NOTE: This only applies to web clients at the moment.
     #[clap(long)]
     pub client_async_worker_tasks: Option<usize>,
+
+    /// When a newly-attaching client should land in the mobile UI plugin (web, always, never)
+    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[serde(default)]
+    pub mobile_layout: Option<MobileLayoutConfiguration>,
+
+    /// Column breakpoint for mobile_layout (0 to always match)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub mobile_threshold_cols: Option<u16>,
+
+    /// Row breakpoint for mobile_layout (0 to always match)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub mobile_threshold_rows: Option<u16>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -319,6 +450,7 @@ impl Options {
     pub fn merge(&self, other: Options) -> Options {
         let mouse_mode = other.mouse_mode.or(self.mouse_mode);
         let pane_frames = other.pane_frames.or(self.pane_frames);
+        let pane_frame_style = other.pane_frame_style.or(self.pane_frame_style);
         let auto_layout = other.auto_layout.or(self.auto_layout);
         let mirror_session = other.mirror_session.or(self.mirror_session);
         let simplified_ui = other.simplified_ui.or(self.simplified_ui);
@@ -362,6 +494,7 @@ impl Options {
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
+        let stacked_pane_list = other.stacked_pane_list.or(self.stacked_pane_list);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
@@ -384,6 +517,9 @@ impl Options {
         let client_async_worker_tasks = other
             .client_async_worker_tasks
             .or(self.client_async_worker_tasks);
+        let mobile_layout = other.mobile_layout.or(self.mobile_layout);
+        let mobile_threshold_cols = other.mobile_threshold_cols.or(self.mobile_threshold_cols);
+        let mobile_threshold_rows = other.mobile_threshold_rows.or(self.mobile_threshold_rows);
 
         Options {
             simplified_ui,
@@ -398,6 +534,7 @@ impl Options {
             theme_dir,
             mouse_mode,
             pane_frames,
+            pane_frame_style,
             mirror_session,
             on_force_close,
             scroll_buffer_size,
@@ -419,6 +556,7 @@ impl Options {
             web_server,
             web_sharing,
             stacked_resize,
+            stacked_pane_list,
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
@@ -433,6 +571,9 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
+            mobile_layout,
+            mobile_threshold_cols,
+            mobile_threshold_rows,
         }
     }
 
@@ -454,6 +595,7 @@ impl Options {
         let simplified_ui = merge_bool(other.simplified_ui, self.simplified_ui);
         let mouse_mode = merge_bool(other.mouse_mode, self.mouse_mode);
         let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
+        let pane_frame_style = other.pane_frame_style.or(self.pane_frame_style);
         let auto_layout = merge_bool(other.auto_layout, self.auto_layout);
         let mirror_session = merge_bool(other.mirror_session, self.mirror_session);
         let session_serialization =
@@ -497,6 +639,7 @@ impl Options {
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
+        let stacked_pane_list = other.stacked_pane_list.or(self.stacked_pane_list);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
@@ -519,6 +662,9 @@ impl Options {
         let client_async_worker_tasks = other
             .client_async_worker_tasks
             .or(self.client_async_worker_tasks);
+        let mobile_layout = other.mobile_layout.or(self.mobile_layout);
+        let mobile_threshold_cols = other.mobile_threshold_cols.or(self.mobile_threshold_cols);
+        let mobile_threshold_rows = other.mobile_threshold_rows.or(self.mobile_threshold_rows);
 
         Options {
             simplified_ui,
@@ -533,6 +679,7 @@ impl Options {
             theme_dir,
             mouse_mode,
             pane_frames,
+            pane_frame_style,
             mirror_session,
             on_force_close,
             scroll_buffer_size,
@@ -554,6 +701,7 @@ impl Options {
             web_server,
             web_sharing,
             stacked_resize,
+            stacked_pane_list,
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
@@ -568,6 +716,9 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
+            mobile_layout,
+            mobile_threshold_cols,
+            mobile_threshold_rows,
         }
     }
 
@@ -577,5 +728,229 @@ impl Options {
         } else {
             self.to_owned()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SMALL: (usize, usize) = (40, 20);
+    const WIDE_SHORT: (usize, usize) = (200, 20);
+    const TALL_NARROW: (usize, usize) = (40, 200);
+    const LARGE: (usize, usize) = (200, 200);
+
+    #[test]
+    fn pane_frame_style_from_str_accepts_all_variants() {
+        assert_eq!(
+            "full".parse::<PaneFrameStyle>().unwrap(),
+            PaneFrameStyle::Full
+        );
+        assert_eq!(
+            "titles".parse::<PaneFrameStyle>().unwrap(),
+            PaneFrameStyle::Titles
+        );
+        assert_eq!(
+            "none".parse::<PaneFrameStyle>().unwrap(),
+            PaneFrameStyle::None
+        );
+        assert_eq!(
+            "NONE".parse::<PaneFrameStyle>().unwrap(),
+            PaneFrameStyle::None
+        );
+        assert!("bogus".parse::<PaneFrameStyle>().is_err());
+    }
+
+    fn route(
+        layout: MobileLayoutConfiguration,
+        is_web: bool,
+        viewport: (usize, usize),
+        thresholds: (u16, u16),
+    ) -> bool {
+        layout.should_route_to_mobile(is_web, viewport.0, viewport.1, thresholds.0, thresholds.1)
+    }
+
+    #[test]
+    fn never_never_routes_to_mobile() {
+        for &is_web in &[true, false] {
+            for &viewport in &[SMALL, WIDE_SHORT, TALL_NARROW, LARGE] {
+                for &thresholds in &[(60, 30), (0, 0), (0, 30), (60, 0)] {
+                    assert!(
+                        !route(MobileLayoutConfiguration::Never, is_web, viewport, thresholds),
+                        "Never must never route (is_web={is_web} viewport={viewport:?} thresholds={thresholds:?})",
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn web_requires_web_client() {
+        assert!(route(MobileLayoutConfiguration::Web, true, SMALL, (60, 30)));
+        assert!(!route(
+            MobileLayoutConfiguration::Web,
+            false,
+            SMALL,
+            (60, 30)
+        ));
+    }
+
+    #[test]
+    fn web_respects_size_in_either_dimension() {
+        assert!(route(
+            MobileLayoutConfiguration::Web,
+            true,
+            TALL_NARROW,
+            (60, 30)
+        ));
+        assert!(route(
+            MobileLayoutConfiguration::Web,
+            true,
+            WIDE_SHORT,
+            (60, 30)
+        ));
+        assert!(!route(
+            MobileLayoutConfiguration::Web,
+            true,
+            LARGE,
+            (60, 30)
+        ));
+    }
+
+    #[test]
+    fn always_routes_any_client_on_size_match() {
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            true,
+            SMALL,
+            (60, 30)
+        ));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            false,
+            SMALL,
+            (60, 30)
+        ));
+        assert!(!route(
+            MobileLayoutConfiguration::Always,
+            true,
+            LARGE,
+            (60, 30)
+        ));
+        assert!(!route(
+            MobileLayoutConfiguration::Always,
+            false,
+            LARGE,
+            (60, 30)
+        ));
+    }
+
+    #[test]
+    fn zero_threshold_makes_dimension_unconditional() {
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            false,
+            LARGE,
+            (0, 30)
+        ));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            false,
+            LARGE,
+            (60, 0)
+        ));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            false,
+            LARGE,
+            (0, 0)
+        ));
+        assert!(route(MobileLayoutConfiguration::Web, true, LARGE, (0, 0)));
+        assert!(!route(MobileLayoutConfiguration::Web, false, LARGE, (0, 0)));
+    }
+
+    #[test]
+    fn zero_viewport_is_treated_as_unknown() {
+        assert!(!route(
+            MobileLayoutConfiguration::Always,
+            true,
+            (0, 0),
+            (60, 30)
+        ));
+        assert!(!route(
+            MobileLayoutConfiguration::Web,
+            true,
+            (0, 0),
+            (60, 30)
+        ));
+        assert!(!route(
+            MobileLayoutConfiguration::Always,
+            true,
+            (0, 0),
+            (0, 0)
+        ));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            true,
+            (40, 0),
+            (60, 30)
+        ));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            true,
+            (0, 20),
+            (60, 30)
+        ));
+    }
+
+    #[test]
+    fn boundary_inclusive_at_threshold() {
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            false,
+            (60, 200),
+            (60, 30)
+        ));
+        assert!(route(
+            MobileLayoutConfiguration::Always,
+            false,
+            (200, 30),
+            (60, 30)
+        ));
+        assert!(!route(
+            MobileLayoutConfiguration::Always,
+            false,
+            (61, 31),
+            (60, 30)
+        ));
+    }
+
+    #[test]
+    fn from_str_accepts_canonical_and_lowercase() {
+        assert_eq!(
+            "web".parse::<MobileLayoutConfiguration>(),
+            Ok(MobileLayoutConfiguration::Web)
+        );
+        assert_eq!(
+            "Web".parse::<MobileLayoutConfiguration>(),
+            Ok(MobileLayoutConfiguration::Web)
+        );
+        assert_eq!(
+            "always".parse::<MobileLayoutConfiguration>(),
+            Ok(MobileLayoutConfiguration::Always)
+        );
+        assert_eq!(
+            "never".parse::<MobileLayoutConfiguration>(),
+            Ok(MobileLayoutConfiguration::Never)
+        );
+        assert!("auto".parse::<MobileLayoutConfiguration>().is_err());
+    }
+
+    #[test]
+    fn default_is_web() {
+        assert_eq!(
+            MobileLayoutConfiguration::default(),
+            MobileLayoutConfiguration::Web
+        );
     }
 }

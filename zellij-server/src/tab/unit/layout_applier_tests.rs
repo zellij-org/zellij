@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
+use zellij_utils::input::options::PaneFrameStyle;
 
 use interprocess::local_socket::Stream as LocalSocketStream;
 use zellij_utils::{
@@ -147,7 +148,7 @@ fn create_layout_applier_fixtures(
     Rc<RefCell<Size>>,
     TiledPanes,
     FloatingPanes,
-    bool,
+    PaneFrameStyle,
     Option<PaneId>,
     Box<dyn ServerOsApi>,
     bool,
@@ -186,8 +187,10 @@ fn create_layout_applier_fixtures(
     let connected_clients_set = Rc::new(RefCell::new(HashSet::from([client_id])));
     let mode_info = Rc::new(RefCell::new(HashMap::new()));
     let stacked_resize = Rc::new(RefCell::new(false));
+    let stacked_pane_list = Rc::new(RefCell::new(false));
+    let reserved_top_rows = Rc::new(RefCell::new(HashMap::new()));
     let session_is_mirrored = true;
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let default_mode_info = ModeInfo::default();
 
     let tiled_panes = TiledPanes::new(
@@ -198,6 +201,8 @@ fn create_layout_applier_fixtures(
         mode_info.clone(),
         character_cell_size.clone(),
         stacked_resize,
+        stacked_pane_list,
+        reserved_top_rows,
         session_is_mirrored,
         draw_pane_frames,
         default_mode_info.clone(),
@@ -269,7 +274,7 @@ fn create_layout_applier_fixtures_with_receivers(
     Rc<RefCell<Size>>,
     TiledPanes,
     FloatingPanes,
-    bool,
+    PaneFrameStyle,
     Option<PaneId>,
     Box<dyn ServerOsApi>,
     bool,
@@ -316,8 +321,10 @@ fn create_layout_applier_fixtures_with_receivers(
     let connected_clients_set = Rc::new(RefCell::new(HashSet::from([client_id])));
     let mode_info = Rc::new(RefCell::new(HashMap::new()));
     let stacked_resize = Rc::new(RefCell::new(false));
+    let stacked_pane_list = Rc::new(RefCell::new(false));
+    let reserved_top_rows = Rc::new(RefCell::new(HashMap::new()));
     let session_is_mirrored = true;
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let default_mode_info = ModeInfo::default();
 
     let tiled_panes = TiledPanes::new(
@@ -328,6 +335,8 @@ fn create_layout_applier_fixtures_with_receivers(
         mode_info.clone(),
         character_cell_size.clone(),
         stacked_resize,
+        stacked_pane_list,
+        reserved_top_rows,
         session_is_mirrored,
         draw_pane_frames,
         default_mode_info.clone(),

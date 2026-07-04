@@ -1,0 +1,6 @@
+---
+source: zellij-integration-tests/tests/cli.rs
+expression: normalized(&grid_snapshot)
+---
+$ █
+ Zellij (test) NORMAL  Tab #1 

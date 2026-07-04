@@ -277,6 +277,9 @@ message Action {
     SetDarkThemeAction set_dark_theme = 137;
     SetLightThemeAction set_light_theme = 138;
     ToggleThemeAction toggle_theme = 139;
+    ToggleMobileModeAction toggle_mobile_mode = 140;
+    FocusLastPaneAction focus_last_pane = 141;
+    SetPaneFrameStyleAction set_pane_frame_style = 142;
   }
 }
 
@@ -286,6 +289,7 @@ message Action {
 message QuitAction {}
 message FocusNextPaneAction {}
 message FocusPreviousPaneAction {}
+message FocusLastPaneAction {}
 message SwitchFocusAction {}
 message MovePaneBackwardsAction {}
 message ClearScreenAction {}
@@ -304,6 +308,9 @@ message HalfPageScrollUpAction {}
 message HalfPageScrollDownAction {}
 message ToggleFocusFullscreenAction {}
 message TogglePaneFramesAction {}
+message SetPaneFrameStyleAction {
+  string style = 1;
+}
 message ToggleActiveSyncTabAction {}
 message TogglePaneEmbedOrFloatingAction {}
 message ToggleFloatingPanesAction {}
@@ -332,6 +339,7 @@ message CopyAction {}
 message ConfirmAction {}
 message DenyAction {}
 message ToggleMouseModeAction {}
+message ToggleMobileModeAction {}
 message PreviousSwapLayoutAction {}
 message NextSwapLayoutAction {}
 message TabLayoutInfo {
@@ -1012,6 +1020,8 @@ message MouseEvent {
   bool alt = 8;
   bool ctrl = 9;
   Position position = 10;
+  bool wheel_left = 11;
+  bool wheel_right = 12;
 }
 
 enum MouseEventType {
@@ -1174,6 +1184,11 @@ message Options {
   optional bool mouse_click_through = 45;
   optional string theme_dark = 46;
   optional string theme_light = 47;
+  optional MobileLayout mobile_layout = 48;
+  optional uint32 mobile_threshold_cols = 49;
+  optional uint32 mobile_threshold_rows = 50;
+  optional string pane_frame_style = 51;
+  optional bool stacked_pane_list = 52;
 }
 
 enum OnForceClose {
@@ -1199,6 +1214,13 @@ enum WebSharing {
   WEB_SHARING_ON = 1;
   WEB_SHARING_OFF = 2;
   WEB_SHARING_DISABLED = 3;
+}
+
+enum MobileLayout {
+  MOBILE_LAYOUT_UNSPECIFIED = 0;
+  MOBILE_LAYOUT_WEB = 1;
+  MOBILE_LAYOUT_ALWAYS = 2;
+  MOBILE_LAYOUT_NEVER = 3;
 }
 
 // Pane-targeting action messages

@@ -3325,7 +3325,7 @@ impl Grid {
             let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
             viewport.push(s);
         }
-        if get_full_scrollback {
+        let mut contents = if get_full_scrollback {
             let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
             for row in &self.lines_above {
                 let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
@@ -3352,7 +3352,9 @@ impl Grid {
             )
         } else {
             PaneContents::new(viewport, self.selection.start, self.selection.end)
-        }
+        };
+        contents.cursor = self.visible_cursor_in_viewport();
+        contents
     }
     pub fn pane_contents_with_ansi(
         &self,
@@ -3394,7 +3396,7 @@ impl Grid {
             viewport.push(extract_row_with_ansi(row));
         }
 
-        if get_full_scrollback {
+        let mut contents = if get_full_scrollback {
             let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
             for row in &self.lines_above {
                 lines_above_viewport.push(extract_row_with_ansi(row));
@@ -3418,7 +3420,14 @@ impl Grid {
             )
         } else {
             PaneContents::new(viewport, self.selection.start, self.selection.end)
-        }
+        };
+        contents.cursor = self.visible_cursor_in_viewport();
+        contents
+    }
+
+    fn visible_cursor_in_viewport(&self) -> Option<(usize, usize)> {
+        self.cursor_coordinates()
+            .and_then(|(x, y, is_visible)| if is_visible { Some((x, y)) } else { None })
     }
 }
 

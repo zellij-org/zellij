@@ -428,10 +428,14 @@ impl Pane for PluginPane {
         if self.borderless {
             return Ok(None);
         }
-        let frame_geom = self.current_geom();
+        let frame_geom = frame_params
+            .frame_geom_override
+            .unwrap_or_else(|| self.current_geom());
         let grid = get_or_create_grid!(self, client_id);
         let err_context = || format!("failed to render frame for client {client_id}");
-        let pane_title = if let Some(text_color_override) = self
+        let pane_title = if frame_params.blank_title {
+            String::new()
+        } else if let Some(text_color_override) = self
             .pane_frame_color_override
             .as_ref()
             .and_then(|(_color, text)| text.as_ref())
@@ -592,6 +596,24 @@ impl Pane for PluginPane {
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::ScrollDown(count)),
+            )]))
+            .unwrap();
+    }
+    fn scroll_left(&mut self, count: usize, client_id: ClientId) {
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(vec![(
+                Some(self.pid),
+                Some(client_id),
+                Event::Mouse(Mouse::ScrollLeft(count)),
+            )]))
+            .unwrap();
+    }
+    fn scroll_right(&mut self, count: usize, client_id: ClientId) {
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(vec![(
+                Some(self.pid),
+                Some(client_id),
+                Event::Mouse(Mouse::ScrollRight(count)),
             )]))
             .unwrap();
     }

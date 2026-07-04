@@ -14,6 +14,7 @@ pub mod tab;
 pub mod background_jobs;
 mod global_async_runtime;
 mod logging_pipe;
+mod mobile_mode;
 mod pane_groups;
 mod plugins;
 mod pty;
@@ -31,7 +32,7 @@ use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::{
     net::{IpAddr, Ipv4Addr},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, RwLock},
     thread,
 };
@@ -39,6 +40,7 @@ use zellij_utils::envs;
 use zellij_utils::pane_size::Size;
 
 use zellij_utils::input::cli_assets::CliAssets;
+use zellij_utils::input::options::PaneFrameStyle;
 
 use wasmi::Engine;
 
@@ -110,7 +112,7 @@ pub enum ServerInstruction {
         client_id: ClientId,
     },
     DisconnectAllClientsExcept(ClientId),
-    ChangeMode(ClientId, InputMode),
+    ChangeMode(ClientId, InputMode, Option<NotificationEnd>),
     ChangeModeForAllClients(InputMode),
     Reconfigure {
         client_id: ClientId,
@@ -401,6 +403,7 @@ impl SessionMetaData {
                     new_config.options.theme_light.as_deref().unwrap_or("?")
                 );
             }
+            let pane_frame_style = PaneFrameStyle::from_options(&new_config.options);
             self.senders
                 .send_to_screen(ScreenInstruction::Reconfigure {
                     client_id,
@@ -416,7 +419,7 @@ impl SessionMetaData {
                     host_theme_light,
                     simplified_ui: new_config.options.simplified_ui.unwrap_or(false),
                     default_shell: new_config.options.default_shell,
-                    pane_frames: new_config.options.pane_frames.unwrap_or(true),
+                    pane_frame_style,
                     copy_command: new_config.options.copy_command,
                     copy_to_clipboard: new_config.options.copy_clipboard,
                     copy_on_select: new_config.options.copy_on_select.unwrap_or(true),
@@ -424,6 +427,7 @@ impl SessionMetaData {
                     rounded_corners: new_config.ui.pane_frames.rounded_corners,
                     hide_session_name: new_config.ui.pane_frames.hide_session_name,
                     stacked_resize: new_config.options.stacked_resize.unwrap_or(true),
+                    stacked_pane_list: new_config.options.stacked_pane_list.unwrap_or(true),
                     default_editor: new_config.options.scrollback_editor.clone(),
                     advanced_mouse_actions: new_config
                         .options
@@ -794,7 +798,7 @@ mod session_state_tests {
     }
 }
 
-pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
+pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     info!("Starting Zellij server!");
 
     #[cfg(unix)]
@@ -824,6 +828,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         }
     }
 
+    start_server_impl(os_input, socket_path, true);
+}
+
+pub fn start_server_impl(
+    mut os_input: Box<dyn ServerOsApi>,
+    socket_path: PathBuf,
+    install_panic_hook: bool,
+) {
     envs::set_zellij("0".to_string());
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
@@ -831,13 +843,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let session_data: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
     let session_state = Arc::new(RwLock::new(SessionState::new()));
 
-    std::panic::set_hook({
-        use zellij_utils::errors::handle_panic;
-        let to_server = to_server.clone();
-        Box::new(move |info| {
-            handle_panic(info, Some(&to_server));
-        })
-    });
+    if install_panic_hook {
+        std::panic::set_hook({
+            use zellij_utils::errors::handle_panic;
+            let to_server = to_server.clone();
+            Box::new(move |info| {
+                handle_panic(info, Some(&to_server));
+            })
+        });
+    }
 
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
@@ -984,6 +998,22 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     is_web_client,
                 );
 
+                let should_enter_mobile = should_enter_mobile_on_connect(
+                    &runtime_config_options,
+                    is_web_client,
+                    client_attributes.size,
+                );
+                if should_enter_mobile {
+                    session_data
+                        .read()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::SuppressRenderUntilMobile(client_id))
+                        .unwrap();
+                }
+
                 let default_shell = runtime_config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
                         command: shell,
@@ -1080,6 +1110,17 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
+
+                if should_enter_mobile {
+                    session_data
+                        .read()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::EnterMobileMode(client_id, None))
+                        .unwrap();
+                }
             },
             ServerInstruction::AttachClient(
                 cli_assets,
@@ -1123,6 +1164,19 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     client_attributes.size,
                     is_web_client,
                 );
+
+                let should_enter_mobile = should_enter_mobile_on_connect(
+                    &runtime_config_options,
+                    is_web_client,
+                    client_attributes.size,
+                );
+                if should_enter_mobile {
+                    session_data
+                        .senders
+                        .send_to_screen(ScreenInstruction::SuppressRenderUntilMobile(client_id))
+                        .unwrap();
+                }
+
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::AddClient(
@@ -1149,6 +1203,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         None,
                     ))
                     .unwrap();
+
+                if should_enter_mobile {
+                    session_data
+                        .senders
+                        .send_to_screen(ScreenInstruction::EnterMobileMode(client_id, None))
+                        .unwrap();
+                }
             },
             ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client) => {
                 // the client_id was inserted into clients upon ipc tunnel initialization
@@ -1580,14 +1641,24 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .associate_pipe_with_client(pipe_id, client_id);
             },
-            ServerInstruction::ChangeMode(client_id, input_mode) => {
+            ServerInstruction::ChangeMode(client_id, input_mode, completion) => {
+                let mut session_data = session_data.write().unwrap();
+                let session_data = session_data.as_mut().unwrap();
+                let base_mode = session_data
+                    .session_configuration
+                    .get_client_default_input_mode(&client_id);
                 session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
                     .current_input_modes
                     .insert(client_id, input_mode);
+                session_data
+                    .senders
+                    .send_to_screen(ScreenInstruction::ChangeMode(
+                        input_mode,
+                        Some(base_mode),
+                        client_id,
+                        completion,
+                    ))
+                    .unwrap();
             },
             ServerInstruction::ChangeModeForAllClients(input_mode) => {
                 session_data
@@ -2082,7 +2153,11 @@ fn init_session(
         let default_layout_name = config_options
             .default_layout
             .map(|l| format!("{}", l.display()));
-        report_changes_in_config_file(config_file_path, to_server.clone());
+        report_changes_in_config_file(
+            config_file_path,
+            cli_assets.config_dir.as_deref(),
+            to_server.clone(),
+        );
 
         // Watch layout directory for changes
         if let Some(layout_dir_path) = layout_dir {
@@ -2197,12 +2272,29 @@ fn should_show_startup_tip(
     }
 }
 
+fn should_enter_mobile_on_connect(options: &Options, is_web_client: bool, viewport: Size) -> bool {
+    let mobile_layout = options.mobile_layout.unwrap_or_default();
+    if is_web_client {
+        mobile_layout.may_route_web_client_to_mobile()
+    } else {
+        mobile_layout.should_route_to_mobile(
+            is_web_client,
+            viewport.cols,
+            viewport.rows,
+            options.mobile_threshold_cols.unwrap_or(60),
+            options.mobile_threshold_rows.unwrap_or(30),
+        )
+    }
+}
+
 fn report_changes_in_config_file(
     config_file_path: PathBuf,
+    config_dir: Option<&Path>,
     to_server: SenderWithContext<ServerInstruction>,
 ) {
+    let config_dir = config_dir.map(Path::to_path_buf);
     global_async_runtime::get_tokio_runtime().spawn(async move {
-        watch_config_file_changes(config_file_path, move |new_config| {
+        watch_config_file_changes(config_file_path, config_dir.as_deref(), move |new_config| {
             let to_server = to_server.clone();
             async move {
                 let _ = to_server.send(ServerInstruction::ConfigWrittenToDisk(new_config));

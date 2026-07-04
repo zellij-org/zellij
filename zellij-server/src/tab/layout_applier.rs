@@ -19,6 +19,7 @@ use std::rc::Rc;
 use zellij_utils::{
     data::{Palette, Style},
     input::layout::{FloatingPaneLayout, Run, RunPluginOrAlias, TiledPaneLayout},
+    input::options::PaneFrameStyle,
     pane_size::{PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -35,7 +36,7 @@ pub struct LayoutApplier<'a> {
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
     tiled_panes: &'a mut TiledPanes,
     floating_panes: &'a mut FloatingPanes,
-    draw_pane_frames: bool,
+    pane_frame_style: PaneFrameStyle,
     focus_pane_id: &'a mut Option<PaneId>,
     os_api: Box<dyn ServerOsApi>,
     debug: bool,
@@ -60,7 +61,7 @@ impl<'a> LayoutApplier<'a> {
         display_area: &Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
         tiled_panes: &'a mut TiledPanes,
         floating_panes: &'a mut FloatingPanes,
-        draw_pane_frames: bool,
+        pane_frame_style: PaneFrameStyle,
         focus_pane_id: &'a mut Option<PaneId>,
         os_api: &Box<dyn ServerOsApi>,
         debug: bool,
@@ -94,7 +95,7 @@ impl<'a> LayoutApplier<'a> {
             display_area,
             tiled_panes,
             floating_panes,
-            draw_pane_frames,
+            pane_frame_style,
             focus_pane_id,
             os_api,
             debug,
@@ -228,7 +229,7 @@ impl<'a> LayoutApplier<'a> {
             self.viewport.clone(),
             self.display_area.clone(),
             self.tiled_panes,
-            self.draw_pane_frames,
+            self.pane_frame_style,
         );
         Ok(())
     }
@@ -321,7 +322,7 @@ impl<'a> LayoutApplier<'a> {
             self.viewport.clone(),
             self.display_area.clone(),
             self.tiled_panes,
-            self.draw_pane_frames,
+            self.pane_frame_style,
         );
         Ok(())
     }
@@ -1033,7 +1034,7 @@ impl<'a> LayoutApplier<'a> {
         viewport: Rc<RefCell<Viewport>>,
         display_area: Rc<RefCell<Size>>,
         tiled_panes: &mut TiledPanes,
-        draw_pane_frames: bool,
+        pane_frame_style: PaneFrameStyle,
     ) {
         {
             // reset viewport before reapplying offset
@@ -1071,7 +1072,7 @@ impl<'a> LayoutApplier<'a> {
                 }
             }
         }
-        tiled_panes.set_pane_frames(draw_pane_frames);
+        tiled_panes.set_pane_frames(pane_frame_style);
     }
     fn adjust_viewport(&mut self) -> Result<()> {
         // here we offset the viewport after applying a tiled panes layout
@@ -1091,7 +1092,7 @@ impl<'a> LayoutApplier<'a> {
             self.viewport.clone(),
             self.display_area.clone(),
             self.tiled_panes,
-            self.draw_pane_frames,
+            self.pane_frame_style,
         );
         Ok(())
     }
