@@ -1767,7 +1767,7 @@ impl Tab {
         } else {
             let selectable_tiled_panes =
                 self.tiled_panes.get_panes().filter(|(_, p)| p.selectable());
-            if selectable_tiled_panes.count() > 1 {
+            if selectable_tiled_panes.count() + self.suppressed_stack_list_members().count() > 1 {
                 self.swap_layouts.tiled_layout_info()
             } else {
                 // no layout for single pane
