@@ -751,6 +751,7 @@ pub enum ScreenInstruction {
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
+        mouse_scroll_lines: usize,
     },
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -1458,6 +1459,7 @@ pub(crate) struct Screen {
     visual_bell: bool,
     focus_follows_mouse: bool,
     mouse_click_through: bool,
+    mouse_scroll_lines: usize,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     // the below are the configured values - the ones that will be set if and when the web server
     // is brought online
@@ -1560,6 +1562,7 @@ impl Screen {
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
+        mouse_scroll_lines: usize,
         web_server_ip: IpAddr,
         web_server_port: u16,
     ) -> Self {
@@ -1620,6 +1623,7 @@ impl Screen {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            mouse_scroll_lines,
             web_server_ip,
             web_server_port,
             render_blocker: RenderBlocker::new(100),
@@ -3347,6 +3351,7 @@ impl Screen {
             self.mouse_hover_effects,
             self.focus_follows_mouse,
             self.mouse_click_through,
+            self.mouse_scroll_lines,
             self.web_server_ip,
             self.web_server_port,
             mobile_tab_count,
@@ -5040,6 +5045,7 @@ impl Screen {
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
+        mouse_scroll_lines: usize,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -5065,6 +5071,7 @@ impl Screen {
         self.visual_bell = visual_bell;
         self.focus_follows_mouse = focus_follows_mouse;
         self.mouse_click_through = mouse_click_through;
+        self.mouse_scroll_lines = mouse_scroll_lines;
         self.default_mode_info
             .update_arrow_fonts(should_support_arrow_fonts);
         self.default_mode_info
@@ -5091,6 +5098,7 @@ impl Screen {
             tab.update_mouse_hover_effects(mouse_hover_effects);
             tab.update_focus_follows_mouse(focus_follows_mouse);
             tab.update_mouse_click_through(mouse_click_through);
+            tab.update_mouse_scroll_lines(mouse_scroll_lines);
             tab.sync_stacked_pane_list_mode();
         }
 
@@ -6226,6 +6234,7 @@ pub(crate) fn screen_thread_main(
     let visual_bell = config_options.visual_bell.unwrap_or(true);
     let focus_follows_mouse = config_options.focus_follows_mouse.unwrap_or(false);
     let mouse_click_through = config_options.mouse_click_through.unwrap_or(false);
+    let mouse_scroll_lines = config_options.mouse_scroll_lines.unwrap_or(3);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -6268,6 +6277,7 @@ pub(crate) fn screen_thread_main(
         visual_bell,
         focus_follows_mouse,
         mouse_click_through,
+        mouse_scroll_lines,
         web_server_ip,
         web_server_port,
     );
@@ -7256,11 +7266,12 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let scroll_lines = screen.mouse_scroll_lines;
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab
-                        .handle_scrollwheel_up(&point, 3, client_id), ?
+                        .handle_scrollwheel_up(&point, scroll_lines, client_id), ?
                 );
                 screen.render(None)?;
             },
@@ -7282,11 +7293,12 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let scroll_lines = screen.mouse_scroll_lines;
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab
-                        .handle_scrollwheel_down(&point, 3, client_id), ?
+                        .handle_scrollwheel_down(&point, scroll_lines, client_id), ?
                 );
                 screen.render(None)?;
             },
@@ -9412,6 +9424,7 @@ pub(crate) fn screen_thread_main(
                 visual_bell,
                 focus_follows_mouse,
                 mouse_click_through,
+                mouse_scroll_lines,
             } => {
                 screen.host_theme_dark_styling = host_theme_dark;
                 screen.host_theme_light_styling = host_theme_light;
@@ -9437,6 +9450,7 @@ pub(crate) fn screen_thread_main(
                         visual_bell,
                         focus_follows_mouse,
                         mouse_click_through,
+                        mouse_scroll_lines,
                         client_id,
                     )
                     .non_fatal();

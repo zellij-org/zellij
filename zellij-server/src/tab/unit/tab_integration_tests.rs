@@ -277,6 +277,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        3,     // mouse_scroll_lines
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -366,6 +367,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        3,     // mouse_scroll_lines
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -474,6 +476,7 @@ fn create_new_tab_with_swap_layouts(
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        3,     // mouse_scroll_lines
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -579,6 +582,7 @@ fn create_new_tab_with_os_api(
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        3,     // mouse_scroll_lines
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -670,6 +674,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        3,     // mouse_scroll_lines
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -775,6 +780,7 @@ fn create_new_tab_with_mock_pty_writer(
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        3,     // mouse_scroll_lines
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -871,6 +877,7 @@ fn create_new_tab_with_sixel_support(
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        3,     // mouse_scroll_lines
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -4788,6 +4795,49 @@ fn pane_faux_scrolling_in_alternate_mode() {
     expected.append(&mut vec!["\u{1b}[B"; lines_to_scroll]);
     expected.append(&mut vec!["\u{1b}OA"; lines_to_scroll]);
     expected.append(&mut vec!["\u{1b}OB"; lines_to_scroll]);
+
+    assert_eq!(pty_instruction_bus.clone_output(), expected);
+}
+
+#[test]
+fn mouse_scroll_lines_controls_wheel_scroll_amount() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id: u16 = 1;
+    let configured_scroll_lines = 5;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    tab.update_mouse_scroll_lines(configured_scroll_lines);
+    pty_instruction_bus.start();
+
+    let enable_alternate_screen = String::from("\u{1b}[?1049h"); // CSI ? 1049 h -> switch to the Alternate Screen Buffer
+    tab.handle_pty_bytes(1, enable_alternate_screen.as_bytes().to_vec())
+        .unwrap();
+    // faux scrolling emits one arrow key per scrolled line, making the
+    // configured line count observable in the pty output
+    tab.handle_mouse_event(
+        &MouseEvent::new_scroll_up_event(Position::new(1, 1)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_scroll_down_event(Position::new(1, 1)),
+        client_id,
+    )
+    .unwrap();
+
+    pty_instruction_bus.exit();
+
+    let mut expected: Vec<&str> = Vec::new();
+    expected.append(&mut vec!["\u{1b}[A"; configured_scroll_lines]);
+    expected.append(&mut vec!["\u{1b}[B"; configured_scroll_lines]);
 
     assert_eq!(pty_instruction_bus.clone_output(), expected);
 }
@@ -12765,6 +12815,7 @@ fn create_new_tab_with_plugin_receiver(
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        3,     // mouse_scroll_lines
         web_server_ip,
         web_server_port,
         0, // mobile_tab_count
@@ -14551,6 +14602,7 @@ fn create_new_tab_with_server_receiver(
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
+        3,     // mouse_scroll_lines
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         8080,
         0, // mobile_tab_count

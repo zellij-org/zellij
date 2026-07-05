@@ -315,6 +315,7 @@ fn create_new_screen(
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
+        3,     // mouse_scroll_lines
         web_server_ip,
         web_server_port,
     );
@@ -5436,6 +5437,7 @@ fn create_new_screen_with_message_capture(
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
+        3,     // mouse_scroll_lines
         web_server_ip,
         web_server_port,
     );
@@ -8511,6 +8513,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
+        3,     // mouse_scroll_lines
         web_server_ip,
         web_server_port,
     );
@@ -9095,6 +9098,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         true,
         false,
         false,
+        3, // mouse_scroll_lines
         web_server_ip,
         web_server_port,
     );
@@ -9575,6 +9579,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         true,  // visual_bell
         false, // focus_follows_mouse
         false, // mouse_click_through
+        3,     // mouse_scroll_lines
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         8080,
     )

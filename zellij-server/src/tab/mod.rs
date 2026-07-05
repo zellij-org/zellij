@@ -254,6 +254,7 @@ pub(crate) struct Tab {
     mouse_hover_effects: bool,
     focus_follows_mouse: bool,
     mouse_click_through: bool,
+    mouse_scroll_lines: usize,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
     // the below are the configured values - the ones that will be set if and when the web server
@@ -810,6 +811,7 @@ impl Tab {
         mouse_hover_effects: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
+        mouse_scroll_lines: usize,
         web_server_ip: IpAddr,
         web_server_port: u16,
         mobile_tab_count: usize,
@@ -944,6 +946,7 @@ impl Tab {
             mouse_hover_effects,
             focus_follows_mouse,
             mouse_click_through,
+            mouse_scroll_lines,
             connected_clients_in_app,
             web_server_ip,
             web_server_port,
@@ -6840,6 +6843,9 @@ impl Tab {
     }
     pub fn update_mouse_click_through(&mut self, mouse_click_through: bool) {
         self.mouse_click_through = mouse_click_through;
+    }
+    pub fn update_mouse_scroll_lines(&mut self, mouse_scroll_lines: usize) {
+        self.mouse_scroll_lines = mouse_scroll_lines;
     }
     pub fn clear_mouse_hover_state(&mut self) {
         self.mouse_hover_pane_id.clear();

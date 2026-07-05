@@ -290,6 +290,11 @@ web_sharing "disabled"
 // default is false
 // mouse_click_through false
  
+// How many lines to scroll for each mouse wheel scroll event
+// Valid values: positive integers
+// Default value: 3
+mouse_scroll_lines 5
+ 
 // The ip address the web server should listen on when it starts
 // Default: "127.0.0.1"
 // (Requires restart)
@@ -329,3 +334,4 @@ mobile_threshold_cols 72
 // Row breakpoint for mobile_layout (web/always). 0 = always match.
 // Default: 30
 mobile_threshold_rows 0
+
