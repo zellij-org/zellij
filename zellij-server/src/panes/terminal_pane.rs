@@ -414,27 +414,24 @@ impl Pane for TerminalPane {
                 modifier_text.push(']');
             }
             format!("SEARCHING: {}{}", self.search_term, modifier_text)
-        } else if self.pane_name.is_empty() {
-            self.grid
-                .title
-                .clone()
-                .unwrap_or_else(|| self.pane_title.clone())
         } else {
-            self.pane_name.clone()
+            self.current_title()
         };
-        let pane_title = if let Some(text_color_override) = self
+        let pane_title = if frame_params.blank_title {
+            String::new()
+        } else if let Some(text_color_override) = self
             .pane_frame_color_override
             .as_ref()
             .and_then(|(_color, text)| text.as_ref())
         {
             text_color_override.into()
-        } else if self.has_bell_notification {
-            format!("{} [!]", normal_title)
         } else {
-            normal_title
+            self.title_with_bell_indicator(normal_title)
         };
 
-        let frame_geom = self.current_geom();
+        let frame_geom = frame_params
+            .frame_geom_override
+            .unwrap_or_else(|| self.current_geom());
         let is_pinned = frame_geom.is_pinned;
         let mut frame = PaneFrame::new(
             frame_geom.into(),
@@ -897,6 +894,9 @@ impl Pane for TerminalPane {
             self.pane_name.to_owned()
         }
     }
+    fn stack_list_entry_label(&self) -> String {
+        self.title_with_bell_indicator(self.current_title())
+    }
     fn custom_title(&self) -> Option<String> {
         if self.pane_name.is_empty() {
             None
@@ -1079,6 +1079,13 @@ impl Pane for TerminalPane {
 }
 
 impl TerminalPane {
+    fn title_with_bell_indicator(&self, title: String) -> String {
+        if self.has_bell_notification {
+            format!("{} [!]", title)
+        } else {
+            title
+        }
+    }
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         pid: u32,

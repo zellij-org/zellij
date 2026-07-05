@@ -2,11 +2,12 @@ use crate::output::Output;
 use crate::panes::PaneId;
 use crate::tab::Pane;
 use crate::ui::boundaries::Boundaries;
-use crate::ui::pane_boundaries_frame::FrameParams;
+use crate::ui::pane_boundaries_frame::{FrameParams, StackListEntry};
 use crate::ClientId;
 use std::collections::{HashMap, HashSet};
 use zellij_utils::data::{client_id_to_colors, InputMode, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
+use zellij_utils::pane_size::PaneGeom;
 pub struct PaneContentsAndUi<'a> {
     pane: &'a mut Box<dyn Pane>,
     output: &'a mut Output,
@@ -21,6 +22,10 @@ pub struct PaneContentsAndUi<'a> {
     current_pane_group: HashMap<ClientId, Vec<PaneId>>,
     show_help_text: bool,
     omit_title: bool,
+    frame_geom_override: Option<PaneGeom>,
+    stack_list_entry_width: Option<usize>,
+    stack_list_entry_is_selected: bool,
+    blank_title: bool,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -69,7 +74,25 @@ impl<'a> PaneContentsAndUi<'a> {
             current_pane_group,
             show_help_text,
             omit_title,
+            frame_geom_override: None,
+            stack_list_entry_width: None,
+            stack_list_entry_is_selected: false,
+            blank_title: false,
         }
+    }
+    pub fn set_frame_geom_override(&mut self, frame_geom_override: Option<PaneGeom>) {
+        self.frame_geom_override = frame_geom_override;
+    }
+    pub fn set_blank_title(&mut self, blank_title: bool) {
+        self.blank_title = blank_title;
+    }
+    pub fn set_stack_list_entry(
+        &mut self,
+        stack_list_entry_width: Option<usize>,
+        stack_list_entry_is_selected: bool,
+    ) {
+        self.stack_list_entry_width = stack_list_entry_width;
+        self.stack_list_entry_is_selected = stack_list_entry_is_selected;
     }
     pub fn render_pane_contents_to_multiple_clients(
         &mut self,
@@ -243,6 +266,21 @@ impl<'a> PaneContentsAndUi<'a> {
             None
         };
         let pane_is_stacked = self.pane.current_geom().is_stacked();
+        let pane_is_in_group = self
+            .current_pane_group
+            .get(&client_id)
+            .map(|p| p.contains(&self.pane.pid()))
+            .unwrap_or(false);
+        let stack_list_entry = self.stack_list_entry_width.map(|width| StackListEntry {
+            width,
+            label: self.pane.stack_list_entry_label(),
+            is_selected: self.stack_list_entry_is_selected,
+            is_emphasized: pane_is_in_group
+                || (self
+                    .mouse_is_hovering_over_pane_for_clients
+                    .contains(&client_id)
+                    && !pane_focused_for_client_id),
+        });
         let frame_params = if session_is_mirrored {
             FrameParams {
                 focused_client,
@@ -264,6 +302,9 @@ impl<'a> PaneContentsAndUi<'a> {
                 show_help_text: self.show_help_text,
                 highlight_tooltip: highlight_tooltip.clone(),
                 omit_title: self.omit_title,
+                frame_geom_override: self.frame_geom_override,
+                stack_list_entry: stack_list_entry.clone(),
+                blank_title: self.blank_title,
             }
         } else {
             FrameParams {
@@ -286,6 +327,9 @@ impl<'a> PaneContentsAndUi<'a> {
                 show_help_text: self.show_help_text,
                 highlight_tooltip,
                 omit_title: self.omit_title,
+                frame_geom_override: self.frame_geom_override,
+                stack_list_entry,
+                blank_title: self.blank_title,
             }
         };
 

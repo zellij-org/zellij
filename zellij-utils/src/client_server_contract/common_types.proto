@@ -1188,7 +1188,8 @@ message Options {
   optional uint32 mobile_threshold_cols = 49;
   optional uint32 mobile_threshold_rows = 50;
   optional string pane_frame_style = 51;
-  optional uint32 mouse_scroll_lines = 52;
+  optional bool stacked_pane_list = 52;
+  optional uint32 mouse_scroll_lines = 53;
 }
 
 enum OnForceClose {

@@ -1,5 +1,7 @@
 use crate::output::CharacterChunk;
-use crate::panes::{AnsiCode, RcCharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
+use crate::panes::{
+    AnsiCode, CharacterStyles, RcCharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
+};
 use crate::ui::boundaries::boundary_type;
 use crate::ui::hint_text::{
     exit_code_segments, hover_segments, rerun_segments, HintExitStatus, HintLevel, HintSegment,
@@ -8,51 +10,67 @@ use crate::ui::hint_text::{
 use crate::ClientId;
 use zellij_utils::data::{client_id_to_colors, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
-use zellij_utils::pane_size::{Offset, Viewport};
+use zellij_utils::pane_size::{Offset, PaneGeom, Viewport};
 use zellij_utils::position::Position;
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+fn styled_characters(
+    characters: &str,
+    style_character: impl Fn(&mut CharacterStyles),
+) -> Vec<TerminalCharacter> {
+    characters
+        .chars()
+        .map(|character| {
+            let mut styles = RcCharacterStyles::reset();
+            styles.update(|styles| style_character(styles));
+            TerminalCharacter::new_styled(character, styles)
+        })
+        .collect()
+}
+
 fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<TerminalCharacter> {
-    let mut colored_string = Vec::new();
-    for character in characters.chars() {
-        let mut styles = RcCharacterStyles::reset();
-        styles.update(|styles| {
-            styles.bold = Some(AnsiCode::On);
-            match color {
-                Some(palette_color) => {
-                    styles.foreground = Some(AnsiCode::from(palette_color));
-                },
-                None => {},
-            }
-        });
-        let terminal_character = TerminalCharacter::new_styled(character, styles);
-        colored_string.push(terminal_character);
-    }
-    colored_string
+    styled_characters(characters, |styles| {
+        styles.bold = Some(AnsiCode::On);
+        if let Some(palette_color) = color {
+            styles.foreground = Some(AnsiCode::from(palette_color));
+        }
+    })
+}
+
+fn dimmed_foreground_color(
+    characters: &str,
+    color: Option<PaletteColor>,
+) -> Vec<TerminalCharacter> {
+    styled_characters(characters, |styles| {
+        styles.dim = Some(AnsiCode::On);
+        if let Some(palette_color) = color {
+            styles.foreground = Some(AnsiCode::from(palette_color));
+        }
+    })
 }
 
 fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<TerminalCharacter> {
-    let mut colored_string = Vec::new();
-    for character in characters.chars() {
-        let mut styles = RcCharacterStyles::reset();
-        styles.update(|styles| match color {
-            Some(palette_color) => {
-                styles.background = Some(AnsiCode::from(palette_color));
-                styles.bold(Some(AnsiCode::On));
-            },
-            None => {},
-        });
-        let terminal_character = TerminalCharacter::new_styled(character, styles);
-        colored_string.push(terminal_character);
-    }
-    colored_string
+    styled_characters(characters, |styles| {
+        if let Some(palette_color) = color {
+            styles.background = Some(AnsiCode::from(palette_color));
+            styles.bold(Some(AnsiCode::On));
+        }
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ExitStatus {
     Code(i32),
     Exited,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct StackListEntry {
+    pub width: usize,
+    pub label: String,
+    pub is_selected: bool,
+    pub is_emphasized: bool,
 }
 
 pub struct FrameParams {
@@ -73,6 +91,9 @@ pub struct FrameParams {
     pub show_help_text: bool,
     pub highlight_tooltip: Option<String>,
     pub omit_title: bool,
+    pub frame_geom_override: Option<PaneGeom>,
+    pub stack_list_entry: Option<StackListEntry>,
+    pub blank_title: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -100,6 +121,8 @@ pub struct PaneFrame {
     show_help_text: bool,
     highlight_tooltip: Option<String>,
     omit_title: bool,
+    stack_list_entry: Option<StackListEntry>,
+    color_override: Option<PaletteColor>,
 }
 
 impl PaneFrame {
@@ -133,6 +156,8 @@ impl PaneFrame {
             show_help_text: frame_params.show_help_text,
             highlight_tooltip: frame_params.highlight_tooltip,
             omit_title: frame_params.omit_title,
+            stack_list_entry: frame_params.stack_list_entry,
+            color_override: None,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -150,6 +175,7 @@ impl PaneFrame {
     }
     pub fn override_color(&mut self, color: PaletteColor) {
         self.color = Some(color);
+        self.color_override = Some(color);
     }
     fn client_cursor(&self, client_id: ClientId) -> Vec<TerminalCharacter> {
         let color = client_id_to_colors(client_id, self.style.colors.multiplayer_user_colors);
@@ -715,6 +741,86 @@ impl PaneFrame {
             .or_else(|| Some(self.title_line_without_middle()))
             .with_context(|| format!("failed to render title '{}'", self.title))
     }
+    fn render_stack_list_entry(&self, entry: &StackListEntry) -> Vec<TerminalCharacter> {
+        let usable_cols = self.geom.cols.saturating_sub(2);
+        let bracket_overhead = "[  ]".width();
+        let inner_width = entry
+            .width
+            .min(usable_cols.saturating_sub(bracket_overhead));
+        let content = if entry.label.width() <= inner_width {
+            entry.label.clone()
+        } else {
+            let truncation_budget = inner_width.saturating_sub(1);
+            let mut truncated = String::new();
+            for character in entry.label.chars() {
+                if truncated.width() + character.width().unwrap_or(0) > truncation_budget {
+                    break;
+                }
+                truncated.push(character);
+            }
+            truncated.push('…');
+            truncated
+        };
+        let padding = " ".repeat(inner_width.saturating_sub(content.width()));
+        let padded_content = format!("{}{}", content, padding);
+        let left_bracket = "[ ";
+        let right_bracket = " ]";
+        let entry_length = left_bracket.width() + padded_content.width() + right_bracket.width();
+        let entry_start = usable_cols.saturating_sub(entry_length) / 2;
+        let selection_sign = "<↓↑> ";
+        let selection_sign_width = if entry.is_selected && entry_start >= selection_sign.width() {
+            selection_sign.width()
+        } else {
+            0
+        };
+        let left_budget = entry_start.saturating_sub(selection_sign_width);
+        let (mut focus_part, focus_length) = self
+            .bracketed_focus_indicator(left_budget)
+            .unwrap_or((vec![], 0));
+        let mut line = Vec::with_capacity(usable_cols);
+        line.append(&mut focus_part);
+        for _ in focus_length..left_budget {
+            line.push(EMPTY_TERMINAL_CHARACTER);
+        }
+        if selection_sign_width > 0 {
+            line.append(&mut foreground_color(selection_sign, self.color));
+        }
+        let content_color = if entry.is_emphasized {
+            self.color
+        } else {
+            self.color_override
+        };
+        if entry.is_selected {
+            line.append(&mut foreground_color(left_bracket, self.color_override));
+            line.append(&mut foreground_color(&padded_content, self.color));
+            line.append(&mut foreground_color(right_bracket, self.color_override));
+        } else {
+            let unbracketed = format!("  {}  ", padded_content);
+            if entry.is_emphasized {
+                line.append(&mut foreground_color(&unbracketed, content_color));
+            } else {
+                line.append(&mut dimmed_foreground_color(&unbracketed, content_color));
+            }
+        }
+        let mut occupied_columns = entry_start + entry_length;
+        let (mut scroll_part, scroll_length) = self
+            .bracketed_scroll_indicator(usable_cols.saturating_sub(occupied_columns))
+            .unwrap_or((vec![], 0));
+        if self.exit_status.is_some() {
+            let (mut exit_part, exit_length) = self.first_exited_held_title_part_full();
+            if occupied_columns + 1 + exit_length + scroll_length <= usable_cols {
+                line.push(EMPTY_TERMINAL_CHARACTER);
+                line.append(&mut exit_part);
+                occupied_columns += 1 + exit_length;
+            }
+        }
+        while occupied_columns < usable_cols.saturating_sub(scroll_length) {
+            line.push(EMPTY_TERMINAL_CHARACTER);
+            occupied_columns += 1;
+        }
+        line.append(&mut scroll_part);
+        line
+    }
     fn render_one_line_title(&self) -> Result<Vec<TerminalCharacter>> {
         if self.should_draw_pane_frames {
             let total_title_length = self.geom.cols.saturating_sub(2);
@@ -1166,6 +1272,14 @@ impl PaneFrame {
         let err_context = || "failed to render pane frame";
         let mut character_chunks = vec![];
         if self.omit_title {
+            return Ok((character_chunks, None));
+        }
+        if let Some(entry) = &self.stack_list_entry {
+            character_chunks.push(CharacterChunk::new(
+                self.render_stack_list_entry(entry),
+                self.geom.x + 1,
+                self.geom.y,
+            ));
             return Ok((character_chunks, None));
         }
         if self.geom.rows == 1 || !self.should_draw_pane_frames {

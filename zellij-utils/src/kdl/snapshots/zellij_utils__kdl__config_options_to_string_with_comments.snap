@@ -255,6 +255,11 @@ web_sharing "disabled"
 // 
 // stacked_resize false
  
+// Whether stacked panes display as a list with the expanded pane pinned to the bottom
+// Default: true
+// 
+// stacked_pane_list false
+ 
 // Whether to show tips on startup
 // Default: true
 // 

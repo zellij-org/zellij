@@ -1,0 +1,11 @@
+---
+source: zellij-integration-tests/tests/stacked_pane_list.rs
+expression: normalized(&swapped_in)
+---
+ Zellij (test)  Tab #1  + 
+                                                 <↓↑> [ Pane #1 ]
+                                                        Pane #2
+                                                        Pane #3
+$ first-member
+$ █
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...
