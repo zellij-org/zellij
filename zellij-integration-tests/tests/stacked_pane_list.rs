@@ -200,7 +200,8 @@ fn up_and_down_move_the_selection_through_the_list() {
 
     zellij.send_stdin(&keys::alt('j'));
     zellij.wait_until("selection moved back down", |grid_snapshot| {
-        grid_snapshot.contains(&selected_entry("Pane #2")) && grid_snapshot.contains("second-member")
+        grid_snapshot.contains(&selected_entry("Pane #2"))
+            && grid_snapshot.contains("second-member")
     });
     zellij.quit();
 }
@@ -224,12 +225,14 @@ fn navigating_past_the_top_entry_leaves_the_stack() {
 
     zellij.send_stdin(&keys::alt('k'));
     zellij.wait_until("focus left the stack to the pane above", |grid_snapshot| {
-        grid_snapshot.contains(&selected_entry("Pane #2")) && grid_snapshot.cursor_is_at(col(2).row(2))
+        grid_snapshot.contains(&selected_entry("Pane #2"))
+            && grid_snapshot.cursor_is_at(col(2).row(2))
     });
 
     zellij.send_stdin(&keys::alt('j'));
     zellij.wait_until("focus re-entered the stack", |grid_snapshot| {
-        grid_snapshot.contains(&selected_entry("Pane #2")) && grid_snapshot.cursor_is_at(col(2).row(15))
+        grid_snapshot.contains(&selected_entry("Pane #2"))
+            && grid_snapshot.cursor_is_at(col(2).row(15))
     });
     zellij.quit();
 }
@@ -342,7 +345,8 @@ fn fullscreen_suspends_the_list_and_restores_it() {
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('f'));
     zellij.wait_until("stack member fullscreened", |grid_snapshot| {
-        grid_snapshot.contains("(FULLSCREEN)") && !grid_snapshot.contains(&selected_entry("Pane #3"))
+        grid_snapshot.contains("(FULLSCREEN)")
+            && !grid_snapshot.contains(&selected_entry("Pane #3"))
     });
 
     zellij.send_stdin(&keys::ctrl('p'));
@@ -397,7 +401,8 @@ fn alt_clicking_a_hidden_entry_marks_it_without_selecting() {
     zellij.wait_until(
         "hidden member marked, selection unchanged",
         |grid_snapshot| {
-            grid_snapshot.contains("GROUP ACTIONS") && grid_snapshot.contains(&selected_entry("Pane #3"))
+            grid_snapshot.contains("GROUP ACTIONS")
+                && grid_snapshot.contains(&selected_entry("Pane #3"))
         },
     );
     zellij.quit();
@@ -499,7 +504,8 @@ fn a_hidden_held_members_exit_code_shows_on_its_entry() {
 
     let grid_snapshot =
         zellij.wait_until("exit code rendered on the hidden entry", |grid_snapshot| {
-            grid_snapshot.contains("EXIT CODE: 2") && grid_snapshot.contains(&selected_entry("Pane #1"))
+            grid_snapshot.contains("EXIT CODE: 2")
+                && grid_snapshot.contains(&selected_entry("Pane #1"))
         });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -625,7 +631,8 @@ fn a_hidden_scrollback_editor_pair_survives_fullscreen() {
 
     editor.exit(Some(0));
     zellij.wait_until("editor closed back into its member", |grid_snapshot| {
-        grid_snapshot.contains(&selected_entry("Pane #2")) && grid_snapshot.contains("second-member")
+        grid_snapshot.contains(&selected_entry("Pane #2"))
+            && grid_snapshot.contains("second-member")
     });
     zellij.quit();
 }
@@ -646,7 +653,8 @@ fn closing_a_hidden_editor_member_substitutes_its_parked_pane() {
 
     zellij.send_stdin(&keys::alt('j'));
     zellij.wait_until("substituted member swapped in", |grid_snapshot| {
-        grid_snapshot.contains(&selected_entry("Pane #2")) && grid_snapshot.contains("second-member")
+        grid_snapshot.contains(&selected_entry("Pane #2"))
+            && grid_snapshot.contains("second-member")
     });
     zellij.quit();
 }
