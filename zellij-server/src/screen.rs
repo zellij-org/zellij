@@ -8141,6 +8141,7 @@ pub(crate) fn screen_thread_main(
                 if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
                     screen.report_key_passthrough_state(client_id, old, new);
                 }
+                screen.sync_scroll_mode_on_focus(client_id)?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
