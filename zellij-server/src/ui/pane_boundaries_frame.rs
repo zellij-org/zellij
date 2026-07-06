@@ -38,18 +38,6 @@ fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
     })
 }
 
-fn dimmed_foreground_color(
-    characters: &str,
-    color: Option<PaletteColor>,
-) -> Vec<TerminalCharacter> {
-    styled_characters(characters, |styles| {
-        styles.dim = Some(AnsiCode::On);
-        if let Some(palette_color) = color {
-            styles.foreground = Some(AnsiCode::from(palette_color));
-        }
-    })
-}
-
 fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<TerminalCharacter> {
     styled_characters(characters, |styles| {
         if let Some(palette_color) = color {
@@ -799,7 +787,8 @@ impl PaneFrame {
             if entry.is_emphasized {
                 line.append(&mut foreground_color(&unbracketed, content_color));
             } else {
-                line.append(&mut dimmed_foreground_color(&unbracketed, content_color));
+                let unfocused_color = self.style.colors.frame_unselected.map(|frame| frame.base);
+                line.append(&mut foreground_color(&unbracketed, unfocused_color));
             }
         }
         let mut occupied_columns = entry_start + entry_length;
