@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: stacked lists - new stack UI (https://github.com/zellij-org/zellij/pull/5331 and https://github.com/zellij-org/zellij/pull/5337)
 * fix: more verbose startup errors (https://github.com/zellij-org/zellij/pull/5334)
 * fix(windows): route Windows Terminal through the VT input path (https://github.com/zellij-org/zellij/pull/5335)
+* fix(windows): backslashes dropped when quoting arguments passed to spawned processes (https://github.com/zellij-org/zellij/pull/5336)
 
 ## [0.44.3] - 2026-05-13
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)
