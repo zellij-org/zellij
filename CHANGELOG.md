@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: new title-frames UI (https://github.com/zellij-org/zellij/pull/5318)
 * chore: upgrade wasmi to 1.1.0 (https://github.com/zellij-org/zellij/pull/5319)
 * fix: fragmented STDIN causing "garbage" input on slow SSH connections (https://github.com/zellij-org/zellij/pull/5320)
-* feat: stacked lists - new stack UI (https://github.com/zellij-org/zellij/pull/5331)
+* feat: stacked lists - new stack UI (https://github.com/zellij-org/zellij/pull/5331 and https://github.com/zellij-org/zellij/pull/5337)
 * fix: more verbose startup errors (https://github.com/zellij-org/zellij/pull/5334)
 
 ## [0.44.3] - 2026-05-13
