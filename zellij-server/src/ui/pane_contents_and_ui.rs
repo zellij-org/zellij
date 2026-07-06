@@ -25,6 +25,7 @@ pub struct PaneContentsAndUi<'a> {
     frame_geom_override: Option<PaneGeom>,
     stack_list_entry_width: Option<usize>,
     stack_list_entry_is_selected: bool,
+    stack_list_entry_stack_is_focused: bool,
     blank_title: bool,
 }
 
@@ -77,6 +78,7 @@ impl<'a> PaneContentsAndUi<'a> {
             frame_geom_override: None,
             stack_list_entry_width: None,
             stack_list_entry_is_selected: false,
+            stack_list_entry_stack_is_focused: false,
             blank_title: false,
         }
     }
@@ -90,9 +92,11 @@ impl<'a> PaneContentsAndUi<'a> {
         &mut self,
         stack_list_entry_width: Option<usize>,
         stack_list_entry_is_selected: bool,
+        stack_list_entry_stack_is_focused: bool,
     ) {
         self.stack_list_entry_width = stack_list_entry_width;
         self.stack_list_entry_is_selected = stack_list_entry_is_selected;
+        self.stack_list_entry_stack_is_focused = stack_list_entry_stack_is_focused;
     }
     pub fn render_pane_contents_to_multiple_clients(
         &mut self,
@@ -275,6 +279,7 @@ impl<'a> PaneContentsAndUi<'a> {
             width,
             label: self.pane.stack_list_entry_label(),
             is_selected: self.stack_list_entry_is_selected,
+            stack_is_focused: self.stack_list_entry_stack_is_focused,
             is_emphasized: pane_is_in_group
                 || (self
                     .mouse_is_hovering_over_pane_for_clients

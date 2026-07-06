@@ -1547,6 +1547,7 @@ impl Tab {
                 .map(|pane| pane.stack_list_entry_label().width())
                 .max()
                 .unwrap_or(0);
+            let stack_is_focused = active_panes.values().any(|p_id| *p_id == list.visible);
             for (rank, member) in list.members.iter().enumerate() {
                 let mut header_geom = rect;
                 header_geom.y = rect.y + rank;
@@ -1577,8 +1578,11 @@ impl Tab {
                     false,
                 );
                 pane_contents_and_ui.set_frame_geom_override(Some(header_geom));
-                pane_contents_and_ui
-                    .set_stack_list_entry(Some(widest_member_title), *member == list.visible);
+                pane_contents_and_ui.set_stack_list_entry(
+                    Some(widest_member_title),
+                    *member == list.visible,
+                    stack_is_focused,
+                );
                 for (client_id, client_mode) in &client_modes {
                     pane_contents_and_ui.render_pane_frame(
                         *client_id,

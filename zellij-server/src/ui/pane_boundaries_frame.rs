@@ -38,6 +38,18 @@ fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
     })
 }
 
+fn dimmed_foreground_color(
+    characters: &str,
+    color: Option<PaletteColor>,
+) -> Vec<TerminalCharacter> {
+    styled_characters(characters, |styles| {
+        styles.dim = Some(AnsiCode::On);
+        if let Some(palette_color) = color {
+            styles.foreground = Some(AnsiCode::from(palette_color));
+        }
+    })
+}
+
 fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<TerminalCharacter> {
     styled_characters(characters, |styles| {
         if let Some(palette_color) = color {
@@ -59,6 +71,7 @@ pub struct StackListEntry {
     pub label: String,
     pub is_selected: bool,
     pub is_emphasized: bool,
+    pub stack_is_focused: bool,
 }
 
 pub struct FrameParams {
@@ -731,10 +744,10 @@ impl PaneFrame {
     }
     fn render_stack_list_entry(&self, entry: &StackListEntry) -> Vec<TerminalCharacter> {
         let usable_cols = self.geom.cols.saturating_sub(2);
-        let bracket_overhead = "[  ]".width();
+        let title_prefix = format!("{} ", boundary_type::VERTICAL);
         let inner_width = entry
             .width
-            .min(usable_cols.saturating_sub(bracket_overhead));
+            .min(usable_cols.saturating_sub(title_prefix.width()));
         let content = if entry.label.width() <= inner_width {
             entry.label.clone()
         } else {
@@ -749,12 +762,9 @@ impl PaneFrame {
             truncated.push('…');
             truncated
         };
-        let padding = " ".repeat(inner_width.saturating_sub(content.width()));
-        let padded_content = format!("{}{}", content, padding);
-        let left_bracket = "[ ";
-        let right_bracket = " ]";
-        let entry_length = left_bracket.width() + padded_content.width() + right_bracket.width();
-        let entry_start = usable_cols.saturating_sub(entry_length) / 2;
+        let entry_length = title_prefix.width() + content.width();
+        let full_width_entry_length = title_prefix.width() + inner_width;
+        let entry_start = usable_cols.saturating_sub(full_width_entry_length) / 2;
         let selection_sign = "<↓↑> ";
         let selection_sign_width = if entry.is_selected && entry_start >= selection_sign.width() {
             selection_sign.width()
@@ -773,23 +783,15 @@ impl PaneFrame {
         if selection_sign_width > 0 {
             line.append(&mut foreground_color(selection_sign, self.color));
         }
-        let content_color = if entry.is_emphasized {
-            self.color
+        let pipe_color = self.style.colors.frame_unselected.map(|frame| frame.base);
+        line.append(&mut foreground_color(&title_prefix, pipe_color));
+        let unfocused_color = self.style.colors.frame_unselected.map(|frame| frame.base);
+        if entry.is_selected || entry.is_emphasized {
+            line.append(&mut foreground_color(&content, self.color));
+        } else if entry.stack_is_focused {
+            line.append(&mut foreground_color(&content, unfocused_color));
         } else {
-            self.color_override
-        };
-        if entry.is_selected {
-            line.append(&mut foreground_color(left_bracket, self.color_override));
-            line.append(&mut foreground_color(&padded_content, self.color));
-            line.append(&mut foreground_color(right_bracket, self.color_override));
-        } else {
-            let unbracketed = format!("  {}  ", padded_content);
-            if entry.is_emphasized {
-                line.append(&mut foreground_color(&unbracketed, content_color));
-            } else {
-                let unfocused_color = self.style.colors.frame_unselected.map(|frame| frame.base);
-                line.append(&mut foreground_color(&unbracketed, unfocused_color));
-            }
+            line.append(&mut dimmed_foreground_color(&content, unfocused_color));
         }
         let mut occupied_columns = entry_start + entry_length;
         let (mut scroll_part, scroll_length) = self
