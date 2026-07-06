@@ -788,8 +788,7 @@ impl PaneFrame {
             dimmed_foreground_color(&content, unfocused_color)
         };
         line.append(&mut styled_content);
-        let entry_padding =
-            full_width_entry_length.saturating_sub(marker_width + content.width());
+        let entry_padding = full_width_entry_length.saturating_sub(marker_width + content.width());
         for _ in 0..entry_padding {
             line.push(EMPTY_TERMINAL_CHARACTER);
         }
