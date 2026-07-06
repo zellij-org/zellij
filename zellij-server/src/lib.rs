@@ -32,7 +32,7 @@ use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::{
     net::{IpAddr, Ipv4Addr},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, RwLock},
     thread,
 };
@@ -40,6 +40,7 @@ use zellij_utils::envs;
 use zellij_utils::pane_size::Size;
 
 use zellij_utils::input::cli_assets::CliAssets;
+use zellij_utils::input::options::PaneFrameStyle;
 
 use wasmi::Engine;
 
@@ -402,6 +403,7 @@ impl SessionMetaData {
                     new_config.options.theme_light.as_deref().unwrap_or("?")
                 );
             }
+            let pane_frame_style = PaneFrameStyle::from_options(&new_config.options);
             self.senders
                 .send_to_screen(ScreenInstruction::Reconfigure {
                     client_id,
@@ -417,7 +419,7 @@ impl SessionMetaData {
                     host_theme_light,
                     simplified_ui: new_config.options.simplified_ui.unwrap_or(false),
                     default_shell: new_config.options.default_shell,
-                    pane_frames: new_config.options.pane_frames.unwrap_or(true),
+                    pane_frame_style,
                     copy_command: new_config.options.copy_command,
                     copy_to_clipboard: new_config.options.copy_clipboard,
                     copy_on_select: new_config.options.copy_on_select.unwrap_or(true),
@@ -425,6 +427,7 @@ impl SessionMetaData {
                     rounded_corners: new_config.ui.pane_frames.rounded_corners,
                     hide_session_name: new_config.ui.pane_frames.hide_session_name,
                     stacked_resize: new_config.options.stacked_resize.unwrap_or(true),
+                    stacked_pane_list: new_config.options.stacked_pane_list.unwrap_or(true),
                     default_editor: new_config.options.scrollback_editor.clone(),
                     advanced_mouse_actions: new_config
                         .options
@@ -2150,7 +2153,11 @@ fn init_session(
         let default_layout_name = config_options
             .default_layout
             .map(|l| format!("{}", l.display()));
-        report_changes_in_config_file(config_file_path, to_server.clone());
+        report_changes_in_config_file(
+            config_file_path,
+            cli_assets.config_dir.as_deref(),
+            to_server.clone(),
+        );
 
         // Watch layout directory for changes
         if let Some(layout_dir_path) = layout_dir {
@@ -2282,10 +2289,12 @@ fn should_enter_mobile_on_connect(options: &Options, is_web_client: bool, viewpo
 
 fn report_changes_in_config_file(
     config_file_path: PathBuf,
+    config_dir: Option<&Path>,
     to_server: SenderWithContext<ServerInstruction>,
 ) {
+    let config_dir = config_dir.map(Path::to_path_buf);
     global_async_runtime::get_tokio_runtime().spawn(async move {
-        watch_config_file_changes(config_file_path, move |new_config| {
+        watch_config_file_changes(config_file_path, config_dir.as_deref(), move |new_config| {
             let to_server = to_server.clone();
             async move {
                 let _ = to_server.send(ServerInstruction::ConfigWrittenToDisk(new_config));

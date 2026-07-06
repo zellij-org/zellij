@@ -1,0 +1,28 @@
+---
+source: zellij-integration-tests/tests/stacked_pane_list.rs
+expression: normalized(&grid_snapshot)
+---
+ Zellij (test)  Tab #1  + 
+                                                        Pane #1
+                                                 <↓↑> [ Pane #2 ]                                    [ SCROLL: 21/21 ]
+$ line0
+line1
+line2
+line3
+line4
+line5
+line6
+line7
+line8
+line9
+line10
+line11
+line12
+line13
+line14
+line15
+line16
+line17
+line18
+█ine19
+ Ctrl + <s> SEARCH   s  Search  ↓↑  Scroll  PgDn|PgUp  Scroll  d|u  Scroll  e  Edit  ENTER  Select     

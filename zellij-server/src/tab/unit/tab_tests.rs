@@ -10,6 +10,7 @@ use zellij_utils::channels::{unbounded, Receiver, SenderWithContext};
 use zellij_utils::data::{Direction, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
+use zellij_utils::input::options::PaneFrameStyle;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
@@ -156,7 +157,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -187,6 +188,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         size,
         character_cell_info,
         stacked_resize,
+        Rc::new(RefCell::new(false)),
         sixel_image_store,
         os_api,
         senders,
@@ -243,7 +245,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -274,6 +276,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         size,
         character_cell_info,
         stacked_resize,
+        Rc::new(RefCell::new(false)),
         sixel_image_store,
         os_api,
         senders,
@@ -337,7 +340,7 @@ fn create_new_tab_with_cell_size(
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -367,6 +370,7 @@ fn create_new_tab_with_cell_size(
         size,
         character_cell_size,
         stacked_resize,
+        Rc::new(RefCell::new(false)),
         sixel_image_store,
         os_api,
         senders,
@@ -1564,6 +1568,90 @@ fn switch_to_prev_pane_fullscreen() {
         active_tab.get_active_pane_id(1).unwrap(),
         PaneId::Terminal(4),
         "Active pane did not switch in fullscreen mode"
+    );
+}
+
+#[test]
+fn switch_to_last_pane_fullscreen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut active_tab = create_new_tab(size, stacked_resize);
+
+    //testing four consecutive switches in fullscreen mode
+
+    active_tab
+        .new_pane(
+            PaneId::Terminal(1),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    active_tab
+        .new_pane(
+            PaneId::Terminal(2),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    active_tab
+        .new_pane(
+            PaneId::Terminal(3),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    active_tab
+        .new_pane(
+            PaneId::Terminal(4),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    active_tab.toggle_active_pane_fullscreen(1);
+
+    // order is now 1 2 3 4, current active is Terminal 4
+
+    active_tab.switch_last_pane_fullscreen(1);
+
+    // the position should now be in Terminal 3
+
+    assert_eq!(
+        active_tab.get_active_pane_id(1).unwrap(),
+        PaneId::Terminal(3),
+        "Active pane did not switch to the last pane in fullscreen mode"
+    );
+
+    active_tab.switch_last_pane_fullscreen(1);
+
+    // the position should now be back in Terminal 4
+
+    assert_eq!(
+        active_tab.get_active_pane_id(1).unwrap(),
+        PaneId::Terminal(4),
+        "Active pane did not switch to the last pane in fullscreen mode"
     );
 }
 
@@ -15380,7 +15468,7 @@ fn correctly_resize_frameless_panes_on_pane_close() {
     let size = Size { cols, rows };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.set_pane_frames(false);
+    tab.set_pane_frames(PaneFrameStyle::None);
 
     // a single frameless pane should take up all available space
     let pane = tab.tiled_panes.panes.get(&PaneId::Terminal(1)).unwrap();

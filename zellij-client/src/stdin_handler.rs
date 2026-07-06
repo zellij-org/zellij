@@ -1,11 +1,14 @@
 use crate::keyboard_parser::{KittyKeyboardParser, KittyParseOutcome};
 use crate::os_input_output::ClientOsApi;
-use crate::stdin_ansi_parser::StdinAnsiParser;
+use crate::stdin_ansi_parser::{PendingPartial, StdinAnsiParser};
 #[cfg(windows)]
 use crate::stdin_handler_windows::enable_vt_input;
 use crate::InputInstruction;
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+const LONE_ESC_FLUSH_INTERVAL: Duration = Duration::from_millis(50);
+const PARTIAL_REPLY_FLUSH_GUARD: Duration = Duration::from_millis(1000);
 use zellij_utils::{
     channels::SenderWithContext,
     vendored::termwiz::input::{InputEvent, InputParser},
@@ -99,9 +102,10 @@ pub(crate) fn stdin_loop(
             }
         });
     let mut needs_finalization = false;
+    let mut reply_in_progress_since: Option<Instant> = None;
     loop {
         match if needs_finalization {
-            stdin_rx.recv_timeout(Duration::from_millis(50))
+            stdin_rx.recv_timeout(LONE_ESC_FLUSH_INTERVAL)
         } else {
             stdin_rx
                 .recv()
@@ -134,20 +138,14 @@ pub(crate) fn stdin_loop(
                             let _ = send_input_instructions
                                 .send(InputInstruction::DesktopNotificationResponse(payload));
                         }
-                        let has_partial = parse_output.has_partial_state;
                         let residue = parse_output.residue;
                         if residue.is_empty() {
-                            // If all bytes were consumed by the host-reply
-                            // parser, nothing to feed to the keyboard
-                            // parser. But if the host-reply parser is
-                            // sitting on a buffered partial sequence
-                            // (e.g. a lone trailing ESC waiting to be
-                            // disambiguated), schedule a finalize tick
-                            // so the idle drain releases it as keyboard
-                            // residue when no follow-up arrives.
-                            if has_partial {
-                                needs_finalization = true;
-                            }
+                            schedule_finalization(
+                                &stdin_ansi_parser,
+                                false,
+                                &mut needs_finalization,
+                                &mut reply_in_progress_since,
+                            );
                             continue;
                         }
                         current_buffer.append(&mut residue.clone());
@@ -168,6 +166,12 @@ pub(crate) fn stdin_loop(
                                             true,
                                         ))
                                         .unwrap();
+                                    schedule_finalization(
+                                        &stdin_ansi_parser,
+                                        false,
+                                        &mut needs_finalization,
+                                        &mut reply_in_progress_since,
+                                    );
                                     continue;
                                 },
                                 KittyParseOutcome::Incomplete | KittyParseOutcome::NoMatch => {},
@@ -201,7 +205,12 @@ pub(crate) fn stdin_loop(
                                 .unwrap();
                         }
 
-                        needs_finalization = true;
+                        schedule_finalization(
+                            &stdin_ansi_parser,
+                            true,
+                            &mut needs_finalization,
+                            &mut reply_in_progress_since,
+                        );
                     },
                     Err(e) => {
                         if e == "Session ended" {
@@ -215,13 +224,38 @@ pub(crate) fn stdin_loop(
                 }
             },
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                finalize_events(
-                    &mut input_parser,
-                    &mut current_buffer,
-                    send_input_instructions.clone(),
-                    &stdin_ansi_parser,
-                );
-                needs_finalization = false;
+                let pending = stdin_ansi_parser.lock().unwrap().pending_partial();
+                match pending {
+                    PendingPartial::ReplyInProgress => {
+                        let elapsed = reply_in_progress_since
+                            .map(|since| since.elapsed())
+                            .unwrap_or_default();
+                        if elapsed >= PARTIAL_REPLY_FLUSH_GUARD {
+                            let drained = stdin_ansi_parser.lock().unwrap().finalize_force();
+                            drain_partial_to_keyboard(
+                                &mut input_parser,
+                                &mut current_buffer,
+                                send_input_instructions.clone(),
+                                drained,
+                            );
+                            needs_finalization = false;
+                            reply_in_progress_since = None;
+                        } else {
+                            needs_finalization = true;
+                        }
+                    },
+                    _ => {
+                        let drained = stdin_ansi_parser.lock().unwrap().finalize_lone_esc();
+                        drain_partial_to_keyboard(
+                            &mut input_parser,
+                            &mut current_buffer,
+                            send_input_instructions.clone(),
+                            drained,
+                        );
+                        needs_finalization = false;
+                        reply_in_progress_since = None;
+                    },
+                }
             },
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 log::debug!("STDIN pump disconnected");
@@ -232,18 +266,31 @@ pub(crate) fn stdin_loop(
     }
 }
 
-fn finalize_events(
+fn schedule_finalization(
+    stdin_ansi_parser: &Arc<Mutex<StdinAnsiParser>>,
+    fed_termwiz: bool,
+    needs_finalization: &mut bool,
+    reply_in_progress_since: &mut Option<Instant>,
+) {
+    let pending = stdin_ansi_parser.lock().unwrap().pending_partial();
+    if fed_termwiz || pending != PendingPartial::None {
+        *needs_finalization = true;
+    }
+    if pending == PendingPartial::ReplyInProgress {
+        if reply_in_progress_since.is_none() {
+            *reply_in_progress_since = Some(Instant::now());
+        }
+    } else {
+        *reply_in_progress_since = None;
+    }
+}
+
+fn drain_partial_to_keyboard(
     input_parser: &mut InputParser,
     current_buffer: &mut Vec<u8>,
     send_input_instructions: SenderWithContext<InputInstruction>,
-    stdin_ansi_parser: &Arc<Mutex<StdinAnsiParser>>,
+    drained: Vec<u8>,
 ) {
-    // Drain any speculatively-buffered partial host-reply bytes (a
-    // lone trailing ESC, or an unterminated OSC/CSI prefix whose
-    // follow-up never arrived). They become keyboard residue — same
-    // path real keypress bytes take. Without this drain, a real Esc
-    // press whose byte was parked under partial_osc would be lost.
-    let drained = stdin_ansi_parser.lock().unwrap().finalize();
     if !drained.is_empty() {
         current_buffer.extend_from_slice(&drained);
     }
@@ -256,8 +303,6 @@ fn finalize_events(
         },
         false,
     );
-    // Residue contains no OSC or whitelisted CSI reports — every
-    // termwiz event drained on idle is a key/mouse/paste/etc.
     for input_event in events {
         send_input_instructions
             .send(InputInstruction::KeyEvent(
@@ -277,13 +322,24 @@ fn build_startup_query_string() -> String {
     // <ESC>]11;?<ESC>\ => get background color
     // <ESC>]10;?<ESC>\ => get foreground color
     // <ESC>[?2026$p => get synchronised output mode
-    let mut query_string = String::from(
-        "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p",
-    );
-    // query colors
-    // eg. <ESC>]4;5;?<ESC>\ => query color register number 5
-    for i in 0..256 {
-        query_string.push_str(&format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
+    String::from("\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_startup_query_string;
+
+    #[test]
+    fn startup_query_has_no_palette_register_loop() {
+        let query = build_startup_query_string();
+        assert_eq!(
+            query,
+            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p"
+        );
+        assert!(
+            !query.contains("\u{1b}]4;"),
+            "startup query must not contain OSC 4 palette-register probes: {:?}",
+            query
+        );
     }
-    query_string
 }

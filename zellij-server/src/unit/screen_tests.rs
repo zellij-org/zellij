@@ -18,7 +18,7 @@ use zellij_utils::input::layout::{
     RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, TiledPaneLayout,
 };
 use zellij_utils::input::mouse::MouseEvent;
-use zellij_utils::input::options::Options;
+use zellij_utils::input::options::{Options, PaneFrameStyle};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
@@ -262,7 +262,7 @@ fn create_new_screen(
     let max_panes = None;
     let mut mode_info = ModeInfo::default();
     mode_info.session_name = Some("zellij-test".into());
-    let draw_pane_frames = false;
+    let draw_pane_frames = PaneFrameStyle::None;
     let auto_layout = true;
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
@@ -306,6 +306,7 @@ fn create_new_screen(
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
+        false,
         None,
         false,
         web_sharing,
@@ -693,6 +694,9 @@ impl MockScreen {
 
         let os_input = FakeInputOutput::default();
         let config_options = Options::default();
+        let mut config = Config::default();
+        config.options.pane_frame_style = Some(PaneFrameStyle::Full);
+        config.options.stacked_pane_list = Some(false);
         let main_client_id = 1;
 
         std::thread::Builder::new()
@@ -734,7 +738,7 @@ impl MockScreen {
             config_options,
             session_metadata,
             last_opened_tab_index: None,
-            config: Config::default(),
+            config,
             advanced_mouse_actions: true,
         }
     }
@@ -2473,6 +2477,55 @@ pub fn send_cli_focus_previous_pane_action() {
 }
 
 #[test]
+pub fn send_cli_focus_last_pane_action() {
+    let size = Size { cols: 80, rows: 20 };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![
+        TiledPaneLayout::default(),
+        TiledPaneLayout::default(),
+        TiledPaneLayout::default(),
+    ];
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_instruction = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let move_focus_action = CliAction::MoveFocus {
+        direction: Direction::Right,
+    };
+    let focus_last_pane_action = CliAction::FocusLastPane;
+    // move focus 1 -> 2 -> 3
+    send_cli_action_to_server(&session_metadata, move_focus_action.clone(), client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    send_cli_action_to_server(&session_metadata, move_focus_action.clone(), client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+                                                               // move focus 3 -> 2
+    send_cli_action_to_server(&session_metadata, focus_last_pane_action.clone(), client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+                                                               // move focus 2 -> 3
+    send_cli_action_to_server(&session_metadata, focus_last_pane_action.clone(), client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.teardown(vec![server_instruction, screen_thread]);
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    for (cursor_coordinates, _snapshot) in snapshots {
+        // here we assert he cursor_coordinates to let us know if we switched the pane focus
+        assert_snapshot!(format!("{:?}", cursor_coordinates));
+    }
+    assert_snapshot!(format!("{}", snapshot_count));
+}
+
+#[test]
 pub fn send_cli_move_focus_pane_action() {
     let size = Size { cols: 80, rows: 20 };
     let client_id = 10; // fake client id should not appear in the screen's state
@@ -3181,6 +3234,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         floating: false,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -3235,6 +3289,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         floating: false,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -3289,6 +3344,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         floating: false,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -3354,6 +3410,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         floating: true,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -5175,6 +5232,7 @@ pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
         floating: false,
         in_place: true,
         close_replaced_pane: true,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -5326,7 +5384,7 @@ fn create_new_screen_with_message_capture(
     let max_panes = None;
     let mut mode_info = ModeInfo::default();
     mode_info.session_name = Some("zellij-test".into());
-    let draw_pane_frames = false;
+    let draw_pane_frames = PaneFrameStyle::None;
     let auto_layout = true;
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
@@ -5369,6 +5427,7 @@ fn create_new_screen_with_message_capture(
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
+        false,
         None,
         false,
         web_sharing,
@@ -7900,6 +7959,7 @@ pub fn send_cli_new_pane_action_with_tab_id() {
         floating: false,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -7961,6 +8021,7 @@ pub fn send_cli_new_floating_pane_action_with_tab_id() {
         floating: true,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -8070,6 +8131,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_direction() {
         floating: false,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -8130,6 +8192,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_stacked() {
         floating: false,
         in_place: false,
         close_replaced_pane: false,
+        pane_id: None,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -8396,7 +8459,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
     let max_panes = None;
     let mut mode_info = ModeInfo::default();
     mode_info.session_name = Some("zellij-test".into());
-    let draw_pane_frames = false;
+    let draw_pane_frames = PaneFrameStyle::None;
     let auto_layout = true;
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
@@ -8439,6 +8502,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
         stacked_resize,
+        false,
         None,
         false,
         web_sharing,
@@ -9005,7 +9069,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         &client_attributes,
         None,
         mode_info,
-        false,
+        PaneFrameStyle::None,
         true,
         true,
         copy_options,
@@ -9022,6 +9086,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         None,
         false,
         true,
+        false,
         None,
         false,
         web_sharing,
@@ -9484,7 +9549,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         &client_attributes,
         None, // max_panes
         mode_info,
-        false, // draw_pane_frames
+        PaneFrameStyle::None,
         true,  // auto_layout
         false, // session_is_mirrored
         CopyOptions::default(),
@@ -9501,6 +9566,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         None,  // layout_dir
         false, // explicitly_disable_kitty_keyboard_protocol
         true,  // stacked_resize
+        false,
         None,
         false,
         WebSharing::Off,

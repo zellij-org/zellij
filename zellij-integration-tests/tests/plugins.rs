@@ -1,12 +1,7 @@
 #![cfg(unix)]
 
 use insta::assert_snapshot;
-use zellij_integration_tests::{normalized, Size, TestRunner};
-
-const TERMINAL_SIZE: Size = Size {
-    cols: 120,
-    rows: 24,
-};
+use zellij_integration_tests::{normalized, TestRunner, TERMINAL_SIZE};
 
 fn load_background_plugin_config() -> String {
     let plugin_path = format!(

@@ -109,6 +109,26 @@ pub struct CursorPosition {
     pub y: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Coord {
+    pub col: usize,
+    pub row: usize,
+}
+
+pub fn col(col: usize) -> CoordBuilder {
+    CoordBuilder { col }
+}
+
+pub struct CoordBuilder {
+    col: usize,
+}
+
+impl CoordBuilder {
+    pub fn row(self, row: usize) -> Coord {
+        Coord { col: self.col, row }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct GridSnapshot {
     pub text: String,
@@ -119,8 +139,12 @@ impl GridSnapshot {
     pub fn contains(&self, needle: &str) -> bool {
         self.text.contains(needle)
     }
-    pub fn cursor_is_at(&self, x: usize, y: usize) -> bool {
-        self.cursor == Some(CursorPosition { x, y })
+    pub fn cursor_is_at(&self, coord: Coord) -> bool {
+        self.cursor
+            == Some(CursorPosition {
+                x: coord.col,
+                y: coord.row,
+            })
     }
     pub fn status_bar_appears(&self) -> bool {
         self.text.contains("Ctrl +") && self.text.contains("LOCK")

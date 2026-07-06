@@ -177,6 +177,7 @@ keybinds {
         bind "j" { MoveFocus "Down"; SwitchToMode "Normal"; }
         bind "k" { MoveFocus "Up"; SwitchToMode "Normal"; }
         bind "o" { FocusNextPane; }
+        bind ";" { FocusLastPane; }
         bind "d" { Detach; }
         bind "Space" { NextSwapLayout; }
         bind "x" { CloseFocus; SwitchToMode "Normal"; }
@@ -198,6 +199,7 @@ keybinds {
         bind "Alt ]" { NextSwapLayout; }
         bind "Alt p" { TogglePaneInGroup; }
         bind "Alt Shift p" { ToggleGroupMarking; }
+        bind "Alt \\" { FocusLastPane; }
     }
     shared_except "normal" "locked" {
         bind "Enter" "Esc" { SwitchToMode "Normal"; }
@@ -504,6 +506,11 @@ load_plugins {
 // Default: true
 //
 // stacked_resize false
+
+// Whether stacked panes display as a list with the expanded pane pinned to the bottom
+// Default: true
+//
+// stacked_pane_list false
 
 // Whether to show release notes on first version run
 // Default: true

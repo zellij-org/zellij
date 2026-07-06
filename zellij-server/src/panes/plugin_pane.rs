@@ -428,10 +428,14 @@ impl Pane for PluginPane {
         if self.borderless {
             return Ok(None);
         }
-        let frame_geom = self.current_geom();
+        let frame_geom = frame_params
+            .frame_geom_override
+            .unwrap_or_else(|| self.current_geom());
         let grid = get_or_create_grid!(self, client_id);
         let err_context = || format!("failed to render frame for client {client_id}");
-        let pane_title = if let Some(text_color_override) = self
+        let pane_title = if frame_params.blank_title {
+            String::new()
+        } else if let Some(text_color_override) = self
             .pane_frame_color_override
             .as_ref()
             .and_then(|(_color, text)| text.as_ref())

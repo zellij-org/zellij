@@ -346,6 +346,90 @@ fn check_ipc_pipe_length(ipc_pipe: &Path) {
     }
 }
 
+#[derive(Clone, Copy)]
+struct TerminalTeardown {
+    include_kitty_exit: bool,
+}
+
+fn exit_after_startup_error(teardown: Option<TerminalTeardown>, message: String) -> ! {
+    log::error!("{}", message);
+    match teardown {
+        Some(teardown) => {
+            let kitty_exit = if teardown.include_kitty_exit {
+                EXIT_KITTY_KEYBOARD_MODE
+            } else {
+                ""
+            };
+            let rendered = format!(
+                "{}{}{}{}{}\r\n{}\n",
+                kitty_exit,
+                DISABLE_HOST_THEME_NOTIFY,
+                EXIT_ALTERNATE_SCREEN,
+                RESET_STYLE,
+                SHOW_CURSOR,
+                message
+            );
+            let mut stdout = io::stdout();
+            let _ = stdout.write_all(rendered.as_bytes());
+            let _ = stdout.flush();
+        },
+        None => {
+            eprintln!("{}", message);
+        },
+    }
+    std::process::exit(1);
+}
+
+fn spawn_server_error_message(e: io::Error) -> String {
+    format!(
+        "Error: failed to start the Zellij server process:\n\n\
+         Reason: {}\n\n\
+         This can happen if the Zellij binary cannot be executed, or if the server \
+         could not create its session socket - for example due to a permission issue \
+         in the socket directory.\n\
+         To fix a socket directory issue, set a writable socket directory, eg.:\n  \
+         ZELLIJ_SOCKET_DIR=/tmp/zellij-$USER zellij",
+        e
+    )
+}
+
+fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
+    let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
+    if let Err(e) = std::fs::create_dir_all(&sock_dir) {
+        exit_after_startup_error(
+            teardown,
+            format!(
+                "Error: failed to create the Zellij socket directory:\n  {}\n\n\
+                 Reason: {}\n\n\
+                 This usually means the directory (or one of its parents) is owned by \
+                 another user or is not writable - for example if Zellij was previously \
+                 run with `sudo`, or if $XDG_RUNTIME_DIR points to a directory you do not \
+                 own.\nTo fix this, remove or correct the offending directory, or set a \
+                 writable socket directory, eg.:\n  ZELLIJ_SOCKET_DIR=/tmp/zellij-$USER zellij",
+                sock_dir.display(),
+                e
+            ),
+        );
+    }
+    if let Err(e) = set_permissions(&sock_dir, 0o700) {
+        exit_after_startup_error(
+            teardown,
+            format!(
+                "Error: failed to set permissions (0700) on the Zellij socket directory:\n  {}\n\n\
+                 Reason: {}\n\n\
+                 This usually means the directory is owned by another user.\n\
+                 To fix this, remove or correct the offending directory, or set a writable \
+                 socket directory, eg.:\n  ZELLIJ_SOCKET_DIR=/tmp/zellij-$USER zellij",
+                sock_dir.display(),
+                e
+            ),
+        );
+    }
+    sock_dir.push(envs::get_session_name().unwrap());
+    check_ipc_pipe_length(&sock_dir);
+    sock_dir
+}
+
 /// Spawn the Zellij server process.
 ///
 /// On Unix the server daemonizes (double-fork) inside start_server(), so
@@ -782,20 +866,15 @@ pub fn start_client(
         config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
     let enforce_https_for_localhost = config_options.enforce_https_for_localhost.unwrap_or(false);
 
-    let create_ipc_pipe = || -> std::path::PathBuf {
-        let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
-        std::fs::create_dir_all(&sock_dir).unwrap();
-        set_permissions(&sock_dir, 0o700).unwrap();
-        sock_dir.push(envs::get_session_name().unwrap());
-        check_ipc_pipe_length(&sock_dir);
-        sock_dir
+    let terminal_teardown = TerminalTeardown {
+        include_kitty_exit: !explicitly_disable_kitty_keyboard_protocol,
     };
 
     let (first_msg, ipc_pipe) = match info {
         ClientInfo::Attach(name, config_options) => {
             envs::set_session_name(name.clone());
             os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe();
+            let ipc_pipe = create_ipc_pipe(Some(terminal_teardown));
             let is_web_client = false;
 
             let cli_assets = CliAssets {
@@ -845,7 +924,7 @@ pub fn start_client(
         ClientInfo::Watch(name, _config_options) => {
             envs::set_session_name(name.clone());
             os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe();
+            let ipc_pipe = create_ipc_pipe(Some(terminal_teardown));
             let is_web_client = false;
 
             (
@@ -877,9 +956,11 @@ pub fn start_client(
             };
 
             os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe();
+            let ipc_pipe = create_ipc_pipe(Some(terminal_teardown));
 
-            os_input.spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
+            if let Err(e) = os_input.spawn_server(&*ipc_pipe, cli_args.debug) {
+                exit_after_startup_error(Some(terminal_teardown), spawn_server_error_message(e));
+            }
             if should_start_web_server {
                 if let Err(e) = spawn_web_server(&cli_args) {
                     log::error!("Failed to start web server: {}", e);
@@ -931,9 +1012,11 @@ pub fn start_client(
             };
 
             os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe();
+            let ipc_pipe = create_ipc_pipe(Some(terminal_teardown));
 
-            os_input.spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
+            if let Err(e) = os_input.spawn_server(&*ipc_pipe, cli_args.debug) {
+                exit_after_startup_error(Some(terminal_teardown), spawn_server_error_message(e));
+            }
             if should_start_web_server {
                 if let Err(e) = spawn_web_server(&cli_args) {
                     log::error!("Failed to start web server: {}", e);
@@ -1301,15 +1384,6 @@ pub fn start_server_detached(
 
     let should_start_web_server = config_options.web_server.map(|w| w).unwrap_or(false);
 
-    let create_ipc_pipe = || -> std::path::PathBuf {
-        let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
-        std::fs::create_dir_all(&sock_dir).unwrap();
-        set_permissions(&sock_dir, 0o700).unwrap();
-        sock_dir.push(envs::get_session_name().unwrap());
-        check_ipc_pipe_length(&sock_dir);
-        sock_dir
-    };
-
     let (first_msg, ipc_pipe) = match info {
         ClientInfo::Resurrect(name, path_to_layout, force_run_commands, cwd) => {
             envs::set_session_name(name.clone());
@@ -1333,9 +1407,11 @@ pub fn start_server_detached(
             };
 
             os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe();
+            let ipc_pipe = create_ipc_pipe(None);
 
-            os_input.spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
+            if let Err(e) = os_input.spawn_server(&*ipc_pipe, cli_args.debug) {
+                exit_after_startup_error(None, spawn_server_error_message(e));
+            }
             if should_start_web_server {
                 if let Err(e) = spawn_web_server(&cli_args) {
                     log::error!("Failed to start web server: {}", e);
@@ -1388,9 +1464,11 @@ pub fn start_server_detached(
             };
 
             os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe();
+            let ipc_pipe = create_ipc_pipe(None);
 
-            os_input.spawn_server(&*ipc_pipe, cli_args.debug).unwrap();
+            if let Err(e) = os_input.spawn_server(&*ipc_pipe, cli_args.debug) {
+                exit_after_startup_error(None, spawn_server_error_message(e));
+            }
             if should_start_web_server {
                 if let Err(e) = spawn_web_server(&cli_args) {
                     log::error!("Failed to start web server: {}", e);

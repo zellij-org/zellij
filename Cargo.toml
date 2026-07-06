@@ -119,6 +119,9 @@ include_dir = { version = "0.7.3", default-features = false }
 sha2 = { version = "0.10", default-features = false }
 zellij-utils = { path = "zellij-utils/", version = "0.45.0" }
 
+[profile.dev]
+debug = "line-tables-only"
+
 [profile.dev-opt]
 inherits = "dev"
 

@@ -13,7 +13,9 @@ use crate::input::layout::{
     TiledPaneLayout,
 };
 use crate::input::mouse::{MouseEvent, MouseEventType};
-use crate::input::options::{Clipboard, MobileLayoutConfiguration, OnForceClose, Options};
+use crate::input::options::{
+    Clipboard, MobileLayoutConfiguration, OnForceClose, Options, PaneFrameStyle,
+};
 use crate::ipc::{
     ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ResizeCause,
     ServerToClientMsg,
@@ -444,6 +446,7 @@ fn test_client_messages() {
                 theme_dir: Some(PathBuf::from("theme_dir")),
                 mouse_mode: Some(true),
                 pane_frames: Some(true),
+                pane_frame_style: Some(PaneFrameStyle::Full),
                 mirror_session: Some(true),
                 on_force_close: Some(OnForceClose::Quit),
                 scroll_buffer_size: Some(100000),
@@ -465,6 +468,7 @@ fn test_client_messages() {
                 web_server: Some(true),
                 web_sharing: Some(WebSharing::On),
                 stacked_resize: Some(true),
+                stacked_pane_list: Some(true),
                 show_startup_tips: Some(true),
                 show_release_notes: Some(true),
                 advanced_mouse_actions: Some(true),
@@ -3532,6 +3536,24 @@ fn test_client_messages() {
             id: 1,
             direction: Direction::Left,
         },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetPaneFrameStyle(PaneFrameStyle::Full),
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetPaneFrameStyle(PaneFrameStyle::Titles),
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetPaneFrameStyle(PaneFrameStyle::None),
         terminal_id: Some(1),
         client_id: Some(100),
         is_cli_client: true,

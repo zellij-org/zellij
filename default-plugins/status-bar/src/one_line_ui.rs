@@ -3,10 +3,10 @@ use ansi_term::{
     Color::{Fixed, RGB},
     Style,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
-use zellij_tile_utils::palette_match;
+use zellij_tile_utils::{palette_match, style};
 
 use crate::first_line::{to_char, KeyAction, KeyMode, KeyShortcut};
 use crate::second_line::{system_clipboard_error, text_copied_hint};
@@ -22,30 +22,69 @@ pub fn one_line_ui(
     base_mode_is_locked: bool,
     text_copied_to_clipboard_destination: Option<CopyDestination>,
     clipboard_failure: bool,
-) -> LinePart {
+    hint: Option<&BTreeMap<usize, StyledText>>,
+    new_pane_hovered: bool,
+    floating_hovered: bool,
+) -> (LinePart, Option<(usize, usize)>, Option<(usize, usize)>) {
     if let Some(text_copied_to_clipboard_destination) = text_copied_to_clipboard_destination {
-        return text_copied_hint(text_copied_to_clipboard_destination);
+        return (
+            text_copied_hint(text_copied_to_clipboard_destination),
+            None,
+            None,
+        );
     }
     if clipboard_failure {
-        return system_clipboard_error(&help.style.colors);
+        return (system_clipboard_error(&help.style.colors), None, None);
     }
     let mut line_part_to_render = LinePart::default();
-    let mut append = |line_part: &LinePart, max_len: &mut usize| {
-        line_part_to_render.append(line_part);
-        *max_len = max_len.saturating_sub(line_part.len);
-    };
+    let mut new_pane_range = None;
+    let mut floating_range = None;
 
-    render_mode_key_indicators(help, max_len, separator, base_mode_is_locked)
-        .map(|mode_key_indicators| append(&mode_key_indicators, &mut max_len))
-        .and_then(|_| match help.mode {
-            InputMode::Normal | InputMode::Locked => render_secondary_info(help, tab_info, max_len)
-                .map(|secondary_info| append(&secondary_info, &mut max_len)),
-            _ => add_keygroup_separator(help, max_len)
-                .map(|key_group_separator| append(&key_group_separator, &mut max_len))
-                .and_then(|_| keybinds(help, max_len))
-                .map(|keybinds| append(&keybinds, &mut max_len)),
-        });
-    line_part_to_render
+    let left_part = hint
+        .and_then(|hint| hint_line_part(hint, max_len))
+        .or_else(|| render_mode_key_indicators(help, max_len, separator, base_mode_is_locked));
+    if let Some(left) = left_part {
+        line_part_to_render.append(&left);
+        max_len = max_len.saturating_sub(left.len);
+        match help.mode {
+            InputMode::Normal | InputMode::Locked => {
+                let secondary_offset = line_part_to_render.len;
+                if let Some((secondary_info, new_pane, floating)) = render_secondary_info(
+                    help,
+                    tab_info,
+                    max_len,
+                    new_pane_hovered,
+                    floating_hovered,
+                ) {
+                    new_pane_range = new_pane
+                        .map(|(start, end)| (secondary_offset + start, secondary_offset + end));
+                    floating_range = floating
+                        .map(|(start, end)| (secondary_offset + start, secondary_offset + end));
+                    line_part_to_render.append(&secondary_info);
+                }
+            },
+            _ => {
+                if let Some(key_group_separator) = add_keygroup_separator(help, max_len) {
+                    line_part_to_render.append(&key_group_separator);
+                    max_len = max_len.saturating_sub(key_group_separator.len);
+                    if let Some(keybinds) = keybinds(help, max_len) {
+                        line_part_to_render.append(&keybinds);
+                    }
+                }
+            },
+        }
+    }
+    (line_part_to_render, new_pane_range, floating_range)
+}
+
+fn hint_line_part(hint: &BTreeMap<usize, StyledText>, max_len: usize) -> Option<LinePart> {
+    let fitting_variant = hint
+        .range(..=max_len)
+        .next_back()
+        .map(|(_width, styled_text)| styled_text)?;
+    let len = fitting_variant.text.width();
+    let part = serialize_text(&Text::from(fitting_variant.clone()));
+    Some(LinePart { part, len })
 }
 
 fn to_base_mode(base_mode: InputMode) -> Action {
@@ -730,11 +769,14 @@ fn render_secondary_info(
     help: &ModeInfo,
     tab_info: Option<&TabInfo>,
     max_len: usize,
-) -> Option<LinePart> {
+    new_pane_hovered: bool,
+    floating_hovered: bool,
+) -> Option<(LinePart, Option<(usize, usize)>, Option<(usize, usize)>)> {
     let mut secondary_info = LinePart::default();
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
-    let secondary_keybinds = secondary_keybinds(&help, tab_info, max_len);
+    let (secondary_keybinds, new_pane_range, floating_range) =
+        secondary_keybinds(&help, tab_info, max_len, new_pane_hovered, floating_hovered);
     secondary_info.append(&secondary_keybinds);
     let remaining_space = max_len.saturating_sub(secondary_info.len).saturating_sub(1); // 1 for the end padding of the line
     let mut padding = String::new();
@@ -746,7 +788,10 @@ fn render_secondary_info(
     secondary_info.part = format!("{}{}", padding, secondary_info.part);
     secondary_info.len += padding_len;
     if secondary_info.len <= max_len {
-        Some(secondary_info)
+        let shift = |range: Option<(usize, usize)>| {
+            range.map(|(start, end)| (start + padding_len, end + padding_len))
+        };
+        Some((secondary_info, shift(new_pane_range), shift(floating_range)))
     } else {
         None
     }
@@ -764,8 +809,16 @@ fn should_show_focus_and_resize_shortcuts(tab_info: Option<&TabInfo>) -> bool {
     }
 }
 
-fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usize) -> LinePart {
+fn secondary_keybinds(
+    help: &ModeInfo,
+    tab_info: Option<&TabInfo>,
+    max_len: usize,
+    new_pane_hovered: bool,
+    floating_hovered: bool,
+) -> (LinePart, Option<(usize, usize)>, Option<(usize, usize)>) {
     let mut secondary_info = LinePart::default();
+    let mut new_pane_range;
+    let mut floating_range;
     let binds = &help.get_mode_keybinds();
     let should_show_focus_and_resize_shortcuts = should_show_focus_and_resize_shortcuts(tab_info);
     // New Pane
@@ -908,13 +961,24 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
     let no_common_modifier = common_modifiers.is_empty();
 
     if no_common_modifier {
-        secondary_info.append(&add_shortcut(
-            help,
-            "New Pane",
-            &new_pane_key_to_display,
-            false,
-            Some(0),
-        ));
+        let new_pane_start = secondary_info.len;
+        if new_pane_hovered {
+            secondary_info.append(&add_shortcut_hovered(
+                help,
+                "New Pane",
+                &new_pane_key_to_display,
+                Some(0),
+            ));
+        } else {
+            secondary_info.append(&add_shortcut(
+                help,
+                "New Pane",
+                &new_pane_key_to_display,
+                false,
+                Some(0),
+            ));
+        }
+        new_pane_range = ribbon_range(new_pane_start, secondary_info.len);
         if should_show_focus_and_resize_shortcuts {
             secondary_info.append(&add_shortcut(
                 help,
@@ -931,13 +995,24 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 Some(0),
             ));
         }
-        secondary_info.append(&add_shortcut(
-            help,
-            "Floating",
-            &toggle_floating_key_to_display,
-            are_floating_panes_visible,
-            Some(0),
-        ));
+        let floating_start = secondary_info.len;
+        if floating_hovered {
+            secondary_info.append(&add_shortcut_hovered(
+                help,
+                "Floating",
+                &toggle_floating_key_to_display,
+                Some(0),
+            ));
+        } else {
+            secondary_info.append(&add_shortcut(
+                help,
+                "Floating",
+                &toggle_floating_key_to_display,
+                are_floating_panes_visible,
+                Some(0),
+            ));
+        }
+        floating_range = ribbon_range(floating_start, secondary_info.len);
     } else {
         let modifier_str = text_as_line_part_with_emphasis(
             format!(
@@ -967,12 +1042,22 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
             .iter()
             .map(|k| k.strip_common_modifiers(&common_modifiers))
             .collect();
-        secondary_info.append(&add_shortcut_with_inline_key(
-            help,
-            "New Pane",
-            new_pane_key_to_display,
-            false,
-        ));
+        let new_pane_start = secondary_info.len;
+        if new_pane_hovered {
+            secondary_info.append(&add_shortcut_with_inline_key_hovered(
+                help,
+                "New Pane",
+                new_pane_key_to_display,
+            ));
+        } else {
+            secondary_info.append(&add_shortcut_with_inline_key(
+                help,
+                "New Pane",
+                new_pane_key_to_display,
+                false,
+            ));
+        }
+        new_pane_range = ribbon_range(new_pane_start, secondary_info.len);
         if should_show_focus_and_resize_shortcuts {
             secondary_info.append(&add_shortcut_with_inline_key(
                 help,
@@ -987,19 +1072,38 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 false,
             ));
         }
-        secondary_info.append(&add_shortcut_with_inline_key(
-            help,
-            "Floating",
-            toggle_floating_key_to_display,
-            are_floating_panes_visible,
-        ));
+        let floating_start = secondary_info.len;
+        if floating_hovered {
+            secondary_info.append(&add_shortcut_with_inline_key_hovered(
+                help,
+                "Floating",
+                toggle_floating_key_to_display,
+            ));
+        } else {
+            secondary_info.append(&add_shortcut_with_inline_key(
+                help,
+                "Floating",
+                toggle_floating_key_to_display,
+                are_floating_panes_visible,
+            ));
+        }
+        floating_range = ribbon_range(floating_start, secondary_info.len);
     }
 
     if secondary_info.len <= max_len {
-        secondary_info
-    } else {
-        let mut short_line = LinePart::default();
-        if no_common_modifier {
+        return (secondary_info, new_pane_range, floating_range);
+    }
+    let mut short_line = LinePart::default();
+    if no_common_modifier {
+        let new_pane_start = short_line.len;
+        if new_pane_hovered {
+            short_line.append(&add_shortcut_hovered(
+                help,
+                "New",
+                &new_pane_key_to_display,
+                Some(0),
+            ));
+        } else {
             short_line.append(&add_shortcut(
                 help,
                 "New",
@@ -1007,22 +1111,33 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 false,
                 Some(0),
             ));
-            if should_show_focus_and_resize_shortcuts {
-                short_line.append(&add_shortcut(
-                    help,
-                    "Focus",
-                    &move_focus_shortcuts,
-                    false,
-                    Some(0),
-                ));
-                short_line.append(&add_shortcut(
-                    help,
-                    "Resize",
-                    &resize_shortcuts,
-                    false,
-                    Some(0),
-                ));
-            }
+        }
+        new_pane_range = ribbon_range(new_pane_start, short_line.len);
+        if should_show_focus_and_resize_shortcuts {
+            short_line.append(&add_shortcut(
+                help,
+                "Focus",
+                &move_focus_shortcuts,
+                false,
+                Some(0),
+            ));
+            short_line.append(&add_shortcut(
+                help,
+                "Resize",
+                &resize_shortcuts,
+                false,
+                Some(0),
+            ));
+        }
+        let floating_start = short_line.len;
+        if floating_hovered {
+            short_line.append(&add_shortcut_hovered(
+                help,
+                "Floating",
+                &toggle_floating_key_to_display,
+                Some(0),
+            ));
+        } else {
             short_line.append(&add_shortcut(
                 help,
                 "Floating",
@@ -1030,56 +1145,75 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 are_floating_panes_visible,
                 Some(0),
             ));
-        } else {
-            let modifier_str = text_as_line_part_with_emphasis(
-                format!(
-                    "{} + ",
-                    common_modifiers
-                        .iter()
-                        .map(|m| m.to_string())
-                        .collect::<Vec<_>>()
-                        .join("-")
-                ),
-                0,
-            );
-            short_line.append(&modifier_str);
-            let new_pane_key_to_display: Vec<KeyWithModifier> = new_pane_key_to_display
-                .iter()
-                .map(|k| k.strip_common_modifiers(&common_modifiers))
-                .collect();
-            let move_focus_shortcuts: Vec<KeyWithModifier> = move_focus_shortcuts
-                .iter()
-                .map(|k| k.strip_common_modifiers(&common_modifiers))
-                .collect();
-            let resize_shortcuts: Vec<KeyWithModifier> = resize_shortcuts
-                .iter()
-                .map(|k| k.strip_common_modifiers(&common_modifiers))
-                .collect();
-            let toggle_floating_key_to_display: Vec<KeyWithModifier> =
-                toggle_floating_key_to_display
+        }
+        floating_range = ribbon_range(floating_start, short_line.len);
+    } else {
+        let modifier_str = text_as_line_part_with_emphasis(
+            format!(
+                "{} + ",
+                common_modifiers
                     .iter()
-                    .map(|k| k.strip_common_modifiers(&common_modifiers))
-                    .collect();
+                    .map(|m| m.to_string())
+                    .collect::<Vec<_>>()
+                    .join("-")
+            ),
+            0,
+        );
+        short_line.append(&modifier_str);
+        let new_pane_key_to_display: Vec<KeyWithModifier> = new_pane_key_to_display
+            .iter()
+            .map(|k| k.strip_common_modifiers(&common_modifiers))
+            .collect();
+        let move_focus_shortcuts: Vec<KeyWithModifier> = move_focus_shortcuts
+            .iter()
+            .map(|k| k.strip_common_modifiers(&common_modifiers))
+            .collect();
+        let resize_shortcuts: Vec<KeyWithModifier> = resize_shortcuts
+            .iter()
+            .map(|k| k.strip_common_modifiers(&common_modifiers))
+            .collect();
+        let toggle_floating_key_to_display: Vec<KeyWithModifier> = toggle_floating_key_to_display
+            .iter()
+            .map(|k| k.strip_common_modifiers(&common_modifiers))
+            .collect();
+        let new_pane_start = short_line.len;
+        if new_pane_hovered {
+            short_line.append(&add_shortcut_with_inline_key_hovered(
+                help,
+                "New",
+                new_pane_key_to_display,
+            ));
+        } else {
             short_line.append(&add_shortcut_with_inline_key(
                 help,
                 "New",
                 new_pane_key_to_display,
                 false,
             ));
-            if should_show_focus_and_resize_shortcuts {
-                short_line.append(&add_shortcut_with_inline_key(
-                    help,
-                    "Focus",
-                    move_focus_shortcuts,
-                    false,
-                ));
-                short_line.append(&add_shortcut_with_inline_key(
-                    help,
-                    "Resize",
-                    resize_shortcuts,
-                    false,
-                ));
-            }
+        }
+        new_pane_range = ribbon_range(new_pane_start, short_line.len);
+        if should_show_focus_and_resize_shortcuts {
+            short_line.append(&add_shortcut_with_inline_key(
+                help,
+                "Focus",
+                move_focus_shortcuts,
+                false,
+            ));
+            short_line.append(&add_shortcut_with_inline_key(
+                help,
+                "Resize",
+                resize_shortcuts,
+                false,
+            ));
+        }
+        let floating_start = short_line.len;
+        if floating_hovered {
+            short_line.append(&add_shortcut_with_inline_key_hovered(
+                help,
+                "Floating",
+                toggle_floating_key_to_display,
+            ));
+        } else {
             short_line.append(&add_shortcut_with_inline_key(
                 help,
                 "Floating",
@@ -1087,22 +1221,27 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
                 are_floating_panes_visible,
             ));
         }
-        if short_line.len <= max_len {
-            short_line
-        } else if max_len >= 3 {
-            let part = serialize_text(
-                &Text::new(format!("{:>width$}", "...", width = max_len))
-                    .color_range(0, ..)
-                    .opaque(),
-            );
-            let len = max_len;
-            LinePart { part, len }
-        } else {
+        floating_range = ribbon_range(floating_start, short_line.len);
+    }
+    if short_line.len <= max_len {
+        (short_line, new_pane_range, floating_range)
+    } else if max_len >= 3 {
+        let part = serialize_text(
+            &Text::new(format!("{:>width$}", "...", width = max_len))
+                .color_range(0, ..)
+                .opaque(),
+        );
+        let len = max_len;
+        (LinePart { part, len }, None, None)
+    } else {
+        (
             LinePart {
                 part: "".to_owned(),
                 len: 0,
-            }
-        }
+            },
+            None,
+            None,
+        )
     }
 }
 
@@ -1124,6 +1263,107 @@ fn keybinds(help: &ModeInfo, max_width: usize) -> Option<LinePart> {
         return Some(shortened_shortcut_list);
     }
     Some(best_effort_shortcut_list(help, max_width))
+}
+
+fn ribbon_range(start: usize, end: usize) -> Option<(usize, usize)> {
+    if end > start {
+        Some((start, end))
+    } else {
+        None
+    }
+}
+
+fn hovered_ribbon_wrap(body: String, palette: Styling, supports_arrow_fonts: bool) -> String {
+    let ribbon_bg = palette.ribbon_unselected.emphasis_1;
+    let outer_bg = palette.text_unselected.background;
+    let arrow = if supports_arrow_fonts {
+        crate::ARROW_SEPARATOR
+    } else {
+        ""
+    };
+    let left = style!(outer_bg, ribbon_bg).paint(arrow).to_string();
+    let right = style!(ribbon_bg, outer_bg).paint(arrow).to_string();
+    format!("{}{}{}", left, body, right)
+}
+
+fn add_shortcut_hovered(
+    help: &ModeInfo,
+    text: &str,
+    keys: &Vec<KeyWithModifier>,
+    key_color_index: Option<usize>,
+) -> LinePart {
+    let mut ret = LinePart::default();
+    if keys.is_empty() {
+        return ret;
+    }
+    ret.append(&style_key_with_modifier(&keys, key_color_index));
+    let palette = help.style.colors;
+    let supports_arrow_fonts = !help.capabilities.arrow_fonts;
+    let ribbon_bg = palette.ribbon_unselected.emphasis_1;
+    let body = style!(palette.ribbon_unselected.base, ribbon_bg)
+        .bold()
+        .paint(format!(" {} ", text))
+        .to_string();
+    let ribbon = hovered_ribbon_wrap(body, palette, supports_arrow_fonts);
+    ret.part = format!("{}{}", ret.part, ribbon);
+    ret.len += if supports_arrow_fonts {
+        text.width() + 4
+    } else {
+        text.width() + 2
+    };
+    ret
+}
+
+fn add_shortcut_with_inline_key_hovered(
+    help: &ModeInfo,
+    text: &str,
+    key: Vec<KeyWithModifier>,
+) -> LinePart {
+    let mut ret = LinePart::default();
+    if key.is_empty() {
+        return ret;
+    }
+    let key_separator = match key
+        .iter()
+        .map(|k| k.to_string())
+        .collect::<Vec<_>>()
+        .join("")
+        .as_str()
+    {
+        "HJKL" => "",
+        "hjkl" => "",
+        "←↓↑→" => "",
+        "←→" => "",
+        "↓↑" => "",
+        "[]" => "",
+        "+-" => "",
+        _ => "|",
+    };
+    let key_string = format!(
+        "{}",
+        key.iter()
+            .map(|k| k.to_string())
+            .collect::<Vec<_>>()
+            .join(key_separator)
+    );
+    let palette = help.style.colors;
+    let supports_arrow_fonts = !help.capabilities.arrow_fonts;
+    let ribbon_bg = palette.ribbon_unselected.emphasis_1;
+    let base = style!(palette.ribbon_unselected.base, ribbon_bg).bold();
+    let emph = style!(palette.ribbon_unselected.emphasis_0, ribbon_bg).bold();
+    let body = format!(
+        "{}{}{}",
+        base.paint(" <").to_string(),
+        emph.paint(key_string.clone()).to_string(),
+        base.paint(format!("> {} ", text)).to_string(),
+    );
+    ret.part = hovered_ribbon_wrap(body, palette, supports_arrow_fonts);
+    ret.len += if supports_arrow_fonts {
+        text.width() + key_string.width() + 7
+    } else {
+        text.width() + key_string.width() + 5
+    };
+    ret
 }
 
 fn add_shortcut(

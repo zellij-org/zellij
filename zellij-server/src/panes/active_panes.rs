@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 pub struct ActivePanes {
     active_panes: HashMap<ClientId, PaneId>,
     shadow_clients: HashSet<ClientId>,
+    last_panes: HashMap<ClientId, PaneId>,
     os_api: Box<dyn ServerOsApi>,
 }
 
@@ -22,6 +23,7 @@ impl ActivePanes {
         ActivePanes {
             active_panes: HashMap::new(),
             shadow_clients: HashSet::new(),
+            last_panes: HashMap::new(),
             os_api,
         }
     }
@@ -37,6 +39,9 @@ impl ActivePanes {
     }
     pub fn get(&self, client_id: &ClientId) -> Option<&PaneId> {
         self.active_panes.get(client_id)
+    }
+    pub fn get_last(&self, client_id: &ClientId) -> Option<&PaneId> {
+        self.last_panes.get(client_id)
     }
     pub fn insert(
         &mut self,
@@ -56,6 +61,9 @@ impl ActivePanes {
     pub fn remove_silent(&mut self, client_id: &ClientId) -> Option<PaneId> {
         self.shadow_clients.remove(client_id);
         self.active_panes.remove(client_id)
+    }
+    pub fn set_last_pane(&mut self, client_id: ClientId, pane_id: PaneId) {
+        self.last_panes.insert(client_id, pane_id);
     }
     pub fn clear(&mut self, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
         for pane_id in self.active_panes.values() {

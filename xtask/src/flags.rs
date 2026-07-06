@@ -42,6 +42,8 @@ xflags::xflags! {
         /// Build the manpage
         cmd manpage {}
 
+        cmd proto {}
+
         /// Publish zellij and all the sub-crates
         cmd publish {
             /// Perform a dry-run (don't push/publish anything)
@@ -142,6 +144,7 @@ pub enum XtaskCmd {
     Deprecated(Deprecated),
     Ci(Ci),
     Manpage(Manpage),
+    Proto(Proto),
     Publish(Publish),
     Dist(Dist),
     Clippy(Clippy),
@@ -193,6 +196,9 @@ pub struct BuildRelease {
 
 #[derive(Debug)]
 pub struct Manpage;
+
+#[derive(Debug)]
+pub struct Proto;
 
 #[derive(Debug)]
 pub struct Publish {

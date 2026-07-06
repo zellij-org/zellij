@@ -18,7 +18,7 @@ use zellij_utils::sessions::{
     generate_unique_session_name, get_active_session, get_resurrectable_sessions, get_sessions,
     get_sessions_sorted_by_mtime, kill_session as kill_session_impl, match_session_name,
     print_sessions, print_sessions_with_index, resurrection_layout, session_exists,
-    validate_session_name, ActiveSession, SessionNameMatch,
+    session_listing_error_message, validate_session_name, ActiveSession, SessionNameMatch,
 };
 
 use zellij_utils::consts::session_layout_cache_file_name;
@@ -629,18 +629,19 @@ fn attach_with_session_name(
     create: bool,
 ) -> ClientInfo {
     match &session_name {
-        Some(session) if create => {
-            if session_exists(session).unwrap() {
-                ClientInfo::Attach(session_name.unwrap(), config_options)
-            } else {
-                ClientInfo::New(session_name.unwrap(), None, None)
-            }
+        Some(session) if create => match session_exists(session) {
+            Ok(true) => ClientInfo::Attach(session_name.unwrap(), config_options),
+            Ok(false) => ClientInfo::New(session_name.unwrap(), None, None),
+            Err(kind) => {
+                eprintln!("{}", session_listing_error_message(kind));
+                process::exit(1);
+            },
         },
-        Some(prefix) => match match_session_name(prefix).unwrap() {
-            SessionNameMatch::UniquePrefix(s) | SessionNameMatch::Exact(s) => {
+        Some(prefix) => match match_session_name(prefix) {
+            Ok(SessionNameMatch::UniquePrefix(s)) | Ok(SessionNameMatch::Exact(s)) => {
                 ClientInfo::Attach(s, config_options)
             },
-            SessionNameMatch::AmbiguousPrefix(sessions) => {
+            Ok(SessionNameMatch::AmbiguousPrefix(sessions)) => {
                 println!(
                     "Ambiguous selection: multiple sessions names start with '{}':",
                     prefix
@@ -656,8 +657,12 @@ fn attach_with_session_name(
                 );
                 process::exit(1);
             },
-            SessionNameMatch::None => {
+            Ok(SessionNameMatch::None) => {
                 eprintln!("No session with the name '{}' found!", prefix);
+                process::exit(1);
+            },
+            Err(kind) => {
+                eprintln!("{}", session_listing_error_message(kind));
                 process::exit(1);
             },
         },

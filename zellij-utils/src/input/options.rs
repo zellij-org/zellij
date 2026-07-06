@@ -93,6 +93,56 @@ impl FromStr for OnForceClose {
     }
 }
 
+#[derive(ArgEnum, Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PaneFrameStyle {
+    Full,
+    Titles,
+    None,
+}
+
+impl Default for PaneFrameStyle {
+    fn default() -> Self {
+        PaneFrameStyle::Titles
+    }
+}
+
+impl PaneFrameStyle {
+    pub fn draws_full_frames(&self) -> bool {
+        matches!(self, PaneFrameStyle::Full)
+    }
+
+    pub fn draws_titles(&self) -> bool {
+        matches!(self, PaneFrameStyle::Titles)
+    }
+
+    pub fn from_options(options: &Options) -> Self {
+        if options.pane_frames == Some(false) {
+            return PaneFrameStyle::None;
+        }
+        match options.pane_frame_style {
+            Some(PaneFrameStyle::Full) => PaneFrameStyle::Full,
+            _ => PaneFrameStyle::Titles,
+        }
+    }
+}
+
+impl FromStr for PaneFrameStyle {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "full" => Ok(PaneFrameStyle::Full),
+            "titles" => Ok(PaneFrameStyle::Titles),
+            "none" => Ok(PaneFrameStyle::None),
+            e => Err(format!(
+                "Unknown pane frame style: '{}' (expected 'full', 'titles' or 'none')",
+                e
+            )
+            .into()),
+        }
+    }
+}
+
 #[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize, Args)]
 /// Options that can be set either through the config file,
 /// or cli flags - cli flags should take precedence over the config file
@@ -146,6 +196,9 @@ pub struct Options {
     #[serde(default)]
     /// Set display of the pane frames (true or false)
     pub pane_frames: Option<bool>,
+    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[serde(default)]
+    pub pane_frame_style: Option<PaneFrameStyle>,
     #[clap(long, value_parser)]
     #[serde(default)]
     /// Mirror session when multiple users are connected (true or false)
@@ -276,6 +329,10 @@ pub struct Options {
     #[serde(default)]
     pub stacked_resize: Option<bool>,
 
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub stacked_pane_list: Option<bool>,
+
     /// Whether to show startup tips when starting a new session
     /// default is true
     #[clap(long, value_parser)]
@@ -393,6 +450,7 @@ impl Options {
     pub fn merge(&self, other: Options) -> Options {
         let mouse_mode = other.mouse_mode.or(self.mouse_mode);
         let pane_frames = other.pane_frames.or(self.pane_frames);
+        let pane_frame_style = other.pane_frame_style.or(self.pane_frame_style);
         let auto_layout = other.auto_layout.or(self.auto_layout);
         let mirror_session = other.mirror_session.or(self.mirror_session);
         let simplified_ui = other.simplified_ui.or(self.simplified_ui);
@@ -436,6 +494,7 @@ impl Options {
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
+        let stacked_pane_list = other.stacked_pane_list.or(self.stacked_pane_list);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
@@ -475,6 +534,7 @@ impl Options {
             theme_dir,
             mouse_mode,
             pane_frames,
+            pane_frame_style,
             mirror_session,
             on_force_close,
             scroll_buffer_size,
@@ -496,6 +556,7 @@ impl Options {
             web_server,
             web_sharing,
             stacked_resize,
+            stacked_pane_list,
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
@@ -534,6 +595,7 @@ impl Options {
         let simplified_ui = merge_bool(other.simplified_ui, self.simplified_ui);
         let mouse_mode = merge_bool(other.mouse_mode, self.mouse_mode);
         let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
+        let pane_frame_style = other.pane_frame_style.or(self.pane_frame_style);
         let auto_layout = merge_bool(other.auto_layout, self.auto_layout);
         let mirror_session = merge_bool(other.mirror_session, self.mirror_session);
         let session_serialization =
@@ -577,6 +639,7 @@ impl Options {
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
+        let stacked_pane_list = other.stacked_pane_list.or(self.stacked_pane_list);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
@@ -616,6 +679,7 @@ impl Options {
             theme_dir,
             mouse_mode,
             pane_frames,
+            pane_frame_style,
             mirror_session,
             on_force_close,
             scroll_buffer_size,
@@ -637,6 +701,7 @@ impl Options {
             web_server,
             web_sharing,
             stacked_resize,
+            stacked_pane_list,
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
@@ -674,6 +739,27 @@ mod tests {
     const WIDE_SHORT: (usize, usize) = (200, 20);
     const TALL_NARROW: (usize, usize) = (40, 200);
     const LARGE: (usize, usize) = (200, 200);
+
+    #[test]
+    fn pane_frame_style_from_str_accepts_all_variants() {
+        assert_eq!(
+            "full".parse::<PaneFrameStyle>().unwrap(),
+            PaneFrameStyle::Full
+        );
+        assert_eq!(
+            "titles".parse::<PaneFrameStyle>().unwrap(),
+            PaneFrameStyle::Titles
+        );
+        assert_eq!(
+            "none".parse::<PaneFrameStyle>().unwrap(),
+            PaneFrameStyle::None
+        );
+        assert_eq!(
+            "NONE".parse::<PaneFrameStyle>().unwrap(),
+            PaneFrameStyle::None
+        );
+        assert!("bogus".parse::<PaneFrameStyle>().is_err());
+    }
 
     fn route(
         layout: MobileLayoutConfiguration,

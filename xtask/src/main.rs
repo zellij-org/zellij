@@ -134,6 +134,7 @@ fn main() -> anyhow::Result<()> {
         flags::XtaskCmd::Test(flags) => test::test(shell, flags),
         flags::XtaskCmd::IntegrationTest(flags) => integration_test::integration_test(shell, flags),
         flags::XtaskCmd::Manpage(_flags) => build::manpage(shell),
+        flags::XtaskCmd::Proto(_flags) => build::proto(shell),
         // Pipelines
         // These are composite commands, made up of multiple "stages" defined above.
         flags::XtaskCmd::Make(flags) => pipelines::make(shell, flags),
@@ -145,7 +146,7 @@ fn main() -> anyhow::Result<()> {
 
     let elapsed = now.elapsed().as_secs();
     status(&format!("xtask (done after {} s)", elapsed));
-    println!("\n\n>> Command took {} s", elapsed);
+    eprintln!("\n\n>> Command took {} s", elapsed);
     Ok(())
 }
 
@@ -171,7 +172,7 @@ pub fn cargo() -> anyhow::Result<PathBuf> {
 
 // Set terminal title to 'msg'
 pub fn status(msg: &str) {
-    print!("\u{1b}]0;{}\u{07}", msg);
+    eprint!("\u{1b}]0;{}\u{07}", msg);
 }
 
 fn deprecation_notice() -> anyhow::Result<()> {
