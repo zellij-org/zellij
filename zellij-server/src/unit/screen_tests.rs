@@ -11624,3 +11624,124 @@ pub fn keep_scroll_position_when_exiting_scroll_mode() {
     let (_cursor_position, last_snapshot) = snapshots.last().unwrap();
     assert_snapshot!(format!("{}", last_snapshot));
 }
+
+#[test]
+pub fn focusing_a_scrolled_pane_enters_scroll_mode() {
+    // Focusing a scrolled pane should put the client in Scroll mode, and focusing an
+    // unscrolled pane should return it to Normal. The switch must be routed through the
+    // server (ServerInstruction::ChangeMode) like SwitchToMode is, so the client's
+    // authoritative input mode used for keybind resolution (current_input_modes) is
+    // updated, not just the mode_info used for rendering. Asserting on the emitted
+    // instruction catches a desync where the status line flips but keys still resolve in
+    // the old mode. See #638.
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    // Drive the connected client: focus and mode both hang off it.
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+
+    // Capture the mode-change instructions the screen sends to the server.
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let last_change_mode = || -> Option<InputMode> {
+        received_server_instructions
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find_map(|instruction| match instruction {
+                ServerInstruction::ChangeMode(cid, mode, _) if *cid == client_id => Some(*mode),
+                _ => None,
+            })
+    };
+
+    // Fill the first (left) pane, scroll it up in Scroll mode, then return to Normal. The
+    // scroll position survives (see keep_scroll_position_when_exiting_scroll_mode), so the
+    // left pane is left scrolled while the client is back in Normal; the right pane is
+    // unscrolled.
+    let mut pane_contents = String::new();
+    for i in 0..20 {
+        pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        pane_contents.as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    let scroll_up = CliAction::ScrollUp { pane_id: None };
+    for _ in 0..4 {
+        send_cli_action_to_server(&session_metadata, scroll_up.clone(), client_id);
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // From Normal, focus the unscrolled (right) pane: nothing to sync, no ChangeMode.
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::MoveFocus {
+            direction: Direction::Right,
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // Focus back to the scrolled (left) pane: the client should be switched to Scroll.
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::MoveFocus {
+            direction: Direction::Left,
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode(),
+        Some(InputMode::Scroll),
+        "focusing the scrolled pane should switch the client to Scroll mode",
+    );
+
+    // The mock has no server loop to round-trip ServerInstruction::ChangeMode back into the
+    // screen, so apply the mode the server would have set to advance mode_info to Scroll.
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // Focus the unscrolled (right) pane: the client should return to Normal.
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::MoveFocus {
+            direction: Direction::Right,
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode(),
+        Some(InputMode::Normal),
+        "focusing the unscrolled pane should return the client to Normal mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
