@@ -6749,6 +6749,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.focus_last_pane(client_id)
                 );
+                screen.sync_scroll_mode_on_focus(client_id)?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
