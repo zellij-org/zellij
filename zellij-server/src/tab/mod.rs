@@ -1107,7 +1107,7 @@ impl Tab {
         } else {
             self.reserved_top_rows
                 .borrow_mut()
-                .insert(visible, member_count);
+                .insert(visible, member_count + 1);
             self.tiled_panes.reapply_pane_frames();
             self.resize_stack_list_hidden_members(stack_list_id);
         }

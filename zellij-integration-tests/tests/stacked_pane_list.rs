@@ -50,7 +50,7 @@ layout {
 "#;
 
 fn selected_entry(title: &str) -> String {
-    format!("<↓↑> │ {}", title)
+    format!("> {}", title)
 }
 
 fn add_stacked_pane_and_wait_for_selected_entry(
@@ -232,7 +232,7 @@ fn navigating_past_the_top_entry_leaves_the_stack() {
     zellij.send_stdin(&keys::alt('j'));
     zellij.wait_until("focus re-entered the stack", |grid_snapshot| {
         grid_snapshot.contains(&selected_entry("Pane #2"))
-            && grid_snapshot.cursor_is_at(col(2).row(15))
+            && grid_snapshot.cursor_is_at(col(2).row(16))
     });
     zellij.quit();
 }
@@ -461,12 +461,6 @@ fn entries_share_a_uniform_width_sized_by_the_widest_title() {
     let hidden_title_column = display_column_of(hidden_entry_line, "member-command")
         .expect("hidden title is on the line");
     assert_eq!(selected_title_column, hidden_title_column);
-
-    let selected_pipe_column = display_column_of(selected_entry_line, "│ Pane #1")
-        .expect("selected entry has a pipe prefix");
-    let hidden_pipe_column = display_column_of(hidden_entry_line, "│ member-command")
-        .expect("hidden entry has a pipe prefix");
-    assert_eq!(selected_pipe_column, hidden_pipe_column);
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }

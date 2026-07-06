@@ -744,10 +744,9 @@ impl PaneFrame {
     }
     fn render_stack_list_entry(&self, entry: &StackListEntry) -> Vec<TerminalCharacter> {
         let usable_cols = self.geom.cols.saturating_sub(2);
-        let title_prefix = format!("{} ", boundary_type::VERTICAL);
-        let inner_width = entry
-            .width
-            .min(usable_cols.saturating_sub(title_prefix.width()));
+        let selection_marker = "> ";
+        let marker_width = selection_marker.width();
+        let inner_width = entry.width.min(usable_cols.saturating_sub(marker_width));
         let content = if entry.label.width() <= inner_width {
             entry.label.clone()
         } else {
@@ -762,16 +761,9 @@ impl PaneFrame {
             truncated.push('…');
             truncated
         };
-        let entry_length = title_prefix.width() + content.width();
-        let full_width_entry_length = title_prefix.width() + inner_width;
+        let full_width_entry_length = marker_width + inner_width;
         let entry_start = usable_cols.saturating_sub(full_width_entry_length) / 2;
-        let selection_sign = "<↓↑> ";
-        let selection_sign_width = if entry.is_selected && entry_start >= selection_sign.width() {
-            selection_sign.width()
-        } else {
-            0
-        };
-        let left_budget = entry_start.saturating_sub(selection_sign_width);
+        let left_budget = entry_start;
         let (mut focus_part, focus_length) = self
             .bracketed_focus_indicator(left_budget)
             .unwrap_or((vec![], 0));
@@ -780,20 +772,28 @@ impl PaneFrame {
         for _ in focus_length..left_budget {
             line.push(EMPTY_TERMINAL_CHARACTER);
         }
-        if selection_sign_width > 0 {
-            line.append(&mut foreground_color(selection_sign, self.color));
-        }
-        let pipe_color = self.style.colors.frame_unselected.map(|frame| frame.base);
-        line.append(&mut foreground_color(&title_prefix, pipe_color));
         let unfocused_color = self.style.colors.frame_unselected.map(|frame| frame.base);
-        if entry.is_selected || entry.is_emphasized {
-            line.append(&mut foreground_color(&content, self.color));
-        } else if entry.stack_is_focused {
-            line.append(&mut foreground_color(&content, unfocused_color));
+        if entry.is_selected {
+            line.append(&mut foreground_color(selection_marker, None));
         } else {
-            line.append(&mut dimmed_foreground_color(&content, unfocused_color));
+            for _ in 0..marker_width {
+                line.push(EMPTY_TERMINAL_CHARACTER);
+            }
         }
-        let mut occupied_columns = entry_start + entry_length;
+        let mut styled_content = if entry.is_selected || entry.is_emphasized {
+            foreground_color(&content, self.color)
+        } else if entry.stack_is_focused {
+            foreground_color(&content, unfocused_color)
+        } else {
+            dimmed_foreground_color(&content, unfocused_color)
+        };
+        line.append(&mut styled_content);
+        let entry_padding =
+            full_width_entry_length.saturating_sub(marker_width + content.width());
+        for _ in 0..entry_padding {
+            line.push(EMPTY_TERMINAL_CHARACTER);
+        }
+        let mut occupied_columns = entry_start + full_width_entry_length;
         let (mut scroll_part, scroll_length) = self
             .bracketed_scroll_indicator(usable_cols.saturating_sub(occupied_columns))
             .unwrap_or((vec![], 0));
