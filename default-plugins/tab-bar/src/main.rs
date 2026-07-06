@@ -37,6 +37,8 @@ struct State {
     new_tab_button_range: Option<(usize, usize)>,
     hovered_tab_idx: Option<usize>,
     hovered_new_tab_button: bool,
+    hint_text: Option<BTreeMap<usize, StyledText>>,
+    outstanding_hint_timeouts: usize,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -56,6 +58,9 @@ impl ZellijPlugin for State {
             EventType::Mouse,
             EventType::InitialKeybinds,
             EventType::ActivePaneScroll,
+            EventType::HintText,
+            EventType::Timer,
+            EventType::InputReceived,
         ]);
     }
 
@@ -99,6 +104,32 @@ impl ZellijPlugin for State {
                     should_render = true;
                 }
                 self.active_pane_scroll = scroll;
+            },
+            Event::HintText(hint_variants) => {
+                if hint_variants.is_empty() {
+                    if self.hint_text.is_some() {
+                        self.hint_text = None;
+                        should_render = true;
+                    }
+                } else {
+                    self.hint_text = Some(hint_variants);
+                    self.outstanding_hint_timeouts += 1;
+                    set_timeout(5.0);
+                    should_render = true;
+                }
+            },
+            Event::Timer(_) => {
+                self.outstanding_hint_timeouts = self.outstanding_hint_timeouts.saturating_sub(1);
+                if self.outstanding_hint_timeouts == 0 && self.hint_text.is_some() {
+                    self.hint_text = None;
+                    should_render = true;
+                }
+            },
+            Event::InputReceived => {
+                if self.hint_text.is_some() {
+                    self.hint_text = None;
+                    should_render = true;
+                }
             },
             Event::Mouse(me) => match me {
                 Mouse::LeftClick(_, col) => {
@@ -188,6 +219,12 @@ impl ZellijPlugin for State {
 
         let background = self.mode_info.style.colors.text_unselected.background;
 
+        let full_pane_frames = self.mode_info.pane_frame_style == Some(PaneFrameStyle::Full);
+        let hint_text = if full_pane_frames {
+            None
+        } else {
+            self.hint_text.as_ref()
+        };
         let (line, new_tab_button_range) = tab_line(
             self.mode_info.session_name.as_deref(),
             all_tabs,
@@ -201,6 +238,7 @@ impl ZellijPlugin for State {
             self.hide_swap_layout_indication,
             &background,
             self.active_pane_scroll,
+            hint_text,
             is_alternate_tab,
             self.hovered_new_tab_button,
         );

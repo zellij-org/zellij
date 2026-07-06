@@ -3,7 +3,7 @@ use ansi_term::{
     Color::{Fixed, RGB},
     Style,
 };
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::{palette_match, style};
@@ -22,7 +22,6 @@ pub fn one_line_ui(
     base_mode_is_locked: bool,
     text_copied_to_clipboard_destination: Option<CopyDestination>,
     clipboard_failure: bool,
-    hint: Option<&BTreeMap<usize, StyledText>>,
     new_pane_hovered: bool,
     floating_hovered: bool,
 ) -> (LinePart, Option<(usize, usize)>, Option<(usize, usize)>) {
@@ -40,9 +39,7 @@ pub fn one_line_ui(
     let mut new_pane_range = None;
     let mut floating_range = None;
 
-    let left_part = hint
-        .and_then(|hint| hint_line_part(hint, max_len))
-        .or_else(|| render_mode_key_indicators(help, max_len, separator, base_mode_is_locked));
+    let left_part = render_mode_key_indicators(help, max_len, separator, base_mode_is_locked);
     if let Some(left) = left_part {
         line_part_to_render.append(&left);
         max_len = max_len.saturating_sub(left.len);
@@ -75,16 +72,6 @@ pub fn one_line_ui(
         }
     }
     (line_part_to_render, new_pane_range, floating_range)
-}
-
-fn hint_line_part(hint: &BTreeMap<usize, StyledText>, max_len: usize) -> Option<LinePart> {
-    let fitting_variant = hint
-        .range(..=max_len)
-        .next_back()
-        .map(|(_width, styled_text)| styled_text)?;
-    let len = fitting_variant.text.width();
-    let part = serialize_text(&Text::from(fitting_variant.clone()));
-    Some(LinePart { part, len })
 }
 
 fn to_base_mode(base_mode: InputMode) -> Action {
