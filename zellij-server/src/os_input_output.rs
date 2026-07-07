@@ -349,10 +349,7 @@ pub trait ServerOsApi: Send + Sync {
         HashMap::new()
     }
     /// For each `(terminal_id, shell_pid)` pane, return the foreground command running in its
-    /// controlling terminal, keyed by `terminal_id`. This is `O(panes)` and performs no full
-    /// process-table scan. Panes whose foreground process group is led by the shell itself
-    /// (idle prompt, or a command sharing the shell's group without job control) are omitted,
-    /// so the caller falls back to reporting the shell.
+    /// controlling terminal, keyed by `terminal_id`.
     fn get_foreground_cmds(
         &self,
         _panes: &[(u32, u32)],
@@ -586,11 +583,6 @@ impl ServerOsApi for ServerOsInputOutput {
         panes: &[(u32, u32)],
         post_hook: &Option<String>,
     ) -> HashMap<u32, Vec<String>> {
-        // Resolve each pane's foreground command via `tcgetpgrp` on the pty master: the
-        // foreground process group leader has `pid == pgid`, so the returned pgid is the pid we
-        // want. When it equals the shell's pid the shell itself is in the foreground (idle, or a
-        // command sharing the shell's group without job control) and we omit the pane so the
-        // caller falls back to the shell command. No full process-table scan.
         let mut terminal_to_fg_pid: HashMap<u32, u32> = HashMap::new();
         for &(terminal_id, shell_pid) in panes {
             if let Some(fpgid) = self.pty_backend.tcgetpgrp(terminal_id) {
@@ -603,7 +595,6 @@ impl ServerOsApi for ServerOsInputOutput {
             return HashMap::new();
         }
 
-        // Refresh the foreground pids.
         let sysinfo_pids: Vec<sysinfo::Pid> = terminal_to_fg_pid
             .values()
             .map(|&p| sysinfo::Pid::from_u32(p))
@@ -743,8 +734,6 @@ impl Drop for ResizeCache {
     }
 }
 
-/// Apply the post-command-discovery `post_hook` to a discovered command, returning the
-/// (possibly rewritten) command in argv form. With no hook the command is returned unchanged.
 fn apply_post_command_hook(command: Vec<String>, post_hook: &Option<String>) -> Vec<String> {
     let Some(post_hook) = post_hook else {
         return command;

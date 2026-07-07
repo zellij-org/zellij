@@ -210,9 +210,8 @@ fn tcgetpgrp_returns_foreground_group() {
 
     let server = make_server();
 
-    // Spawn a long-running command directly in the pty. `login_tty` (in the child's pre_exec)
-    // calls setsid + TIOCSCTTY, so the spawned process leads its own session/process group and
-    // becomes the controlling terminal's foreground group. Hence tcgetpgrp(master) == child_pid.
+    // `login_tty` in the child makes the spawned command the controlling terminal's
+    // foreground process group, so tcgetpgrp(master) should return its pid
     let cmd = RunCommand {
         command: PathBuf::from("sleep"),
         args: vec!["60".to_string()],
@@ -223,9 +222,7 @@ fn tcgetpgrp_returns_foreground_group() {
         .spawn_terminal(TerminalAction::RunCommand(cmd), quit_cb, None)
         .expect("spawn_terminal should succeed");
 
-    // Poll (rather than sleep a fixed duration) for the child to finish setting up its
-    // controlling terminal: once login_tty runs, tcgetpgrp(master) returns the child's own pgid.
-    // Bounded to ~2s so a stuck child fails the test rather than hanging.
+    // poll (bounded to ~2s) for the child to finish setting up its controlling terminal
     let mut fpgid = None;
     for _ in 0..100 {
         fpgid = server.pty_backend.tcgetpgrp(terminal_id);
