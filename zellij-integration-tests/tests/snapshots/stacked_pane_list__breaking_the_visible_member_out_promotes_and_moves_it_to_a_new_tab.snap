@@ -3,8 +3,8 @@ source: zellij-integration-tests/tests/stacked_pane_list.rs
 expression: normalized(&grid_snapshot)
 ---
  Zellij (test)  Tab #1  Tab #2  + 
-                                                         Pane #1
-                                                       > Pane #2
+                                                       │ Pane #1 │
+                                                     > │ Pane #2 │
 $ second-member
 $ █
  Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...

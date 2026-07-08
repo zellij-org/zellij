@@ -50,7 +50,7 @@ layout {
 "#;
 
 fn selected_entry(title: &str) -> String {
-    format!("> {}", title)
+    format!("> │ {}", title)
 }
 
 fn add_stacked_pane_and_wait_for_selected_entry(
