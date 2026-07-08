@@ -50,7 +50,7 @@ use crate::{
     panes::grid::namespace_notification_id,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
-    panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
+    panes::{LinkHandler, PaneId, PluginPane, TerminalPane, EMPTY_TERMINAL_CHARACTER},
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
@@ -1593,6 +1593,18 @@ impl Tab {
                     )?;
                 }
             }
+            let padding_width = rect.cols.as_usize().saturating_sub(2);
+            let mut padding_row = Vec::with_capacity(padding_width);
+            for _ in 0..padding_width {
+                padding_row.push(EMPTY_TERMINAL_CHARACTER);
+            }
+            let padding_chunk =
+                CharacterChunk::new(padding_row, rect.x + 1, rect.y + list.members.len());
+            output.add_character_chunks_to_multiple_clients(
+                vec![padding_chunk],
+                connected_clients.iter().copied(),
+                None,
+            )?;
         }
         Ok(())
     }
