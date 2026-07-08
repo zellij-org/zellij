@@ -743,10 +743,14 @@ impl PaneFrame {
             .with_context(|| format!("failed to render title '{}'", self.title))
     }
     fn render_stack_list_entry(&self, entry: &StackListEntry) -> Vec<TerminalCharacter> {
-        let usable_cols = self.geom.cols.saturating_sub(2);
+        let usable_cols = self.geom.cols;
         let selection_marker = "> ";
         let marker_width = selection_marker.width();
-        let inner_width = entry.width.min(usable_cols.saturating_sub(marker_width));
+        let corner_padding = 1;
+        let corner_overhead = 2 * (1 + corner_padding);
+        let inner_width = entry
+            .width
+            .min(usable_cols.saturating_sub(marker_width + corner_overhead));
         let content = if entry.label.width() <= inner_width {
             entry.label.clone()
         } else {
@@ -761,7 +765,7 @@ impl PaneFrame {
             truncated.push('…');
             truncated
         };
-        let full_width_entry_length = marker_width + inner_width;
+        let full_width_entry_length = marker_width + corner_overhead + inner_width;
         let entry_start = usable_cols.saturating_sub(full_width_entry_length) / 2;
         let left_budget = entry_start;
         let (mut focus_part, focus_length) = self
@@ -773,6 +777,15 @@ impl PaneFrame {
             line.push(EMPTY_TERMINAL_CHARACTER);
         }
         let unfocused_color = self.style.colors.frame_unselected.map(|frame| frame.base);
+        let style_entry_text = |text: &str| {
+            if entry.is_selected || entry.is_emphasized {
+                foreground_color(text, self.color)
+            } else if entry.stack_is_focused {
+                foreground_color(text, unfocused_color)
+            } else {
+                dimmed_foreground_color(text, unfocused_color)
+            }
+        };
         if entry.is_selected {
             line.append(&mut foreground_color(selection_marker, None));
         } else {
@@ -780,18 +793,19 @@ impl PaneFrame {
                 line.push(EMPTY_TERMINAL_CHARACTER);
             }
         }
-        let mut styled_content = if entry.is_selected || entry.is_emphasized {
-            foreground_color(&content, self.color)
-        } else if entry.stack_is_focused {
-            foreground_color(&content, unfocused_color)
-        } else {
-            dimmed_foreground_color(&content, unfocused_color)
-        };
-        line.append(&mut styled_content);
-        let entry_padding = full_width_entry_length.saturating_sub(marker_width + content.width());
-        for _ in 0..entry_padding {
+        line.append(&mut foreground_color(boundary_type::VERTICAL, None));
+        for _ in 0..corner_padding {
             line.push(EMPTY_TERMINAL_CHARACTER);
         }
+        line.append(&mut style_entry_text(&content));
+        let content_padding = inner_width.saturating_sub(content.width());
+        for _ in 0..content_padding {
+            line.push(EMPTY_TERMINAL_CHARACTER);
+        }
+        for _ in 0..corner_padding {
+            line.push(EMPTY_TERMINAL_CHARACTER);
+        }
+        line.append(&mut foreground_color(boundary_type::VERTICAL, None));
         let mut occupied_columns = entry_start + full_width_entry_length;
         let (mut scroll_part, scroll_length) = self
             .bracketed_scroll_indicator(usable_cols.saturating_sub(occupied_columns))
@@ -1267,7 +1281,7 @@ impl PaneFrame {
         if let Some(entry) = &self.stack_list_entry {
             character_chunks.push(CharacterChunk::new(
                 self.render_stack_list_entry(entry),
-                self.geom.x + 1,
+                self.geom.x,
                 self.geom.y,
             ));
             return Ok((character_chunks, None));

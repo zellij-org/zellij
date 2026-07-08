@@ -1530,10 +1530,15 @@ impl Tab {
         };
         let lists: Vec<StackList> = self.stack_lists.values().cloned().collect();
         for list in lists {
-            let rect = match self.tiled_panes.get_pane(list.visible) {
-                Some(p) => p.position_and_size(),
+            let (rect, visible_content_offset) = match self.tiled_panes.get_pane(list.visible) {
+                Some(p) => (p.position_and_size(), p.get_content_offset()),
                 None => continue,
             };
+            let entry_x = rect.x + visible_content_offset.left;
+            let entry_cols = rect
+                .cols
+                .as_usize()
+                .saturating_sub(visible_content_offset.left + visible_content_offset.right);
             let widest_member_title = list
                 .members
                 .iter()
@@ -1550,6 +1555,8 @@ impl Tab {
             let stack_is_focused = active_panes.values().any(|p_id| *p_id == list.visible);
             for (rank, member) in list.members.iter().enumerate() {
                 let mut header_geom = rect;
+                header_geom.x = entry_x;
+                header_geom.cols.set_inner(entry_cols);
                 header_geom.y = rect.y + rank;
                 header_geom.rows = Dimension::fixed(1);
                 header_geom.stacked = None;
@@ -1593,13 +1600,12 @@ impl Tab {
                     )?;
                 }
             }
-            let padding_width = rect.cols.as_usize().saturating_sub(2);
-            let mut padding_row = Vec::with_capacity(padding_width);
-            for _ in 0..padding_width {
+            let mut padding_row = Vec::with_capacity(entry_cols);
+            for _ in 0..entry_cols {
                 padding_row.push(EMPTY_TERMINAL_CHARACTER);
             }
             let padding_chunk =
-                CharacterChunk::new(padding_row, rect.x + 1, rect.y + list.members.len());
+                CharacterChunk::new(padding_row, entry_x, rect.y + list.members.len());
             output.add_character_chunks_to_multiple_clients(
                 vec![padding_chunk],
                 connected_clients.iter().copied(),
