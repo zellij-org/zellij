@@ -6392,10 +6392,8 @@ pub(crate) fn screen_thread_main(
                 match client_or_tab_index {
                     ClientTabIndexOrPaneId::ClientId(client_id)
                     | ClientTabIndexOrPaneId::ClientIdNoFocus(client_id) => {
-                        let should_focus_pane = matches!(
-                            client_or_tab_index,
-                            ClientTabIndexOrPaneId::ClientId(_)
-                        );
+                        let should_focus_pane =
+                            matches!(client_or_tab_index, ClientTabIndexOrPaneId::ClientId(_));
                         active_tab_and_connected_client_id_with_first_tab_fallback!(screen, client_id, |tab: &mut Tab, client_id: Option<ClientId>| {
                             tab.new_pane(pid,
                                initial_pane_title,
@@ -6423,10 +6421,8 @@ pub(crate) fn screen_thread_main(
                     },
                     ClientTabIndexOrPaneId::TabIndex(tab_index)
                     | ClientTabIndexOrPaneId::TabIndexNoFocus(tab_index) => {
-                        let should_focus_pane = matches!(
-                            client_or_tab_index,
-                            ClientTabIndexOrPaneId::TabIndex(_)
-                        );
+                        let should_focus_pane =
+                            matches!(client_or_tab_index, ClientTabIndexOrPaneId::TabIndex(_));
                         // Some placements (directional split, stacked without a
                         // target pane) need a client_id to know which pane to
                         // split relative to. Only resolve one when required.

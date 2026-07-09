@@ -3485,12 +3485,12 @@ impl Tab {
         }
         self.dissolve_stack_lists_for_classic_mutation();
         let can_split = match split_direction {
-            SplitDirection::Horizontal => {
-                self.tiled_panes.can_split_pane_id_horizontally(target_pane_id)
-            },
-            SplitDirection::Vertical => {
-                self.tiled_panes.can_split_pane_id_vertically(target_pane_id)
-            },
+            SplitDirection::Horizontal => self
+                .tiled_panes
+                .can_split_pane_id_horizontally(target_pane_id),
+            SplitDirection::Vertical => self
+                .tiled_panes
+                .can_split_pane_id_vertically(target_pane_id),
         };
         if !can_split {
             self.senders

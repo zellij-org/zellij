@@ -520,7 +520,10 @@ pub enum Sessions {
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
         near_current_pane: bool,
-        #[clap(long, help = "if set, will open the pane without changing the focus of any client, placing it relative to the pane the command was issued from")]
+        #[clap(
+            long,
+            help = "if set, will open the pane without changing the focus of any client, placing it relative to the pane the command was issued from"
+        )]
         no_focus: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
@@ -590,7 +593,10 @@ pub enum Sessions {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
-        #[clap(long, help = "if set, will open the plugin pane without changing the focus of any client, placing it relative to the pane the command was issued from")]
+        #[clap(
+            long,
+            help = "if set, will open the plugin pane without changing the focus of any client, placing it relative to the pane the command was issued from"
+        )]
         no_focus: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
@@ -661,7 +667,10 @@ pub enum Sessions {
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
         near_current_pane: bool,
-        #[clap(long, help = "if set, will open the pane without changing the focus of any client, placing it relative to the pane the command was issued from")]
+        #[clap(
+            long,
+            help = "if set, will open the pane without changing the focus of any client, placing it relative to the pane the command was issued from"
+        )]
         no_focus: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
@@ -1056,7 +1065,10 @@ pub enum CliAction {
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
         near_current_pane: bool,
-        #[clap(long, help = "if set, will open the pane without changing the focus of any client, placing it relative to the pane the command was issued from")]
+        #[clap(
+            long,
+            help = "if set, will open the pane without changing the focus of any client, placing it relative to the pane the command was issued from"
+        )]
         no_focus: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
@@ -1131,7 +1143,10 @@ pub enum CliAction {
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
         near_current_pane: bool,
-        #[clap(long, help = "if set, will open the pane without changing the focus of any client, placing it relative to the pane the command was issued from")]
+        #[clap(
+            long,
+            help = "if set, will open the pane without changing the focus of any client, placing it relative to the pane the command was issued from"
+        )]
         no_focus: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
@@ -1346,7 +1361,10 @@ pub enum CliAction {
         )]
         block_until_exit: bool,
 
-        #[clap(long, help = "if set, will create the tab without changing the focus of any client")]
+        #[clap(
+            long,
+            help = "if set, will create the tab without changing the focus of any client"
+        )]
         no_focus: bool,
     },
     /// Move the focused tab in the specified direction. [right|left]
@@ -1450,7 +1468,10 @@ pub enum CliAction {
         configuration: Option<PluginUserConfiguration>,
         #[clap(short, long, value_parser)]
         skip_plugin_cache: bool,
-        #[clap(long, help = "if set, will open the plugin pane without changing the focus of any client")]
+        #[clap(
+            long,
+            help = "if set, will open the plugin pane without changing the focus of any client"
+        )]
         no_focus: bool,
         /// Target a specific tab by ID
         #[clap(long, value_parser, conflicts_with("in-place"))]

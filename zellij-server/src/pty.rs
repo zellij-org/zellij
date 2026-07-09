@@ -1034,8 +1034,7 @@ impl Pty {
                 self.fill_cwd(&mut terminal_action, client_id);
                 terminal_action
             },
-            ClientTabIndexOrPaneId::TabIndex(_)
-            | ClientTabIndexOrPaneId::TabIndexNoFocus(_) => {
+            ClientTabIndexOrPaneId::TabIndex(_) | ClientTabIndexOrPaneId::TabIndexNoFocus(_) => {
                 terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None))
             },
             ClientTabIndexOrPaneId::PaneId(pane_id) => {

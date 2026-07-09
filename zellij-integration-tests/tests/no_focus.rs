@@ -90,9 +90,10 @@ fn new_pane_no_focus_leaves_input_on_the_original_pane() {
     zellij.run_cli_action(no_focus_new_pane_action(&["unfocused-command"]));
     let unfocused_pane = zellij.expect_pty_spawn();
     unfocused_pane.output(PROMPT);
-    zellij.wait_until("second pane appeared alongside the first", |grid_snapshot| {
-        grid_snapshot.text.matches("$").count() >= 2
-    });
+    zellij.wait_until(
+        "second pane appeared alongside the first",
+        |grid_snapshot| grid_snapshot.text.matches("$").count() >= 2,
+    );
 
     let probe = b"nofocusprobe";
     zellij.send_stdin(probe);
@@ -116,9 +117,10 @@ fn new_pane_without_no_focus_moves_input_to_the_new_pane() {
     zellij.run_cli_action(focusing_action);
     let focused_pane = zellij.expect_pty_spawn();
     focused_pane.output(PROMPT);
-    zellij.wait_until("second pane appeared alongside the first", |grid_snapshot| {
-        grid_snapshot.text.matches("$").count() >= 2
-    });
+    zellij.wait_until(
+        "second pane appeared alongside the first",
+        |grid_snapshot| grid_snapshot.text.matches("$").count() >= 2,
+    );
 
     let probe = b"focusprobe";
     zellij.send_stdin(probe);
