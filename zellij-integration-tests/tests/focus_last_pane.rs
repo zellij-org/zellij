@@ -2,9 +2,9 @@
 
 use insta::assert_snapshot;
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, col, keys, normalized, split_down_and_wait_for_prompt,
-    split_right_and_wait_for_prompt, FakePtyHandle, Size, TestRunner, TestSession, PROMPT,
-    TERMINAL_SIZE,
+    claim_first_terminal_and_wait_for_prompt, col, keys, normalized,
+    split_down_and_wait_for_prompt, split_right_and_wait_for_prompt, FakePtyHandle, Size,
+    TestRunner, TestSession, PROMPT, TERMINAL_SIZE,
 };
 
 const FOCUS_KEYS_CONFIG: &str = r#"
@@ -25,9 +25,10 @@ fn split_focused_pane_down(zellij: &TestSession) -> FakePtyHandle {
     zellij.send_stdin(&keys::key('d'));
     let terminal = zellij.expect_pty_spawn();
     terminal.output(PROMPT);
-    zellij.wait_until("newly split lower pane focused below the middle pane", |grid| {
-        grid.status_bar_appears() && grid.cursor.map_or(false, |cursor| cursor.y > 13)
-    });
+    zellij.wait_until(
+        "newly split lower pane focused below the middle pane",
+        |grid| grid.status_bar_appears() && grid.cursor.map_or(false, |cursor| cursor.y > 13),
+    );
     terminal
 }
 
@@ -38,9 +39,10 @@ fn focus_last_pane_toggles_focus_back_to_the_previous_pane() {
     split_right_and_wait_for_prompt(&zellij);
 
     zellij.send_stdin(&keys::alt('m'));
-    let grid = zellij.wait_until("focus_last_pane moved focus back to the left pane", |grid| {
-        grid.status_bar_appears() && grid.cursor_is_at(col(2).row(2))
-    });
+    let grid = zellij.wait_until(
+        "focus_last_pane moved focus back to the left pane",
+        |grid| grid.status_bar_appears() && grid.cursor_is_at(col(2).row(2)),
+    );
     assert_snapshot!(normalized(&grid));
     zellij.quit();
 }
@@ -85,7 +87,10 @@ fn focus_last_pane_refills_after_cycling_focus() {
     zellij.quit();
 }
 
-fn open_floating_pane_below(zellij: &TestSession, previous_cursor_row: usize) -> (FakePtyHandle, usize) {
+fn open_floating_pane_below(
+    zellij: &TestSession,
+    previous_cursor_row: usize,
+) -> (FakePtyHandle, usize) {
     zellij.send_stdin(&keys::alt('n'));
     let terminal = zellij.expect_pty_spawn();
     terminal.output(PROMPT);
@@ -120,7 +125,10 @@ fn focus_last_floating_pane_returns_to_earlier_pane_after_closing_focused_pane()
     third_floating.exit(Some(0));
     zellij.wait_until(
         "closing the focused floating pane returns focus to the previous floating pane",
-        |grid| grid.cursor.map_or(false, |cursor| cursor.y == second_floating_row),
+        |grid| {
+            grid.cursor
+                .map_or(false, |cursor| cursor.y == second_floating_row)
+        },
     );
 
     zellij.send_stdin(&keys::alt('m'));

@@ -754,8 +754,8 @@ impl FloatingPanes {
                         .map(|p| p.selectable())
                         .unwrap_or(false)
             });
-        let target_pane_id =
-            last_pane_id.or_else(|| self.most_recently_active_selectable_pane(currently_active_pane_id));
+        let target_pane_id = last_pane_id
+            .or_else(|| self.most_recently_active_selectable_pane(currently_active_pane_id));
         if let Some(target_pane_id) = target_pane_id {
             self.focus_pane(target_pane_id, client_id);
             self.set_force_render();
