@@ -1911,6 +1911,9 @@ impl TiledPanes {
             self.reapply_pane_frames();
         }
 
+        if active_pane_id != next_active_pane_id {
+            self.active_panes.set_last_pane(client_id, active_pane_id);
+        }
         self.active_panes
             .insert(client_id, next_active_pane_id, &mut self.panes);
         self.set_pane_active_at(next_active_pane_id);
@@ -1938,6 +1941,9 @@ impl TiledPanes {
                 .expand_pane(&next_active_pane_id);
             self.reapply_pane_frames();
         }
+        if active_pane_id != next_active_pane_id {
+            self.active_panes.set_last_pane(client_id, active_pane_id);
+        }
         self.active_panes
             .insert(client_id, next_active_pane_id, &mut self.panes);
         self.set_pane_active_at(next_active_pane_id);
@@ -1945,11 +1951,17 @@ impl TiledPanes {
     }
     pub fn focus_last_pane(&mut self, client_id: ClientId) {
         let Some(last_pane_id) = self.get_last_pane_id(client_id) else {
+            self.focus_previous_pane(client_id);
             return;
         };
 
-        let previously_active_pane_id = self.active_panes.get(&client_id).unwrap();
-        let previously_active_pane = self.panes.get_mut(previously_active_pane_id).unwrap();
+        let previously_active_pane_id = *self.active_panes.get(&client_id).unwrap();
+        if !self.panes.contains_key(&last_pane_id) || last_pane_id == previously_active_pane_id {
+            self.focus_previous_pane(client_id);
+            return;
+        }
+
+        let previously_active_pane = self.panes.get_mut(&previously_active_pane_id).unwrap();
 
         previously_active_pane.set_should_render(true);
         // we render the full viewport to remove any ui elements that might have been
@@ -2538,6 +2550,11 @@ impl TiledPanes {
         let next_active_pane_id = next_active_pane_candidates
             .last()
             .map(|(pane_id, _pane)| **pane_id);
+        let last_active_pane_id = next_active_pane_candidates
+            .iter()
+            .rev()
+            .nth(1)
+            .map(|(pane_id, _pane)| **pane_id);
 
         match next_active_pane_id {
             Some(next_active_pane_id) => {
@@ -2559,6 +2576,10 @@ impl TiledPanes {
                                 next_active_pane_id,
                                 &mut self.panes,
                             );
+                            if let Some(last_active_pane_id) = last_active_pane_id {
+                                self.active_panes
+                                    .set_last_pane(client_id, last_active_pane_id);
+                            }
                         } else {
                             self.active_panes.remove_silent(&client_id);
                         }

@@ -4611,6 +4611,7 @@ impl Tab {
         }
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.focus_last_pane(client_id);
+            return;
         } else if self.tiled_panes.fullscreen_is_active() {
             self.switch_last_pane_fullscreen(client_id);
             return;
