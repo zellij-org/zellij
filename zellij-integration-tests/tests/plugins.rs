@@ -22,8 +22,8 @@ fn load_plugins_in_background_on_startup() {
     let terminal = zellij.expect_pty_spawn();
     terminal.output(b"$ ");
 
-    let grid_snapshot = zellij
-        .wait_until("background plugin requests permissions", |grid_snapshot| {
+    let grid_snapshot =
+        zellij.wait_until("background plugin requests permissions", |grid_snapshot| {
             grid_snapshot.contains("Allow? (y/n)")
                 && grid_snapshot.tab_bar_appears()
                 && grid_snapshot.status_bar_appears()
@@ -37,4 +37,3 @@ fn load_plugins_in_background_on_startup() {
     );
     zellij.quit();
 }
-
