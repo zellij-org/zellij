@@ -50,6 +50,7 @@ fn main() {
             block_until_exit_failure,
             block_until_exit,
             near_current_pane,
+            no_focus,
             borderless,
             tab_id,
         })) = opts.command
@@ -94,6 +95,7 @@ fn main() {
                 block_until_exit: false,
                 unblock_condition,
                 near_current_pane,
+                no_focus,
                 borderless,
                 tab_id,
             };
@@ -112,6 +114,7 @@ fn main() {
             width,
             height,
             pinned,
+            no_focus,
             borderless,
             tab_id,
         })) = opts.command
@@ -146,6 +149,7 @@ fn main() {
                 block_until_exit: false,
                 unblock_condition,
                 near_current_pane: false,
+                no_focus,
                 borderless,
                 tab_id,
             };
@@ -166,6 +170,7 @@ fn main() {
             height,
             pinned,
             near_current_pane,
+            no_focus,
             borderless,
             tab_id,
         })) = opts.command
@@ -191,6 +196,7 @@ fn main() {
                 height,
                 pinned,
                 near_current_pane,
+                no_focus,
                 borderless,
                 tab_id,
             };
@@ -286,6 +292,7 @@ fn main() {
                 block_until_exit_success: false,
                 block_until_exit_failure: false,
                 block_until_exit: false,
+                no_focus: false,
             };
             commands::send_action_to_session(new_layout_cli_action, Some(session_name), config);
         } else {

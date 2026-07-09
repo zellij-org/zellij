@@ -193,6 +193,28 @@ impl Drop for NotificationEnd {
 // otherwise blocking-CLI actions
 // (`wait_forever=true`) park this function while still holding the guard,
 // deadlocking concurrent `session_data.write()`s.
+fn new_pane_routing(
+    no_focus: bool,
+    near_current_pane: bool,
+    tab_id: Option<usize>,
+    pane_id: Option<PaneId>,
+    client_id: ClientId,
+) -> ClientTabIndexOrPaneId {
+    if let Some(tab_id) = tab_id {
+        if no_focus {
+            ClientTabIndexOrPaneId::TabIndexNoFocus(tab_id)
+        } else {
+            ClientTabIndexOrPaneId::TabIndex(tab_id)
+        }
+    } else if (no_focus || near_current_pane) && pane_id.is_some() {
+        ClientTabIndexOrPaneId::PaneId(pane_id.unwrap())
+    } else if no_focus {
+        ClientTabIndexOrPaneId::ClientIdNoFocus(client_id)
+    } else {
+        ClientTabIndexOrPaneId::ClientId(client_id)
+    }
+}
+
 pub(crate) fn route_action(
     action: Action,
     client_id: ClientId,
@@ -635,6 +657,7 @@ pub(crate) fn route_action(
             command,
             unblock_condition,
             near_current_pane,
+            no_focus,
             tab_id,
         } => {
             let command = command
@@ -667,13 +690,8 @@ pub(crate) fn route_action(
                 _ => pane_id,
             };
 
-            let client_tab_index_or_paneid = if let Some(tab_id) = tab_id {
-                ClientTabIndexOrPaneId::TabIndex(tab_id)
-            } else if near_current_pane && pane_id.is_some() {
-                ClientTabIndexOrPaneId::PaneId(pane_id.unwrap())
-            } else {
-                ClientTabIndexOrPaneId::ClientId(client_id)
-            };
+            let client_tab_index_or_paneid =
+                new_pane_routing(no_focus, near_current_pane, tab_id, pane_id, client_id);
             senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     command,
@@ -696,18 +714,14 @@ pub(crate) fn route_action(
             start_suppressed,
             coordinates: floating_pane_coordinates,
             near_current_pane,
+            no_focus,
             tab_id,
         } => {
             let title = format!("Editing: {}", open_file_payload.path.display());
             let open_file = TerminalAction::OpenFile(open_file_payload);
             let pty_instr = if should_open_in_place {
-                let client_tab_index_or_paneid = if let Some(tab_id) = tab_id {
-                    ClientTabIndexOrPaneId::TabIndex(tab_id)
-                } else if near_current_pane && pane_id.is_some() {
-                    ClientTabIndexOrPaneId::PaneId(pane_id.unwrap())
-                } else {
-                    ClientTabIndexOrPaneId::ClientId(client_id)
-                };
+                let client_tab_index_or_paneid =
+                    new_pane_routing(no_focus, near_current_pane, tab_id, pane_id, client_id);
                 PtyInstruction::SpawnInPlaceTerminal(
                     Some(open_file),
                     Some(title),
@@ -716,11 +730,8 @@ pub(crate) fn route_action(
                     Some(NotificationEnd::new(completion_tx)),
                 )
             } else {
-                let client_tab_index_or_paneid = if let Some(tab_id) = tab_id {
-                    ClientTabIndexOrPaneId::TabIndex(tab_id)
-                } else {
-                    ClientTabIndexOrPaneId::ClientId(client_id)
-                };
+                let client_tab_index_or_paneid =
+                    new_pane_routing(no_focus, near_current_pane, tab_id, pane_id, client_id);
                 PtyInstruction::SpawnTerminal(
                     Some(open_file),
                     Some(title),
@@ -760,18 +771,14 @@ pub(crate) fn route_action(
             pane_name: name,
             coordinates: floating_pane_coordinates,
             near_current_pane,
+            no_focus,
             tab_id,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
-            let client_tab_index_or_paneid = if let Some(tab_id) = tab_id {
-                ClientTabIndexOrPaneId::TabIndex(tab_id)
-            } else if near_current_pane && pane_id.is_some() {
-                ClientTabIndexOrPaneId::PaneId(pane_id.unwrap())
-            } else {
-                ClientTabIndexOrPaneId::ClientId(client_id)
-            };
+            let client_tab_index_or_paneid =
+                new_pane_routing(no_focus, near_current_pane, tab_id, pane_id, client_id);
             senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     run_cmd,
@@ -788,6 +795,7 @@ pub(crate) fn route_action(
             command: run_command,
             pane_name: name,
             near_current_pane,
+            no_focus,
             pane_id_to_replace,
             close_replaced_pane,
             tab_id,
@@ -799,11 +807,17 @@ pub(crate) fn route_action(
                 .and_then(|pane_id_to_replace| pane_id_to_replace.try_into().ok());
             let pane_id = explicit_pane_id_to_replace.or(pane_id);
             let client_tab_index_or_paneid = if let Some(tab_id) = tab_id {
-                ClientTabIndexOrPaneId::TabIndex(tab_id)
-            } else if let Some(pane_id) =
-                pane_id.filter(|_| explicit_pane_id_to_replace.is_some() || near_current_pane)
+                if no_focus {
+                    ClientTabIndexOrPaneId::TabIndexNoFocus(tab_id)
+                } else {
+                    ClientTabIndexOrPaneId::TabIndex(tab_id)
+                }
+            } else if let Some(pane_id) = pane_id
+                .filter(|_| explicit_pane_id_to_replace.is_some() || near_current_pane || no_focus)
             {
                 ClientTabIndexOrPaneId::PaneId(pane_id)
+            } else if no_focus {
+                ClientTabIndexOrPaneId::ClientIdNoFocus(client_id)
             } else {
                 ClientTabIndexOrPaneId::ClientId(client_id)
             };
@@ -821,6 +835,7 @@ pub(crate) fn route_action(
             command: run_command,
             pane_name: name,
             near_current_pane,
+            no_focus,
             tab_id,
         } => {
             let run_cmd = run_command
@@ -833,9 +848,13 @@ pub(crate) fn route_action(
                         pane_id_to_stack_under: None,
                         borderless: None,
                     },
-                    ClientTabIndexOrPaneId::TabIndex(tab_id),
+                    if no_focus {
+                        ClientTabIndexOrPaneId::TabIndexNoFocus(tab_id)
+                    } else {
+                        ClientTabIndexOrPaneId::TabIndex(tab_id)
+                    },
                 )
-            } else if near_current_pane && pane_id.is_some() {
+            } else if (no_focus || near_current_pane) && pane_id.is_some() {
                 let pane_id = pane_id.unwrap();
                 (
                     NewPanePlacement::Stacked {
@@ -850,7 +869,11 @@ pub(crate) fn route_action(
                         pane_id_to_stack_under: None,
                         borderless: None,
                     },
-                    ClientTabIndexOrPaneId::ClientId(client_id),
+                    if no_focus {
+                        ClientTabIndexOrPaneId::ClientIdNoFocus(client_id)
+                    } else {
+                        ClientTabIndexOrPaneId::ClientId(client_id)
+                    },
                 )
             };
             senders
@@ -870,19 +893,15 @@ pub(crate) fn route_action(
             command: run_command,
             pane_name: name,
             near_current_pane,
+            no_focus,
             borderless,
             tab_id,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
-            let client_tab_index_or_paneid = if let Some(tab_id) = tab_id {
-                ClientTabIndexOrPaneId::TabIndex(tab_id)
-            } else if near_current_pane && pane_id.is_some() {
-                ClientTabIndexOrPaneId::PaneId(pane_id.unwrap())
-            } else {
-                ClientTabIndexOrPaneId::ClientId(client_id)
-            };
+            let client_tab_index_or_paneid =
+                new_pane_routing(no_focus, near_current_pane, tab_id, pane_id, client_id);
             senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     run_cmd,
@@ -935,13 +954,11 @@ pub(crate) fn route_action(
         Action::Run {
             command,
             near_current_pane,
+            no_focus,
         } => {
             let run_cmd = Some(TerminalAction::RunCommand(command.clone().into()));
-            let client_tab_index_or_paneid = if near_current_pane && pane_id.is_some() {
-                ClientTabIndexOrPaneId::PaneId(pane_id.unwrap())
-            } else {
-                ClientTabIndexOrPaneId::ClientId(client_id)
-            };
+            let client_tab_index_or_paneid =
+                new_pane_routing(no_focus, near_current_pane, None, pane_id, client_id);
             senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     run_cmd,
@@ -1321,6 +1338,7 @@ pub(crate) fn route_action(
             pane_name: name,
             skip_cache,
             cwd,
+            no_focus,
             tab_id,
         } => {
             senders
@@ -1332,6 +1350,7 @@ pub(crate) fn route_action(
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
                     tab_id,
+                    no_focus,
                 ))
                 .with_context(err_context)?;
         },
@@ -1341,6 +1360,7 @@ pub(crate) fn route_action(
             skip_cache,
             cwd,
             coordinates: floating_pane_coordinates,
+            no_focus,
             tab_id,
         } => {
             senders
@@ -1353,6 +1373,7 @@ pub(crate) fn route_action(
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
                     tab_id,
+                    no_focus,
                 ))
                 .with_context(err_context)?;
         },
@@ -1361,6 +1382,7 @@ pub(crate) fn route_action(
             pane_name: name,
             skip_cache,
             close_replaced_pane,
+            no_focus,
             tab_id,
         } => {
             if let Some(pane_id) = pane_id {
@@ -1374,6 +1396,7 @@ pub(crate) fn route_action(
                         client_id,
                         Some(NotificationEnd::new(completion_tx)),
                         tab_id,
+                        no_focus,
                     ))
                     .with_context(err_context)?;
             } else {
@@ -1420,6 +1443,7 @@ pub(crate) fn route_action(
             close_replaced_pane,
             skip_cache,
             cwd,
+            no_focus,
             tab_id,
         } => {
             senders
@@ -1434,6 +1458,7 @@ pub(crate) fn route_action(
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
                     tab_id,
+                    no_focus,
                 ))
                 .with_context(err_context)?;
         },

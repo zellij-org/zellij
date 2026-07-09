@@ -39,7 +39,9 @@ pub type TabIndex = u32;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClientTabIndexOrPaneId {
     ClientId(ClientId),
+    ClientIdNoFocus(ClientId),
     TabIndex(usize),
+    TabIndexNoFocus(usize),
     PaneId(PaneId),
 }
 
@@ -1025,13 +1027,15 @@ impl Pty {
 
         // returns the terminal id
         let terminal_action = match client_or_tab_index {
-            ClientTabIndexOrPaneId::ClientId(client_id) => {
+            ClientTabIndexOrPaneId::ClientId(client_id)
+            | ClientTabIndexOrPaneId::ClientIdNoFocus(client_id) => {
                 let mut terminal_action =
                     terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None));
                 self.fill_cwd(&mut terminal_action, client_id);
                 terminal_action
             },
-            ClientTabIndexOrPaneId::TabIndex(_) => {
+            ClientTabIndexOrPaneId::TabIndex(_)
+            | ClientTabIndexOrPaneId::TabIndexNoFocus(_) => {
                 terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None))
             },
             ClientTabIndexOrPaneId::PaneId(pane_id) => {

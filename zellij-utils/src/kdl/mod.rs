@@ -573,6 +573,7 @@ impl Action {
                         command: None,
                         pane_name: None,
                         near_current_pane: false,
+                        no_focus: false,
                         tab_id: None,
                     });
                 } else {
@@ -2038,6 +2039,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                             x, y, width, height, pinned, borderless,
                         ),
                         near_current_pane: false,
+                        no_focus: false,
                         tab_id: None,
                     })
                 } else if in_place {
@@ -2045,6 +2047,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         command: Some(run_command_action),
                         pane_name: name,
                         near_current_pane: false,
+                        no_focus: false,
                         pane_id_to_replace: None,
                         close_replaced_pane,
                         tab_id: None,
@@ -2054,6 +2057,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         command: Some(run_command_action),
                         pane_name: name,
                         near_current_pane: false,
+                        no_focus: false,
                         tab_id: None,
                     })
                 } else {
@@ -2062,6 +2066,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         command: Some(run_command_action),
                         pane_name: name,
                         near_current_pane: false,
+                        no_focus: false,
                         borderless: None,
                         tab_id: None,
                     })
@@ -2171,6 +2176,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     skip_cache: skip_plugin_cache,
                     cwd: None, // we explicitly do not send the current dir here so that it will be
                     // filled from the active pane == better UX
+                    no_focus: false,
                     tab_id: None,
                 })
             },

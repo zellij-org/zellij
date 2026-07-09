@@ -68,8 +68,8 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         layout::{
-            FloatingPaneLayout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
-            TiledPaneLayout,
+            FloatingPaneLayout, Run, RunPluginOrAlias, SplitDirection, SwapFloatingLayout,
+            SwapTiledLayout, TiledPaneLayout,
         },
         options::PaneFrameStyle,
         parse_keys,
@@ -2393,20 +2393,45 @@ impl Tab {
                 direction: Some(direction),
                 borderless,
             } => {
-                if let Some(client_id) = client_id {
-                    if direction == Direction::Left || direction == Direction::Right {
-                        self.vertical_split(
+                let is_vertical = direction == Direction::Left || direction == Direction::Right;
+                if should_focus_pane {
+                    if let Some(client_id) = client_id {
+                        if is_vertical {
+                            self.vertical_split(
+                                pid,
+                                initial_pane_title,
+                                client_id,
+                                blocking_notification,
+                                borderless,
+                            )?;
+                        } else {
+                            self.horizontal_split(
+                                pid,
+                                initial_pane_title,
+                                client_id,
+                                blocking_notification,
+                                borderless,
+                            )?;
+                        }
+                    }
+                } else if let Some(target_pane_id) =
+                    client_id.and_then(|client_id| self.tiled_panes.get_active_pane_id(client_id))
+                {
+                    if is_vertical {
+                        self.vertical_split_of_pane_id(
                             pid,
                             initial_pane_title,
-                            client_id,
+                            invoked_with,
+                            target_pane_id,
                             blocking_notification,
                             borderless,
                         )?;
                     } else {
-                        self.horizontal_split(
+                        self.horizontal_split_of_pane_id(
                             pid,
                             initial_pane_title,
-                            client_id,
+                            invoked_with,
+                            target_pane_id,
                             blocking_notification,
                             borderless,
                         )?;
@@ -2559,7 +2584,7 @@ impl Tab {
             if self.floating_panes.panes_are_visible() {
                 self.add_floating_pane(new_pane, pid, None, false, client_id)
             } else {
-                self.add_tiled_pane(new_pane, pid, false, client_id)
+                self.add_tiled_pane(new_pane, pid, false, None)
             }
         }
     }
@@ -2663,7 +2688,8 @@ impl Tab {
                 .insert(pid, (is_scrollback_editor, new_pane));
             Ok(())
         } else {
-            self.add_tiled_pane(new_pane, pid, false, client_id)
+            let focus_client_id = if should_focus_pane { client_id } else { None };
+            self.add_tiled_pane(new_pane, pid, false, focus_client_id)
         }
     }
     pub fn new_floating_pane(
@@ -2918,11 +2944,14 @@ impl Tab {
             Ok(())
         } else {
             if let Some(pane_id_to_stack_under) = pane_id_to_stack_under {
-                // TODO: also focus pane if should_focus_pane? in cases where we did this from the CLI in an unfocused
-                // pane...
-                self.add_stacked_pane_to_pane_id(new_pane, pid, pane_id_to_stack_under)
+                self.add_stacked_pane_to_pane_id(
+                    new_pane,
+                    pid,
+                    pane_id_to_stack_under,
+                    should_focus_pane,
+                )
             } else if let Some(client_id) = client_id {
-                self.add_stacked_pane_to_active_pane(new_pane, pid, client_id)
+                self.add_stacked_pane_to_active_pane(new_pane, pid, client_id, should_focus_pane)
             } else {
                 log::error!("Must have client id or pane id to stack pane");
                 return Ok(());
@@ -3389,6 +3418,125 @@ impl Tab {
                 .send_to_pty(PtyInstruction::ClosePane(pid, completion_tx))
                 .with_context(err_context)?;
             return Ok(());
+        }
+        Ok(())
+    }
+
+    pub fn horizontal_split_of_pane_id(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        invoked_with: Option<Run>,
+        target_pane_id: PaneId,
+        completion_tx: Option<NotificationEnd>,
+        borderless: Option<bool>,
+    ) -> Result<()> {
+        self.split_of_pane_id(
+            pid,
+            initial_pane_title,
+            invoked_with,
+            target_pane_id,
+            SplitDirection::Horizontal,
+            completion_tx,
+            borderless,
+        )
+    }
+    pub fn vertical_split_of_pane_id(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        invoked_with: Option<Run>,
+        target_pane_id: PaneId,
+        completion_tx: Option<NotificationEnd>,
+        borderless: Option<bool>,
+    ) -> Result<()> {
+        self.split_of_pane_id(
+            pid,
+            initial_pane_title,
+            invoked_with,
+            target_pane_id,
+            SplitDirection::Vertical,
+            completion_tx,
+            borderless,
+        )
+    }
+    fn split_of_pane_id(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        invoked_with: Option<Run>,
+        target_pane_id: PaneId,
+        split_direction: SplitDirection,
+        completion_tx: Option<NotificationEnd>,
+        borderless: Option<bool>,
+    ) -> Result<()> {
+        let err_context =
+            || format!("failed to split pane {target_pane_id:?} without changing focus");
+        if self.floating_panes.panes_are_visible() {
+            return Ok(());
+        }
+        if !self.tiled_panes.panes_contain(&target_pane_id) {
+            return Ok(());
+        }
+        self.close_down_to_max_terminals()
+            .with_context(err_context)?;
+        if self.tiled_panes.fullscreen_is_active() {
+            self.tiled_panes.unset_fullscreen();
+        }
+        self.dissolve_stack_lists_for_classic_mutation();
+        let can_split = match split_direction {
+            SplitDirection::Horizontal => {
+                self.tiled_panes.can_split_pane_id_horizontally(target_pane_id)
+            },
+            SplitDirection::Vertical => {
+                self.tiled_panes.can_split_pane_id_vertically(target_pane_id)
+            },
+        };
+        if !can_split {
+            self.senders
+                .send_to_pty(PtyInstruction::ClosePane(pid, completion_tx))
+                .with_context(err_context)?;
+            return Ok(());
+        }
+        if let PaneId::Terminal(term_pid) = pid {
+            let next_terminal_position = self.get_next_terminal_position();
+            let mut new_terminal = TerminalPane::new(
+                term_pid,
+                PaneGeom::default(),
+                self.style,
+                next_terminal_position,
+                String::new(),
+                self.link_handler.clone(),
+                self.character_cell_size.clone(),
+                self.sixel_image_store.clone(),
+                self.terminal_emulator_colors.clone(),
+                self.terminal_emulator_color_codes.clone(),
+                initial_pane_title,
+                invoked_with,
+                self.debug,
+                self.arrow_fonts,
+                self.styled_underlines,
+                self.osc8_hyperlinks,
+                self.explicitly_disable_kitty_keyboard_protocol,
+                completion_tx,
+            );
+            if let Some(borderless) = borderless {
+                new_terminal.set_borderless(borderless);
+            }
+            match split_direction {
+                SplitDirection::Horizontal => self.tiled_panes.split_pane_id_horizontally(
+                    pid,
+                    Box::new(new_terminal),
+                    target_pane_id,
+                ),
+                SplitDirection::Vertical => self.tiled_panes.split_pane_id_vertically(
+                    pid,
+                    Box::new(new_terminal),
+                    target_pane_id,
+                ),
+            }
+            self.set_should_clear_display_before_rendering();
+            self.swap_layouts.set_is_tiled_damaged();
         }
         Ok(())
     }
@@ -6653,6 +6801,7 @@ impl Tab {
         pane: Box<dyn Pane>,
         pane_id: PaneId,
         root_pane_id: PaneId,
+        should_focus: bool,
     ) -> Result<()> {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
@@ -6661,8 +6810,9 @@ impl Tab {
         self.tiled_panes
             .add_pane_to_stack_of_pane_id(pane_id, pane, root_pane_id);
         self.set_should_clear_display_before_rendering();
-        self.tiled_panes.expand_pane_in_stack(pane_id); // so that it will get focused by all
-                                                        // clients
+        if should_focus {
+            self.tiled_panes.expand_pane_in_stack(pane_id);
+        }
         self.swap_layouts.set_is_tiled_damaged();
         Ok(())
     }
@@ -6671,6 +6821,7 @@ impl Tab {
         pane: Box<dyn Pane>,
         pane_id: PaneId,
         client_id: ClientId,
+        should_focus: bool,
     ) -> Result<()> {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
@@ -6678,7 +6829,9 @@ impl Tab {
         self.dissolve_stack_lists_for_classic_mutation();
         self.tiled_panes
             .add_pane_to_stack_of_active_pane(pane_id, pane, client_id);
-        self.tiled_panes.focus_pane(pane_id, client_id);
+        if should_focus {
+            self.tiled_panes.focus_pane(pane_id, client_id);
+        }
         self.swap_layouts.set_is_tiled_damaged();
         Ok(())
     }

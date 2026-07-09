@@ -3252,6 +3252,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: Some(false),
         tab_id: None,
     };
@@ -3307,6 +3308,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: Some(false),
         tab_id: None,
     };
@@ -3362,6 +3364,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: Some(false),
         tab_id: None,
     };
@@ -3428,6 +3431,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: Some(false),
         tab_id: None,
     };
@@ -3472,6 +3476,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         pinned: None,
         borderless: Some(false),
         near_current_pane: false,
+        no_focus: false,
         tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -3515,6 +3520,7 @@ pub fn send_cli_edit_action_with_line_number() {
         pinned: None,
         borderless: Some(false),
         near_current_pane: false,
+        no_focus: false,
         tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -3558,6 +3564,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         pinned: None,
         borderless: Some(false),
         near_current_pane: false,
+        no_focus: false,
         tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -3759,6 +3766,7 @@ pub fn send_cli_new_tab_action_default_params() {
         block_until_exit: false,
         block_until_exit_success: false,
         block_until_exit_failure: false,
+        no_focus: false,
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3807,6 +3815,7 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
         block_until_exit: false,
         block_until_exit_success: false,
         block_until_exit_failure: false,
+        no_focus: false,
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -5250,6 +5259,7 @@ pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: None,
         tab_id: None,
     };
@@ -5301,6 +5311,7 @@ pub fn send_cli_edit_in_place_with_close_replaced_pane() {
         height: None,
         pinned: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: None,
         tab_id: None,
     };
@@ -7853,6 +7864,7 @@ pub fn send_cli_new_tab_action_with_layout_string() {
         block_until_exit: false,
         block_until_exit_success: false,
         block_until_exit_failure: false,
+        no_focus: false,
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -7907,6 +7919,7 @@ pub fn send_cli_new_tab_action_with_layout_string_and_name() {
         block_until_exit: false,
         block_until_exit_success: false,
         block_until_exit_failure: false,
+        no_focus: false,
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -7977,6 +7990,7 @@ pub fn send_cli_new_pane_action_with_tab_id() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: Some(false),
         tab_id: Some(0),
     };
@@ -8039,6 +8053,7 @@ pub fn send_cli_new_floating_pane_action_with_tab_id() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: None,
         tab_id: Some(0),
     };
@@ -8088,6 +8103,7 @@ pub fn send_cli_edit_action_with_tab_id() {
         height: None,
         pinned: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: None,
         tab_id: Some(0),
     };
@@ -8149,6 +8165,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_direction() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: Some(false),
         tab_id: Some(0),
     };
@@ -8210,6 +8227,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_stacked() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: None,
         tab_id: Some(0),
     };

@@ -1349,6 +1349,7 @@ Config {
                     command: None,
                     pane_name: None,
                     near_current_pane: false,
+                    no_focus: false,
                     tab_id: None,
                 },
                 SwitchToMode {

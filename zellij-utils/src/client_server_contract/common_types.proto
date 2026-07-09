@@ -469,6 +469,7 @@ message EditFileAction {
   bool near_current_pane = 7;
   bool close_replaced_pane = 8;
   optional uint32 tab_id = 9;
+  bool no_focus = 10;
 }
 
 message NewFloatingPaneAction {
@@ -477,6 +478,7 @@ message NewFloatingPaneAction {
   optional FloatingPaneCoordinates coordinates = 3;
   bool near_current_pane = 7;
   optional uint32 tab_id = 8;
+  bool no_focus = 9;
 }
 
 message NewTiledPaneAction {
@@ -486,6 +488,7 @@ message NewTiledPaneAction {
   bool near_current_pane = 7;
   optional bool borderless = 8;
   optional uint32 tab_id = 9;
+  bool no_focus = 10;
 }
 
 message NewInPlacePaneAction {
@@ -495,6 +498,7 @@ message NewInPlacePaneAction {
   optional PaneId pane_id_to_replace = 4;
   bool close_replaced_pane = 5;
   optional uint32 tab_id = 6;
+  bool no_focus = 7;
 }
 
 message NewStackedPaneAction {
@@ -502,6 +506,7 @@ message NewStackedPaneAction {
   optional string pane_name = 2;
   bool near_current_pane = 3;
   optional uint32 tab_id = 4;
+  bool no_focus = 5;
 }
 
 message NewBlockingPaneAction {
@@ -511,6 +516,7 @@ message NewBlockingPaneAction {
   optional UnblockCondition unblock_condition = 4;
   bool near_current_pane = 5;
   optional uint32 tab_id = 6;
+  bool no_focus = 7;
 }
 
 message PaneNameInputAction {
@@ -549,6 +555,7 @@ message MoveTabAction {
 message RunAction {
   RunCommandAction command = 1;
   bool near_current_pane = 2;
+  bool no_focus = 3;
 }
 
 message LaunchOrFocusPluginAction {
@@ -569,6 +576,7 @@ message LaunchPluginAction {
   optional string cwd = 5;
   bool close_replaced_pane = 6;
   optional uint32 tab_id = 7;
+  bool no_focus = 8;
 }
 
 message MouseEventAction {
@@ -597,6 +605,7 @@ message NewTiledPluginPaneAction {
   bool skip_cache = 3;
   optional string cwd = 4;
   optional uint32 tab_id = 5;
+  bool no_focus = 6;
 }
 
 message NewFloatingPluginPaneAction {
@@ -606,6 +615,7 @@ message NewFloatingPluginPaneAction {
   optional string cwd = 4;
   optional FloatingPaneCoordinates coordinates = 5;
   optional uint32 tab_id = 6;
+  bool no_focus = 7;
 }
 
 message NewInPlacePluginPaneAction {
@@ -614,6 +624,7 @@ message NewInPlacePluginPaneAction {
   bool skip_cache = 3;
   bool close_replaced_pane = 4;
   optional uint32 tab_id = 5;
+  bool no_focus = 6;
 }
 
 message StartOrReloadPluginAction {

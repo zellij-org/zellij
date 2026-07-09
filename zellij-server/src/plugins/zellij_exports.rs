@@ -1197,6 +1197,7 @@ fn open_plugin_pane_floating(
         skip_cache: false,
         cwd: Some(env.plugin_cwd.clone()),
         coordinates: floating_pane_coordinates,
+        no_focus: false,
         tab_id: None,
     };
     let error_msg = || format!("Failed to open floating plugin pane");
@@ -1437,6 +1438,7 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
         start_suppressed,
         coordinates: None,
         near_current_pane: false,
+        no_focus: false,
         tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
@@ -1532,6 +1534,7 @@ fn open_file_floating(
         start_suppressed,
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
+        no_focus: false,
         tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
@@ -1573,6 +1576,7 @@ fn open_file_in_place(
         start_suppressed,
         coordinates: None,
         near_current_pane: false,
+        no_focus: false,
         tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
@@ -1733,6 +1737,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         command: run_command_action,
         pane_name: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: None,
         tab_id: None,
     };
@@ -1810,6 +1815,7 @@ fn open_terminal_floating(
         pane_name: None,
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
+        no_focus: false,
         tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
@@ -1884,6 +1890,7 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
         command: run_command_action,
         pane_name: None,
         near_current_pane: false,
+        no_focus: false,
         pane_id_to_replace: None,
         close_replaced_pane: false,
         tab_id: None,
@@ -2170,6 +2177,7 @@ fn open_command_pane(
         command: Some(run_command_action),
         pane_name: name,
         near_current_pane: false,
+        no_focus: false,
         borderless: None,
         tab_id: None,
     };
@@ -2279,6 +2287,7 @@ fn open_command_pane_floating(
         pane_name: name,
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
+        no_focus: false,
         tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
@@ -2388,6 +2397,7 @@ fn open_command_pane_in_place(
         command: Some(run_command_action),
         pane_name: name,
         near_current_pane: false,
+        no_focus: false,
         pane_id_to_replace: None,
         close_replaced_pane: false,
         tab_id: None,
@@ -2872,6 +2882,7 @@ fn new_tiled_pane_in_tab(env: &PluginEnv, tab_position: usize) {
         command: run_command_action,
         pane_name: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: None,
         tab_id: Some(tab_position),
     };
@@ -4730,9 +4741,9 @@ fn try_edit_layout(
         start_suppressed: false,
         coordinates: None,
         near_current_pane: true,
+        no_focus: false,
         tab_id: None,
     };
-
     // Route the action - this is fallible
     route_action(
         action,
