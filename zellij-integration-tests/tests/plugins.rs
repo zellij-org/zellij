@@ -24,7 +24,10 @@ fn load_plugins_in_background_on_startup() {
 
     let grid_snapshot = zellij
         .wait_until("background plugin requests permissions", |grid_snapshot| {
-            grid_snapshot.contains("Allow? (y/n)") && grid_snapshot.tab_bar_appears()
+            grid_snapshot.contains("Allow? (y/n)")
+                && grid_snapshot.tab_bar_appears()
+                && grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains("STAGGERED")
         });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.send_stdin(b"y");
@@ -34,3 +37,4 @@ fn load_plugins_in_background_on_startup() {
     );
     zellij.quit();
 }
+
