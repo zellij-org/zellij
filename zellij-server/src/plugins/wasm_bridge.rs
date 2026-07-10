@@ -167,6 +167,12 @@ impl LoadingContext {
 
 pub type PluginCache = Arc<Mutex<HashMap<PathBuf, Module>>>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReloadPluginResult {
+    Started,
+    NoConnectedClients,
+}
+
 pub struct WasmBridge {
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
     senders: ThreadSenders,
@@ -598,31 +604,18 @@ impl WasmBridge {
 
         Ok(())
     }
-    pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
-        let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id).map(|r| r.clone()) else {
-            log::error!("Failed to find plugin with id: {}", plugin_id);
-            return Ok(());
-        };
-
-        let (rows, columns) = self.size_of_plugin_id(plugin_id).unwrap_or((0, 0));
-        self.cached_events_for_pending_plugins
-            .insert(plugin_id, vec![]);
-        self.cached_resizes_for_pending_plugins
-            .insert(plugin_id, (rows, columns));
-
-        let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
-        self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
-        self.loading_plugins.insert((plugin_id, run_plugin.clone()));
-
-        let plugin_executor = self.plugin_executor.clone();
-
+    pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<ReloadPluginResult> {
         let Some(first_client_id) = self.get_first_client_id() else {
             log::error!("No connected clients, cannot reload plugin.");
-            return Ok(());
+            return Ok(ReloadPluginResult::NoConnectedClients);
+        };
+        let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id).map(|r| r.clone()) else {
+            log::error!("Failed to find plugin with id: {}", plugin_id);
+            return Ok(ReloadPluginResult::Started);
         };
         let Some(plugin_config) = self.plugin_config_of_plugin_id(plugin_id) else {
             log::error!("Could not find running plugin with id: {}", plugin_id);
-            return Ok(());
+            return Ok(ReloadPluginResult::Started);
         };
         let tab_index = self.tab_index_of_plugin_id(plugin_id);
         let Some(size) = self.size_of_plugin_id(plugin_id) else {
@@ -630,14 +623,24 @@ impl WasmBridge {
                 "Could not find size of running plugin with id: {}",
                 plugin_id
             );
-            return Ok(());
+            return Ok(ReloadPluginResult::Started);
         };
         let size = Size {
             rows: size.0,
             cols: size.1,
         };
-
         let cwd = self.cwd_of_plugin_id(plugin_id);
+
+        self.cached_events_for_pending_plugins
+            .insert(plugin_id, vec![]);
+        self.cached_resizes_for_pending_plugins
+            .insert(plugin_id, (size.rows, size.cols));
+
+        let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
+        self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
+        self.loading_plugins.insert((plugin_id, run_plugin.clone()));
+
+        let plugin_executor = self.plugin_executor.clone();
 
         let loading_context = LoadingContext::new(
             &self,
@@ -683,20 +686,22 @@ impl WasmBridge {
                 });
             },
         );
-        Ok(())
+        Ok(ReloadPluginResult::Started)
     }
-    pub fn reload_plugin(&mut self, run_plugin: &RunPlugin) -> Result<()> {
+    pub fn reload_plugin(&mut self, run_plugin: &RunPlugin) -> Result<ReloadPluginResult> {
         if self.plugin_is_currently_being_loaded(&run_plugin.location) {
             self.pending_plugin_reloads.insert(run_plugin.clone());
-            return Ok(());
+            return Ok(ReloadPluginResult::Started);
         }
 
         let plugin_ids = self
             .all_plugin_ids_for_plugin_location(&run_plugin.location, &run_plugin.configuration)?;
         for plugin_id in &plugin_ids {
-            self.reload_plugin_with_id(*plugin_id)?;
+            if self.reload_plugin_with_id(*plugin_id)? == ReloadPluginResult::NoConnectedClients {
+                return Ok(ReloadPluginResult::NoConnectedClients);
+            }
         }
-        Ok(())
+        Ok(ReloadPluginResult::Started)
     }
     pub fn add_client(&mut self, client_id: ClientId) -> Result<()> {
         if self.client_is_connected(&client_id) {
@@ -2330,4 +2335,109 @@ pub fn apply_before_close_event_to_plugin(
         ]))
         .context("failed to unblock input pipe");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+
+    #[test]
+    fn refused_reload_without_a_client_does_not_create_pending_plugin_state() {
+        let mut wasm_bridge = WasmBridge::new(
+            ThreadSenders::default().silently_fail_on_send(),
+            Engine::new(&wasmi::Config::default()),
+            PathBuf::new(),
+            PathBuf::new(),
+            PathBuf::new(),
+            BTreeMap::new(),
+            None,
+            None,
+            vec![],
+            vec![],
+            InputMode::Normal,
+            Keybinds::default(),
+        );
+        let plugin_id = 1;
+        let client_id = 1;
+        let plugin_location = RunPluginLocation::File(PathBuf::from("test.wasm"));
+        let plugin_config = PluginConfig {
+            path: PathBuf::from("test.wasm"),
+            _allow_exec_host_cmd: false,
+            location: plugin_location,
+            initial_userspace_configuration: PluginUserConfiguration::default(),
+            initial_cwd: None,
+        };
+        let stdin_pipe = Arc::new(Mutex::new(VecDeque::new()));
+        let stdout_pipe = Arc::new(Mutex::new(VecDeque::new()));
+        let plugin_env = PluginEnv {
+            plugin_id,
+            plugin: plugin_config,
+            permissions: Arc::new(Mutex::new(None)),
+            senders: ThreadSenders::default().silently_fail_on_send(),
+            wasi_ctx: PluginLoader::create_wasi_ctx(
+                &PathBuf::new(),
+                &PathBuf::new(),
+                &PathBuf::new(),
+                &PathBuf::new(),
+                &"test.wasm".to_owned(),
+                plugin_id,
+                stdin_pipe.clone(),
+                stdout_pipe.clone(),
+            )
+            .unwrap(),
+            tab_index: None,
+            client_id,
+            plugin_own_data_dir: PathBuf::new(),
+            plugin_own_cache_dir: PathBuf::new(),
+            path_to_default_shell: PathBuf::new(),
+            default_shell: None,
+            layout_dir: None,
+            plugin_cwd: PathBuf::new(),
+            session_env_vars: BTreeMap::new(),
+            input_pipes_to_unblock: Arc::new(Mutex::new(HashSet::new())),
+            input_pipes_to_block: Arc::new(Mutex::new(HashSet::new())),
+            default_mode: InputMode::Normal,
+            subscriptions: Arc::new(Mutex::new(HashSet::new())),
+            stdin_pipe,
+            stdout_pipe,
+            keybinds: Keybinds::default(),
+            intercepting_key_presses: false,
+            store_limits: wasmi::StoreLimitsBuilder::new().build(),
+        };
+        let engine = Engine::new(&wasmi::Config::default());
+        let mut store = wasmi::Store::new(&engine, plugin_env);
+        let module = Module::new(&engine, &b"\0asm\x01\0\0\0"[..]).unwrap();
+        let instance = wasmi::Linker::new(&engine)
+            .instantiate_and_start(&mut store, &module)
+            .unwrap();
+        wasm_bridge.plugin_map.lock().unwrap().insert(
+            plugin_id,
+            client_id,
+            Arc::new(Mutex::new(RunningPlugin::new(store, instance, 24, 80))),
+            Arc::new(Mutex::new(Subscriptions::new())),
+            HashMap::new(),
+        );
+
+        // Keep this fixture valid so that moving the client check below pending-state setup
+        // recreates the regression this test guards against.
+        assert!(wasm_bridge.plugin_config_of_plugin_id(plugin_id).is_some());
+        assert_eq!(wasm_bridge.size_of_plugin_id(plugin_id), Some((24, 80)));
+
+        assert_eq!(
+            wasm_bridge.reload_plugin_with_id(plugin_id).unwrap(),
+            ReloadPluginResult::NoConnectedClients
+        );
+
+        assert!(!wasm_bridge
+            .cached_events_for_pending_plugins
+            .contains_key(&plugin_id));
+        assert!(!wasm_bridge
+            .cached_resizes_for_pending_plugins
+            .contains_key(&plugin_id));
+        assert!(!wasm_bridge
+            .loading_plugins
+            .iter()
+            .any(|(loading_plugin_id, _)| *loading_plugin_id == plugin_id));
+    }
 }

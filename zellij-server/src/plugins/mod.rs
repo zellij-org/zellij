@@ -26,7 +26,7 @@ use zellij_utils::data::PaneRenderReport;
 use zellij_utils::input::layout::TabLayoutInfo;
 
 pub use wasm_bridge::PluginRenderAsset;
-use wasm_bridge::WasmBridge;
+use wasm_bridge::{ReloadPluginResult, WasmBridge};
 
 use zellij_utils::{
     data::{
@@ -442,10 +442,18 @@ pub(crate) fn plugin_thread_main(
                 match run_plugin_or_alias.get_run_plugin() {
                     Some(run_plugin) => {
                         match wasm_bridge.reload_plugin(&run_plugin) {
-                            Ok(_) => {
+                            Ok(ReloadPluginResult::Started) => {
                                 let _ = bus
                                     .senders
                                     .send_to_server(ServerInstruction::UnblockInputThread);
+                            },
+                            Ok(ReloadPluginResult::NoConnectedClients) => {
+                                if let Some(mut completion_tx) = completion_tx {
+                                    completion_tx.set_exit_status(1);
+                                    completion_tx.set_error_message(
+                                        "No connected clients, cannot reload plugin.".to_owned(),
+                                    );
+                                }
                             },
                             Err(err) => match err.downcast_ref::<ZellijError>() {
                                 Some(ZellijError::PluginDoesNotExist) => {
