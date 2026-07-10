@@ -2131,6 +2131,32 @@ mod test {
     }
 
     #[test]
+    fn newline_then_carriage_return_are_two_enter_events_with_their_own_bytes() {
+        // In the legacy encoding a terminal sends `\r` for the Enter key and
+        // `\n` for a control-j style newline; the keymap decodes both to
+        // Enter. Arriving together they are two Enter events, each paired
+        // with its own byte.
+        let events = parse_with_raw_bytes(b"\n\r", MAYBE_MORE);
+        assert_eq!(events.len(), 2, "got {:?}", events);
+        for (event, raw) in &events {
+            assert!(
+                matches!(
+                    event,
+                    InputEvent::Key(KeyEvent {
+                        key: KeyCode::Enter,
+                        ..
+                    })
+                ),
+                "expected an Enter key event, got {:?}",
+                event
+            );
+            assert_eq!(raw.len(), 1, "each Enter is paired with a single byte");
+        }
+        assert_eq!(events[0].1, b"\n");
+        assert_eq!(events[1].1, b"\r");
+    }
+
+    #[test]
     fn partial() {
         let mut p = InputParser::new();
         let mut inputs = Vec::new();
