@@ -92,6 +92,23 @@ mod not_wasm {
             return KeyWithModifier::new(BareKey::Char('h')).with_ctrl_modifier();
         };
 
+        // termwiz's basic_key_map only maps Ctrl-A through Ctrl-Z (bytes
+        // 0x01-0x1a). Ctrl combined with a few non-letter keys is left
+        // unmapped, so those bytes come back as a plain, unmodified
+        // KeyCode::Char. Map them here the same way Ctrl-A..Z are mapped.
+        if raw_bytes == [0x1c] {
+            return KeyWithModifier::new(BareKey::Char('\\')).with_ctrl_modifier();
+        }
+        if raw_bytes == [0x1d] {
+            return KeyWithModifier::new(BareKey::Char(']')).with_ctrl_modifier();
+        }
+        if raw_bytes == [0x1e] {
+            return KeyWithModifier::new(BareKey::Char('^')).with_ctrl_modifier();
+        }
+        if raw_bytes == [0x1f] {
+            return KeyWithModifier::new(BareKey::Char('_')).with_ctrl_modifier();
+        }
+
         if raw_bytes == [10] {
             if let Some((keybinds, mode)) = keybinds_mode {
                 let ctrl_j = KeyWithModifier::new(BareKey::Char('j')).with_ctrl_modifier();
@@ -498,6 +515,97 @@ mod not_wasm {
             KeyWithModifier::new_with_modifiers(bare_key, modifiers),
             raw_bytes,
         ))
+    }
+}
+
+#[cfg(all(test, not(target_family = "wasm")))]
+mod termwiz_key_tests {
+    use super::not_wasm::cast_termwiz_key;
+    use crate::data::BareKey;
+    use crate::vendored::termwiz::input::{InputEvent, InputParser, KeyEvent};
+
+    // Parse a raw byte sequence the same way `parse_keys` does, returning the
+    // termwiz `KeyEvent` zellij would actually see for that input.
+    fn parse_one(raw_bytes: &[u8]) -> KeyEvent {
+        let mut parser = InputParser::new();
+        let events = parser.parse_as_vec(raw_bytes, false);
+        match events.as_slice() {
+            [InputEvent::Key(key_event)] => key_event.clone(),
+            other => panic!("expected exactly one Key event, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn ctrl_backslash_is_ctrl_modified() {
+        let raw_bytes = [0x1c];
+        let event = parse_one(&raw_bytes);
+        let key = cast_termwiz_key(event, &raw_bytes, None);
+        assert!(
+            key.is_key_with_ctrl_modifier(BareKey::Char('\\')),
+            "Ctrl+\\ (0x1c) should produce Ctrl+\\, got {:?}",
+            key
+        );
+    }
+
+    #[test]
+    fn ctrl_right_bracket_is_ctrl_modified() {
+        let raw_bytes = [0x1d];
+        let event = parse_one(&raw_bytes);
+        let key = cast_termwiz_key(event, &raw_bytes, None);
+        assert!(
+            key.is_key_with_ctrl_modifier(BareKey::Char(']')),
+            "Ctrl+] (0x1d) should produce Ctrl+], got {:?}",
+            key
+        );
+    }
+
+    #[test]
+    fn ctrl_caret_is_ctrl_modified() {
+        let raw_bytes = [0x1e];
+        let event = parse_one(&raw_bytes);
+        let key = cast_termwiz_key(event, &raw_bytes, None);
+        assert!(
+            key.is_key_with_ctrl_modifier(BareKey::Char('^')),
+            "Ctrl+^ (0x1e) should produce Ctrl+^, got {:?}",
+            key
+        );
+    }
+
+    #[test]
+    fn ctrl_underscore_is_ctrl_modified() {
+        let raw_bytes = [0x1f];
+        let event = parse_one(&raw_bytes);
+        let key = cast_termwiz_key(event, &raw_bytes, None);
+        assert!(
+            key.is_key_with_ctrl_modifier(BareKey::Char('_')),
+            "Ctrl+_ (0x1f) should produce Ctrl+_, got {:?}",
+            key
+        );
+    }
+
+    #[test]
+    fn ctrl_a_through_z_still_ctrl_modified() {
+        // Guard against regressing the existing A-Z handling while touching
+        // this code path. H (0x08), I (0x09), J (0x0a) and M (0x0d) collide
+        // with Backspace/Tab/Enter and are handled separately (or not at
+        // all) elsewhere in `cast_termwiz_key`, so they're skipped here.
+        for alpha in b'A'..=b'Z' {
+            let raw_bytes = [alpha & 0x1f];
+            if matches!(raw_bytes[0], 0x08 | 0x09 | 0x0a | 0x0d) {
+                continue;
+            }
+            let event = parse_one(&raw_bytes);
+            let key = cast_termwiz_key(event, &raw_bytes, None);
+            let lower = (alpha as char).to_ascii_lowercase();
+            assert!(
+                key.is_key_with_ctrl_modifier(BareKey::Char(lower)),
+                "Ctrl+{} (0x{:02x}) should produce Ctrl+{}, got {:?}",
+                lower,
+                raw_bytes[0],
+                lower,
+                key
+            );
+        }
     }
 }
 
