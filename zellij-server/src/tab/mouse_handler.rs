@@ -176,6 +176,10 @@ enum MouseAction {
         pane_id: PaneId,
         position: Position,
     },
+    RightClick {
+        pane_id: PaneId,
+        position: Position,
+    },
     SendToTerminal {
         pane_id: PaneId,
         event: MouseEvent,
@@ -799,6 +803,14 @@ impl MouseHandler {
             MouseAction::FocusOnHover { pane_id, position } => {
                 Self::execute_focus_on_hover(tab, pane_id, position, client_id)
             },
+            MouseAction::RightClick { pane_id, position } => {
+                let pane = tab
+                    .get_pane_with_id_mut(pane_id)
+                    .ok_or_else(|| anyhow!("Failed to find pane {pane_id:?}"))?;
+                let relative_position = pane.relative_position(&position);
+                pane.handle_right_click(&relative_position, client_id);
+                Ok(MouseEffect::default())
+            },
             MouseAction::SendToTerminal { pane_id, event } => {
                 Self::execute_send_to_terminal(tab, pane_id, event, client_id)
             },
@@ -1405,6 +1417,36 @@ impl MouseHandler {
                 });
             } else {
                 return Ok(MouseAction::FocusPane {
+                    pane_id: details.pane_id,
+                    position: event.position,
+                });
+            }
+        }
+
+        let is_right_press = event.right && event.event_type == MouseEventType::Press;
+        if is_right_press {
+            let Some(details) = &ctx.clicked_pane else {
+                return Ok(MouseAction::NoAction);
+            };
+
+            let is_active_pane = Some(details.pane_id) == ctx.active_pane_id;
+
+            if details.on_frame {
+                if details.frame_intercepted {
+                    return Ok(MouseAction::FrameIntercepted {
+                        pane_id: details.pane_id,
+                    });
+                }
+
+                // A right press on a frame is deliberately inert: move and
+                // resize are left-button drag gestures, and their in-progress
+                // states only accept left-button motion/release — entering
+                // them from a right press would leave the pane stuck mid-drag.
+                return Ok(MouseAction::NoAction);
+            }
+
+            if is_active_pane && matches!(details.pane_id, PaneId::Plugin(_)) {
+                return Ok(MouseAction::RightClick {
                     pane_id: details.pane_id,
                     position: event.position,
                 });
