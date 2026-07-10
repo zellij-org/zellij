@@ -1142,6 +1142,10 @@ pub fn start_client(
                                 new_size: os_api.get_terminal_size(),
                                 cause: ResizeCause::Viewport,
                             });
+                            #[cfg(not(windows))]
+                            let _ = os_api
+                                .get_stdout_writer()
+                                .write(crate::stdin_handler::PIXEL_SIZE_QUERY.as_bytes());
                         }
                     }),
                     Box::new({

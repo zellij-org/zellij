@@ -9243,7 +9243,7 @@ fn color_palette_mode_query_short_circuits_to_light_reply() {
 }
 
 #[test]
-fn color_palette_mode_query_stays_silent_when_host_mode_unknown() {
+fn color_palette_mode_query_falls_back_to_own_dark_theme_when_host_mode_unknown() {
     use crate::host_query::HostQuery;
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
@@ -9251,14 +9251,60 @@ fn color_palette_mode_query_stays_silent_when_host_mode_unknown() {
         screen.host_terminal_theme_mode.is_none(),
         "precondition: no host mode learned yet"
     );
+    screen.style.colors.text_unselected.background =
+        zellij_utils::data::PaletteColor::Rgb((0, 0, 0));
 
-    let _ = screen.forward_host_query(PaneId::Terminal(1), HostQuery::ColorPaletteMode);
+    let token = screen.forward_host_query(PaneId::Terminal(1), HostQuery::ColorPaletteMode);
 
+    assert_eq!(
+        token, 0,
+        "ColorPaletteMode must return the sentinel token; no real forward was queued"
+    );
     assert!(
-        capture.drain_pty_writes().is_empty(),
-        "Contour spec defines only ;1 (dark) and ;2 (light); when Zellij has \
-         not learned the host's mode it must stay silent rather than fabricate \
-         a non-conformant reply (e.g. ;0)"
+        capture.drain_forward_queries().is_empty(),
+        "must NOT forward to host — Zellij answers from its own effective theme"
+    );
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1, "exactly one pty reply expected");
+    assert_eq!(writes[0], (b"\x1b[?997;1n".to_vec(), 1));
+}
+
+#[test]
+fn color_palette_mode_query_falls_back_to_own_light_theme_when_host_mode_unknown() {
+    use crate::host_query::HostQuery;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    assert!(
+        screen.host_terminal_theme_mode.is_none(),
+        "precondition: no host mode learned yet"
+    );
+    screen.style.colors.text_unselected.background =
+        zellij_utils::data::PaletteColor::Rgb((255, 255, 255));
+
+    let _ = screen.forward_host_query(PaneId::Terminal(7), HostQuery::ColorPaletteMode);
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0], (b"\x1b[?997;2n".to_vec(), 7));
+}
+
+#[test]
+fn color_palette_mode_query_prefers_known_host_mode_over_own_theme() {
+    use crate::host_query::HostQuery;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.host_terminal_theme_mode = Some(zellij_utils::data::HostTerminalThemeMode::Light);
+    screen.style.colors.text_unselected.background =
+        zellij_utils::data::PaletteColor::Rgb((0, 0, 0));
+
+    let _ = screen.forward_host_query(PaneId::Terminal(9), HostQuery::ColorPaletteMode);
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0],
+        (b"\x1b[?997;2n".to_vec(), 9),
+        "the host's announced mode must win over the local theme fallback"
     );
 }
 

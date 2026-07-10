@@ -217,6 +217,12 @@ impl TestClient {
             .wait_until(what, predicate)
     }
 
+    pub fn wait_until_raw_output(&self, what: &str, predicate: impl Fn(&[u8]) -> bool) -> Vec<u8> {
+        self.fake_client_handle
+            .client_screen
+            .wait_until_raw_output(what, predicate)
+    }
+
     pub fn snapshot(&self) -> GridSnapshot {
         self.fake_client_handle.client_screen.snapshot()
     }
@@ -289,6 +295,10 @@ impl TestSession {
         predicate: impl Fn(&GridSnapshot) -> bool,
     ) -> GridSnapshot {
         self.main_client.wait_until(what, predicate)
+    }
+
+    pub fn wait_until_raw_output(&self, what: &str, predicate: impl Fn(&[u8]) -> bool) -> Vec<u8> {
+        self.main_client.wait_until_raw_output(what, predicate)
     }
 
     pub fn snapshot(&self) -> GridSnapshot {

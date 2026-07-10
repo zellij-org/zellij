@@ -59,6 +59,22 @@ fn fragmented_attach_reply_burst_does_not_leak_into_focused_pane() {
 }
 
 #[test]
+fn theme_query_from_pane_is_answered_when_host_mode_is_unknown() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    terminal.output(b"\x1b[?996n");
+
+    terminal.wait_for_stdin("theme mode reply reached the pane", |stdin_bytes| {
+        stdin_bytes
+            .windows(9)
+            .any(|window| window == b"\x1b[?997;1n")
+    });
+
+    zellij.quit();
+}
+
+#[test]
 fn fragmented_function_key_arrives_intact() {
     let mut zellij = start_zellij();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);

@@ -46,6 +46,37 @@ impl ClientScreen {
         render_bytes(&bytes, size)
     }
 
+    pub fn wait_until_raw_output(&self, what: &str, predicate: impl Fn(&[u8]) -> bool) -> Vec<u8> {
+        let deadline = Instant::now() + crate::default_timeout();
+        let mut received_bytes = self.inner.received_bytes.lock().unwrap();
+        loop {
+            if predicate(&received_bytes.bytes) {
+                return received_bytes.bytes.clone();
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                panic!(
+                    "timed out waiting for: {}\n=== (received {} stdout bytes, generation {}) ===\n=== zellij log tail ({}) ===\n{}",
+                    what,
+                    received_bytes.bytes.len(),
+                    received_bytes.generation,
+                    crate::test_env::log_file_path().display(),
+                    crate::test_env::log_tail(40),
+                );
+            }
+            let last_generation = received_bytes.generation;
+            let (guard, _) = self
+                .inner
+                .change_signal
+                .wait_timeout(received_bytes, deadline - now)
+                .unwrap();
+            received_bytes = guard;
+            if received_bytes.generation == last_generation {
+                continue;
+            }
+        }
+    }
+
     pub fn wait_until(
         &self,
         what: &str,

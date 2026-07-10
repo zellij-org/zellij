@@ -44,7 +44,7 @@ use zellij_utils::data::{
     HostTerminalThemeMode, KeyWithModifier, LayoutInfo, LayoutWithError, ListPanesResponse,
     ListTabsResponse, NewPanePlacement, PaneContents, PaneInfo, PaneListEntry, PaneManifest,
     PaneRenderReport, PaneScrollbackResponse, PluginPermission, RegexHighlight, Resize,
-    ResizeStrategy, SessionInfo, Styling, TabInfo, WebSharing,
+    ResizeStrategy, SessionInfo, Styling, TabInfo, ThemeHue, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -54,7 +54,7 @@ use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::options::{Clipboard, MobileLayoutConfiguration, PaneFrameStyle};
 use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
-use zellij_utils::shared::clean_string_from_control_and_linebreak;
+use zellij_utils::shared::{clean_string_from_control_and_linebreak, detect_theme_hue};
 use zellij_utils::{
     consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
     envs::set_session_name,
@@ -2549,45 +2549,28 @@ impl Screen {
         token
     }
 
-    /// Synthesise the DSR 997 reply to a `CSI ? 996 n` query from
-    /// `host_terminal_theme_mode` and write it directly to the
-    /// originating pane's pty. Plugin panes are skipped (they receive
-    /// `Event::HostTerminalThemeChanged` and have no notion of
-    /// VT-protocol queries). When Zellij has not yet learned the host
-    /// mode, the pane receives no reply — matching what a host that
-    /// does not implement CSI 2031 would do. The Contour spec only
-    /// defines `;1` (dark) and `;2` (light); fabricating any other
-    /// code (e.g. `;0`) would be non-conformant.
     fn answer_color_palette_mode_query_locally(&mut self, pane_id: PaneId) {
         if matches!(pane_id, PaneId::Plugin(_)) {
             return;
         }
-        let code: u8 = match self.host_terminal_theme_mode {
-            Some(HostTerminalThemeMode::Dark) => 1,
-            Some(HostTerminalThemeMode::Light) => 2,
-            None => {
-                log::debug!(
-                    "CSI ?996n received but host_terminal_theme_mode is unknown; \
-                     dropping (spec defines only 1=dark / 2=light)"
-                );
-                // The Contour spec defines only ;1 / ;2 — silence is
-                // the conformant behaviour when the host's mode is
-                // unknown. But the pane may have been forward-paused
-                // on the dispatch; if so we still owe it an unblock
-                // cycle so any buffered bytes get replayed. Skip the
-                // empty resume when the pane is not paused, matching
-                // the "stay silent" guarantee.
-                if self.is_any_tab_pane_forward_paused(pane_id) {
-                    let _ = self.resume_pane_after_forward(pane_id, Vec::new());
-                }
-                return;
-            },
+        let code: u8 = match self.effective_host_terminal_theme_mode() {
+            HostTerminalThemeMode::Dark => 1,
+            HostTerminalThemeMode::Light => 2,
         };
         let reply = format!("\u{1b}[?997;{}n", code).into_bytes();
         // Route via Tab so the reply lands on the pane in the correct
         // stream position and any PTY input the app emitted while
         // waiting is replayed.
         let _ = self.resume_pane_after_forward(pane_id, reply);
+    }
+
+    fn effective_host_terminal_theme_mode(&self) -> HostTerminalThemeMode {
+        self.host_terminal_theme_mode.unwrap_or_else(|| {
+            match detect_theme_hue(self.style.colors.text_unselected.background) {
+                ThemeHue::Dark => HostTerminalThemeMode::Dark,
+                ThemeHue::Light => HostTerminalThemeMode::Light,
+            }
+        })
     }
 
     /// Dispatch a forward to the client and mark the slot as in-flight.
@@ -2685,15 +2668,6 @@ impl Screen {
             self.dispatch_forward(next.token, next.pane_id, next.query);
         }
         Ok(())
-    }
-
-    /// Whether any tab owns `pane_id` AND the pane is currently
-    /// forward-paused. Used by the `ColorPaletteMode` short-circuit
-    /// to skip the empty-payload resume when no pane needs unblocking.
-    fn is_any_tab_pane_forward_paused(&self, pane_id: PaneId) -> bool {
-        self.tabs
-            .values()
-            .any(|tab| tab.is_pane_forward_paused(pane_id))
     }
 
     /// Deliver a forwarded reply (or cache-fallback synthesis, or a
@@ -2796,14 +2770,9 @@ impl Screen {
             },
             // Should not reach here: ColorPaletteMode short-circuits in
             // `forward_host_query` before any cache-fallback path runs.
-            // The Contour spec only defines `;1` and `;2`; if the host
-            // mode is unknown there is no compliant reply, so return
-            // empty bytes (the existing convention for "no synthesis
-            // possible").
-            HostQuery::ColorPaletteMode => match self.host_terminal_theme_mode {
-                Some(HostTerminalThemeMode::Dark) => b"\x1b[?997;1n".to_vec(),
-                Some(HostTerminalThemeMode::Light) => b"\x1b[?997;2n".to_vec(),
-                None => Vec::new(),
+            HostQuery::ColorPaletteMode => match self.effective_host_terminal_theme_mode() {
+                HostTerminalThemeMode::Dark => b"\x1b[?997;1n".to_vec(),
+                HostTerminalThemeMode::Light => b"\x1b[?997;2n".to_vec(),
             },
         }
     }

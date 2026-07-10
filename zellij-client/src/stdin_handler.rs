@@ -317,12 +317,22 @@ fn build_startup_query_string() -> String {
     // <ESC>]11;?<ESC>\ => get background color
     // <ESC>]10;?<ESC>\ => get foreground color
     // <ESC>[?2026$p => get synchronised output mode
-    String::from("\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p")
+    format!(
+        "{}\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p",
+        PIXEL_SIZE_QUERY
+    )
 }
+
+pub(crate) const PIXEL_SIZE_QUERY: &str = "\u{1b}[14t\u{1b}[16t";
 
 #[cfg(test)]
 mod tests {
-    use super::build_startup_query_string;
+    use super::{build_startup_query_string, PIXEL_SIZE_QUERY};
+
+    #[test]
+    fn pixel_size_query_probes_text_area_and_character_cell() {
+        assert_eq!(PIXEL_SIZE_QUERY, "\u{1b}[14t\u{1b}[16t");
+    }
 
     #[test]
     fn startup_query_has_no_palette_register_loop() {

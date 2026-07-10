@@ -3693,24 +3693,6 @@ impl Tab {
                 .values()
                 .any(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
     }
-    /// Whether the pane with `pane_id` (if owned by this tab) is
-    /// currently waiting for a host-forward reply. Used by the
-    /// `ColorPaletteMode` short-circuit to decide whether an empty
-    /// "host mode unknown" answer needs to drive an unblock cycle:
-    /// if the pane is not paused, no work is owed.
-    pub fn is_pane_forward_paused(&self, pane_id: PaneId) -> bool {
-        self.tiled_panes
-            .get_pane(pane_id)
-            .or_else(|| self.floating_panes.get_pane(pane_id))
-            .or_else(|| {
-                self.suppressed_panes
-                    .values()
-                    .find(|s_p| s_p.1.pid() == pane_id)
-                    .map(|s_p| &s_p.1)
-            })
-            .map(|p| p.is_forward_paused())
-            .unwrap_or(false)
-    }
     pub fn has_plugin(&self, plugin_id: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Plugin(plugin_id))
             || self
