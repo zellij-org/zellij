@@ -4288,8 +4288,30 @@ impl Tab {
             log::error!("No tiled pane with id: {:?} found", pane_id);
         }
     }
+    pub fn toggle_active_pane_no_ui_fullscreen(&mut self, client_id: ClientId) {
+        if self.floating_panes.panes_are_visible() {
+            return;
+        }
+        self.dissolve_stack_lists_for_classic_mutation();
+        self.tiled_panes
+            .toggle_active_pane_no_ui_fullscreen(client_id);
+    }
+    pub fn toggle_pane_no_ui_fullscreen(&mut self, pane_id: PaneId) {
+        if self.pane_is_hidden_stack_list_member(&pane_id) {
+            self.make_hidden_stack_list_member_visible(pane_id);
+        }
+        self.dissolve_stack_lists_for_classic_mutation();
+        if self.tiled_panes.panes_contain(&pane_id) {
+            self.tiled_panes.toggle_pane_no_ui_fullscreen(pane_id);
+        } else {
+            log::error!("No tiled pane with id: {:?} found", pane_id);
+        }
+    }
     pub fn is_fullscreen_active(&self) -> bool {
         self.tiled_panes.fullscreen_is_active()
+    }
+    pub fn fullscreen_covers_ui(&self) -> bool {
+        self.tiled_panes.fullscreen_covers_ui()
     }
     pub fn fullscreen_pane_id(&self) -> Option<PaneId> {
         self.tiled_panes.fullscreen_pane_id()
@@ -4634,6 +4656,7 @@ impl Tab {
         // panes retain stale geometry from before the resize and the layout
         // solver fails when fullscreen is later toggled off.
         let fullscreen_pane_to_restore = self.tiled_panes.fullscreen_pane_id();
+        let fullscreen_covered_ui = self.fullscreen_covers_ui();
         if fullscreen_pane_to_restore.is_some() {
             self.tiled_panes.unset_fullscreen();
         }
@@ -4668,7 +4691,11 @@ impl Tab {
         );
         if let Some(pane_id) = fullscreen_pane_to_restore {
             if self.tiled_panes.panes_contain(&pane_id) {
-                self.tiled_panes.toggle_pane_fullscreen(pane_id);
+                if fullscreen_covered_ui {
+                    self.tiled_panes.toggle_pane_no_ui_fullscreen(pane_id);
+                } else {
+                    self.tiled_panes.toggle_pane_fullscreen(pane_id);
+                }
             }
         }
         self.resize_all_stack_list_hidden_members();
@@ -5893,19 +5920,12 @@ impl Tab {
         let err_context = || format!("failed to get id of pane at position {point:?}");
 
         if self.tiled_panes.fullscreen_is_active()
-            && self
-                .is_position_inside_viewport(point)
-                .with_context(err_context)?
+            && (self.tiled_panes.fullscreen_covers_ui()
+                || self
+                    .is_position_inside_viewport(point)
+                    .with_context(err_context)?)
         {
-            // TODO: instead of doing this, record the pane that is in fullscreen
-            let first_client_id = self
-                .connected_clients
-                .borrow()
-                .iter()
-                .copied()
-                .next()
-                .with_context(err_context)?;
-            return Ok(self.tiled_panes.get_active_pane_id(first_client_id));
+            return Ok(self.tiled_panes.fullscreen_pane_id());
         }
 
         let (stacked_pane_ids_under_flexible_pane, _stacked_pane_ids_over_flexible_pane) = {
@@ -7427,6 +7447,9 @@ impl Tab {
     }
     pub fn toggle_fullscreen_by_pane_id(&mut self, pane_id: PaneId) {
         self.toggle_pane_fullscreen(pane_id);
+    }
+    pub fn toggle_no_ui_fullscreen_by_pane_id(&mut self, pane_id: PaneId) {
+        self.toggle_pane_no_ui_fullscreen(pane_id);
     }
     pub fn close_pane_by_pane_id(
         &mut self,

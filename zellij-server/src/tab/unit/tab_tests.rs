@@ -12,7 +12,7 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
 use zellij_utils::input::options::PaneFrameStyle;
 use zellij_utils::ipc::IpcReceiverWithContext;
-use zellij_utils::pane_size::{Size, SizeInPixels};
+use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 
 use crate::os_input_output::AsyncReader;
 use std::cell::RefCell;
@@ -1229,6 +1229,348 @@ pub fn resize_while_fullscreen_updates_hidden_pane_geometry() {
             new_size.rows,
         );
     }
+}
+
+#[test]
+pub fn toggle_no_ui_fullscreen_covers_whole_display_and_restores() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    for i in 2..5 {
+        let new_pane_id = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    }
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(tab.is_fullscreen_active(), "NoUi fullscreen is active");
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "NoUi fullscreen covers the UI rows"
+    );
+    let active_pane = tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap();
+    assert_eq!(active_pane.x(), 0, "Pane x is on display edge");
+    assert_eq!(active_pane.y(), 0, "Pane y is on display edge");
+    assert_eq!(active_pane.cols(), 121, "Pane cols match display cols");
+    assert_eq!(active_pane.rows(), 20, "Pane rows match display rows");
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(!tab.is_fullscreen_active(), "NoUi fullscreen toggled off");
+    assert!(
+        !tab.fullscreen_covers_ui(),
+        "NoUi flag cleared after toggle off"
+    );
+    let active_pane = tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap();
+    assert_eq!(active_pane.x(), 61, "Pane x restored");
+    assert_eq!(active_pane.y(), 10, "Pane y restored");
+    assert_eq!(active_pane.cols(), 60, "Pane cols restored");
+    assert_eq!(active_pane.rows(), 10, "Pane rows restored");
+}
+
+#[test]
+pub fn regular_fullscreen_switches_to_no_ui_fullscreen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    for i in 2..5 {
+        let new_pane_id = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    }
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.is_fullscreen_active(), "Regular fullscreen is active");
+    assert!(
+        !tab.fullscreen_covers_ui(),
+        "Regular fullscreen leaves the UI rows"
+    );
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        tab.is_fullscreen_active(),
+        "Fullscreen stays active after switching kinds"
+    );
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "Fullscreen switched to covering the UI rows"
+    );
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        !tab.is_fullscreen_active(),
+        "Fullscreen toggled off entirely"
+    );
+}
+
+#[test]
+pub fn resize_whole_tab_while_no_ui_fullscreen_preserves_no_ui() {
+    let initial_size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(initial_size, stacked_resize);
+    for i in 2..5 {
+        let new_pane_id = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    }
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "NoUi fullscreen is active before the resize"
+    );
+
+    let new_size = Size { cols: 80, rows: 30 };
+    tab.resize_whole_tab(new_size).unwrap();
+
+    assert!(
+        tab.is_fullscreen_active(),
+        "Fullscreen is preserved across a host-terminal resize"
+    );
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "NoUi kind is preserved across a host-terminal resize"
+    );
+    let active_pane = tab
+        .tiled_panes
+        .panes
+        .get(&PaneId::Terminal(4))
+        .expect("Active fullscreen pane is still present");
+    assert_eq!(
+        active_pane.cols(),
+        new_size.cols,
+        "NoUi fullscreen pane cols match the new display cols"
+    );
+    assert_eq!(
+        active_pane.rows(),
+        new_size.rows,
+        "NoUi fullscreen pane rows match the new display rows"
+    );
+    assert_eq!(
+        active_pane.x(),
+        0,
+        "NoUi fullscreen pane x is at display edge"
+    );
+    assert_eq!(
+        active_pane.y(),
+        0,
+        "NoUi fullscreen pane y is at display edge"
+    );
+}
+
+fn create_tab_with_four_panes() -> Tab {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    for i in 2..5 {
+        let new_pane_id = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    }
+    tab
+}
+
+fn tiled_pane_geoms(tab: &Tab) -> Vec<(PaneId, PaneGeom)> {
+    tab.tiled_panes
+        .panes
+        .iter()
+        .map(|(pane_id, pane)| (*pane_id, pane.position_and_size()))
+        .collect()
+}
+
+fn open_pane_five(tab: &mut Tab) {
+    tab.new_pane(
+        PaneId::Terminal(5),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(1),
+        None,
+    )
+    .unwrap();
+}
+
+fn assert_panes_tile_the_whole_display(tab: &Tab, display: Size) {
+    let geoms = tiled_pane_geoms(tab);
+    let mut total_pane_area = 0;
+    for (pane_id, geom) in &geoms {
+        let right_edge = geom.x + geom.cols.as_usize();
+        let bottom_edge = geom.y + geom.rows.as_usize();
+        assert!(
+            right_edge <= display.cols && bottom_edge <= display.rows,
+            "{pane_id:?} fits inside the display: {geom:?}"
+        );
+        total_pane_area += geom.rows.as_usize() * geom.cols.as_usize();
+    }
+    for (pane_id, geom) in &geoms {
+        for (other_pane_id, other_geom) in &geoms {
+            if pane_id == other_pane_id {
+                continue;
+            }
+            let overlap_horizontally = geom.x < other_geom.x + other_geom.cols.as_usize()
+                && other_geom.x < geom.x + geom.cols.as_usize();
+            let overlap_vertically = geom.y < other_geom.y + other_geom.rows.as_usize()
+                && other_geom.y < geom.y + geom.rows.as_usize();
+            assert!(
+                !(overlap_horizontally && overlap_vertically),
+                "{pane_id:?} and {other_pane_id:?} do not overlap"
+            );
+        }
+    }
+    assert_eq!(
+        total_pane_area,
+        display.rows * display.cols,
+        "Panes cover the whole display with no gaps"
+    );
+}
+
+#[test]
+pub fn opening_new_pane_while_fullscreen_unsets_fullscreen() {
+    let mut tab = create_tab_with_four_panes();
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.is_fullscreen_active(), "Fullscreen active before split");
+    open_pane_five(&mut tab);
+
+    assert!(
+        !tab.is_fullscreen_active(),
+        "Opening a new pane breaks out of fullscreen"
+    );
+    assert_eq!(
+        tiled_pane_geoms(&tab).len(),
+        5,
+        "All panes including the new one are tiled"
+    );
+    assert_panes_tile_the_whole_display(
+        &tab,
+        Size {
+            cols: 121,
+            rows: 20,
+        },
+    );
+}
+
+#[test]
+pub fn opening_new_pane_while_no_ui_fullscreen_unsets_fullscreen() {
+    let mut tab = create_tab_with_four_panes();
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "NoUi fullscreen active before split"
+    );
+    open_pane_five(&mut tab);
+
+    assert!(
+        !tab.is_fullscreen_active(),
+        "Opening a new pane breaks out of no-ui fullscreen"
+    );
+    assert!(
+        !tab.fullscreen_covers_ui(),
+        "NoUi flag cleared after breaking out"
+    );
+    assert_eq!(
+        tiled_pane_geoms(&tab).len(),
+        5,
+        "All panes including the new one are tiled"
+    );
+    assert_panes_tile_the_whole_display(
+        &tab,
+        Size {
+            cols: 121,
+            rows: 20,
+        },
+    );
+}
+
+#[test]
+pub fn closing_the_fullscreen_pane_restores_remaining_layout() {
+    let mut tab_without_fullscreen = create_tab_with_four_panes();
+    tab_without_fullscreen.close_pane(PaneId::Terminal(4), false, None);
+
+    let mut tab = create_tab_with_four_panes();
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.is_fullscreen_active(), "Fullscreen active before close");
+    tab.close_pane(PaneId::Terminal(4), false, None);
+
+    assert!(
+        !tab.is_fullscreen_active(),
+        "Closing the fullscreen pane leaves fullscreen"
+    );
+    assert_eq!(
+        tiled_pane_geoms(&tab),
+        tiled_pane_geoms(&tab_without_fullscreen),
+        "Remaining panes match a close that never went through fullscreen"
+    );
+}
+
+#[test]
+pub fn closing_the_no_ui_fullscreen_pane_restores_remaining_layout() {
+    let mut tab_without_fullscreen = create_tab_with_four_panes();
+    tab_without_fullscreen.close_pane(PaneId::Terminal(4), false, None);
+
+    let mut tab = create_tab_with_four_panes();
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "NoUi fullscreen active before close"
+    );
+    tab.close_pane(PaneId::Terminal(4), false, None);
+
+    assert!(
+        !tab.is_fullscreen_active(),
+        "Closing the no-ui fullscreen pane leaves fullscreen"
+    );
+    assert!(
+        !tab.fullscreen_covers_ui(),
+        "NoUi flag cleared after the close"
+    );
+    assert_eq!(
+        tiled_pane_geoms(&tab),
+        tiled_pane_geoms(&tab_without_fullscreen),
+        "Remaining panes match a close that never went through no-ui fullscreen"
+    );
 }
 
 #[test]

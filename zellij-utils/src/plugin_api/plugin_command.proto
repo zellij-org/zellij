@@ -218,6 +218,7 @@ enum CommandName {
   SetPaneFrameStyle = 224;
   ToggleFloatingPanes = 225;
   NewPane = 226;
+  ToggleFocusNoUiFullscreen = 227;
 }
 
 message PluginCommand {

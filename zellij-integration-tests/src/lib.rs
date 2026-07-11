@@ -15,7 +15,7 @@ pub use harness::{
     claim_first_terminal_and_wait_for_prompt, split_down_and_wait_for_prompt,
     split_right_and_wait_for_prompt, start_zellij, PROMPT, TERMINAL_SIZE,
 };
-pub use runner::{normalized, TestClient, TestRunner, TestSession};
+pub use runner::{assert_same_rendered_grid, normalized, TestClient, TestRunner, TestSession};
 pub use zellij_utils::data::LayoutInfo;
 pub use zellij_utils::pane_size::Size;
 

@@ -298,6 +298,12 @@ impl TryFrom<ProtobufAction> for Action {
                     None => Ok(Action::ToggleFocusFullscreen),
                 }
             },
+            Some(ProtobufActionName::ToggleFocusNoUiFullscreen) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleFocusNoUiFullscreen should not have a payload"),
+                    None => Ok(Action::ToggleFocusNoUiFullscreen),
+                }
+            },
             Some(ProtobufActionName::TogglePaneFrames) => match protobuf_action.optional_payload {
                 Some(_) => Err("TogglePaneFrames should not have a payload"),
                 None => Ok(Action::TogglePaneFrames),
@@ -1148,6 +1154,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::ClearScreenByPaneId { .. }
             | Action::EditScrollbackByPaneId { .. }
             | Action::ToggleFocusFullscreenByPaneId { .. }
+            | Action::ToggleFocusNoUiFullscreenByPaneId { .. }
             | Action::TogglePaneEmbedOrFloatingByPaneId { .. }
             | Action::CloseFocusByPaneId { .. }
             | Action::RenamePaneByPaneId { .. }
@@ -1321,6 +1328,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::ToggleFocusFullscreen => Ok(ProtobufAction {
                 name: ProtobufActionName::ToggleFocusFullscreen as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleFocusNoUiFullscreen => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleFocusNoUiFullscreen as i32,
                 optional_payload: None,
             }),
             Action::TogglePaneFrames => Ok(ProtobufAction {

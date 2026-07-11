@@ -429,6 +429,7 @@ pub enum ScreenInstruction {
     ClearScroll(ClientId),
     CloseFocusedPane(ClientId, Option<NotificationEnd>),
     ToggleActiveTerminalFullscreen(ClientId, Option<NotificationEnd>),
+    ToggleActiveTerminalNoUiFullscreen(ClientId, Option<NotificationEnd>),
     TogglePaneFrames(Option<NotificationEnd>),
     SetPaneFrameStyle(PaneFrameStyle, Option<NotificationEnd>),
     SetSelectable(PaneId, bool),
@@ -876,6 +877,7 @@ pub enum ScreenInstruction {
     ClearScreenWithPaneId(PaneId, Option<NotificationEnd>),
     EditScrollbackWithPaneId(PaneId, bool, Option<NotificationEnd>),
     ToggleFullscreenWithPaneId(PaneId, Option<NotificationEnd>),
+    ToggleNoUiFullscreenWithPaneId(PaneId, Option<NotificationEnd>),
     TogglePaneEmbedOrFloatingWithPaneId(PaneId, Option<NotificationEnd>),
     CloseFocusWithPaneId(PaneId, Option<NotificationEnd>),
     RenamePaneWithPaneId(PaneId, Vec<u8>, Option<NotificationEnd>),
@@ -991,6 +993,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::CloseFocusedPane(..) => ScreenContext::CloseFocusedPane,
             ScreenInstruction::ToggleActiveTerminalFullscreen(..) => {
                 ScreenContext::ToggleActiveTerminalFullscreen
+            },
+            ScreenInstruction::ToggleActiveTerminalNoUiFullscreen(..) => {
+                ScreenContext::ToggleActiveTerminalNoUiFullscreen
             },
             ScreenInstruction::TogglePaneFrames(..) => ScreenContext::TogglePaneFrames,
             ScreenInstruction::SetPaneFrameStyle(..) => ScreenContext::SetPaneFrameStyle,
@@ -1242,6 +1247,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::ToggleFullscreenWithPaneId(..) => {
                 ScreenContext::ToggleFullscreenWithPaneId
+            },
+            ScreenInstruction::ToggleNoUiFullscreenWithPaneId(..) => {
+                ScreenContext::ToggleNoUiFullscreenWithPaneId
             },
             ScreenInstruction::TogglePaneEmbedOrFloatingWithPaneId(..) => {
                 ScreenContext::TogglePaneEmbedOrFloatingWithPaneId
@@ -7568,6 +7576,16 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
+            ScreenInstruction::ToggleActiveTerminalNoUiFullscreen(client_id, _completion_tx) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab
+                        .toggle_active_pane_no_ui_fullscreen(client_id)
+                );
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
             ScreenInstruction::TogglePaneFrames(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
@@ -10419,6 +10437,26 @@ pub(crate) fn screen_thread_main(
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         tab.toggle_fullscreen_by_pane_id(pane_id);
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ToggleNoUiFullscreenWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.toggle_no_ui_fullscreen_by_pane_id(pane_id);
                         found = true;
                         break;
                     }

@@ -1031,9 +1031,11 @@ impl From<crate::input::actions::Action>
             ToggleFloatingPanesAction,
             ToggleFloatingPanesByTabIdAction,
             ToggleFocusFullscreenAction,
+            ToggleFocusNoUiFullscreenAction,
             ToggleFullscreenByPaneIdAction,
             ToggleGroupMarkingAction,
             ToggleMouseModeAction,
+            ToggleNoUiFullscreenByPaneIdAction,
             TogglePaneBorderlessAction,
             TogglePaneEmbedOrFloatingAction,
             TogglePaneEmbedOrFloatingByPaneIdAction,
@@ -1191,6 +1193,9 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::ToggleFocusFullscreen => {
                 ActionType::ToggleFocusFullscreen(ToggleFocusFullscreenAction {})
+            },
+            crate::input::actions::Action::ToggleFocusNoUiFullscreen => {
+                ActionType::ToggleFocusNoUiFullscreen(ToggleFocusNoUiFullscreenAction {})
             },
             crate::input::actions::Action::TogglePaneFrames => {
                 ActionType::TogglePaneFrames(TogglePaneFramesAction {})
@@ -1877,6 +1882,11 @@ impl From<crate::input::actions::Action>
                     pane_id: Some(pane_id.into()),
                 })
             },
+            crate::input::actions::Action::ToggleFocusNoUiFullscreenByPaneId { pane_id } => {
+                ActionType::ToggleNoUiFullscreenByPaneId(ToggleNoUiFullscreenByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
             crate::input::actions::Action::TogglePaneEmbedOrFloatingByPaneId { pane_id } => {
                 ActionType::TogglePaneEmbedOrFloatingByPaneId(
                     TogglePaneEmbedOrFloatingByPaneIdAction {
@@ -2085,6 +2095,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::ToggleFocusFullscreen(_) => {
                 Ok(crate::input::actions::Action::ToggleFocusFullscreen)
+            },
+            ActionType::ToggleFocusNoUiFullscreen(_) => {
+                Ok(crate::input::actions::Action::ToggleFocusNoUiFullscreen)
             },
             ActionType::TogglePaneFrames(_) => Ok(crate::input::actions::Action::TogglePaneFrames),
             ActionType::SetPaneFrameStyle(set_pane_frame_style_action) => {
@@ -2807,6 +2820,14 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     pane_id: a
                         .pane_id
                         .ok_or_else(|| anyhow!("ToggleFullscreenByPaneId missing pane_id"))?
+                        .try_into()?,
+                },
+            ),
+            ActionType::ToggleNoUiFullscreenByPaneId(a) => Ok(
+                crate::input::actions::Action::ToggleFocusNoUiFullscreenByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("ToggleNoUiFullscreenByPaneId missing pane_id"))?
                         .try_into()?,
                 },
             ),

@@ -501,6 +501,7 @@ enum ActionName {
     ToggleTheme = 103;
     FocusLastPane = 104;
     SetPaneFrameStyle = 105;
+    ToggleFocusNoUiFullscreen = 106;
 }
 
 message Position {

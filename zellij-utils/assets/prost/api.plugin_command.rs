@@ -2249,6 +2249,7 @@ pub enum CommandName {
     SetPaneFrameStyle = 224,
     ToggleFloatingPanes = 225,
     NewPane = 226,
+    ToggleFocusNoUiFullscreen = 227,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2461,6 +2462,7 @@ impl CommandName {
             CommandName::SetPaneFrameStyle => "SetPaneFrameStyle",
             CommandName::ToggleFloatingPanes => "ToggleFloatingPanes",
             CommandName::NewPane => "NewPane",
+            CommandName::ToggleFocusNoUiFullscreen => "ToggleFocusNoUiFullscreen",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2670,6 +2672,7 @@ impl CommandName {
             "SetPaneFrameStyle" => Some(Self::SetPaneFrameStyle),
             "ToggleFloatingPanes" => Some(Self::ToggleFloatingPanes),
             "NewPane" => Some(Self::NewPane),
+            "ToggleFocusNoUiFullscreen" => Some(Self::ToggleFocusNoUiFullscreen),
             _ => None,
         }
     }

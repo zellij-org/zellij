@@ -542,6 +542,15 @@ pub fn normalized(grid_snapshot: &GridSnapshot) -> String {
     strip_trailing_whitespace(&text)
 }
 
+pub fn assert_same_rendered_grid(actual: &GridSnapshot, expected: &GridSnapshot, what: &str) {
+    let actual = normalized(actual);
+    let expected = normalized(expected);
+    assert!(
+        actual == expected,
+        "{what}\n--- expected grid ---\n{expected}\n--- actual grid ---\n{actual}"
+    );
+}
+
 fn strip_tip_indication(text: &str) -> String {
     regex::Regex::new(r" Tip: [^\n]*")
         .unwrap()

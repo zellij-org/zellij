@@ -280,6 +280,8 @@ message Action {
     ToggleMobileModeAction toggle_mobile_mode = 140;
     FocusLastPaneAction focus_last_pane = 141;
     SetPaneFrameStyleAction set_pane_frame_style = 142;
+    ToggleFocusNoUiFullscreenAction toggle_focus_no_ui_fullscreen = 143;
+    ToggleNoUiFullscreenByPaneIdAction toggle_no_ui_fullscreen_by_pane_id = 144;
   }
 }
 
@@ -307,6 +309,7 @@ message PageScrollDownAction {}
 message HalfPageScrollUpAction {}
 message HalfPageScrollDownAction {}
 message ToggleFocusFullscreenAction {}
+message ToggleFocusNoUiFullscreenAction {}
 message TogglePaneFramesAction {}
 message SetPaneFrameStyleAction {
   string style = 1;
@@ -1253,6 +1256,7 @@ message EditScrollbackByPaneIdAction {
   bool ansi = 2;
 }
 message ToggleFullscreenByPaneIdAction { PaneId pane_id = 1; }
+message ToggleNoUiFullscreenByPaneIdAction { PaneId pane_id = 1; }
 message TogglePaneEmbedOrFloatingByPaneIdAction { PaneId pane_id = 1; }
 message CloseFocusByPaneIdAction { PaneId pane_id = 1; }
 message RenamePaneByPaneIdAction { PaneId pane_id = 1; bytes name = 2; }
