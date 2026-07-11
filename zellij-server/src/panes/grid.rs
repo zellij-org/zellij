@@ -1993,17 +1993,52 @@ impl Grid {
     }
     fn line_wrap(&mut self) {
         self.cursor.x = 0;
-        if self.cursor.y == self.height.saturating_sub(1) {
-            if self.alternate_screen_state.is_none() {
-                self.transfer_rows_to_lines_above(1);
-                self.hyperlink_tracker.offset_cursor_lines(1);
-            } else if !self.viewport.is_empty() {
-                self.viewport.pop_front();
+        let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
+        if self.cursor.y == scroll_region_bottom {
+            // wrapping at the bottom of the scroll region scrolls the region up by one line
+            // and keeps the cursor on its bottom row, same as a newline would
+            // (add_canonical_line above) - except that the new row is a wrapped row rather
+            // than a canonical one
+            if scroll_region_top >= self.viewport.len() {
+                // the state is corrupted
+                return;
             }
-            let wrapped_row = Row::new();
-            self.viewport.push_back(wrapped_row);
-            self.selection.move_up(1);
+            if scroll_region_bottom == self.height.saturating_sub(1) && scroll_region_top == 0 {
+                if self.alternate_screen_state.is_none() {
+                    self.transfer_rows_to_lines_above(1);
+                    self.hyperlink_tracker.offset_cursor_lines(1);
+                } else if !self.viewport.is_empty() {
+                    self.viewport.pop_front();
+                }
+                let wrapped_row = Row::new();
+                self.viewport.push_back(wrapped_row);
+                self.selection.move_up(1);
+            } else {
+                if scroll_region_top == 0
+                    && self.alternate_screen_state.is_none()
+                    && !self.viewport.is_empty()
+                {
+                    // Partial scroll region starting at top: preserve
+                    // scrolled-off lines in scrollback
+                    self.transfer_rows_to_lines_above(1);
+                    self.hyperlink_tracker.offset_cursor_lines(1);
+                    self.selection.move_up(1);
+                } else if scroll_region_top < self.viewport.len() {
+                    self.viewport.remove(scroll_region_top);
+                }
+                let wrapped_row = Row::new();
+                if self.viewport.len() >= scroll_region_bottom {
+                    self.viewport.insert(scroll_region_bottom, wrapped_row);
+                } else {
+                    self.viewport.push_back(wrapped_row);
+                }
+            }
             self.output_buffer.update_all_lines();
+        } else if self.cursor.y == self.height.saturating_sub(1) {
+            // the cursor is on the last line of the screen but below the scroll region's
+            // bottom margin: there is nowhere to scroll to, so we wrap onto the same line
+            // (mirroring what add_canonical_line does in this situation)
+            self.output_buffer.update_line(self.cursor.y);
         } else {
             self.cursor.y += 1;
             if self.viewport.len() <= self.cursor.y {

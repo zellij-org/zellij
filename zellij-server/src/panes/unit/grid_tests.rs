@@ -5612,6 +5612,131 @@ fn partial_scroll_region_all_three_mechanisms_transfer_in_order() {
 }
 
 #[test]
+fn wrap_at_bottom_of_partial_scroll_region_transfers_to_scrollback() {
+    // A long line that soft-wraps while the cursor is on the scroll region's
+    // bottom row must scroll the region, exactly like a newline there would
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    content.extend_from_slice(b"\r\n");
+    content.extend_from_slice(&[b'I'; 90]); // 90 cols on a 40-col grid: wraps twice
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    // the newline scrolls AAA off, the two wraps scroll BBB and CCC off
+    assert_eq!(scrollback_texts(&grid), vec!["AAA", "BBB", "CCC"]);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[0], "DDD");
+    assert_eq!(vp[4], "HHH");
+    assert_eq!(vp[5], "I".repeat(40));
+    assert_eq!(vp[6], "I".repeat(40));
+    assert_eq!(vp[7], "I".repeat(10));
+    assert_eq!(vp.len(), 8, "rows below the region must be untouched");
+    // the continuation rows are wrapped rows, so resize re-wraps them correctly
+    assert!(grid.viewport[5].is_canonical);
+    assert!(!grid.viewport[6].is_canonical);
+    assert!(!grid.viewport[7].is_canonical);
+}
+
+#[test]
+fn wrap_at_bottom_of_partial_scroll_region_keeps_cursor_inside_region() {
+    // Before the fix, the cursor would escape below the region's bottom margin
+    // on wrap, and no subsequent line could ever scroll into scrollback again
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    content.extend_from_slice(b"\r\n");
+    content.extend_from_slice(&[b'I'; 90]);
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    // region is rows 0-7; after two wraps the cursor must still be on row 7
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((10, 7))
+    );
+}
+
+#[test]
+fn wrap_at_bottom_of_nonzero_top_scroll_region_does_not_transfer() {
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(b"AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\r\nFFF");
+    // Scroll region rows 3-6 (1-based), so top is row 2, not 0
+    content.extend_from_slice(b"\x1b[3;6r");
+    content.extend_from_slice(b"\x1b[6;1H");
+    content.extend_from_slice(&[b'X'; 50]); // wraps once at the region's bottom
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    // regions not anchored at the top do not preserve scrolled-off lines
+    assert_eq!(grid.lines_above.len(), 0);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[0], "AAA", "rows above the region must be untouched");
+    assert_eq!(vp[1], "BBB", "rows above the region must be untouched");
+    assert_eq!(vp[2], "DDD", "the region's top row (CCC) is discarded");
+    assert_eq!(vp[4], "X".repeat(40));
+    assert_eq!(vp[5], "X".repeat(10));
+}
+
+#[test]
+fn wrap_at_bottom_of_partial_scroll_region_does_not_transfer_on_alternate_screen() {
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(b"\x1b[?1049h");
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    content.extend_from_slice(b"\r\n");
+    content.extend_from_slice(&[b'I'; 90]);
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    assert_eq!(grid.lines_above.len(), 0);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[5], "I".repeat(40));
+    assert_eq!(vp[6], "I".repeat(40));
+    assert_eq!(vp[7], "I".repeat(10));
+}
+
+#[test]
+fn wrap_at_bottom_of_explicit_full_screen_scroll_region_keeps_wrap_flag() {
+    // CSI 1;10r on a 10-row grid covers the whole screen; wrap behavior must
+    // be identical to having no region set at all (scroll + wrapped row)
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(b"\x1b[1;10r");
+    for i in 1..=10u8 {
+        if i > 1 {
+            content.extend_from_slice(b"\r\n");
+        }
+        content.extend_from_slice(b"EARLY-");
+        content.push(b'0' + i / 10);
+        content.push(b'0' + i % 10);
+    }
+    content.extend_from_slice(b"\r\n");
+    content.extend_from_slice(&[b'I'; 90]); // wraps twice on a 40-col grid
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    // the newline and the two wraps each scrolled one line into scrollback
+    assert_eq!(
+        scrollback_texts(&grid),
+        vec!["EARLY-01", "EARLY-02", "EARLY-03"]
+    );
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[6], "EARLY-10");
+    assert_eq!(vp[7], "I".repeat(40));
+    assert_eq!(vp[8], "I".repeat(40));
+    assert_eq!(vp[9], "I".repeat(10));
+    assert!(grid.viewport[7].is_canonical);
+    assert!(
+        !grid.viewport[8].is_canonical,
+        "continuation must stay a wrapped row"
+    );
+    assert!(
+        !grid.viewport[9].is_canonical,
+        "continuation must stay a wrapped row"
+    );
+}
+
+#[test]
 fn scroll_region_newline_sets_bg_color_on_new_row() {
     // Set bg color, set scroll region 1-5, fill 5 lines, then newline to scroll
     let content = b"\x1b[48;2;26;26;26m\x1b[1;5r\
