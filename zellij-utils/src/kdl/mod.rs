@@ -1648,6 +1648,13 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let layout = if let Some(layout_str) =
                     kdl_get_string_property_or_child_value!(kdl_action, "layout")
                 {
+                    let layout_str = match shellexpand::full(layout_str) {
+                        Ok(expanded) => expanded.to_string(),
+                        Err(e) => {
+                            log::error!("Failed to shell expand layout path: {}", e);
+                            layout_str.to_string()
+                        },
+                    };
                     let layout_path = PathBuf::from(layout_str);
                     let layout_dir = config_options
                         .layout_dir
