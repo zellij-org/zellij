@@ -2025,6 +2025,11 @@ impl Grid {
                     self.selection.move_up(1);
                 } else if scroll_region_top < self.viewport.len() {
                     self.viewport.remove(scroll_region_top);
+                    self.hyperlink_tracker.offset_cursor_lines_in_range(
+                        scroll_region_top as isize,
+                        scroll_region_bottom as isize,
+                        1,
+                    );
                 }
                 let wrapped_row = Row::new();
                 if self.viewport.len() >= scroll_region_bottom {

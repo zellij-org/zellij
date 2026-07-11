@@ -5737,6 +5737,41 @@ fn wrap_at_bottom_of_explicit_full_screen_scroll_region_keeps_wrap_flag() {
 }
 
 #[test]
+fn wrap_at_bottom_of_nonzero_top_scroll_region_keeps_hyperlink_tracking() {
+    // A plain-text URL that wraps at the bottom of a region not anchored at
+    // the top: the auto-linkifier's tracked positions must follow the rows
+    // as the region scrolls, or the URL loses its clickable anchors
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(b"AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\r\nFFF");
+    content.extend_from_slice(b"\x1b[3;6r\x1b[6;1H");
+    content.extend_from_slice(b"https://example.com/");
+    content.extend_from_slice(&[b'a'; 30]); // 50 chars: wraps at the region bottom
+    content.extend_from_slice(b" ");
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    let start_anchors_per_row: Vec<usize> = grid
+        .viewport
+        .iter()
+        .map(|row| {
+            row.columns
+                .iter()
+                .filter(|c| {
+                    matches!(
+                        c.styles.link_anchor,
+                        Some(crate::panes::terminal_character::LinkAnchor::Start(_))
+                    )
+                })
+                .count()
+        })
+        .collect();
+
+    // rows 0-3: AAA, BBB, DDD, EEE (CCC scrolled off and discarded) - no anchors;
+    // row 4 holds the URL's first 40 columns, row 5 the wrapped remainder
+    assert_eq!(start_anchors_per_row, vec![0, 0, 0, 0, 40, 10]);
+}
+
+#[test]
 fn scroll_region_newline_sets_bg_color_on_new_row() {
     // Set bg color, set scroll region 1-5, fill 5 lines, then newline to scroll
     let content = b"\x1b[48;2;26;26;26m\x1b[1;5r\
