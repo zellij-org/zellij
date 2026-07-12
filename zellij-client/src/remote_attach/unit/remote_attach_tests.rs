@@ -388,7 +388,7 @@ impl crate::os_input_output::ClientOsApi for MockClientOsApi {
         zellij_utils::shared::default_palette()
     }
 
-    fn enable_mouse(&self) -> anyhow::Result<()> {
+    fn enable_mouse(&self, _track_any_motion: bool) -> anyhow::Result<()> {
         Ok(())
     }
 
