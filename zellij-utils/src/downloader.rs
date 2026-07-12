@@ -2,7 +2,7 @@ use isahc::prelude::*;
 use isahc::{config::RedirectPolicy, HttpClient, Request};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use thiserror::Error;
 use tokio::{io::AsyncWriteExt as _, sync::Mutex};
 use tokio_stream::StreamExt as _;
@@ -30,7 +30,11 @@ pub enum DownloaderError {
 
 #[derive(Debug, Clone)]
 pub struct Downloader {
-    client: Option<HttpClient>,
+    // Built lazily on the first download: isahc spawns its curl agent threads
+    // the moment the client is constructed, and a Downloader lives in every
+    // server (wasm_bridge) even when no plugin is ever downloaded. Arc'd so
+    // clones share the one client, as they did when it was built eagerly.
+    client: Arc<OnceLock<Option<HttpClient>>>,
     location: PathBuf,
     // the whole thing is an Arc/Mutex so that Downloader is thread safe, and the individual values of
     // the HashMap are Arc/Mutexes (Mutexi?) to represent that individual downloads should not
@@ -41,11 +45,7 @@ pub struct Downloader {
 impl Default for Downloader {
     fn default() -> Self {
         Self {
-            client: HttpClient::builder()
-                // TODO: timeout?
-                .redirect_policy(RedirectPolicy::Follow)
-                .build()
-                .ok(),
+            client: Default::default(),
             location: PathBuf::from(""),
             download_locks: Default::default(),
         }
@@ -55,11 +55,7 @@ impl Default for Downloader {
 impl Downloader {
     pub fn new(location: PathBuf) -> Self {
         Self {
-            client: HttpClient::builder()
-                // TODO: timeout?
-                .redirect_policy(RedirectPolicy::Follow)
-                .build()
-                .ok(),
+            client: Default::default(),
             location,
             download_locks: Default::default(),
         }
@@ -70,7 +66,17 @@ impl Downloader {
         url: &str,
         file_name: Option<&str>,
     ) -> Result<(), DownloaderError> {
-        let Some(client) = &self.client else {
+        let Some(client) = self
+            .client
+            .get_or_init(|| {
+                HttpClient::builder()
+                    // TODO: timeout?
+                    .redirect_policy(RedirectPolicy::Follow)
+                    .build()
+                    .ok()
+            })
+            .as_ref()
+        else {
             log::error!("No Http client found, cannot perform requests - this is likely a misconfiguration of isahc::HttpClient");
             return Ok(());
         };

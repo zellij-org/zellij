@@ -23,7 +23,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
+    Arc, Mutex, OnceLock,
 };
 use std::time::{Duration, Instant};
 use zellij_utils::consts::is_ipc_socket;
@@ -129,11 +129,10 @@ pub(crate) fn background_jobs_main(
     let pending_help_text_clear: Arc<Mutex<HashMap<ClientId, Instant>>> =
         Arc::new(Mutex::new(HashMap::new()));
 
-    let http_client = HttpClient::builder()
-        // TODO: timeout?
-        .redirect_policy(RedirectPolicy::Follow)
-        .build()
-        .ok();
+    // Built lazily on the first WebRequest: isahc spawns its curl agent threads
+    // the moment the client is constructed, so an eager build puts those threads
+    // in every server even when no plugin ever calls web_request.
+    let http_client: OnceLock<Option<HttpClient>> = OnceLock::new();
     // We needn't do anything with the runtime, but it should exist at this point.
     let runtime = crate::global_async_runtime::get_tokio_runtime();
 
@@ -339,7 +338,15 @@ pub(crate) fn background_jobs_main(
             BackgroundJob::WebRequest(plugin_id, client_id, url, verb, headers, body, context) => {
                 runtime.spawn({
                     let senders = bus.senders.clone();
-                    let http_client = http_client.clone();
+                    let http_client = http_client
+                        .get_or_init(|| {
+                            HttpClient::builder()
+                                // TODO: timeout?
+                                .redirect_policy(RedirectPolicy::Follow)
+                                .build()
+                                .ok()
+                        })
+                        .clone();
                     async move {
                         async fn web_request(
                             url: String,
