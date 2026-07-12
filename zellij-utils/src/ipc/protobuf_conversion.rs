@@ -1225,6 +1225,7 @@ impl From<crate::input::actions::Action>
                 start_suppressed,
                 coordinates,
                 near_current_pane,
+                no_focus,
                 tab_id,
                 ..
             } => ActionType::EditFile(EditFileAction {
@@ -1237,12 +1238,14 @@ impl From<crate::input::actions::Action>
                 coordinates: coordinates.map(|c| c.into()),
                 near_current_pane,
                 tab_id: tab_id.map(|t| t as u32),
+                no_focus,
             }),
             crate::input::actions::Action::NewFloatingPane {
                 command,
                 pane_name,
                 coordinates,
                 near_current_pane,
+                no_focus,
                 tab_id,
                 ..
             } => ActionType::NewFloatingPane(NewFloatingPaneAction {
@@ -1251,12 +1254,14 @@ impl From<crate::input::actions::Action>
                 coordinates: coordinates.map(|c| c.into()),
                 near_current_pane,
                 tab_id: tab_id.map(|t| t as u32),
+                no_focus,
             }),
             crate::input::actions::Action::NewTiledPane {
                 direction,
                 command,
                 pane_name,
                 near_current_pane,
+                no_focus,
                 borderless,
                 tab_id,
                 ..
@@ -1267,11 +1272,13 @@ impl From<crate::input::actions::Action>
                 near_current_pane,
                 borderless,
                 tab_id: tab_id.map(|t| t as u32),
+                no_focus,
             }),
             crate::input::actions::Action::NewInPlacePane {
                 command,
                 pane_name,
                 near_current_pane,
+                no_focus,
                 pane_id_to_replace,
                 close_replaced_pane,
                 tab_id,
@@ -1283,11 +1290,13 @@ impl From<crate::input::actions::Action>
                 pane_id_to_replace: pane_id_to_replace.and_then(|p| p.try_into().ok()),
                 close_replaced_pane,
                 tab_id: tab_id.map(|t| t as u32),
+                no_focus,
             }),
             crate::input::actions::Action::NewStackedPane {
                 command,
                 pane_name,
                 near_current_pane,
+                no_focus,
                 tab_id,
                 ..
             } => ActionType::NewStackedPane(NewStackedPaneAction {
@@ -1295,6 +1304,7 @@ impl From<crate::input::actions::Action>
                 pane_name,
                 near_current_pane,
                 tab_id: tab_id.map(|t| t as u32),
+                no_focus,
             }),
             crate::input::actions::Action::NewBlockingPane {
                 placement,
@@ -1302,6 +1312,7 @@ impl From<crate::input::actions::Action>
                 command,
                 unblock_condition,
                 near_current_pane,
+                no_focus,
                 tab_id,
                 ..
             } => ActionType::NewBlockingPane(NewBlockingPaneAction {
@@ -1311,6 +1322,7 @@ impl From<crate::input::actions::Action>
                 unblock_condition: unblock_condition.map(|c| unblock_condition_to_proto_i32(c)),
                 near_current_pane,
                 tab_id: tab_id.map(|t| t as u32),
+                no_focus,
             }),
             crate::input::actions::Action::TogglePaneEmbedOrFloating => {
                 ActionType::TogglePaneEmbedOrFloating(TogglePaneEmbedOrFloatingAction {})
@@ -1403,9 +1415,11 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::Run {
                 command,
                 near_current_pane,
+                no_focus,
             } => ActionType::Run(RunAction {
                 command: Some(command.into()),
                 near_current_pane,
+                no_focus,
             }),
             crate::input::actions::Action::Detach => ActionType::Detach(DetachAction {}),
             crate::input::actions::Action::SetDarkTheme => {
@@ -1458,6 +1472,7 @@ impl From<crate::input::actions::Action>
                 close_replaced_pane,
                 skip_cache,
                 cwd,
+                no_focus,
                 tab_id,
                 ..
             } => ActionType::LaunchPlugin(LaunchPluginAction {
@@ -1468,6 +1483,7 @@ impl From<crate::input::actions::Action>
                 skip_cache,
                 cwd: cwd.map(|p| p.to_string_lossy().to_string()),
                 tab_id: tab_id.map(|t| t as u32),
+                no_focus,
             }),
             crate::input::actions::Action::MouseEvent { event } => {
                 ActionType::MouseEvent(MouseEventAction {
@@ -1528,6 +1544,7 @@ impl From<crate::input::actions::Action>
                 pane_name,
                 skip_cache,
                 cwd,
+                no_focus,
                 tab_id,
                 ..
             } => ActionType::NewTiledPluginPane(NewTiledPluginPaneAction {
@@ -1536,6 +1553,7 @@ impl From<crate::input::actions::Action>
                 skip_cache,
                 cwd: cwd.map(|p| p.to_string_lossy().to_string()),
                 tab_id: tab_id.map(|t| t as u32),
+                no_focus,
             }),
             crate::input::actions::Action::NewFloatingPluginPane {
                 plugin,
@@ -1543,6 +1561,7 @@ impl From<crate::input::actions::Action>
                 skip_cache,
                 cwd,
                 coordinates,
+                no_focus,
                 tab_id,
                 ..
             } => ActionType::NewFloatingPluginPane(NewFloatingPluginPaneAction {
@@ -1552,12 +1571,14 @@ impl From<crate::input::actions::Action>
                 cwd: cwd.map(|p| p.to_string_lossy().to_string()),
                 coordinates: coordinates.map(|c| c.into()),
                 tab_id: tab_id.map(|t| t as u32),
+                no_focus,
             }),
             crate::input::actions::Action::NewInPlacePluginPane {
                 plugin,
                 pane_name,
                 skip_cache,
                 close_replaced_pane,
+                no_focus,
                 tab_id,
                 ..
             } => ActionType::NewInPlacePluginPane(NewInPlacePluginPaneAction {
@@ -1566,6 +1587,7 @@ impl From<crate::input::actions::Action>
                 skip_cache,
                 close_replaced_pane,
                 tab_id: tab_id.map(|t| t as u32),
+                no_focus,
             }),
             crate::input::actions::Action::StartOrReloadPlugin { plugin } => {
                 ActionType::StartOrReloadPlugin(StartOrReloadPluginAction {
@@ -2099,6 +2121,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .map(|c| c.try_into())
                     .transpose()?,
                 near_current_pane: edit_file_action.near_current_pane,
+                no_focus: edit_file_action.no_focus,
                 tab_id: edit_file_action.tab_id.map(|t| t as usize),
             }),
             ActionType::NewFloatingPane(new_floating_action) => {
@@ -2113,6 +2136,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .map(|c| c.try_into())
                         .transpose()?,
                     near_current_pane: new_floating_action.near_current_pane,
+                    no_focus: new_floating_action.no_focus,
                     tab_id: new_floating_action.tab_id.map(|t| t as usize),
                 })
             },
@@ -2125,6 +2149,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     command: new_tiled_action.command.map(|c| c.try_into()).transpose()?,
                     pane_name: new_tiled_action.pane_name,
                     near_current_pane: new_tiled_action.near_current_pane,
+                    no_focus: new_tiled_action.no_focus,
                     borderless: new_tiled_action.borderless,
                     tab_id: new_tiled_action.tab_id.map(|t| t as usize),
                 })
@@ -2137,6 +2162,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .transpose()?,
                     pane_name: new_in_place_action.pane_name,
                     near_current_pane: new_in_place_action.near_current_pane,
+                    no_focus: new_in_place_action.no_focus,
                     pane_id_to_replace: new_in_place_action
                         .pane_id_to_replace
                         .and_then(|p| p.try_into().ok()),
@@ -2152,6 +2178,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .transpose()?,
                     pane_name: new_stacked_action.pane_name,
                     near_current_pane: new_stacked_action.near_current_pane,
+                    no_focus: new_stacked_action.no_focus,
                     tab_id: new_stacked_action.tab_id.map(|t| t as usize),
                 })
             },
@@ -2171,6 +2198,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .map(|c| proto_i32_to_unblock_condition(c))
                         .transpose()?,
                     near_current_pane: new_blocking_action.near_current_pane,
+                    no_focus: new_blocking_action.no_focus,
                     tab_id: new_blocking_action.tab_id.map(|t| t as usize),
                 })
             },
@@ -2287,6 +2315,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .ok_or_else(|| anyhow!("Run missing command"))?
                     .try_into()?,
                 near_current_pane: run_action.near_current_pane,
+                no_focus: run_action.no_focus,
             }),
             ActionType::Detach(_) => Ok(crate::input::actions::Action::Detach),
             ActionType::SetDarkTheme(_) => Ok(crate::input::actions::Action::SetDarkTheme),
@@ -2332,6 +2361,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     close_replaced_pane: launch_plugin_action.close_replaced_pane,
                     skip_cache: launch_plugin_action.skip_cache,
                     cwd: launch_plugin_action.cwd.map(PathBuf::from),
+                    no_focus: launch_plugin_action.no_focus,
                     tab_id: launch_plugin_action.tab_id.map(|t| t as usize),
                 })
             },
@@ -2405,6 +2435,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     pane_name: new_tiled_plugin_action.pane_name,
                     skip_cache: new_tiled_plugin_action.skip_cache,
                     cwd: new_tiled_plugin_action.cwd.map(PathBuf::from),
+                    no_focus: new_tiled_plugin_action.no_focus,
                     tab_id: new_tiled_plugin_action.tab_id.map(|t| t as usize),
                 })
             },
@@ -2421,6 +2452,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .coordinates
                         .map(|c| c.try_into())
                         .transpose()?,
+                    no_focus: new_floating_plugin_action.no_focus,
                     tab_id: new_floating_plugin_action.tab_id.map(|t| t as usize),
                 })
             },
@@ -2433,6 +2465,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     pane_name: new_in_place_plugin_action.pane_name,
                     skip_cache: new_in_place_plugin_action.skip_cache,
                     close_replaced_pane: new_in_place_plugin_action.close_replaced_pane,
+                    no_focus: new_in_place_plugin_action.no_focus,
                     tab_id: new_in_place_plugin_action.tab_id.map(|t| t as usize),
                 })
             },

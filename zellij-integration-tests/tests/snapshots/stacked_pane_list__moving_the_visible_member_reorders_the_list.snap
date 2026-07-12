@@ -7,8 +7,8 @@ expression: normalized(&grid_snapshot)
 $ first-member
 $
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-                                                 <↓↑> [ Pane #3 ]
-                                                        Pane #2
+                                                     > │ Pane #3 │
+                                                       │ Pane #2 │
 $ third-member
 $ █
  Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...

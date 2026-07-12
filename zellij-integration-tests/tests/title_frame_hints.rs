@@ -2,7 +2,7 @@
 
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, keys, split_right_and_wait_for_prompt, FakePtyHandle,
-    Size, TestRunner, TestSession, PROMPT,
+    GridSnapshot, Size, TestRunner, TestSession, PROMPT,
 };
 
 const FOCUSED_PANE_COLUMN: usize = 90;
@@ -29,6 +29,10 @@ fn start_full_frame_zellij_with_mouse(cols: usize) -> TestSession {
 
 fn sgr_motion(column: usize, line: usize) -> Vec<u8> {
     format!("\u{1b}[<35;{};{}M", column, line).into_bytes()
+}
+
+fn tab_bar_line(grid_snapshot: &GridSnapshot) -> String {
+    grid_snapshot.lines().first().cloned().unwrap_or_default()
 }
 
 fn two_pane_session_with_handles() -> (TestSession, FakePtyHandle, FakePtyHandle) {
@@ -67,19 +71,19 @@ fn full_frame_two_pane_session(cols: usize) -> TestSession {
 }
 
 #[test]
-fn hovering_a_pane_shows_a_hint_on_the_status_bar() {
+fn hovering_a_pane_shows_a_hint_on_the_tab_bar() {
     let mut zellij = two_pane_session();
 
     zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
     zellij.wait_until(
-        "resize hint shown when hovering the focused pane",
-        |grid_snapshot| grid_snapshot.contains("resize"),
+        "resize hint shown on the tab bar when hovering the focused pane",
+        |grid_snapshot| tab_bar_line(grid_snapshot).contains("resize"),
     );
 
     zellij.send_stdin(&sgr_motion(OTHER_PANE_COLUMN, HOVER_LINE));
     zellij.wait_until(
-        "group hint shown when hovering the other pane",
-        |grid_snapshot| grid_snapshot.contains("group"),
+        "group hint shown on the tab bar when hovering the other pane",
+        |grid_snapshot| tab_bar_line(grid_snapshot).contains("group"),
     );
 
     zellij.quit();
@@ -143,13 +147,19 @@ fn hint_only_re_fires_when_entering_a_different_pane() {
 }
 
 #[test]
-fn full_frame_help_renders_on_the_pane_not_the_status_bar() {
+fn full_frame_help_renders_on_the_pane_not_the_tab_bar() {
     let mut zellij = full_frame_two_pane_session(120);
 
     zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
     let grid_snapshot = zellij.wait_until("resize help drawn on the pane frame", |grid_snapshot| {
         grid_snapshot.contains("to resize")
     });
+    let tab_bar = tab_bar_line(&grid_snapshot);
+    assert!(
+        !tab_bar.contains("resize"),
+        "in full-frame mode the resize help belongs on the pane frame, not the tab bar:\n{}",
+        grid_snapshot.text
+    );
     let status_bar = grid_snapshot.lines().last().cloned().unwrap();
     assert!(
         !status_bar.contains("resize"),
@@ -161,20 +171,55 @@ fn full_frame_help_renders_on_the_pane_not_the_status_bar() {
 }
 
 #[test]
-fn resize_hint_shortens_when_the_status_bar_narrows() {
+fn resize_hint_shortens_when_the_tab_bar_narrows() {
     let mut zellij = two_pane_session();
 
     zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
     zellij.wait_until(
-        "full-width status bar shows the long resize hint",
-        |grid_snapshot| grid_snapshot.contains("to resize"),
+        "full-width tab bar shows the long resize hint",
+        |grid_snapshot| tab_bar_line(grid_snapshot).contains("to resize"),
     );
 
-    zellij.resize(Size { cols: 46, rows: 24 });
+    zellij.resize(Size { cols: 68, rows: 24 });
     zellij.wait_until(
-        "narrowed status bar shortens the resize hint",
+        "narrowed tab bar shortens the resize hint",
         |grid_snapshot| {
-            grid_snapshot.contains("drag borders") && !grid_snapshot.contains("to resize")
+            let tab_bar = tab_bar_line(grid_snapshot);
+            tab_bar.contains("drag borders") && !tab_bar.contains("to resize")
+        },
+    );
+
+    zellij.resize(Size { cols: 50, rows: 24 });
+    zellij.wait_until(
+        "very narrow tab bar drops the hint and keeps the tabs",
+        |grid_snapshot| !grid_snapshot.contains("drag borders") && grid_snapshot.tab_bar_appears(),
+    );
+
+    zellij.quit();
+}
+
+#[test]
+fn hint_replaces_the_swap_layout_indicator_until_dismissed() {
+    let mut zellij = two_pane_session();
+    zellij.wait_until("swap layout indicator shown", |grid_snapshot| {
+        tab_bar_line(grid_snapshot).contains("BASE")
+    });
+
+    zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
+    zellij.wait_until(
+        "hint takes over the swap layout indicator slot",
+        |grid_snapshot| {
+            let tab_bar = tab_bar_line(grid_snapshot);
+            tab_bar.contains("resize") && !tab_bar.contains("BASE")
+        },
+    );
+
+    zellij.send_stdin(b"x");
+    zellij.wait_until(
+        "swap layout indicator returns after the hint is dismissed",
+        |grid_snapshot| {
+            let tab_bar = tab_bar_line(grid_snapshot);
+            tab_bar.contains("BASE") && !tab_bar.contains("resize")
         },
     );
 

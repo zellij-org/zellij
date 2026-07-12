@@ -9,6 +9,30 @@ use std::io::Write;
 use std::path::Path;
 use zellij_utils::ipc::{IpcReceiverWithContext, IpcSenderWithContext};
 
+/// Whether zellij should use the VT byte path on Windows (raw stdin via
+/// `ReadFile` + termwiz/kitty parsing) instead of the native-console path
+/// (crossterm `INPUT_RECORD`s).
+///
+/// True when either of these environment variables is set:
+///
+/// * `TERM` — set automatically by terminal emulators that expose a Unix-style
+///   environment (Alacritty, WezTerm, WSL sessions inheriting bash's env), or
+///   set manually by users who want zellij on the VT path (e.g. adding
+///   `TERM=xterm-256color` to a Windows Terminal / PowerShell profile).
+/// * `WT_SESSION` — set per-session by Windows Terminal itself. Detecting it
+///   means default WT installs land on the VT path without the user having to
+///   set `TERM`, so they get bracketed paste, kitty keyboard, SGR mouse, and
+///   the other features that depend on raw VT input.
+///
+/// Every VT-path-conditional code site (stdin handler, mouse mode setup,
+/// future input-related code) should call this so the gates can't drift —
+/// when they did drift, mouse setup using `crossterm::EnableMouseCapture`
+/// clobbered the `ENABLE_VIRTUAL_TERMINAL_INPUT` flag the stdin path had
+/// just set and broke all input from WT.
+pub(crate) fn use_vt_path() -> bool {
+    std::env::var("TERM").is_ok() || std::env::var("WT_SESSION").is_ok()
+}
+
 /// Windows async signal listener.
 ///
 /// Polls `crossterm::terminal::size()` at 100ms intervals for resize events,
@@ -206,7 +230,7 @@ fn enable_vt_processing_on_stdout() {
 /// Windows Terminal) and use crossterm's Console API approach.
 pub(crate) fn enable_mouse_support(stdout: &mut dyn Write) -> Result<()> {
     let err_context = "failed to enable mouse mode";
-    if std::env::var("TERM").is_ok() {
+    if use_vt_path() {
         enable_vt_processing_on_stdout();
         stdout
             .write_all(super::os_input_output::ENABLE_MOUSE_SUPPORT.as_bytes())
@@ -236,7 +260,7 @@ pub(crate) fn restore_console_mode() {
 /// See `enable_mouse_support()` for rationale on VT vs Console API paths.
 pub(crate) fn disable_mouse_support(stdout: &mut dyn Write) -> Result<()> {
     let err_context = "failed to disable mouse mode";
-    if std::env::var("TERM").is_ok() {
+    if use_vt_path() {
         stdout
             .write_all(super::os_input_output::DISABLE_MOUSE_SUPPORT.as_bytes())
             .context(err_context)?;

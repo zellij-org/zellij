@@ -123,9 +123,49 @@ fn to_wide(s: &str) -> Vec<u16> {
         .collect()
 }
 
+/// Quote a single argument per the `CommandLineToArgvW` convention.
+///
+/// Rules:
+///   * n backslashes not followed by a quote are n literal backslashes.
+///   * 2n backslashes followed by a quote produce n backslashes and a
+///     delimiting quote.
+///   * 2n+1 backslashes followed by a quote produce n backslashes and
+///     a literal quote.
+fn append_quoted_arg(cmdline: &mut String, arg: &str) {
+    if !(arg.is_empty() || arg.contains(' ') || arg.contains('\t') || arg.contains('"')) {
+        cmdline.push_str(arg);
+        return;
+    }
+    cmdline.push('"');
+    let mut backslashes: usize = 0;
+    for ch in arg.chars() {
+        if ch == '\\' {
+            backslashes += 1;
+        } else if ch == '"' {
+            for _ in 0..(backslashes * 2 + 1) {
+                cmdline.push('\\');
+            }
+            backslashes = 0;
+            cmdline.push('"');
+        } else {
+            for _ in 0..backslashes {
+                cmdline.push('\\');
+            }
+            backslashes = 0;
+            cmdline.push(ch);
+        }
+    }
+    // Double any trailing backslashes so the closing quote still terminates
+    // the argument rather than being escaped.
+    for _ in 0..(backslashes * 2) {
+        cmdline.push('\\');
+    }
+    cmdline.push('"');
+}
+
 /// Build a Windows command-line string from a `RunCommand`, following the
 /// `CommandLineToArgvW` quoting convention.
-fn build_command_line(cmd: &RunCommand) -> Vec<u16> {
+fn build_command_line_string(cmd: &RunCommand) -> String {
     let mut cmdline = String::new();
 
     // Executable — always quote to handle spaces in paths.
@@ -136,36 +176,14 @@ fn build_command_line(cmd: &RunCommand) -> Vec<u16> {
 
     for arg in &cmd.args {
         cmdline.push(' ');
-        if arg.is_empty() || arg.contains(' ') || arg.contains('\t') || arg.contains('"') {
-            cmdline.push('"');
-            let mut backslashes: usize = 0;
-            for ch in arg.chars() {
-                if ch == '\\' {
-                    backslashes += 1;
-                } else if ch == '"' {
-                    // Double backslashes preceding a quote, then escape the quote.
-                    for _ in 0..backslashes {
-                        cmdline.push('\\');
-                    }
-                    backslashes = 0;
-                    cmdline.push('\\');
-                    cmdline.push('"');
-                } else {
-                    backslashes = 0;
-                    cmdline.push(ch);
-                }
-            }
-            // Double trailing backslashes before the closing quote.
-            for _ in 0..backslashes {
-                cmdline.push('\\');
-            }
-            cmdline.push('"');
-        } else {
-            cmdline.push_str(arg);
-        }
+        append_quoted_arg(&mut cmdline, arg);
     }
 
-    to_wide(&cmdline)
+    cmdline
+}
+
+fn build_command_line(cmd: &RunCommand) -> Vec<u16> {
+    to_wide(&build_command_line_string(cmd))
 }
 
 /// Build a UTF-16 environment block (each entry `KEY=VALUE\0`, terminated by
@@ -645,5 +663,69 @@ impl WindowsPtyBackend {
             self.next_terminal_id_counter
                 .fetch_add(1, Ordering::Relaxed),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn cmd(exe: &str, args: &[&str]) -> RunCommand {
+        RunCommand {
+            command: PathBuf::from(exe),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn plain_arg_is_left_unquoted() {
+        let s = build_command_line_string(&cmd("nvim", &["hello"]));
+        assert_eq!(s, "\"nvim\" hello");
+    }
+
+    #[test]
+    fn arg_with_space_is_quoted() {
+        let s = build_command_line_string(&cmd("nvim", &["hello world"]));
+        assert_eq!(s, "\"nvim\" \"hello world\"");
+    }
+
+    // Regression: zellij edit with a Windows backslash path plus a space in
+    // the path used to eat every backslash inside the quoted arg. See
+    // https://github.com/zellij-org/zellij/issues/5293.
+    #[test]
+    fn backslash_path_with_space_preserves_backslashes() {
+        let path = r"C:\Users\me\Folder With Space\README.md";
+        let s = build_command_line_string(&cmd("nvim", &[path]));
+        assert_eq!(
+            s,
+            "\"nvim\" \"C:\\Users\\me\\Folder With Space\\README.md\""
+        );
+    }
+
+    #[test]
+    fn embedded_quote_is_escaped_with_odd_backslashes() {
+        // Input arg: a"b (contains a literal quote). It should be emitted
+        // as a\"b inside a quoted arg.
+        let s = build_command_line_string(&cmd("prog", &["a\"b"]));
+        assert_eq!(s, "\"prog\" \"a\\\"b\"");
+    }
+
+    #[test]
+    fn backslash_before_embedded_quote_gets_doubled() {
+        // Input arg: a\"b — one literal backslash, then a literal quote.
+        // Must emit 3 backslashes then a quote so CommandLineToArgvW parses
+        // back to a\"b.
+        let s = build_command_line_string(&cmd("prog", &["a\\\"b c"]));
+        assert_eq!(s, "\"prog\" \"a\\\\\\\"b c\"");
+    }
+
+    #[test]
+    fn trailing_backslash_before_closing_quote_gets_doubled() {
+        // "path with space\" would let the trailing backslash escape the
+        // closing quote. The trailing backslash must be doubled.
+        let s = build_command_line_string(&cmd("prog", &["C:\\my path\\"]));
+        assert_eq!(s, "\"prog\" \"C:\\my path\\\\\"");
     }
 }

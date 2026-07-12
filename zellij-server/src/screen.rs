@@ -609,6 +609,7 @@ pub enum ScreenInstruction {
         ClientId,
         Option<NotificationEnd>,
         Option<usize>, // tab_id
+        bool,
     ), // Option<String> is
     // optional pane title, bool is skip cache, Option<PathBuf> is an optional cwd
     NewFloatingPluginPane(
@@ -620,6 +621,7 @@ pub enum ScreenInstruction {
         ClientId,
         Option<NotificationEnd>,
         Option<usize>, // tab_id
+        bool,
     ), // Option<String> is an
     // optional pane title, bool
     // is skip cache, Option<PathBuf> is an optional cwd
@@ -632,6 +634,7 @@ pub enum ScreenInstruction {
         ClientId,
         Option<NotificationEnd>,
         Option<usize>, // tab_id
+        bool,
     ), // Option<String> is an
     // optional pane title, first bool is skip cache, second bool is close_replaced_pane
     StartOrReloadPluginPane(RunPluginOrAlias, Option<String>, Option<NotificationEnd>),
@@ -678,6 +681,7 @@ pub enum ScreenInstruction {
         ClientId,
         Option<NotificationEnd>,
         Option<usize>, // tab_id
+        bool,
     ), // bools are: should_float, should_open_in_place, close_replaced_pane, Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
     SuppressPane(PaneId, ClientId),
     UnsuppressPane(PaneId, bool), // bool -> should float if hidden
@@ -4917,7 +4921,8 @@ impl Screen {
             }
         };
         match client_id_tab_index_or_pane_id {
-            ClientTabIndexOrPaneId::ClientId(client_id) => {
+            ClientTabIndexOrPaneId::ClientId(client_id)
+            | ClientTabIndexOrPaneId::ClientIdNoFocus(client_id) => {
                 active_tab!(self, client_id, |tab: &mut Tab| {
                     match tab.get_active_pane_id(client_id) {
                         Some(pane_id) => {
@@ -4951,7 +4956,8 @@ impl Screen {
                     },
                 };
             },
-            ClientTabIndexOrPaneId::TabIndex(_tab_index) => {
+            ClientTabIndexOrPaneId::TabIndex(_tab_index)
+            | ClientTabIndexOrPaneId::TabIndexNoFocus(_tab_index) => {
                 log::error!("Cannot replace pane with tab index");
             },
         }
@@ -6384,13 +6390,16 @@ pub(crate) fn screen_thread_main(
                 let blocking_notification = if set_blocking { completion_tx } else { None };
 
                 match client_or_tab_index {
-                    ClientTabIndexOrPaneId::ClientId(client_id) => {
+                    ClientTabIndexOrPaneId::ClientId(client_id)
+                    | ClientTabIndexOrPaneId::ClientIdNoFocus(client_id) => {
+                        let should_focus_pane =
+                            matches!(client_or_tab_index, ClientTabIndexOrPaneId::ClientId(_));
                         active_tab_and_connected_client_id_with_first_tab_fallback!(screen, client_id, |tab: &mut Tab, client_id: Option<ClientId>| {
                             tab.new_pane(pid,
                                initial_pane_title,
                                invoked_with,
                                start_suppressed,
-                               true,
+                               should_focus_pane,
                                new_pane_placement,
                                client_id,
                                blocking_notification
@@ -6410,7 +6419,10 @@ pub(crate) fn screen_thread_main(
                             )
                         }
                     },
-                    ClientTabIndexOrPaneId::TabIndex(tab_index) => {
+                    ClientTabIndexOrPaneId::TabIndex(tab_index)
+                    | ClientTabIndexOrPaneId::TabIndexNoFocus(tab_index) => {
+                        let should_focus_pane =
+                            matches!(client_or_tab_index, ClientTabIndexOrPaneId::TabIndex(_));
                         // Some placements (directional split, stacked without a
                         // target pane) need a client_id to know which pane to
                         // split relative to. Only resolve one when required.
@@ -6440,7 +6452,7 @@ pub(crate) fn screen_thread_main(
                                 initial_pane_title,
                                 invoked_with,
                                 start_suppressed,
-                                true,
+                                should_focus_pane,
                                 new_pane_placement,
                                 client_id,
                                 blocking_notification,
@@ -6459,16 +6471,46 @@ pub(crate) fn screen_thread_main(
                         let should_focus_pane = false;
                         for tab in all_tabs.values_mut() {
                             if tab.has_pane_with_pid(&pane_id) {
-                                tab.new_pane(
-                                    pid,
-                                    initial_pane_title,
-                                    invoked_with,
-                                    start_suppressed,
-                                    should_focus_pane,
-                                    new_pane_placement,
-                                    None,
-                                    blocking_notification, // TODO: is this correct?
-                                )?;
+                                match new_pane_placement {
+                                    NewPanePlacement::Tiled {
+                                        direction: Some(direction),
+                                        borderless,
+                                    } => {
+                                        if direction == Direction::Left
+                                            || direction == Direction::Right
+                                        {
+                                            tab.vertical_split_of_pane_id(
+                                                pid,
+                                                initial_pane_title,
+                                                invoked_with,
+                                                pane_id,
+                                                blocking_notification,
+                                                borderless,
+                                            )?;
+                                        } else {
+                                            tab.horizontal_split_of_pane_id(
+                                                pid,
+                                                initial_pane_title,
+                                                invoked_with,
+                                                pane_id,
+                                                blocking_notification,
+                                                borderless,
+                                            )?;
+                                        }
+                                    },
+                                    _ => {
+                                        tab.new_pane(
+                                            pid,
+                                            initial_pane_title,
+                                            invoked_with,
+                                            start_suppressed,
+                                            should_focus_pane,
+                                            new_pane_placement,
+                                            None,
+                                            blocking_notification,
+                                        )?;
+                                    },
+                                }
                                 if let Some(hold_for_command) = hold_for_command {
                                     let is_first_run = true;
                                     tab.hold_pane(pid, None, is_first_run, hold_for_command);
@@ -6496,12 +6538,14 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::OpenInPlaceEditor(pid, client_tab_index_or_pane_id) => {
                 match client_tab_index_or_pane_id {
-                    ClientTabIndexOrPaneId::ClientId(client_id) => {
+                    ClientTabIndexOrPaneId::ClientId(client_id)
+                    | ClientTabIndexOrPaneId::ClientIdNoFocus(client_id) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab
                             .replace_active_pane_with_editor_pane(pid, client_id), ?);
                         screen.log_and_report_session_state()?;
                     },
-                    ClientTabIndexOrPaneId::TabIndex(_tab_index) => {
+                    ClientTabIndexOrPaneId::TabIndex(_tab_index)
+                    | ClientTabIndexOrPaneId::TabIndexNoFocus(_tab_index) => {
                         log::error!("Cannot OpenInPlaceEditor with a TabIndex");
                     },
                     ClientTabIndexOrPaneId::PaneId(pane_id_to_replace) => {
@@ -8478,12 +8522,14 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 completion_tx,
                 explicit_tab_id,
+                no_focus,
             ) => {
                 let tab_index = explicit_tab_id
                     .unwrap_or_else(|| *screen.active_tab_ids.values().next().unwrap_or(&1));
                 let size = Size::default();
                 let should_float = Some(false);
                 let should_be_opened_in_place = false;
+                let should_focus_plugin = if no_focus { Some(false) } else { None };
                 screen
                     .bus
                     .senders
@@ -8499,7 +8545,7 @@ pub(crate) fn screen_thread_main(
                         size,
                         skip_cache,
                         cwd,
-                        None,
+                        should_focus_plugin,
                         None,
                         completion_tx,
                     ))?;
@@ -8513,6 +8559,7 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 completion_tx,
                 explicit_tab_id,
+                no_focus,
             ) => {
                 let resolved_tab_index =
                     explicit_tab_id.or_else(|| screen.active_tab_ids.values().next().copied());
@@ -8521,6 +8568,7 @@ pub(crate) fn screen_thread_main(
                         let size = Size::default();
                         let should_float = Some(true);
                         let should_be_opened_in_place = false;
+                        let should_focus_plugin = if no_focus { Some(false) } else { None };
                         screen
                             .bus
                             .senders
@@ -8536,7 +8584,7 @@ pub(crate) fn screen_thread_main(
                                 size,
                                 skip_cache,
                                 cwd,
-                                None,
+                                should_focus_plugin,
                                 floating_pane_coordinates,
                                 completion_tx,
                             ))?;
@@ -8557,6 +8605,7 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 completion_tx,
                 explicit_tab_id,
+                no_focus,
             ) => {
                 let resolved_tab_index =
                     explicit_tab_id.or_else(|| screen.active_tab_ids.values().next().copied());
@@ -8565,6 +8614,7 @@ pub(crate) fn screen_thread_main(
                         let size = Size::default();
                         let should_float = None;
                         let should_be_in_place = true;
+                        let should_focus_plugin = if no_focus { Some(false) } else { None };
                         screen
                             .bus
                             .senders
@@ -8580,7 +8630,7 @@ pub(crate) fn screen_thread_main(
                                 size,
                                 skip_cache,
                                 None,
-                                None,
+                                should_focus_plugin,
                                 None,
                                 completion_tx,
                             ))?;
@@ -8891,6 +8941,7 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 completion_tx,
                 explicit_tab_id,
+                no_focus,
             ) => match pane_id_to_replace {
                 Some(pane_id_to_replace) => {
                     let resolved_tab_index =
@@ -8913,7 +8964,7 @@ pub(crate) fn screen_thread_main(
                                     size,
                                     skip_cache,
                                     cwd,
-                                    None,
+                                    if no_focus { Some(false) } else { None },
                                     None,
                                     completion_tx,
                                 ))?;
@@ -8957,7 +9008,7 @@ pub(crate) fn screen_thread_main(
                                     Size::default(),
                                     skip_cache,
                                     cwd,
-                                    None,
+                                    if no_focus { Some(false) } else { None },
                                     None,
                                     completion_tx,
                                 ))?;

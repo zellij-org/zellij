@@ -552,6 +552,20 @@ pub fn assert_session_ne(name: &str) {
     process::exit(1);
 }
 
+pub fn session_listing_error_message(kind: io::ErrorKind) -> String {
+    format!(
+        "Failed to list existing Zellij sessions in the socket directory:\n  {}\n\n\
+         Reason: {}\n\n\
+         This usually means the directory (or one of its parents) is not readable \
+         by the current user - for example if $ZELLIJ_SOCKET_DIR or $XDG_RUNTIME_DIR \
+         points to a directory you do not own.\n\
+         To fix this, set a readable and writable socket directory, eg.:\n  \
+         ZELLIJ_SOCKET_DIR=/tmp/zellij-$USER zellij",
+        ZELLIJ_SOCK_DIR.display(),
+        io::Error::from(kind)
+    )
+}
+
 pub fn generate_unique_session_name() -> Option<String> {
     let sessions = get_sessions().map(|sessions| {
         sessions
@@ -560,9 +574,12 @@ pub fn generate_unique_session_name() -> Option<String> {
             .collect::<Vec<String>>()
     });
     let dead_sessions = get_resurrectable_session_names();
-    let Ok(sessions) = sessions else {
-        eprintln!("Failed to list existing sessions: {:?}", sessions);
-        return None;
+    let sessions = match sessions {
+        Ok(sessions) => sessions,
+        Err(kind) => {
+            eprintln!("{}", session_listing_error_message(kind));
+            return None;
+        },
     };
 
     let name = get_name_generator()

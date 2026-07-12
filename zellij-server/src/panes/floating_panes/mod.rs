@@ -741,10 +741,32 @@ impl FloatingPanes {
     }
 
     pub fn focus_last_pane(&mut self, client_id: ClientId) {
-        if let Some(pane_id) = self.active_panes.get_last(&client_id).copied() {
-            self.focus_pane(pane_id, client_id);
+        let currently_active_pane_id = self.active_panes.get(&client_id).copied();
+        let last_pane_id = self
+            .active_panes
+            .get_last(&client_id)
+            .copied()
+            .filter(|last_pane_id| {
+                Some(*last_pane_id) != currently_active_pane_id
+                    && self
+                        .panes
+                        .get(last_pane_id)
+                        .map(|p| p.selectable())
+                        .unwrap_or(false)
+            });
+        let target_pane_id = last_pane_id
+            .or_else(|| self.most_recently_active_selectable_pane(currently_active_pane_id));
+        if let Some(target_pane_id) = target_pane_id {
+            self.focus_pane(target_pane_id, client_id);
             self.set_force_render();
         }
+    }
+    fn most_recently_active_selectable_pane(&self, exclude: Option<PaneId>) -> Option<PaneId> {
+        self.panes
+            .iter()
+            .filter(|(pane_id, pane)| Some(**pane_id) != exclude && pane.selectable())
+            .max_by_key(|(_pane_id, pane)| pane.active_at())
+            .map(|(pane_id, _pane)| *pane_id)
     }
 
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
@@ -929,6 +951,11 @@ impl FloatingPanes {
         let next_active_pane_id = next_active_pane_candidates
             .last()
             .map(|(pane_id, _pane)| **pane_id);
+        let last_active_pane_id = next_active_pane_candidates
+            .iter()
+            .rev()
+            .nth(1)
+            .map(|(pane_id, _pane)| **pane_id);
 
         let connected_clients: HashSet<ClientId> =
             self.connected_clients.borrow().iter().copied().collect();
@@ -943,6 +970,10 @@ impl FloatingPanes {
                         self.active_panes
                             .insert(client_id, next_active_pane_id, &mut self.panes);
                         self.focus_pane(next_active_pane_id, client_id);
+                        if let Some(last_active_pane_id) = last_active_pane_id {
+                            self.active_panes
+                                .set_last_pane(client_id, last_active_pane_id);
+                        }
                     },
                     None => {
                         self.defocus_pane(client_id);
