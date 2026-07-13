@@ -2719,6 +2719,27 @@ pub(crate) fn route_thread_main(
                                 )]));
                             }
                         },
+                        ClientToServerMsg::NestedSessionFrameFromHost { ref payload_bytes } => {
+                            match zellij_utils::nested_session::decode_payload(payload_bytes) {
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::AnnounceAck { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message) => {
+                                    log::debug!(
+                                        "dropping unsupported nested session frame relayed from host: {:?}",
+                                        message
+                                    );
+                                },
+                                None => {
+                                    log::debug!("dropping undecodable nested session frame relayed from host");
+                                },
+                            }
+                        },
                     }
                     Ok(should_break)
                 };

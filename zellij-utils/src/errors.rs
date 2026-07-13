@@ -315,6 +315,9 @@ pub enum ScreenContext {
     TerminalForegroundColor,
     TerminalColorRegisters,
     ForwardHostQuery,
+    NestedSessionMessageFromPane,
+    NestedGuestPingTick,
+    NestedSessionMessageFromHost,
     ForwardedReplyFromHost,
     ResumePaneAfterForward,
     HostTerminalThemeChanged,
@@ -588,6 +591,7 @@ pub enum ClientContext {
     RenamedSession,
     ConfigFileUpdated,
     ForwardQueryToHost,
+    EmitNestedSessionFrame,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -655,6 +659,8 @@ pub enum BackgroundJobContext {
     FlashTabBell,
     StopFlashTabBell,
     MobileGateTimeout,
+    StartNestedGuestPing,
+    StopNestedGuestPing,
     Exit,
 }
 

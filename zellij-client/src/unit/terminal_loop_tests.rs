@@ -746,3 +746,137 @@ async fn test_control_message_handling() {
         .expect("Loop didn't exit")
         .unwrap();
 }
+
+async fn connect_mock_ws(port: u16) -> WebSocketConnections {
+    let terminal_url = format!("ws://127.0.0.1:{}/ws/terminal", port);
+    let control_url = format!("ws://127.0.0.1:{}/ws/control", port);
+    let terminal_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (terminal_ws, _) =
+        tokio_tungstenite::client_async_with_config(&terminal_url, MaybeTls::Plain(terminal_tcp), None)
+            .await
+            .unwrap();
+    let control_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (control_ws, _) =
+        tokio_tungstenite::client_async_with_config(&control_url, MaybeTls::Plain(control_tcp), None)
+            .await
+            .unwrap();
+    WebSocketConnections {
+        terminal_ws,
+        control_ws,
+        web_client_id: "test-nested".to_string(),
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn test_nested_ping_frame_is_answered_locally_and_stripped_from_forwarded_stdin() {
+    let (port, server, _server_handle) = mock_ws_server::MockWsServer::start().await;
+    let connections = connect_mock_ws(port).await;
+
+    let (stdin_tx, stdin_rx) = mpsc::unbounded_channel();
+    let (_signal_tx, signal_rx) = mpsc::unbounded_channel();
+    let os_input = TestClientOsApi::new(stdin_rx, signal_rx);
+    let stdout_buffer = os_input.stdout_buffer.clone();
+    let os_input = Box::new(os_input);
+
+    let loop_handle =
+        tokio::spawn(async move { run_remote_client_terminal_loop(os_input, connections).await });
+
+    let mut chunk = b"abc".to_vec();
+    chunk.extend_from_slice(&zellij_utils::nested_session::encode_frame(
+        &zellij_utils::nested_session::NestedSessionMessage::Ping,
+    ));
+    chunk.extend_from_slice(b"def");
+    stdin_tx.send(chunk).unwrap();
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let received = tokio::time::timeout(
+        Duration::from_secs(1),
+        server.client_to_terminal_rx.lock().unwrap().recv(),
+    )
+    .await
+    .expect("Timeout")
+    .expect("No message");
+    match received {
+        Message::Binary(data) => assert_eq!(data, b"abcdef".to_vec()),
+        _ => panic!("Expected Binary message, got: {:?}", received),
+    }
+
+    let pong_frame = zellij_utils::nested_session::encode_frame(
+        &zellij_utils::nested_session::NestedSessionMessage::Pong,
+    );
+    let stdout_bytes = stdout_buffer.lock().unwrap().clone();
+    assert!(
+        stdout_bytes
+            .windows(pong_frame.len())
+            .any(|window| window == &pong_frame[..]),
+        "expected a pong frame on stdout, got: {:?}",
+        stdout_bytes
+    );
+
+    drop(stdin_tx);
+    let _ = tokio::time::timeout(Duration::from_secs(2), loop_handle)
+        .await
+        .expect("Loop didn't exit")
+        .unwrap();
+}
+
+#[tokio::test]
+#[serial]
+async fn test_nested_announce_ack_is_relayed_over_control_websocket() {
+    let (port, server, _server_handle) = mock_ws_server::MockWsServer::start().await;
+    let connections = connect_mock_ws(port).await;
+
+    let (stdin_tx, stdin_rx) = mpsc::unbounded_channel();
+    let (_signal_tx, signal_rx) = mpsc::unbounded_channel();
+    let os_input = Box::new(TestClientOsApi::new(stdin_rx, signal_rx));
+
+    let loop_handle =
+        tokio::spawn(async move { run_remote_client_terminal_loop(os_input, connections).await });
+
+    let announce_ack = zellij_utils::nested_session::NestedSessionMessage::AnnounceAck {
+        ancestry: vec!["outer-host".to_owned()],
+        capabilities: vec![zellij_utils::nested_session::NestedSessionCapability::NestedControl],
+    };
+    stdin_tx
+        .send(zellij_utils::nested_session::encode_frame(&announce_ack))
+        .unwrap();
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let mut relayed_payload = None;
+    loop {
+        let received = tokio::time::timeout(
+            Duration::from_secs(1),
+            server.client_to_control_rx.lock().unwrap().recv(),
+        )
+        .await
+        .expect("Timeout")
+        .expect("No message");
+        if let Message::Text(text) = received {
+            let control_msg: WebClientToWebServerControlMessage =
+                serde_json::from_str(&text).unwrap();
+            if let WebClientToWebServerControlMessagePayload::NestedSessionFrameFromHost {
+                payload_bytes,
+            } = control_msg.payload
+            {
+                assert_eq!(control_msg.web_client_id, "test-nested");
+                relayed_payload = Some(payload_bytes);
+                break;
+            }
+        }
+    }
+    assert_eq!(
+        zellij_utils::nested_session::decode_payload(&relayed_payload.unwrap()),
+        Some(announce_ack)
+    );
+
+    drop(stdin_tx);
+    let _ = tokio::time::timeout(Duration::from_secs(2), loop_handle)
+        .await
+        .expect("Loop didn't exit")
+        .unwrap();
+}

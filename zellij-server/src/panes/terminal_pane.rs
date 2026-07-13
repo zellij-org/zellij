@@ -26,6 +26,7 @@ use zellij_utils::{
     },
     errors::prelude::*,
     input::layout::Run,
+    nested_session::NestedSessionMessage,
     pane_size::PaneGeom,
     pane_size::SizeInPixels,
     position::Position,
@@ -159,6 +160,7 @@ pub struct TerminalPane {
     /// stdin in the same stream position the original query occupied.
     /// Cleared by Tab when the reply (or 500 ms cache-fallback) lands.
     forward_paused: bool,
+    nested_guest: bool,
     /// PTY bytes that have not yet been fed to vte. Single source of
     /// truth: `handle_pty_bytes` always appends here, and processing
     /// pops one byte at a time and advances the vte parser. Processing
@@ -614,6 +616,18 @@ impl Pane for TerminalPane {
 
     fn drain_forwarded_queries(&mut self) -> Vec<crate::host_query::HostQuery> {
         self.grid.pending_forwarded_queries.drain(..).collect()
+    }
+
+    fn drain_nested_session_messages(&mut self) -> Vec<NestedSessionMessage> {
+        self.grid.pending_nested_session_messages.drain(..).collect()
+    }
+
+    fn is_nested_guest(&self) -> bool {
+        self.nested_guest
+    }
+
+    fn set_is_nested_guest(&mut self, is_nested_guest: bool) {
+        self.nested_guest = is_nested_guest;
     }
 
     fn arm_forward_pause(&mut self) {
@@ -1154,6 +1168,7 @@ impl TerminalPane {
             arrow_fonts,
             notification_end,
             forward_paused: false,
+            nested_guest: false,
             pending_pty_input: VecDeque::new(),
         }
     }

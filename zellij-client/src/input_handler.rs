@@ -15,6 +15,7 @@ use zellij_utils::{
         options::Options,
     },
     ipc::{ClientToServerMsg, ExitReason},
+    nested_session::{self, NestedSessionMessage},
     position::Position,
     vendored::termwiz::input::{
         InputEvent, Modifiers, MouseButtons, MouseEvent as TermwizMouseEvent,
@@ -269,6 +270,12 @@ impl InputHandler {
                             reply_bytes,
                         });
                 },
+                Ok((
+                    InputInstruction::NestedSessionFrameFromHost(payload_bytes),
+                    _error_context,
+                )) => {
+                    self.handle_nested_session_frame_from_host(payload_bytes);
+                },
                 Ok((InputInstruction::Exit, _error_context)) => {
                     self.should_exit = true;
                 },
@@ -326,6 +333,26 @@ impl InputHandler {
             AnsiStdinInstruction::HostTerminalThemeChanged(mode) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::HostTerminalThemeChanged { mode });
+            },
+        }
+    }
+    fn handle_nested_session_frame_from_host(&mut self, payload_bytes: Vec<u8>) {
+        match nested_session::decode_payload(&payload_bytes) {
+            Some(NestedSessionMessage::Ping) => {
+                self.send_client_instructions
+                    .send(ClientInstruction::EmitNestedSessionFrame(
+                        nested_session::encode_payload(&NestedSessionMessage::Pong),
+                    ))
+                    .unwrap();
+            },
+            Some(_) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::NestedSessionFrameFromHost {
+                        payload_bytes,
+                    });
+            },
+            None => {
+                log::debug!("dropping undecodable nested session frame from host");
             },
         }
     }

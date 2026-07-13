@@ -16,6 +16,7 @@ pub enum WebClientToWebServerControlMessagePayload {
     TerminalSizeSettled(Size),
     TerminalMetrics(TerminalMetricsPayload),
     SoftKeyboardVisibilityChanged { visible: bool },
+    NestedSessionFrameFromHost { payload_bytes: Vec<u8> },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

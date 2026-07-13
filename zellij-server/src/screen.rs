@@ -75,6 +75,7 @@ use crate::panes::terminal_pane::{BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END};
 use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
 
 use crate::{
+    nested_guest::NestedGuestTracker,
     output::Output,
     panes::sixel::SixelImageStore,
     panes::PaneId,
@@ -91,6 +92,7 @@ use zellij_utils::{
     errors::{ContextType, ScreenContext},
     input::get_mode_info,
     ipc::{ClientAttributes, PixelDimensions},
+    nested_session::{self, NestedSessionCapability, NestedSessionMessage},
 };
 
 use crate::mobile_mode::{MobileRenderGate, MobileState, ShadowFocusOutcome, FIT_RESIZE_MAX_ITERS};
@@ -517,6 +519,16 @@ pub enum ScreenInstruction {
     ForwardHostQuery {
         pane_id: PaneId,
         query: crate::host_query::HostQuery,
+    },
+    NestedSessionMessageFromPane {
+        pane_id: PaneId,
+        message: NestedSessionMessage,
+    },
+    NestedGuestPingTick {
+        pane_id: PaneId,
+    },
+    NestedSessionMessageFromHost {
+        message: NestedSessionMessage,
     },
     /// The client observed the host's reply to a previously forwarded
     /// query (closed by the Primary-DA barrier or the 500 ms timeout).
@@ -1033,6 +1045,13 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::TerminalColorRegisters(..) => ScreenContext::TerminalColorRegisters,
             ScreenInstruction::ForwardHostQuery { .. } => ScreenContext::ForwardHostQuery,
+            ScreenInstruction::NestedSessionMessageFromPane { .. } => {
+                ScreenContext::NestedSessionMessageFromPane
+            },
+            ScreenInstruction::NestedGuestPingTick { .. } => ScreenContext::NestedGuestPingTick,
+            ScreenInstruction::NestedSessionMessageFromHost { .. } => {
+                ScreenContext::NestedSessionMessageFromHost
+            },
             ScreenInstruction::ForwardedReplyFromHost { .. } => {
                 ScreenContext::ForwardedReplyFromHost
             },
@@ -1489,6 +1508,8 @@ pub(crate) struct Screen {
     pending_forwarded_queries: HashMap<u32, PendingForwardEntry>,
     forward_queue: VecDeque<PendingForward>,
     forward_in_flight_token: Option<u32>,
+    nested_guest_tracker: NestedGuestTracker,
+    nested_ancestry: Vec<String>,
     host_terminal_theme_mode: Option<HostTerminalThemeMode>,
     host_theme_dark_styling: Option<Styling>,
     host_theme_light_styling: Option<Styling>,
@@ -1650,6 +1671,8 @@ impl Screen {
             pending_forwarded_queries: HashMap::new(),
             forward_queue: VecDeque::new(),
             forward_in_flight_token: None,
+            nested_guest_tracker: NestedGuestTracker::default(),
+            nested_ancestry: vec![],
             host_terminal_theme_mode: None,
             host_theme_dark_styling: None,
             host_theme_light_styling: None,
@@ -2723,6 +2746,139 @@ impl Screen {
             );
         }
         Ok(())
+    }
+
+    pub fn handle_nested_session_message_from_pane(
+        &mut self,
+        pane_id: PaneId,
+        message: NestedSessionMessage,
+    ) {
+        match message {
+            NestedSessionMessage::Announce { session_name, .. } => {
+                self.handle_nested_guest_announce(pane_id, session_name);
+            },
+            NestedSessionMessage::Pong => {
+                self.nested_guest_tracker.on_pong(pane_id, Instant::now());
+                log::debug!("nested session guest in pane {:?} ponged", pane_id);
+            },
+            NestedSessionMessage::Bye => {
+                log::info!(
+                    "nested session guest in pane {:?} sent bye, clearing guest flag",
+                    pane_id
+                );
+                self.clear_nested_guest(pane_id);
+            },
+            other => {
+                log::debug!(
+                    "dropping unsupported nested session message from pane {:?}: {:?}",
+                    pane_id,
+                    other
+                );
+            },
+        }
+    }
+
+    fn handle_nested_guest_announce(&mut self, pane_id: PaneId, guest_session_name: String) {
+        let terminal_id = match pane_id {
+            PaneId::Terminal(terminal_id) => terminal_id,
+            PaneId::Plugin(_) => return,
+        };
+        let owning_tab = self
+            .tabs
+            .values_mut()
+            .find(|tab| tab.has_pane_with_pid(&pane_id));
+        match owning_tab {
+            Some(tab) => tab.set_pane_is_nested_guest(pane_id, true),
+            None => return,
+        }
+        self.nested_guest_tracker.on_announce(pane_id, Instant::now());
+        let mut ancestry = self.nested_ancestry.clone();
+        ancestry.push(self.session_name.clone());
+        let announce_ack = NestedSessionMessage::AnnounceAck {
+            ancestry,
+            capabilities: vec![NestedSessionCapability::NestedControl],
+        };
+        let _ = self
+            .bus
+            .senders
+            .send_to_pty_writer(PtyWriteInstruction::Write(
+                nested_session::encode_frame(&announce_ack),
+                terminal_id,
+                None,
+            ));
+        let _ = self
+            .bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::StartNestedGuestPing(pane_id));
+        log::info!(
+            "nested session handshake: guest session {:?} announced in pane {:?}, sent announce_ack",
+            guest_session_name,
+            pane_id
+        );
+    }
+
+    pub fn clear_nested_guest(&mut self, pane_id: PaneId) {
+        self.nested_guest_tracker.remove(pane_id);
+        let _ = self
+            .bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::StopNestedGuestPing(pane_id));
+        for tab in self.tabs.values_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                tab.set_pane_is_nested_guest(pane_id, false);
+                break;
+            }
+        }
+    }
+
+    pub fn handle_nested_session_message_from_host(&mut self, message: NestedSessionMessage) {
+        match message {
+            NestedSessionMessage::AnnounceAck { ancestry, .. } => {
+                log::info!(
+                    "nested session handshake complete: this session is nested inside ancestry {:?}",
+                    ancestry
+                );
+                self.nested_ancestry = ancestry;
+            },
+            other => {
+                log::debug!(
+                    "dropping unsupported nested session message from host: {:?}",
+                    other
+                );
+            },
+        }
+    }
+
+    pub fn handle_nested_guest_ping_tick(&mut self, pane_id: PaneId) {
+        use crate::nested_guest::GuestPingTickAction;
+        match self.nested_guest_tracker.on_tick(pane_id, Instant::now()) {
+            GuestPingTickAction::SendPing => {
+                if let PaneId::Terminal(terminal_id) = pane_id {
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_pty_writer(PtyWriteInstruction::Write(
+                            nested_session::encode_frame(&NestedSessionMessage::Ping),
+                            terminal_id,
+                            None,
+                        ));
+                    log::debug!("pinged nested session guest in pane {:?}", pane_id);
+                }
+            },
+            GuestPingTickAction::Expired => {
+                log::info!(
+                    "nested session guest in pane {:?} missed the pong timeout, clearing guest flag",
+                    pane_id
+                );
+                self.clear_nested_guest(pane_id);
+            },
+            GuestPingTickAction::Unknown => {
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::StopNestedGuestPing(pane_id));
+            },
+        }
     }
 
     /// Build a reply for `query` from whatever host state Zellij has
@@ -7505,6 +7661,8 @@ pub(crate) fn screen_thread_main(
                     },
                 }
 
+                screen.clear_nested_guest(id);
+
                 // Clean up PTY-side resources (async reader task, child PID mapping,
                 // terminal_id_to_raw_fd entry). This is needed because the natural
                 // child exit path (quit_cb) only sends ScreenInstruction::ClosePane
@@ -7956,6 +8114,15 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ForwardHostQuery { pane_id, query } => {
                 screen.forward_host_query(pane_id, query);
+            },
+            ScreenInstruction::NestedSessionMessageFromPane { pane_id, message } => {
+                screen.handle_nested_session_message_from_pane(pane_id, message);
+            },
+            ScreenInstruction::NestedGuestPingTick { pane_id } => {
+                screen.handle_nested_guest_ping_tick(pane_id);
+            },
+            ScreenInstruction::NestedSessionMessageFromHost { message } => {
+                screen.handle_nested_session_message_from_host(message);
             },
             ScreenInstruction::ForwardedReplyFromHost { token, reply_bytes } => {
                 screen.handle_forwarded_reply_from_host(token, reply_bytes)?;

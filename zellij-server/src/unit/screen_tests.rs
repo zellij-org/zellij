@@ -329,6 +329,7 @@ struct MockScreen {
     pub pty_writer_receiver: Option<Receiver<(PtyWriteInstruction, ErrorContext)>>,
     #[allow(dead_code)]
     pub background_jobs_receiver: Option<Receiver<(BackgroundJob, ErrorContext)>>,
+    pub received_background_jobs: Arc<Mutex<Vec<BackgroundJob>>>,
     pub screen_receiver: Option<Receiver<(ScreenInstruction, ErrorContext)>>,
     pub server_receiver: Option<Receiver<(ServerInstruction, ErrorContext)>>,
     pub plugin_receiver: Option<Receiver<(PluginInstruction, ErrorContext)>>,
@@ -701,14 +702,17 @@ impl MockScreen {
         config.options.stacked_pane_list = Some(false);
         let main_client_id = 1;
 
+        let received_background_jobs = Arc::new(Mutex::new(vec![]));
         std::thread::Builder::new()
             .name("background_jobs_thread".to_string())
             .spawn({
                 let to_screen = to_screen.clone();
+                let received_background_jobs = received_background_jobs.clone();
                 move || loop {
                     let (event, _err_ctx) = background_jobs_receiver
                         .recv()
                         .expect("failed to receive event on channel");
+                    received_background_jobs.lock().unwrap().push(event.clone());
                     match event {
                         BackgroundJob::RenderToClients => {
                             let _ = to_screen.send(ScreenInstruction::RenderToClients);
@@ -726,6 +730,7 @@ impl MockScreen {
             pty_receiver: Some(pty_receiver),
             pty_writer_receiver: Some(pty_writer_receiver),
             background_jobs_receiver: None,
+            received_background_jobs,
             screen_receiver: Some(screen_receiver),
             server_receiver: Some(server_receiver),
             plugin_receiver: Some(plugin_receiver),
@@ -11216,4 +11221,129 @@ fn exiting_mobile_releases_the_plugin_render() {
             .any(|i| matches!(i, PluginInstruction::ReleaseMobileRender(c) if *c == client)),
         "exiting mobile must release the plugin render; sent={sent:?}",
     );
+}
+
+fn decode_nested_frame(bytes: &[u8]) -> Option<zellij_utils::nested_session::NestedSessionMessage> {
+    use zellij_utils::nested_session::{
+        decode_base64, decode_payload, NESTED_FRAME_HEADER, NESTED_FRAME_TERMINATOR,
+    };
+    let encoded_payload = bytes
+        .strip_prefix(NESTED_FRAME_HEADER)?
+        .strip_suffix(NESTED_FRAME_TERMINATOR)?;
+    decode_payload(&decode_base64(encoded_payload)?)
+}
+
+fn guest_announce_message() -> zellij_utils::nested_session::NestedSessionMessage {
+    zellij_utils::nested_session::NestedSessionMessage::Announce {
+        session_name: "guest-session".to_owned(),
+        capabilities: vec![zellij_utils::nested_session::NestedSessionCapability::NestedControl],
+    }
+}
+
+#[test]
+pub fn nested_guest_announce_gets_announce_ack_with_ancestry() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
+    let received_background_jobs = mock_screen.received_background_jobs.clone();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_writer_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyWriteInstruction::Exit,
+        pty_writer_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::NestedSessionMessageFromPane {
+            pane_id: PaneId::Terminal(0),
+            message: guest_announce_message(),
+        });
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
+    let announce_ack = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|instruction| match instruction {
+            PtyWriteInstruction::Write(bytes, 0, None) => decode_nested_frame(bytes),
+            _ => None,
+        })
+        .expect("an announce_ack frame written to the guest pane");
+    assert_eq!(
+        announce_ack,
+        zellij_utils::nested_session::NestedSessionMessage::AnnounceAck {
+            ancestry: vec!["zellij-test".to_owned()],
+            capabilities: vec![
+                zellij_utils::nested_session::NestedSessionCapability::NestedControl
+            ],
+        }
+    );
+    assert!(received_background_jobs
+        .lock()
+        .unwrap()
+        .iter()
+        .any(
+            |job| matches!(job, BackgroundJob::StartNestedGuestPing(PaneId::Terminal(0)))
+        ));
+}
+
+#[test]
+pub fn nested_guest_bye_stops_liveness_pings() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
+    let received_background_jobs = mock_screen.received_background_jobs.clone();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_writer_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyWriteInstruction::Exit,
+        pty_writer_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::NestedSessionMessageFromPane {
+            pane_id: PaneId::Terminal(0),
+            message: guest_announce_message(),
+        });
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::NestedSessionMessageFromPane {
+            pane_id: PaneId::Terminal(0),
+            message: zellij_utils::nested_session::NestedSessionMessage::Bye,
+        });
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::NestedGuestPingTick {
+            pane_id: PaneId::Terminal(0),
+        });
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
+    let ping_frames_written = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|instruction| match instruction {
+            PtyWriteInstruction::Write(bytes, 0, None) => matches!(
+                decode_nested_frame(bytes),
+                Some(zellij_utils::nested_session::NestedSessionMessage::Ping)
+            ),
+            _ => false,
+        })
+        .count();
+    assert_eq!(ping_frames_written, 0);
+    assert!(received_background_jobs
+        .lock()
+        .unwrap()
+        .iter()
+        .any(
+            |job| matches!(job, BackgroundJob::StopNestedGuestPing(PaneId::Terminal(0)))
+        ));
 }

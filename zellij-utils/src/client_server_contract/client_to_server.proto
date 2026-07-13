@@ -26,6 +26,7 @@ message ClientToServerMsg {
     ForwardedReplyFromHostMsg forwarded_reply_from_host = 19;
     HostTerminalThemeChangedMsg host_terminal_theme_changed = 20;
     SoftKeyboardVisibilityChangedMsg soft_keyboard_visibility_changed = 21;
+    NestedSessionFrameFromHostMsg nested_session_frame_from_host = 22;
   }
 }
 
@@ -136,4 +137,8 @@ enum HostTerminalThemeIndication {
 
 message SoftKeyboardVisibilityChangedMsg {
   bool visible = 1;
+}
+
+message NestedSessionFrameFromHostMsg {
+  bytes payload_bytes = 1;
 }

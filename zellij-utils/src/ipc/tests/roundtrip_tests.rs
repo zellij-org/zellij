@@ -3654,6 +3654,12 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::HostTerminalThemeChanged {
         mode: HostTerminalThemeMode::Light,
     });
+    test_client_roundtrip!(ClientToServerMsg::NestedSessionFrameFromHost {
+        payload_bytes: vec![],
+    });
+    test_client_roundtrip!(ClientToServerMsg::NestedSessionFrameFromHost {
+        payload_bytes: (0u8..=255u8).collect(),
+    });
 }
 
 fn test_server_messages() {
@@ -3800,6 +3806,12 @@ fn test_server_messages() {
     test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
         token: u32::MAX,
         query_bytes: (0u8..=255u8).collect(),
+    });
+    test_server_roundtrip!(ServerToClientMsg::EmitNestedSessionFrame {
+        payload_bytes: vec![],
+    });
+    test_server_roundtrip!(ServerToClientMsg::EmitNestedSessionFrame {
+        payload_bytes: (0u8..=255u8).collect(),
     });
 }
 

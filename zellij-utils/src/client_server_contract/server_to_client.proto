@@ -22,6 +22,7 @@ message ServerToClientMsg {
     SubscribedPaneClosedMsg subscribed_pane_closed = 15;
     ForwardQueryToHostMsg forward_query_to_host = 16;
     SetSoftKeyboardMsg set_soft_keyboard = 17;
+    EmitNestedSessionFrameMsg emit_nested_session_frame = 18;
   }
 }
 
@@ -98,4 +99,8 @@ message ForwardQueryToHostMsg {
 
 message SetSoftKeyboardMsg {
   bool on = 1;
+}
+
+message EmitNestedSessionFrameMsg {
+  bytes payload_bytes = 1;
 }

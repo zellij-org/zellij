@@ -6289,3 +6289,98 @@ fn csi_5n_status_query_still_handled_locally() {
         "DSR 5 must still produce its local 'all good' reply"
     );
 }
+
+fn new_grid_for_nested_frames() -> Grid {
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    Grid::new(
+        41,
+        110,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    )
+}
+
+fn nested_announce_message() -> zellij_utils::nested_session::NestedSessionMessage {
+    zellij_utils::nested_session::NestedSessionMessage::Announce {
+        session_name: "guest-session".to_owned(),
+        capabilities: vec![zellij_utils::nested_session::NestedSessionCapability::NestedControl],
+    }
+}
+
+#[test]
+fn nested_session_frame_is_staged_for_dispatch() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = new_grid_for_nested_frames();
+    let message = nested_announce_message();
+    for byte in zellij_utils::nested_session::encode_frame(&message) {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_eq!(grid.pending_nested_session_messages, vec![message]);
+}
+
+#[test]
+fn nested_session_frame_split_across_feeds_is_staged() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = new_grid_for_nested_frames();
+    let message = nested_announce_message();
+    let frame = zellij_utils::nested_session::encode_frame(&message);
+    let (first_half, second_half) = frame.split_at(frame.len() / 2);
+    for byte in first_half {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert!(grid.pending_nested_session_messages.is_empty());
+    for byte in second_half {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert_eq!(grid.pending_nested_session_messages, vec![message]);
+}
+
+#[test]
+fn dcs_with_wrong_magic_param_is_not_staged() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = new_grid_for_nested_frames();
+    for byte in b"\x1bP26662nAAAA\x1b\\" {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert!(grid.pending_nested_session_messages.is_empty());
+}
+
+#[test]
+fn dcs_with_intermediates_is_not_staged() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = new_grid_for_nested_frames();
+    for byte in b"\x1bP26661$nAAAA\x1b\\" {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert!(grid.pending_nested_session_messages.is_empty());
+}
+
+#[test]
+fn dcs_n_without_params_is_not_staged() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = new_grid_for_nested_frames();
+    for byte in b"\x1bPnAAAA\x1b\\" {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert!(grid.pending_nested_session_messages.is_empty());
+}
+
+#[test]
+fn nested_session_frame_with_garbage_payload_is_dropped() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = new_grid_for_nested_frames();
+    for byte in b"\x1bP26661n!!!not-base64!!!\x1b\\" {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert!(grid.pending_nested_session_messages.is_empty());
+}

@@ -1,0 +1,72 @@
+syntax = "proto3";
+package nested_session_contract;
+
+message NestedSessionMessage {
+  oneof payload {
+    Announce announce = 1;
+    FocusHost focus_host = 2;
+    ToggleHostFullscreen host_fullscreen = 3;
+    Pong pong = 4;
+    Bye bye = 5;
+    AnnounceAck announce_ack = 8;
+    FocusGained focus_gained = 9;
+    FocusLost focus_lost = 10;
+    FullscreenState fullscreen_state = 11;
+    AncestryUpdate ancestry_update = 12;
+    Ping ping = 13;
+  }
+}
+
+enum NestedCapability {
+  NESTED_CAPABILITY_UNSPECIFIED = 0;
+  NESTED_CAPABILITY_NESTED_CONTROL = 1;
+}
+
+enum NestedDirection {
+  NESTED_DIRECTION_UNSPECIFIED = 0;
+  NESTED_DIRECTION_LEFT = 1;
+  NESTED_DIRECTION_RIGHT = 2;
+  NESTED_DIRECTION_UP = 3;
+  NESTED_DIRECTION_DOWN = 4;
+}
+
+message Announce {
+  string session_name = 1;
+  repeated NestedCapability capabilities = 2;
+}
+
+message FocusHost {
+  NestedDirection direction = 1;
+}
+
+message ToggleHostFullscreen {
+}
+
+message Pong {
+}
+
+message Bye {
+}
+
+message AnnounceAck {
+  repeated string ancestry = 1;
+  repeated NestedCapability capabilities = 2;
+}
+
+message FocusGained {
+  NestedDirection from_direction = 1;
+}
+
+message FocusLost {
+}
+
+message FullscreenState {
+  bool fullscreen = 1;
+}
+
+message AncestryUpdate {
+  repeated string ancestry = 1;
+}
+
+message Ping {
+}

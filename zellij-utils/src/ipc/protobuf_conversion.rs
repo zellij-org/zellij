@@ -7,11 +7,12 @@ use crate::{
         ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
         ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg, ExitMsg,
         ExitReason as ProtoExitReason, FailedToStartWebServerMsg, FirstClientConnectedMsg,
-        ForegroundColorMsg, ForwardQueryToHostMsg, ForwardedReplyFromHostMsg,
-        HostTerminalThemeChangedMsg,
+        EmitNestedSessionFrameMsg, ForegroundColorMsg, ForwardQueryToHostMsg,
+        ForwardedReplyFromHostMsg, HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
-        LogErrorMsg, LogMsg, PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
+        LogErrorMsg, LogMsg, NestedSessionFrameFromHostMsg,
+        PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
         QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg, ResizeCause as ProtoResizeCause,
         ServerToClientMsg as ProtoServerToClientMsg, SetSoftKeyboardMsg,
         SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
@@ -154,6 +155,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             ClientToServerMsg::SoftKeyboardVisibilityChanged { visible } => {
                 client_to_server_msg::Message::SoftKeyboardVisibilityChanged(
                     SoftKeyboardVisibilityChangedMsg { visible },
+                )
+            },
+            ClientToServerMsg::NestedSessionFrameFromHost { payload_bytes } => {
+                client_to_server_msg::Message::NestedSessionFrameFromHost(
+                    NestedSessionFrameFromHostMsg { payload_bytes },
                 )
             },
         };
@@ -306,6 +312,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     visible: msg.visible,
                 })
             },
+            Some(client_to_server_msg::Message::NestedSessionFrameFromHost(msg)) => {
+                Ok(ClientToServerMsg::NestedSessionFrameFromHost {
+                    payload_bytes: msg.payload_bytes,
+                })
+            },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
     }
@@ -393,6 +404,11 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             },
             ServerToClientMsg::SetSoftKeyboard { on } => {
                 server_to_client_msg::Message::SetSoftKeyboard(SetSoftKeyboardMsg { on })
+            },
+            ServerToClientMsg::EmitNestedSessionFrame { payload_bytes } => {
+                server_to_client_msg::Message::EmitNestedSessionFrame(EmitNestedSessionFrameMsg {
+                    payload_bytes,
+                })
             },
         };
 
@@ -508,6 +524,11 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             },
             Some(server_to_client_msg::Message::SetSoftKeyboard(msg)) => {
                 Ok(ServerToClientMsg::SetSoftKeyboard { on: msg.on })
+            },
+            Some(server_to_client_msg::Message::EmitNestedSessionFrame(msg)) => {
+                Ok(ServerToClientMsg::EmitNestedSessionFrame {
+                    payload_bytes: msg.payload_bytes,
+                })
             },
             None => Err(anyhow!("Empty ServerToClientMsg message")),
         }

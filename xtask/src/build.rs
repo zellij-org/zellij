@@ -205,6 +205,11 @@ fn run_proto_codegen(sh: &Shell, force: bool) {
             "src/web_server_contract",
             "generated_web_server_api.rs",
         ),
+        (
+            "assets/prost_nested_session",
+            "src/nested_session_contract",
+            "generated_nested_session_api.rs",
+        ),
     ];
 
     for (out_subdir, src_subdir, include_file) in specs {

@@ -157,6 +157,7 @@ use zellij_utils::{
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{cli_assets::CliAssets, config::Config, options::Options},
     ipc::{ClientToServerMsg, ExitReason, ResizeCause, ServerToClientMsg},
+    nested_session,
     pane_size::Size,
     vendored::termwiz::input::InputEvent,
 };
@@ -186,6 +187,7 @@ pub(crate) enum ClientInstruction {
         token: u32,
         query_bytes: Vec<u8>,
     },
+    EmitNestedSessionFrame(Vec<u8>),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -210,6 +212,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::ConfigFileUpdated => ClientInstruction::ConfigFileUpdated,
             ServerToClientMsg::ForwardQueryToHost { token, query_bytes } => {
                 ClientInstruction::ForwardQueryToHost { token, query_bytes }
+            },
+            ServerToClientMsg::EmitNestedSessionFrame { payload_bytes } => {
+                ClientInstruction::EmitNestedSessionFrame(payload_bytes)
             },
             // Subscribe-only messages — not handled by regular interactive clients
             ServerToClientMsg::PaneRenderUpdate { .. } => ClientInstruction::UnblockInputThread,
@@ -238,6 +243,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::RenamedSession(..) => ClientContext::RenamedSession,
             ClientInstruction::ConfigFileUpdated => ClientContext::ConfigFileUpdated,
             ClientInstruction::ForwardQueryToHost { .. } => ClientContext::ForwardQueryToHost,
+            ClientInstruction::EmitNestedSessionFrame(..) => ClientContext::EmitNestedSessionFrame,
         }
     }
 }
@@ -523,6 +529,7 @@ pub(crate) enum InputInstruction {
         token: u32,
         reply_bytes: Vec<u8>,
     },
+    NestedSessionFrameFromHost(Vec<u8>),
     Exit,
 }
 
@@ -563,15 +570,46 @@ pub async fn run_remote_client_terminal_loop(
         log::error!("Failed to send resize message: {}", e);
     }
 
+    let mut nested_frame_extractor = nested_session::NestedFrameExtractor::new();
+
     loop {
         tokio::select! {
             // Handle stdin input
             result = async_stdin.read() => {
                 match result {
                     Ok(buf) if !buf.is_empty() => {
-                        if let Err(e) = connections.terminal_ws.send(Message::Binary(buf)).await {
-                            log::error!("Failed to send stdin to terminal WebSocket: {}", e);
-                            break;
+                        let (cleaned, nested_frames) = nested_frame_extractor.extract(&buf);
+                        for payload_bytes in nested_frames {
+                            match nested_session::decode_payload(&payload_bytes) {
+                                Some(nested_session::NestedSessionMessage::Ping) => {
+                                    let mut stdout = os_input.get_stdout_writer();
+                                    let _ = stdout.write_all(&nested_session::encode_frame(
+                                        &nested_session::NestedSessionMessage::Pong,
+                                    ));
+                                    let _ = stdout.flush();
+                                },
+                                Some(_) => {
+                                    let control_msg = Message::Text(
+                                        serde_json::to_string(&WebClientToWebServerControlMessage {
+                                            web_client_id: connections.web_client_id.clone(),
+                                            payload: WebClientToWebServerControlMessagePayload::NestedSessionFrameFromHost {
+                                                payload_bytes,
+                                            },
+                                        })
+                                        .unwrap(),
+                                    );
+                                    if let Err(e) = connections.control_ws.send(control_msg).await {
+                                        log::error!("Failed to forward nested session frame over control WebSocket: {}", e);
+                                    }
+                                },
+                                None => {},
+                            }
+                        }
+                        if !cleaned.is_empty() {
+                            if let Err(e) = connections.terminal_ws.send(Message::Binary(cleaned)).await {
+                                log::error!("Failed to send stdin to terminal WebSocket: {}", e);
+                                break;
+                            }
                         }
                     }
                     Ok(_) => {
@@ -721,6 +759,14 @@ pub fn start_remote_client(
 ) -> Result<Option<ConnectToSession>, RemoteClientError> {
     info!("Starting Zellij client!");
 
+    let is_nested_inside_zellij_pane = envs::get_zellij().is_ok();
+    let remote_session_name = remote_session_url
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or_default()
+        .to_owned();
+
     let runtime = crate::async_runtime(async_worker_tasks);
 
     let connections = remote_attach::attach_to_remote_session(
@@ -756,6 +802,16 @@ pub fn start_remote_client(
 
     os_input.set_raw_mode();
     stdout.write_all(ENABLE_BRACKETED_PASTE.as_bytes()).unwrap();
+    if is_nested_inside_zellij_pane {
+        let announce = nested_session::NestedSessionMessage::Announce {
+            session_name: remote_session_name.clone(),
+            capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
+        };
+        stdout
+            .write_all(&nested_session::encode_frame(&announce))
+            .unwrap();
+        let _ = stdout.flush();
+    }
 
     std::panic::set_hook({
         use zellij_utils::errors::handle_panic;
@@ -790,6 +846,14 @@ pub fn start_remote_client(
         connections,
     ))?;
 
+    if is_nested_inside_zellij_pane {
+        let mut stdout = os_input.get_stdout_writer();
+        let _ = stdout.write_all(&nested_session::encode_frame(
+            &nested_session::NestedSessionMessage::Bye,
+        ));
+        let _ = stdout.flush();
+    }
+
     let exit_msg = String::from("Bye from Zellij!");
 
     if reconnect_to_session.is_none() {
@@ -821,6 +885,9 @@ pub fn start_client(
         return None;
     }
     info!("Starting Zellij client!");
+
+    let is_nested_inside_zellij_pane = envs::get_zellij().is_ok();
+    let own_session_name = info.get_session_name().to_owned();
 
     let explicitly_disable_kitty_keyboard_protocol = config_options
         .support_kitty_keyboard_protocol
@@ -1043,6 +1110,16 @@ pub fn start_client(
     os_input.set_raw_mode();
     let mut stdout = os_input.get_stdout_writer();
     stdout.write_all(ENABLE_BRACKETED_PASTE.as_bytes()).unwrap();
+    if is_nested_inside_zellij_pane {
+        let announce = nested_session::NestedSessionMessage::Announce {
+            session_name: own_session_name.clone(),
+            capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
+        };
+        stdout
+            .write_all(&nested_session::encode_frame(&announce))
+            .unwrap();
+        let _ = stdout.flush();
+    }
 
     let (send_client_instructions, receive_client_instructions): ChannelWithContext<
         ClientInstruction,
@@ -1344,11 +1421,25 @@ pub fn start_client(
                 let _ = out.write_all(&blob);
                 let _ = out.flush();
             },
+            ClientInstruction::EmitNestedSessionFrame(payload_bytes) => {
+                let frame = nested_session::encode_frame_from_payload(&payload_bytes);
+                let mut out = os_input.get_stdout_writer();
+                let _ = out.write_all(&frame);
+                let _ = out.flush();
+            },
             _ => {},
         }
     }
 
     router_thread.join().unwrap();
+
+    if is_nested_inside_zellij_pane {
+        let mut stdout = os_input.get_stdout_writer();
+        let _ = stdout.write_all(&nested_session::encode_frame(
+            &nested_session::NestedSessionMessage::Bye,
+        ));
+        let _ = stdout.flush();
+    }
 
     if reconnect_to_session.is_none() {
         let goodbye_message = terminal_teardown_message(

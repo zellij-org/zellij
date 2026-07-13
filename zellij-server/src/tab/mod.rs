@@ -74,6 +74,7 @@ use zellij_utils::{
         options::PaneFrameStyle,
         parse_keys,
     },
+    nested_session::NestedSessionMessage,
     pane_size::{Dimension, Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -459,6 +460,13 @@ pub trait Pane {
         // plugin panes have no such concept.
         vec![]
     }
+    fn drain_nested_session_messages(&mut self) -> Vec<NestedSessionMessage> {
+        vec![]
+    }
+    fn is_nested_guest(&self) -> bool {
+        false
+    }
+    fn set_is_nested_guest(&mut self, _is_nested_guest: bool) {}
     /// Mark this pane as awaiting a host-terminal reply for a forward
     /// it just dispatched. While paused, vte byte feeding is buffered
     /// so that the eventual host reply lands on the pane's stdin in
@@ -3730,6 +3738,21 @@ impl Tab {
     pub fn has_non_suppressed_pane_with_pid(&self, pid: &PaneId) -> bool {
         self.tiled_panes.panes_contain(pid) || self.floating_panes.panes_contain(pid)
     }
+    pub fn set_pane_is_nested_guest(&mut self, pane_id: PaneId, is_nested_guest: bool) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_is_nested_guest(is_nested_guest);
+        }
+    }
     pub fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) -> bool {
         if self.tiled_panes.panes_contain(&pane_id) {
             self.tiled_panes.set_shadow_focus(client_id, pane_id);
@@ -3906,6 +3929,7 @@ impl Tab {
             if !forwarded_queries.is_empty() {
                 terminal_output.arm_forward_pause();
             }
+            let nested_session_messages = terminal_output.drain_nested_session_messages();
             let clipboard_update = terminal_output.drain_clipboard_update();
             let desktop_notifications = terminal_output.drain_desktop_notifications();
             let osc7_cwd = terminal_output.drain_osc7_cwd();
@@ -3919,6 +3943,14 @@ impl Tab {
                     .send_to_screen(ScreenInstruction::ForwardHostQuery {
                         pane_id: PaneId::Terminal(pid),
                         query,
+                    });
+            }
+            for message in nested_session_messages {
+                let _ = self
+                    .senders
+                    .send_to_screen(ScreenInstruction::NestedSessionMessageFromPane {
+                        pane_id: PaneId::Terminal(pid),
+                        message,
                     });
             }
             if let Some(string) = clipboard_update {
