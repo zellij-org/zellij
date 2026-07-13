@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: occasional high resource utilization and sluggishness on machines with tens of thousands of concurent processes (https://github.com/zellij-org/zellij/pull/5324)
 * feat: allow opening panes/tabs from the CLI without changing focus (https://github.com/zellij-org/zellij/pull/5346)
 * feat: allow binding `SetDarkTheme`, `SetLightTheme` and `ToggleTheme` as direct keybinding actions (https://github.com/zellij-org/zellij/pull/5302)
+* fix(windows): prefer PATHEXT variants over bare filename when resolving commands (fixes launching `composer` and similar) (https://github.com/zellij-org/zellij/pull/5364)
 
 ## [0.44.3] - 2026-05-13
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)
