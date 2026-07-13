@@ -21,6 +21,9 @@ pub struct TestRunner {
     size: Size,
     extra_config_kdl: String,
     layout: Option<LayoutInfo>,
+    env: std::collections::HashMap<String, String>,
+    stdout_tap: Option<crossbeam::channel::Sender<Vec<u8>>>,
+    skip_concurrency_slot: bool,
 }
 
 impl TestRunner {
@@ -29,6 +32,9 @@ impl TestRunner {
             size,
             extra_config_kdl: String::new(),
             layout: None,
+            env: std::collections::HashMap::new(),
+            stdout_tap: None,
+            skip_concurrency_slot: false,
         }
     }
 
@@ -40,6 +46,22 @@ impl TestRunner {
 
     pub fn with_layout(mut self, layout: LayoutInfo) -> Self {
         self.layout = Some(layout);
+        self
+    }
+
+    pub fn as_nested_guest(mut self, host_session_name: &str) -> Self {
+        self.env
+            .insert("ZELLIJ".to_string(), host_session_name.to_string());
+        self
+    }
+
+    pub fn with_stdout_tap(mut self, sender: crossbeam::channel::Sender<Vec<u8>>) -> Self {
+        self.stdout_tap = Some(sender);
+        self
+    }
+
+    pub fn skip_concurrency_slot(mut self) -> Self {
+        self.skip_concurrency_slot = true;
         self
     }
 
@@ -57,14 +79,21 @@ impl TestRunner {
         let (config, default_layout_info, config_options, _, _) =
             Setup::from_cli_args(&cli_args).expect("failed to load harness config");
 
-        let concurrency_slot = test_env::acquire_concurrency_slot();
+        let concurrency_slot = if self.skip_concurrency_slot {
+            None
+        } else {
+            Some(test_env::acquire_concurrency_slot())
+        };
 
         let fake_server_os_api = FakeServerOsApi::default();
         let server_thread: Arc<Mutex<Option<JoinHandle<()>>>> = Arc::new(Mutex::new(None));
         let server_spawner = in_process_server_spawner(fake_server_os_api.clone(), &server_thread);
 
         let (fake_client_os_api, fake_client_handle) =
-            FakeClientOsApi::new(self.size, Some(server_spawner));
+            FakeClientOsApi::new_with_env(self.size, Some(server_spawner), self.env);
+        if let Some(stdout_tap) = self.stdout_tap {
+            fake_client_handle.client_screen.set_stdout_tap(stdout_tap);
+        }
         let layout_info = self.layout.or(default_layout_info);
         let client_thread = spawn_client_thread(
             fake_client_os_api,
@@ -250,7 +279,7 @@ pub struct TestSession {
     fake_server_os_api: FakeServerOsApi,
     server_thread: Arc<Mutex<Option<JoinHandle<()>>>>,
     main_client: TestClient,
-    _concurrency_slot: test_env::ConcurrencySlot,
+    _concurrency_slot: Option<test_env::ConcurrencySlot>,
 }
 
 pub struct CliClientHandle {
@@ -283,6 +312,10 @@ impl TestSession {
 
     pub fn send_stdin(&self, bytes: &[u8]) {
         self.main_client.send_stdin(bytes);
+    }
+
+    pub fn stdin_sender(&self) -> crossbeam::channel::Sender<Vec<u8>> {
+        self.main_client.fake_client_handle.stdin_tx.clone()
     }
 
     pub fn resize(&self, new_size: Size) {

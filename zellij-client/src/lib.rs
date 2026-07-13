@@ -759,7 +759,7 @@ pub fn start_remote_client(
 ) -> Result<Option<ConnectToSession>, RemoteClientError> {
     info!("Starting Zellij client!");
 
-    let is_nested_inside_zellij_pane = envs::get_zellij().is_ok();
+    let is_nested_inside_zellij_pane = os_input.env_variable("ZELLIJ").is_some();
     let remote_session_name = remote_session_url
         .trim_end_matches('/')
         .rsplit('/')
@@ -886,7 +886,7 @@ pub fn start_client(
     }
     info!("Starting Zellij client!");
 
-    let is_nested_inside_zellij_pane = envs::get_zellij().is_ok();
+    let is_nested_inside_zellij_pane = os_input.env_variable("ZELLIJ").is_some();
     let own_session_name = info.get_session_name().to_owned();
 
     let explicitly_disable_kitty_keyboard_protocol = config_options

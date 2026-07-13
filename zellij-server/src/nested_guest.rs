@@ -5,6 +5,20 @@ use std::time::{Duration, Instant};
 pub const PING_INTERVAL_MS: u64 = 2000;
 pub const PONG_TIMEOUT_MS: u64 = 5000;
 
+pub fn ping_interval_ms() -> u64 {
+    std::env::var("ZELLIJ_NESTED_PING_INTERVAL_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(PING_INTERVAL_MS)
+}
+
+pub fn pong_timeout_ms() -> u64 {
+    std::env::var("ZELLIJ_NESTED_PONG_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(PONG_TIMEOUT_MS)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GuestPingTickAction {
     SendPing,
@@ -30,7 +44,7 @@ impl NestedGuestTracker {
         match self.last_heard_from.get(&pane_id) {
             Some(last_heard_from)
                 if now.duration_since(*last_heard_from)
-                    > Duration::from_millis(PONG_TIMEOUT_MS) =>
+                    > Duration::from_millis(pong_timeout_ms()) =>
             {
                 self.last_heard_from.remove(&pane_id);
                 GuestPingTickAction::Expired

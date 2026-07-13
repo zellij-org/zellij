@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -23,6 +24,7 @@ pub struct FakeClientOsApi {
     receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ServerToClientMsg>>>>,
     session_name: Arc<Mutex<Option<String>>>,
     server_spawner: Arc<Mutex<Option<ServerSpawner>>>,
+    env: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl Clone for FakeClientOsApi {
@@ -36,6 +38,7 @@ impl Clone for FakeClientOsApi {
             receive_instructions_from_server: self.receive_instructions_from_server.clone(),
             session_name: self.session_name.clone(),
             server_spawner: self.server_spawner.clone(),
+            env: self.env.clone(),
         }
     }
 }
@@ -58,6 +61,14 @@ impl FakeClientOsApi {
         initial_size: Size,
         server_spawner: Option<ServerSpawner>,
     ) -> (Self, FakeClientHandle) {
+        Self::new_with_env(initial_size, server_spawner, HashMap::new())
+    }
+
+    pub fn new_with_env(
+        initial_size: Size,
+        server_spawner: Option<ServerSpawner>,
+        env: HashMap<String, String>,
+    ) -> (Self, FakeClientHandle) {
         let size = Arc::new(Mutex::new(initial_size));
         let client_screen = ClientScreen::new(size.clone());
         let (stdin_tx, stdin_rx) = crossbeam::channel::unbounded();
@@ -71,6 +82,7 @@ impl FakeClientOsApi {
             receive_instructions_from_server: Arc::new(Mutex::new(None)),
             session_name: Arc::new(Mutex::new(None)),
             server_spawner: Arc::new(Mutex::new(server_spawner)),
+            env: Arc::new(Mutex::new(env)),
         };
         let fake_client_handle = FakeClientHandle {
             client_screen,
@@ -173,8 +185,8 @@ impl ClientOsApi for FakeClientOsApi {
     fn disable_mouse(&self) -> anyhow::Result<()> {
         Ok(())
     }
-    fn env_variable(&self, _name: &str) -> Option<String> {
-        None
+    fn env_variable(&self, name: &str) -> Option<String> {
+        self.env.lock().unwrap().get(name).cloned()
     }
     fn should_install_panic_hook(&self) -> bool {
         false

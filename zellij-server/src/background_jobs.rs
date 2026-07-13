@@ -636,15 +636,13 @@ pub(crate) fn background_jobs_main(
                     runtime.spawn({
                         let senders = bus.senders.clone();
                         let flag = is_pinging.clone();
+                        let ping_interval_ms = crate::nested_guest::ping_interval_ms();
                         async move {
                             while flag.load(Ordering::SeqCst) {
                                 let _ = senders.send_to_screen(
                                     ScreenInstruction::NestedGuestPingTick { pane_id },
                                 );
-                                tokio::time::sleep(Duration::from_millis(
-                                    crate::nested_guest::PING_INTERVAL_MS,
-                                ))
-                                .await;
+                                tokio::time::sleep(Duration::from_millis(ping_interval_ms)).await;
                             }
                         }
                     });

@@ -18,6 +18,7 @@ struct ReceivedBytes {
 struct ReceivedBytesWithChangeSignal {
     received_bytes: Mutex<ReceivedBytes>,
     change_signal: Condvar,
+    stdout_tap: Mutex<Option<crossbeam::channel::Sender<Vec<u8>>>>,
 }
 
 #[derive(Clone)]
@@ -38,6 +39,10 @@ impl ClientScreen {
         Box::new(ClientScreenWriter {
             inner: self.inner.clone(),
         })
+    }
+
+    pub fn set_stdout_tap(&self, sender: crossbeam::channel::Sender<Vec<u8>>) {
+        *self.inner.stdout_tap.lock().unwrap() = Some(sender);
     }
 
     pub fn snapshot(&self) -> GridSnapshot {
@@ -126,6 +131,9 @@ impl std::io::Write for ClientScreenWriter {
         let mut received_bytes = self.inner.received_bytes.lock().unwrap();
         received_bytes.bytes.extend_from_slice(buf);
         received_bytes.generation += 1;
+        if let Some(stdout_tap) = self.inner.stdout_tap.lock().unwrap().as_ref() {
+            let _ = stdout_tap.send(buf.to_vec());
+        }
         self.inner.change_signal.notify_all();
         Ok(buf.len())
     }
