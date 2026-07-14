@@ -1993,7 +1993,34 @@ impl Grid {
     }
     fn line_wrap(&mut self) {
         self.cursor.x = 0;
-        if self.cursor.y == self.height.saturating_sub(1) {
+        let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
+        if self.cursor.y == scroll_region_bottom {
+            // Autowrap at the bottom of the scroll region: scroll the region
+            // up by one line (same as what add_canonical_line does for '\n').
+            if scroll_region_top >= self.viewport.len() {
+                // the state is corrupted (same guard as in add_canonical_line)
+                return;
+            }
+            if scroll_region_top == 0
+                && self.alternate_screen_state.is_none()
+                && !self.viewport.is_empty()
+            {
+                self.transfer_rows_to_lines_above(1);
+                self.hyperlink_tracker.offset_cursor_lines(1);
+                self.selection.move_up(1);
+            } else if scroll_region_top < self.viewport.len() {
+                self.viewport.remove(scroll_region_top);
+            }
+            let wrapped_row = Row::new();
+            if self.viewport.len() >= scroll_region_bottom {
+                self.viewport.insert(scroll_region_bottom, wrapped_row);
+            } else {
+                self.viewport.push_back(wrapped_row);
+            }
+            self.output_buffer.update_all_lines();
+        } else if self.cursor.y == self.height.saturating_sub(1) {
+            // Autowrap at the very bottom of the viewport (cursor below
+            // scroll region or scroll region spans entire height).
             if self.alternate_screen_state.is_none() {
                 self.transfer_rows_to_lines_above(1);
                 self.hyperlink_tracker.offset_cursor_lines(1);
