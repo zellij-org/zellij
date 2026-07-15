@@ -466,17 +466,44 @@ impl KeyWithModifier {
         self.key_modifiers.insert(KeyModifier::Super);
         self
     }
-    pub fn from_bytes_with_u(number_bytes: &[u8], modifier_bytes: &[u8]) -> Option<Self> {
-        // CSI number ; modifiers u
-        let bare_key = BareKey::from_bytes_with_u(number_bytes);
+    pub fn from_bytes_with_u(
+        number_bytes: &[u8],
+        modifier_bytes: &[u8],
+        shifted_key_bytes: Option<&[u8]>,
+        base_layout_bytes: Option<&[u8]>,
+    ) -> Option<Self> {
+        // CSI unicode:shifted:base-layout ; modifiers u
+        //
+        // Prefer the base layout key so keybinds work on non-English
+        // layouts. When Shift is held, fold it into the character itself
+        // (Char('H') rather than Shift+h, Char('!') rather than Shift+1),
+        // because that is how keys are written in keybind configs.
+        let mut key_modifiers = KeyModifier::from_bytes(modifier_bytes);
+        let shift_held = key_modifiers.contains(&KeyModifier::Shift);
+        let bare_key = if let Some(base_layout_bytes) = base_layout_bytes {
+            match BareKey::from_bytes_with_u(base_layout_bytes) {
+                Some(BareKey::Char(c)) if shift_held && c.is_alphabetic() => {
+                    key_modifiers.remove(&KeyModifier::Shift);
+                    c.to_uppercase().next().map(BareKey::Char)
+                },
+                other => other,
+            }
+        } else if let (true, Some(shifted_key_bytes)) = (shift_held, shifted_key_bytes) {
+            match BareKey::from_bytes_with_u(shifted_key_bytes) {
+                Some(BareKey::Char(c)) => {
+                    key_modifiers.remove(&KeyModifier::Shift);
+                    Some(BareKey::Char(c))
+                },
+                other => other,
+            }
+        } else {
+            BareKey::from_bytes_with_u(number_bytes)
+        };
         match bare_key {
-            Some(bare_key) => {
-                let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
-                Some(KeyWithModifier {
-                    bare_key,
-                    key_modifiers,
-                })
-            },
+            Some(bare_key) => Some(KeyWithModifier {
+                bare_key,
+                key_modifiers,
+            }),
             _ => None,
         }
     }
