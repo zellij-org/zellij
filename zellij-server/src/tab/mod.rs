@@ -6134,6 +6134,7 @@ impl Tab {
             .with_context(|| format!("no active pane found for client {client_id}"))
             .map(|active_pane| {
                 let to_update = match s {
+                    "\0" => s, // pane name terminator
                     "\u{007F}" | "\u{0008}" => {
                         // delete and backspace keys
                         s
