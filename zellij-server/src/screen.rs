@@ -1453,6 +1453,15 @@ pub(crate) struct Screen {
     #[cfg_attr(test, allow(dead_code))]
     default_layout_name: Option<String>,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    /// Clients that currently have the kitty "report all keys as escape
+    /// codes" flag active. It is enabled while a client is inside a
+    /// keybind-driven input mode so that bare letters carry the
+    /// base-layout-key field and match keybinds on non-English layouts,
+    /// and disabled again in typing modes (Normal/Locked/rename/search
+    /// input) so plain text input is unaffected.
+    kitty_all_keys_clients: HashSet<ClientId>,
+    /// Raw sequences queued for specific clients, flushed on next render.
+    pending_kitty_flag_instructions: Vec<(ClientId, &'static str)>,
     default_editor: Option<PathBuf>,
     web_clients_allowed: bool,
     web_sharing: WebSharing,
@@ -1614,6 +1623,8 @@ impl Screen {
             resurrectable_sessions_cache,
             layout_dir,
             explicitly_disable_kitty_keyboard_protocol,
+            kitty_all_keys_clients: HashSet::new(),
+            pending_kitty_flag_instructions: Vec::new(),
             default_editor,
             web_clients_allowed,
             web_sharing,
@@ -2851,6 +2862,10 @@ impl Screen {
                 self.styled_underlines,
                 self.osc8_hyperlinks,
             );
+
+            for (client_id, vte_instruction) in self.pending_kitty_flag_instructions.drain(..) {
+                output.add_pre_vte_instruction_to_client(client_id, vte_instruction);
+            }
 
             let has_ansi_subscribers = self.pane_render_subscribers.values().any(|s| s.ansi);
             output.collect_ansi_pane_contents =
@@ -4224,6 +4239,44 @@ impl Screen {
         Ok(())
     }
 
+    /// Whether keys in this mode act as commands (bound single letters)
+    /// rather than text input.
+    fn mode_uses_bare_key_bindings(mode: InputMode) -> bool {
+        matches!(
+            mode,
+            InputMode::Pane
+                | InputMode::Tab
+                | InputMode::Resize
+                | InputMode::Move
+                | InputMode::Scroll
+                | InputMode::Search
+                | InputMode::Session
+                | InputMode::Tmux
+        )
+    }
+    /// While a client is in a keybind-driven mode, ask its terminal to
+    /// report all keys as escape codes (kitty keyboard protocol flag 8, on
+    /// top of our baseline flags 1+4). Bare letters then carry the
+    /// base-layout key and match keybinds regardless of the active
+    /// keyboard layout. Reverted to the baseline flags in typing modes.
+    fn update_kitty_keyboard_flags(&mut self, new_mode: InputMode, client_id: ClientId) {
+        const ENTER_KITTY_ALL_KEYS_MODE: &str = "\u{1b}[=13;1u";
+        const EXIT_KITTY_ALL_KEYS_MODE: &str = "\u{1b}[=5;1u";
+        if self.explicitly_disable_kitty_keyboard_protocol {
+            return;
+        }
+        let wants_all_keys = Self::mode_uses_bare_key_bindings(new_mode);
+        let has_all_keys = self.kitty_all_keys_clients.contains(&client_id);
+        if wants_all_keys && !has_all_keys {
+            self.kitty_all_keys_clients.insert(client_id);
+            self.pending_kitty_flag_instructions
+                .push((client_id, ENTER_KITTY_ALL_KEYS_MODE));
+        } else if !wants_all_keys && has_all_keys {
+            self.kitty_all_keys_clients.remove(&client_id);
+            self.pending_kitty_flag_instructions
+                .push((client_id, EXIT_KITTY_ALL_KEYS_MODE));
+        }
+    }
     pub fn change_mode(
         &mut self,
         new_mode: InputMode,
@@ -4238,6 +4291,7 @@ impl Screen {
         let previous_mode = mode_info.mode;
         mode_info.mode = new_mode;
         mode_info.base_mode = base_mode;
+        self.update_kitty_keyboard_flags(new_mode, client_id);
         if mode_info.session_name.as_ref() != Some(&self.session_name) {
             mode_info.session_name = Some(self.session_name.clone());
         }
