@@ -175,16 +175,90 @@ impl HostReply {
     }
 }
 
+/// The reply shape expected for a query forwarded on behalf of a pane.
+///
+/// The client also sends its own startup queries to the host terminal. Their
+/// replies can still be arriving when a pane query opens a forwarding window,
+/// so the window must only collect replies matching the pane's query. Without
+/// this discriminator, unrelated startup reports (eg. DECRPM 2026) can leak
+/// into the pane's pty.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ForwardReplyMatcher {
+    TextAreaPixelSize,
+    CharacterCellPixelSize,
+    DefaultForeground,
+    DefaultBackground,
+    PaletteRegister(usize),
+}
+
+impl ForwardReplyMatcher {
+    fn from_query_bytes(query_bytes: &[u8]) -> Option<Self> {
+        match query_bytes {
+            b"\x1b[14t" => return Some(Self::TextAreaPixelSize),
+            b"\x1b[16t" => return Some(Self::CharacterCellPixelSize),
+            _ => {},
+        }
+
+        let osc_payload = query_bytes.strip_prefix(b"\x1b]").and_then(|payload| {
+            payload
+                .strip_suffix(b"\x1b\\")
+                .or_else(|| payload.strip_suffix(b"\x07"))
+        })?;
+        match osc_payload {
+            b"10;?" => Some(Self::DefaultForeground),
+            b"11;?" => Some(Self::DefaultBackground),
+            _ => {
+                let index = osc_payload.strip_prefix(b"4;")?.strip_suffix(b";?")?;
+                if index.is_empty() || !index.iter().all(u8::is_ascii_digit) {
+                    return None;
+                }
+                let index = std::str::from_utf8(index).ok()?.parse::<u8>().ok()?;
+                Some(Self::PaletteRegister(index as usize))
+            },
+        }
+    }
+
+    fn matches(&self, reply: &HostReply) -> bool {
+        match (self, reply) {
+            (
+                Self::TextAreaPixelSize,
+                HostReply::PixelDimensions(PixelDimensions {
+                    text_area_size: Some(_),
+                    ..
+                }),
+            ) => true,
+            (
+                Self::CharacterCellPixelSize,
+                HostReply::PixelDimensions(PixelDimensions {
+                    character_cell_size: Some(_),
+                    ..
+                }),
+            ) => true,
+            (Self::DefaultForeground, HostReply::ForegroundColor(_)) => true,
+            (Self::DefaultBackground, HostReply::BackgroundColor(_)) => true,
+            (Self::PaletteRegister(expected_index), HostReply::ColorRegisters(registers)) => {
+                registers
+                    .iter()
+                    .any(|(actual_index, _)| actual_index == expected_index)
+            },
+            _ => false,
+        }
+    }
+}
+
 /// The "slot" tracking state for a single forwarded query currently in
-/// flight to the host terminal. The parser accumulates raw reply bytes
-/// into `reply_bytes` until it sees a Primary-DA (`c`) reply, which acts
-/// as the serializing barrier. The timer that enforces the 500 ms
-/// deadline lives on the forward-timeout runtime and owns its own
-/// wall-clock — the parser itself is deadline-agnostic.
+/// flight to the host terminal. The parser retains the latest matching reply
+/// in `reply_bytes` until it sees a Primary-DA (`c`) reply, which acts as the
+/// serializing barrier. Keeping only the latest match avoids forwarding both a
+/// delayed startup reply and the reply to the pane's own identical query.
+/// The timer that enforces the 500 ms deadline lives on the forward-timeout
+/// runtime and owns its own wall-clock — the parser itself is
+/// deadline-agnostic.
 #[derive(Debug, Clone)]
 pub struct ForwardSlot {
     pub token: u32,
     pub reply_bytes: Vec<u8>,
+    expected_reply: Option<ForwardReplyMatcher>,
 }
 
 /// Return value of `feed()`.
@@ -327,9 +401,9 @@ impl StdinAnsiParser {
     }
 
     /// Open a forwarding window for `token`. Subsequent reply events that
-    /// arrive before the Primary-DA barrier will be accumulated into the
-    /// slot's `reply_bytes`, in addition to being dispatched as normal
-    /// classified `HostReply` events.
+    /// match `query_bytes` and arrive before the Primary-DA barrier will be
+    /// retained in the slot's `reply_bytes`, in addition to all recognised
+    /// replies being dispatched as normal classified `HostReply` events.
     ///
     /// The server serializes forwarded queries globally (`forward_in_flight`
     /// on `Screen`), but its own backstop timeout can release that slot and
@@ -339,7 +413,7 @@ impl StdinAnsiParser {
     /// debug builds panic so bugs surface during testing, release builds
     /// log and clobber the previous slot (whose accumulated bytes would
     /// otherwise silently leak).
-    pub fn open_forward(&mut self, token: u32) {
+    pub fn open_forward(&mut self, token: u32, query_bytes: &[u8]) {
         debug_assert!(
             self.active_forward.is_none(),
             "open_forward({}) called while slot for token {:?} is still active",
@@ -355,9 +429,19 @@ impl StdinAnsiParser {
                 existing.reply_bytes.len(),
             );
         }
+        let expected_reply = ForwardReplyMatcher::from_query_bytes(query_bytes);
+        if expected_reply.is_none() {
+            log::warn!(
+                "open_forward({}) received an unrecognised host query; its replies will not be \
+                 forwarded: {:?}",
+                token,
+                query_bytes,
+            );
+        }
         self.active_forward = Some(ForwardSlot {
             token,
             reply_bytes: Vec::new(),
+            expected_reply,
         });
     }
 
@@ -426,14 +510,25 @@ impl StdinAnsiParser {
                         out.desktop_notifications
                             .push(payload.get(3..).unwrap_or_default().to_vec());
                     } else if let Some(reply) = HostReply::from_osc_payload(&payload) {
+                        if let Some(slot) = self.active_forward.as_mut() {
+                            if slot
+                                .expected_reply
+                                .as_ref()
+                                .is_some_and(|expected| expected.matches(&reply))
+                            {
+                                // Re-serialize so the pane's pty sees a legal OSC
+                                // Terminators vary by host; ST (ESC \) is always safe
+                                // Replace an earlier match: if a delayed reply to the
+                                // client's identical startup query arrived first, the
+                                // pane should receive the fresher reply generated by its
+                                // own query
+                                slot.reply_bytes.clear();
+                                slot.reply_bytes.extend_from_slice(b"\x1b]");
+                                slot.reply_bytes.extend_from_slice(&payload);
+                                slot.reply_bytes.extend_from_slice(b"\x1b\\");
+                            }
+                        }
                         out.replies.push(reply);
-                    }
-                    if let Some(slot) = self.active_forward.as_mut() {
-                        // Re-serialize so the pane's pty sees a legal OSC.
-                        // Terminators vary by host; ST (ESC \) is always safe.
-                        slot.reply_bytes.extend_from_slice(b"\x1b]");
-                        slot.reply_bytes.extend_from_slice(&payload);
-                        slot.reply_bytes.extend_from_slice(b"\x1b\\");
                     }
                 },
                 InputEvent::DeviceControlReply {
@@ -461,10 +556,20 @@ impl StdinAnsiParser {
                         },
                         _ => {
                             if let Some(reply) = HostReply::from_csi_report(&raw) {
+                                if let Some(slot) = self.active_forward.as_mut() {
+                                    if slot
+                                        .expected_reply
+                                        .as_ref()
+                                        .is_some_and(|expected| expected.matches(&reply))
+                                    {
+                                        // Each whitelisted query has exactly one reply
+                                        // Retain the latest matching one and exclude all
+                                        // unrelated startup/unsolicited reports
+                                        slot.reply_bytes.clear();
+                                        slot.reply_bytes.extend_from_slice(&raw);
+                                    }
+                                }
                                 out.replies.push(reply);
-                            }
-                            if let Some(slot) = self.active_forward.as_mut() {
-                                slot.reply_bytes.extend_from_slice(&raw);
                             }
                             // Suppress unused-variable warning for params.
                             let _ = params;
