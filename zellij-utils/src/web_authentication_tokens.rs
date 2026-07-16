@@ -60,6 +60,17 @@ impl From<std::io::Error> for TokenError {
 type Result<T> = std::result::Result<T, TokenError>;
 
 fn get_db_path() -> Result<PathBuf> {
+    // LOCAL PATCH (2026-07-15): explicit test-isolation hook. The
+    // cfg!(debug_assertions) guard below does NOT protect release-mode test
+    // runs (`cargo test --release`), whose delete_db() calls wiped the real
+    // tokens.db — twice — logging every web client (Zellient) out.
+    if let Ok(override_path) = std::env::var("ZELLIJ_TOKEN_DB_PATH") {
+        let override_path = PathBuf::from(override_path);
+        if let Some(parent) = override_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        return Ok(override_path);
+    }
     if cfg!(debug_assertions) {
         // tests db
         let data_dir = ZELLIJ_PROJ_DIR.data_dir();

@@ -28,6 +28,16 @@ use zellij_utils::{
 
 use serial_test::serial;
 
+// Point the token DB at a throwaway path BEFORE any delete_db()/create_token()
+// call — release-mode test runs otherwise operate on the user's REAL
+// tokens.db and delete_db() logs every web client out.
+fn isolate_token_db() {
+    let dir = std::env::temp_dir().join(format!("zellij-test-tokens-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    std::env::set_var("ZELLIJ_TOKEN_DB_PATH", dir.join("tokens.db"));
+}
+
+
 mod web_client_tests {
     use super::*;
 
@@ -66,6 +76,7 @@ mod web_client_tests {
     #[tokio::test]
     #[serial]
     async fn test_version_endpoint() {
+        isolate_token_db();
         let _ = delete_db();
 
         let session_manager = Arc::new(MockSessionManager::new());
@@ -121,6 +132,7 @@ mod web_client_tests {
     #[tokio::test]
     #[serial]
     async fn test_login_endpoint() {
+        isolate_token_db();
         let _ = delete_db();
 
         let test_token_name = "test_token_login";
@@ -198,6 +210,7 @@ mod web_client_tests {
     #[tokio::test]
     #[serial]
     async fn test_invalid_auth_token_login() {
+        isolate_token_db();
         let _ = delete_db();
 
         let session_manager = Arc::new(MockSessionManager::new());
@@ -259,6 +272,7 @@ mod web_client_tests {
     #[tokio::test]
     #[serial]
     async fn test_full_session_flow() {
+        isolate_token_db();
         let _ = delete_db();
 
         let test_token_name = "test_token_session_flow";
@@ -466,6 +480,7 @@ mod web_client_tests {
     #[tokio::test]
     #[serial]
     async fn test_unauthorized_access_without_session() {
+        isolate_token_db();
         let _ = delete_db();
 
         let session_manager = Arc::new(MockSessionManager::new());
@@ -516,6 +531,7 @@ mod web_client_tests {
     #[tokio::test]
     #[serial]
     async fn test_invalid_session_token() {
+        isolate_token_db();
         let _ = delete_db();
 
         let session_manager = Arc::new(MockSessionManager::new());
@@ -573,6 +589,7 @@ mod web_client_tests {
     #[tokio::test]
     #[serial]
     async fn test_server_shutdown_closes_websocket_connections() {
+        isolate_token_db();
         let _ = delete_db();
 
         let test_token_name = "test_token_server_shutdown";
@@ -719,6 +736,7 @@ mod web_client_tests {
     #[tokio::test]
     #[serial]
     async fn test_client_cleanup_removes_from_connection_table() {
+        isolate_token_db();
         let _ = delete_db();
 
         let test_token_name = "test_token_client_cleanup";
@@ -894,6 +912,7 @@ mod web_client_tests {
     #[tokio::test]
     #[serial]
     async fn test_cancellation_token_triggers_on_shutdown() {
+        isolate_token_db();
         let _ = delete_db();
 
         let test_token_name = "test_token_cancellation";
@@ -1039,6 +1058,7 @@ mod web_client_tests {
     #[tokio::test]
     #[serial]
     async fn test_different_exit_reasons_handled_properly() {
+        isolate_token_db();
         let _ = delete_db();
 
         let test_token_name = "test_token_exit_reasons";
