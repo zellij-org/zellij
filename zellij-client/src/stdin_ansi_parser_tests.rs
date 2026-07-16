@@ -199,6 +199,48 @@ fn unrelated_osc_between_forwarded_query_and_barrier_is_not_forwarded() {
 }
 
 #[test]
+fn attach_startup_replies_do_not_leak_into_forwarded_pane_reply() {
+    // Exact shape from the Windows Terminal -> SSH attach trace for #5365
+    // The first stdin read ended after the ESC[ prefix of the cell-size
+    // response. The pane's OSC 10 forwarding window opened before the rest
+    // of the startup reply batch arrived
+    let mut parser = StdinAnsiParser::new();
+    let first = parser.feed(b"\x1b[4;1160;2220t\x1b[");
+    assert_eq!(first.replies.len(), 1);
+    assert!(first.has_partial_state);
+    assert!(first.residue.is_empty());
+
+    parser.open_forward(5365, FOREGROUND_QUERY);
+
+    let mut second_chunk = Vec::new();
+    second_chunk.extend_from_slice(b"6;20;10t");
+    second_chunk.extend_from_slice(b"\x1b]11;rgb:1111/1111/1111\x1b\\");
+    // Delayed response to Zellij's own startup OSC 10 query; it has the
+    // right type, but the later response to the pane's query must replace it
+    second_chunk.extend_from_slice(b"\x1b]10;rgb:2222/2222/2222\x1b\\");
+    second_chunk.extend_from_slice(b"\x1b[?2026;2$y");
+    second_chunk.extend_from_slice(b"\x1b]10;rgb:3333/3333/3333\x1b\\");
+    second_chunk.extend_from_slice(b"\x1b[?65;1c");
+
+    let out = parser.feed(&second_chunk);
+    assert_eq!(
+        out.replies.len(),
+        6,
+        "all recognised host replies must still update Zellij's cache"
+    );
+    assert!(out.residue.is_empty());
+    let (token, reply_bytes) = out
+        .completed_forward
+        .expect("Primary-DA barrier must complete the pane forward");
+    assert_eq!(token, 5365);
+    assert_eq!(
+        reply_bytes, b"\x1b]10;rgb:3333/3333/3333\x1b\\",
+        "the pane must receive only the reply to its own OSC 10 query"
+    );
+    assert!(parser.active_forward_token().is_none());
+}
+
+#[test]
 fn double_dispatch_without_active_forward_still_emits_reply() {
     let mut parser = StdinAnsiParser::new();
     // No open_forward — reply should still be classified.
@@ -469,9 +511,9 @@ fn cross_chunk_osc_assembles_across_feeds() {
 
 #[test]
 fn matching_reply_matrix_with_forward_active() {
-    // For every query Zellij can forward, its matching reply must both update
-    // cached state and enter the pane's forward buffer. Unrelated recognised
-    // replies are covered by the attach-startup regression above
+    // Pixel and color replies update both cached state and the pane's buffer
+    // Mode 2027 has separate ownership tests because pane replies must not
+    // update Zellij's startup capability state
     let cases: Vec<MatchingReplyCase<'_>> = vec![
         (
             FOREGROUND_QUERY,
@@ -526,6 +568,45 @@ fn matching_reply_matrix_with_forward_active() {
         assert_eq!(token, 11, "{}: token preserved", label);
         assert_eq!(raw, bytes, "{}: only the matching reply is retained", label);
     }
+}
+
+#[test]
+fn palette_forward_requires_the_queried_register() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(9, b"\x1b]4;9;?\x07");
+    let out = parser.feed(b"\x1b]4;8;rgb:1111/1111/1111\x1b\\");
+    assert_eq!(out.replies.len(), 1);
+    let out = parser.feed(b"\x1b]4;9;rgb:2222/2222/2222\x07");
+    assert_eq!(out.replies.len(), 1);
+    let (_, bytes) = parser.close_forward_on_timeout(9).unwrap();
+    assert_eq!(
+        bytes, b"\x1b]4;9;rgb:2222/2222/2222\x1b\\",
+        "a BEL-terminated query must accept only its matching palette register"
+    );
+}
+
+#[test]
+fn unrecognised_forward_query_fails_closed() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(2026, b"\x1b[?2026$p");
+    let out = parser.feed(
+        b"\x1b[4;720;1280t\
+          \x1b[6;18;9t\
+          \x1b]10;rgb:1111/1111/1111\x1b\\\
+          \x1b]11;rgb:2222/2222/2222\x1b\\\
+          \x1b]4;9;rgb:3333/3333/3333\x1b\\\
+          \x1b[?2026;2$y\
+          \x1b[?997;1n\
+          \x1b[?65;1c",
+    );
+    assert_eq!(
+        out.replies.len(),
+        8,
+        "unknown queries must not prevent recognised reports updating cache"
+    );
+    let (token, bytes) = out.completed_forward.unwrap();
+    assert_eq!(token, 2026);
+    assert!(bytes.is_empty());
 }
 
 #[test]
@@ -2182,4 +2263,43 @@ fn grapheme_cluster_mode_is_not_settled_by_a_pane_barrier() {
     assert_eq!(pane.completed_forward, Some((3, Vec::new())));
     let own = parser.feed(b"\x1b[?62;22c");
     assert_eq!(grapheme_cluster_replies(&own.replies), vec![0]);
+}
+
+#[test]
+fn grapheme_cluster_forward_filters_unrelated_reports_and_keeps_latest_match() {
+    for value in 0u8..=4 {
+        let mut parser = StdinAnsiParser::new();
+        parser.open_forward(9, GRAPHEME_CLUSTER_QUERY);
+        let first = parser.feed(b"\x1b[?2027;2$y\x1b[?2026;2$y\x1b]11;rgb:1111/2222/3333\x1b\\");
+        assert!(first.residue.is_empty());
+        assert!(first.completed_forward.is_none());
+        assert!(grapheme_cluster_replies(&first.replies).is_empty());
+
+        let expected = format!("\x1b[?2027;{}$y", value);
+        let out = parser.feed(format!("{}\x1b[?62;22c", expected).as_bytes());
+        assert!(out.residue.is_empty());
+        assert!(grapheme_cluster_replies(&out.replies).is_empty());
+        assert_eq!(out.completed_forward, Some((9, expected.into_bytes())));
+    }
+}
+
+#[test]
+fn unrelated_grapheme_report_does_not_contaminate_color_or_settle_startup_probe() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(5, BACKGROUND_QUERY);
+    parser.open_own_query_batch();
+    parser.expect_grapheme_cluster_mode_reply();
+
+    let pane = parser.feed(b"\x1b]11;rgb:1111/2222/3333\x1b\\\x1b[?2027;2$y\x1b[?62;22c");
+    assert!(pane.residue.is_empty());
+    assert!(grapheme_cluster_replies(&pane.replies).is_empty());
+    assert_eq!(
+        pane.completed_forward,
+        Some((5, b"\x1b]11;rgb:1111/2222/3333\x1b\\".to_vec()))
+    );
+
+    let own = parser.feed(b"\x1b[?2027;3$y\x1b[?62;22c");
+    assert_eq!(grapheme_cluster_replies(&own.replies), vec![3]);
+    assert!(own.completed_forward.is_none());
+    assert!(!parser.awaiting_replies());
 }
