@@ -221,6 +221,12 @@ impl TestClient {
         self.fake_client_handle.client_screen.snapshot()
     }
 
+    pub fn wait_for_stdout_bytes(&self, what: &str, predicate: impl Fn(&[u8]) -> bool) -> Vec<u8> {
+        self.fake_client_handle
+            .client_screen
+            .wait_for_bytes(what, predicate)
+    }
+
     pub fn quit(mut self) {
         self.send_stdin(&keys::ctrl('q'));
         self.join();

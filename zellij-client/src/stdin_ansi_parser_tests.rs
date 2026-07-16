@@ -196,6 +196,48 @@ fn unrelated_osc_between_forwarded_query_and_barrier_is_not_forwarded() {
 }
 
 #[test]
+fn attach_startup_replies_do_not_leak_into_forwarded_pane_reply() {
+    // Exact shape from the Windows Terminal -> SSH attach trace for #5365.
+    // The first stdin read ended after the ESC[ prefix of the cell-size
+    // response. The pane's OSC 10 forwarding window opened before the rest
+    // of the startup reply batch arrived.
+    let mut parser = StdinAnsiParser::new();
+    let first = parser.feed(b"\x1b[4;1160;2220t\x1b[");
+    assert_eq!(first.replies.len(), 1);
+    assert!(first.has_partial_state);
+    assert!(first.residue.is_empty());
+
+    parser.open_forward(5365, FOREGROUND_QUERY);
+
+    let mut second_chunk = Vec::new();
+    second_chunk.extend_from_slice(b"6;20;10t");
+    second_chunk.extend_from_slice(b"\x1b]11;rgb:1111/1111/1111\x1b\\");
+    // Delayed response to Zellij's own startup OSC 10 query. It has the
+    // right type, but the later response to the pane's query must replace it.
+    second_chunk.extend_from_slice(b"\x1b]10;rgb:2222/2222/2222\x1b\\");
+    second_chunk.extend_from_slice(b"\x1b[?2026;2$y");
+    second_chunk.extend_from_slice(b"\x1b]10;rgb:3333/3333/3333\x1b\\");
+    second_chunk.extend_from_slice(b"\x1b[?65;1c");
+
+    let out = parser.feed(&second_chunk);
+    assert_eq!(
+        out.replies.len(),
+        5,
+        "all recognised host replies must still update Zellij's cache"
+    );
+    assert!(out.residue.is_empty());
+    let (token, reply_bytes) = out
+        .completed_forward
+        .expect("Primary-DA barrier must complete the pane forward");
+    assert_eq!(token, 5365);
+    assert_eq!(
+        reply_bytes, b"\x1b]10;rgb:3333/3333/3333\x1b\\",
+        "the pane must receive only the reply to its own OSC 10 query"
+    );
+    assert!(parser.active_forward_token().is_none());
+}
+
+#[test]
 fn double_dispatch_without_active_forward_still_emits_reply() {
     let mut parser = StdinAnsiParser::new();
     // No open_forward — reply should still be classified.
@@ -499,6 +541,45 @@ fn matching_reply_matrix_with_forward_active() {
         assert_eq!(token, 11, "{}: token preserved", label);
         assert_eq!(raw, bytes, "{}: only the matching reply is retained", label);
     }
+}
+
+#[test]
+fn palette_forward_requires_the_queried_register() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(9, b"\x1b]4;9;?\x07");
+    let out = parser.feed(b"\x1b]4;8;rgb:1111/1111/1111\x1b\\");
+    assert_eq!(out.replies.len(), 1);
+    let out = parser.feed(b"\x1b]4;9;rgb:2222/2222/2222\x07");
+    assert_eq!(out.replies.len(), 1);
+    let (_, bytes) = parser.close_forward_on_timeout(9).unwrap();
+    assert_eq!(
+        bytes, b"\x1b]4;9;rgb:2222/2222/2222\x1b\\",
+        "a BEL-terminated query must accept only its matching palette register"
+    );
+}
+
+#[test]
+fn unrecognised_forward_query_fails_closed() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(2026, b"\x1b[?2026$p");
+    let out = parser.feed(
+        b"\x1b[4;720;1280t\
+          \x1b[6;18;9t\
+          \x1b]10;rgb:1111/1111/1111\x1b\\\
+          \x1b]11;rgb:2222/2222/2222\x1b\\\
+          \x1b]4;9;rgb:3333/3333/3333\x1b\\\
+          \x1b[?2026;2$y\
+          \x1b[?997;1n\
+          \x1b[c",
+    );
+    assert_eq!(
+        out.replies.len(),
+        7,
+        "unknown queries must not prevent recognised reports updating cache"
+    );
+    let (token, bytes) = out.completed_forward.unwrap();
+    assert_eq!(token, 2026);
+    assert!(bytes.is_empty());
 }
 
 #[test]
