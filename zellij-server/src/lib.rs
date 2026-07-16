@@ -47,6 +47,7 @@ use wasmi::Engine;
 
 use crate::{
     os_input_output::ServerOsApi,
+    panes::PaneId,
     plugins::{plugin_thread_main, PluginInstruction},
     pty::{get_default_shell, pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
@@ -139,6 +140,8 @@ pub enum ServerInstruction {
     /// loop. The main loop writes `ServerToClientMsg::ForwardQueryToHost`
     /// to any connected regular client.
     ForwardQueryToHost(u32, Vec<u8>),
+    KeyPassthroughChanged(ClientId, PaneId, PaneId, bool),
+    EmitNestedSessionFrameToClient(ClientId, Vec<u8>),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -188,6 +191,12 @@ impl From<&ServerInstruction> for ServerContext {
             },
             ServerInstruction::ClearMouseHelpText(..) => ServerContext::ClearMouseHelpText,
             ServerInstruction::ForwardQueryToHost(..) => ServerContext::ForwardQueryToHost,
+            ServerInstruction::KeyPassthroughChanged(..) => {
+                ServerContext::KeyPassthroughChanged
+            },
+            ServerInstruction::EmitNestedSessionFrameToClient(..) => {
+                ServerContext::EmitNestedSessionFrameToClient
+            },
         }
     }
 }
@@ -327,6 +336,7 @@ pub(crate) struct SessionMetaData {
     pub default_shell: Option<TerminalAction>,
     pub current_input_modes: HashMap<ClientId, InputMode>,
     pub session_configuration: SessionConfiguration,
+    pub key_passthrough_clients: HashSet<ClientId>,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
     // initialization because we don't want it to be overridden by
     // configuration changes, the only way it can be overwritten is by
@@ -1914,6 +1924,50 @@ pub fn start_server_impl(
                     }
                 }
             },
+            ServerInstruction::KeyPassthroughChanged(
+                client_id,
+                old_pane_id,
+                new_pane_id,
+                should_route,
+            ) => {
+                let mut session_data = session_data.write().unwrap();
+                let session_data = session_data.as_mut().unwrap();
+                let currently_passthrough =
+                    session_data.key_passthrough_clients.contains(&client_id);
+
+                if should_route && !currently_passthrough {
+                    session_data.key_passthrough_clients.insert(client_id);
+                    if let crate::panes::PaneId::Terminal(terminal_id) = new_pane_id {
+                        let frame = zellij_utils::nested_session::encode_frame(
+                            &zellij_utils::nested_session::NestedSessionMessage::FocusGained {
+                                from_direction: None,
+                            },
+                        );
+                        let _ = session_data.senders.send_to_pty_writer(
+                            PtyWriteInstruction::Write(frame, terminal_id, None),
+                        );
+                    }
+                } else if !should_route && currently_passthrough {
+                    session_data.key_passthrough_clients.remove(&client_id);
+                    if let crate::panes::PaneId::Terminal(terminal_id) = old_pane_id {
+                        let frame = zellij_utils::nested_session::encode_frame(
+                            &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
+                        );
+                        let _ = session_data.senders.send_to_pty_writer(
+                            PtyWriteInstruction::Write(frame, terminal_id, None),
+                        );
+                    }
+                }
+            },
+            ServerInstruction::EmitNestedSessionFrameToClient(client_id, payload_bytes) => {
+                send_to_client!(
+                    client_id,
+                    os_input,
+                    ServerToClientMsg::EmitNestedSessionFrame { payload_bytes },
+                    session_state,
+                    session_data
+                );
+            },
         }
     }
 
@@ -2194,6 +2248,7 @@ fn init_session(
         web_sharing: config.options.web_sharing.unwrap_or(WebSharing::Off),
         #[cfg(not(feature = "web_server_capability"))]
         web_sharing: WebSharing::Disabled,
+        key_passthrough_clients: HashSet::new(),
         config_file_path: cli_assets.config_file_path,
     }
 }

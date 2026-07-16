@@ -3753,6 +3753,23 @@ impl Tab {
             pane.set_is_nested_guest(is_nested_guest);
         }
     }
+    pub fn is_pane_nested_guest(&self, pane_id: PaneId) -> bool {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane(pane_id)
+            .or_else(|| self.floating_panes.get_pane(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &s_p.1)
+            })
+        {
+            pane.is_nested_guest()
+        } else {
+            false
+        }
+    }
     pub fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) -> bool {
         if self.tiled_panes.panes_contain(&pane_id) {
             self.tiled_panes.set_shadow_focus(client_id, pane_id);

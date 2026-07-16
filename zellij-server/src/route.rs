@@ -1587,6 +1587,14 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::FocusHostSession => {
+            senders
+                .send_to_screen(ScreenInstruction::FocusHostSession(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::RenameSession { name } => {
             senders
                 .send_to_screen(ScreenInstruction::RenameSession(
@@ -2290,6 +2298,21 @@ pub(crate) fn route_thread_main(
                             // see the doc comment on `route_action` for why this matters.
                             let dispatch_inputs =
                                 session_data.read().unwrap().as_ref().and_then(|s| {
+                                    let in_passthrough =
+                                        s.key_passthrough_clients.contains(&client_id);
+                                    if in_passthrough {
+                                        return Some((
+                                            s.senders.clone(),
+                                            s.default_shell.clone(),
+                                            s.session_configuration
+                                                .get_client_default_input_mode(&client_id),
+                                            vec![Action::Write {
+                                                key_with_modifier: Some(key),
+                                                bytes: raw_bytes,
+                                                is_kitty_keyboard_protocol,
+                                            }],
+                                        ));
+                                    }
                                     let (kb, im, dim) =
                                         s.get_client_keybinds_and_mode(&client_id)?;
                                     let actions: Vec<Action> = kb

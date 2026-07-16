@@ -97,7 +97,7 @@ pub(crate) fn stdin_loop(
         });
     let mut needs_finalization = false;
     let mut reply_in_progress_since: Option<Instant> = None;
-    loop {
+    'stdin: loop {
         match if needs_finalization {
             stdin_rx.recv_timeout(LONE_ESC_FLUSH_INTERVAL)
         } else {
@@ -158,13 +158,16 @@ pub(crate) fn stdin_loop(
                             // continuation completes the sequence.
                             match kitty_parser.feed(&residue) {
                                 KittyParseOutcome::Complete(key_with_modifier) => {
-                                    send_input_instructions
+                                    if send_input_instructions
                                         .send(InputInstruction::KeyWithModifierEvent(
                                             key_with_modifier,
                                             current_buffer.drain(..).collect(),
                                             true,
                                         ))
-                                        .unwrap();
+                                        .is_err()
+                                    {
+                                        break 'stdin;
+                                    }
                                     schedule_finalization(
                                         &stdin_ansi_parser,
                                         false,
@@ -201,9 +204,12 @@ pub(crate) fn stdin_loop(
                         for (input_event, consumed) in events.into_iter() {
                             let take = consumed.min(current_buffer.len());
                             let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
-                            send_input_instructions
+                            if send_input_instructions
                                 .send(InputInstruction::KeyEvent(input_event, raw_bytes))
-                                .unwrap();
+                                .is_err()
+                            {
+                                break 'stdin;
+                            }
                         }
 
                         schedule_finalization(

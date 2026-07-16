@@ -4102,6 +4102,15 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Up,
+                key_modifiers: {},
+            }: [
+                FocusHostSession,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Up,
                 key_modifiers: {
                     Alt,
                 },

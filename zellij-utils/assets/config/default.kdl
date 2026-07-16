@@ -116,6 +116,7 @@ keybinds {
         bind "Ctrl o" { SwitchToMode "Normal"; }
         bind "Ctrl s" { SwitchToMode "Scroll"; }
         bind "d" { Detach; }
+        bind "Up" { FocusHostSession; SwitchToMode "Normal"; }
         bind "w" {
             LaunchOrFocusPlugin "session-manager" {
                 floating true

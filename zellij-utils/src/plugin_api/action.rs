@@ -1098,6 +1098,10 @@ impl TryFrom<ProtobufAction> for Action {
                 },
                 _ => Err("Wrong payload for Action::NewInPlacePane"),
             },
+            Some(ProtobufActionName::FocusHostSession) => match protobuf_action.optional_payload {
+                Some(_) => Err("FocusHostSession should not have a payload"),
+                None => Ok(Action::FocusHostSession),
+            },
             _ => Err("Unknown Action"),
         }
     }
@@ -1971,6 +1975,10 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
+            Action::FocusHostSession => Ok(ProtobufAction {
+                name: ProtobufActionName::FocusHostSession as i32,
+                optional_payload: None,
+            }),
             Action::NoOp
             | Action::Confirm
             | Action::NewInPlacePluginPane {

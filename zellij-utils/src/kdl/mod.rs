@@ -49,6 +49,7 @@ macro_rules! parse_kdl_action_arguments {
                 "FocusNextPane" => Ok(Action::FocusNextPane),
                 "FocusPreviousPane" => Ok(Action::FocusPreviousPane),
                 "FocusLastPane" => Ok(Action::FocusLastPane),
+                "FocusHostSession" => Ok(Action::FocusHostSession),
                 "SwitchFocus" => Ok(Action::SwitchFocus),
                 "EditScrollback" => Ok(Action::EditScrollback { ansi: false }),
                 "ScrollUp" => Ok(Action::ScrollUp),
@@ -1352,6 +1353,7 @@ impl Action {
             Action::SetDarkTheme => Some(KdlNode::new("SetDarkTheme")),
             Action::SetLightTheme => Some(KdlNode::new("SetLightTheme")),
             Action::ToggleTheme => Some(KdlNode::new("ToggleTheme")),
+            Action::FocusHostSession => Some(KdlNode::new("FocusHostSession")),
             _ => None,
         }
     }
@@ -1541,6 +1543,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "FocusLastPane" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "FocusHostSession" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "SwitchFocus" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),

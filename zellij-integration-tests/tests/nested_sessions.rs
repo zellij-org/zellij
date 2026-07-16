@@ -15,6 +15,7 @@ fn a_guest_zellij_running_inside_a_host_zellij_pane_introduces_itself_and_is_kep
     nested.host.wait_for_app_load();
 
     nested.guest.quit();
+    nested.wait_for_host_to_release_guest_focus();
     nested.host.quit();
 }
 

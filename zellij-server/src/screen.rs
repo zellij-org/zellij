@@ -917,6 +917,7 @@ pub enum ScreenInstruction {
         on: bool,
     },
     SetShadowFocus(ClientId, PaneId),
+    FocusHostSession(ClientId, Option<NotificationEnd>),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -1302,6 +1303,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ReevaluateMobileMode { .. } => ScreenContext::ReevaluateMobileMode,
             ScreenInstruction::SetSoftKeyboard { .. } => ScreenContext::SetSoftKeyboard,
             ScreenInstruction::SetShadowFocus(..) => ScreenContext::SetShadowFocus,
+            ScreenInstruction::FocusHostSession(..) => ScreenContext::FocusHostSession,
         }
     }
 }
@@ -2768,6 +2770,27 @@ impl Screen {
                 );
                 self.clear_nested_guest(pane_id);
             },
+            NestedSessionMessage::FocusHost { .. } => {
+                for (client_id, tab_id) in self.active_tab_ids.iter() {
+                    if let Some(focused) = self
+                        .tabs
+                        .get(tab_id)
+                        .and_then(|t| t.get_active_pane_id(*client_id))
+                    {
+                        if focused == pane_id {
+                            let _ = self.bus.senders.send_to_server(
+                                ServerInstruction::KeyPassthroughChanged(
+                                    *client_id,
+                                    pane_id,
+                                    pane_id,
+                                    false,
+                                ),
+                            );
+                            break;
+                        }
+                    }
+                }
+            },
             other => {
                 log::debug!(
                     "dropping unsupported nested session message from pane {:?}: {:?}",
@@ -2806,6 +2829,25 @@ impl Screen {
                 terminal_id,
                 None,
             ));
+        // If a client already has this pane focused, enter key passthrough now
+        for (client_id, tab_id) in self.active_tab_ids.iter() {
+            if let Some(focused) = self
+                .tabs
+                .get(tab_id)
+                .and_then(|t| t.get_active_pane_id(*client_id))
+            {
+                if focused == pane_id {
+                    let _ = self.bus.senders.send_to_server(
+                        ServerInstruction::KeyPassthroughChanged(
+                            *client_id,
+                            pane_id,
+                            pane_id,
+                            true,
+                        ),
+                    );
+                }
+            }
+        }
         let _ = self
             .bus
             .senders
@@ -2829,6 +2871,51 @@ impl Screen {
                 break;
             }
         }
+
+        for (client_id, tab_id) in self.active_tab_ids.iter() {
+            if let Some(focused) = self
+                .tabs
+                .get(tab_id)
+                .and_then(|t| t.get_active_pane_id(*client_id))
+            {
+                if focused == pane_id {
+                    let _ = self.bus.senders.send_to_server(
+                        ServerInstruction::KeyPassthroughChanged(
+                            *client_id,
+                            pane_id,
+                            pane_id,
+                            false,
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    fn should_route_keys_to_pane(&self, pane_id: PaneId) -> bool {
+        for tab in self.tabs.values() {
+            if tab.has_pane_with_pid(&pane_id) {
+                let is_guest = tab.is_pane_nested_guest(pane_id);
+                let is_tracked = self.nested_guest_tracker.is_tracked(pane_id);
+                return is_guest && is_tracked;
+            }
+        }
+        false
+    }
+
+    fn report_key_passthrough_state(
+        &mut self,
+        client_id: ClientId,
+        old_pane_id: PaneId,
+        new_pane_id: PaneId,
+    ) {
+        let should_route = self.should_route_keys_to_pane(new_pane_id);
+        let _ = self.bus.senders.send_to_server(ServerInstruction::KeyPassthroughChanged(
+            client_id,
+            old_pane_id,
+            new_pane_id,
+            should_route,
+        ));
     }
 
     pub fn handle_nested_session_message_from_host(&mut self, message: NestedSessionMessage) {
@@ -3737,8 +3824,8 @@ impl Screen {
                 self.close_tab_by_id(tab_id).with_context(err_context)?;
             }
         }
-        self.log_and_report_session_state()
-            .with_context(err_context)
+        self.log_and_report_session_state().non_fatal();
+        Ok(())
     }
 
     pub fn add_watcher_client(&mut self, client_id: ClientId) -> Result<()> {
@@ -5575,6 +5662,11 @@ impl Screen {
                         && active_pane_id_before != active_pane_id_after
                     {
                         self.clear_bell_for_focused_pane(client_id);
+                        if let (Some(old), Some(new)) =
+                            (active_pane_id_before, active_pane_id_after)
+                        {
+                            self.report_key_passthrough_state(client_id, old, new);
+                        }
                     }
                     should_render = true;
                 }
@@ -6869,14 +6961,18 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::SwitchFocus(
                 client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                _completion_tx,
             ) => {
+                let old_pane_id = screen.get_active_pane_id(&client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.focus_next_pane(client_id)
                 );
+                let new_pane_id = screen.get_active_pane_id(&client_id);
+                if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
+                    screen.report_key_passthrough_state(client_id, old, new);
+                }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
@@ -6888,11 +6984,16 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message("No connected clients to change focus for".to_string());
                     }
                 } else {
+                    let old_pane_id = screen.get_active_pane_id(&client_id);
                     active_tab_and_connected_client_id!(
                         screen,
                         client_id,
                         |tab: &mut Tab, client_id: ClientId| tab.focus_next_pane(client_id)
                     );
+                    let new_pane_id = screen.get_active_pane_id(&client_id);
+                    if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
+                        screen.report_key_passthrough_state(client_id, old, new);
+                    }
                     screen.render(None)?;
                 }
             },
@@ -6904,25 +7005,34 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message("No connected clients to change focus for".to_string());
                     }
                 } else {
+                    let old_pane_id = screen.get_active_pane_id(&client_id);
                     active_tab_and_connected_client_id!(
                         screen,
                         client_id,
                         |tab: &mut Tab, client_id: ClientId| tab.focus_previous_pane(client_id)
                     );
+                    let new_pane_id = screen.get_active_pane_id(&client_id);
+                    if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
+                        screen.report_key_passthrough_state(client_id, old, new);
+                    }
                     screen.render(None)?;
                     screen.log_and_report_session_state()?;
                 }
             },
             ScreenInstruction::FocusLastPane(
                 client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                _completion_tx,
             ) => {
+                let old_pane_id = screen.get_active_pane_id(&client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.focus_last_pane(client_id)
                 );
+                let new_pane_id = screen.get_active_pane_id(&client_id);
+                if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
+                    screen.report_key_passthrough_state(client_id, old, new);
+                }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
@@ -6934,12 +7044,17 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message("No connected clients to move focus for".to_string());
                     }
                 } else {
+                    let old_pane_id = screen.get_active_pane_id(&client_id);
                     active_tab_and_connected_client_id!(
                         screen,
                         client_id,
                         |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id),
                         ?
                     );
+                    let new_pane_id = screen.get_active_pane_id(&client_id);
+                    if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
+                        screen.report_key_passthrough_state(client_id, old, new);
+                    }
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
                     screen.render(None)?;
@@ -6969,12 +7084,17 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message("No connected clients to move focus for".to_string());
                     }
                 } else {
+                    let old_pane_id = screen.get_active_pane_id(&client_id);
                     active_tab_and_connected_client_id!(
                         screen,
                         client_id,
                         |tab: &mut Tab, client_id: ClientId| tab.move_focus_down(client_id),
                         ?
                     );
+                    let new_pane_id = screen.get_active_pane_id(&client_id);
+                    if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
+                        screen.report_key_passthrough_state(client_id, old, new);
+                    }
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
                     screen.render(None)?;
@@ -6989,12 +7109,17 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message("No connected clients to move focus for".to_string());
                     }
                 } else {
+                    let old_pane_id = screen.get_active_pane_id(&client_id);
                     active_tab_and_connected_client_id!(
                         screen,
                         client_id,
                         |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id),
                         ?
                     );
+                    let new_pane_id = screen.get_active_pane_id(&client_id);
+                    if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
+                        screen.report_key_passthrough_state(client_id, old, new);
+                    }
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
                     screen.render(None)?;
@@ -7024,12 +7149,17 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message("No connected clients to move focus for".to_string());
                     }
                 } else {
+                    let old_pane_id = screen.get_active_pane_id(&client_id);
                     active_tab_and_connected_client_id!(
                         screen,
                         client_id,
                         |tab: &mut Tab, client_id: ClientId| tab.move_focus_up(client_id),
                         ?
                     );
+                    let new_pane_id = screen.get_active_pane_id(&client_id);
+                    if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
+                        screen.report_key_passthrough_state(client_id, old, new);
+                    }
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
                     screen.render(None)?;
@@ -7565,11 +7695,16 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::CloseFocusedPane(client_id, completion_tx) => {
+                let old_pane_id = screen.get_active_pane_id(&client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.close_focused_pane(client_id, completion_tx), ?
                 );
+                let new_pane_id = screen.get_active_pane_id(&client_id);
+                if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
+                    screen.report_key_passthrough_state(client_id, old, new);
+                }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
@@ -8246,6 +8381,10 @@ pub(crate) fn screen_thread_main(
                 } else if let Some(tab_position_to_focus) = tab_position_to_focus {
                     screen.go_to_tab(tab_position_to_focus, client_id)?;
                 }
+                let focused_pane_id = screen.get_active_pane_id(&client_id);
+                if let Some(focused) = focused_pane_id {
+                    screen.report_key_passthrough_state(client_id, focused, focused);
+                }
                 for event in pending_events_waiting_for_client.drain(..) {
                     screen.bus.senders.send_to_screen(event).non_fatal();
                 }
@@ -8269,7 +8408,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::RemoveClient(client_id) => {
                 screen.remove_client(client_id)?;
-                screen.log_and_report_session_state()?;
+                screen.log_and_report_session_state().non_fatal();
                 screen.render(None)?;
             },
             ScreenInstruction::SuppressRenderUntilMobile(client_id) => {
@@ -10861,6 +11000,14 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::SetShadowFocus(client_id, pane_id) => {
                 screen.set_shadow_focus(client_id, pane_id)?;
+            },
+            ScreenInstruction::FocusHostSession(client_id, _completion_tx) => {
+                let payload = nested_session::encode_payload(
+                    &NestedSessionMessage::FocusHost { direction: None },
+                );
+                let _ = screen.bus.senders.send_to_server(
+                    ServerInstruction::EmitNestedSessionFrameToClient(client_id, payload),
+                );
             },
         }
     }

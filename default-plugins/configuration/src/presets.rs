@@ -121,6 +121,7 @@ keybinds clear-defaults=true {{
     session {{
         bind "o" {{ SwitchToMode "Normal"; }}
         bind "d" {{ Detach; }}
+        bind "Up" {{ FocusHostSession; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -345,6 +346,7 @@ keybinds clear-defaults=true {{
         bind "{primary_modifier} o" {{ SwitchToMode "Normal"; }}
         bind "{primary_modifier} s" {{ SwitchToMode "Scroll"; }}
         bind "d" {{ Detach; }}
+        bind "Up" {{ FocusHostSession; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -569,6 +571,7 @@ keybinds clear-defaults=true {{
     }}
     session {{
         bind "d" {{ Detach; }}
+        bind "Up" {{ FocusHostSession; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -774,6 +777,7 @@ keybinds clear-defaults=true {{
         bind "{primary_modifier} o" {{ SwitchToMode "Normal"; }}
         bind "{primary_modifier} s" {{ SwitchToMode "Scroll"; }}
         bind "d" {{ Detach; }}
+        bind "Up" {{ FocusHostSession; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -979,6 +983,7 @@ keybinds clear-defaults=true {{
     }}
     session {{
         bind "d" {{ Detach; }}
+        bind "Up" {{ FocusHostSession; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -1179,6 +1184,7 @@ keybinds clear-defaults=true {{
         bind "{primary_modifier} o" {{ SwitchToMode "Normal"; }}
         bind "{primary_modifier} s" {{ SwitchToMode "Scroll"; }}
         bind "d" {{ Detach; }}
+        bind "Up" {{ FocusHostSession; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true

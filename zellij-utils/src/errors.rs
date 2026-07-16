@@ -480,6 +480,7 @@ pub enum ScreenContext {
     ReevaluateMobileMode,
     SetSoftKeyboard,
     SetShadowFocus,
+    FocusHostSession,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -628,6 +629,8 @@ pub enum ServerContext {
     SendWebClientsForbidden,
     ClearMouseHelpText,
     ForwardQueryToHost,
+    KeyPassthroughChanged,
+    EmitNestedSessionFrameToClient,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

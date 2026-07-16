@@ -101,6 +101,7 @@ keybinds clear-defaults=true {
         bind "w" { SearchToggleOption "Wrap"; }
     }
     session {
+        bind "up" { FocusHostSession; SwitchToMode "normal"; }
         bind "a" {
             LaunchOrFocusPlugin "zellij:about" {
                 floating true
@@ -616,4 +617,3 @@ web_client {
 // Row breakpoint for mobile_layout (web/always). 0 = always match.
 // Default: 30
 // mobile_threshold_rows 30
-

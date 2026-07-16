@@ -954,6 +954,7 @@ impl From<crate::input::actions::Action>
             EditScrollbackAction,
             EditScrollbackByPaneIdAction,
             FocusLastPaneAction,
+            FocusHostSessionAction,
             FocusNextPaneAction,
             FocusPaneByPaneIdAction,
             FocusPluginPaneWithIdAction,
@@ -1134,6 +1135,9 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::FocusLastPane => {
                 ActionType::FocusLastPane(FocusLastPaneAction {})
+            },
+            crate::input::actions::Action::FocusHostSession => {
+                ActionType::FocusHostSession(FocusHostSessionAction {})
             },
             crate::input::actions::Action::SwitchFocus => {
                 ActionType::SwitchFocus(SwitchFocusAction {})
@@ -2586,6 +2590,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::BreakPane(_) => Ok(crate::input::actions::Action::BreakPane),
             ActionType::BreakPaneRight(_) => Ok(crate::input::actions::Action::BreakPaneRight),
             ActionType::BreakPaneLeft(_) => Ok(crate::input::actions::Action::BreakPaneLeft),
+            ActionType::FocusHostSession(_) => Ok(crate::input::actions::Action::FocusHostSession),
             ActionType::RenameSession(rename_session_action) => {
                 Ok(crate::input::actions::Action::RenameSession {
                     name: rename_session_action.name,

@@ -509,6 +509,7 @@ pub enum Action {
     BreakPane,
     BreakPaneRight,
     BreakPaneLeft,
+    FocusHostSession,
     RenameSession {
         name: String,
     },

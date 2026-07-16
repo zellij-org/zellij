@@ -1135,6 +1135,7 @@ pub enum ActionName {
     FocusLastPane = 104,
     SetPaneFrameStyle = 105,
     ToggleFocusNoUiFullscreen = 106,
+    FocusHostSession = 107,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1247,6 +1248,7 @@ impl ActionName {
             ActionName::FocusLastPane => "FocusLastPane",
             ActionName::SetPaneFrameStyle => "SetPaneFrameStyle",
             ActionName::ToggleFocusNoUiFullscreen => "ToggleFocusNoUiFullscreen",
+            ActionName::FocusHostSession => "FocusHostSession",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1356,6 +1358,7 @@ impl ActionName {
             "FocusLastPane" => Some(Self::FocusLastPane),
             "SetPaneFrameStyle" => Some(Self::SetPaneFrameStyle),
             "ToggleFocusNoUiFullscreen" => Some(Self::ToggleFocusNoUiFullscreen),
+            "FocusHostSession" => Some(Self::FocusHostSession),
             _ => None,
         }
     }

@@ -172,6 +172,13 @@ impl NestedHarness {
         );
     }
 
+    pub fn wait_for_host_to_release_guest_focus(&self) {
+        self.host_to_guest.wait_for(
+            "the outer (host) session to notice the guest is gone and stop routing keys into its pane",
+            |message| matches!(message, NestedSessionMessage::FocusLost),
+        );
+    }
+
     pub fn freeze_guest(&self) {
         self.frozen.store(true, Ordering::SeqCst);
     }
