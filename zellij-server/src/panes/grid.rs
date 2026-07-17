@@ -1916,8 +1916,9 @@ impl Grid {
                 for _ in self.viewport.len()..self.cursor.y {
                     self.viewport.push_back(Row::new().canonical());
                 }
-                self.viewport
-                    .push_back(Row::new().with_character(terminal_character).canonical());
+                let mut new_row = Row::new().canonical();
+                new_row.add_character_at(terminal_character, self.cursor.x);
+                self.viewport.push_back(new_row);
                 self.output_buffer.update_line(self.cursor.y);
             },
         }

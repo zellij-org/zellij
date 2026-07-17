@@ -4257,6 +4257,33 @@ fn create_grid_with_content(content: &str) -> Grid {
 }
 
 #[test]
+fn cursor_forward_over_unwritten_line_positions_character() {
+    use crate::panes::terminal_character::AnsiCode;
+
+    let content = "\u{1b}[1BABC \u{1b}[1B\r\u{1b}[3C\u{1b}[42mDEF\u{1b}[0m";
+    let grid = create_grid_with_content(content);
+
+    let row = &grid.viewport[2];
+
+    assert_eq!(row.columns[0].character, ' ');
+    assert_eq!(row.columns[1].character, ' ');
+    assert_eq!(row.columns[2].character, ' ');
+    assert_eq!(row.columns[3].character, 'D');
+    assert_eq!(row.columns[4].character, 'E');
+    assert_eq!(row.columns[5].character, 'F');
+
+    let has_background = |c: &crate::panes::terminal_character::TerminalCharacter| {
+        !matches!(c.styles.background, Some(AnsiCode::Reset) | None)
+    };
+    assert!(!has_background(&row.columns[0]));
+    assert!(!has_background(&row.columns[1]));
+    assert!(!has_background(&row.columns[2]));
+    assert!(has_background(&row.columns[3]));
+    assert!(has_background(&row.columns[4]));
+    assert!(has_background(&row.columns[5]));
+}
+
+#[test]
 fn double_click_selection_preserved_after_scroll() {
     let content = "line 0\nline 1\nline 2\nline 3\nline 4\nthis is a word test\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\n";
     let mut grid = create_grid_with_content(content);
