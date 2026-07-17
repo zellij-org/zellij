@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow binding `SetDarkTheme`, `SetLightTheme` and `ToggleTheme` as direct keybinding actions (https://github.com/zellij-org/zellij/pull/5302)
 * feat: allow disabling ctrl-mouse-scroll to resize panes (https://github.com/zellij-org/zellij/pull/5283)
 * fix: scrolling region line wrap behavior at bottom edge (https://github.com/zellij-org/zellij/pull/5357)
+* fix: properly pad lines before CUF (https://github.com/zellij-org/zellij/pull/5377)
 
 ## [0.44.3] - 2026-05-13
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)
