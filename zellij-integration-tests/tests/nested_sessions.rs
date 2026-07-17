@@ -5,9 +5,14 @@ use zellij_integration_tests::{
     col, composite_contains_settled_guest_grid, keys, normalized, wait_for_settled_composite,
     GridSnapshot, NestedDepthThreeHarness, NestedHarness, PROMPT, TERMINAL_SIZE,
 };
+use zellij_utils::data::Direction;
+use zellij_utils::nested_session::NestedSessionMessage;
 
 const ARROW_UP: &[u8] = b"\x1b[A";
 const ARROW_LEFT: &[u8] = b"\x1b[D";
+const ARROW_RIGHT: &[u8] = b"\x1b[C";
+const ARROW_DOWN: &[u8] = b"\x1b[B";
+const ALT_ARROW_RIGHT: &[u8] = b"\x1b[1;3C";
 
 fn sgr_mouse_report(column: usize, line: usize, button: u8) -> Vec<u8> {
     format!("\u{1b}[<{};{};{}M", button, column, line).into_bytes()
@@ -34,6 +39,14 @@ fn normal_mode_bar_settled(grid_snapshot: &GridSnapshot) -> bool {
 
 fn pane_mode_bar_settled(grid_snapshot: &GridSnapshot) -> bool {
     last_line_contains(grid_snapshot, "Fullscreen")
+}
+
+fn guest_pane_mode_bar_settled(grid_snapshot: &GridSnapshot) -> bool {
+    last_line_contains(grid_snapshot, "PANE") && last_line_contains(grid_snapshot, "Move")
+}
+
+fn guest_tab_mode_bar_settled(grid_snapshot: &GridSnapshot) -> bool {
+    last_line_contains(grid_snapshot, "TAB") && last_line_contains(grid_snapshot, "New")
 }
 
 fn guest_normal_mode_bar_settled(guest_grid: &GridSnapshot) -> bool {
@@ -89,6 +102,15 @@ fn host_tab_bar_renamed_to_guest(grid_snapshot: &GridSnapshot, guest_session_nam
         .lines()
         .first()
         .map_or(false, |first_line| first_line.contains(guest_session_name))
+}
+
+fn host_chrome_dimmed(host_grid: &GridSnapshot) -> bool {
+    host_grid.line_has_dim("Pane #2")
+        && host_grid.char_dim_of("test-").map_or(true, |dim| !dim)
+}
+
+fn host_chrome_undimmed(host_grid: &GridSnapshot) -> bool {
+    !host_grid.line_has_dim("Pane #2")
 }
 
 #[test]
@@ -180,6 +202,39 @@ fn build_descended_state_with_host_sibling(nested: &NestedHarness) {
     ascend_via_focus_host_binding(nested);
     split_host_sibling(nested);
     descend_into_guest_on_the_left(nested);
+}
+
+fn split_host_sibling_below(nested: &NestedHarness) {
+    nested.host.send_stdin(&keys::ctrl('p'));
+    nested.host.wait_until(
+        "host entered pane mode before the split-down key",
+        pane_mode_bar_settled,
+    );
+    nested.host.send_stdin(&keys::key('d'));
+    let sibling = nested.host.expect_pty_spawn();
+    sibling.output(PROMPT);
+    nested.host.wait_until(
+        "host returned to normal mode after the split-down key",
+        |host_grid| normal_mode_bar_settled(host_grid) && prompt_count(host_grid) >= 1,
+    );
+}
+
+fn descend_into_guest_above(nested: &NestedHarness) {
+    let descended = nested.mark_host_to_guest();
+    nested.host.send_stdin(&keys::ctrl('p'));
+    nested.host.wait_until(
+        "host entered pane mode before the focus-up key",
+        pane_mode_bar_settled,
+    );
+    nested.host.send_stdin(ARROW_UP);
+    nested.wait_for_host_to_descend_into_guest_after(descended);
+}
+
+fn build_descended_state_with_host_sibling_below(nested: &NestedHarness) {
+    boot_and_descend_on_first_load(nested);
+    ascend_via_focus_host_binding(nested);
+    split_host_sibling_below(nested);
+    descend_into_guest_above(nested);
 }
 
 fn quit_guest_then_host(mut nested: NestedHarness) {
@@ -569,4 +624,371 @@ fn descend_and_ascend_work_at_depth_three() {
     nested.wait_for_outer_to_ascend_from_middle_after(outer_released_middle);
 
     nested.outer.quit();
+}
+
+fn pass_ctrl_p_to_guest(nested: &NestedHarness) {
+    nested.host.send_stdin(&keys::ctrl('p'));
+    nested.guest.wait_until(
+        "guest entered pane mode after the passed-through mode key",
+        guest_pane_mode_bar_settled,
+    );
+}
+
+fn split_second_guest_pane(nested: &NestedHarness) {
+    nested.host.send_stdin(&keys::alt('n'));
+    let guest_new_pane = nested.guest.expect_pty_spawn();
+    guest_new_pane.output(PROMPT);
+    nested.guest.wait_until(
+        "guest spawned a second pane from the passed-through key",
+        two_pane_guest_settled,
+    );
+}
+
+#[test]
+fn descended_client_sees_dimmed_host_chrome_while_second_client_does_not() {
+    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+    let guest_session_name = nested.guest.session_name().to_string();
+
+    boot_and_descend_on_first_load(&nested);
+    ascend_via_focus_host_binding(&nested);
+    split_host_sibling(&nested);
+
+    let second = nested.host.attach_client(TERMINAL_SIZE);
+    let second_client = second.wait_until(
+        "the second host client focuses the sibling pane undimmed on attach",
+        |host_grid| {
+            host_own_tab_bar_settled(host_grid, &guest_session_name)
+                && host_grid.contains("Pane #2")
+                && host_chrome_undimmed(host_grid)
+        },
+    );
+
+    let descended = nested.mark_host_to_guest();
+    nested.host.send_stdin(&keys::ctrl('p'));
+    nested.host.wait_until(
+        "first client entered pane mode before moving focus onto the guest",
+        pane_mode_bar_settled,
+    );
+    nested.host.send_stdin(ARROW_LEFT);
+    nested.wait_for_host_to_descend_into_guest_after(descended);
+
+    let descended_client = nested.host.wait_until(
+        "the first host client renders dimmed host chrome while descended",
+        |host_grid| {
+            host_grid.contains("Pane #2")
+                && host_grid.contains("Tab #1")
+                && host_chrome_dimmed(host_grid)
+        },
+    );
+
+    let second_still_undimmed = second.wait_until(
+        "the second host client stays undimmed while the first is descended",
+        |host_grid| host_grid.contains("Pane #2") && host_chrome_undimmed(host_grid),
+    );
+
+    assert!(host_chrome_dimmed(&descended_client));
+    assert!(host_chrome_undimmed(&second_client));
+    assert!(host_chrome_undimmed(&second_still_undimmed));
+
+    second.quit();
+    quit_guest_then_host(nested);
+}
+
+fn host_chrome_rows(host_grid: &GridSnapshot) -> (String, String) {
+    let lines = host_grid.lines();
+    let first = lines.first().cloned().unwrap_or_default();
+    let last = lines.last().cloned().unwrap_or_default();
+    (first, last)
+}
+
+#[test]
+fn host_chrome_restores_exactly_after_ascend() {
+    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+    let guest_session_name = nested.guest.session_name().to_string();
+
+    boot_and_descend_on_first_load(&nested);
+    ascend_via_focus_host_binding(&nested);
+    split_host_sibling(&nested);
+
+    let before_descend = nested.host.wait_until(
+        "host chrome is undimmed before descending",
+        |host_grid| {
+            host_own_tab_bar_settled(host_grid, &guest_session_name)
+                && host_grid.contains("Pane #2")
+                && normal_mode_bar_settled(host_grid)
+                && host_chrome_undimmed(host_grid)
+        },
+    );
+    let before_chrome = host_chrome_rows(&before_descend);
+
+    descend_into_guest_on_the_left(&nested);
+    nested.host.wait_until(
+        "host chrome dims while descended",
+        |host_grid| {
+            host_own_tab_bar_settled(host_grid, &guest_session_name)
+                && host_grid.contains("Pane #2")
+                && host_chrome_dimmed(host_grid)
+        },
+    );
+
+    let released = nested.mark_host_to_guest();
+    nested.host.send_stdin(&keys::ctrl('o'));
+    nested.host.send_stdin(ARROW_UP);
+    nested.wait_for_host_to_ascend_from_guest_after(released);
+    nested.host.send_stdin(&keys::ESC);
+    let after_ascend = nested.host.wait_until(
+        "host chrome restores to undimmed after ascending",
+        |host_grid| {
+            host_grid.contains("Pane #2")
+                && normal_mode_bar_settled(host_grid)
+                && host_chrome_undimmed(host_grid)
+                && host_chrome_rows(host_grid) == before_chrome
+        },
+    );
+
+    assert_eq!(
+        host_chrome_rows(&after_ascend),
+        before_chrome,
+        "host chrome rows restore exactly after ascend"
+    );
+
+    nested.guest.quit();
+    nested.host.quit();
+}
+
+#[test]
+fn guest_edge_focus_move_bubbles_out_to_the_adjacent_host_pane() {
+    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+
+    build_descended_state_with_host_sibling(&nested);
+
+    let requested = nested.mark_guest_to_host();
+    let ascended = nested.mark_host_to_guest();
+    pass_ctrl_p_to_guest(&nested);
+    nested.host.send_stdin(ARROW_RIGHT);
+    nested.guest_to_host().wait_for_after(
+        requested,
+        "the guest at its right edge bubbles a focus-host request to the right",
+        |message| {
+            matches!(
+                message,
+                NestedSessionMessage::FocusHost {
+                    direction: Some(Direction::Right)
+                }
+            )
+        },
+    );
+    nested.wait_for_host_to_ascend_from_guest_after(ascended);
+
+    let host_on_sibling = nested.host.wait_until(
+        "host focus landed on the sibling pane to the right of the guest",
+        |host_grid| {
+            host_grid.contains("Pane #2")
+                && host_grid.contains("Tab #1")
+                && host_chrome_undimmed(host_grid)
+        },
+    );
+    assert!(host_chrome_undimmed(&host_on_sibling));
+
+    nested.host.send_stdin(&keys::alt('n'));
+    let host_new_pane = nested.host.expect_pty_spawn();
+    host_new_pane.output(PROMPT);
+    nested.host.wait_until(
+        "host acts on its own key after the guest bubbled focus out",
+        |host_grid| host_grid.contains("Pane #3") && host_grid.contains("Tab #1"),
+    );
+
+    nested.guest.quit();
+    nested.host.quit();
+}
+
+#[test]
+fn host_focus_move_onto_guest_pane_enters_at_the_correct_edge() {
+    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+
+    boot_and_descend_on_first_load(&nested);
+    ascend_via_focus_host_binding(&nested);
+    split_host_sibling(&nested);
+
+    let entered = nested.mark_host_to_guest();
+    nested.host.send_stdin(&keys::ctrl('p'));
+    nested.host.wait_until(
+        "host entered pane mode before moving focus onto the guest",
+        pane_mode_bar_settled,
+    );
+    nested.host.send_stdin(ARROW_LEFT);
+    nested.host_to_guest().wait_for_after(
+        entered,
+        "the host tells the guest it entered from the left edge when moving left onto it",
+        |message| {
+            matches!(
+                message,
+                NestedSessionMessage::FocusGained {
+                    from_direction: Some(Direction::Left)
+                }
+            )
+        },
+    );
+
+    quit_guest_then_host(nested);
+}
+
+#[test]
+fn no_bubble_when_the_focus_move_stays_inside_the_guest() {
+    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+
+    build_descended_state_with_host_sibling(&nested);
+    split_second_guest_pane(&nested);
+
+    nested.guest.wait_until("two panes", two_pane_guest_settled);
+    pass_ctrl_p_to_guest(&nested);
+    let focus_host_before = nested
+        .guest_to_host()
+        .count(|message| matches!(message, NestedSessionMessage::FocusHost { .. }));
+    nested.host.send_stdin(ARROW_LEFT);
+    nested.guest.wait_until(
+        "guest focus moved to the left pane while staying in pane mode",
+        |guest_grid| {
+            guest_grid
+                .cursor
+                .map_or(false, |cursor| cursor.x < 15)
+                && guest_pane_mode_bar_settled(guest_grid)
+        },
+    );
+    assert_eq!(
+        nested
+            .guest_to_host()
+            .count(|message| matches!(message, NestedSessionMessage::FocusHost { .. })),
+        focus_host_before,
+        "moving focus between two guest panes must not bubble a focus-host request"
+    );
+
+    quit_guest_then_host(nested);
+}
+
+#[test]
+fn fullscreened_guest_pane_still_bubbles_at_the_edges() {
+    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+
+    build_descended_state_with_host_sibling_below(&nested);
+    split_second_guest_pane(&nested);
+
+    pass_ctrl_p_to_guest(&nested);
+    nested.host.send_stdin(&keys::key('f'));
+    nested.guest.wait_until(
+        "guest fullscreened its focused pane",
+        |guest_grid| guest_grid.contains("FULLSCREEN") || guest_ui_settled(guest_grid),
+    );
+
+    let requested = nested.mark_guest_to_host();
+    let ascended = nested.mark_host_to_guest();
+    pass_ctrl_p_to_guest(&nested);
+    nested.host.send_stdin(ARROW_DOWN);
+    nested.guest_to_host().wait_for_after(
+        requested,
+        "the fullscreened guest bubbles a downward focus-host request off its edge",
+        |message| {
+            matches!(
+                message,
+                NestedSessionMessage::FocusHost {
+                    direction: Some(Direction::Down)
+                }
+            )
+        },
+    );
+    nested.wait_for_host_to_ascend_from_guest_after(ascended);
+    nested.host.wait_until(
+        "host focus landed on the pane below the guest",
+        |host_grid| {
+            host_grid.contains("Pane #2")
+                && host_grid.contains("Tab #1")
+                && host_chrome_undimmed(host_grid)
+        },
+    );
+
+    nested.guest.quit();
+    nested.host.quit();
+}
+
+#[test]
+fn move_focus_or_tab_bubbles_only_when_the_guest_has_a_single_tab() {
+    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+
+    build_descended_state_with_host_sibling(&nested);
+
+    let requested = nested.mark_guest_to_host();
+    let ascended = nested.mark_host_to_guest();
+    nested.guest.wait_until(
+        "guest settled in normal mode before the alt-arrow is passed through",
+        guest_ui_settled,
+    );
+    nested.host.send_stdin(ALT_ARROW_RIGHT);
+    nested.guest_to_host().wait_for_after(
+        requested,
+        "a single-tab guest bubbles the move-or-tab off its right edge",
+        |message| {
+            matches!(
+                message,
+                NestedSessionMessage::FocusHost {
+                    direction: Some(Direction::Right)
+                }
+            )
+        },
+    );
+    nested.wait_for_host_to_ascend_from_guest_after(ascended);
+    nested.host.wait_until(
+        "host focus landed on the sibling after the single-tab move-or-tab bubbled",
+        |host_grid| {
+            host_grid.contains("Pane #2")
+                && host_grid.contains("Tab #1")
+                && host_chrome_undimmed(host_grid)
+        },
+    );
+
+    nested.guest.quit();
+    nested.host.quit();
+}
+
+#[test]
+fn move_focus_or_tab_wraps_tabs_without_bubbling_when_the_guest_has_multiple_tabs() {
+    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+
+    build_descended_state_with_host_sibling(&nested);
+
+    nested.host.send_stdin(&keys::ctrl('t'));
+    nested.guest.wait_until(
+        "guest entered tab mode after the passed-through key",
+        guest_tab_mode_bar_settled,
+    );
+    nested.host.send_stdin(&keys::key('n'));
+    nested.guest.wait_until(
+        "guest opened a second tab and focused it",
+        |guest_grid| guest_grid.contains("Tab #2") && guest_normal_mode_bar_settled(guest_grid),
+    );
+
+    let focus_host_before = nested
+        .guest_to_host()
+        .count(|message| matches!(message, NestedSessionMessage::FocusHost { .. }));
+    nested.host.send_stdin(ALT_ARROW_RIGHT);
+    nested.guest.wait_until(
+        "guest wrapped back to the first tab instead of bubbling",
+        |guest_grid| {
+            guest_grid
+                .lines()
+                .first()
+                .map_or(false, |first_line| {
+                    first_line.contains("Tab #1") && first_line.contains("Tab #2")
+                })
+                && guest_normal_mode_bar_settled(guest_grid)
+        },
+    );
+    assert_eq!(
+        nested
+            .guest_to_host()
+            .count(|message| matches!(message, NestedSessionMessage::FocusHost { .. })),
+        focus_host_before,
+        "a multi-tab guest wraps tabs and must not bubble a focus-host request"
+    );
+
+    quit_guest_then_host(nested);
 }

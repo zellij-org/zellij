@@ -10,7 +10,9 @@ pub mod nested;
 pub mod runner;
 pub mod test_env;
 
-pub use client_screen::{col, ClientScreen, Coord, CoordBuilder, CursorPosition, GridSnapshot};
+pub use client_screen::{
+    col, CellStyle, ClientScreen, Coord, CoordBuilder, CursorPosition, GridSnapshot,
+};
 pub use fake_pty::FakePtyHandle;
 pub use harness::{
     claim_first_terminal_and_wait_for_prompt, split_down_and_wait_for_prompt,

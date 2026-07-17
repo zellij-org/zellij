@@ -476,3 +476,45 @@ pub fn serialize_text_with_coordinates(
         text.serialize()
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn text_body(text: &str) -> String {
+        text.as_bytes()
+            .iter()
+            .map(|byte| byte.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    #[test]
+    fn disabled_flag_serializes_with_a_d_prefix() {
+        let serialized = Text::new("x").disabled().serialize();
+        assert_eq!(serialized, format!("d{}", text_body("x")));
+    }
+
+    #[test]
+    fn opaque_and_disabled_serialize_in_push_order() {
+        let serialized = Text::new("x").disabled().opaque().serialize();
+        assert_eq!(serialized, format!("zd{}", text_body("x")));
+    }
+
+    #[test]
+    fn all_flags_serialize_in_selected_opaque_disabled_order() {
+        let serialized = Text::new("x").disabled().opaque().selected().serialize();
+        assert_eq!(serialized, format!("xzd{}", text_body("x")));
+    }
+
+    #[test]
+    fn flags_do_not_disturb_indices_or_text() {
+        let serialized = Text::new("Foo bar baz")
+            .disabled()
+            .color_indices(0, vec![0, 1, 2])
+            .serialize();
+        assert!(serialized.starts_with('d'));
+        assert!(serialized.contains("0,1,2$"));
+        assert!(serialized.ends_with(&text_body("Foo bar baz")));
+    }
+}

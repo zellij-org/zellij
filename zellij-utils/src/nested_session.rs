@@ -330,6 +330,31 @@ mod tests {
     }
 
     #[test]
+    fn focus_direction_roundtrip_preserves_every_direction() {
+        let directions = [
+            None,
+            Some(Direction::Left),
+            Some(Direction::Right),
+            Some(Direction::Up),
+            Some(Direction::Down),
+        ];
+        for direction in directions {
+            let focus_host = NestedSessionMessage::FocusHost { direction };
+            assert_eq!(
+                decode_payload(&encode_payload(&focus_host)),
+                Some(focus_host)
+            );
+            let focus_gained = NestedSessionMessage::FocusGained {
+                from_direction: direction,
+            };
+            assert_eq!(
+                decode_payload(&encode_payload(&focus_gained)),
+                Some(focus_gained)
+            );
+        }
+    }
+
+    #[test]
     fn frame_roundtrip_preserves_message() {
         let message = NestedSessionMessage::Announce {
             session_name: "guest".to_owned(),

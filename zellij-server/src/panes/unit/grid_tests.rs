@@ -6384,3 +6384,84 @@ fn nested_session_frame_with_garbage_payload_is_dropped() {
     }
     assert!(grid.pending_nested_session_messages.is_empty());
 }
+
+fn serialize_text_bytes(text: &str) -> String {
+    text.as_bytes()
+        .iter()
+        .map(|byte| byte.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn render_ui_component(component_name: &str, serialized_params: &str) -> Grid {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = new_grid_for_nested_frames();
+    let dcs = format!("\u{1b}Pz{};{}\u{1b}\\", component_name, serialized_params);
+    for byte in dcs.bytes() {
+        vte_parser.advance(&mut grid, byte);
+    }
+    grid
+}
+
+fn styled_cells_of(grid: &Grid, needle: char) -> Vec<crate::panes::terminal_character::CharacterStyles> {
+    let mut styles = vec![];
+    for line in grid.as_character_lines() {
+        for terminal_character in line {
+            if terminal_character.character == needle {
+                styles.push(*terminal_character.styles);
+            }
+        }
+    }
+    styles
+}
+
+#[test]
+fn disabled_ribbon_renders_italic_non_bold_unselected() {
+    use crate::panes::terminal_character::AnsiCode;
+    let grid = render_ui_component("ribbon", &format!("d{}", serialize_text_bytes("RES")));
+    let letter_styles = styled_cells_of(&grid, 'R');
+    assert!(!letter_styles.is_empty());
+    for style in letter_styles {
+        assert_eq!(style.italic, Some(AnsiCode::On));
+        assert_ne!(style.bold, Some(AnsiCode::On));
+    }
+}
+
+#[test]
+fn disabled_text_with_opaque_flag_keeps_a_background() {
+    use crate::panes::terminal_character::AnsiCode;
+    let grid = render_ui_component("text", &format!("zd{}", serialize_text_bytes("RES")));
+    let letter_styles = styled_cells_of(&grid, 'R');
+    assert!(!letter_styles.is_empty());
+    for style in letter_styles {
+        assert_eq!(style.italic, Some(AnsiCode::On));
+        assert_ne!(style.bold, Some(AnsiCode::On));
+        assert!(style.background.is_some());
+    }
+}
+
+#[test]
+fn disabled_text_renders_italic_non_bold() {
+    use crate::panes::terminal_character::AnsiCode;
+    let grid = render_ui_component("text", &format!("d{}", serialize_text_bytes("RES")));
+    let letter_styles = styled_cells_of(&grid, 'R');
+    assert!(!letter_styles.is_empty());
+    for style in letter_styles {
+        assert_eq!(style.italic, Some(AnsiCode::On));
+        assert_ne!(style.bold, Some(AnsiCode::On));
+    }
+}
+
+#[test]
+fn ui_component_flag_prefixes_parse_order_independently() {
+    let baseline = render_ui_component("text", &format!("xzd{}", serialize_text_bytes("RES")));
+    let baseline_styles = styled_cells_of(&baseline, 'R');
+    for prefix in ["xdz", "zxd", "zdx", "dxz", "dzx"] {
+        let grid = render_ui_component("text", &format!("{}{}", prefix, serialize_text_bytes("RES")));
+        assert_eq!(
+            styled_cells_of(&grid, 'R'),
+            baseline_styles,
+            "prefix {prefix} should parse the same flags as xzd"
+        );
+    }
+}

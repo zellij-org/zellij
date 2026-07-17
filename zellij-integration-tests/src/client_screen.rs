@@ -4,6 +4,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 
+use zellij_server::panes::terminal_character::AnsiCode;
 use zellij_server::panes::{LinkHandler, TerminalPane};
 use zellij_utils::data::{Palette, Style};
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size, SizeInPixels};
@@ -168,15 +169,87 @@ impl CoordBuilder {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CellStyle {
+    pub dim: bool,
+    pub italic: bool,
+    pub bold: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct GridSnapshot {
     pub text: String,
     pub cursor: Option<CursorPosition>,
+    pub styles: Vec<Vec<CellStyle>>,
 }
 
 impl GridSnapshot {
     pub fn contains(&self, needle: &str) -> bool {
         self.text.contains(needle)
+    }
+    pub fn cell_style(&self, x: usize, y: usize) -> CellStyle {
+        self.styles
+            .get(y)
+            .and_then(|row| row.get(x))
+            .copied()
+            .unwrap_or_default()
+    }
+    pub fn char_is_dim(&self, x: usize, y: usize) -> bool {
+        self.cell_style(x, y).dim
+    }
+    pub fn char_is_italic(&self, x: usize, y: usize) -> bool {
+        self.cell_style(x, y).italic
+    }
+    pub fn char_is_bold(&self, x: usize, y: usize) -> bool {
+        self.cell_style(x, y).bold
+    }
+    pub fn row_has_italic(&self, y: usize) -> bool {
+        self.styles
+            .get(y)
+            .map_or(false, |row| row.iter().any(|cell| cell.italic))
+    }
+    pub fn row_has_bold(&self, y: usize) -> bool {
+        self.styles
+            .get(y)
+            .map_or(false, |row| row.iter().any(|cell| cell.bold))
+    }
+    pub fn row_count(&self) -> usize {
+        self.styles.len()
+    }
+    pub fn row_of_line(&self, needle: &str) -> Option<usize> {
+        self.text
+            .lines()
+            .position(|line| line.contains(needle))
+    }
+    pub fn region_has_dim(
+        &self,
+        x_range: std::ops::Range<usize>,
+        y_range: std::ops::Range<usize>,
+    ) -> bool {
+        for y in y_range {
+            for x in x_range.clone() {
+                if self.char_is_dim(x, y) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    pub fn line_has_dim(&self, needle: &str) -> bool {
+        match self.row_of_line(needle) {
+            Some(y) => self
+                .styles
+                .get(y)
+                .map_or(false, |row| row.iter().any(|cell| cell.dim)),
+            None => false,
+        }
+    }
+    pub fn char_dim_of(&self, needle: &str) -> Option<bool> {
+        self.text.lines().enumerate().find_map(|(y, line)| {
+            line.find(needle)
+                .map(|byte_index| line[..byte_index].chars().count())
+                .map(|x| self.char_is_dim(x, y))
+        })
     }
     pub fn cursor_is_at(&self, coord: Coord) -> bool {
         self.cursor
@@ -219,9 +292,17 @@ fn render_bytes(bytes: &[u8], win_size: Size) -> GridSnapshot {
             }
         });
     let mut text = String::new();
+    let mut styles: Vec<Vec<CellStyle>> = Vec::new();
     let output_lines = terminal_pane.read_buffer_as_lines();
     for (line_index, line) in output_lines.iter().enumerate() {
+        let mut style_row: Vec<CellStyle> = Vec::with_capacity(line.len());
         for (character_index, terminal_character) in line.iter().enumerate() {
+            let character_style = &terminal_character.styles;
+            style_row.push(CellStyle {
+                dim: matches!(character_style.dim, Some(AnsiCode::On)),
+                italic: matches!(character_style.italic, Some(AnsiCode::On)),
+                bold: matches!(character_style.bold, Some(AnsiCode::On)),
+            });
             let character_position = CursorPosition {
                 x: character_index,
                 y: line_index,
@@ -232,11 +313,16 @@ fn render_bytes(bytes: &[u8], win_size: Size) -> GridSnapshot {
             }
             text.push(terminal_character.character);
         }
+        styles.push(style_row);
         if line_index != output_lines.len() - 1 {
             text.push('\n');
         }
     }
-    GridSnapshot { text, cursor }
+    GridSnapshot {
+        text,
+        cursor,
+        styles,
+    }
 }
 
 fn build_terminal_pane(win_size: Size) -> TerminalPane {
