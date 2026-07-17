@@ -1679,8 +1679,10 @@ impl MouseHandler {
                 .get_active_pane_id(client_id)
                 .ok_or_else(|| anyhow!("Failed to find active pane"))?;
 
+            tab.dissolve_stack_lists_for_classic_mutation();
             Self::resize_tiled_pane_with_stacked_resize(tab, active_pane_id, &strategy)
                 .with_context(err_context)?;
+            tab.tiled_panes.reapply_pane_frames();
             tab.swap_layouts.set_is_tiled_damaged();
         }
 
@@ -1712,8 +1714,10 @@ impl MouseHandler {
                 .get_active_pane_id(client_id)
                 .ok_or_else(|| anyhow!("Failed to find active pane"))?;
 
+            tab.dissolve_stack_lists_for_classic_mutation();
             Self::resize_tiled_pane_with_stacked_resize(tab, active_pane_id, &strategy)
                 .with_context(err_context)?;
+            tab.tiled_panes.reapply_pane_frames();
             tab.swap_layouts.set_is_tiled_damaged();
         }
 
