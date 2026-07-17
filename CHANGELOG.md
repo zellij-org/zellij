@@ -5,7 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
-* fix(grid): scroll the region when a line wraps at its bottom margin (https://github.com/zellij-org/zellij/pull/5357)
 * feat: allow tabs to have different sizes if clients aren't focused on the same one (https://github.com/zellij-org/zellij/pull/5133)
 * feat: PWA support for the web client (manifest + icons + iOS meta tags) so the page can be installed as a standalone app (https://github.com/zellij-org/zellij/pull/5184)
 * feat: mobile UI (https://github.com/zellij-org/zellij/pull/5241)
@@ -23,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow opening panes/tabs from the CLI without changing focus (https://github.com/zellij-org/zellij/pull/5346)
 * feat: allow binding `SetDarkTheme`, `SetLightTheme` and `ToggleTheme` as direct keybinding actions (https://github.com/zellij-org/zellij/pull/5302)
 * feat: allow disabling ctrl-mouse-scroll to resize panes (https://github.com/zellij-org/zellij/pull/5283)
+* fix: scrolling region line wrap behavior at bottom edge (https://github.com/zellij-org/zellij/pull/5357)
 
 ## [0.44.3] - 2026-05-13
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)

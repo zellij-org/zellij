@@ -1785,6 +1785,50 @@ impl Grid {
         }
         self.output_buffer.update_all_lines();
     }
+    fn scroll_region_up_at_bottom(&mut self, new_row: Row, offset_hyperlinks: bool) {
+        let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
+        if scroll_region_top >= self.viewport.len() {
+            return;
+        }
+        if scroll_region_bottom == self.height.saturating_sub(1) && scroll_region_top == 0 {
+            if self.alternate_screen_state.is_none() {
+                self.transfer_rows_to_lines_above(1);
+                if offset_hyperlinks {
+                    self.hyperlink_tracker.offset_cursor_lines(1);
+                }
+            } else if !self.viewport.is_empty() {
+                self.viewport.pop_front();
+            }
+            self.viewport.push_back(new_row);
+            self.selection.move_up(1);
+        } else {
+            if scroll_region_top == 0
+                && self.alternate_screen_state.is_none()
+                && !self.viewport.is_empty()
+            {
+                self.transfer_rows_to_lines_above(1);
+                if offset_hyperlinks {
+                    self.hyperlink_tracker.offset_cursor_lines(1);
+                }
+                self.selection.move_up(1);
+            } else if scroll_region_top < self.viewport.len() {
+                self.viewport.remove(scroll_region_top);
+                if offset_hyperlinks {
+                    self.hyperlink_tracker.offset_cursor_lines_in_range(
+                        scroll_region_top as isize,
+                        scroll_region_bottom as isize,
+                        1,
+                    );
+                }
+            }
+            if self.viewport.len() >= scroll_region_bottom {
+                self.viewport.insert(scroll_region_bottom, new_row);
+            } else {
+                self.viewport.push_back(new_row);
+            }
+        }
+        self.output_buffer.update_all_lines();
+    }
     pub fn add_canonical_line(&mut self) {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
         self.hyperlink_tracker.update(
@@ -1795,47 +1839,12 @@ impl Grid {
             &mut self.link_handler.borrow_mut(),
         );
         if self.cursor.y == scroll_region_bottom {
-            // end of scroll region
-            // when we have a scroll region set and we're at its bottom
-            // we need to delete its first line, thus shifting all lines in it upwards
-            // then we add an empty line at its end which will be filled by the application
-            // controlling the scroll region (presumably filled by whatever comes next in the
-            // scroll buffer, but that's not something we control)
             if scroll_region_top >= self.viewport.len() {
-                // the state is corrupted
                 return;
             }
             let scroll_bg = self.cursor.pending_styles.background;
-            if scroll_region_bottom == self.height.saturating_sub(1) && scroll_region_top == 0 {
-                if self.alternate_screen_state.is_none() {
-                    self.transfer_rows_to_lines_above(1);
-                } else if !self.viewport.is_empty() {
-                    self.viewport.pop_front();
-                }
-
-                self.viewport
-                    .push_back(Row::new().canonical().with_bg_color(scroll_bg));
-                self.selection.move_up(1);
-            } else {
-                if scroll_region_top == 0
-                    && self.alternate_screen_state.is_none()
-                    && !self.viewport.is_empty()
-                {
-                    // Partial scroll region starting at top: preserve
-                    // scrolled-off lines in scrollback
-                    self.transfer_rows_to_lines_above(1);
-                    self.selection.move_up(1);
-                } else if scroll_region_top < self.viewport.len() {
-                    self.viewport.remove(scroll_region_top);
-                }
-                let new_row = Row::new().canonical().with_bg_color(scroll_bg);
-                if self.viewport.len() >= scroll_region_bottom {
-                    self.viewport.insert(scroll_region_bottom, new_row);
-                } else {
-                    self.viewport.push_back(new_row);
-                }
-            }
-            self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
+            let new_row = Row::new().canonical().with_bg_color(scroll_bg);
+            self.scroll_region_up_at_bottom(new_row, false);
             return;
         }
         if self.viewport.len() <= self.cursor.y + 1 {
@@ -1995,50 +2004,10 @@ impl Grid {
         self.cursor.x = 0;
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
         if self.cursor.y == scroll_region_bottom {
-            // wrapping at the bottom of the scroll region scrolls the region up by one line
-            // and keeps the cursor on its bottom row, same as a newline would
-            // (add_canonical_line above) - except that the new row is a wrapped row rather
-            // than a canonical one
             if scroll_region_top >= self.viewport.len() {
-                // the state is corrupted
                 return;
             }
-            if scroll_region_bottom == self.height.saturating_sub(1) && scroll_region_top == 0 {
-                if self.alternate_screen_state.is_none() {
-                    self.transfer_rows_to_lines_above(1);
-                    self.hyperlink_tracker.offset_cursor_lines(1);
-                } else if !self.viewport.is_empty() {
-                    self.viewport.pop_front();
-                }
-                let wrapped_row = Row::new();
-                self.viewport.push_back(wrapped_row);
-                self.selection.move_up(1);
-            } else {
-                if scroll_region_top == 0
-                    && self.alternate_screen_state.is_none()
-                    && !self.viewport.is_empty()
-                {
-                    // Partial scroll region starting at top: preserve
-                    // scrolled-off lines in scrollback
-                    self.transfer_rows_to_lines_above(1);
-                    self.hyperlink_tracker.offset_cursor_lines(1);
-                    self.selection.move_up(1);
-                } else if scroll_region_top < self.viewport.len() {
-                    self.viewport.remove(scroll_region_top);
-                    self.hyperlink_tracker.offset_cursor_lines_in_range(
-                        scroll_region_top as isize,
-                        scroll_region_bottom as isize,
-                        1,
-                    );
-                }
-                let wrapped_row = Row::new();
-                if self.viewport.len() >= scroll_region_bottom {
-                    self.viewport.insert(scroll_region_bottom, wrapped_row);
-                } else {
-                    self.viewport.push_back(wrapped_row);
-                }
-            }
-            self.output_buffer.update_all_lines();
+            self.scroll_region_up_at_bottom(Row::new(), true);
         } else if self.cursor.y == self.height.saturating_sub(1) {
             // the cursor is on the last line of the screen but below the scroll region's
             // bottom margin: there is nowhere to scroll to, so we wrap onto the same line
