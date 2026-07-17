@@ -12,10 +12,13 @@ pub mod test_env;
 
 pub use client_screen::{col, ClientScreen, Coord, CoordBuilder, CursorPosition, GridSnapshot};
 pub use fake_pty::FakePtyHandle;
-pub use nested::NestedHarness;
 pub use harness::{
     claim_first_terminal_and_wait_for_prompt, split_down_and_wait_for_prompt,
     split_right_and_wait_for_prompt, start_zellij, PROMPT, TERMINAL_SIZE,
+};
+pub use nested::{
+    composite_contains_settled_guest_grid, wait_for_settled_composite, NestedDepthThreeHarness,
+    NestedHarness,
 };
 pub use runner::{assert_same_rendered_grid, normalized, TestClient, TestRunner, TestSession};
 pub use zellij_utils::data::LayoutInfo;

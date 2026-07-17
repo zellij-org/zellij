@@ -223,6 +223,19 @@ pub struct TestClient {
     thread: Option<JoinHandle<Option<ConnectToSession>>>,
 }
 
+#[derive(Clone)]
+pub struct GuestResizer {
+    size: Arc<Mutex<Size>>,
+    signal_tx: crossbeam::channel::Sender<SignalEvent>,
+}
+
+impl GuestResizer {
+    pub fn resize(&self, new_size: Size) -> bool {
+        *self.size.lock().unwrap() = new_size;
+        self.signal_tx.send(SignalEvent::Resize).is_ok()
+    }
+}
+
 impl TestClient {
     pub fn send_stdin(&self, bytes: &[u8]) {
         self.fake_client_handle
@@ -320,6 +333,13 @@ impl TestSession {
 
     pub fn resize(&self, new_size: Size) {
         self.main_client.resize(new_size);
+    }
+
+    pub fn resize_sender(&self) -> GuestResizer {
+        GuestResizer {
+            size: self.main_client.fake_client_handle.size.clone(),
+            signal_tx: self.main_client.fake_client_handle.signal_tx.clone(),
+        }
     }
 
     pub fn wait_until(

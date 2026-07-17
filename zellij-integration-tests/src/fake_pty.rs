@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use zellij_server::os_input_output::AsyncReader;
@@ -245,6 +245,32 @@ impl SharedPtys {
             fake_pty_registry = guard;
         }
     }
+
+    pub(crate) fn wait_for_change(
+        &self,
+        terminal_id: u32,
+        last_seen: (u16, u16),
+    ) -> Option<(u16, u16)> {
+        let mut fake_pty_registry = self.lock_registry();
+        loop {
+            match fake_pty_registry.fake_pty_states.get(&terminal_id) {
+                None => return None,
+                Some(fake_pty_state) => {
+                    if let Some((cols, rows)) = fake_pty_state.size {
+                        if (cols, rows) != last_seen {
+                            return Some((cols, rows));
+                        }
+                    }
+                },
+            }
+            let (guard, _) = self
+                .inner
+                .change_signal
+                .wait_timeout(fake_pty_registry, Duration::from_millis(200))
+                .unwrap();
+            fake_pty_registry = guard;
+        }
+    }
 }
 
 struct FakeAsyncReader {
@@ -388,5 +414,10 @@ impl FakePtyHandle {
                 .and_then(|fake_pty_state| fake_pty_state.size)
                 .filter(|(cols, rows)| predicate(*cols, *rows))
         })
+    }
+
+    pub fn wait_for_size_change(&self, last_seen: (u16, u16)) -> Option<(u16, u16)> {
+        self.shared_ptys
+            .wait_for_change(self.terminal_id, last_seen)
     }
 }
