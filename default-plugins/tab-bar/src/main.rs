@@ -191,6 +191,7 @@ impl ZellijPlugin for State {
         if self.tabs.is_empty() {
             return;
         }
+        let dimmed = self.mode_info.session_dimmed.unwrap_or(false);
         let mut all_tabs: Vec<LinePart> = vec![];
         let mut active_tab_index = 0;
         let mut is_alternate_tab = false;
@@ -212,6 +213,7 @@ impl ZellijPlugin for State {
                 is_hovered,
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
+                dimmed,
             );
             is_alternate_tab = !is_alternate_tab;
             all_tabs.push(tab);
@@ -241,6 +243,7 @@ impl ZellijPlugin for State {
             hint_text,
             is_alternate_tab,
             self.hovered_new_tab_button,
+            dimmed,
         );
         self.tab_line = line;
         self.new_tab_button_range = new_tab_button_range;

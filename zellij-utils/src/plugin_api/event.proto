@@ -511,6 +511,7 @@ message ModeUpdatePayload {
   optional uint32 web_server_port = 14;
   optional bool web_server_capability = 15;
   optional PaneFrameStyle pane_frame_style = 16;
+  optional bool session_dimmed = 17;
 }
 
 enum WebSharing {

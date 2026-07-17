@@ -94,7 +94,30 @@ pub struct SegmentStyle {
 // we need different colors from palette for the default theme
 // plus here we can add new sources in the future, like Theme
 // that can be defined in the config perhaps
-fn color_elements(palette: Styling, different_color_alternates: bool) -> ColoredElements {
+fn color_elements(palette: Styling, different_color_alternates: bool, dimmed: bool) -> ColoredElements {
+    if dimmed {
+        let background = palette.text_unselected.background;
+        let foreground = palette.text_unselected.base;
+        let ribbon_background = palette.ribbon_unselected.background;
+        let italic_on_ribbon =
+            style!(palette.ribbon_unselected.base, ribbon_background).italic();
+        let dim_segment = SegmentStyle {
+            prefix_separator: style!(background, ribbon_background),
+            char_left_separator: italic_on_ribbon,
+            char_shortcut: italic_on_ribbon,
+            char_right_separator: italic_on_ribbon,
+            styled_text: italic_on_ribbon,
+            suffix_separator: style!(ribbon_background, background),
+        };
+        return ColoredElements {
+            selected: dim_segment,
+            unselected: dim_segment,
+            unselected_alternate: dim_segment,
+            disabled: dim_segment,
+            superkey_prefix: style!(foreground, background).italic(),
+            superkey_suffix_separator: style!(background, background),
+        };
+    }
     let background = palette.text_unselected.background;
     let foreground = palette.text_unselected.base;
     let alternate_background_color = if different_color_alternates {
@@ -382,6 +405,9 @@ impl State {
     fn second_line(&self, cols: usize) -> LinePart {
         let active_tab = self.tabs.iter().find(|t| t.active);
 
+        if self.mode_info.session_dimmed.unwrap_or(false) {
+            return LinePart::default();
+        }
         if let Some(copy_destination) = self.text_copy_destination {
             text_copied_hint(copy_destination)
         } else if self.display_system_clipboard_failure {

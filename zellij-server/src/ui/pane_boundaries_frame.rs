@@ -96,6 +96,7 @@ pub struct FrameParams {
     pub stack_list_entry: Option<StackListEntry>,
     pub blank_title: bool,
     pub mouse_scroll_resize: bool,
+    pub dimmed: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -126,6 +127,7 @@ pub struct PaneFrame {
     stack_list_entry: Option<StackListEntry>,
     color_override: Option<PaletteColor>,
     mouse_scroll_resize: bool,
+    dimmed: bool,
 }
 
 impl PaneFrame {
@@ -162,6 +164,7 @@ impl PaneFrame {
             stack_list_entry: frame_params.stack_list_entry,
             color_override: None,
             mouse_scroll_resize: frame_params.mouse_scroll_resize,
+            dimmed: frame_params.dimmed,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {

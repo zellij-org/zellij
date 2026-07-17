@@ -7,6 +7,7 @@ pub struct Text {
     text: String,
     selected: bool,
     opaque: bool,
+    disabled: bool,
     indices: Vec<Vec<usize>>,
 }
 
@@ -16,6 +17,7 @@ impl From<StyledText> for Text {
             text: styled_text.text,
             selected: false,
             opaque: false,
+            disabled: false,
             indices: styled_text.indices,
         }
     }
@@ -30,6 +32,7 @@ impl Text {
             text: content.to_string(),
             selected: false,
             opaque: false,
+            disabled: false,
             indices: vec![],
         }
     }
@@ -39,6 +42,10 @@ impl Text {
     }
     pub fn opaque(mut self) -> Self {
         self.opaque = true;
+        self
+    }
+    pub fn disabled(mut self) -> Self {
+        self.disabled = true;
         self
     }
     pub fn dim_indices(mut self, mut indices: Vec<usize>) -> Self {
@@ -406,11 +413,15 @@ impl Text {
         let mut prefix = "".to_owned();
 
         if self.selected {
-            prefix = format!("x{}", prefix);
+            prefix.push('x');
         }
 
         if self.opaque {
-            prefix = format!("z{}", prefix);
+            prefix.push('z');
+        }
+
+        if self.disabled {
+            prefix.push('d');
         }
 
         format!("{}{}{}", prefix, indices, text)

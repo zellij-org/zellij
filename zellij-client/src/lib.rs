@@ -1422,10 +1422,12 @@ pub fn start_client(
                 let _ = out.flush();
             },
             ClientInstruction::EmitNestedSessionFrame(payload_bytes) => {
-                let frame = nested_session::encode_frame_from_payload(&payload_bytes);
-                let mut out = os_input.get_stdout_writer();
-                let _ = out.write_all(&frame);
-                let _ = out.flush();
+                if is_nested_inside_zellij_pane {
+                    let frame = nested_session::encode_frame_from_payload(&payload_bytes);
+                    let mut out = os_input.get_stdout_writer();
+                    let _ = out.write_all(&frame);
+                    let _ = out.flush();
+                }
             },
             _ => {},
         }

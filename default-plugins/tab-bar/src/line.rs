@@ -20,6 +20,7 @@ fn populate_tabs_in_tab_line(
     cols: usize,
     palette: Styling,
     capabilities: PluginCapabilities,
+    dimmed: bool,
 ) {
     let mut middle_size = get_current_title_len(tabs_to_render);
 
@@ -36,6 +37,7 @@ fn populate_tabs_in_tab_line(
             palette,
             tab_separator(capabilities),
             left_more_tab_index,
+            dimmed,
         );
 
         // right_more_tab_index is the first tab to the right of the rightmost visible tab
@@ -45,6 +47,7 @@ fn populate_tabs_in_tab_line(
             palette,
             tab_separator(capabilities),
             right_more_tab_index,
+            dimmed,
         );
 
         let total_size = collapsed_left.len + middle_size + collapsed_right.len;
@@ -113,6 +116,7 @@ fn left_more_message(
     palette: Styling,
     separator: &str,
     tab_index: usize,
+    dimmed: bool,
 ) -> LinePart {
     if tab_count_to_the_left == 0 {
         return LinePart::default();
@@ -129,10 +133,13 @@ fn left_more_message(
         palette.ribbon_unselected.base,
         palette.text_unselected.background,
     );
+    let text_style = if dimmed {
+        style!(text_color, palette.ribbon_unselected.background).italic()
+    } else {
+        style!(text_color, palette.ribbon_unselected.background).bold()
+    };
     let left_separator = style!(sep_color, palette.ribbon_unselected.background).paint(separator);
-    let more_styled_text = style!(text_color, palette.ribbon_unselected.background)
-        .bold()
-        .paint(more_text);
+    let more_styled_text = text_style.paint(more_text);
     let right_separator = style!(palette.ribbon_unselected.background, sep_color).paint(separator);
     let more_styled_text =
         ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
@@ -148,6 +155,7 @@ fn right_more_message(
     palette: Styling,
     separator: &str,
     tab_index: usize,
+    dimmed: bool,
 ) -> LinePart {
     if tab_count_to_the_right == 0 {
         return LinePart::default();
@@ -163,10 +171,13 @@ fn right_more_message(
         palette.ribbon_unselected.base,
         palette.text_unselected.background,
     );
+    let text_style = if dimmed {
+        style!(text_color, palette.ribbon_unselected.background).italic()
+    } else {
+        style!(text_color, palette.ribbon_unselected.background).bold()
+    };
     let left_separator = style!(sep_color, palette.ribbon_unselected.background).paint(separator);
-    let more_styled_text = style!(text_color, palette.ribbon_unselected.background)
-        .bold()
-        .paint(more_text);
+    let more_styled_text = text_style.paint(more_text);
     let right_separator = style!(palette.ribbon_unselected.background, sep_color).paint(separator);
     let more_styled_text =
         ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
@@ -177,13 +188,23 @@ fn right_more_message(
     }
 }
 
-fn tab_line_prefix(session_name: Option<&str>, palette: Styling, cols: usize) -> Vec<LinePart> {
+fn tab_line_prefix(
+    session_name: Option<&str>,
+    palette: Styling,
+    cols: usize,
+    dimmed: bool,
+) -> Vec<LinePart> {
     let prefix_text = " Zellij ".to_string();
 
     let running_text_len = prefix_text.chars().count();
     let text_color = palette.text_unselected.base;
     let bg_color = palette.text_unselected.background;
-    let prefix_styled_text = style!(text_color, bg_color).bold().paint(prefix_text);
+    let prefix_style = if dimmed {
+        style!(text_color, bg_color).italic()
+    } else {
+        style!(text_color, bg_color).bold()
+    };
+    let prefix_styled_text = prefix_style.paint(prefix_text);
     let mut parts = vec![LinePart {
         part: prefix_styled_text.to_string(),
         len: running_text_len,
@@ -192,8 +213,7 @@ fn tab_line_prefix(session_name: Option<&str>, palette: Styling, cols: usize) ->
     if let Some(name) = session_name {
         let name_part = format!("({}) ", name);
         let name_part_len = name_part.width();
-        let text_color = palette.text_unselected.base;
-        let name_part_styled_text = style!(text_color, bg_color).bold().paint(name_part);
+        let name_part_styled_text = prefix_style.paint(name_part);
         if cols.saturating_sub(running_text_len) >= name_part_len {
             parts.push(LinePart {
                 part: name_part_styled_text.to_string(),
@@ -229,6 +249,7 @@ pub fn tab_line(
     hint: Option<&BTreeMap<usize, StyledText>>,
     is_alternate_tab: bool,
     new_tab_button_is_hovered: bool,
+    dimmed: bool,
 ) -> (Vec<LinePart>, Option<(usize, usize)>) {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
@@ -238,8 +259,8 @@ pub fn tab_line(
         tabs_before_active.pop().unwrap()
     };
     let mut prefix = match hide_session_name {
-        true => tab_line_prefix(None, palette, cols),
-        false => tab_line_prefix(session_name, palette, cols),
+        true => tab_line_prefix(None, palette, cols, dimmed),
+        false => tab_line_prefix(session_name, palette, cols, dimmed),
     };
 
     let mut swap_layout_indicator = if hide_swap_layout_indicator {
@@ -251,17 +272,19 @@ pub fn tab_line(
                 tab_info.is_swap_layout_dirty,
                 mode_info,
                 !capabilities.arrow_fonts,
+                dimmed,
             )
         })
     };
     if swap_layout_indicator.is_none() {
-        swap_layout_indicator = active_pane_scroll.map(|scroll| scroll_status(scroll, palette));
+        swap_layout_indicator =
+            active_pane_scroll.map(|scroll| scroll_status(scroll, palette, dimmed));
     }
 
     // Drop indicator if it would cause wrapping (active tab always rendered unconditionally)
     let prefix_len = get_current_title_len(&prefix);
     let hint_budget = cols.saturating_sub(prefix_len + active_tab.len);
-    if let Some(hint_part) = hint.and_then(|hint| hint_line_part(hint, hint_budget)) {
+    if let Some(hint_part) = hint.and_then(|hint| hint_line_part(hint, hint_budget, dimmed)) {
         swap_layout_indicator = Some(hint_part);
     }
     let indicator_len = swap_layout_indicator.as_ref().map(|s| s.len).unwrap_or(0);
@@ -280,6 +303,7 @@ pub fn tab_line(
         cols.saturating_sub(non_tab_len),
         palette,
         capabilities,
+        dimmed,
     );
     prefix.append(&mut tabs_to_render);
     prefix.append(&mut vec![LinePart {
@@ -303,7 +327,8 @@ pub fn tab_line(
     } else {
         palette.ribbon_unselected.background
     };
-    let new_tab_button = new_tab_button_line_part(palette, capabilities, new_tab_button_background);
+    let new_tab_button =
+        new_tab_button_line_part(palette, capabilities, new_tab_button_background, dimmed);
     let used = prefix.iter().map(|p| p.len).sum::<usize>();
     let current_indicator_len = swap_layout_indicator.as_ref().map(|s| s.len).unwrap_or(0);
     let room = cols
@@ -348,6 +373,7 @@ fn swap_layout_status(
     is_swap_layout_dirty: bool,
     mode_info: &ModeInfo,
     supports_arrow_fonts: bool,
+    dimmed: bool,
 ) -> Option<LinePart> {
     match swap_layout_name {
         Some(swap_layout_name) => {
@@ -356,11 +382,12 @@ fn swap_layout_status(
                 &mode_keybinds,
                 &[&[Action::PreviousSwapLayout], &[Action::NextSwapLayout]],
             );
-            let mut text = style_key_with_modifier(&prev_next_keys, Some(0));
+            let mut text = style_key_with_modifier(&prev_next_keys, Some(0), dimmed);
             text.append(&ribbon_as_line_part(
                 &swap_layout_name.to_uppercase(),
                 !is_swap_layout_dirty,
                 supports_arrow_fonts,
+                dimmed,
             ));
             Some(text)
         },
@@ -368,13 +395,22 @@ fn swap_layout_status(
     }
 }
 
-fn hint_line_part(hint: &BTreeMap<usize, StyledText>, max_len: usize) -> Option<LinePart> {
+fn hint_line_part(
+    hint: &BTreeMap<usize, StyledText>,
+    max_len: usize,
+    dimmed: bool,
+) -> Option<LinePart> {
     let fitting_variant = hint
         .range(..=max_len)
         .next_back()
         .map(|(_width, styled_text)| styled_text)?;
     let len = fitting_variant.text.width();
-    let part = serialize_text(&Text::from(fitting_variant.clone()));
+    let text = if dimmed {
+        Text::from(fitting_variant.clone()).disabled()
+    } else {
+        Text::from(fitting_variant.clone())
+    };
+    let part = serialize_text(&text);
     Some(LinePart {
         part,
         len,
@@ -382,12 +418,17 @@ fn hint_line_part(hint: &BTreeMap<usize, StyledText>, max_len: usize) -> Option<
     })
 }
 
-fn scroll_status(scroll: (usize, usize), palette: Styling) -> LinePart {
+fn scroll_status(scroll: (usize, usize), palette: Styling, dimmed: bool) -> LinePart {
     let (position, length) = scroll;
     let text = format!("[ SCROLL {}/{} ]", position, length);
     let text_color = palette.text_unselected.base;
     let bg_color = palette.text_unselected.background;
-    let styled_text = style!(text_color, bg_color).bold().paint(&text);
+    let text_style = if dimmed {
+        style!(text_color, bg_color).italic()
+    } else {
+        style!(text_color, bg_color).bold()
+    };
+    let styled_text = text_style.paint(&text);
     LinePart {
         part: styled_text.to_string(),
         len: text.width(),
@@ -399,17 +440,26 @@ fn new_tab_button_line_part(
     palette: Styling,
     capabilities: PluginCapabilities,
     background_color: PaletteColor,
+    dimmed: bool,
 ) -> LinePart {
     let separator = tab_separator(capabilities);
     let separator_width = separator.width();
     let foreground_color = palette.ribbon_unselected.base;
     let separator_fill_color = palette.text_unselected.background;
+    let background_color = if dimmed {
+        palette.ribbon_unselected.background
+    } else {
+        background_color
+    };
+    let text_style = if dimmed {
+        style!(foreground_color, background_color).italic()
+    } else {
+        style!(foreground_color, background_color).bold()
+    };
     let left_separator = style!(separator_fill_color, background_color).paint(separator);
     let right_separator = style!(background_color, separator_fill_color).paint(separator);
     let text = "+";
-    let styled_text = style!(foreground_color, background_color)
-        .bold()
-        .paint(format!(" {} ", text));
+    let styled_text = text_style.paint(format!(" {} ", text));
     let part = ANSIStrings(&[left_separator, styled_text, right_separator]).to_string();
     let len = text.width() + (separator_width * 2) + 2;
     LinePart {
@@ -419,8 +469,15 @@ fn new_tab_button_line_part(
     }
 }
 
-pub fn ribbon_as_line_part(text: &str, is_selected: bool, supports_arrow_fonts: bool) -> LinePart {
-    let ribbon_text = if is_selected {
+pub fn ribbon_as_line_part(
+    text: &str,
+    is_selected: bool,
+    supports_arrow_fonts: bool,
+    dimmed: bool,
+) -> LinePart {
+    let ribbon_text = if dimmed {
+        Text::new(text).disabled()
+    } else if is_selected {
         Text::new(text).selected()
     } else {
         Text::new(text)
@@ -437,7 +494,11 @@ pub fn ribbon_as_line_part(text: &str, is_selected: bool, supports_arrow_fonts: 
     }
 }
 
-pub fn style_key_with_modifier(keyvec: &[KeyWithModifier], color_index: Option<usize>) -> LinePart {
+pub fn style_key_with_modifier(
+    keyvec: &[KeyWithModifier],
+    color_index: Option<usize>,
+    dimmed: bool,
+) -> LinePart {
     if keyvec.is_empty() {
         return LinePart::default();
     }
@@ -477,7 +538,9 @@ pub fn style_key_with_modifier(keyvec: &[KeyWithModifier], color_index: Option<u
 
     if no_common_modifier || key.len() == 1 {
         let key_string_text = format!(" {} ", key.join(key_separator));
-        let text = if let Some(color_index) = color_index {
+        let text = if dimmed {
+            Text::new(&key_string_text).disabled().opaque()
+        } else if let Some(color_index) = color_index {
             Text::new(&key_string_text)
                 .color_range(color_index, ..)
                 .opaque()
@@ -492,7 +555,9 @@ pub fn style_key_with_modifier(keyvec: &[KeyWithModifier], color_index: Option<u
     } else {
         let key_string_without_modifier = format!("{}", key.join(key_separator));
         let key_string_text = format!(" {} <{}> ", modifier_str, key_string_without_modifier);
-        let text = if let Some(color_index) = color_index {
+        let text = if dimmed {
+            Text::new(&key_string_text).disabled().opaque()
+        } else if let Some(color_index) = color_index {
             Text::new(&key_string_text)
                 .color_range(color_index, ..modifier_str.width() + 1)
                 .color_range(

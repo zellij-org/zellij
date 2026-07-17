@@ -528,7 +528,11 @@ fn render_mode_key_indicators(
 ) -> Option<LinePart> {
     let mut line_part_to_render = LinePart::default();
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
-    let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
+    let colored_elements = color_elements(
+        help.style.colors,
+        !supports_arrow_fonts,
+        help.session_dimmed.unwrap_or(false),
+    );
     let default_keys = if base_mode_is_locked {
         base_mode_locked_mode_indicators(help)
     } else {
@@ -742,12 +746,15 @@ fn render_common_modifiers(
         )
     };
 
+    let prefix = if mode_info.session_dimmed.unwrap_or(false) {
+        serialize_text(&Text::new(&prefix_text).disabled().opaque())
+    } else {
+        serialize_text(&Text::new(&prefix_text).opaque())
+    };
     let suffix_separator = palette.superkey_suffix_separator.paint(separator);
     line_part_to_render.part = format!(
         "{}{}{}",
-        line_part_to_render.part,
-        serialize_text(&Text::new(&prefix_text).opaque()),
-        suffix_separator
+        line_part_to_render.part, prefix, suffix_separator
     );
     line_part_to_render.len += prefix_text.chars().count() + separator.chars().count();
 }
@@ -761,7 +768,11 @@ fn render_secondary_info(
 ) -> Option<(LinePart, Option<(usize, usize)>, Option<(usize, usize)>)> {
     let mut secondary_info = LinePart::default();
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
-    let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
+    let colored_elements = color_elements(
+        help.style.colors,
+        !supports_arrow_fonts,
+        help.session_dimmed.unwrap_or(false),
+    );
     let (secondary_keybinds, new_pane_range, floating_range) =
         secondary_keybinds(&help, tab_info, max_len, new_pane_hovered, floating_hovered);
     secondary_info.append(&secondary_keybinds);
@@ -1011,6 +1022,7 @@ fn secondary_keybinds(
                     .join("-")
             ),
             0,
+            help.session_dimmed.unwrap_or(false),
         );
         secondary_info.append(&modifier_str);
         let new_pane_key_to_display: Vec<KeyWithModifier> = new_pane_key_to_display
@@ -1145,6 +1157,7 @@ fn secondary_keybinds(
                     .join("-")
             ),
             0,
+            help.session_dimmed.unwrap_or(false),
         );
         short_line.append(&modifier_str);
         let new_pane_key_to_display: Vec<KeyWithModifier> = new_pane_key_to_display
@@ -1213,11 +1226,12 @@ fn secondary_keybinds(
     if short_line.len <= max_len {
         (short_line, new_pane_range, floating_range)
     } else if max_len >= 3 {
-        let part = serialize_text(
-            &Text::new(format!("{:>width$}", "...", width = max_len))
-                .color_range(0, ..)
-                .opaque(),
-        );
+        let overflow_text = Text::new(format!("{:>width$}", "...", width = max_len));
+        let part = if help.session_dimmed.unwrap_or(false) {
+            serialize_text(&overflow_text.disabled().opaque())
+        } else {
+            serialize_text(&overflow_text.color_range(0, ..).opaque())
+        };
         let len = max_len;
         (LinePart { part, len }, None, None)
     } else {
@@ -1232,8 +1246,12 @@ fn secondary_keybinds(
     }
 }
 
-fn text_as_line_part_with_emphasis(text: String, emphases_index: usize) -> LinePart {
-    let part = serialize_text(&Text::new(&text).color_range(emphases_index, ..).opaque());
+fn text_as_line_part_with_emphasis(text: String, emphases_index: usize, dimmed: bool) -> LinePart {
+    let part = if dimmed {
+        serialize_text(&Text::new(&text).disabled().opaque())
+    } else {
+        serialize_text(&Text::new(&text).color_range(emphases_index, ..).opaque())
+    };
     LinePart {
         part,
         len: text.width(),
@@ -1279,11 +1297,14 @@ fn add_shortcut_hovered(
     keys: &Vec<KeyWithModifier>,
     key_color_index: Option<usize>,
 ) -> LinePart {
+    if help.session_dimmed.unwrap_or(false) {
+        return add_shortcut(help, text, keys, false, key_color_index);
+    }
     let mut ret = LinePart::default();
     if keys.is_empty() {
         return ret;
     }
-    ret.append(&style_key_with_modifier(&keys, key_color_index));
+    ret.append(&style_key_with_modifier(&keys, key_color_index, false));
     let palette = help.style.colors;
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let ribbon_bg = palette.ribbon_unselected.emphasis_1;
@@ -1306,6 +1327,9 @@ fn add_shortcut_with_inline_key_hovered(
     text: &str,
     key: Vec<KeyWithModifier>,
 ) -> LinePart {
+    if help.session_dimmed.unwrap_or(false) {
+        return add_shortcut_with_inline_key(help, text, key, false);
+    }
     let mut ret = LinePart::default();
     if key.is_empty() {
         return ret;
@@ -1360,14 +1384,17 @@ fn add_shortcut(
     selected: bool,
     key_color_index: Option<usize>,
 ) -> LinePart {
+    let dimmed = help.session_dimmed.unwrap_or(false);
     let mut ret = LinePart::default();
     if keys.is_empty() {
         return ret;
     }
 
-    ret.append(&style_key_with_modifier(&keys, key_color_index)); // TODO: alternate
-                                                                  //
-    let ribbon = if selected {
+    ret.append(&style_key_with_modifier(&keys, key_color_index, dimmed)); // TODO: alternate
+                                                                          //
+    let ribbon = if dimmed {
+        serialize_ribbon(&Text::new(format!("{}", text)).disabled())
+    } else if selected {
         serialize_ribbon(&Text::new(format!("{}", text)).selected())
     } else {
         serialize_ribbon(&Text::new(format!("{}", text)))
@@ -1420,7 +1447,9 @@ fn add_shortcut_with_inline_key(
             .join(key_separator)
     );
 
-    let ribbon = if is_selected {
+    let ribbon = if help.session_dimmed.unwrap_or(false) {
+        serialize_ribbon(&Text::new(format!("<{}> {}", key_string, text)).disabled())
+    } else if is_selected {
         serialize_ribbon(
             &Text::new(format!("<{}> {}", key_string, text))
                 .color_range(0, 1..key_string.width() + 1)
@@ -1461,7 +1490,9 @@ fn add_shortcut_with_key_only(
             .join("-")
     );
 
-    let ribbon = if is_selected {
+    let ribbon = if help.session_dimmed.unwrap_or(false) {
+        serialize_ribbon(&Text::new(format!("{}", key_string)).disabled())
+    } else if is_selected {
         serialize_ribbon(
             &Text::new(format!("{}", key_string))
                 .color_range(0, ..)
@@ -1488,6 +1519,37 @@ fn add_keygroup_separator(help: &ModeInfo, max_len: usize) -> Option<LinePart> {
         " "
     };
     let palette = help.style.colors;
+
+    if help.session_dimmed.unwrap_or(false) {
+        let mut ret = LinePart::default();
+        let dim_style = Style::new()
+            .fg(palette_match!(palette.text_unselected.base))
+            .on(palette_match!(palette.text_unselected.background))
+            .italic();
+        let mut bits: Vec<ANSIString> = vec![];
+        let mode_help_text = match help.mode {
+            InputMode::RenamePane => Some("RENAMING PANE"),
+            InputMode::RenameTab => Some("RENAMING TAB"),
+            InputMode::EnterSearch => Some("ENTERING SEARCH TERM"),
+            InputMode::Search => Some("SEARCHING"),
+            _ => None,
+        };
+        if let Some(mode_help_text) = mode_help_text {
+            bits.push(dim_style.paint(format!(" {} ", mode_help_text)));
+            ret.len += mode_help_text.width() + 2;
+        }
+        bits.push(dim_style.paint(format!("{}", separator)));
+        bits.push(dim_style.paint(format!(" ")));
+        bits.push(dim_style.paint(format!("{}", separator)));
+        ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
+        ret.len += 3;
+
+        if ret.len <= max_len {
+            return Some(ret);
+        } else {
+            return None;
+        }
+    }
 
     let mut ret = LinePart::default();
 
@@ -1916,7 +1978,11 @@ fn configuration_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithMo
     }
 }
 
-fn style_key_with_modifier(keyvec: &[KeyWithModifier], color_index: Option<usize>) -> LinePart {
+fn style_key_with_modifier(
+    keyvec: &[KeyWithModifier],
+    color_index: Option<usize>,
+    dimmed: bool,
+) -> LinePart {
     if keyvec.is_empty() {
         return LinePart::default();
     }
@@ -1956,7 +2022,9 @@ fn style_key_with_modifier(keyvec: &[KeyWithModifier], color_index: Option<usize
 
     if no_common_modifier || key.len() == 1 {
         let key_string_text = format!(" {} ", key.join(key_separator));
-        let text = if let Some(color_index) = color_index {
+        let text = if dimmed {
+            Text::new(&key_string_text).disabled().opaque()
+        } else if let Some(color_index) = color_index {
             Text::new(&key_string_text)
                 .color_range(color_index, ..)
                 .opaque()
@@ -1970,7 +2038,9 @@ fn style_key_with_modifier(keyvec: &[KeyWithModifier], color_index: Option<usize
     } else {
         let key_string_without_modifier = format!("{}", key.join(key_separator));
         let key_string_text = format!(" {} <{}> ", modifier_str, key_string_without_modifier);
-        let text = if let Some(color_index) = color_index {
+        let text = if dimmed {
+            Text::new(&key_string_text).disabled().opaque()
+        } else if let Some(color_index) = color_index {
             Text::new(&key_string_text)
                 .color_range(color_index, ..modifier_str.width() + 1)
                 .color_range(

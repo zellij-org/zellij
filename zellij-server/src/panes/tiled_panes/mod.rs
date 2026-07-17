@@ -86,6 +86,7 @@ pub struct TiledPanes {
     client_id_to_boundaries: HashMap<ClientId, Boundaries>,
     tombstones_before_increase: Option<(PaneId, Vec<HashMap<PaneId, PaneGeom>>)>,
     tombstones_before_decrease: Option<(PaneId, Vec<HashMap<PaneId, PaneGeom>>)>,
+    dimmed_clients: HashSet<ClientId>,
 }
 
 impl TiledPanes {
@@ -131,7 +132,16 @@ impl TiledPanes {
             client_id_to_boundaries: HashMap::new(),
             tombstones_before_increase: None,
             tombstones_before_decrease: None,
+            dimmed_clients: HashSet::new(),
         }
+    }
+    pub fn set_client_dimmed(&mut self, client_id: ClientId, dimmed: bool) {
+        if dimmed {
+            self.dimmed_clients.insert(client_id);
+        } else {
+            self.dimmed_clients.remove(&client_id);
+        }
+        self.set_force_render();
     }
     pub fn add_pane_with_existing_geom(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
         if self.pane_frame_style.draws_full_frames() {
@@ -1231,6 +1241,7 @@ impl TiledPanes {
                     show_help_text,
                     omit_pane_title && reserved_rows_for_pane == 0,
                     mouse_scroll_resize,
+                    self.dimmed_clients.clone(),
                 );
                 pane_contents_and_ui.set_frame_geom_override(visible_member_frame_override);
                 pane_contents_and_ui.set_blank_title(reserved_rows_for_pane > 0);
@@ -1321,10 +1332,13 @@ impl TiledPanes {
         }
         // render boundaries if needed
         for (client_id, boundaries) in client_id_to_boundaries {
-            let boundaries_to_render = boundaries
+            let mut boundaries_to_render = boundaries
                 .render(self.client_id_to_boundaries.get(&client_id))
                 .with_context(err_context)?;
             self.client_id_to_boundaries.insert(client_id, boundaries);
+            if self.dimmed_clients.contains(&client_id) {
+                crate::ui::pane_contents_and_ui::dim_character_chunks(&mut boundaries_to_render);
+            }
             output
                 .add_character_chunks_to_client(client_id, boundaries_to_render, None)
                 .with_context(err_context)?;
@@ -2071,6 +2085,44 @@ impl TiledPanes {
 
         self.focus_pane(next_index, client_id);
         self.set_pane_active_at(next_index);
+    }
+    pub fn focus_pane_adjacent_to(
+        &mut self,
+        pane_id: PaneId,
+        direction: Direction,
+        client_id: ClientId,
+    ) -> Option<PaneId> {
+        if !self.panes.contains_key(&pane_id) {
+            return None;
+        }
+        let pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        let next_index = match direction {
+            Direction::Left => pane_grid.next_selectable_pane_id_to_the_left(&pane_id),
+            Direction::Down => pane_grid.next_selectable_pane_id_below(&pane_id, false),
+            Direction::Up => pane_grid.next_selectable_pane_id_above(&pane_id, false),
+            Direction::Right => pane_grid.next_selectable_pane_id_to_the_right(&pane_id),
+        }?;
+        if let Some(previously_active_pane) = self
+            .active_panes
+            .get(&client_id)
+            .copied()
+            .and_then(|active_pane_id| self.panes.get_mut(&active_pane_id))
+        {
+            previously_active_pane.set_should_render(true);
+            previously_active_pane.render_full_viewport();
+        }
+        if let Some(next_active_pane) = self.panes.get_mut(&next_index) {
+            next_active_pane.set_should_render(true);
+            next_active_pane.render_full_viewport();
+        }
+        self.focus_pane(next_index, client_id);
+        self.set_pane_active_at(next_index);
+        Some(next_index)
     }
     pub fn move_focus_left(&mut self, client_id: ClientId) -> bool {
         match self.get_active_pane_id(client_id) {
@@ -2865,18 +2917,20 @@ impl TiledPanes {
         return ret;
     }
 
-    pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) -> bool {
         let covers_ui = self.fullscreen_covers_ui;
         self.unset_fullscreen();
-        self.move_focus_up(client_id);
+        let ret = self.move_focus_up(client_id);
         self.reenter_active_pane_fullscreen(client_id, covers_ui);
+        return ret;
     }
 
-    pub fn focus_pane_down_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_down_fullscreen(&mut self, client_id: ClientId) -> bool {
         let covers_ui = self.fullscreen_covers_ui;
         self.unset_fullscreen();
-        self.move_focus_down(client_id);
+        let ret = self.move_focus_down(client_id);
         self.reenter_active_pane_fullscreen(client_id, covers_ui);
+        return ret;
     }
 
     pub fn switch_next_pane_fullscreen(&mut self, client_id: ClientId) {

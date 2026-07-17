@@ -703,6 +703,8 @@ pub struct ModeUpdatePayload {
     pub web_server_capability: ::core::option::Option<bool>,
     #[prost(enumeration="PaneFrameStyle", optional, tag="16")]
     pub pane_frame_style: ::core::option::Option<i32>,
+    #[prost(bool, optional, tag="17")]
+    pub session_dimmed: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

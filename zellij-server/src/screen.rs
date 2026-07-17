@@ -528,6 +528,7 @@ pub enum ScreenInstruction {
         pane_id: PaneId,
     },
     NestedSessionMessageFromHost {
+        client_id: ClientId,
         message: NestedSessionMessage,
     },
     /// The client observed the host's reply to a previously forwarded
@@ -1512,6 +1513,7 @@ pub(crate) struct Screen {
     forward_in_flight_token: Option<u32>,
     nested_guest_tracker: NestedGuestTracker,
     nested_ancestry: Vec<String>,
+    dimmed_clients: HashSet<ClientId>,
     host_terminal_theme_mode: Option<HostTerminalThemeMode>,
     host_theme_dark_styling: Option<Styling>,
     host_theme_light_styling: Option<Styling>,
@@ -1675,6 +1677,7 @@ impl Screen {
             forward_in_flight_token: None,
             nested_guest_tracker: NestedGuestTracker::default(),
             nested_ancestry: vec![],
+            dimmed_clients: HashSet::new(),
             host_terminal_theme_mode: None,
             host_theme_dark_styling: None,
             host_theme_light_styling: None,
@@ -2770,25 +2773,45 @@ impl Screen {
                 );
                 self.clear_nested_guest(pane_id);
             },
-            NestedSessionMessage::FocusHost { .. } => {
-                for (client_id, tab_id) in self.active_tab_ids.iter() {
-                    if let Some(focused) = self
-                        .tabs
-                        .get(tab_id)
-                        .and_then(|t| t.get_active_pane_id(*client_id))
-                    {
-                        if focused == pane_id {
+            NestedSessionMessage::FocusHost { direction } => {
+                let clients_focused_on_pane = self.clients_with_pane_focused(pane_id);
+                match direction {
+                    None => {
+                        for client_id in clients_focused_on_pane {
+                            self.set_client_dimmed(client_id, false);
                             let _ = self.bus.senders.send_to_server(
                                 ServerInstruction::KeyPassthroughChanged(
-                                    *client_id,
-                                    pane_id,
-                                    pane_id,
-                                    false,
+                                    client_id, pane_id, pane_id, false, None,
                                 ),
                             );
-                            break;
                         }
-                    }
+                    },
+                    Some(direction) => {
+                        for client_id in clients_focused_on_pane {
+                            let new_pane_id = self
+                                .tabs
+                                .values_mut()
+                                .find(|tab| tab.has_pane_with_pid(&pane_id))
+                                .and_then(|tab| {
+                                    tab.focus_pane_adjacent_to(pane_id, direction, client_id)
+                                });
+                            match new_pane_id {
+                                Some(new_pane_id) => {
+                                    self.report_key_passthrough_state_with_direction(
+                                        client_id,
+                                        pane_id,
+                                        new_pane_id,
+                                        Some(direction),
+                                    );
+                                    let _ = self.render(None);
+                                    let _ = self.log_and_report_session_state();
+                                },
+                                None => {
+                                    self.bubble_focus_to_host(client_id, direction);
+                                },
+                            }
+                        }
+                    },
                 }
             },
             other => {
@@ -2830,23 +2853,14 @@ impl Screen {
                 None,
             ));
         // If a client already has this pane focused, enter key passthrough now
-        for (client_id, tab_id) in self.active_tab_ids.iter() {
-            if let Some(focused) = self
-                .tabs
-                .get(tab_id)
-                .and_then(|t| t.get_active_pane_id(*client_id))
-            {
-                if focused == pane_id {
-                    let _ = self.bus.senders.send_to_server(
-                        ServerInstruction::KeyPassthroughChanged(
-                            *client_id,
-                            pane_id,
-                            pane_id,
-                            true,
-                        ),
-                    );
-                }
-            }
+        for client_id in self.clients_with_pane_focused(pane_id) {
+            self.set_client_dimmed(client_id, true);
+            let _ = self
+                .bus
+                .senders
+                .send_to_server(ServerInstruction::KeyPassthroughChanged(
+                    client_id, pane_id, pane_id, true, None,
+                ));
         }
         let _ = self
             .bus
@@ -2872,23 +2886,14 @@ impl Screen {
             }
         }
 
-        for (client_id, tab_id) in self.active_tab_ids.iter() {
-            if let Some(focused) = self
-                .tabs
-                .get(tab_id)
-                .and_then(|t| t.get_active_pane_id(*client_id))
-            {
-                if focused == pane_id {
-                    let _ = self.bus.senders.send_to_server(
-                        ServerInstruction::KeyPassthroughChanged(
-                            *client_id,
-                            pane_id,
-                            pane_id,
-                            false,
-                        ),
-                    );
-                }
-            }
+        for client_id in self.clients_with_pane_focused(pane_id) {
+            self.set_client_dimmed(client_id, false);
+            let _ = self
+                .bus
+                .senders
+                .send_to_server(ServerInstruction::KeyPassthroughChanged(
+                    client_id, pane_id, pane_id, false, None,
+                ));
         }
     }
 
@@ -2909,16 +2914,86 @@ impl Screen {
         old_pane_id: PaneId,
         new_pane_id: PaneId,
     ) {
+        self.report_key_passthrough_state_with_direction(client_id, old_pane_id, new_pane_id, None);
+    }
+
+    fn report_key_passthrough_state_with_direction(
+        &mut self,
+        client_id: ClientId,
+        old_pane_id: PaneId,
+        new_pane_id: PaneId,
+        entered_from_direction: Option<Direction>,
+    ) {
         let should_route = self.should_route_keys_to_pane(new_pane_id);
+        self.set_client_dimmed(client_id, should_route);
         let _ = self.bus.senders.send_to_server(ServerInstruction::KeyPassthroughChanged(
             client_id,
             old_pane_id,
             new_pane_id,
             should_route,
+            entered_from_direction,
         ));
     }
 
-    pub fn handle_nested_session_message_from_host(&mut self, message: NestedSessionMessage) {
+    fn set_client_dimmed(&mut self, client_id: ClientId, dimmed: bool) {
+        let changed = if dimmed {
+            self.dimmed_clients.insert(client_id)
+        } else {
+            self.dimmed_clients.remove(&client_id)
+        };
+        if !changed {
+            return;
+        }
+        let mode_info = self
+            .mode_info
+            .entry(client_id)
+            .or_insert_with(|| self.default_mode_info.clone());
+        mode_info.session_dimmed = if dimmed { Some(true) } else { None };
+        let mode_info = mode_info.clone();
+        for tab in self.tabs.values_mut() {
+            tab.change_mode_info(mode_info.clone(), client_id);
+            tab.mark_active_pane_for_rerender(client_id);
+            tab.set_client_dimmed(client_id, dimmed);
+        }
+        for tab in self.tabs.values_mut() {
+            let _ = tab.update_input_modes();
+        }
+        let _ = self.render(None);
+    }
+
+    fn clients_with_pane_focused(&self, pane_id: PaneId) -> Vec<ClientId> {
+        let mut clients = vec![];
+        for (client_id, tab_id) in self.active_tab_ids.iter() {
+            if let Some(focused) = self
+                .tabs
+                .get(tab_id)
+                .and_then(|t| t.get_active_pane_id(*client_id))
+            {
+                if focused == pane_id {
+                    clients.push(*client_id);
+                }
+            }
+        }
+        clients
+    }
+
+    fn bubble_focus_to_host(&self, client_id: ClientId, direction: Direction) {
+        let payload = nested_session::encode_payload(&NestedSessionMessage::FocusHost {
+            direction: Some(direction),
+        });
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::EmitNestedSessionFrameToClient(
+                client_id, payload,
+            ));
+    }
+
+    pub fn handle_nested_session_message_from_host(
+        &mut self,
+        client_id: ClientId,
+        message: NestedSessionMessage,
+    ) {
         match message {
             NestedSessionMessage::AnnounceAck { ancestry, .. } => {
                 log::info!(
@@ -2926,6 +3001,25 @@ impl Screen {
                     ancestry
                 );
                 self.nested_ancestry = ancestry;
+            },
+            NestedSessionMessage::FocusGained {
+                from_direction: Some(direction),
+            } => {
+                let old_pane_id = self.get_active_pane_id(&client_id);
+                if let Ok(tab) = self.get_active_tab_mut(client_id) {
+                    tab.focus_pane_on_edge(direction, client_id);
+                }
+                let new_pane_id = self.get_active_pane_id(&client_id);
+                if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
+                    self.report_key_passthrough_state_with_direction(
+                        client_id,
+                        old,
+                        new,
+                        Some(direction),
+                    );
+                }
+                let _ = self.render(None);
+                let _ = self.log_and_report_session_state();
             },
             other => {
                 log::debug!(
@@ -3583,6 +3677,9 @@ impl Screen {
         for (client_id, mode_info) in &self.mode_info {
             tab.change_mode_info(mode_info.clone(), *client_id);
         }
+        for dimmed_client_id in &self.dimmed_clients {
+            tab.set_client_dimmed(*dimmed_client_id, true);
+        }
         self.tabs.insert(tab_id, tab);
         Ok(())
     }
@@ -3760,6 +3857,8 @@ impl Screen {
 
     pub fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to remove client {client_id}");
+
+        self.set_client_dimmed(client_id, false);
 
         // If the followed client disconnected, find the next regular client
         if Some(client_id) == self.followed_client_id {
@@ -4624,8 +4723,13 @@ impl Screen {
                         .move_focus_left(client_id)
                         .and_then(|success| {
                             if !success {
-                                self.switch_tab_prev(Some(Direction::Left), true, client_id)
-                                    .context("failed to move focus to previous tab")
+                                if self.tabs.len() == 1 {
+                                    self.bubble_focus_to_host(client_id, Direction::Left);
+                                    Ok(())
+                                } else {
+                                    self.switch_tab_prev(Some(Direction::Left), true, client_id)
+                                        .context("failed to move focus to previous tab")
+                                }
                             } else {
                                 Ok(())
                             }
@@ -4660,8 +4764,13 @@ impl Screen {
                         .move_focus_right(client_id)
                         .and_then(|success| {
                             if !success {
-                                self.switch_tab_next(Some(Direction::Right), true, client_id)
-                                    .context("failed to move focus to next tab")
+                                if self.tabs.len() == 1 {
+                                    self.bubble_focus_to_host(client_id, Direction::Right);
+                                    Ok(())
+                                } else {
+                                    self.switch_tab_next(Some(Direction::Right), true, client_id)
+                                        .context("failed to move focus to next tab")
+                                }
                             } else {
                                 Ok(())
                             }
@@ -7053,7 +7162,16 @@ pub(crate) fn screen_thread_main(
                     );
                     let new_pane_id = screen.get_active_pane_id(&client_id);
                     if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
-                        screen.report_key_passthrough_state(client_id, old, new);
+                        if old == new {
+                            screen.bubble_focus_to_host(client_id, Direction::Left);
+                        } else {
+                            screen.report_key_passthrough_state_with_direction(
+                                client_id,
+                                old,
+                                new,
+                                Some(Direction::Left),
+                            );
+                        }
                     }
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
@@ -7069,7 +7187,19 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message("No connected clients to move focus for".to_string());
                     }
                 } else {
+                    let old_pane_id = screen.get_active_pane_id(&client_id);
                     screen.move_focus_left_or_previous_tab(client_id)?;
+                    let new_pane_id = screen.get_active_pane_id(&client_id);
+                    if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
+                        if old != new {
+                            screen.report_key_passthrough_state_with_direction(
+                                client_id,
+                                old,
+                                new,
+                                Some(Direction::Left),
+                            );
+                        }
+                    }
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
                     screen.render(None)?;
@@ -7093,7 +7223,16 @@ pub(crate) fn screen_thread_main(
                     );
                     let new_pane_id = screen.get_active_pane_id(&client_id);
                     if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
-                        screen.report_key_passthrough_state(client_id, old, new);
+                        if old == new {
+                            screen.bubble_focus_to_host(client_id, Direction::Down);
+                        } else {
+                            screen.report_key_passthrough_state_with_direction(
+                                client_id,
+                                old,
+                                new,
+                                Some(Direction::Down),
+                            );
+                        }
                     }
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
@@ -7118,7 +7257,16 @@ pub(crate) fn screen_thread_main(
                     );
                     let new_pane_id = screen.get_active_pane_id(&client_id);
                     if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
-                        screen.report_key_passthrough_state(client_id, old, new);
+                        if old == new {
+                            screen.bubble_focus_to_host(client_id, Direction::Right);
+                        } else {
+                            screen.report_key_passthrough_state_with_direction(
+                                client_id,
+                                old,
+                                new,
+                                Some(Direction::Right),
+                            );
+                        }
                     }
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
@@ -7134,7 +7282,19 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message("No connected clients to move focus for".to_string());
                     }
                 } else {
+                    let old_pane_id = screen.get_active_pane_id(&client_id);
                     screen.move_focus_right_or_next_tab(client_id)?;
+                    let new_pane_id = screen.get_active_pane_id(&client_id);
+                    if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
+                        if old != new {
+                            screen.report_key_passthrough_state_with_direction(
+                                client_id,
+                                old,
+                                new,
+                                Some(Direction::Right),
+                            );
+                        }
+                    }
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
                     screen.render(None)?;
@@ -7158,7 +7318,16 @@ pub(crate) fn screen_thread_main(
                     );
                     let new_pane_id = screen.get_active_pane_id(&client_id);
                     if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
-                        screen.report_key_passthrough_state(client_id, old, new);
+                        if old == new {
+                            screen.bubble_focus_to_host(client_id, Direction::Up);
+                        } else {
+                            screen.report_key_passthrough_state_with_direction(
+                                client_id,
+                                old,
+                                new,
+                                Some(Direction::Up),
+                            );
+                        }
                     }
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
@@ -8256,8 +8425,8 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::NestedGuestPingTick { pane_id } => {
                 screen.handle_nested_guest_ping_tick(pane_id);
             },
-            ScreenInstruction::NestedSessionMessageFromHost { message } => {
-                screen.handle_nested_session_message_from_host(message);
+            ScreenInstruction::NestedSessionMessageFromHost { client_id, message } => {
+                screen.handle_nested_session_message_from_host(client_id, message);
             },
             ScreenInstruction::ForwardedReplyFromHost { token, reply_bytes } => {
                 screen.handle_forwarded_reply_from_host(token, reply_bytes)?;

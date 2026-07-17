@@ -1,4 +1,5 @@
-use crate::output::Output;
+use crate::output::{CharacterChunk, Output};
+use crate::panes::terminal_character::AnsiCode;
 use crate::panes::PaneId;
 use crate::tab::Pane;
 use crate::ui::boundaries::Boundaries;
@@ -8,6 +9,17 @@ use std::collections::{HashMap, HashSet};
 use zellij_utils::data::{client_id_to_colors, InputMode, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::PaneGeom;
+
+pub fn dim_character_chunks(character_chunks: &mut Vec<CharacterChunk>) {
+    for chunk in character_chunks.iter_mut() {
+        for terminal_character in chunk.terminal_characters.iter_mut() {
+            terminal_character.styles.update(|styles| {
+                styles.dim = Some(AnsiCode::On);
+            });
+        }
+    }
+}
+
 pub struct PaneContentsAndUi<'a> {
     pane: &'a mut Box<dyn Pane>,
     output: &'a mut Output,
@@ -28,6 +40,7 @@ pub struct PaneContentsAndUi<'a> {
     stack_list_entry_stack_is_focused: bool,
     blank_title: bool,
     mouse_scroll_resize: bool,
+    dimmed_for_clients: HashSet<ClientId>,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -46,6 +59,7 @@ impl<'a> PaneContentsAndUi<'a> {
         show_help_text: bool,
         omit_title: bool,
         mouse_scroll_resize: bool,
+        dimmed_for_clients: HashSet<ClientId>,
     ) -> Self {
         let mut focused_clients: Vec<ClientId> = active_panes
             .iter()
@@ -83,7 +97,12 @@ impl<'a> PaneContentsAndUi<'a> {
             stack_list_entry_stack_is_focused: false,
             blank_title: false,
             mouse_scroll_resize,
+            dimmed_for_clients,
         }
+    }
+    fn frame_is_dimmed_for_client(&self, client_id: ClientId) -> bool {
+        self.dimmed_for_clients.contains(&client_id)
+            && !self.focused_clients.contains(&client_id)
     }
     pub fn set_frame_geom_override(&mut self, frame_geom_override: Option<PaneGeom>) {
         self.frame_geom_override = frame_geom_override;
@@ -289,6 +308,7 @@ impl<'a> PaneContentsAndUi<'a> {
                     .contains(&client_id)
                     && !pane_focused_for_client_id),
         });
+        let frame_is_dimmed = self.frame_is_dimmed_for_client(client_id);
         let frame_params = if session_is_mirrored {
             FrameParams {
                 focused_client,
@@ -314,6 +334,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 stack_list_entry: stack_list_entry.clone(),
                 blank_title: self.blank_title,
                 mouse_scroll_resize: self.mouse_scroll_resize,
+                dimmed: frame_is_dimmed,
             }
         } else {
             FrameParams {
@@ -340,14 +361,18 @@ impl<'a> PaneContentsAndUi<'a> {
                 stack_list_entry,
                 blank_title: self.blank_title,
                 mouse_scroll_resize: self.mouse_scroll_resize,
+                dimmed: frame_is_dimmed,
             }
         };
 
-        if let Some((frame_terminal_characters, vte_output)) = self
+        if let Some((mut frame_terminal_characters, vte_output)) = self
             .pane
             .render_frame(client_id, frame_params, client_mode)
             .with_context(err_context)?
         {
+            if self.frame_is_dimmed_for_client(client_id) {
+                dim_character_chunks(&mut frame_terminal_characters);
+            }
             self.output
                 .add_character_chunks_to_client(client_id, frame_terminal_characters, self.z_index)
                 .with_context(err_context)?;

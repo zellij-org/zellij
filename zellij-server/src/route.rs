@@ -2747,7 +2747,15 @@ pub(crate) fn route_thread_main(
                                 Some(message @ zellij_utils::nested_session::NestedSessionMessage::AnnounceAck { .. }) => {
                                     let _ = send_to_screen_or_retry_queue!(
                                         senders,
-                                        ScreenInstruction::NestedSessionMessageFromHost { message },
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::FocusGained { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
                                         instruction,
                                         retry_queue
                                     );

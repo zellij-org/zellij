@@ -244,6 +244,7 @@ pub(crate) struct Tab {
     web_clients_allowed: bool,
     web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
+    dimmed_clients: HashSet<ClientId>,
     plugin_hover_pane_id: HashMap<ClientId, PaneId>,
     mouse_last_pane_id: HashMap<ClientId, PaneId>,
     mouse_help_text_visible: HashMap<ClientId, bool>,
@@ -962,7 +963,18 @@ impl Tab {
             tab_has_pending_bell: false,
             tab_bell_flash: false,
             tab_bell_ring: false,
+            dimmed_clients: HashSet::new(),
         }
+    }
+
+    pub fn set_client_dimmed(&mut self, client_id: ClientId, dimmed: bool) {
+        if dimmed {
+            self.dimmed_clients.insert(client_id);
+        } else {
+            self.dimmed_clients.remove(&client_id);
+        }
+        self.tiled_panes.set_client_dimmed(client_id, dimmed);
+        self.floating_panes.set_client_dimmed(client_id, dimmed);
     }
 
     pub fn stacked_pane_list_is_active(&self) -> bool {
@@ -1595,6 +1607,7 @@ impl Tab {
                     false,
                     false,
                     self.mouse_scroll_resize,
+                    self.dimmed_clients.clone(),
                 );
                 pane_contents_and_ui.set_frame_geom_override(Some(header_geom));
                 pane_contents_and_ui.set_stack_list_entry(
@@ -2187,6 +2200,7 @@ impl Tab {
         self.mouse_help_text_visible.remove(&client_id);
         self.mouse_last_pane_id.remove(&client_id);
         self.last_mouse_activity_time.remove(&client_id);
+        self.set_client_dimmed(client_id, false);
         self.set_force_render();
     }
     pub fn drain_connected_clients(
@@ -4382,19 +4396,19 @@ impl Tab {
 
         return self.tiled_panes.focus_pane_right_fullscreen(client_id);
     }
-    pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
-            return;
+            return false;
         }
 
-        self.tiled_panes.focus_pane_up_fullscreen(client_id);
+        return self.tiled_panes.focus_pane_up_fullscreen(client_id);
     }
-    pub fn focus_pane_down_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_down_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
-            return;
+            return false;
         }
 
-        self.tiled_panes.focus_pane_down_fullscreen(client_id);
+        return self.tiled_panes.focus_pane_down_fullscreen(client_id);
     }
     pub fn switch_next_pane_fullscreen(&mut self, client_id: ClientId) {
         if !self.is_fullscreen_active() {
@@ -4837,6 +4851,23 @@ impl Tab {
             self.tiled_panes.focus_pane_on_edge(direction, client_id);
         }
     }
+    pub fn focus_pane_adjacent_to(
+        &mut self,
+        pane_id: PaneId,
+        direction: Direction,
+        client_id: ClientId,
+    ) -> Option<PaneId> {
+        if self.floating_panes.panes_are_visible() {
+            return self
+                .floating_panes
+                .focus_pane_adjacent_to(pane_id, direction, client_id);
+        }
+        if self.tiled_panes.fullscreen_is_active() {
+            return None;
+        }
+        self.tiled_panes
+            .focus_pane_adjacent_to(pane_id, direction, client_id)
+    }
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_left(&mut self, client_id: ClientId) -> Result<bool> {
         let err_context = || format!("failed to move focus left for client {}", client_id);
@@ -4875,8 +4906,7 @@ impl Tab {
                 return Ok(false);
             }
             if self.tiled_panes.fullscreen_is_active() {
-                self.focus_pane_down_fullscreen(client_id);
-                return Ok(true);
+                return Ok(self.focus_pane_down_fullscreen(client_id));
             }
             if self.stacked_pane_list_is_active()
                 && self.move_focus_within_stack_list(client_id, true)
@@ -4902,8 +4932,7 @@ impl Tab {
                 return Ok(false);
             }
             if self.tiled_panes.fullscreen_is_active() {
-                self.focus_pane_up_fullscreen(client_id);
-                return Ok(true);
+                return Ok(self.focus_pane_up_fullscreen(client_id));
             }
             if self.stacked_pane_list_is_active()
                 && self.move_focus_within_stack_list(client_id, false)

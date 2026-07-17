@@ -554,6 +554,7 @@ impl State {
                 is_alternate_tab,
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
+                self.mode_info.session_dimmed.unwrap_or(false),
             );
 
             is_alternate_tab = !is_alternate_tab;

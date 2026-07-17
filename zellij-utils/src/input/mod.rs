@@ -55,6 +55,7 @@ mod not_wasm {
             web_server_port: None,
             web_server_capability: None,
             pane_frame_style: None,
+            session_dimmed: None,
         }
     }
 

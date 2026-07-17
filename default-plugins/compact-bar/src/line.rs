@@ -20,6 +20,7 @@ pub fn tab_line(
         is_swap_layout_dirty: tab_data.is_swap_layout_dirty,
         toggle_tooltip_key,
         tooltip_is_active,
+        dimmed: mode_info.session_dimmed.unwrap_or(false),
     };
 
     let builder = TabLineBuilder::new(config, mode_info.style.colors, mode_info.capabilities, cols);
@@ -35,6 +36,7 @@ pub struct TabLineConfig {
     pub is_swap_layout_dirty: bool,
     pub toggle_tooltip_key: Option<String>,
     pub tooltip_is_active: bool,
+    pub dimmed: bool,
 }
 
 fn calculate_total_length(parts: &[LinePart]) -> usize {
@@ -45,14 +47,16 @@ struct TabLinePopulator {
     cols: usize,
     palette: Styling,
     capabilities: PluginCapabilities,
+    dimmed: bool,
 }
 
 impl TabLinePopulator {
-    fn new(cols: usize, palette: Styling, capabilities: PluginCapabilities) -> Self {
+    fn new(cols: usize, palette: Styling, capabilities: PluginCapabilities, dimmed: bool) -> Self {
         Self {
             cols,
             palette,
             capabilities,
+            dimmed,
         }
     }
 
@@ -218,9 +222,15 @@ impl TabLinePopulator {
             background: self.palette.text_selected.emphasis_0,
         };
 
+        let text_style = if self.dimmed {
+            style!(colors.text, colors.background).italic()
+        } else {
+            style!(colors.text, colors.background).bold()
+        };
+
         let styled_parts = [
             style!(colors.separator, colors.background).paint(separator),
-            style!(colors.text, colors.background).bold().paint(text),
+            text_style.paint(text),
             style!(colors.background, colors.separator).paint(separator),
         ];
 
@@ -267,11 +277,16 @@ enum TabAction {
 struct TabLinePrefixBuilder {
     palette: Styling,
     cols: usize,
+    dimmed: bool,
 }
 
 impl TabLinePrefixBuilder {
-    fn new(palette: Styling, cols: usize) -> Self {
-        Self { palette, cols }
+    fn new(palette: Styling, cols: usize, dimmed: bool) -> Self {
+        Self {
+            palette,
+            cols,
+            dimmed,
+        }
     }
 
     fn build(&self, session_name: Option<&str>, mode: InputMode) -> Vec<LinePart> {
@@ -295,12 +310,14 @@ impl TabLinePrefixBuilder {
     fn create_zellij_part(&self) -> LinePart {
         let prefix_text = " Zellij ";
         let colors = self.get_text_colors();
+        let text_style = if self.dimmed {
+            style!(colors.text, colors.background).italic()
+        } else {
+            style!(colors.text, colors.background).bold()
+        };
 
         LinePart {
-            part: style!(colors.text, colors.background)
-                .bold()
-                .paint(prefix_text)
-                .to_string(),
+            part: text_style.paint(prefix_text).to_string(),
             len: prefix_text.chars().count(),
             tab_index: None,
         }
@@ -312,11 +329,13 @@ impl TabLinePrefixBuilder {
 
         if self.cols.saturating_sub(used_len) >= name_part_len {
             let colors = self.get_text_colors();
+            let text_style = if self.dimmed {
+                style!(colors.text, colors.background).italic()
+            } else {
+                style!(colors.text, colors.background).bold()
+            };
             Some(LinePart {
-                part: style!(colors.text, colors.background)
-                    .bold()
-                    .paint(name_part)
-                    .to_string(),
+                part: text_style.paint(name_part).to_string(),
                 len: name_part_len,
                 tab_index: None,
             })
@@ -331,18 +350,23 @@ impl TabLinePrefixBuilder {
 
         if self.cols.saturating_sub(used_len) >= mode_len {
             let colors = self.get_text_colors();
-            let style = match mode {
-                InputMode::Locked => {
-                    style!(self.palette.text_unselected.emphasis_3, colors.background)
-                },
-                InputMode::Normal => {
-                    style!(self.palette.text_unselected.emphasis_2, colors.background)
-                },
-                _ => style!(self.palette.text_unselected.emphasis_0, colors.background),
+            let style = if self.dimmed {
+                style!(colors.text, colors.background).italic()
+            } else {
+                match mode {
+                    InputMode::Locked => {
+                        style!(self.palette.text_unselected.emphasis_3, colors.background)
+                    },
+                    InputMode::Normal => {
+                        style!(self.palette.text_unselected.emphasis_2, colors.background)
+                    },
+                    _ => style!(self.palette.text_unselected.emphasis_0, colors.background),
+                }
+                .bold()
             };
 
             Some(LinePart {
-                part: style.bold().paint(mode_text).to_string(),
+                part: style.paint(mode_text).to_string(),
                 len: mode_len,
                 tab_index: None,
             })
@@ -363,13 +387,15 @@ impl TabLinePrefixBuilder {
 struct RightSideElementsBuilder {
     palette: Styling,
     capabilities: PluginCapabilities,
+    dimmed: bool,
 }
 
 impl RightSideElementsBuilder {
-    fn new(palette: Styling, capabilities: PluginCapabilities) -> Self {
+    fn new(palette: Styling, capabilities: PluginCapabilities, dimmed: bool) -> Self {
         Self {
             palette,
             capabilities,
+            dimmed,
         }
     }
 
@@ -389,11 +415,17 @@ impl RightSideElementsBuilder {
 
     fn create_tooltip_indicator(&self, toggle_key: &str, is_active: bool) -> LinePart {
         let key_text = toggle_key;
-        let key = Text::new(key_text).color_all(3).opaque();
+        let key = if self.dimmed {
+            Text::new(key_text).disabled().opaque()
+        } else {
+            Text::new(key_text).color_all(3).opaque()
+        };
         let ribbon_text = "Tooltip";
         let mut ribbon = Text::new(ribbon_text);
 
-        if is_active {
+        if self.dimmed {
+            ribbon = ribbon.disabled();
+        } else if is_active {
             ribbon = ribbon.selected();
         }
 
@@ -459,6 +491,14 @@ impl RightSideElementsBuilder {
         colors: &SwapLayoutColors,
         separator: &str,
     ) -> (String, String, String) {
+        if self.dimmed {
+            let text_style = style!(colors.bg, colors.fg).italic();
+            return (
+                style!(colors.bg, colors.fg).paint(separator).to_string(),
+                text_style.paint(layout_name).to_string(),
+                style!(colors.fg, colors.bg).paint(separator).to_string(),
+            );
+        }
         match mode {
             InputMode::Locked => (
                 style!(colors.bg, colors.fg).paint(separator).to_string(),
@@ -521,7 +561,7 @@ impl TabLineBuilder {
         let (tabs_before_active, active_tab, tabs_after_active) =
             self.split_tabs(all_tabs, active_tab_index);
 
-        let prefix_builder = TabLinePrefixBuilder::new(self.palette, self.cols);
+        let prefix_builder = TabLinePrefixBuilder::new(self.palette, self.cols, self.config.dimmed);
         let session_name = if self.config.hide_session_name {
             None
         } else {
@@ -540,6 +580,7 @@ impl TabLineBuilder {
             self.cols.saturating_sub(prefix_len),
             self.palette,
             self.capabilities,
+            self.config.dimmed,
         );
 
         let mut tabs_before = tabs_before_active;
@@ -573,7 +614,8 @@ impl TabLineBuilder {
         let current_len = calculate_total_length(prefix);
 
         if current_len < self.cols {
-            let right_builder = RightSideElementsBuilder::new(self.palette, self.capabilities);
+            let right_builder =
+                RightSideElementsBuilder::new(self.palette, self.capabilities, self.config.dimmed);
             let available_space = self.cols.saturating_sub(current_len);
             let mut right_elements = right_builder.build(&self.config, available_space);
 

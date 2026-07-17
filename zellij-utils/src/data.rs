@@ -1751,6 +1751,7 @@ pub struct ModeInfo {
     pub web_server_port: Option<u16>,
     pub web_server_capability: Option<bool>,
     pub pane_frame_style: Option<PaneFrameStyle>,
+    pub session_dimmed: Option<bool>,
 }
 
 impl ModeInfo {

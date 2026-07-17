@@ -53,6 +53,7 @@ pub struct FloatingPanes {
     // last_position)
     senders: ThreadSenders,
     window_title: Option<String>,
+    dimmed_clients: HashSet<ClientId>,
 }
 
 #[allow(clippy::borrowed_box)]
@@ -89,7 +90,16 @@ impl FloatingPanes {
             pane_being_moved_with_mouse: None,
             senders,
             window_title: None,
+            dimmed_clients: HashSet::new(),
         }
+    }
+    pub fn set_client_dimmed(&mut self, client_id: ClientId, dimmed: bool) {
+        if dimmed {
+            self.dimmed_clients.insert(client_id);
+        } else {
+            self.dimmed_clients.remove(&client_id);
+        }
+        self.set_force_render();
     }
     pub fn stack(&self) -> Option<FloatingPanesStack> {
         if self.panes_are_visible() {
@@ -494,6 +504,7 @@ impl FloatingPanes {
                 show_help_text,
                 false,
                 mouse_scroll_resize,
+                self.dimmed_clients.clone(),
             );
             for client_id in &connected_clients {
                 let client_mode = self
@@ -740,6 +751,42 @@ impl FloatingPanes {
             self.focus_pane(pane_id, client_id);
             self.set_force_render();
         }
+    }
+    pub fn focus_pane_adjacent_to(
+        &mut self,
+        pane_id: PaneId,
+        direction: Direction,
+        client_id: ClientId,
+    ) -> Option<PaneId> {
+        if !self.panes.contains_key(&pane_id) {
+            return None;
+        }
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
+        let floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        let next_index = match direction {
+            Direction::Left => floating_pane_grid.next_selectable_pane_id_to_the_left(&pane_id),
+            Direction::Down => floating_pane_grid.next_selectable_pane_id_below(&pane_id),
+            Direction::Up => floating_pane_grid.next_selectable_pane_id_above(&pane_id),
+            Direction::Right => floating_pane_grid.next_selectable_pane_id_to_the_right(&pane_id),
+        }?;
+        if let Some(previously_active_pane) = self.get_active_pane_mut(client_id) {
+            previously_active_pane.set_should_render(true);
+            previously_active_pane.render_full_viewport();
+        }
+        if let Some(next_active_pane) = self.get_pane_mut(next_index) {
+            next_active_pane.set_should_render(true);
+            next_active_pane.render_full_viewport();
+        }
+        self.focus_pane(next_index, client_id);
+        self.set_pane_active_at(next_index);
+        self.set_force_render();
+        Some(next_index)
     }
 
     pub fn focus_last_pane(&mut self, client_id: ClientId) {
