@@ -808,6 +808,14 @@ pub fn switch_tab_to(tab_idx: u32) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Change the focused tab to the specified tab ID.
+pub fn go_to_tab_with_id(tab_id: u64) {
+    let plugin_command = PluginCommand::GoToTabWithId(tab_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Set a timeout in seconds (or fractions thereof) after which the plugins [update](./plugin-api-events#update) method will be called with the [`Timer`](./plugin-api-events.md#timer) event.
 pub fn set_timeout(secs: f64) {
     let plugin_command = PluginCommand::SetTimeout(secs);
