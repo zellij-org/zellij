@@ -373,12 +373,12 @@ fn create_new_tab_with_stacked_pane_list(
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
-        false, // focus_follows_mouse
-        false, // mouse_click_through
+        true,
+        false,
+        false,
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
+        0,
     );
     let (base_layout, new_terminal_ids) =
         base_layout_and_ids.unwrap_or_else(|| (TiledPaneLayout::default(), vec![(1, None)]));
@@ -12762,9 +12762,6 @@ fn two_adjacent_stacks_layout() -> (TiledPaneLayout, Vec<(u32, Option<RunCommand
     (base_layout, new_terminal_ids)
 }
 
-// the number of panes that are currently members of a stack (either the single
-// in-grid visible member or a suppressed hidden member). used to detect panes
-// that were orphaned out of their stack list by a corrupt merge.
 fn stack_member_pane_count(tab: &Tab) -> usize {
     tab.get_all_pane_ids()
         .into_iter()
@@ -12774,12 +12771,6 @@ fn stack_member_pane_count(tab: &Tab) -> usize {
 
 #[test]
 fn test_ctrl_scroll_up_merging_stacks_preserves_all_panes() {
-    // regression test: enlarging a pane inside a stack with ctrl+scroll while the
-    // stacked-pane-list mode is active (so non-visible stack members are
-    // suppressed) must dissolve the stack lists into in-grid stacks before the
-    // classic resize/merge mutation. otherwise the mutation operates on a grid
-    // that is missing the suppressed members and they are orphaned/lost. this
-    // mirrors the alt+ keyboard resize path (Tab::resize).
     let size = Size {
         cols: 150,
         rows: 40,
@@ -12793,8 +12784,6 @@ fn test_ctrl_scroll_up_merging_stacks_preserves_all_panes() {
         Some(two_adjacent_stacks_layout()),
     );
 
-    // render once to enter stacked-pane-list mode (groupify_all) and suppress
-    // the non-visible members of each stack
     tab.render(&mut output, None).unwrap();
 
     let mut pane_ids_before = tab.get_all_pane_ids();
@@ -12804,7 +12793,6 @@ fn test_ctrl_scroll_up_merging_stacks_preserves_all_panes() {
         6,
         "all six panes exist before the merge"
     );
-    // all six panes belong to one of the two stacks
     assert_eq!(stack_member_pane_count(&tab), 6);
 
     let active_pane_position = Position::new(5, 40);
@@ -12814,11 +12802,6 @@ fn test_ctrl_scroll_up_merging_stacks_preserves_all_panes() {
     )
     .unwrap();
 
-    // inspect state immediately after the mutation, before a render can re-run
-    // groupify_all and paper over an inconsistent grid. with the fix, the stack
-    // lists are dissolved so every member is present in-grid as a real stacked
-    // pane; without it, the suppressed members remain suppressed while the grid
-    // is mutated underneath them.
     let dissolved_into_grid = !tab.has_stack_lists();
     assert!(
         dissolved_into_grid,
@@ -12838,8 +12821,6 @@ fn test_ctrl_scroll_up_merging_stacks_preserves_all_panes() {
         "no panes are lost when merging stacks via ctrl+scroll resize"
     );
 
-    // a subsequent render (which re-syncs stacked-pane-list mode) must succeed
-    // and keep all panes
     let mut output = Output::default();
     tab.render(&mut output, None).unwrap();
     let mut pane_ids_final = tab.get_all_pane_ids();
@@ -12856,10 +12837,6 @@ fn test_ctrl_scroll_up_merging_stacks_preserves_all_panes() {
 
 #[test]
 fn test_ctrl_scroll_down_in_stack_dissolves_stack_lists_before_mutation() {
-    // sibling of the ctrl_scroll_up regression test for the decrease handler:
-    // shrinking a pane inside a stack via ctrl+scroll while stacked-pane-list
-    // mode is active must also dissolve the stack lists into in-grid stacks
-    // before the classic mutation so that no suppressed member is orphaned.
     let size = Size {
         cols: 150,
         rows: 40,
