@@ -296,6 +296,105 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     tab
 }
 
+fn create_new_tab_with_stacked_pane_list(
+    size: Size,
+    default_mode: ModeInfo,
+    stacked_pane_list: bool,
+    base_layout_and_ids: Option<(TiledPaneLayout, Vec<(u32, Option<RunCommand>)>)>,
+) -> Tab {
+    set_session_name("test".into());
+    let index = 0;
+    let position = 0;
+    let name = String::new();
+    let os_api = Box::new(FakeInputOutput::default());
+    let senders = ThreadSenders::default().silently_fail_on_send();
+    let max_panes = None;
+    let mode_info = default_mode;
+    let style = Style::default();
+    let draw_pane_frames = PaneFrameStyle::Full;
+    let auto_layout = true;
+    let client_id = 1;
+    let session_is_mirrored = true;
+    let mut connected_clients = HashMap::new();
+    connected_clients.insert(client_id, false);
+    let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let character_cell_info = Rc::new(RefCell::new(None));
+    let stacked_resize = Rc::new(RefCell::new(true));
+    let stacked_pane_list = Rc::new(RefCell::new(stacked_pane_list));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let copy_options = CopyOptions::default();
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(PaneGroups::new(ThreadSenders::default())));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let osc8_hyperlinks = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+    let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
+    let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
+    let mut tab = Tab::new(
+        index,
+        position,
+        name,
+        size,
+        character_cell_info,
+        stacked_resize,
+        stacked_pane_list,
+        sixel_image_store,
+        os_api,
+        senders,
+        max_panes,
+        style,
+        mode_info,
+        draw_pane_frames,
+        auto_layout,
+        connected_clients,
+        session_is_mirrored,
+        Some(client_id),
+        copy_options,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        (vec![], vec![]),
+        PathBuf::from("my_default_shell"),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+        false,
+        web_sharing,
+        current_group,
+        currently_marking_pane_group,
+        advanced_mouse_actions,
+        mouse_scroll_resize,
+        true,  // mouse_hover_effects
+        false, // focus_follows_mouse
+        false, // mouse_click_through
+        web_server_ip,
+        web_server_port,
+        0, // mobile_tab_count
+    );
+    let (base_layout, new_terminal_ids) =
+        base_layout_and_ids.unwrap_or_else(|| (TiledPaneLayout::default(), vec![(1, None)]));
+    tab.apply_layout(
+        base_layout,
+        vec![],
+        new_terminal_ids,
+        vec![],
+        HashMap::new(),
+        client_id,
+        None,
+    )
+    .unwrap();
+    tab
+}
+
 fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab {
     set_session_name("test".into());
     let index = 0;
@@ -12628,6 +12727,181 @@ fn test_ctrl_scroll_down_does_not_resize_pane_when_mouse_scroll_resize_disabled(
 
     assert!(!effect.state_changed);
     assert_eq!(pane_geom_before, pane_geom_after);
+}
+
+fn two_adjacent_stacks_layout() -> (TiledPaneLayout, Vec<(u32, Option<RunCommand>)>) {
+    let base_layout = r#"
+        layout {
+            pane split_direction="horizontal" {
+                pane stacked=true {
+                    pane focus=true
+                    pane
+                    pane
+                }
+                pane stacked=true {
+                    pane
+                    pane
+                    pane
+                }
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![
+        (1, None),
+        (2, None),
+        (3, None),
+        (4, None),
+        (5, None),
+        (6, None),
+    ];
+    (base_layout, new_terminal_ids)
+}
+
+// the number of panes that are currently members of a stack (either the single
+// in-grid visible member or a suppressed hidden member). used to detect panes
+// that were orphaned out of their stack list by a corrupt merge.
+fn stack_member_pane_count(tab: &Tab) -> usize {
+    tab.get_all_pane_ids()
+        .into_iter()
+        .filter(|id| tab.pane_is_stack_list_member(id))
+        .count()
+}
+
+#[test]
+fn test_ctrl_scroll_up_merging_stacks_preserves_all_panes() {
+    // regression test: enlarging a pane inside a stack with ctrl+scroll while the
+    // stacked-pane-list mode is active (so non-visible stack members are
+    // suppressed) must dissolve the stack lists into in-grid stacks before the
+    // classic resize/merge mutation. otherwise the mutation operates on a grid
+    // that is missing the suppressed members and they are orphaned/lost. this
+    // mirrors the alt+ keyboard resize path (Tab::resize).
+    let size = Size {
+        cols: 150,
+        rows: 40,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some(two_adjacent_stacks_layout()),
+    );
+
+    // render once to enter stacked-pane-list mode (groupify_all) and suppress
+    // the non-visible members of each stack
+    tab.render(&mut output, None).unwrap();
+
+    let mut pane_ids_before = tab.get_all_pane_ids();
+    pane_ids_before.sort();
+    assert_eq!(
+        pane_ids_before.len(),
+        6,
+        "all six panes exist before the merge"
+    );
+    // all six panes belong to one of the two stacks
+    assert_eq!(stack_member_pane_count(&tab), 6);
+
+    let active_pane_position = Position::new(5, 40);
+    tab.handle_mouse_event(
+        &MouseEvent::new_ctrl_scroll_up_event(active_pane_position),
+        client_id,
+    )
+    .unwrap();
+
+    // inspect state immediately after the mutation, before a render can re-run
+    // groupify_all and paper over an inconsistent grid. with the fix, the stack
+    // lists are dissolved so every member is present in-grid as a real stacked
+    // pane; without it, the suppressed members remain suppressed while the grid
+    // is mutated underneath them.
+    let dissolved_into_grid = !tab.has_stack_lists();
+    assert!(
+        dissolved_into_grid,
+        "stack lists must be dissolved into in-grid stacks before the classic merge mutation"
+    );
+    let mut in_grid_ids = tab.get_static_and_floating_pane_ids();
+    in_grid_ids.sort();
+    assert_eq!(
+        in_grid_ids, pane_ids_before,
+        "all panes must be present in the grid after the merge, none orphaned"
+    );
+
+    let mut pane_ids_after = tab.get_all_pane_ids();
+    pane_ids_after.sort();
+    assert_eq!(
+        pane_ids_before, pane_ids_after,
+        "no panes are lost when merging stacks via ctrl+scroll resize"
+    );
+
+    // a subsequent render (which re-syncs stacked-pane-list mode) must succeed
+    // and keep all panes
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let mut pane_ids_final = tab.get_all_pane_ids();
+    pane_ids_final.sort();
+    assert_eq!(pane_ids_before, pane_ids_final);
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn test_ctrl_scroll_down_in_stack_dissolves_stack_lists_before_mutation() {
+    // sibling of the ctrl_scroll_up regression test for the decrease handler:
+    // shrinking a pane inside a stack via ctrl+scroll while stacked-pane-list
+    // mode is active must also dissolve the stack lists into in-grid stacks
+    // before the classic mutation so that no suppressed member is orphaned.
+    let size = Size {
+        cols: 150,
+        rows: 40,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some(two_adjacent_stacks_layout()),
+    );
+
+    tab.render(&mut output, None).unwrap();
+
+    let mut pane_ids_before = tab.get_all_pane_ids();
+    pane_ids_before.sort();
+    assert_eq!(pane_ids_before.len(), 6);
+    assert_eq!(stack_member_pane_count(&tab), 6);
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_ctrl_scroll_down_event(Position::new(5, 40)),
+        client_id,
+    )
+    .unwrap();
+
+    assert!(
+        !tab.has_stack_lists(),
+        "stack lists must be dissolved into in-grid stacks before the classic merge mutation"
+    );
+    let mut in_grid_ids = tab.get_static_and_floating_pane_ids();
+    in_grid_ids.sort();
+    assert_eq!(
+        in_grid_ids, pane_ids_before,
+        "all panes must be present in the grid after the resize, none orphaned"
+    );
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let mut pane_ids_final = tab.get_all_pane_ids();
+    pane_ids_final.sort();
+    assert_eq!(pane_ids_before, pane_ids_final);
 }
 
 #[test]
