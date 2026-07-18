@@ -481,6 +481,7 @@ pub enum ScreenContext {
     SetSoftKeyboard,
     SetShadowFocus,
     FocusHostSession,
+    ToggleHostFullscreen,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

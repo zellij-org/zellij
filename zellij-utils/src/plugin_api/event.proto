@@ -512,6 +512,8 @@ message ModeUpdatePayload {
   optional bool web_server_capability = 15;
   optional PaneFrameStyle pane_frame_style = 16;
   optional bool session_dimmed = 17;
+  repeated string ancestry = 18;
+  optional bool host_fullscreen = 19;
 }
 
 enum WebSharing {

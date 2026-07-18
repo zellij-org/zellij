@@ -503,6 +503,7 @@ enum ActionName {
     SetPaneFrameStyle = 105;
     ToggleFocusNoUiFullscreen = 106;
     FocusHostSession = 107;
+    ToggleHostFullscreen = 108;
 }
 
 message Position {

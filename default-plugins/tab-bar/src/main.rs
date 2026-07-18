@@ -35,6 +35,7 @@ struct State {
     cached_keybinds: KeybindsVec,
     active_pane_scroll: Option<(usize, usize)>,
     new_tab_button_range: Option<(usize, usize)>,
+    breadcrumb_range: Option<(usize, usize)>,
     hovered_tab_idx: Option<usize>,
     hovered_new_tab_button: bool,
     hint_text: Option<BTreeMap<usize, StyledText>>,
@@ -133,6 +134,12 @@ impl ZellijPlugin for State {
             },
             Event::Mouse(me) => match me {
                 Mouse::LeftClick(_, col) => {
+                    if let Some((start, end)) = self.breadcrumb_range {
+                        if col >= start && col < end {
+                            focus_host_session();
+                            return should_render;
+                        }
+                    }
                     if let Some((start, end)) = self.new_tab_button_range {
                         if col >= start && col < end {
                             new_tab::<&str>(None, None);
@@ -227,7 +234,13 @@ impl ZellijPlugin for State {
         } else {
             self.hint_text.as_ref()
         };
-        let (line, new_tab_button_range) = tab_line(
+        let breadcrumb_ancestry: Vec<String> =
+            if self.mode_info.host_fullscreen == Some(true) {
+                self.mode_info.session_ancestry.clone()
+            } else {
+                vec![]
+            };
+        let (line, new_tab_button_range, breadcrumb_range) = tab_line(
             self.mode_info.session_name.as_deref(),
             all_tabs,
             active_tab_index,
@@ -244,9 +257,11 @@ impl ZellijPlugin for State {
             is_alternate_tab,
             self.hovered_new_tab_button,
             dimmed,
+            &breadcrumb_ancestry,
         );
         self.tab_line = line;
         self.new_tab_button_range = new_tab_button_range;
+        self.breadcrumb_range = breadcrumb_range;
 
         let output = self
             .tab_line

@@ -1595,6 +1595,14 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ToggleHostFullscreen => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleHostFullscreen(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::RenameSession { name } => {
             senders
                 .send_to_screen(ScreenInstruction::RenameSession(
@@ -2753,6 +2761,22 @@ pub(crate) fn route_thread_main(
                                     );
                                 },
                                 Some(message @ zellij_utils::nested_session::NestedSessionMessage::FocusGained { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::FullscreenState { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::AncestryUpdate { .. }) => {
                                     let _ = send_to_screen_or_retry_queue!(
                                         senders,
                                         ScreenInstruction::NestedSessionMessageFromHost { client_id, message },

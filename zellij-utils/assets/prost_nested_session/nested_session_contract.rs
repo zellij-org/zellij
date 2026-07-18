@@ -50,6 +50,8 @@ pub struct FocusHost {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ToggleHostFullscreen {
+    #[prost(bool, tag="1")]
+    pub fullscreen: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

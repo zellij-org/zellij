@@ -955,6 +955,7 @@ impl From<crate::input::actions::Action>
             EditScrollbackByPaneIdAction,
             FocusLastPaneAction,
             FocusHostSessionAction,
+            ToggleHostFullscreenAction,
             FocusNextPaneAction,
             FocusPaneByPaneIdAction,
             FocusPluginPaneWithIdAction,
@@ -1138,6 +1139,9 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::FocusHostSession => {
                 ActionType::FocusHostSession(FocusHostSessionAction {})
+            },
+            crate::input::actions::Action::ToggleHostFullscreen => {
+                ActionType::ToggleHostFullscreen(ToggleHostFullscreenAction {})
             },
             crate::input::actions::Action::SwitchFocus => {
                 ActionType::SwitchFocus(SwitchFocusAction {})
@@ -2591,6 +2595,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::BreakPaneRight(_) => Ok(crate::input::actions::Action::BreakPaneRight),
             ActionType::BreakPaneLeft(_) => Ok(crate::input::actions::Action::BreakPaneLeft),
             ActionType::FocusHostSession(_) => Ok(crate::input::actions::Action::FocusHostSession),
+            ActionType::ToggleHostFullscreen(_) => {
+                Ok(crate::input::actions::Action::ToggleHostFullscreen)
+            },
             ActionType::RenameSession(rename_session_action) => {
                 Ok(crate::input::actions::Action::RenameSession {
                     name: rename_session_action.name,

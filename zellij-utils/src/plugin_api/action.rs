@@ -1102,6 +1102,12 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("FocusHostSession should not have a payload"),
                 None => Ok(Action::FocusHostSession),
             },
+            Some(ProtobufActionName::ToggleHostFullscreen) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleHostFullscreen should not have a payload"),
+                    None => Ok(Action::ToggleHostFullscreen),
+                }
+            },
             _ => Err("Unknown Action"),
         }
     }
@@ -1977,6 +1983,10 @@ impl TryFrom<Action> for ProtobufAction {
             },
             Action::FocusHostSession => Ok(ProtobufAction {
                 name: ProtobufActionName::FocusHostSession as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleHostFullscreen => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleHostFullscreen as i32,
                 optional_payload: None,
             }),
             Action::NoOp

@@ -1752,6 +1752,8 @@ pub struct ModeInfo {
     pub web_server_capability: Option<bool>,
     pub pane_frame_style: Option<PaneFrameStyle>,
     pub session_dimmed: Option<bool>,
+    pub session_ancestry: Vec<String>,
+    pub host_fullscreen: Option<bool>,
 }
 
 impl ModeInfo {
@@ -3647,6 +3649,7 @@ pub enum PluginCommand {
     },
     SetShadowFocus(PaneId),
     ExitMobileMode,
+    FocusHostSession,
 }
 
 // Response type for plugin API methods that open a pane in a new tab

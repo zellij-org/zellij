@@ -193,7 +193,8 @@ fn tab_line_prefix(
     palette: Styling,
     cols: usize,
     dimmed: bool,
-) -> Vec<LinePart> {
+    breadcrumb_ancestry: &[String],
+) -> (Vec<LinePart>, Option<(usize, usize)>) {
     let prefix_text = " Zellij ".to_string();
 
     let running_text_len = prefix_text.chars().count();
@@ -210,6 +211,33 @@ fn tab_line_prefix(
         len: running_text_len,
         tab_index: None,
     }];
+    let mut breadcrumb_range = None;
+    if !breadcrumb_ancestry.is_empty() {
+        if let Some(name) = session_name {
+            let ancestor_text = format!("({} ▸ ", breadcrumb_ancestry.join(" ▸ "));
+            let ancestor_len = ancestor_text.width();
+            let name_text = format!("{} [NESTED]) ", name);
+            let name_len = name_text.width();
+            let ancestor_style = style!(text_color, bg_color).italic();
+            let name_style = style!(text_color, bg_color).bold();
+            if cols.saturating_sub(running_text_len) >= ancestor_len + name_len {
+                let ancestor_start = running_text_len;
+                let ancestor_end = ancestor_start + ancestor_len;
+                breadcrumb_range = Some((ancestor_start, ancestor_end));
+                parts.push(LinePart {
+                    part: ancestor_style.paint(ancestor_text).to_string(),
+                    len: ancestor_len,
+                    tab_index: None,
+                });
+                parts.push(LinePart {
+                    part: name_style.paint(name_text).to_string(),
+                    len: name_len,
+                    tab_index: None,
+                });
+            }
+        }
+        return (parts, breadcrumb_range);
+    }
     if let Some(name) = session_name {
         let name_part = format!("({}) ", name);
         let name_part_len = name_part.width();
@@ -222,7 +250,7 @@ fn tab_line_prefix(
             })
         }
     }
-    parts
+    (parts, breadcrumb_range)
 }
 
 pub fn tab_separator(capabilities: PluginCapabilities) -> &'static str {
@@ -250,7 +278,8 @@ pub fn tab_line(
     is_alternate_tab: bool,
     new_tab_button_is_hovered: bool,
     dimmed: bool,
-) -> (Vec<LinePart>, Option<(usize, usize)>) {
+    breadcrumb_ancestry: &[String],
+) -> (Vec<LinePart>, Option<(usize, usize)>, Option<(usize, usize)>) {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
     let active_tab = if !tabs_after_active.is_empty() {
@@ -258,9 +287,9 @@ pub fn tab_line(
     } else {
         tabs_before_active.pop().unwrap()
     };
-    let mut prefix = match hide_session_name {
-        true => tab_line_prefix(None, palette, cols, dimmed),
-        false => tab_line_prefix(session_name, palette, cols, dimmed),
+    let (mut prefix, breadcrumb_range) = match hide_session_name {
+        true => tab_line_prefix(None, palette, cols, dimmed, &[]),
+        false => tab_line_prefix(session_name, palette, cols, dimmed, breadcrumb_ancestry),
     };
 
     let mut swap_layout_indicator = if hide_swap_layout_indicator {
@@ -365,7 +394,7 @@ pub fn tab_line(
         prefix.push(swap_layout_indicator);
     }
 
-    (prefix, new_tab_button_range)
+    (prefix, new_tab_button_range, breadcrumb_range)
 }
 
 fn swap_layout_status(

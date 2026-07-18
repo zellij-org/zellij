@@ -40,6 +40,7 @@ message FocusHost {
 }
 
 message ToggleHostFullscreen {
+  bool fullscreen = 1;
 }
 
 message Pong {

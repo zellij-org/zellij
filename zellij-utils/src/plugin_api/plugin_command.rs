@@ -1116,6 +1116,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 }
                 Ok(PluginCommand::ToggleFocusNoUiFullscreen)
             },
+            Some(CommandName::FocusHostSession) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    return Err("FocusHostSession should not have a payload");
+                }
+                Ok(PluginCommand::FocusHostSession)
+            },
             Some(CommandName::TogglePaneFrames) => {
                 if protobuf_plugin_command.payload.is_some() {
                     return Err("TogglePaneFrames should not have a payload");
@@ -3135,6 +3141,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::ToggleFocusNoUiFullscreen => Ok(ProtobufPluginCommand {
                 name: CommandName::ToggleFocusNoUiFullscreen as i32,
+                payload: None,
+            }),
+            PluginCommand::FocusHostSession => Ok(ProtobufPluginCommand {
+                name: CommandName::FocusHostSession as i32,
                 payload: None,
             }),
             PluginCommand::TogglePaneFrames => Ok(ProtobufPluginCommand {

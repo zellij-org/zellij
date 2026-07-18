@@ -20,7 +20,9 @@ pub enum NestedSessionMessage {
     FocusHost {
         direction: Option<Direction>,
     },
-    ToggleHostFullscreen,
+    ToggleHostFullscreen {
+        fullscreen: bool,
+    },
     Pong,
     Bye,
     AnnounceAck {
@@ -97,8 +99,8 @@ impl From<NestedSessionMessage> for proto::NestedSessionMessage {
             NestedSessionMessage::FocusHost { direction } => Payload::FocusHost(proto::FocusHost {
                 direction: direction_to_proto(direction),
             }),
-            NestedSessionMessage::ToggleHostFullscreen => {
-                Payload::HostFullscreen(proto::ToggleHostFullscreen {})
+            NestedSessionMessage::ToggleHostFullscreen { fullscreen } => {
+                Payload::HostFullscreen(proto::ToggleHostFullscreen { fullscreen })
             },
             NestedSessionMessage::Pong => Payload::Pong(proto::Pong {}),
             NestedSessionMessage::Bye => Payload::Bye(proto::Bye {}),
@@ -141,7 +143,11 @@ impl TryFrom<proto::NestedSessionMessage> for NestedSessionMessage {
             Some(Payload::FocusHost(focus_host)) => Ok(NestedSessionMessage::FocusHost {
                 direction: direction_from_proto(focus_host.direction),
             }),
-            Some(Payload::HostFullscreen(_)) => Ok(NestedSessionMessage::ToggleHostFullscreen),
+            Some(Payload::HostFullscreen(host_fullscreen)) => {
+                Ok(NestedSessionMessage::ToggleHostFullscreen {
+                    fullscreen: host_fullscreen.fullscreen,
+                })
+            },
             Some(Payload::Pong(_)) => Ok(NestedSessionMessage::Pong),
             Some(Payload::Bye(_)) => Ok(NestedSessionMessage::Bye),
             Some(Payload::AnnounceAck(announce_ack)) => Ok(NestedSessionMessage::AnnounceAck {
@@ -302,7 +308,7 @@ mod tests {
                 direction: Some(Direction::Left),
             },
             NestedSessionMessage::FocusHost { direction: None },
-            NestedSessionMessage::ToggleHostFullscreen,
+            NestedSessionMessage::ToggleHostFullscreen { fullscreen: true },
             NestedSessionMessage::Pong,
             NestedSessionMessage::Bye,
             NestedSessionMessage::AnnounceAck {

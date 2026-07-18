@@ -2022,6 +2022,10 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
 
         let session_dimmed = protobuf_mode_update_payload.session_dimmed;
 
+        let session_ancestry = protobuf_mode_update_payload.ancestry;
+
+        let host_fullscreen = protobuf_mode_update_payload.host_fullscreen;
+
         let mode_info = ModeInfo {
             mode: current_mode,
             keybinds,
@@ -2040,6 +2044,8 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             web_server_capability,
             pane_frame_style,
             session_dimmed,
+            session_ancestry,
+            host_fullscreen,
         };
         Ok(mode_info)
     }
@@ -2069,6 +2075,8 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             protobuf_pane_frame_style as i32
         });
         let session_dimmed = mode_info.session_dimmed;
+        let session_ancestry = mode_info.session_ancestry;
+        let host_fullscreen = mode_info.host_fullscreen;
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -2111,6 +2119,8 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             web_server_capability,
             pane_frame_style,
             session_dimmed,
+            ancestry: session_ancestry,
+            host_fullscreen,
         })
     }
 }
@@ -2466,6 +2476,8 @@ fn serialize_mode_update_event_with_non_default_values() {
         web_server_capability: Some(true),
         pane_frame_style: Some(crate::input::options::PaneFrameStyle::Titles),
         session_dimmed: Some(true),
+        session_ancestry: vec!["work".to_owned(), "prod".to_owned()],
+        host_fullscreen: Some(true),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();

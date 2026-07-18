@@ -2250,6 +2250,7 @@ pub enum CommandName {
     ToggleFloatingPanes = 225,
     NewPane = 226,
     ToggleFocusNoUiFullscreen = 227,
+    FocusHostSession = 228,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2463,6 +2464,7 @@ impl CommandName {
             CommandName::ToggleFloatingPanes => "ToggleFloatingPanes",
             CommandName::NewPane => "NewPane",
             CommandName::ToggleFocusNoUiFullscreen => "ToggleFocusNoUiFullscreen",
+            CommandName::FocusHostSession => "FocusHostSession",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2673,6 +2675,7 @@ impl CommandName {
             "ToggleFloatingPanes" => Some(Self::ToggleFloatingPanes),
             "NewPane" => Some(Self::NewPane),
             "ToggleFocusNoUiFullscreen" => Some(Self::ToggleFocusNoUiFullscreen),
+            "FocusHostSession" => Some(Self::FocusHostSession),
             _ => None,
         }
     }

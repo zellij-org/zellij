@@ -283,6 +283,7 @@ message Action {
     ToggleFocusNoUiFullscreenAction toggle_focus_no_ui_fullscreen = 143;
     ToggleNoUiFullscreenByPaneIdAction toggle_no_ui_fullscreen_by_pane_id = 144;
     FocusHostSessionAction focus_host_session = 145;
+    ToggleHostFullscreenAction toggle_host_fullscreen = 146;
   }
 }
 
@@ -294,6 +295,7 @@ message FocusNextPaneAction {}
 message FocusPreviousPaneAction {}
 message FocusLastPaneAction {}
 message FocusHostSessionAction {}
+message ToggleHostFullscreenAction {}
 message SwitchFocusAction {}
 message MovePaneBackwardsAction {}
 message ClearScreenAction {}

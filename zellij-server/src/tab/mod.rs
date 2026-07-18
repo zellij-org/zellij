@@ -3784,6 +3784,12 @@ impl Tab {
             false
         }
     }
+    pub fn nested_guest_pane_ids(&self) -> Vec<PaneId> {
+        self.get_all_pane_ids()
+            .into_iter()
+            .filter(|pane_id| self.is_pane_nested_guest(*pane_id))
+            .collect()
+    }
     pub fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) -> bool {
         if self.tiled_panes.panes_contain(&pane_id) {
             self.tiled_panes.set_shadow_focus(client_id, pane_id);
@@ -4520,8 +4526,10 @@ impl Tab {
             .with_context(err_context)?;
         self.render_stack_list_headers(output, client_id_override)
             .with_context(err_context)?;
-        if (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
-            || self.floating_panes.has_pinned_panes()
+        let no_ui_fullscreen_active = self.tiled_panes.fullscreen_covers_ui();
+        if !no_ui_fullscreen_active
+            && ((self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
+                || self.floating_panes.has_pinned_panes())
         {
             self.floating_panes
                 .render(

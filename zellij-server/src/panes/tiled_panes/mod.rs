@@ -596,7 +596,6 @@ impl TiledPanes {
         } else {
             None
         };
-        let display_sized_viewport: Viewport = (*self.display_area.borrow()).into();
         let position_and_sizes_of_stacks = {
             StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
                 .positions_and_sizes_of_all_stacks()
@@ -608,15 +607,17 @@ impl TiledPanes {
             self.reserved_top_rows.borrow().clone()
         };
         for pane in self.panes.values_mut() {
+            if no_ui_fullscreen_pane_id == Some(pane.pid()) {
+                pane.set_frame(false);
+                pane.set_content_offset(Offset::default());
+                resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+                continue;
+            }
             if !pane.borderless() {
                 pane.set_frame(draws_full_frames);
             }
 
-            let pane_viewport = if no_ui_fullscreen_pane_id == Some(pane.pid()) {
-                &display_sized_viewport
-            } else {
-                &viewport
-            };
+            let pane_viewport = &viewport;
             let reserved_rows = reserved_top_rows.get(&pane.pid()).copied().unwrap_or(0);
 
             #[allow(clippy::if_same_then_else)]
@@ -1203,7 +1204,10 @@ impl TiledPanes {
                     stacked_pane_ids_on_top_of_stacks.contains(&pane.pid());
                 let pane_is_on_bottom_of_stack =
                     stacked_pane_ids_on_bottom_of_stacks.contains(&pane.pid());
-                let should_draw_pane_frames = self.pane_frame_style.draws_full_frames();
+                let pane_is_no_ui_fullscreen =
+                    self.fullscreen_covers_ui && self.fullscreen_is_active == Some(pane.pid());
+                let should_draw_pane_frames =
+                    self.pane_frame_style.draws_full_frames() && !pane_is_no_ui_fullscreen;
                 let pane_is_stacked = pane.current_geom().is_stacked();
                 let pane_is_one_liner_in_stack =
                     pane_is_stacked && pane.current_geom().rows.is_fixed();
@@ -1262,7 +1266,8 @@ impl TiledPanes {
                         }
                     }
                     let is_floating = false;
-                    if self.pane_frame_style.draws_full_frames() {
+                    if pane_is_no_ui_fullscreen {
+                    } else if self.pane_frame_style.draws_full_frames() {
                         pane_contents_and_ui
                             .render_pane_frame(
                                 *client_id,

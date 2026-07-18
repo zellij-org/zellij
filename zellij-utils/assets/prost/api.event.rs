@@ -705,6 +705,10 @@ pub struct ModeUpdatePayload {
     pub pane_frame_style: ::core::option::Option<i32>,
     #[prost(bool, optional, tag="17")]
     pub session_dimmed: ::core::option::Option<bool>,
+    #[prost(string, repeated, tag="18")]
+    pub ancestry: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="19")]
+    pub host_fullscreen: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

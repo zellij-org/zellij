@@ -56,6 +56,8 @@ mod not_wasm {
             web_server_capability: None,
             pane_frame_style: None,
             session_dimmed: None,
+            session_ancestry: vec![],
+            host_fullscreen: None,
         }
     }
 
