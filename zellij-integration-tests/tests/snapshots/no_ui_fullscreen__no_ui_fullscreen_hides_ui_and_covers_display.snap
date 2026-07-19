@@ -2,6 +2,5 @@
 source: zellij-integration-tests/tests/no_ui_fullscreen.rs
 expression: normalized(&grid_snapshot)
 ---
-                                                         Pane #2
 $ █
                                                                                                                         

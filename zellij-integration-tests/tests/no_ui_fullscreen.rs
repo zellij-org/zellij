@@ -28,7 +28,7 @@ fn no_ui_fullscreen_hides_ui_and_covers_display() {
         |grid_snapshot| {
             !grid_snapshot.tab_bar_appears()
                 && !grid_snapshot.status_bar_appears()
-                && grid_snapshot.cursor_is_at(col(2).row(1))
+                && grid_snapshot.cursor_is_at(col(2).row(0))
         },
     );
     assert_snapshot!(normalized(&grid_snapshot));
@@ -104,7 +104,7 @@ fn resize_terminal_while_no_ui_fullscreen_tracks_display() {
     zellij.wait_until("chrome hidden while no-ui fullscreen", |grid_snapshot| {
         !grid_snapshot.tab_bar_appears()
             && !grid_snapshot.status_bar_appears()
-            && grid_snapshot.cursor_is_at(col(2).row(1))
+            && grid_snapshot.cursor_is_at(col(2).row(0))
     });
 
     zellij.resize(Size {
@@ -113,15 +113,14 @@ fn resize_terminal_while_no_ui_fullscreen_tracks_display() {
     });
     right_terminal.wait_for_size(
         "no-ui fullscreen pane tracks the new display size",
-        |cols, rows| cols == 100 && rows == 23,
+        |cols, rows| cols == 100 && rows == 24,
     );
     let grid_snapshot = zellij.wait_until(
         "no-ui fullscreen still covers the resized display",
         |grid_snapshot| {
             !grid_snapshot.tab_bar_appears()
                 && !grid_snapshot.status_bar_appears()
-                && grid_snapshot.contains("Pane #2")
-                && grid_snapshot.cursor_is_at(col(2).row(1))
+                && grid_snapshot.cursor_is_at(col(2).row(0))
         },
     );
     assert_snapshot!(normalized(&grid_snapshot));
@@ -152,18 +151,16 @@ fn no_ui_fullscreen_with_full_frames() {
     toggle_no_ui_fullscreen_via_keybinding(&zellij);
 
     right_terminal.wait_for_size(
-        "framed no-ui fullscreen pane sized to display minus frame",
-        |cols, rows| {
-            cols == (TERMINAL_SIZE.cols - 2) as u16 && rows == (TERMINAL_SIZE.rows - 2) as u16
-        },
+        "no-ui fullscreen pane forced frameless and sized to the exact display",
+        |cols, rows| cols == TERMINAL_SIZE.cols as u16 && rows == TERMINAL_SIZE.rows as u16,
     );
     let grid_snapshot = zellij.wait_until(
-        "framed pane covers the whole display without chrome",
+        "frameless fullscreen pane covers the whole display without chrome",
         |grid_snapshot| {
             !grid_snapshot.tab_bar_appears()
                 && !grid_snapshot.status_bar_appears()
-                && grid_snapshot.contains(FULL_FRAME_CORNER)
-                && grid_snapshot.cursor_is_at(col(3).row(1))
+                && !grid_snapshot.contains(FULL_FRAME_CORNER)
+                && grid_snapshot.cursor_is_at(col(2).row(0))
         },
     );
     assert_snapshot!(normalized(&grid_snapshot));
@@ -261,7 +258,7 @@ fn regular_fullscreen_switches_to_no_ui_fullscreen() {
         |grid_snapshot| {
             !grid_snapshot.tab_bar_appears()
                 && !grid_snapshot.status_bar_appears()
-                && grid_snapshot.cursor_is_at(col(2).row(1))
+                && grid_snapshot.cursor_is_at(col(2).row(0))
         },
     );
 
@@ -285,7 +282,7 @@ fn move_focus_while_no_ui_fullscreen_keeps_no_ui() {
     zellij.wait_until("right pane is no-ui fullscreen", |grid_snapshot| {
         !grid_snapshot.tab_bar_appears()
             && !grid_snapshot.status_bar_appears()
-            && grid_snapshot.cursor_is_at(col(2).row(1))
+            && grid_snapshot.cursor_is_at(col(2).row(0))
     });
 
     zellij.send_stdin(&keys::alt('h'));
