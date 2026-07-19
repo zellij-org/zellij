@@ -80,7 +80,7 @@ pub struct TiledPanes {
     pane_frame_style: PaneFrameStyle,
     panes_to_hide: HashSet<PaneId>,
     fullscreen_is_active: Option<PaneId>,
-    fullscreen_covers_ui: bool,
+    fullscreen_covers_ui: Rc<RefCell<bool>>,
     senders: ThreadSenders,
     window_title: Option<String>,
     client_id_to_boundaries: HashMap<ClientId, Boundaries>,
@@ -101,6 +101,7 @@ impl TiledPanes {
         stacked_resize: Rc<RefCell<bool>>,
         stacked_pane_list: Rc<RefCell<bool>>,
         reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>>,
+        fullscreen_covers_ui: Rc<RefCell<bool>>,
         session_is_mirrored: bool,
         pane_frame_style: PaneFrameStyle,
         default_mode_info: ModeInfo,
@@ -126,7 +127,7 @@ impl TiledPanes {
             pane_frame_style,
             panes_to_hide: HashSet::new(),
             fullscreen_is_active: None,
-            fullscreen_covers_ui: false,
+            fullscreen_covers_ui,
             senders,
             window_title: None,
             client_id_to_boundaries: HashMap::new(),
@@ -591,7 +592,7 @@ impl TiledPanes {
             .count()
             == 1;
         let viewport = *self.viewport.borrow();
-        let no_ui_fullscreen_pane_id = if self.fullscreen_covers_ui {
+        let no_ui_fullscreen_pane_id = if *self.fullscreen_covers_ui.borrow() {
             self.fullscreen_is_active
         } else {
             None
@@ -1204,8 +1205,8 @@ impl TiledPanes {
                     stacked_pane_ids_on_top_of_stacks.contains(&pane.pid());
                 let pane_is_on_bottom_of_stack =
                     stacked_pane_ids_on_bottom_of_stacks.contains(&pane.pid());
-                let pane_is_no_ui_fullscreen =
-                    self.fullscreen_covers_ui && self.fullscreen_is_active == Some(pane.pid());
+                let pane_is_no_ui_fullscreen = *self.fullscreen_covers_ui.borrow()
+                    && self.fullscreen_is_active == Some(pane.pid());
                 let should_draw_pane_frames =
                     self.pane_frame_style.draws_full_frames() && !pane_is_no_ui_fullscreen;
                 let pane_is_stacked = pane.current_geom().is_stacked();
@@ -2745,7 +2746,7 @@ impl TiledPanes {
         self.fullscreen_is_active
     }
     pub fn fullscreen_covers_ui(&self) -> bool {
-        self.fullscreen_covers_ui
+        *self.fullscreen_covers_ui.borrow()
     }
     pub fn unset_fullscreen(&mut self) {
         if let Some(fullscreen_pane_id) = self.fullscreen_is_active {
@@ -2772,7 +2773,7 @@ impl TiledPanes {
             if let Some(fullscreen_pane) = self.get_pane_mut(fullscreen_pane_id) {
                 fullscreen_pane.reset_size_and_position_override();
             }
-            self.fullscreen_covers_ui = false;
+            *self.fullscreen_covers_ui.borrow_mut() = false;
             self.rerun_layout_solver_and_rerender();
             self.fullscreen_is_active = None;
         }
@@ -2799,7 +2800,7 @@ impl TiledPanes {
 
     pub fn toggle_pane_no_ui_fullscreen(&mut self, pane_id: PaneId) {
         if self.fullscreen_is_active.is_some() {
-            let was_no_ui = self.fullscreen_covers_ui;
+            let was_no_ui = *self.fullscreen_covers_ui.borrow();
             self.unset_fullscreen();
             if !was_no_ui {
                 self.set_fullscreen(pane_id, true);
@@ -2811,7 +2812,7 @@ impl TiledPanes {
 
     fn set_fullscreen(&mut self, pane_id: PaneId, covers_ui: bool) {
         self.panes_to_hide = self.panes_covered_by_fullscreen(pane_id, covers_ui);
-        if self.panes_to_hide.is_empty() {
+        if self.panes_to_hide.is_empty() && !covers_ui {
             return;
         }
         if covers_ui {
@@ -2822,7 +2823,7 @@ impl TiledPanes {
         }
         self.focus_pane_for_all_clients(pane_id);
         self.fullscreen_is_active = Some(pane_id);
-        self.fullscreen_covers_ui = covers_ui;
+        *self.fullscreen_covers_ui.borrow_mut() = covers_ui;
         self.rerun_layout_solver_and_rerender();
     }
 
@@ -2907,7 +2908,7 @@ impl TiledPanes {
     }
 
     pub fn focus_pane_left_fullscreen(&mut self, client_id: ClientId) -> bool {
-        let covers_ui = self.fullscreen_covers_ui;
+        let covers_ui = *self.fullscreen_covers_ui.borrow();
         self.unset_fullscreen();
         let ret = self.move_focus_left(client_id);
         self.reenter_active_pane_fullscreen(client_id, covers_ui);
@@ -2915,7 +2916,7 @@ impl TiledPanes {
     }
 
     pub fn focus_pane_right_fullscreen(&mut self, client_id: ClientId) -> bool {
-        let covers_ui = self.fullscreen_covers_ui;
+        let covers_ui = *self.fullscreen_covers_ui.borrow();
         self.unset_fullscreen();
         let ret = self.move_focus_right(client_id);
         self.reenter_active_pane_fullscreen(client_id, covers_ui);
@@ -2923,7 +2924,7 @@ impl TiledPanes {
     }
 
     pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) -> bool {
-        let covers_ui = self.fullscreen_covers_ui;
+        let covers_ui = *self.fullscreen_covers_ui.borrow();
         self.unset_fullscreen();
         let ret = self.move_focus_up(client_id);
         self.reenter_active_pane_fullscreen(client_id, covers_ui);
@@ -2931,7 +2932,7 @@ impl TiledPanes {
     }
 
     pub fn focus_pane_down_fullscreen(&mut self, client_id: ClientId) -> bool {
-        let covers_ui = self.fullscreen_covers_ui;
+        let covers_ui = *self.fullscreen_covers_ui.borrow();
         self.unset_fullscreen();
         let ret = self.move_focus_down(client_id);
         self.reenter_active_pane_fullscreen(client_id, covers_ui);
@@ -2939,21 +2940,21 @@ impl TiledPanes {
     }
 
     pub fn switch_next_pane_fullscreen(&mut self, client_id: ClientId) {
-        let covers_ui = self.fullscreen_covers_ui;
+        let covers_ui = *self.fullscreen_covers_ui.borrow();
         self.unset_fullscreen();
         self.focus_next_pane(client_id);
         self.reenter_active_pane_fullscreen(client_id, covers_ui);
     }
 
     pub fn switch_prev_pane_fullscreen(&mut self, client_id: ClientId) {
-        let covers_ui = self.fullscreen_covers_ui;
+        let covers_ui = *self.fullscreen_covers_ui.borrow();
         self.unset_fullscreen();
         self.focus_previous_pane(client_id);
         self.reenter_active_pane_fullscreen(client_id, covers_ui);
     }
 
     pub fn switch_last_pane_fullscreen(&mut self, client_id: ClientId) {
-        let covers_ui = self.fullscreen_covers_ui;
+        let covers_ui = *self.fullscreen_covers_ui.borrow();
         self.unset_fullscreen();
         self.focus_last_pane(client_id);
         self.reenter_active_pane_fullscreen(client_id, covers_ui);

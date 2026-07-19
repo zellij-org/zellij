@@ -449,6 +449,22 @@ impl NestedDepthThreeHarness {
         );
     }
 
+    pub fn wait_for_outer_to_descend_into_middle_after(&self, since: usize) {
+        self.outer_to_middle.wait_for_after(
+            since,
+            "the outer host to descend back into the middle guest pane",
+            |message| matches!(message, NestedSessionMessage::FocusGained { .. }),
+        );
+    }
+
+    pub fn wait_for_middle_to_descend_into_inner_after(&self, since: usize) {
+        self.middle_to_inner.wait_for_after(
+            since,
+            "the middle guest to descend back into the inner guest pane",
+            |message| matches!(message, NestedSessionMessage::FocusGained { .. }),
+        );
+    }
+
     pub fn mark_outer_to_middle(&self) -> usize {
         self.outer_to_middle.mark()
     }

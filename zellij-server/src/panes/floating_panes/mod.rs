@@ -54,6 +54,7 @@ pub struct FloatingPanes {
     senders: ThreadSenders,
     window_title: Option<String>,
     dimmed_clients: HashSet<ClientId>,
+    fullscreen_covers_ui: Rc<RefCell<bool>>,
 }
 
 #[allow(clippy::borrowed_box)]
@@ -66,6 +67,7 @@ impl FloatingPanes {
         connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        fullscreen_covers_ui: Rc<RefCell<bool>>,
         session_is_mirrored: bool,
         default_mode_info: ModeInfo,
         style: Style,
@@ -91,6 +93,7 @@ impl FloatingPanes {
             senders,
             window_title: None,
             dimmed_clients: HashSet::new(),
+            fullscreen_covers_ui,
         }
     }
     pub fn set_client_dimmed(&mut self, client_id: ClientId, dimmed: bool) {
@@ -102,6 +105,9 @@ impl FloatingPanes {
         self.set_force_render();
     }
     pub fn stack(&self) -> Option<FloatingPanesStack> {
+        if *self.fullscreen_covers_ui.borrow() {
+            return None;
+        }
         if self.panes_are_visible() {
             let layers: Vec<PaneGeom> = self
                 .z_indices
@@ -231,7 +237,7 @@ impl FloatingPanes {
             .and_then(|active_pane_id| self.panes.get_mut(active_pane_id))
     }
     pub fn panes_are_visible(&self) -> bool {
-        self.show_panes
+        self.show_panes && !*self.fullscreen_covers_ui.borrow()
     }
     pub fn has_active_panes(&self) -> bool {
         !self.active_panes.is_empty()
@@ -1238,6 +1244,9 @@ impl FloatingPanes {
     }
     pub fn move_pane_with_mouse(&mut self, position: Position, search_selectable: bool) -> bool {
         // true => handled, false => not handled (eg. no pane at this position)
+        if *self.fullscreen_covers_ui.borrow() {
+            return false;
+        }
         let show_panes = self.show_panes;
         if self.pane_being_moved_with_mouse.is_some() {
             if self.move_pane_to_position(&position) {

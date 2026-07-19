@@ -3051,6 +3051,7 @@ impl Screen {
     }
 
     fn apply_nested_guest_fullscreen(&mut self, pane_id: PaneId, fullscreen: bool) {
+        let mut actually_fullscreen = false;
         if let Some(tab) = self
             .tabs
             .values_mut()
@@ -3059,13 +3060,12 @@ impl Screen {
             let currently_fullscreen =
                 tab.fullscreen_pane_id() == Some(pane_id) && tab.fullscreen_covers_ui();
             if currently_fullscreen != fullscreen {
-                if fullscreen && tab.are_floating_panes_visible() {
-                    tab.hide_floating_panes();
-                }
                 tab.toggle_pane_no_ui_fullscreen(pane_id);
             }
+            actually_fullscreen =
+                tab.fullscreen_pane_id() == Some(pane_id) && tab.fullscreen_covers_ui();
         }
-        if fullscreen {
+        if actually_fullscreen {
             self.nested_fullscreen_panes.insert(pane_id);
         } else {
             self.nested_fullscreen_panes.remove(&pane_id);

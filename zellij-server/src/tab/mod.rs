@@ -848,6 +848,7 @@ impl Tab {
         let mode_info = Rc::new(RefCell::new(HashMap::new()));
         let reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>> =
             Rc::new(RefCell::new(HashMap::new()));
+        let fullscreen_covers_ui = Rc::new(RefCell::new(false));
 
         let tiled_panes = TiledPanes::new(
             display_area.clone(),
@@ -859,6 +860,7 @@ impl Tab {
             stacked_resize.clone(),
             stacked_pane_list.clone(),
             reserved_top_rows.clone(),
+            fullscreen_covers_ui.clone(),
             session_is_mirrored,
             pane_frame_style,
             default_mode_info.clone(),
@@ -873,6 +875,7 @@ impl Tab {
             connected_clients_in_app.clone(),
             mode_info.clone(),
             character_cell_size.clone(),
+            fullscreen_covers_ui.clone(),
             session_is_mirrored,
             default_mode_info.clone(),
             style,

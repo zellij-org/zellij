@@ -992,3 +992,188 @@ fn move_focus_or_tab_wraps_tabs_without_bubbling_when_the_guest_has_multiple_tab
 
     quit_guest_then_host(nested);
 }
+
+#[test]
+fn nested_fullscreen_exit_keeps_hidden_host_floating_panes_hidden() {
+    let nested = NestedDepthThreeHarness::start_depth_three(TERMINAL_SIZE);
+
+    nested.wait_for_outer_to_descend_into_middle();
+    nested.wait_for_middle_to_descend_into_inner();
+    nested.inner.wait_for_app_load();
+
+    nested.outer.send_stdin(&keys::alt('f'));
+    let inner_float = nested.inner.expect_pty_spawn();
+    inner_float.output(b"INNER-FLOAT ");
+    nested
+        .inner
+        .wait_until("inner floating pane shown", |inner_grid| {
+            inner_grid.contains("INNER-FLOAT")
+        });
+
+    let requested = nested.mark_inner_to_middle();
+    let ascended = nested.mark_middle_to_inner();
+    nested.outer.send_stdin(&keys::ctrl('o'));
+    nested.inner.wait_until(
+        "inner entered session mode after the passed-through mode key",
+        session_mode_bar_settled,
+    );
+    nested.outer.send_stdin(ARROW_UP);
+    nested.wait_for_inner_to_request_host_focus_after(requested);
+    nested.wait_for_middle_to_ascend_from_inner_after(ascended);
+
+    nested.outer.send_stdin(&keys::alt('f'));
+    let middle_float = nested.middle.expect_pty_spawn();
+    middle_float.output(b"MIDDLE-FLOAT ");
+    nested
+        .middle
+        .wait_until("middle floating pane shown", |middle_grid| {
+            middle_grid.contains("MIDDLE-FLOAT")
+        });
+    nested.outer.send_stdin(&keys::alt('f'));
+    nested
+        .middle
+        .wait_until("middle floating pane hidden", |middle_grid| {
+            !middle_grid.contains("MIDDLE-FLOAT")
+        });
+
+    nested.outer.send_stdin(&keys::ctrl('p'));
+    nested.middle.wait_until(
+        "middle entered pane mode before the split key",
+        pane_mode_bar_settled,
+    );
+    nested.outer.send_stdin(&keys::key('r'));
+    let middle_sibling = nested.middle.expect_pty_spawn();
+    middle_sibling.output(b"MIDDLE-SIBLING ");
+    nested.middle.wait_until(
+        "middle spawned a sibling pane next to the inner guest",
+        |middle_grid| middle_grid.contains("MIDDLE-SIBLING"),
+    );
+
+    let ascended_outer = nested.mark_outer_to_middle();
+    nested.outer.send_stdin(&keys::ctrl('o'));
+    nested.middle.wait_until(
+        "middle entered session mode before the ascend key",
+        session_mode_bar_settled,
+    );
+    nested.outer.send_stdin(ARROW_UP);
+    nested.wait_for_outer_to_ascend_from_middle_after(ascended_outer);
+
+    nested.outer.send_stdin(&keys::alt('f'));
+    let outer_float = nested.outer.expect_pty_spawn();
+    outer_float.output(b"OUTER-FLOAT ");
+    nested
+        .outer
+        .wait_until("outer floating pane shown", |outer_grid| {
+            outer_grid.contains("OUTER-FLOAT")
+        });
+    nested.outer.send_stdin(&keys::alt('f'));
+    nested
+        .outer
+        .wait_until("outer floating pane hidden", |outer_grid| {
+            !outer_grid.contains("OUTER-FLOAT")
+        });
+
+    nested.outer.send_stdin(&keys::ctrl('p'));
+    nested.outer.wait_until(
+        "outer entered pane mode before the split key",
+        pane_mode_bar_settled,
+    );
+    nested.outer.send_stdin(&keys::key('r'));
+    let outer_sibling = nested.outer.expect_pty_spawn();
+    outer_sibling.output(b"OUTER-SIBLING ");
+    nested.outer.wait_until(
+        "outer spawned a sibling pane next to the middle guest",
+        |outer_grid| outer_grid.contains("OUTER-SIBLING"),
+    );
+
+    let outer_descended = nested.mark_outer_to_middle();
+    nested.outer.send_stdin(&keys::ctrl('p'));
+    nested.outer.wait_until(
+        "outer entered pane mode before the focus-left key",
+        pane_mode_bar_settled,
+    );
+    nested.outer.send_stdin(ARROW_LEFT);
+    nested.wait_for_outer_to_descend_into_middle_after(outer_descended);
+
+    let middle_descended = nested.mark_middle_to_inner();
+    nested.outer.send_stdin(&keys::ctrl('p'));
+    nested.middle.wait_until(
+        "middle entered pane mode before the focus-left key",
+        guest_pane_mode_bar_settled,
+    );
+    nested.outer.send_stdin(ARROW_LEFT);
+    nested.wait_for_middle_to_descend_into_inner_after(middle_descended);
+
+    nested.outer.send_stdin(&keys::ctrl('o'));
+    nested.outer.send_stdin(&keys::key('f'));
+    nested.middle.wait_until(
+        "middle hid its own chrome and sibling while the inner guest is fullscreen",
+        |middle_grid| {
+            middle_grid.contains("INNER-FLOAT")
+                && !middle_grid.contains("MIDDLE-SIBLING")
+                && !middle_grid.contains("MIDDLE-FLOAT")
+        },
+    );
+    nested.outer.wait_until(
+        "outer hid its own chrome and sibling while the nested guest chain is fullscreen",
+        |outer_grid| {
+            outer_grid.contains("INNER-FLOAT")
+                && !outer_grid.contains("OUTER-SIBLING")
+                && !outer_grid.contains("MIDDLE-SIBLING")
+        },
+    );
+
+    nested.outer.send_stdin(&keys::ctrl('o'));
+    nested.outer.send_stdin(&keys::key('f'));
+    nested.middle.wait_until(
+        "middle restored its sibling pane after fullscreen exit",
+        |middle_grid| middle_grid.contains("MIDDLE-SIBLING"),
+    );
+    nested.outer.wait_until(
+        "outer restored its sibling pane after fullscreen exit",
+        |outer_grid| outer_grid.contains("OUTER-SIBLING"),
+    );
+
+    let middle_after_exit = nested.middle.snapshot();
+    let outer_after_exit = nested.outer.snapshot();
+    assert!(
+        !middle_after_exit.contains("MIDDLE-FLOAT") && !outer_after_exit.contains("OUTER-FLOAT"),
+        "hidden host floating panes must stay hidden after nested fullscreen exit\n=== middle grid ===\n{}\n=== outer grid ===\n{}\n=== log tail ===\n{}",
+        middle_after_exit.text,
+        outer_after_exit.text,
+        zellij_integration_tests::test_env::log_tail(400),
+    );
+
+    nested.outer.send_stdin(&keys::ctrl('o'));
+    nested.outer.send_stdin(&keys::key('f'));
+    nested.middle.wait_until(
+        "middle hid its sibling again during the second fullscreen",
+        |middle_grid| !middle_grid.contains("MIDDLE-SIBLING"),
+    );
+    nested.outer.wait_until(
+        "outer hid its sibling again during the second fullscreen",
+        |outer_grid| !outer_grid.contains("OUTER-SIBLING"),
+    );
+
+    nested.outer.send_stdin(&keys::ctrl('o'));
+    nested.outer.send_stdin(&keys::key('f'));
+    nested.middle.wait_until(
+        "middle restored its sibling pane after the second fullscreen exit",
+        |middle_grid| middle_grid.contains("MIDDLE-SIBLING"),
+    );
+    nested.outer.wait_until(
+        "outer restored its sibling pane after the second fullscreen exit",
+        |outer_grid| outer_grid.contains("OUTER-SIBLING"),
+    );
+
+    let middle_after_second_exit = nested.middle.snapshot();
+    let outer_after_second_exit = nested.outer.snapshot();
+    assert!(
+        !middle_after_second_exit.contains("MIDDLE-FLOAT")
+            && !outer_after_second_exit.contains("OUTER-FLOAT"),
+        "hidden host floating panes must stay hidden after a repeated nested fullscreen exit\n=== middle grid ===\n{}\n=== outer grid ===\n{}\n=== log tail ===\n{}",
+        middle_after_second_exit.text,
+        outer_after_second_exit.text,
+        zellij_integration_tests::test_env::log_tail(400),
+    );
+}
