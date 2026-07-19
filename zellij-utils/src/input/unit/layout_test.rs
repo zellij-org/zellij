@@ -2246,6 +2246,10 @@ fn env_var_expansion() {
 
 #[test]
 fn env_var_missing() {
+    // A `$something` that doesn't resolve to a real environment variable is treated as a
+    // literal path component rather than a hard parse error - see the
+    // `literal_dollar_sign_in_cwd_is_not_a_parse_error` test below for the motivating case
+    // (zellij resurrection layouts can legitimately contain a `$` from a real directory name).
     std::env::remove_var("SOME_UNIQUE_VALUE");
     let kdl_layout = r#"
         layout {
@@ -2254,7 +2258,42 @@ fn env_var_missing() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None);
-    assert!(layout.is_err(), "invalid env var lookup should fail");
+    assert!(
+        layout.is_ok(),
+        "a missing env var lookup should fall back to the literal string rather than fail parsing"
+    );
+}
+
+#[test]
+fn literal_dollar_sign_in_cwd_is_not_a_parse_error() {
+    // Regression test for https://github.com/zellij-org/zellij/issues/5378
+    //
+    // Zellij writes resurrection layouts (session-layout.kdl) with the real, unescaped cwd
+    // of each pane. If that cwd contains a literal `$` that isn't a real environment
+    // variable (eg. a React Router / Remix route directory named `$programId+`),
+    // shellexpand::full used to return an Err which was propagated as a hard
+    // ConfigError, making the layout zellij itself wrote unparseable by zellij.
+    let kdl_layout = r#"
+        layout {
+            pane command="ls" cwd="/tmp/foo/$programId+" {
+                start_suspended true
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None)
+        .expect("a literal, non-expandable $ in a cwd must not fail layout parsing");
+    let tab_layout = layout.template.expect("layout should have a template").0;
+    let pane = &tab_layout.children[0];
+    match pane.run.as_ref().expect("pane should have a run") {
+        Run::Command(run_command) => {
+            assert_eq!(
+                run_command.cwd,
+                Some(PathBuf::from("/tmp/foo/$programId+")),
+                "cwd with an unresolvable $ should be kept as-is"
+            );
+        },
+        other => panic!("expected a Run::Command, got {:?}", other),
+    }
 }
 
 #[test]
