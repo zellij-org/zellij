@@ -180,6 +180,12 @@ impl ClientOsApi for FakeClientOsApi {
         default_palette()
     }
     fn enable_mouse(&self) -> anyhow::Result<()> {
+        use std::io::Write;
+        const ENABLE_MOUSE_SUPPORT: &str =
+            "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1003h\u{1b}[?1015h\u{1b}[?1006h";
+        let mut writer = self.client_screen.writer();
+        writer.write_all(ENABLE_MOUSE_SUPPORT.as_bytes())?;
+        writer.flush()?;
         Ok(())
     }
     fn disable_mouse(&self) -> anyhow::Result<()> {

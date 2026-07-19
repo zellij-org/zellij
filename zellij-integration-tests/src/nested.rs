@@ -177,6 +177,15 @@ fn bridge_guest_into_pane_for_host(
     host_session_name: &str,
     frozen: Arc<AtomicBool>,
 ) -> GuestBridge {
+    bridge_guest_into_pane_for_host_with_config(host_pane, host_session_name, frozen, "")
+}
+
+fn bridge_guest_into_pane_for_host_with_config(
+    host_pane: &FakePtyHandle,
+    host_session_name: &str,
+    frozen: Arc<AtomicBool>,
+    guest_config_kdl: &str,
+) -> GuestBridge {
     host_pane.disable_echo();
     let (guest_cols, guest_rows) = host_pane
         .wait_for_size("host guest-pane to be sized", |cols, rows| {
@@ -189,6 +198,7 @@ fn bridge_guest_into_pane_for_host(
         rows: guest_rows as usize,
     })
     .as_nested_guest(host_session_name)
+    .with_config(guest_config_kdl)
     .with_stdout_tap(guest_stdout_tx)
     .skip_concurrency_slot()
     .start();
@@ -225,6 +235,14 @@ impl NestedHarness {
     }
 
     pub fn start_with_host_config(host_size: Size, host_config_kdl: &str) -> Self {
+        Self::start_with_host_and_guest_config(host_size, host_config_kdl, "")
+    }
+
+    pub fn start_with_host_and_guest_config(
+        host_size: Size,
+        host_config_kdl: &str,
+        guest_config_kdl: &str,
+    ) -> Self {
         set_nested_timing_env();
 
         let host = TestRunner::new(host_size)
@@ -235,8 +253,12 @@ impl NestedHarness {
         let host_session_name = host.session_name().to_string();
 
         let frozen = Arc::new(AtomicBool::new(false));
-        let bridge =
-            bridge_guest_into_pane_for_host(&host_pane, &host_session_name, frozen.clone());
+        let bridge = bridge_guest_into_pane_for_host_with_config(
+            &host_pane,
+            &host_session_name,
+            frozen.clone(),
+            guest_config_kdl,
+        );
 
         NestedHarness {
             host,
@@ -433,6 +455,18 @@ impl NestedDepthThreeHarness {
             _frozen: frozen,
             _forwarders: forwarders,
         }
+    }
+
+    pub fn outer_to_middle_frames(&self) -> &FrameLog {
+        &self.outer_to_middle
+    }
+
+    pub fn middle_to_inner_frames(&self) -> &FrameLog {
+        &self.middle_to_inner
+    }
+
+    pub fn inner_to_middle_frames(&self) -> &FrameLog {
+        &self.inner_to_middle
     }
 
     pub fn wait_for_outer_to_descend_into_middle(&self) {

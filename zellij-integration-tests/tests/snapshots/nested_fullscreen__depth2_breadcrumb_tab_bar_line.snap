@@ -1,0 +1,6 @@
+---
+source: zellij-integration-tests/tests/nested_fullscreen.rs
+assertion_line: 349
+expression: normalized(&fullscreened).lines().next().unwrap()
+---
+ Zellij (test-0 ▸ test-1 [NESTED])  Tab #1  + 
