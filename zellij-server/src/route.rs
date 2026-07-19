@@ -322,7 +322,7 @@ pub(crate) fn route_action(
             senders
                 .send_to_screen(ScreenInstruction::ClearScroll(client_id))
                 .with_context(err_context)?;
-            let bytes = chars.into_bytes();
+            let bytes = chars.replace("\r\n", "\n").into_bytes();
             senders
                 .send_to_screen(ScreenInstruction::Paste(
                     bytes,
