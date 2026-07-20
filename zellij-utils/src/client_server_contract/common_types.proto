@@ -711,6 +711,7 @@ message KeybindPipeAction {
   optional bool in_place = 10;
   optional string cwd = 11;
   optional string pane_title = 12;
+  bool client_local = 13;
 }
 
 message StackPanesAction {
