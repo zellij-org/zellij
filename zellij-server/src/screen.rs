@@ -8156,7 +8156,7 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_pty(PtyInstruction::ClosePane(id, None));
 
-                screen.log_and_report_session_state()?;
+                screen.log_and_report_session_state().non_fatal();
                 screen.retain_only_existing_panes_in_pane_groups();
             },
             ScreenInstruction::HoldPane(id, exit_status, run_command) => {
@@ -8755,9 +8755,9 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::RemoveClient(client_id) => {
-                screen.remove_client(client_id)?;
+                screen.remove_client(client_id).non_fatal();
                 screen.log_and_report_session_state().non_fatal();
-                screen.render(None)?;
+                screen.render(None).non_fatal();
             },
             ScreenInstruction::SuppressRenderUntilMobile(client_id) => {
                 screen.mobile_render_gate.gate(client_id);

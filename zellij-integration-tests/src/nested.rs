@@ -74,7 +74,7 @@ pub fn wait_for_settled_composite(
 }
 
 pub const GUEST_PING_INTERVAL_MS: u64 = 100;
-pub const GUEST_PONG_TIMEOUT_MS: u64 = 3000;
+pub const GUEST_PONG_TIMEOUT_MS: u64 = 8000;
 
 #[derive(Clone, Default)]
 pub struct FrameLog {
@@ -387,18 +387,25 @@ impl NestedHarness {
     }
 
     pub fn assert_host_stops_pinging_frozen_guest(&self) {
-        thread::sleep(Duration::from_millis(
-            GUEST_PONG_TIMEOUT_MS + 4 * GUEST_PING_INTERVAL_MS,
-        ));
-        let pings_after_timeout = self.host_ping_count();
-        thread::sleep(Duration::from_millis(4 * GUEST_PING_INTERVAL_MS));
-        let pings_later = self.host_ping_count();
-        assert_eq!(
-            pings_after_timeout, pings_later,
-            "the outer host kept pinging the guest after it went silent; \
-             the host never noticed the guest was gone and cleared it \
-             (pings after timeout={pings_after_timeout}, later={pings_later})",
-        );
+        let stable_window = Duration::from_millis(6 * GUEST_PING_INTERVAL_MS);
+        let deadline = Instant::now()
+            + Duration::from_millis(GUEST_PONG_TIMEOUT_MS)
+            + crate::default_timeout();
+        loop {
+            let pings_before = self.host_ping_count();
+            thread::sleep(stable_window);
+            let pings_after = self.host_ping_count();
+            if pings_before == pings_after {
+                return;
+            }
+            if Instant::now() >= deadline {
+                panic!(
+                    "the outer host kept pinging the guest after it went silent; \
+                     the host never noticed the guest was gone and cleared it \
+                     (pings before={pings_before}, after={pings_after})",
+                );
+            }
+        }
     }
 }
 

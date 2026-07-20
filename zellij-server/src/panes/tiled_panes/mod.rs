@@ -611,7 +611,7 @@ impl TiledPanes {
             if no_ui_fullscreen_pane_id == Some(pane.pid()) {
                 pane.set_frame(false);
                 pane.set_content_offset(Offset::default());
-                resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+                resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).non_fatal();
                 continue;
             }
             if !pane.borderless() {
@@ -677,7 +677,7 @@ impl TiledPanes {
                 }
             }
 
-            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).non_fatal();
         }
         self.reset_boundaries();
     }
@@ -1922,7 +1922,7 @@ impl TiledPanes {
 
         for pane in self.panes.values_mut() {
             // TODO: only for the panes whose width/height actually changed
-            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).non_fatal();
         }
         self.reset_boundaries();
         Ok(pane_size_changed)
@@ -1950,7 +1950,7 @@ impl TiledPanes {
         }
 
         for pane in self.panes.values_mut() {
-            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).non_fatal();
         }
         self.reset_boundaries();
         Ok(())
