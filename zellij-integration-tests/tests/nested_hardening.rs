@@ -69,7 +69,7 @@ fn prompt_count(grid_snapshot: &GridSnapshot) -> usize {
 fn boot_and_descend_on_first_load(nested: &NestedHarness) {
     nested.wait_for_guest_to_announce();
     nested.wait_for_host_to_acknowledge_guest();
-    nested.wait_for_host_to_descend_into_guest();
+    nested.descend_into_guest_via_modal();
     nested.guest.wait_for_app_load();
     nested.wait_for_host_to_ping_guest();
     nested.wait_for_guest_to_reply_to_ping();

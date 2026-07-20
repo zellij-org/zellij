@@ -80,7 +80,7 @@ fn ancestor_segment_range(first_line: &str) -> (usize, usize) {
 fn boot_and_descend_on_first_load(nested: &NestedHarness) {
     nested.wait_for_guest_to_announce();
     nested.wait_for_host_to_acknowledge_guest();
-    nested.wait_for_host_to_descend_into_guest();
+    nested.descend_into_guest_via_modal();
     nested.guest.wait_for_app_load();
     nested.wait_for_host_to_ping_guest();
     nested.wait_for_guest_to_reply_to_ping();
@@ -104,8 +104,7 @@ fn host_own_name_present(host_grid: &GridSnapshot, host_session_name: &str) -> b
 }
 
 fn depth_three_descend(nested: &NestedDepthThreeHarness) {
-    nested.wait_for_outer_to_descend_into_middle();
-    nested.wait_for_middle_to_descend_into_inner();
+    nested.boot_and_descend_depth_three();
     nested.inner.wait_for_app_load();
     nested
         .inner

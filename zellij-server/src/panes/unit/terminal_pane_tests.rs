@@ -873,3 +873,221 @@ pub fn frameless_pane_position_is_on_frame() {
     assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 130)));
     assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 131)));
 }
+
+fn create_guest_modal_pane() -> TerminalPane {
+    let mut fake_win_size = PaneGeom::default();
+    fake_win_size.cols.set_inner(80);
+    fake_win_size.rows.set_inner(24);
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    TerminalPane::new(
+        1,
+        fake_win_size,
+        Style::default(),
+        0,
+        String::new(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        None,
+        None,
+        false,
+        true,
+        true,
+        true,
+        false,
+        None,
+    )
+}
+
+fn press_key(
+    pane: &mut TerminalPane,
+    bare_key: zellij_utils::data::BareKey,
+    client_id: u16,
+) -> Option<crate::tab::AdjustedInput> {
+    let key = zellij_utils::data::KeyWithModifier::new(bare_key);
+    pane.adjust_input_to_terminal(&Some(key), vec![], false, Some(client_id))
+}
+
+#[test]
+pub fn guest_modal_navigation_wraps() {
+    use zellij_utils::data::BareKey;
+    let mut pane = create_guest_modal_pane();
+    let client_id = 1;
+    pane.set_guest_modal(&[client_id]);
+    assert_eq!(pane.guest_modal_selection(client_id), Some(0));
+    press_key(&mut pane, BareKey::Up, client_id);
+    assert_eq!(pane.guest_modal_selection(client_id), Some(2));
+    press_key(&mut pane, BareKey::Down, client_id);
+    assert_eq!(pane.guest_modal_selection(client_id), Some(0));
+    press_key(&mut pane, BareKey::Down, client_id);
+    assert_eq!(pane.guest_modal_selection(client_id), Some(1));
+    press_key(&mut pane, BareKey::Tab, client_id);
+    assert_eq!(pane.guest_modal_selection(client_id), Some(2));
+    press_key(&mut pane, BareKey::Tab, client_id);
+    assert_eq!(pane.guest_modal_selection(client_id), Some(0));
+}
+
+#[test]
+pub fn guest_modal_shift_tab_moves_up() {
+    use zellij_utils::data::{BareKey, KeyWithModifier};
+    let mut pane = create_guest_modal_pane();
+    let client_id = 1;
+    pane.set_guest_modal(&[client_id]);
+    let key = KeyWithModifier::new(BareKey::Tab).with_shift_modifier();
+    pane.adjust_input_to_terminal(&Some(key), vec![], false, Some(client_id));
+    assert_eq!(pane.guest_modal_selection(client_id), Some(2));
+}
+
+#[test]
+pub fn guest_modal_enter_confirms_selection() {
+    use crate::tab::AdjustedInput;
+    use zellij_utils::data::BareKey;
+    let mut pane = create_guest_modal_pane();
+    let client_id = 1;
+
+    pane.set_guest_modal(&[client_id]);
+    let outcome = press_key(&mut pane, BareKey::Enter, client_id);
+    assert!(matches!(outcome, Some(AdjustedInput::GuestModalZoom)));
+
+    pane.set_guest_modal(&[client_id]);
+    press_key(&mut pane, BareKey::Down, client_id);
+    let outcome = press_key(&mut pane, BareKey::Enter, client_id);
+    assert!(matches!(outcome, Some(AdjustedInput::GuestModalDescend)));
+
+    pane.set_guest_modal(&[client_id]);
+    press_key(&mut pane, BareKey::Down, client_id);
+    press_key(&mut pane, BareKey::Down, client_id);
+    let outcome = press_key(&mut pane, BareKey::Enter, client_id);
+    assert!(matches!(outcome, Some(AdjustedInput::GuestModalDismiss)));
+}
+
+#[test]
+pub fn guest_modal_digit_shortcuts() {
+    use crate::tab::AdjustedInput;
+    use zellij_utils::data::BareKey;
+    let mut pane = create_guest_modal_pane();
+    let client_id = 1;
+
+    pane.set_guest_modal(&[client_id]);
+    let outcome = press_key(&mut pane, BareKey::Char('1'), client_id);
+    assert!(matches!(outcome, Some(AdjustedInput::GuestModalZoom)));
+
+    pane.set_guest_modal(&[client_id]);
+    let outcome = press_key(&mut pane, BareKey::Char('2'), client_id);
+    assert!(matches!(outcome, Some(AdjustedInput::GuestModalDescend)));
+
+    pane.set_guest_modal(&[client_id]);
+    let outcome = press_key(&mut pane, BareKey::Char('3'), client_id);
+    assert!(matches!(outcome, Some(AdjustedInput::GuestModalDismiss)));
+}
+
+#[test]
+pub fn guest_modal_esc_dismisses() {
+    use crate::tab::AdjustedInput;
+    use zellij_utils::data::BareKey;
+    let mut pane = create_guest_modal_pane();
+    let client_id = 1;
+    pane.set_guest_modal(&[client_id]);
+    let outcome = press_key(&mut pane, BareKey::Esc, client_id);
+    assert!(matches!(outcome, Some(AdjustedInput::GuestModalDismiss)));
+}
+
+#[test]
+pub fn guest_modal_swallows_other_input() {
+    use zellij_utils::data::BareKey;
+    let mut pane = create_guest_modal_pane();
+    let client_id = 1;
+    pane.set_guest_modal(&[client_id]);
+    let outcome = press_key(&mut pane, BareKey::Char('x'), client_id);
+    assert!(outcome.is_none());
+    assert_eq!(pane.guest_modal_selection(client_id), Some(0));
+}
+
+#[test]
+pub fn guest_modal_is_per_client() {
+    use zellij_utils::data::BareKey;
+    let mut pane = create_guest_modal_pane();
+    let client_a = 1;
+    let client_b = 2;
+    pane.set_guest_modal(&[client_a, client_b]);
+    press_key(&mut pane, BareKey::Down, client_a);
+    assert_eq!(pane.guest_modal_selection(client_a), Some(1));
+    assert_eq!(pane.guest_modal_selection(client_b), Some(0));
+}
+
+#[test]
+pub fn guest_modal_no_modal_passes_input_through() {
+    use zellij_utils::data::BareKey;
+    let mut pane = create_guest_modal_pane();
+    let client_id = 1;
+    let outcome = press_key(&mut pane, BareKey::Char('x'), client_id);
+    assert!(matches!(
+        outcome,
+        Some(crate::tab::AdjustedInput::WriteBytesToTerminal(_))
+    ));
+}
+
+#[test]
+pub fn guest_modal_chunks_normal_geometry() {
+    use crate::panes::terminal_character::guest_modal_chunks;
+    let style = Style::default();
+    let chunks = guest_modal_chunks(60, 20, 0, 0, &style, "my-session", 1);
+    assert_eq!(chunks.len(), 20);
+    let rendered: String = chunks
+        .iter()
+        .flat_map(|chunk| chunk.terminal_characters.iter().map(|c| c.character))
+        .collect();
+    assert!(rendered.contains("Nested Zellij session detected: my-session"));
+    assert!(rendered.contains("Zoom in and control this session"));
+    assert!(rendered.contains("(AUTO)"));
+    assert!(rendered.contains("(MANUAL)"));
+}
+
+#[test]
+pub fn guest_modal_chunks_small_geometry_fallback() {
+    use crate::panes::terminal_character::guest_modal_chunks;
+    let style = Style::default();
+    let chunks = guest_modal_chunks(40, 4, 0, 0, &style, "s", 0);
+    assert_eq!(chunks.len(), 4);
+    let rendered: String = chunks
+        .iter()
+        .flat_map(|chunk| chunk.terminal_characters.iter().map(|c| c.character))
+        .collect();
+    assert!(rendered.contains("Nested Zellij session"));
+}
+
+#[test]
+pub fn guest_modal_chunks_tiny_geometry_no_panic() {
+    use crate::panes::terminal_character::guest_modal_chunks;
+    let style = Style::default();
+    let chunks = guest_modal_chunks(3, 2, 0, 0, &style, "session", 0);
+    assert_eq!(chunks.len(), 2);
+    let empty = guest_modal_chunks(0, 0, 0, 0, &style, "session", 0);
+    assert!(empty.is_empty());
+}
+
+#[test]
+pub fn guest_modal_option_hit_test() {
+    use crate::panes::terminal_character::guest_modal_option_at_content_row;
+    let block_height = 7;
+    let start_row = (20 - block_height) / 2;
+    let first_option = start_row + 2;
+    assert_eq!(
+        guest_modal_option_at_content_row(20, 60, first_option),
+        Some(0)
+    );
+    assert_eq!(
+        guest_modal_option_at_content_row(20, 60, first_option + 1),
+        Some(1)
+    );
+    assert_eq!(
+        guest_modal_option_at_content_row(20, 60, first_option + 2),
+        Some(2)
+    );
+    assert_eq!(guest_modal_option_at_content_row(20, 60, 0), None);
+    assert_eq!(guest_modal_option_at_content_row(4, 10, 2), None);
+}

@@ -30,7 +30,7 @@ use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::pty_writer::PtyWriteInstruction;
-use crate::screen::{CopyOptions, ScreenInstruction};
+use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction};
 use crate::ui::hint_text::{
     held_hint_variants, hover_hint_variants, resize_hint_variants, HintExitStatus,
 };
@@ -468,6 +468,29 @@ pub trait Pane {
         false
     }
     fn set_is_nested_guest(&mut self, _is_nested_guest: bool) {}
+    fn set_guest_modal(&mut self, _client_ids: &[ClientId]) {}
+    fn clear_guest_modal(&mut self, _client_id: ClientId) {}
+    fn clear_all_guest_modals(&mut self) {}
+    fn guest_modal_selection(&self, _client_id: ClientId) -> Option<usize> {
+        None
+    }
+    fn has_guest_modal_for_any_client(&self) -> bool {
+        false
+    }
+    fn set_guest_choice_indicator(
+        &mut self,
+        _client_id: ClientId,
+        _indicator: Option<GuestChoiceIndicator>,
+    ) {
+    }
+    fn guest_choice_indicator(&self, _client_id: ClientId) -> Option<GuestChoiceIndicator> {
+        None
+    }
+    fn clear_all_guest_choice_indicators(&mut self) {}
+    fn set_guest_session_name(&mut self, _session_name: Option<String>) {}
+    fn guest_session_name(&self) -> Option<String> {
+        None
+    }
     /// Mark this pane as awaiting a host-terminal reply for a forward
     /// it just dispatched. While paused, vte byte feeding is buffered
     /// so that the eventual host reply lands on the pane's stdin in
@@ -749,6 +772,12 @@ pub trait Pane {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GuestChoiceIndicator {
+    Descended,
+    Dismissed,
+}
+
 #[derive(Clone, Debug)]
 pub enum AdjustedInput {
     WriteBytesToTerminal(Vec<u8>),
@@ -757,6 +786,10 @@ pub enum AdjustedInput {
     CloseThisPane,
     DropToShellInThisPane { working_dir: Option<PathBuf> },
     WriteKeyToPlugin(KeyWithModifier),
+    GuestModalSelectionChanged,
+    GuestModalZoom,
+    GuestModalDescend,
+    GuestModalDismiss,
 }
 pub fn get_next_terminal_position(
     tiled_panes: &TiledPanes,
@@ -3793,6 +3826,132 @@ impl Tab {
             .filter(|pane_id| self.is_pane_nested_guest(*pane_id))
             .collect()
     }
+    pub fn set_guest_modal_on_pane(&mut self, pane_id: PaneId, client_ids: &[ClientId]) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_guest_modal(client_ids);
+        }
+    }
+    pub fn clear_guest_modal_on_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.clear_guest_modal(client_id);
+        }
+    }
+    pub fn clear_all_guest_modals_on_pane(&mut self, pane_id: PaneId) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.clear_all_guest_modals();
+        }
+    }
+    pub fn set_guest_choice_indicator_on_pane(
+        &mut self,
+        pane_id: PaneId,
+        client_id: ClientId,
+        indicator: Option<GuestChoiceIndicator>,
+    ) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_guest_choice_indicator(client_id, indicator);
+        }
+    }
+    pub fn clear_all_guest_choice_indicators_on_pane(&mut self, pane_id: PaneId) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.clear_all_guest_choice_indicators();
+        }
+    }
+    pub fn pane_has_guest_modal_for_client(&self, pane_id: PaneId, client_id: ClientId) -> bool {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane(pane_id)
+            .or_else(|| self.floating_panes.get_pane(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &s_p.1)
+            })
+        {
+            pane.guest_modal_selection(client_id).is_some()
+        } else {
+            false
+        }
+    }
+    pub fn clear_guest_modal_for_client_on_all_panes(&mut self, client_id: ClientId) {
+        for pane_id in self.get_all_pane_ids() {
+            self.clear_guest_modal_on_pane(pane_id, client_id);
+        }
+    }
+    pub fn clear_guest_choice_indicator_for_client_on_all_panes(&mut self, client_id: ClientId) {
+        for pane_id in self.get_all_pane_ids() {
+            self.set_guest_choice_indicator_on_pane(pane_id, client_id, None);
+        }
+    }
+    pub fn set_guest_session_name_on_pane(
+        &mut self,
+        pane_id: PaneId,
+        session_name: Option<String>,
+    ) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_guest_session_name(session_name);
+        }
+    }
     pub fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) -> bool {
         if self.tiled_panes.panes_contain(&pane_id) {
             self.tiled_panes.set_shadow_focus(client_id, pane_id);
@@ -4225,6 +4384,42 @@ impl Tab {
                             })
                             .with_context(err_context)?;
                         should_update_ui = true;
+                    },
+                    Some(AdjustedInput::GuestModalSelectionChanged) => {
+                        should_update_ui = true;
+                    },
+                    Some(AdjustedInput::GuestModalZoom) => {
+                        if let Some(client_id) = client_id {
+                            let _ = self.senders.send_to_screen(
+                                ScreenInstruction::GuestModalChoice {
+                                    client_id,
+                                    pane_id: PaneId::Terminal(active_terminal_id),
+                                    outcome: GuestModalOutcome::Zoom,
+                                },
+                            );
+                        }
+                    },
+                    Some(AdjustedInput::GuestModalDescend) => {
+                        if let Some(client_id) = client_id {
+                            let _ = self.senders.send_to_screen(
+                                ScreenInstruction::GuestModalChoice {
+                                    client_id,
+                                    pane_id: PaneId::Terminal(active_terminal_id),
+                                    outcome: GuestModalOutcome::Descend,
+                                },
+                            );
+                        }
+                    },
+                    Some(AdjustedInput::GuestModalDismiss) => {
+                        if let Some(client_id) = client_id {
+                            let _ = self.senders.send_to_screen(
+                                ScreenInstruction::GuestModalChoice {
+                                    client_id,
+                                    pane_id: PaneId::Terminal(active_terminal_id),
+                                    outcome: GuestModalOutcome::Dismiss,
+                                },
+                            );
+                        }
                     },
                     Some(_) => {},
                     None => {},

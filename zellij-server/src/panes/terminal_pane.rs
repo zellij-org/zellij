@@ -7,7 +7,7 @@ use crate::panes::{
 };
 use crate::pty::VteBytes;
 use crate::route::NotificationEnd;
-use crate::tab::{AdjustedInput, Pane};
+use crate::tab::{AdjustedInput, GuestChoiceIndicator, Pane};
 use crate::ClientId;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -161,6 +161,9 @@ pub struct TerminalPane {
     /// Cleared by Tab when the reply (or 500 ms cache-fallback) lands.
     forward_paused: bool,
     nested_guest: bool,
+    guest_modal: HashMap<ClientId, usize>,
+    guest_choice_indicators: HashMap<ClientId, GuestChoiceIndicator>,
+    guest_session_name: Option<String>,
     /// PTY bytes that have not yet been fed to vte. Single source of
     /// truth: `handle_pty_bytes` always appends here, and processing
     /// pops one byte at a time and advances the vte parser. Processing
@@ -236,8 +239,13 @@ impl Pane for TerminalPane {
             }
         }
     }
-    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
+    fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
         // (x, y, is_visible)
+        if let Some(client_id) = client_id {
+            if self.guest_modal.contains_key(&client_id) {
+                return None;
+            }
+        }
         if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
             // do not render cursor if there's no room for it
             return None;
@@ -276,7 +284,74 @@ impl Pane for TerminalPane {
             }
         }
 
-        if self.is_held.is_some() {
+        if let Some(selection) = client_id.and_then(|c| self.guest_modal.get(&c).copied()) {
+            let client_id = client_id.expect("guest modal selection requires a client id");
+            let is_up = key_with_modifier
+                .as_ref()
+                .map(|k| {
+                    k.is_key_without_modifier(BareKey::Up)
+                        || k.is_key_without_modifier(BareKey::Char('k'))
+                        || k.is_key_with_shift_modifier(BareKey::Tab)
+                })
+                .unwrap_or(false)
+                || raw_input_bytes.as_slice() == UP_ARROW;
+            let is_down = key_with_modifier
+                .as_ref()
+                .map(|k| {
+                    k.is_key_without_modifier(BareKey::Down)
+                        || k.is_key_without_modifier(BareKey::Char('j'))
+                        || k.is_key_without_modifier(BareKey::Tab)
+                })
+                .unwrap_or(false)
+                || raw_input_bytes.as_slice() == DOWN_ARROW;
+            let is_enter = key_with_modifier
+                .as_ref()
+                .map(|k| k.is_key_without_modifier(BareKey::Enter))
+                .unwrap_or(false)
+                || matches!(raw_input_bytes.as_slice(), ENTER_CARRIAGE_RETURN | ENTER_NEWLINE);
+            let is_esc = key_with_modifier
+                .as_ref()
+                .map(|k| k.is_key_without_modifier(BareKey::Esc))
+                .unwrap_or(false)
+                || raw_input_bytes.as_slice() == ESC;
+            let digit = key_with_modifier
+                .as_ref()
+                .and_then(|k| match k.bare_key {
+                    BareKey::Char(c @ '1'..='3') if k.key_modifiers.is_empty() => Some(c),
+                    _ => None,
+                })
+                .or_else(|| match raw_input_bytes.as_slice() {
+                    b"1" => Some('1'),
+                    b"2" => Some('2'),
+                    b"3" => Some('3'),
+                    _ => None,
+                });
+            if is_up {
+                self.guest_modal.insert(client_id, (selection + 2) % 3);
+                self.set_should_render(true);
+                Some(AdjustedInput::GuestModalSelectionChanged)
+            } else if is_down {
+                self.guest_modal.insert(client_id, (selection + 1) % 3);
+                self.set_should_render(true);
+                Some(AdjustedInput::GuestModalSelectionChanged)
+            } else if let Some(digit) = digit {
+                match digit {
+                    '1' => Some(AdjustedInput::GuestModalZoom),
+                    '2' => Some(AdjustedInput::GuestModalDescend),
+                    _ => Some(AdjustedInput::GuestModalDismiss),
+                }
+            } else if is_enter {
+                match selection {
+                    0 => Some(AdjustedInput::GuestModalZoom),
+                    1 => Some(AdjustedInput::GuestModalDescend),
+                    _ => Some(AdjustedInput::GuestModalDismiss),
+                }
+            } else if is_esc {
+                Some(AdjustedInput::GuestModalDismiss)
+            } else {
+                None
+            }
+        } else if self.is_held.is_some() {
             if key_with_modifier
                 .as_ref()
                 .map(|k| k.is_key_without_modifier(BareKey::Enter))
@@ -628,6 +703,75 @@ impl Pane for TerminalPane {
 
     fn set_is_nested_guest(&mut self, is_nested_guest: bool) {
         self.nested_guest = is_nested_guest;
+    }
+
+    fn set_guest_modal(&mut self, client_ids: &[ClientId]) {
+        for client_id in client_ids {
+            self.guest_modal.insert(*client_id, 0);
+        }
+        self.set_should_render(true);
+    }
+
+    fn clear_guest_modal(&mut self, client_id: ClientId) {
+        if self.guest_modal.remove(&client_id).is_some() {
+            self.render_full_viewport();
+            self.set_should_render(true);
+        }
+    }
+
+    fn clear_all_guest_modals(&mut self) {
+        if !self.guest_modal.is_empty() {
+            self.guest_modal.clear();
+            self.render_full_viewport();
+            self.set_should_render(true);
+        }
+    }
+
+    fn guest_modal_selection(&self, client_id: ClientId) -> Option<usize> {
+        self.guest_modal.get(&client_id).copied()
+    }
+
+    fn has_guest_modal_for_any_client(&self) -> bool {
+        !self.guest_modal.is_empty()
+    }
+
+    fn set_guest_choice_indicator(
+        &mut self,
+        client_id: ClientId,
+        indicator: Option<GuestChoiceIndicator>,
+    ) {
+        let previous = self.guest_choice_indicators.get(&client_id).copied();
+        if previous == indicator {
+            return;
+        }
+        match indicator {
+            Some(indicator) => {
+                self.guest_choice_indicators.insert(client_id, indicator);
+            },
+            None => {
+                self.guest_choice_indicators.remove(&client_id);
+            },
+        }
+        self.set_should_render(true);
+    }
+
+    fn guest_choice_indicator(&self, client_id: ClientId) -> Option<GuestChoiceIndicator> {
+        self.guest_choice_indicators.get(&client_id).copied()
+    }
+
+    fn clear_all_guest_choice_indicators(&mut self) {
+        if !self.guest_choice_indicators.is_empty() {
+            self.guest_choice_indicators.clear();
+            self.set_should_render(true);
+        }
+    }
+
+    fn set_guest_session_name(&mut self, session_name: Option<String>) {
+        self.guest_session_name = session_name;
+    }
+
+    fn guest_session_name(&self) -> Option<String> {
+        self.guest_session_name.clone()
     }
 
     fn arm_forward_pause(&mut self) {
@@ -1169,6 +1313,9 @@ impl TerminalPane {
             notification_end,
             forward_paused: false,
             nested_guest: false,
+            guest_modal: HashMap::new(),
+            guest_choice_indicators: HashMap::new(),
+            guest_session_name: None,
             pending_pty_input: VecDeque::new(),
         }
     }

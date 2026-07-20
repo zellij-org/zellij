@@ -495,6 +495,7 @@ impl FloatingPanes {
             let show_help_text = active_panes.iter().any(|(client_id, pane_id)| {
                 pane_id == &pane.pid() && help_text_visible.get(client_id).copied().unwrap_or(false)
             });
+            let pane_has_guest_modal = pane.has_guest_modal_for_any_client();
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
                 output,
@@ -546,9 +547,28 @@ impl FloatingPanes {
                     .with_context(err_context)?;
             }
             if let PaneId::Terminal(..) = kind {
-                pane_contents_and_ui
-                    .render_pane_contents_to_multiple_clients(connected_clients.iter().copied())
-                    .with_context(err_context)?;
+                if pane_has_guest_modal {
+                    let (modal_clients, plain_clients): (Vec<ClientId>, Vec<ClientId>) =
+                        connected_clients.iter().copied().partition(|client_id| {
+                            pane_contents_and_ui.client_has_guest_modal(*client_id)
+                        });
+                    if !plain_clients.is_empty() {
+                        pane_contents_and_ui
+                            .render_pane_contents_to_multiple_clients(plain_clients.iter().copied())
+                            .with_context(err_context)?;
+                    } else {
+                        pane_contents_and_ui.drain_pane_render_state();
+                    }
+                    for client_id in modal_clients {
+                        pane_contents_and_ui
+                            .render_guest_modal_for_client(client_id)
+                            .with_context(err_context)?;
+                    }
+                } else {
+                    pane_contents_and_ui
+                        .render_pane_contents_to_multiple_clients(connected_clients.iter().copied())
+                        .with_context(err_context)?;
+                }
             }
         }
         Ok(())

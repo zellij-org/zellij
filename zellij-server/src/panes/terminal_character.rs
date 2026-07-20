@@ -10,6 +10,7 @@ use zellij_utils::data::StyleDeclaration;
 use zellij_utils::data::{PaletteColor, Style};
 use zellij_utils::input::command::RunCommand;
 
+use crate::output::CharacterChunk;
 use crate::panes::alacritty_functions::parse_sgr_color;
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
@@ -1099,4 +1100,159 @@ pub fn render_first_run_banner(
             )
         },
     }
+}
+
+fn guest_modal_styled_row(
+    text: &str,
+    columns: usize,
+    content_x: usize,
+    absolute_y: usize,
+    styles: RcCharacterStyles,
+) -> CharacterChunk {
+    let mut characters: Vec<TerminalCharacter> = Vec::with_capacity(columns);
+    let mut used = 0;
+    for character in text.chars() {
+        let width = character.width().unwrap_or(0).max(1);
+        if used + width > columns {
+            break;
+        }
+        characters.push(TerminalCharacter::new_styled(character, styles.clone()));
+        used += width;
+    }
+    while used < columns {
+        characters.push(TerminalCharacter::new_singlewidth_styled(' ', styles.clone()));
+        used += 1;
+    }
+    CharacterChunk::new(characters, content_x, absolute_y)
+}
+
+pub fn guest_modal_chunks(
+    columns: usize,
+    rows: usize,
+    content_x: usize,
+    content_y: usize,
+    style: &Style,
+    session_name: &str,
+    selected: usize,
+) -> Vec<CharacterChunk> {
+    if rows < 1 || columns < 1 {
+        return vec![];
+    }
+    let base_declaration = style.colors.text_unselected;
+    let selected_declaration = style.colors.text_selected;
+    let fill_styles: RcCharacterStyles = RESET_STYLES
+        .foreground(Some(AnsiCode::from(base_declaration.base)))
+        .background(Some(AnsiCode::from(base_declaration.background)))
+        .into();
+    let title_styles: RcCharacterStyles = RESET_STYLES
+        .foreground(Some(AnsiCode::from(base_declaration.emphasis_0)))
+        .background(Some(AnsiCode::from(base_declaration.background)))
+        .bold(Some(AnsiCode::On))
+        .into();
+    let selected_styles: RcCharacterStyles = RESET_STYLES
+        .foreground(Some(AnsiCode::from(selected_declaration.base)))
+        .background(Some(AnsiCode::from(selected_declaration.background)))
+        .bold(Some(AnsiCode::On))
+        .into();
+
+    let mut chunks: Vec<CharacterChunk> = Vec::with_capacity(rows);
+    for row in 0..rows {
+        chunks.push(guest_modal_styled_row(
+            "",
+            columns,
+            content_x,
+            content_y + row,
+            fill_styles.clone(),
+        ));
+    }
+
+    if rows < 6 || columns < 20 {
+        let fallback = format!("Nested Zellij session: {} <Esc> dismiss", session_name);
+        let mid = rows / 2;
+        chunks[mid] = guest_modal_styled_row(
+            &center_modal_line(&fallback, columns),
+            columns,
+            content_x,
+            content_y + mid,
+            title_styles.clone(),
+        );
+        return chunks;
+    }
+
+    let title = format!("Nested Zellij session detected: {}", session_name);
+    let options = [
+        "1. Zoom in and control this session",
+        "2. Control this session automatically on focus (AUTO)",
+        "3. Leave it be, enter manually later (MANUAL)",
+    ];
+    let hint = "<Up/Down/Tab> select  <Enter> confirm  <1-3> direct  <Esc> dismiss";
+
+    let block_height = 2 + options.len() + 2;
+    let start_row = rows.saturating_sub(block_height) / 2;
+
+    let mut current_row = start_row;
+    chunks[current_row] = guest_modal_styled_row(
+        &center_modal_line(&title, columns),
+        columns,
+        content_x,
+        content_y + current_row,
+        title_styles.clone(),
+    );
+    current_row += 2;
+    for (index, option) in options.iter().enumerate() {
+        let is_selected = index == selected;
+        let line = if is_selected {
+            format!("> {} <", option)
+        } else {
+            option.to_string()
+        };
+        let styles = if is_selected {
+            selected_styles.clone()
+        } else {
+            fill_styles.clone()
+        };
+        chunks[current_row] = guest_modal_styled_row(
+            &center_modal_line(&line, columns),
+            columns,
+            content_x,
+            content_y + current_row,
+            styles,
+        );
+        current_row += 1;
+    }
+    current_row += 1;
+    if current_row < rows {
+        chunks[current_row] = guest_modal_styled_row(
+            &center_modal_line(hint, columns),
+            columns,
+            content_x,
+            content_y + current_row,
+            fill_styles.clone(),
+        );
+    }
+
+    chunks
+}
+
+pub fn guest_modal_option_at_content_row(rows: usize, columns: usize, row: usize) -> Option<usize> {
+    if rows < 6 || columns < 20 {
+        return None;
+    }
+    let block_height = 2 + 3 + 2;
+    let start_row = rows.saturating_sub(block_height) / 2;
+    let first_option_row = start_row + 2;
+    if row >= first_option_row && row < first_option_row + 3 {
+        Some(row - first_option_row)
+    } else {
+        None
+    }
+}
+
+fn center_modal_line(text: &str, columns: usize) -> String {
+    let text_width = text.width();
+    if text_width >= columns {
+        return text.to_string();
+    }
+    let left_padding = (columns - text_width) / 2;
+    format!("{}{}", " ".repeat(left_padding), text)
 }

@@ -318,6 +318,7 @@ pub enum ScreenContext {
     NestedSessionMessageFromPane,
     NestedGuestPingTick,
     NestedSessionMessageFromHost,
+    GuestModalChoice,
     ForwardedReplyFromHost,
     ResumePaneAfterForward,
     HostTerminalThemeChanged,
@@ -481,6 +482,7 @@ pub enum ScreenContext {
     SetSoftKeyboard,
     SetShadowFocus,
     FocusHostSession,
+    FocusGuestSession,
     ToggleHostFullscreen,
 }
 

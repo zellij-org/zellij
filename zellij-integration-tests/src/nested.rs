@@ -334,6 +334,22 @@ impl NestedHarness {
         );
     }
 
+    pub fn descend_into_guest_via_modal(&self) {
+        let descended = self.mark_host_to_guest();
+        self.host.send_stdin(b"2");
+        self.wait_for_host_to_descend_into_guest_after(descended);
+    }
+
+    pub fn zoom_into_guest_via_modal(&self) {
+        let descended = self.mark_host_to_guest();
+        self.host.send_stdin(b"1");
+        self.wait_for_host_to_descend_into_guest_after(descended);
+    }
+
+    pub fn dismiss_guest_modal(&self) {
+        self.host.send_stdin(b"3");
+    }
+
     pub fn wait_for_host_to_ascend_from_guest(&self) {
         self.wait_for_host_to_ascend_from_guest_after(0);
     }
@@ -488,6 +504,28 @@ impl NestedDepthThreeHarness {
             "the middle guest to descend into the inner guest pane",
             |message| matches!(message, NestedSessionMessage::FocusGained { .. }),
         );
+    }
+
+    pub fn descend_outer_into_middle_via_modal(&self) {
+        let descended = self.mark_outer_to_middle();
+        self.outer.send_stdin(b"2");
+        self.wait_for_outer_to_descend_into_middle_after(descended);
+    }
+
+    pub fn descend_middle_into_inner_via_modal(&self) {
+        self.middle_to_inner.wait_for(
+            "the inner guest to announce itself to the middle host before descending",
+            |message| matches!(message, NestedSessionMessage::AnnounceAck { .. }),
+        );
+        let descended = self.mark_middle_to_inner();
+        self.outer.send_stdin(b"2");
+        self.wait_for_middle_to_descend_into_inner_after(descended);
+    }
+
+    pub fn boot_and_descend_depth_three(&self) {
+        self.descend_outer_into_middle_via_modal();
+        self.middle.wait_for_app_load();
+        self.descend_middle_into_inner_via_modal();
     }
 
     pub fn wait_for_outer_to_descend_into_middle_after(&self, since: usize) {

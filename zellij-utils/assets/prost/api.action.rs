@@ -1137,6 +1137,7 @@ pub enum ActionName {
     ToggleFocusNoUiFullscreen = 106,
     FocusHostSession = 107,
     ToggleHostFullscreen = 108,
+    FocusGuestSession = 109,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1251,6 +1252,7 @@ impl ActionName {
             ActionName::ToggleFocusNoUiFullscreen => "ToggleFocusNoUiFullscreen",
             ActionName::FocusHostSession => "FocusHostSession",
             ActionName::ToggleHostFullscreen => "ToggleHostFullscreen",
+            ActionName::FocusGuestSession => "FocusGuestSession",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1362,6 +1364,7 @@ impl ActionName {
             "ToggleFocusNoUiFullscreen" => Some(Self::ToggleFocusNoUiFullscreen),
             "FocusHostSession" => Some(Self::FocusHostSession),
             "ToggleHostFullscreen" => Some(Self::ToggleHostFullscreen),
+            "FocusGuestSession" => Some(Self::FocusGuestSession),
             _ => None,
         }
     }

@@ -119,6 +119,7 @@ fn a_guest_zellij_running_inside_a_host_zellij_pane_introduces_itself_and_is_kep
 
     nested.wait_for_guest_to_announce();
     nested.wait_for_host_to_acknowledge_guest();
+    nested.descend_into_guest_via_modal();
     nested.wait_for_host_to_ping_guest();
     nested.wait_for_guest_to_reply_to_ping();
 
@@ -148,7 +149,7 @@ fn a_host_zellij_stops_pinging_a_guest_that_freezes_inside_one_of_its_panes() {
 fn boot_and_descend_on_first_load(nested: &NestedHarness) {
     nested.wait_for_guest_to_announce();
     nested.wait_for_host_to_acknowledge_guest();
-    nested.wait_for_host_to_descend_into_guest();
+    nested.descend_into_guest_via_modal();
     nested.guest.wait_for_app_load();
     nested.wait_for_host_to_ping_guest();
     nested.wait_for_guest_to_reply_to_ping();
@@ -613,11 +614,11 @@ fn descend_on_first_load_when_guest_pane_is_already_focused() {
 
     nested.wait_for_guest_to_announce();
     nested.wait_for_host_to_acknowledge_guest();
-    nested.wait_for_host_to_descend_into_guest();
+    nested.descend_into_guest_via_modal();
     assert_eq!(
         nested.focus_gained_count(),
         1,
-        "the host should descend exactly once on first load without any focus change"
+        "the host should descend exactly once after the modal is answered without any focus change"
     );
     assert_eq!(
         nested.focus_lost_count(),
@@ -706,8 +707,7 @@ fn descend_and_ascend_work_at_depth_three() {
     let mut nested = NestedDepthThreeHarness::start_depth_three(TERMINAL_SIZE);
     let inner_session_name = nested.inner.session_name().to_string();
 
-    nested.wait_for_outer_to_descend_into_middle();
-    nested.wait_for_middle_to_descend_into_inner();
+    nested.boot_and_descend_depth_three();
     nested.inner.wait_for_app_load();
 
     let middle_shows_settled_inner = |middle_grid: &GridSnapshot| {
@@ -1143,8 +1143,7 @@ fn move_focus_or_tab_wraps_tabs_without_bubbling_when_the_guest_has_multiple_tab
 fn nested_fullscreen_exit_keeps_hidden_host_floating_panes_hidden() {
     let nested = NestedDepthThreeHarness::start_depth_three(TERMINAL_SIZE);
 
-    nested.wait_for_outer_to_descend_into_middle();
-    nested.wait_for_middle_to_descend_into_inner();
+    nested.boot_and_descend_depth_three();
     nested.inner.wait_for_app_load();
 
     nested.outer.send_stdin(&keys::alt('f'));

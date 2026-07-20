@@ -8,6 +8,7 @@ use zellij_utils::position::Position;
 use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
 use crate::plugins::PluginInstruction;
+use crate::screen::{GuestModalOutcome, ScreenInstruction};
 use crate::ClientId;
 
 use super::{Pane, Tab};
@@ -349,9 +350,63 @@ impl MouseHandler {
         event: &MouseEvent,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
+        if let Some(effect) = Self::intercept_guest_modal_mouse_event(tab, event, client_id)? {
+            return Ok(effect);
+        }
         let context = Self::gather_mouse_event_context(tab, event, client_id)?;
         let action = Self::determine_mouse_action(event, &context)?;
         Self::execute_mouse_action(tab, action, event, client_id)
+    }
+
+    fn intercept_guest_modal_mouse_event(
+        tab: &mut Tab,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<Option<MouseEffect>> {
+        let pane_id_at_position = Self::get_pane_at(tab, &event.position, false)?.map(|p| p.pid());
+        let pane_id = match pane_id_at_position {
+            Some(pane_id) => pane_id,
+            None => return Ok(None),
+        };
+        if !tab.pane_has_guest_modal_for_client(pane_id, client_id) {
+            return Ok(None);
+        }
+        let hit_option = if event.event_type == MouseEventType::Release && event.left {
+            if let Some(pane) = tab.get_pane_with_id(pane_id) {
+                let relative_position = pane.relative_position(&event.position);
+                let rows = pane.get_content_rows();
+                let columns = pane.get_content_columns();
+                let row = relative_position.line();
+                if row < 0 {
+                    None
+                } else {
+                    crate::panes::terminal_character::guest_modal_option_at_content_row(
+                        rows,
+                        columns,
+                        row as usize,
+                    )
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if let Some(option) = hit_option {
+            let outcome = match option {
+                0 => GuestModalOutcome::Zoom,
+                1 => GuestModalOutcome::Descend,
+                _ => GuestModalOutcome::Dismiss,
+            };
+            let _ = tab
+                .senders
+                .send_to_screen(ScreenInstruction::GuestModalChoice {
+                    client_id,
+                    pane_id,
+                    outcome,
+                });
+        }
+        Ok(Some(MouseEffect::state_changed()))
     }
 
     fn gather_mouse_event_context(

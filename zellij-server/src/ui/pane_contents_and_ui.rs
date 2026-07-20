@@ -192,6 +192,38 @@ impl<'a> PaneContentsAndUi<'a> {
         }
         Ok(())
     }
+    pub fn client_has_guest_modal(&self, client_id: ClientId) -> bool {
+        self.pane.guest_modal_selection(client_id).is_some()
+    }
+    pub fn drain_pane_render_state(&mut self) {
+        drop(self.pane.drain_fake_cursors());
+        let _ = self.pane.render(None);
+    }
+    pub fn render_guest_modal_for_client(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = || format!("failed to render guest modal for client {client_id}");
+        let selection = self.pane.guest_modal_selection(client_id).unwrap_or(0);
+        let session_name = self
+            .pane
+            .guest_session_name()
+            .unwrap_or_else(|| String::from("unknown"));
+        let columns = self.pane.get_content_columns();
+        let rows = self.pane.get_content_rows();
+        let content_x = self.pane.get_content_x();
+        let content_y = self.pane.get_content_y();
+        let chunks = crate::panes::terminal_character::guest_modal_chunks(
+            columns,
+            rows,
+            content_x,
+            content_y,
+            &self.style,
+            &session_name,
+            selection,
+        );
+        self.output
+            .add_character_chunks_to_client(client_id, chunks, self.z_index)
+            .with_context(err_context)?;
+        Ok(())
+    }
     pub fn render_fake_cursor_if_needed(&mut self, client_id: ClientId) -> Result<()> {
         let pane_focused_for_client_id = self.focused_clients.contains(&client_id);
         let pane_focused_for_different_client = self
@@ -309,6 +341,7 @@ impl<'a> PaneContentsAndUi<'a> {
                     && !pane_focused_for_client_id),
         });
         let frame_is_dimmed = self.frame_is_dimmed_for_client(client_id);
+        let guest_choice_indicator = self.pane.guest_choice_indicator(client_id);
         let frame_params = if session_is_mirrored {
             FrameParams {
                 focused_client,
@@ -335,6 +368,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 blank_title: self.blank_title,
                 mouse_scroll_resize: self.mouse_scroll_resize,
                 dimmed: frame_is_dimmed,
+                guest_choice_indicator,
             }
         } else {
             FrameParams {
@@ -362,6 +396,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 blank_title: self.blank_title,
                 mouse_scroll_resize: self.mouse_scroll_resize,
                 dimmed: frame_is_dimmed,
+                guest_choice_indicator,
             }
         };
 

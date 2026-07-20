@@ -2,6 +2,7 @@ use crate::output::CharacterChunk;
 use crate::panes::{
     AnsiCode, CharacterStyles, RcCharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
+use crate::tab::GuestChoiceIndicator;
 use crate::ui::boundaries::boundary_type;
 use crate::ui::hint_text::{
     exit_code_segments, hover_segments, rerun_segments, resize_segments, HintExitStatus, HintLevel,
@@ -97,6 +98,7 @@ pub struct FrameParams {
     pub blank_title: bool,
     pub mouse_scroll_resize: bool,
     pub dimmed: bool,
+    pub guest_choice_indicator: Option<GuestChoiceIndicator>,
 }
 
 #[derive(Default, PartialEq)]
@@ -128,6 +130,7 @@ pub struct PaneFrame {
     color_override: Option<PaletteColor>,
     mouse_scroll_resize: bool,
     dimmed: bool,
+    guest_choice_indicator: Option<GuestChoiceIndicator>,
 }
 
 impl PaneFrame {
@@ -165,6 +168,7 @@ impl PaneFrame {
             color_override: None,
             mouse_scroll_resize: frame_params.mouse_scroll_resize,
             dimmed: frame_params.dimmed,
+            guest_choice_indicator: frame_params.guest_choice_indicator,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -212,7 +216,43 @@ impl PaneFrame {
             corner
         }
     }
+    fn render_guest_choice_indication(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let label = match self.guest_choice_indicator? {
+            GuestChoiceIndicator::Descended => " [ NESTED ZELLIJ · AUTO ] ",
+            GuestChoiceIndicator::Dismissed => " [ NESTED ZELLIJ · MANUAL ] ",
+        };
+        let label_len = label.chars().count();
+        if label_len <= max_length {
+            Some((foreground_color(label, self.color), label_len))
+        } else {
+            None
+        }
+    }
     fn render_title_right_side(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let guest_choice_indication = self.render_guest_choice_indication(max_length);
+        let space_for_rest = guest_choice_indication
+            .as_ref()
+            .map(|(_, length)| max_length.saturating_sub(*length))
+            .unwrap_or(max_length);
+        let rest = self.render_title_right_side_inner(space_for_rest);
+        match (guest_choice_indication, rest) {
+            (Some((mut guest_indication, guest_len)), Some((mut rest_chars, rest_len))) => {
+                let mut characters: Vec<_> = rest_chars.drain(..).collect();
+                characters.append(&mut guest_indication);
+                Some((characters, guest_len + rest_len))
+            },
+            (Some(guest_indication), None) => Some(guest_indication),
+            (None, Some(rest)) => Some(rest),
+            _ => None,
+        }
+    }
+    fn render_title_right_side_inner(
         &self,
         max_length: usize,
     ) -> Option<(Vec<TerminalCharacter>, usize)> {
@@ -847,9 +887,32 @@ impl PaneFrame {
         let side_budget = width.saturating_sub(title_length) / 2;
         let focus = self.bracketed_focus_indicator(side_budget);
         let focus_length = focus.as_ref().map(|(_, length)| *length).unwrap_or(0);
-        let scroll =
-            self.bracketed_scroll_indicator(width.saturating_sub(focus_length + title_length));
-        Ok(self.compose_bracketed_title(focus, title, scroll))
+        let right_budget = width.saturating_sub(focus_length + title_length);
+        let guest = self.bracketed_guest_choice_indicator(right_budget);
+        let guest_length = guest.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let scroll = self.bracketed_scroll_indicator(right_budget.saturating_sub(guest_length));
+        let right = match (scroll, guest) {
+            (Some((mut scroll_chars, scroll_length)), Some((mut guest_chars, guest_length))) => {
+                let mut characters: Vec<_> = scroll_chars.drain(..).collect();
+                characters.append(&mut guest_chars);
+                Some((characters, scroll_length + guest_length))
+            },
+            (Some(scroll), None) => Some(scroll),
+            (None, Some(guest)) => Some(guest),
+            (None, None) => None,
+        };
+        Ok(self.compose_bracketed_title(focus, title, right))
+    }
+    fn bracketed_guest_choice_indicator(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let content = match self.guest_choice_indicator? {
+            GuestChoiceIndicator::Descended => "NESTED ZELLIJ · AUTO",
+            GuestChoiceIndicator::Dismissed => "NESTED ZELLIJ · MANUAL",
+        };
+        let (part, length) = self.bracketed_title_part(content);
+        (length <= max_length).then_some((part, length))
     }
     fn bracketed_title_part(&self, content: &str) -> (Vec<TerminalCharacter>, usize) {
         let text = format!(" [ {} ] ", content);

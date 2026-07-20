@@ -1595,6 +1595,14 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::FocusGuestSession => {
+            senders
+                .send_to_screen(ScreenInstruction::FocusGuestSession(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::ToggleHostFullscreen => {
             senders
                 .send_to_screen(ScreenInstruction::ToggleHostFullscreen(
