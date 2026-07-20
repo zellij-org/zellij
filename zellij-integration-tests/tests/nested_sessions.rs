@@ -410,6 +410,152 @@ fn clicking_a_host_pane_while_descended_refocuses_and_ascends() {
     nested.host.quit();
 }
 
+fn sgr_left_click(column: usize, line: usize) -> Vec<u8> {
+    format!(
+        "\u{1b}[<0;{};{}M\u{1b}[<0;{};{}m",
+        column, line, column, line
+    )
+    .into_bytes()
+}
+
+fn display_column_of(line: &str, needle: &str) -> Option<usize> {
+    line.find(needle)
+        .map(|byte_offset| line[..byte_offset].chars().count())
+}
+
+#[test]
+fn clicking_the_host_new_tab_button_while_descended_ascends_and_keeps_working() {
+    let mut nested = NestedHarness::start_with_host_config(TERMINAL_SIZE, "mouse_mode true");
+    let guest_session_name = nested.guest.session_name().to_string();
+
+    boot_and_descend_on_first_load(&nested);
+    nested.guest.wait_for_app_load();
+
+    let host_before = nested.host.wait_until(
+        "the host tab bar shows the new tab button while descended",
+        |host_grid| {
+            host_grid
+                .lines()
+                .first()
+                .is_some_and(|tab_bar| tab_bar.contains('+'))
+        },
+    );
+    let tab_bar = host_before.lines().first().cloned().unwrap();
+    let new_tab_button_column =
+        display_column_of(&tab_bar, "+").expect("new tab button is on the host tab bar") + 1;
+
+    let ascended = nested.mark_host_to_guest();
+    nested
+        .host
+        .send_stdin(&sgr_left_click(new_tab_button_column, 1));
+    let host_new_tab_pane = nested.host.expect_pty_spawn();
+    host_new_tab_pane.output(PROMPT);
+    nested.wait_for_host_to_ascend_from_guest_after(ascended);
+
+    let host_after_new_tab = nested.host.wait_until(
+        "the host opened a second tab and undimmed after clicking the new tab button",
+        |host_grid| {
+            host_grid.lines().first().map_or(false, |tab_bar| {
+                tab_bar.contains("Tab #1") && tab_bar.contains("Tab #2")
+            }) && normal_mode_bar_settled(host_grid)
+        },
+    );
+    assert_snapshot!(
+        "host_ascended_after_clicking_new_tab_button",
+        normalized(&host_after_new_tab)
+    );
+
+    nested.host.send_stdin(&keys::alt('n'));
+    let host_new_pane = nested.host.expect_pty_spawn();
+    host_new_pane.output(PROMPT);
+    nested.host.wait_until(
+        "the host acts on its own key after clicking the new tab button ascended it",
+        |host_grid| host_grid.contains("Pane #2") && normal_mode_bar_settled(host_grid),
+    );
+
+    let _ = guest_session_name;
+    nested.guest.quit();
+    nested.host.quit();
+}
+
+#[test]
+fn clicking_a_host_tab_while_descended_switches_tabs_and_ascends() {
+    let mut nested = NestedHarness::start_with_host_config(TERMINAL_SIZE, "mouse_mode true");
+    let guest_session_name = nested.guest.session_name().to_string();
+
+    boot_and_descend_on_first_load(&nested);
+    nested.guest.wait_for_app_load();
+
+    let host_before = nested.host.wait_until(
+        "the host tab bar shows the new tab button while descended",
+        |host_grid| {
+            host_grid
+                .lines()
+                .first()
+                .is_some_and(|tab_bar| tab_bar.contains('+'))
+        },
+    );
+    let tab_bar = host_before.lines().first().cloned().unwrap();
+    let new_tab_button_column =
+        display_column_of(&tab_bar, "+").expect("new tab button is on the host tab bar") + 1;
+
+    let ascended_by_new_tab = nested.mark_host_to_guest();
+    nested
+        .host
+        .send_stdin(&sgr_left_click(new_tab_button_column, 1));
+    let host_new_tab_pane = nested.host.expect_pty_spawn();
+    host_new_tab_pane.output(PROMPT);
+    nested.wait_for_host_to_ascend_from_guest_after(ascended_by_new_tab);
+    let host_two_tabs = nested.host.wait_until(
+        "the host now has two tabs with the second one focused on a host pane",
+        |host_grid| {
+            host_grid.lines().first().map_or(false, |tab_bar| {
+                tab_bar.contains("Tab #1") && tab_bar.contains("Tab #2")
+            }) && normal_mode_bar_settled(host_grid)
+        },
+    );
+    let first_tab_column = host_two_tabs
+        .lines()
+        .first()
+        .and_then(|tab_bar| display_column_of(tab_bar, "Tab #1"))
+        .expect("the first host tab ribbon is on the host tab bar")
+        + 1;
+    let second_tab_column = host_two_tabs
+        .lines()
+        .first()
+        .and_then(|tab_bar| display_column_of(tab_bar, "Tab #2"))
+        .expect("the second host tab ribbon is on the host tab bar")
+        + 1;
+
+    let descended_by_tab_one = nested.mark_host_to_guest();
+    nested.host.send_stdin(&sgr_left_click(first_tab_column, 1));
+    nested.wait_for_host_to_descend_into_guest_after(descended_by_tab_one);
+
+    let ascended_by_tab_two = nested.mark_host_to_guest();
+    nested.host.send_stdin(&sgr_left_click(second_tab_column, 1));
+    nested.wait_for_host_to_ascend_from_guest_after(ascended_by_tab_two);
+    nested.host.wait_until(
+        "clicking the second host tab switches away from the guest tab in normal mode",
+        |host_grid| {
+            host_grid.lines().first().map_or(false, |tab_bar| {
+                tab_bar.contains("Tab #1") && tab_bar.contains("Tab #2")
+            }) && normal_mode_bar_settled(host_grid)
+        },
+    );
+
+    nested.host.send_stdin(&keys::alt('n'));
+    let host_new_pane = nested.host.expect_pty_spawn();
+    host_new_pane.output(PROMPT);
+    nested.host.wait_until(
+        "the host acts on its own key after the tab click ascended it",
+        |host_grid| host_grid.contains("Pane #2") && normal_mode_bar_settled(host_grid),
+    );
+
+    let _ = guest_session_name;
+    nested.guest.quit();
+    nested.host.quit();
+}
+
 #[test]
 fn a_key_immediately_after_descend_lands_in_the_guest_and_after_ascend_lands_in_the_host() {
     let mut nested = NestedHarness::start(TERMINAL_SIZE);

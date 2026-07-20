@@ -2129,6 +2129,19 @@ impl Screen {
 
                     let current_tab_index = current_tab.id;
                     let new_tab_index = new_tab.id;
+                    let affected_client_ids: Vec<ClientId> = if self.session_is_mirrored {
+                        self.connected_clients
+                            .borrow()
+                            .iter()
+                            .map(|(c, _i)| *c)
+                            .collect()
+                    } else {
+                        vec![client_id]
+                    };
+                    let old_focused_panes: Vec<(ClientId, Option<PaneId>)> = affected_client_ids
+                        .iter()
+                        .map(|c| (*c, self.get_active_pane_id(c)))
+                        .collect();
                     if self.session_is_mirrored {
                         self.move_clients_between_tabs(
                             current_tab_index,
@@ -2202,6 +2215,12 @@ impl Screen {
 
                     self.log_and_report_session_state()
                         .with_context(err_context)?;
+                    for (affected_client_id, old_pane_id) in old_focused_panes {
+                        let new_pane_id = self.get_active_pane_id(&affected_client_id);
+                        if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
+                            self.report_key_passthrough_state(affected_client_id, old, new);
+                        }
+                    }
                     return self.render(None).with_context(err_context);
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
@@ -3900,6 +3919,25 @@ impl Screen {
         };
         let err_context = || format!("failed to apply layout for tab {tab_id:?}",);
 
+        let passthrough_affected_client_ids: Vec<ClientId> = if should_change_client_focus {
+            if self.session_is_mirrored {
+                self.connected_clients
+                    .borrow()
+                    .iter()
+                    .map(|(c, _i)| *c)
+                    .collect()
+            } else {
+                vec![client_id]
+            }
+        } else {
+            vec![]
+        };
+        let passthrough_old_focused_panes: Vec<(ClientId, Option<PaneId>)> =
+            passthrough_affected_client_ids
+                .iter()
+                .map(|c| (*c, self.get_active_pane_id(c)))
+                .collect();
+
         // move the relevant clients out of the current tab and place them in the new one
         let drained_clients = if should_change_client_focus {
             if self.session_is_mirrored {
@@ -3984,6 +4022,13 @@ impl Screen {
         }
 
         self.recompute_tab_size(tab_id).with_context(err_context)?;
+
+        for (affected_client_id, old_pane_id) in passthrough_old_focused_panes {
+            let new_pane_id = self.get_active_pane_id(&affected_client_id);
+            if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
+                self.report_key_passthrough_state(affected_client_id, old, new);
+            }
+        }
 
         self.log_and_report_session_state()
             .and_then(|_| self.render(None))
