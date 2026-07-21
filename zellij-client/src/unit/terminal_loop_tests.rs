@@ -841,6 +841,7 @@ async fn test_nested_announce_ack_is_relayed_over_control_websocket() {
     let announce_ack = zellij_utils::nested_session::NestedSessionMessage::AnnounceAck {
         ancestry: vec!["outer-host".to_owned()],
         capabilities: vec![zellij_utils::nested_session::NestedSessionCapability::NestedControl],
+        descend_keys: vec![],
     };
     stdin_tx
         .send(zellij_utils::nested_session::encode_frame(&announce_ack))

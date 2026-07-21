@@ -1,6 +1,8 @@
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use zellij_client::os_input_output::SignalEvent;
 use zellij_client::ClientInfo;
@@ -277,11 +279,46 @@ impl TestClient {
     fn join(&mut self) -> Option<ConnectToSession> {
         self.thread
             .take()
-            .and_then(|join_handle: JoinHandle<Option<ConnectToSession>>| {
-                join_handle.join().expect("client thread panicked")
-            })
+            .and_then(join_client_thread_with_timeout)
     }
 }
+
+fn join_client_thread_with_timeout(
+    join_handle: JoinHandle<Option<ConnectToSession>>,
+) -> Option<ConnectToSession> {
+    let (done_tx, done_rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("nested_client_join_watchdog".to_string())
+        .spawn(move || {
+            let result = join_handle.join();
+            let _ = done_tx.send(result);
+        })
+        .unwrap();
+    match done_rx.recv_timeout(CLIENT_JOIN_TIMEOUT) {
+        Ok(Ok(reconnect)) => reconnect,
+        Ok(Err(_)) => panic!("client thread panicked"),
+        Err(mpsc::RecvTimeoutError::Timeout) => None,
+        Err(mpsc::RecvTimeoutError::Disconnected) => None,
+    }
+}
+
+fn join_server_thread_with_timeout(join_handle: JoinHandle<()>) {
+    let (done_tx, done_rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("nested_server_join_watchdog".to_string())
+        .spawn(move || {
+            let result = join_handle.join();
+            let _ = done_tx.send(result);
+        })
+        .unwrap();
+    match done_rx.recv_timeout(CLIENT_JOIN_TIMEOUT) {
+        Ok(Ok(())) => {},
+        Ok(Err(_)) => panic!("server thread panicked"),
+        Err(_) => {},
+    }
+}
+
+const CLIENT_JOIN_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct TestSession {
     session_name: String,
@@ -568,7 +605,7 @@ impl TestSession {
             self.main_client.join();
         }
         if let Some(server_thread) = self.server_thread.lock().unwrap().take() {
-            server_thread.join().expect("server thread panicked");
+            join_server_thread_with_timeout(server_thread);
         }
     }
 
