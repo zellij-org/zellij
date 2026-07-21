@@ -1,8 +1,6 @@
-use ansi_term::Colour::{Fixed, RGB};
 use ansi_term::{unstyled_len, ANSIStrings};
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
-use zellij_tile_utils::palette_match;
 
 use crate::color_elements;
 use crate::{
@@ -352,24 +350,11 @@ fn swap_layout_keycode(mode_info: &ModeInfo) -> LinePart {
         &mode_keybinds,
         &[&[Action::PreviousSwapLayout], &[Action::NextSwapLayout]],
     );
-    let mut prev_next_keys_indicator = style_key_with_modifier(
+    let prev_next_keys_indicator = style_key_with_modifier(
         &prev_next_keys,
         &mode_info.style.colors,
         Some(mode_info.style.colors.text_unselected.background),
     );
-    if mode_info.session_dimmed.unwrap_or(false) {
-        let dim_style = ansi_term::Style::new()
-            .fg(palette_match!(mode_info.style.colors.text_unselected.base))
-            .on(palette_match!(mode_info.style.colors.text_unselected.background))
-            .italic();
-        prev_next_keys_indicator = prev_next_keys_indicator
-            .into_iter()
-            .map(|styled| {
-                let unstyled: String = String::from(&*styled);
-                dim_style.paint(unstyled)
-            })
-            .collect();
-    }
     let keycode = ANSIStrings(&prev_next_keys_indicator);
     let len = unstyled_len(&keycode);
     let part = keycode.to_string();
@@ -628,11 +613,7 @@ pub fn first_line(
     separator: &str,
 ) -> LinePart {
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
-    let colored_elements = color_elements(
-        help.style.colors,
-        !supports_arrow_fonts,
-        help.session_dimmed.unwrap_or(false),
-    );
+    let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts, false);
     let binds = &help.get_mode_keybinds();
     // Unselect all by default
     let mut default_keys = vec![

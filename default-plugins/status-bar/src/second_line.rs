@@ -368,6 +368,78 @@ pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
     best_effort_shortcut_list(help, tip_body.short, max_width)
 }
 
+pub fn descended_into_nested_session_hint(help: &ModeInfo, max_len: usize) -> LinePart {
+    nested_session_status_hint(
+        help,
+        "Descended into a nested Zellij session.",
+        "To ascend: ",
+        &help.nested_ascend_keys,
+        max_len,
+    )
+}
+
+pub fn ascended_to_host_session_hint(help: &ModeInfo, max_len: usize) -> LinePart {
+    nested_session_status_hint(
+        help,
+        "Ascended into the host Zellij session.",
+        "To descend: focus this pane, then: ",
+        &help.nested_descend_keys,
+        max_len,
+    )
+}
+
+fn nested_session_status_hint(
+    help: &ModeInfo,
+    message: &str,
+    shortcut_prefix: &str,
+    keys: &[KeyWithModifier],
+    max_len: usize,
+) -> LinePart {
+    let palette = help.style.colors;
+    let text_color = palette_match!(palette.text_unselected.base);
+    let styled_message = Style::new()
+        .fg(text_color)
+        .bold()
+        .paint(format!(" {}", message));
+    let mut bits: Vec<ANSIString> = vec![styled_message.clone()];
+    if !keys.is_empty() {
+        bits.push(
+            Style::new()
+                .fg(text_color)
+                .paint(format!(" {}", shortcut_prefix)),
+        );
+        for (i, key) in keys.iter().enumerate() {
+            if i > 0 {
+                bits.push(Style::new().fg(text_color).paint(", "));
+            }
+            bits.extend(style_key_with_modifier(
+                std::slice::from_ref(key),
+                &palette,
+                None,
+            ));
+        }
+    }
+    let part = ANSIStrings(&bits);
+    let len = unstyled_len(&part);
+    if len <= max_len {
+        return LinePart {
+            part: part.to_string(),
+            len,
+        };
+    }
+    let message_only = vec![styled_message];
+    let part = ANSIStrings(&message_only);
+    let len = unstyled_len(&part);
+    if len <= max_len {
+        LinePart {
+            part: part.to_string(),
+            len,
+        }
+    } else {
+        LinePart::default()
+    }
+}
+
 pub fn text_copied_hint(copy_destination: CopyDestination) -> LinePart {
     let hint = match copy_destination {
         CopyDestination::Command => "Text piped to external command",

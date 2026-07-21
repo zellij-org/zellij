@@ -18,9 +18,9 @@ use zellij_tile_utils::{palette_match, style};
 use first_line::first_line;
 use one_line_ui::one_line_ui;
 use second_line::{
-    floating_panes_are_visible, fullscreen_panes_to_hide, keybinds,
-    locked_floating_panes_are_visible, locked_fullscreen_panes_to_hide, system_clipboard_error,
-    text_copied_hint,
+    ascended_to_host_session_hint, descended_into_nested_session_hint, floating_panes_are_visible,
+    fullscreen_panes_to_hide, keybinds, locked_floating_panes_are_visible,
+    locked_fullscreen_panes_to_hide, system_clipboard_error, text_copied_hint,
 };
 use tip::utils::get_cached_tip_name;
 
@@ -367,6 +367,8 @@ impl ZellijPlugin for State {
         let active_tab = self.tabs.iter().find(|t| t.active);
         let first_line = first_line(&self.mode_info, active_tab, cols, separator);
         let second_line = self.second_line(cols);
+        let show_nested_session_hint = self.mode_info.session_dimmed.unwrap_or(false)
+            || self.mode_info.session_ascended.unwrap_or(false);
 
         // [48;5;238m is white background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line
@@ -375,7 +377,9 @@ impl ZellijPlugin for State {
                 if rows > 1 {
                     println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
                 } else {
-                    if self.mode_info.mode == InputMode::Normal {
+                    if show_nested_session_hint {
+                        print!("\u{1b}[m{}\u{1b}[0K", second_line);
+                    } else if self.mode_info.mode == InputMode::Normal {
                         print!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
                     } else {
                         print!("\u{1b}[m{}\u{1b}[0K", second_line);
@@ -386,7 +390,9 @@ impl ZellijPlugin for State {
                 if rows > 1 {
                     println!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
                 } else {
-                    if self.mode_info.mode == InputMode::Normal {
+                    if show_nested_session_hint {
+                        print!("\u{1b}[m{}\u{1b}[0K", second_line);
+                    } else if self.mode_info.mode == InputMode::Normal {
                         print!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
                     } else {
                         print!("\u{1b}[m{}\u{1b}[0K", second_line);
@@ -406,7 +412,10 @@ impl State {
         let active_tab = self.tabs.iter().find(|t| t.active);
 
         if self.mode_info.session_dimmed.unwrap_or(false) {
-            return LinePart::default();
+            return descended_into_nested_session_hint(&self.mode_info, cols);
+        }
+        if self.mode_info.session_ascended.unwrap_or(false) {
+            return ascended_to_host_session_hint(&self.mode_info, cols);
         }
         if let Some(copy_destination) = self.text_copy_destination {
             text_copied_hint(copy_destination)

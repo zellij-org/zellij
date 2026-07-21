@@ -3,7 +3,7 @@ source: zellij-integration-tests/tests/nested_sessions.rs
 expression: normalized(&host_after_click)
 ---
  Zellij (test)  Tab #1  + 
-                           test-1                          │                           Pane #2
+                           test-1  [ NESTED ZELLIJ · AUTO ]│                           Pane #2
  Zellij (test)  Tab #1  +                            │$ █
                                                            │
                                                            │
@@ -24,5 +24,5 @@ expression: normalized(&host_after_click)
                                                            │
                                                            │
                                                            │
- Ctrl + g  p  t  n  h  s  o  q         ...│
- Ctrl + <p> PANE   n  New  ←↓↑→  Move  x  Close  c  Rename  f  Fullscreen  Alt f  Floating  ...        
+ Ascended into the host Zellij session.                    │
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...

@@ -11282,6 +11282,7 @@ pub fn nested_guest_announce_gets_announce_ack_with_ancestry() {
             capabilities: vec![
                 zellij_utils::nested_session::NestedSessionCapability::NestedControl
             ],
+            descend_keys: vec![],
         }
     );
     assert!(received_background_jobs

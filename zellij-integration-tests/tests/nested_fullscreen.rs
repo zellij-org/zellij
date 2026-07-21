@@ -2,13 +2,15 @@
 
 use insta::assert_snapshot;
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, col, keys, normalized, split_right_and_wait_for_prompt,
-    start_zellij, GridSnapshot, NestedDepthThreeHarness, NestedHarness, TERMINAL_SIZE,
+    claim_first_terminal_and_wait_for_prompt, col, host_descended_bar_with_ascend_keys_settled,
+    keys, normalized, split_right_and_wait_for_prompt, start_zellij, GridSnapshot,
+    NestedDepthThreeHarness, NestedHarness, TERMINAL_SIZE,
 };
 use zellij_utils::cli::CliAction;
 use zellij_utils::nested_session::NestedSessionMessage;
 
 const ARROW_UP: &[u8] = b"\x1b[A";
+const ARROW_DOWN: &[u8] = b"\x1b[B";
 const ARROW_LEFT: &[u8] = b"\x1b[D";
 
 fn sgr_mouse_report(column: usize, line: usize, button: u8) -> Vec<u8> {
@@ -178,6 +180,7 @@ fn toggle_off_restores_the_host_layout_exactly() {
         |host_grid| {
             host_grid.status_bar_appears()
                 && host_grid.tab_bar_appears()
+                && host_descended_bar_with_ascend_keys_settled(host_grid)
                 && host_own_name_present(host_grid, &host_session_name)
                 && !guest_fullscreen_breadcrumb_line(host_grid)
         },
@@ -223,6 +226,7 @@ fn toggle_off_restores_the_host_layout_exactly() {
         |host_grid| {
             host_grid.status_bar_appears()
                 && host_grid.tab_bar_appears()
+                && host_descended_bar_with_ascend_keys_settled(host_grid)
                 && host_own_name_present(host_grid, &host_session_name)
                 && !guest_fullscreen_breadcrumb_line(host_grid)
         },
@@ -509,6 +513,12 @@ fn redescend_middle_into_inner(nested: &NestedDepthThreeHarness) {
         },
     );
     nested.outer.send_stdin(ARROW_LEFT);
+    nested.outer.send_stdin(&keys::ctrl('o'));
+    nested.middle.wait_until(
+        "middle entered session mode before the descend key",
+        session_mode_bar_settled,
+    );
+    nested.outer.send_stdin(ARROW_DOWN);
     nested.wait_for_middle_to_descend_into_inner_after(descended);
 }
 
@@ -666,6 +676,12 @@ fn descend_into_guest_on_the_left(nested: &NestedHarness) {
         pane_mode_bar_settled,
     );
     nested.host.send_stdin(ARROW_LEFT);
+    nested.host.send_stdin(&keys::ctrl('o'));
+    nested.host.wait_until(
+        "host entered session mode before the descend key",
+        session_mode_bar_settled,
+    );
+    nested.host.send_stdin(ARROW_DOWN);
     nested.wait_for_host_to_descend_into_guest_after(descended);
 }
 

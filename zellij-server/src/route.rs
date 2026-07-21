@@ -2315,7 +2315,7 @@ pub(crate) fn route_thread_main(
                             let dispatch_inputs =
                                 session_data.read().unwrap().as_ref().and_then(|s| {
                                     let in_passthrough =
-                                        s.key_passthrough_clients.contains(&client_id);
+                                        s.key_passthrough_clients.contains_key(&client_id);
                                     if in_passthrough {
                                         return Some((
                                             s.senders.clone(),
@@ -2769,6 +2769,22 @@ pub(crate) fn route_thread_main(
                                     );
                                 },
                                 Some(message @ zellij_utils::nested_session::NestedSessionMessage::FocusGained { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::FocusLost) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::ShortcutUpdate { .. }) => {
                                     let _ = send_to_screen_or_retry_queue!(
                                         senders,
                                         ScreenInstruction::NestedSessionMessageFromHost { client_id, message },

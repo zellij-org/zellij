@@ -14,6 +14,7 @@ message NestedSessionMessage {
     FullscreenState fullscreen_state = 11;
     AncestryUpdate ancestry_update = 12;
     Ping ping = 13;
+    ShortcutUpdate shortcut_update = 14;
   }
 }
 
@@ -52,6 +53,12 @@ message Bye {
 message AnnounceAck {
   repeated string ancestry = 1;
   repeated NestedCapability capabilities = 2;
+  repeated string descend_keys = 3;
+}
+
+message ShortcutUpdate {
+  repeated string ascend_keys = 1;
+  repeated string descend_keys = 2;
 }
 
 message FocusGained {

@@ -4092,6 +4092,15 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Down,
+                key_modifiers: {},
+            }: [
+                FocusGuestSession,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Down,
                 key_modifiers: {
                     Alt,
                 },
@@ -4269,6 +4278,17 @@ Config {
                 key_modifiers: {},
             }: [
                 Detach,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleHostFullscreen,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(

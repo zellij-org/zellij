@@ -9,7 +9,10 @@ use zellij_tile::prelude::*;
 use zellij_tile_utils::{palette_match, style};
 
 use crate::first_line::{to_char, KeyAction, KeyMode, KeyShortcut};
-use crate::second_line::{system_clipboard_error, text_copied_hint};
+use crate::second_line::{
+    ascended_to_host_session_hint, descended_into_nested_session_hint, system_clipboard_error,
+    text_copied_hint,
+};
 use crate::{action_key, action_key_group, color_elements, MORE_MSG, TO_NORMAL};
 use crate::{ColoredElements, LinePart};
 use unicode_width::UnicodeWidthStr;
@@ -25,6 +28,12 @@ pub fn one_line_ui(
     new_pane_hovered: bool,
     floating_hovered: bool,
 ) -> (LinePart, Option<(usize, usize)>, Option<(usize, usize)>) {
+    if help.session_dimmed.unwrap_or(false) {
+        return (descended_into_nested_session_hint(help, max_len), None, None);
+    }
+    if help.session_ascended.unwrap_or(false) {
+        return (ascended_to_host_session_hint(help, max_len), None, None);
+    }
     if let Some(text_copied_to_clipboard_destination) = text_copied_to_clipboard_destination {
         return (
             text_copied_hint(text_copied_to_clipboard_destination),

@@ -3,9 +3,9 @@ source: zellij-integration-tests/tests/nested_sessions.rs
 expression: normalized(&host_descended)
 ---
  Zellij (test)  Tab #1  + 
-                           test-1                          │                           Pane #2
- Zellij (test)  Tab #1  +                            │$ █
-                                                           │
+                           test-1  [ NESTED ZELLIJ · AUTO ]│                           Pane #2
+ Zellij (test)  Tab #1  +                            │$
+█                                                          │
                                                            │
                                                            │
                                                            │
@@ -25,4 +25,4 @@ expression: normalized(&host_descended)
                                                            │
                                                            │
  Ctrl + g  p  t  n  h  s  o  q         ...│
- Ctrl + <p> PANE   n  New  ←↓↑→  Move  x  Close  c  Rename  f  Fullscreen  Alt f  Floating  ...        
+ Descended into a nested Zellij session. To ascend: Ctrl + <o>, <↑>                                                     

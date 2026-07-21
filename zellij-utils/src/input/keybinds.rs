@@ -116,6 +116,57 @@ impl Keybinds {
     }
 }
 
+const MAX_SHORTCUT_SEARCH_DEPTH: usize = 4;
+
+pub fn shortcut_for_action(
+    keybinds: &KeybindsVec,
+    base_mode: InputMode,
+    is_target_action: impl Fn(&Action) -> bool,
+) -> Option<Vec<KeyWithModifier>> {
+    let mode_binds = |mode: InputMode| -> Vec<(KeyWithModifier, Vec<Action>)> {
+        let mut binds = keybinds
+            .iter()
+            .find(|(bind_mode, _)| *bind_mode == mode)
+            .map(|(_, binds)| binds.clone())
+            .unwrap_or_default();
+        binds.sort_by(|(a, _), (b, _)| a.cmp(b));
+        binds
+    };
+    let mut visited: Vec<InputMode> = vec![base_mode];
+    let mut queue: Vec<(InputMode, Vec<KeyWithModifier>)> = vec![(base_mode, vec![])];
+    for _ in 0..MAX_SHORTCUT_SEARCH_DEPTH {
+        let mut next_queue: Vec<(InputMode, Vec<KeyWithModifier>)> = vec![];
+        for (mode, path) in &queue {
+            for (key, actions) in mode_binds(*mode) {
+                if actions.iter().any(&is_target_action) {
+                    let mut shortcut = path.clone();
+                    shortcut.push(key);
+                    return Some(shortcut);
+                }
+            }
+        }
+        for (mode, path) in &queue {
+            for (key, actions) in mode_binds(*mode) {
+                for action in &actions {
+                    if let Action::SwitchToMode { input_mode: next_mode } = action {
+                        if !visited.contains(next_mode) {
+                            visited.push(*next_mode);
+                            let mut next_path = path.clone();
+                            next_path.push(key.clone());
+                            next_queue.push((*next_mode, next_path));
+                        }
+                    }
+                }
+            }
+        }
+        if next_queue.is_empty() {
+            return None;
+        }
+        queue = next_queue;
+    }
+    None
+}
+
 // we need to do this because [10] in standard STDIN, [10] is both Enter (without a carriage
 // return) and ctrl-j - so here, if ctrl-j is bound we return its bound action, and otherwise we
 // just write the raw bytes to the terminal and let whichever program is there decide what they are

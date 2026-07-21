@@ -1,7 +1,7 @@
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NestedSessionMessage {
-    #[prost(oneof="nested_session_message::Payload", tags="1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13")]
+    #[prost(oneof="nested_session_message::Payload", tags="1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14")]
     pub payload: ::core::option::Option<nested_session_message::Payload>,
 }
 /// Nested message and enum types in `NestedSessionMessage`.
@@ -31,6 +31,8 @@ pub mod nested_session_message {
         AncestryUpdate(super::AncestryUpdate),
         #[prost(message, tag="13")]
         Ping(super::Ping),
+        #[prost(message, tag="14")]
+        ShortcutUpdate(super::ShortcutUpdate),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -68,6 +70,16 @@ pub struct AnnounceAck {
     pub ancestry: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(enumeration="NestedCapability", repeated, tag="2")]
     pub capabilities: ::prost::alloc::vec::Vec<i32>,
+    #[prost(string, repeated, tag="3")]
+    pub descend_keys: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ShortcutUpdate {
+    #[prost(string, repeated, tag="1")]
+    pub ascend_keys: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="2")]
+    pub descend_keys: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -1,11 +1,13 @@
 #![cfg(unix)]
 
 use zellij_integration_tests::{
-    keys, FakePtyHandle, GridSnapshot, NestedHarness, Size, PROMPT, TERMINAL_SIZE,
+    guest_ascended_bar_settled, keys, FakePtyHandle, GridSnapshot, NestedHarness, Size, PROMPT,
+    TERMINAL_SIZE,
 };
 use zellij_utils::nested_session::NestedSessionMessage;
 
 const ARROW_UP: &[u8] = b"\x1b[A";
+const ARROW_DOWN: &[u8] = b"\x1b[B";
 const ARROW_LEFT: &[u8] = b"\x1b[D";
 
 fn last_line_contains(grid_snapshot: &GridSnapshot, needle: &str) -> bool {
@@ -60,6 +62,14 @@ fn guest_ui_settled(guest_grid: &GridSnapshot) -> bool {
         .map_or(false, |first_line| first_line.contains("Tab #1"))
         && last_line_contains(guest_grid, "Ctrl +")
         && guest_normal_mode_bar_settled(guest_grid)
+}
+
+fn guest_ascended_ui_settled(guest_grid: &GridSnapshot) -> bool {
+    guest_grid
+        .lines()
+        .first()
+        .map_or(false, |first_line| first_line.contains("Tab #1"))
+        && guest_ascended_bar_settled(guest_grid)
 }
 
 fn prompt_count(grid_snapshot: &GridSnapshot) -> usize {
@@ -119,6 +129,12 @@ fn descend_into_guest_on_the_left(nested: &NestedHarness) {
         pane_mode_bar_settled,
     );
     nested.host.send_stdin(ARROW_LEFT);
+    nested.host.send_stdin(&keys::ctrl('o'));
+    nested.host.wait_until(
+        "host entered session mode before the descend key",
+        session_mode_bar_settled,
+    );
+    nested.host.send_stdin(ARROW_DOWN);
     nested.wait_for_host_to_descend_into_guest_after(descended);
 }
 
@@ -327,9 +343,9 @@ fn host_scrollback_on_a_guest_pane_scrolls_the_host_not_the_guest() {
         "the host returns to normal mode after scrolling the guest pane",
         |host_grid| normal_mode_bar_settled(host_grid),
     );
-    assert!(
-        guest_ui_settled(&nested.guest.snapshot()),
-        "the guest UI must be undisturbed by the host scrolling its pane",
+    nested.guest.wait_until(
+        "the guest still shows its ascended UI undisturbed by the host scrolling its pane",
+        guest_ascended_ui_settled,
     );
     assert!(normal_mode_bar_settled(&host_back_to_normal));
 
@@ -373,9 +389,9 @@ fn host_search_over_a_guest_pane_stays_host_side() {
         "the host returns to normal mode after searching the guest pane",
         |host_grid| normal_mode_bar_settled(host_grid),
     );
-    assert!(
-        guest_ui_settled(&nested.guest.snapshot()),
-        "the guest UI must be undisturbed by the host searching its pane",
+    nested.guest.wait_until(
+        "the guest still shows its ascended UI undisturbed by the host searching its pane",
+        guest_ascended_ui_settled,
     );
 
     nested.guest.quit();
@@ -498,7 +514,7 @@ fn opening_the_host_session_manager_with_a_guest_pane_does_not_misbehave() {
 
     nested.guest.wait_until(
         "the guest is undisturbed by the host session manager",
-        guest_ui_settled,
+        guest_ascended_ui_settled,
     );
     nested.host.send_stdin(&keys::alt('n'));
     let host_new_pane = nested.host.expect_pty_spawn();

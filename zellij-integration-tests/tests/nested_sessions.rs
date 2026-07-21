@@ -2,8 +2,10 @@
 
 use insta::assert_snapshot;
 use zellij_integration_tests::{
-    col, composite_contains_settled_guest_grid, keys, normalized, wait_for_settled_composite,
-    GridSnapshot, NestedDepthThreeHarness, NestedHarness, PROMPT, TERMINAL_SIZE,
+    col, composite_contains_settled_guest_grid, guest_ascended_bar_settled,
+    host_descended_bar_settled, host_descended_bar_with_ascend_keys_settled, keys, normalized,
+    wait_for_settled_composite, GridSnapshot, NestedDepthThreeHarness, NestedHarness, PROMPT,
+    TERMINAL_SIZE,
 };
 use zellij_utils::data::Direction;
 use zellij_utils::nested_session::NestedSessionMessage;
@@ -76,6 +78,25 @@ fn guest_ui_settled(guest_grid: &GridSnapshot) -> bool {
 
 fn single_blank_pane_guest_settled(guest_grid: &GridSnapshot) -> bool {
     guest_ui_settled(guest_grid) && guest_grid.cursor_is_at(col(0).row(1))
+}
+
+fn guest_ascended_ui_settled(guest_grid: &GridSnapshot) -> bool {
+    guest_grid
+        .lines()
+        .first()
+        .map_or(false, |first_line| first_line.contains("Tab #1"))
+        && guest_ascended_bar_settled(guest_grid)
+}
+
+fn ascended_single_blank_pane_guest_settled(guest_grid: &GridSnapshot) -> bool {
+    guest_ascended_ui_settled(guest_grid) && prompt_count(guest_grid) == 0
+}
+
+fn ascended_two_pane_guest_settled(guest_grid: &GridSnapshot) -> bool {
+    guest_ascended_ui_settled(guest_grid)
+        && guest_grid.contains("Pane #1")
+        && guest_grid.contains("Pane #2")
+        && prompt_count(guest_grid) == 1
 }
 
 fn two_pane_guest_settled(guest_grid: &GridSnapshot) -> bool {
@@ -195,6 +216,12 @@ fn descend_into_guest_on_the_left(nested: &NestedHarness) {
         pane_mode_bar_settled,
     );
     nested.host.send_stdin(ARROW_LEFT);
+    nested.host.send_stdin(&keys::ctrl('o'));
+    nested.host.wait_until(
+        "host entered session mode before the descend key",
+        session_mode_bar_settled,
+    );
+    nested.host.send_stdin(ARROW_DOWN);
     nested.wait_for_host_to_descend_into_guest_after(descended);
 }
 
@@ -228,6 +255,12 @@ fn descend_into_guest_above(nested: &NestedHarness) {
         pane_mode_bar_settled,
     );
     nested.host.send_stdin(ARROW_UP);
+    nested.host.send_stdin(&keys::ctrl('o'));
+    nested.host.wait_until(
+        "host entered session mode before the descend key",
+        session_mode_bar_settled,
+    );
+    nested.host.send_stdin(ARROW_DOWN);
     nested.wait_for_host_to_descend_into_guest_after(descended);
 }
 
@@ -256,7 +289,7 @@ fn host_keys_act_on_host_until_focus_enters_the_guest_then_route_to_guest() {
     split_host_sibling(&nested);
     let host_focused_on_sibling = nested.wait_until_host_composites_settled_guest(
         "host acted on its own split keybind and created a sibling pane",
-        single_blank_pane_guest_settled,
+        ascended_single_blank_pane_guest_settled,
         |host_grid| {
             normal_mode_bar_settled(host_grid)
                 && host_grid.contains("Pane #2")
@@ -274,7 +307,7 @@ fn host_keys_act_on_host_until_focus_enters_the_guest_then_route_to_guest() {
         "host descended into the guest pane, showing the guest nested inside",
         single_blank_pane_guest_settled,
         |host_grid| {
-            pane_mode_bar_settled(host_grid)
+            host_descended_bar_settled(host_grid)
                 && host_grid.contains("Pane #2")
                 && prompt_count(host_grid) == 1
                 && host_own_tab_bar_settled(host_grid, &guest_session_name)
@@ -298,7 +331,7 @@ fn host_keys_act_on_host_until_focus_enters_the_guest_then_route_to_guest() {
         "host still shows exactly its own two panes while the guest gained an inner pane",
         two_pane_guest_settled,
         |host_grid| {
-            pane_mode_bar_settled(host_grid)
+            host_descended_bar_settled(host_grid)
                 && host_grid.contains("Pane #2")
                 && !host_grid.contains("Pane #3")
                 && host_own_tab_bar_settled(host_grid, &guest_session_name)
@@ -328,9 +361,9 @@ fn focus_host_session_binding_returns_control_to_host() {
 
     let host_ascended = nested.wait_until_host_composites_settled_guest(
         "host took control back from the guest",
-        single_blank_pane_guest_settled,
+        ascended_single_blank_pane_guest_settled,
         |host_grid| {
-            pane_mode_bar_settled(host_grid)
+            normal_mode_bar_settled(host_grid)
                 && host_grid.contains("Pane #2")
                 && prompt_count(host_grid) == 1
                 && host_own_tab_bar_settled(host_grid, &guest_session_name)
@@ -346,9 +379,9 @@ fn focus_host_session_binding_returns_control_to_host() {
     host_new_pane.output(PROMPT);
     let host_after_new_pane = nested.wait_until_host_composites_settled_guest(
         "host acted on its own key after ascending",
-        single_blank_pane_guest_settled,
+        ascended_single_blank_pane_guest_settled,
         |host_grid| {
-            pane_mode_bar_settled(host_grid)
+            normal_mode_bar_settled(host_grid)
                 && host_grid.contains("Pane #3")
                 && prompt_count(host_grid) == 2
                 && host_own_tab_bar_settled(host_grid, &guest_session_name)
@@ -376,9 +409,9 @@ fn clicking_a_host_pane_while_descended_refocuses_and_ascends() {
 
     let host_after_click = nested.wait_until_host_composites_settled_guest(
         "host focus moved onto the clicked host pane",
-        single_blank_pane_guest_settled,
+        ascended_single_blank_pane_guest_settled,
         |host_grid| {
-            pane_mode_bar_settled(host_grid)
+            normal_mode_bar_settled(host_grid)
                 && host_grid.contains("Pane #2")
                 && prompt_count(host_grid) == 1
                 && host_own_tab_bar_settled(host_grid, &guest_session_name)
@@ -394,9 +427,9 @@ fn clicking_a_host_pane_while_descended_refocuses_and_ascends() {
     host_new_pane.output(PROMPT);
     let host_after_new_pane = nested.wait_until_host_composites_settled_guest(
         "host acted on its own key after the click ascended it",
-        single_blank_pane_guest_settled,
+        ascended_single_blank_pane_guest_settled,
         |host_grid| {
-            pane_mode_bar_settled(host_grid)
+            normal_mode_bar_settled(host_grid)
                 && host_grid.contains("Pane #3")
                 && prompt_count(host_grid) == 2
                 && host_own_tab_bar_settled(host_grid, &guest_session_name)
@@ -590,9 +623,9 @@ fn a_key_immediately_after_descend_lands_in_the_guest_and_after_ascend_lands_in_
     host_new_pane.output(PROMPT);
     let host_end_state = nested.wait_until_host_composites_settled_guest(
         "key immediately after ascend landed in the host",
-        two_pane_guest_settled,
+        ascended_two_pane_guest_settled,
         |host_grid| {
-            pane_mode_bar_settled(host_grid)
+            normal_mode_bar_settled(host_grid)
                 && host_grid.contains("Pane #3")
                 && prompt_count(host_grid) == 3
                 && host_own_tab_bar_settled(host_grid, &guest_session_name)
@@ -631,7 +664,7 @@ fn descend_on_first_load_when_guest_pane_is_already_focused() {
         "host descended into the already-focused guest pane at load",
         single_blank_pane_guest_settled,
         |host_grid| {
-            normal_mode_bar_settled(host_grid)
+            host_descended_bar_with_ascend_keys_settled(host_grid)
                 && host_tab_bar_renamed_to_guest(host_grid, &guest_session_name)
         },
     );
@@ -668,7 +701,7 @@ fn guest_going_away_clears_passthrough() {
         "host settled the descended guest view before the guest froze",
         single_blank_pane_guest_settled,
         |host_grid| {
-            pane_mode_bar_settled(host_grid)
+            host_descended_bar_settled(host_grid)
                 && host_grid.contains("Pane #2")
                 && prompt_count(host_grid) == 1
                 && host_own_tab_bar_settled(host_grid, &guest_session_name)
@@ -686,7 +719,7 @@ fn guest_going_away_clears_passthrough() {
     let host_after_guest_gone = nested.host.wait_until(
         "host acts on its own key after the guest went away",
         |host_grid| {
-            pane_mode_bar_settled(host_grid)
+            normal_mode_bar_settled(host_grid)
                 && host_grid.contains("Pane #3")
                 && prompt_count(host_grid) == 2
                 && host_grid.cursor.is_some()
@@ -710,9 +743,19 @@ fn descend_and_ascend_work_at_depth_three() {
     nested.boot_and_descend_depth_three();
     nested.inner.wait_for_app_load();
 
-    let middle_shows_settled_inner = |middle_grid: &GridSnapshot| {
+    let middle_descended_into_settled_inner = |middle_grid: &GridSnapshot| {
         let inner_grid = nested.inner.snapshot();
         single_blank_pane_guest_settled(&inner_grid)
+            && host_descended_bar_settled(middle_grid)
+            && middle_grid
+                .lines()
+                .first()
+                .map_or(false, |first_line| first_line.contains(&inner_session_name))
+            && composite_contains_settled_guest_grid(middle_grid, &inner_grid)
+    };
+    let middle_ascended_from_settled_inner = |middle_grid: &GridSnapshot| {
+        let inner_grid = nested.inner.snapshot();
+        ascended_single_blank_pane_guest_settled(&inner_grid)
             && normal_mode_bar_settled(middle_grid)
             && middle_grid
                 .lines()
@@ -722,7 +765,7 @@ fn descend_and_ascend_work_at_depth_three() {
     };
     let settled_outer_tab_title = format!("{} | {}", inner_session_name, inner_session_name);
     let outer_settled = |outer_grid: &GridSnapshot| {
-        normal_mode_bar_settled(outer_grid)
+        host_descended_bar_settled(outer_grid)
             && outer_grid.lines().first().map_or(false, |first_line| {
                 first_line.contains(&settled_outer_tab_title)
             })
@@ -732,7 +775,7 @@ fn descend_and_ascend_work_at_depth_three() {
         &nested.outer,
         &nested.middle,
         "outer host shows the doubly-nested descended UI",
-        &middle_shows_settled_inner,
+        &middle_descended_into_settled_inner,
         &outer_settled,
     );
     assert_snapshot!(
@@ -755,7 +798,7 @@ fn descend_and_ascend_work_at_depth_three() {
         &nested.outer,
         &nested.middle,
         "middle ascended out of the inner while outer stays descended into middle",
-        &middle_shows_settled_inner,
+        &middle_ascended_from_settled_inner,
         &outer_settled,
     );
     assert_snapshot!(
@@ -816,6 +859,12 @@ fn descended_client_sees_dimmed_host_chrome_while_second_client_does_not() {
         pane_mode_bar_settled,
     );
     nested.host.send_stdin(ARROW_LEFT);
+    nested.host.send_stdin(&keys::ctrl('o'));
+    nested.host.wait_until(
+        "first client entered session mode before the descend key",
+        session_mode_bar_settled,
+    );
+    nested.host.send_stdin(ARROW_DOWN);
     nested.wait_for_host_to_descend_into_guest_after(descended);
 
     let descended_client = nested.host.wait_until(
@@ -952,9 +1001,25 @@ fn guest_edge_focus_move_bubbles_out_to_the_adjacent_host_pane() {
 fn host_focus_move_onto_guest_pane_enters_at_the_correct_edge() {
     let mut nested = NestedHarness::start(TERMINAL_SIZE);
 
-    boot_and_descend_on_first_load(&nested);
-    ascend_via_focus_host_binding(&nested);
-    split_host_sibling(&nested);
+    build_descended_state_with_host_sibling(&nested);
+
+    let requested = nested.mark_guest_to_host();
+    let ascended = nested.mark_host_to_guest();
+    pass_ctrl_p_to_guest(&nested);
+    nested.host.send_stdin(ARROW_RIGHT);
+    nested.guest_to_host().wait_for_after(
+        requested,
+        "the guest at its right edge bubbles a focus-host request to the right",
+        |message| {
+            matches!(
+                message,
+                NestedSessionMessage::FocusHost {
+                    direction: Some(Direction::Right)
+                }
+            )
+        },
+    );
+    nested.wait_for_host_to_ascend_from_guest_after(ascended);
 
     let entered = nested.mark_host_to_guest();
     nested.host.send_stdin(&keys::ctrl('p'));
@@ -1238,6 +1303,12 @@ fn nested_fullscreen_exit_keeps_hidden_host_floating_panes_hidden() {
         pane_mode_bar_settled,
     );
     nested.outer.send_stdin(ARROW_LEFT);
+    nested.outer.send_stdin(&keys::ctrl('o'));
+    nested.outer.wait_until(
+        "outer entered session mode before the descend key",
+        session_mode_bar_settled,
+    );
+    nested.outer.send_stdin(ARROW_DOWN);
     nested.wait_for_outer_to_descend_into_middle_after(outer_descended);
 
     let middle_descended = nested.mark_middle_to_inner();
@@ -1247,6 +1318,12 @@ fn nested_fullscreen_exit_keeps_hidden_host_floating_panes_hidden() {
         guest_pane_mode_bar_settled,
     );
     nested.outer.send_stdin(ARROW_LEFT);
+    nested.outer.send_stdin(&keys::ctrl('o'));
+    nested.middle.wait_until(
+        "middle entered session mode before the descend key",
+        session_mode_bar_settled,
+    );
+    nested.outer.send_stdin(ARROW_DOWN);
     nested.wait_for_middle_to_descend_into_inner_after(middle_descended);
 
     nested.outer.send_stdin(&keys::ctrl('o'));

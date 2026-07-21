@@ -19,8 +19,9 @@ pub use harness::{
     split_right_and_wait_for_prompt, start_zellij, PROMPT, TERMINAL_SIZE,
 };
 pub use nested::{
-    composite_contains_settled_guest_grid, wait_for_settled_composite, NestedDepthThreeHarness,
-    NestedHarness,
+    composite_contains_settled_guest_grid, guest_ascended_bar_settled, host_descended_bar_settled,
+    host_descended_bar_with_ascend_keys_settled, wait_for_settled_composite,
+    NestedDepthThreeHarness, NestedHarness,
 };
 pub use runner::{assert_same_rendered_grid, normalized, TestClient, TestRunner, TestSession};
 pub use zellij_utils::data::LayoutInfo;

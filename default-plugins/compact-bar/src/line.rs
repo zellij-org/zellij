@@ -20,7 +20,7 @@ pub fn tab_line(
         is_swap_layout_dirty: tab_data.is_swap_layout_dirty,
         toggle_tooltip_key,
         tooltip_is_active,
-        dimmed: mode_info.session_dimmed.unwrap_or(false),
+        dimmed: false,
     };
 
     let builder = TabLineBuilder::new(config, mode_info.style.colors, mode_info.capabilities, cols);

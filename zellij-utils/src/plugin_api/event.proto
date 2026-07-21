@@ -514,6 +514,9 @@ message ModeUpdatePayload {
   optional bool session_dimmed = 17;
   repeated string ancestry = 18;
   optional bool host_fullscreen = 19;
+  repeated string nested_ascend_keys = 20;
+  optional bool session_ascended = 21;
+  repeated string nested_descend_keys = 22;
 }
 
 enum WebSharing {

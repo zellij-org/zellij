@@ -1,6 +1,7 @@
-use crate::data::Direction;
+use crate::data::{Direction, KeyWithModifier};
 use crate::nested_session_contract::nested_session_contract as proto;
 use prost::Message;
+use std::str::FromStr;
 
 pub const NESTED_DCS_PARAM: u16 = 26661;
 pub const NESTED_FRAME_HEADER: &[u8] = b"\x1bP26661n";
@@ -28,6 +29,7 @@ pub enum NestedSessionMessage {
     AnnounceAck {
         ancestry: Vec<String>,
         capabilities: Vec<NestedSessionCapability>,
+        descend_keys: Vec<KeyWithModifier>,
     },
     FocusGained {
         from_direction: Option<Direction>,
@@ -40,6 +42,26 @@ pub enum NestedSessionMessage {
         ancestry: Vec<String>,
     },
     Ping,
+    ShortcutUpdate {
+        ascend_keys: Vec<KeyWithModifier>,
+        descend_keys: Vec<KeyWithModifier>,
+    },
+}
+
+fn keys_to_proto(keys: &[KeyWithModifier]) -> Vec<String> {
+    keys.iter().map(|key| key.to_kdl()).collect()
+}
+
+fn keys_from_proto(keys: &[String]) -> Vec<KeyWithModifier> {
+    let parsed: Vec<KeyWithModifier> = keys
+        .iter()
+        .filter_map(|key| KeyWithModifier::from_str(key).ok())
+        .collect();
+    if parsed.len() == keys.len() {
+        parsed
+    } else {
+        vec![]
+    }
 }
 
 fn capabilities_to_proto(capabilities: &[NestedSessionCapability]) -> Vec<i32> {
@@ -107,9 +129,11 @@ impl From<NestedSessionMessage> for proto::NestedSessionMessage {
             NestedSessionMessage::AnnounceAck {
                 ancestry,
                 capabilities,
+                descend_keys,
             } => Payload::AnnounceAck(proto::AnnounceAck {
                 ancestry,
                 capabilities: capabilities_to_proto(&capabilities),
+                descend_keys: keys_to_proto(&descend_keys),
             }),
             NestedSessionMessage::FocusGained { from_direction } => {
                 Payload::FocusGained(proto::FocusGained {
@@ -124,6 +148,13 @@ impl From<NestedSessionMessage> for proto::NestedSessionMessage {
                 Payload::AncestryUpdate(proto::AncestryUpdate { ancestry })
             },
             NestedSessionMessage::Ping => Payload::Ping(proto::Ping {}),
+            NestedSessionMessage::ShortcutUpdate {
+                ascend_keys,
+                descend_keys,
+            } => Payload::ShortcutUpdate(proto::ShortcutUpdate {
+                ascend_keys: keys_to_proto(&ascend_keys),
+                descend_keys: keys_to_proto(&descend_keys),
+            }),
         };
         proto::NestedSessionMessage {
             payload: Some(payload),
@@ -153,6 +184,7 @@ impl TryFrom<proto::NestedSessionMessage> for NestedSessionMessage {
             Some(Payload::AnnounceAck(announce_ack)) => Ok(NestedSessionMessage::AnnounceAck {
                 ancestry: announce_ack.ancestry,
                 capabilities: capabilities_from_proto(&announce_ack.capabilities),
+                descend_keys: keys_from_proto(&announce_ack.descend_keys),
             }),
             Some(Payload::FocusGained(focus_gained)) => Ok(NestedSessionMessage::FocusGained {
                 from_direction: direction_from_proto(focus_gained.from_direction),
@@ -169,6 +201,12 @@ impl TryFrom<proto::NestedSessionMessage> for NestedSessionMessage {
                 })
             },
             Some(Payload::Ping(_)) => Ok(NestedSessionMessage::Ping),
+            Some(Payload::ShortcutUpdate(shortcut_update)) => {
+                Ok(NestedSessionMessage::ShortcutUpdate {
+                    ascend_keys: keys_from_proto(&shortcut_update.ascend_keys),
+                    descend_keys: keys_from_proto(&shortcut_update.descend_keys),
+                })
+            },
             None => Err(()),
         }
     }
@@ -297,6 +335,7 @@ impl NestedFrameExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::BareKey;
 
     fn all_message_arms() -> Vec<NestedSessionMessage> {
         vec![
@@ -314,6 +353,10 @@ mod tests {
             NestedSessionMessage::AnnounceAck {
                 ancestry: vec!["outer".to_owned(), "middle".to_owned()],
                 capabilities: vec![NestedSessionCapability::NestedControl],
+                descend_keys: vec![
+                    KeyWithModifier::new(BareKey::Char('o')).with_ctrl_modifier(),
+                    KeyWithModifier::new(BareKey::Down),
+                ],
             },
             NestedSessionMessage::FocusGained {
                 from_direction: Some(Direction::Right),
@@ -324,6 +367,13 @@ mod tests {
                 ancestry: vec!["outer".to_owned()],
             },
             NestedSessionMessage::Ping,
+            NestedSessionMessage::ShortcutUpdate {
+                ascend_keys: vec![
+                    KeyWithModifier::new(BareKey::Char('o')).with_ctrl_modifier(),
+                    KeyWithModifier::new(BareKey::Up),
+                ],
+                descend_keys: vec![],
+            },
         ]
     }
 

@@ -122,6 +122,7 @@ keybinds clear-defaults=true {{
         bind "o" {{ SwitchToMode "Normal"; }}
         bind "d" {{ Detach; }}
         bind "Up" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "Down" {{ FocusGuestSession; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
@@ -348,6 +349,7 @@ keybinds clear-defaults=true {{
         bind "{primary_modifier} s" {{ SwitchToMode "Scroll"; }}
         bind "d" {{ Detach; }}
         bind "Up" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "Down" {{ FocusGuestSession; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
@@ -574,6 +576,7 @@ keybinds clear-defaults=true {{
     session {{
         bind "d" {{ Detach; }}
         bind "Up" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "Down" {{ FocusGuestSession; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
@@ -781,6 +784,7 @@ keybinds clear-defaults=true {{
         bind "{primary_modifier} s" {{ SwitchToMode "Scroll"; }}
         bind "d" {{ Detach; }}
         bind "Up" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "Down" {{ FocusGuestSession; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
@@ -988,6 +992,7 @@ keybinds clear-defaults=true {{
     session {{
         bind "d" {{ Detach; }}
         bind "Up" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "Down" {{ FocusGuestSession; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
@@ -1190,6 +1195,7 @@ keybinds clear-defaults=true {{
         bind "{primary_modifier} s" {{ SwitchToMode "Scroll"; }}
         bind "d" {{ Detach; }}
         bind "Up" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "Down" {{ FocusGuestSession; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{

@@ -2026,6 +2026,20 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
 
         let host_fullscreen = protobuf_mode_update_payload.host_fullscreen;
 
+        let nested_ascend_keys = protobuf_mode_update_payload
+            .nested_ascend_keys
+            .iter()
+            .filter_map(|key| KeyWithModifier::from_str(key).ok())
+            .collect();
+
+        let session_ascended = protobuf_mode_update_payload.session_ascended;
+
+        let nested_descend_keys = protobuf_mode_update_payload
+            .nested_descend_keys
+            .iter()
+            .filter_map(|key| KeyWithModifier::from_str(key).ok())
+            .collect();
+
         let mode_info = ModeInfo {
             mode: current_mode,
             keybinds,
@@ -2046,6 +2060,9 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             session_dimmed,
             session_ancestry,
             host_fullscreen,
+            nested_ascend_keys,
+            session_ascended,
+            nested_descend_keys,
         };
         Ok(mode_info)
     }
@@ -2077,6 +2094,17 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let session_dimmed = mode_info.session_dimmed;
         let session_ancestry = mode_info.session_ancestry;
         let host_fullscreen = mode_info.host_fullscreen;
+        let nested_ascend_keys = mode_info
+            .nested_ascend_keys
+            .iter()
+            .map(|key| key.to_kdl())
+            .collect();
+        let session_ascended = mode_info.session_ascended;
+        let nested_descend_keys = mode_info
+            .nested_descend_keys
+            .iter()
+            .map(|key| key.to_kdl())
+            .collect();
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -2121,6 +2149,9 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             session_dimmed,
             ancestry: session_ancestry,
             host_fullscreen,
+            nested_ascend_keys,
+            session_ascended,
+            nested_descend_keys,
         })
     }
 }
@@ -2478,6 +2509,15 @@ fn serialize_mode_update_event_with_non_default_values() {
         session_dimmed: Some(true),
         session_ancestry: vec!["work".to_owned(), "prod".to_owned()],
         host_fullscreen: Some(true),
+        nested_ascend_keys: vec![
+            KeyWithModifier::new(BareKey::Char('o')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Up),
+        ],
+        session_ascended: Some(true),
+        nested_descend_keys: vec![
+            KeyWithModifier::new(BareKey::Char('o')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Down),
+        ],
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();

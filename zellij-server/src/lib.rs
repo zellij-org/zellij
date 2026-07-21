@@ -336,7 +336,7 @@ pub(crate) struct SessionMetaData {
     pub default_shell: Option<TerminalAction>,
     pub current_input_modes: HashMap<ClientId, InputMode>,
     pub session_configuration: SessionConfiguration,
-    pub key_passthrough_clients: HashSet<ClientId>,
+    pub key_passthrough_clients: HashMap<ClientId, PaneId>,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
     // initialization because we don't want it to be overridden by
     // configuration changes, the only way it can be overwritten is by
@@ -365,6 +365,24 @@ impl SessionMetaData {
                 Some((client_keybinds, client_input_mode, default_input_mode))
             },
             _ => None,
+        }
+    }
+    pub fn remove_key_passthrough_client(&mut self, client_id: ClientId) {
+        if let Some(pane_id) = self.key_passthrough_clients.remove(&client_id) {
+            let pane_still_active = self
+                .key_passthrough_clients
+                .values()
+                .any(|p| *p == pane_id);
+            if !pane_still_active {
+                if let PaneId::Terminal(terminal_id) = pane_id {
+                    let frame = zellij_utils::nested_session::encode_frame(
+                        &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
+                    );
+                    let _ = self
+                        .senders
+                        .send_to_pty_writer(PtyWriteInstruction::Write(frame, terminal_id, None));
+                }
+            }
         }
     }
     pub fn change_mode_for_all_clients(&mut self, input_mode: InputMode) {
@@ -1345,6 +1363,9 @@ pub fn start_server_impl(
 
                     os_input.remove_client(client_id).unwrap();
                 } else {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.remove_key_passthrough_client(client_id);
+                    }
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state, session_data);
                     drop(completion_tx); // prevent deadlock with route thread
@@ -1409,6 +1430,9 @@ pub fn start_server_impl(
 
                     os_input.remove_client(client_id).unwrap();
                 } else {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.remove_key_passthrough_client(client_id);
+                    }
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state, session_data);
                     session_data
@@ -1461,6 +1485,9 @@ pub fn start_server_impl(
                     .filter(|c| c != &client_id)
                     .collect();
                 for client_id in client_ids {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.remove_key_passthrough_client(client_id);
+                    }
                     let _ = os_input.send_to_client(
                         client_id,
                         ServerToClientMsg::Exit {
@@ -1472,6 +1499,9 @@ pub fn start_server_impl(
             },
             ServerInstruction::DetachSession(client_ids, completion_tx) => {
                 for client_id in &client_ids {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.remove_key_passthrough_client(*client_id);
+                    }
                     let _ = os_input.send_to_client(
                         *client_id,
                         ServerToClientMsg::Exit {
@@ -1926,50 +1956,59 @@ pub fn start_server_impl(
             },
             ServerInstruction::KeyPassthroughChanged(
                 client_id,
-                old_pane_id,
+                _old_pane_id,
                 new_pane_id,
                 should_route,
                 entered_from_direction,
             ) => {
                 let mut session_data = session_data.write().unwrap();
-                let session_data = session_data.as_mut().unwrap();
-                let currently_passthrough =
-                    session_data.key_passthrough_clients.contains(&client_id);
+                if let Some(session_data) = session_data.as_mut() {
+                    let previous_pane =
+                        session_data.key_passthrough_clients.get(&client_id).copied();
 
-                if should_route {
-                    session_data.key_passthrough_clients.insert(client_id);
-                    let moved_between_panes = old_pane_id != new_pane_id;
-                    if currently_passthrough && moved_between_panes {
-                        if let crate::panes::PaneId::Terminal(terminal_id) = old_pane_id {
-                            let frame = zellij_utils::nested_session::encode_frame(
-                                &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
-                            );
-                            let _ = session_data.senders.send_to_pty_writer(
-                                PtyWriteInstruction::Write(frame, terminal_id, None),
-                            );
+                    if should_route {
+                        if previous_pane != Some(new_pane_id) {
+                            if let Some(previous_pane_id) = previous_pane {
+                                session_data.key_passthrough_clients.remove(&client_id);
+                                let pane_still_active = session_data
+                                    .key_passthrough_clients
+                                    .values()
+                                    .any(|p| *p == previous_pane_id);
+                                if !pane_still_active {
+                                    if let crate::panes::PaneId::Terminal(terminal_id) =
+                                        previous_pane_id
+                                    {
+                                        let frame = zellij_utils::nested_session::encode_frame(
+                                            &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
+                                        );
+                                        let _ = session_data.senders.send_to_pty_writer(
+                                            PtyWriteInstruction::Write(frame, terminal_id, None),
+                                        );
+                                    }
+                                }
+                            }
+                            let pane_already_active = session_data
+                                .key_passthrough_clients
+                                .values()
+                                .any(|p| *p == new_pane_id);
+                            session_data
+                                .key_passthrough_clients
+                                .insert(client_id, new_pane_id);
+                            if !pane_already_active {
+                                if let crate::panes::PaneId::Terminal(terminal_id) = new_pane_id {
+                                    let frame = zellij_utils::nested_session::encode_frame(
+                                        &zellij_utils::nested_session::NestedSessionMessage::FocusGained {
+                                            from_direction: entered_from_direction,
+                                        },
+                                    );
+                                    let _ = session_data.senders.send_to_pty_writer(
+                                        PtyWriteInstruction::Write(frame, terminal_id, None),
+                                    );
+                                }
+                            }
                         }
-                    }
-                    if !currently_passthrough || moved_between_panes {
-                        if let crate::panes::PaneId::Terminal(terminal_id) = new_pane_id {
-                            let frame = zellij_utils::nested_session::encode_frame(
-                                &zellij_utils::nested_session::NestedSessionMessage::FocusGained {
-                                    from_direction: entered_from_direction,
-                                },
-                            );
-                            let _ = session_data.senders.send_to_pty_writer(
-                                PtyWriteInstruction::Write(frame, terminal_id, None),
-                            );
-                        }
-                    }
-                } else if !should_route && currently_passthrough {
-                    session_data.key_passthrough_clients.remove(&client_id);
-                    if let crate::panes::PaneId::Terminal(terminal_id) = old_pane_id {
-                        let frame = zellij_utils::nested_session::encode_frame(
-                            &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
-                        );
-                        let _ = session_data.senders.send_to_pty_writer(
-                            PtyWriteInstruction::Write(frame, terminal_id, None),
-                        );
+                    } else if previous_pane.is_some() {
+                        session_data.remove_key_passthrough_client(client_id);
                     }
                 }
             },
@@ -2262,7 +2301,7 @@ fn init_session(
         web_sharing: config.options.web_sharing.unwrap_or(WebSharing::Off),
         #[cfg(not(feature = "web_server_capability"))]
         web_sharing: WebSharing::Disabled,
-        key_passthrough_clients: HashSet::new(),
+        key_passthrough_clients: HashMap::new(),
         config_file_path: cli_assets.config_file_path,
     }
 }
