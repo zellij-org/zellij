@@ -705,7 +705,7 @@ const NOUNS: &[&'static str] = &[
     "goose",
     "hill",
     "horse",
-    "iguanadon",
+    "iguanodon",
     "jellyfish",
     "kangaroo",
     "lake",
