@@ -1085,6 +1085,7 @@ impl TiledPanes {
         current_pane_group: HashMap<ClientId, Vec<PaneId>>,
         client_id_override: Option<ClientId>,
         help_text_visible: &HashMap<ClientId, bool>,
+        mouse_scroll_resize: bool,
     ) -> Result<()> {
         let err_context = || "failed to render tiled panes";
 
@@ -1208,6 +1209,7 @@ impl TiledPanes {
                     current_pane_group.clone(),
                     show_help_text,
                     omit_pane_title && reserved_rows_for_pane == 0,
+                    mouse_scroll_resize,
                 );
                 pane_contents_and_ui.set_frame_geom_override(visible_member_frame_override);
                 pane_contents_and_ui.set_blank_title(reserved_rows_for_pane > 0);

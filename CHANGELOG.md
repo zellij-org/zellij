@@ -22,6 +22,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow opening panes/tabs from the CLI without changing focus (https://github.com/zellij-org/zellij/pull/5346)
 * feat: allow binding `SetDarkTheme`, `SetLightTheme` and `ToggleTheme` as direct keybinding actions (https://github.com/zellij-org/zellij/pull/5302)
 * fix(windows): prefer PATHEXT variants over bare filename when resolving commands (fixes launching `composer` and similar) (https://github.com/zellij-org/zellij/pull/5364)
+* feat: allow disabling ctrl-mouse-scroll to resize panes (https://github.com/zellij-org/zellij/pull/5283)
+* fix: scrolling region line wrap behavior at bottom edge (https://github.com/zellij-org/zellij/pull/5357)
+* fix: properly pad lines before CUF (https://github.com/zellij-org/zellij/pull/5377)
+* fix: clear existing pane name when entering rename input (https://github.com/zellij-org/zellij/pull/5369)
+* fix: occasional input spam when pressing ESC and holding the mouse over slow SSH connections (https://github.com/zellij-org/zellij/pull/5323)
 
 ## [0.44.3] - 2026-05-13
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)

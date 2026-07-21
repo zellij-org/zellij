@@ -4257,6 +4257,33 @@ fn create_grid_with_content(content: &str) -> Grid {
 }
 
 #[test]
+fn cursor_forward_over_unwritten_line_positions_character() {
+    use crate::panes::terminal_character::AnsiCode;
+
+    let content = "\u{1b}[1BABC \u{1b}[1B\r\u{1b}[3C\u{1b}[42mDEF\u{1b}[0m";
+    let grid = create_grid_with_content(content);
+
+    let row = &grid.viewport[2];
+
+    assert_eq!(row.columns[0].character, ' ');
+    assert_eq!(row.columns[1].character, ' ');
+    assert_eq!(row.columns[2].character, ' ');
+    assert_eq!(row.columns[3].character, 'D');
+    assert_eq!(row.columns[4].character, 'E');
+    assert_eq!(row.columns[5].character, 'F');
+
+    let has_background = |c: &crate::panes::terminal_character::TerminalCharacter| {
+        !matches!(c.styles.background, Some(AnsiCode::Reset) | None)
+    };
+    assert!(!has_background(&row.columns[0]));
+    assert!(!has_background(&row.columns[1]));
+    assert!(!has_background(&row.columns[2]));
+    assert!(has_background(&row.columns[3]));
+    assert!(has_background(&row.columns[4]));
+    assert!(has_background(&row.columns[5]));
+}
+
+#[test]
 fn double_click_selection_preserved_after_scroll() {
     let content = "line 0\nline 1\nline 2\nline 3\nline 4\nthis is a word test\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\n";
     let mut grid = create_grid_with_content(content);
@@ -5609,6 +5636,166 @@ fn partial_scroll_region_all_three_mechanisms_transfer_in_order() {
     let grid = create_grid_with_size_and_raw(10, 40, &content);
 
     assert_eq!(scrollback_texts(&grid), vec!["AAA", "BBB", "CCC"]);
+}
+
+#[test]
+fn wrap_at_bottom_of_partial_scroll_region_transfers_to_scrollback() {
+    // A long line that soft-wraps while the cursor is on the scroll region's
+    // bottom row must scroll the region, exactly like a newline there would
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    content.extend_from_slice(b"\r\n");
+    content.extend_from_slice(&[b'I'; 90]); // 90 cols on a 40-col grid: wraps twice
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    // the newline scrolls AAA off, the two wraps scroll BBB and CCC off
+    assert_eq!(scrollback_texts(&grid), vec!["AAA", "BBB", "CCC"]);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[0], "DDD");
+    assert_eq!(vp[4], "HHH");
+    assert_eq!(vp[5], "I".repeat(40));
+    assert_eq!(vp[6], "I".repeat(40));
+    assert_eq!(vp[7], "I".repeat(10));
+    assert_eq!(vp.len(), 8, "rows below the region must be untouched");
+    // the continuation rows are wrapped rows, so resize re-wraps them correctly
+    assert!(grid.viewport[5].is_canonical);
+    assert!(!grid.viewport[6].is_canonical);
+    assert!(!grid.viewport[7].is_canonical);
+}
+
+#[test]
+fn wrap_at_bottom_of_partial_scroll_region_keeps_cursor_inside_region() {
+    // Before the fix, the cursor would escape below the region's bottom margin
+    // on wrap, and no subsequent line could ever scroll into scrollback again
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    content.extend_from_slice(b"\r\n");
+    content.extend_from_slice(&[b'I'; 90]);
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    // region is rows 0-7; after two wraps the cursor must still be on row 7
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((10, 7))
+    );
+}
+
+#[test]
+fn wrap_at_bottom_of_nonzero_top_scroll_region_does_not_transfer() {
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(b"AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\r\nFFF");
+    // Scroll region rows 3-6 (1-based), so top is row 2, not 0
+    content.extend_from_slice(b"\x1b[3;6r");
+    content.extend_from_slice(b"\x1b[6;1H");
+    content.extend_from_slice(&[b'X'; 50]); // wraps once at the region's bottom
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    // regions not anchored at the top do not preserve scrolled-off lines
+    assert_eq!(grid.lines_above.len(), 0);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[0], "AAA", "rows above the region must be untouched");
+    assert_eq!(vp[1], "BBB", "rows above the region must be untouched");
+    assert_eq!(vp[2], "DDD", "the region's top row (CCC) is discarded");
+    assert_eq!(vp[4], "X".repeat(40));
+    assert_eq!(vp[5], "X".repeat(10));
+}
+
+#[test]
+fn wrap_at_bottom_of_partial_scroll_region_does_not_transfer_on_alternate_screen() {
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(b"\x1b[?1049h");
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    content.extend_from_slice(b"\r\n");
+    content.extend_from_slice(&[b'I'; 90]);
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    assert_eq!(grid.lines_above.len(), 0);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[5], "I".repeat(40));
+    assert_eq!(vp[6], "I".repeat(40));
+    assert_eq!(vp[7], "I".repeat(10));
+}
+
+#[test]
+fn wrap_at_bottom_of_explicit_full_screen_scroll_region_keeps_wrap_flag() {
+    // CSI 1;10r on a 10-row grid covers the whole screen; wrap behavior must
+    // be identical to having no region set at all (scroll + wrapped row)
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(b"\x1b[1;10r");
+    for i in 1..=10u8 {
+        if i > 1 {
+            content.extend_from_slice(b"\r\n");
+        }
+        content.extend_from_slice(b"EARLY-");
+        content.push(b'0' + i / 10);
+        content.push(b'0' + i % 10);
+    }
+    content.extend_from_slice(b"\r\n");
+    content.extend_from_slice(&[b'I'; 90]); // wraps twice on a 40-col grid
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    // the newline and the two wraps each scrolled one line into scrollback
+    assert_eq!(
+        scrollback_texts(&grid),
+        vec!["EARLY-01", "EARLY-02", "EARLY-03"]
+    );
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[6], "EARLY-10");
+    assert_eq!(vp[7], "I".repeat(40));
+    assert_eq!(vp[8], "I".repeat(40));
+    assert_eq!(vp[9], "I".repeat(10));
+    assert!(grid.viewport[7].is_canonical);
+    assert!(
+        !grid.viewport[8].is_canonical,
+        "continuation must stay a wrapped row"
+    );
+    assert!(
+        !grid.viewport[9].is_canonical,
+        "continuation must stay a wrapped row"
+    );
+}
+
+#[test]
+fn wrap_at_bottom_of_nonzero_top_scroll_region_keeps_hyperlink_tracking() {
+    // A plain-text URL that wraps at the bottom of a region not anchored at
+    // the top: the auto-linkifier's tracked positions must follow the rows
+    // as the region scrolls, or the URL loses its clickable anchors
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(b"AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\r\nFFF");
+    content.extend_from_slice(b"\x1b[3;6r\x1b[6;1H");
+    content.extend_from_slice(b"https://example.com/");
+    content.extend_from_slice(&[b'a'; 30]); // 50 chars: wraps at the region bottom
+    content.extend_from_slice(b" ");
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    let start_anchors_per_row: Vec<usize> = grid
+        .viewport
+        .iter()
+        .map(|row| {
+            row.columns
+                .iter()
+                .filter(|c| {
+                    matches!(
+                        c.styles.link_anchor,
+                        Some(crate::panes::terminal_character::LinkAnchor::Start(_))
+                    )
+                })
+                .count()
+        })
+        .collect();
+
+    // rows 0-3: AAA, BBB, DDD, EEE (CCC scrolled off and discarded) - no anchors;
+    // row 4 holds the URL's first 40 columns, row 5 the wrapped remainder
+    assert_eq!(start_anchors_per_row, vec![0, 0, 0, 0, 40, 10]);
 }
 
 #[test]

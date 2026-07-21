@@ -41,6 +41,7 @@ Options {
     show_startup_tips: None,
     show_release_notes: None,
     advanced_mouse_actions: None,
+    mouse_scroll_resize: None,
     mouse_hover_effects: None,
     visual_bell: None,
     focus_follows_mouse: None,
