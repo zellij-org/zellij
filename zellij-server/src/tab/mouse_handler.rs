@@ -384,7 +384,7 @@ impl MouseHandler {
                     let session_name = pane.guest_session_name().unwrap_or_default();
                     let selection = pane.guest_modal_selection(client_id).unwrap_or(0);
                     let shortcuts = pane.guest_modal_shortcuts();
-                    crate::panes::terminal_character::guest_modal_option_at_content_row(
+                    crate::panes::nested_session_modal::guest_modal_option_at_content_row(
                         rows,
                         columns,
                         row as usize,

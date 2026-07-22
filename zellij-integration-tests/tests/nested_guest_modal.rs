@@ -1,6 +1,7 @@
 #![cfg(unix)]
 
-use zellij_integration_tests::{keys, GridSnapshot, NestedHarness, PROMPT, TERMINAL_SIZE};
+use insta::assert_snapshot;
+use zellij_integration_tests::{keys, normalized, GridSnapshot, NestedHarness, PROMPT, TERMINAL_SIZE};
 
 const ARROW_DOWN: &[u8] = b"\x1b[B";
 
@@ -23,6 +24,13 @@ fn modal_visible(grid_snapshot: &GridSnapshot) -> bool {
     grid_snapshot.contains("Nested Zellij session detected")
 }
 
+fn grid_contains_line_starting_with(grid_snapshot: &GridSnapshot, prefix: &str) -> bool {
+    grid_snapshot
+        .lines()
+        .iter()
+        .any(|line| line.trim_start().starts_with(prefix))
+}
+
 fn wait_for_modal(nested: &NestedHarness) -> GridSnapshot {
     nested.wait_for_guest_to_announce();
     nested.wait_for_host_to_acknowledge_guest();
@@ -37,6 +45,75 @@ fn focus_guest_binding_config() -> &'static str {
         bind "Ctrl y" { FocusGuestSession; }
     }
 }"#
+}
+
+fn modal_shortcut_binding_config() -> &'static str {
+    r#"keybinds {
+    normal {
+        bind "Ctrl y" { ToggleHostFullscreen; }
+        bind "Ctrl u" { FocusHostSession; }
+        bind "Ctrl i" { FocusGuestSession; }
+    }
+}"#
+}
+
+#[test]
+fn modal_renders_expected_ui() {
+    let mut nested =
+        NestedHarness::start_with_host_config(TERMINAL_SIZE, modal_shortcut_binding_config());
+
+    let host_with_modal = wait_for_modal(&nested);
+    assert!(host_with_modal.contains("What would you like to do?"));
+    assert!(host_with_modal.contains("Zoom in and control this session"));
+    assert!(host_with_modal.contains("<Ctrl y>"));
+    assert!(host_with_modal.contains("<Ctrl u>"));
+    assert!(host_with_modal.contains("<Ctrl i>"));
+    assert!(host_with_modal.contains("<↓↑> select"));
+
+    let steady_modal = nested.host.wait_until(
+        "guest-detected modal fully rendered with all options and keybindings",
+        |host_grid| {
+            modal_visible(host_grid)
+                && host_grid.contains("What would you like to do?")
+                && host_grid.contains("(AUTO)")
+                && host_grid.contains("(MANUAL)")
+                && host_grid.contains("<Ctrl y>")
+                && host_grid.contains("<Ctrl u>")
+                && host_grid.contains("<Ctrl i>")
+                && host_grid.contains("<↓↑> select")
+        },
+    );
+    assert_snapshot!(normalized(&steady_modal));
+
+    nested.guest.wait_for_app_load();
+    nested.guest.quit();
+    nested.host.quit();
+}
+
+#[test]
+fn modal_selection_moves_with_arrow_keys() {
+    let mut nested =
+        NestedHarness::start_with_host_config(TERMINAL_SIZE, modal_shortcut_binding_config());
+
+    wait_for_modal(&nested);
+    let first_selection = nested.host.wait_until(
+        "first option selected on initial render",
+        |host_grid| grid_contains_line_starting_with(host_grid, "> 1."),
+    );
+    assert!(grid_contains_line_starting_with(&first_selection, "> 1."));
+    assert!(!grid_contains_line_starting_with(&first_selection, "> 2."));
+
+    nested.host.send_stdin(ARROW_DOWN);
+    let second_selection = nested.host.wait_until(
+        "selection moved to the second option after arrow down",
+        |host_grid| grid_contains_line_starting_with(host_grid, "> 2."),
+    );
+    assert!(grid_contains_line_starting_with(&second_selection, "> 2."));
+    assert!(!grid_contains_line_starting_with(&second_selection, "> 1."));
+
+    nested.guest.wait_for_app_load();
+    nested.guest.quit();
+    nested.host.quit();
 }
 
 #[test]

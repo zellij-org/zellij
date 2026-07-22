@@ -71,7 +71,8 @@ use crate::background_jobs::BackgroundJob;
 use crate::os_input_output::ResizeCache;
 use crate::pane_groups::PaneGroups;
 use crate::panes::alacritty_functions::xparse_color;
-use crate::panes::terminal_character::{AnsiCode, GuestModalShortcuts};
+use crate::panes::nested_session_modal::GuestModalShortcuts;
+use crate::panes::terminal_character::AnsiCode;
 use crate::panes::terminal_pane::{BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END};
 use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
 

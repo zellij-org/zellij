@@ -49,7 +49,7 @@ use crate::{
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
     panes::grid::namespace_notification_id,
     panes::sixel::SixelImageStore,
-    panes::terminal_character::GuestModalShortcuts,
+    panes::nested_session_modal::GuestModalShortcuts,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane, EMPTY_TERMINAL_CHARACTER},
     plugins::PluginInstruction,

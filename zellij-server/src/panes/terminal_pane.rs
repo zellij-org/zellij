@@ -3,8 +3,9 @@ use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::panes::{
     grid::Grid,
+    nested_session_modal::GuestModalShortcuts,
     terminal_character::{
-        render_first_run_banner, GuestModalShortcuts, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
+        render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
     },
 };
 use crate::pty::VteBytes;

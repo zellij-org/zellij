@@ -211,7 +211,7 @@ impl<'a> PaneContentsAndUi<'a> {
         let content_x = self.pane.get_content_x();
         let content_y = self.pane.get_content_y();
         let shortcuts = self.pane.guest_modal_shortcuts();
-        let chunks = crate::panes::terminal_character::guest_modal_chunks(
+        let chunks = crate::panes::nested_session_modal::guest_modal_chunks(
             columns,
             rows,
             content_x,
