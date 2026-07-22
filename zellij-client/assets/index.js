@@ -3,6 +3,7 @@ import { initAuthentication } from './auth.js';
 import { initTerminal } from './terminal.js';
 import { setupInputHandlers } from './input.js';
 import { initWebSockets } from './websockets.js';
+import { initMobileUi } from './mobile-ui.js';
 
 document.addEventListener("DOMContentLoaded", async (event) => {
     initConnectionHandlers();
@@ -22,4 +23,10 @@ document.addEventListener("DOMContentLoaded", async (event) => {
     sendAnsiKey = websockets.sendAnsiKey;
 
     setupInputHandlers(term, fitAddon, sendAnsiKey);
+
+    initMobileUi({
+        term,
+        fitAddon,
+        getSendAnsiKey: () => websockets.sendAnsiKey,
+    });
 });

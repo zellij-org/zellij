@@ -1,5 +1,5 @@
 import { handleReconnection, handleDisconnected, markConnectionEstablished } from "./connection.js";
-import { getBaseUrl, getWebSocketBaseUrl } from "./utils.js";
+import { getBaseUrl, getWebSocketBaseUrl, isMobileViewport } from "./utils.js";
 import { setSoftKeyboard } from "./input.js";
 import { applyFontSize } from "./terminal.js";
 
@@ -158,7 +158,11 @@ export function initWebSockets(
     const originalSendAnsiKey = sendAnsiKey;
     sendAnsiKey = (ansiKey) => {
         if (ownWebClientId !== "") {
-            wsTerminal.send(ansiKey);
+            let payload = ansiKey;
+            if (typeof window.__zjMobileMergeKey === "function") {
+                payload = window.__zjMobileMergeKey(payload);
+            }
+            wsTerminal.send(payload);
         }
     };
 
@@ -223,22 +227,18 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             if (typeof window.__zjSyncInactiveCursorStyle === "function") {
                 window.__zjSyncInactiveCursorStyle();
             }
-            const isMobileViewport =
-                (window.matchMedia &&
-                    window.matchMedia("(pointer: coarse)").matches &&
-                    window.innerWidth < 600) ||
-                /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+            const mobileViewport = isMobileViewport();
             const hasExplicitFontSize =
                 typeof font_size === "number" && font_size > 0;
             const baseFontPx = hasExplicitFontSize
                 ? font_size
-                : isMobileViewport
+                : mobileViewport
                 ? 24
                 : 12;
             applyFontSize(term, fitAddon, baseFontPx);
             const needsMobileDownscale =
                 !hasExplicitFontSize &&
-                isMobileViewport &&
+                mobileViewport &&
                 term.rows < NATURAL_MIN_TOTAL_ROWS;
             if (needsMobileDownscale) {
                 const downscaledPx = Math.max(
@@ -408,6 +408,12 @@ function setupSoftKeyboardVisibilityTracker(getWsControl, getOwnWebClientId) {
             return;
         }
         kbdVisible = newKbdVisible;
+
+        window.dispatchEvent(
+            new CustomEvent("zellij:soft-keyboard-visibility", {
+                detail: { visible: kbdVisible },
+            })
+        );
 
         if (!kbdVisible) {
             const capture =

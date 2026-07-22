@@ -31,6 +31,19 @@ export function getBaseUrl() {
 }
 
 /**
+ * Detect a mobile viewport (coarse pointer + small width, or a mobile UA).
+ * @returns {boolean} true if the current viewport is considered mobile
+ */
+export function isMobileViewport() {
+    return (
+        (window.matchMedia &&
+            window.matchMedia("(pointer: coarse)").matches &&
+            window.innerWidth < 600) ||
+        /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+    );
+}
+
+/**
  * Get the base URL from the base href tag and convert to WebSocket URL
  * @returns {string} WebSocket base URL
  */
