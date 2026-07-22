@@ -2149,6 +2149,7 @@ impl Tab {
             );
         }
         self.set_force_render();
+        self.set_force_window_title_update();
         Ok(())
     }
 
@@ -4370,6 +4371,9 @@ impl Tab {
                 pane.render_full_viewport();
             }
         }
+    }
+    pub fn set_force_window_title_update(&mut self) {
+        self.tiled_panes.set_force_window_title_update();
     }
     pub fn set_should_clear_display_before_rendering(&mut self) {
         self.should_clear_display_before_rendering = true;
