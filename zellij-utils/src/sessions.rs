@@ -50,9 +50,10 @@ pub fn get_resurrectable_sessions() -> Vec<(String, Duration)> {
                 .filter(|f| f.is_dir());
             files_that_are_folders
                 .filter_map(|folder_name| {
-                    let layout_file_name =
-                        session_layout_cache_file_name(&folder_name.display().to_string());
-                    // Try to get creation time, fall back to modification time on platforms where it's not supported (e.g., musl)
+                    let session_name = folder_name
+                        .file_name()
+                        .map(|f| f.to_string_lossy().to_string())?;
+                    let layout_file_name = session_layout_cache_file_name(&session_name);
                     let ctime = std::fs::metadata(&layout_file_name)
                         .ok()
                         .and_then(|metadata| {
@@ -63,9 +64,6 @@ pub fn get_resurrectable_sessions() -> Vec<(String, Duration)> {
                             Duration::from_secs(ctime.elapsed().ok().unwrap_or_default().as_secs())
                         })
                         .unwrap_or_default();
-                    let session_name = folder_name
-                        .file_name()
-                        .map(|f| std::path::PathBuf::from(f).display().to_string())?;
                     if std::path::Path::new(&layout_file_name).exists() {
                         Some((session_name, elapsed_duration))
                     } else {
@@ -93,12 +91,12 @@ pub fn get_resurrectable_session_names() -> Vec<String> {
                 .filter(|f| f.is_dir());
             files_that_are_folders
                 .filter_map(|folder_name| {
-                    let folder = folder_name.display().to_string();
-                    let resurrection_layout_file = session_layout_cache_file_name(&folder);
+                    let session_name = folder_name
+                        .file_name()
+                        .map(|f| f.to_string_lossy().to_string())?;
+                    let resurrection_layout_file = session_layout_cache_file_name(&session_name);
                     if std::path::Path::new(&resurrection_layout_file).exists() {
-                        folder_name
-                            .file_name()
-                            .map(|f| format!("{}", f.to_string_lossy()))
+                        Some(session_name)
                     } else {
                         None
                     }
