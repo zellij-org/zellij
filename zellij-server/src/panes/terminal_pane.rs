@@ -3,7 +3,9 @@ use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::panes::{
     grid::Grid,
-    terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
+    terminal_character::{
+        render_first_run_banner, GuestModalShortcuts, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
+    },
 };
 use crate::pty::VteBytes;
 use crate::route::NotificationEnd;
@@ -164,6 +166,7 @@ pub struct TerminalPane {
     guest_modal: HashMap<ClientId, usize>,
     guest_choice_indicators: HashMap<ClientId, GuestChoiceIndicator>,
     guest_session_name: Option<String>,
+    guest_modal_shortcuts: GuestModalShortcuts,
     /// PTY bytes that have not yet been fed to vte. Single source of
     /// truth: `handle_pty_bytes` always appends here, and processing
     /// pops one byte at a time and advances the vte parser. Processing
@@ -291,7 +294,6 @@ impl Pane for TerminalPane {
                 .map(|k| {
                     k.is_key_without_modifier(BareKey::Up)
                         || k.is_key_without_modifier(BareKey::Char('k'))
-                        || k.is_key_with_shift_modifier(BareKey::Tab)
                 })
                 .unwrap_or(false)
                 || raw_input_bytes.as_slice() == UP_ARROW;
@@ -300,7 +302,6 @@ impl Pane for TerminalPane {
                 .map(|k| {
                     k.is_key_without_modifier(BareKey::Down)
                         || k.is_key_without_modifier(BareKey::Char('j'))
-                        || k.is_key_without_modifier(BareKey::Tab)
                 })
                 .unwrap_or(false)
                 || raw_input_bytes.as_slice() == DOWN_ARROW;
@@ -772,6 +773,14 @@ impl Pane for TerminalPane {
 
     fn guest_session_name(&self) -> Option<String> {
         self.guest_session_name.clone()
+    }
+
+    fn set_guest_modal_shortcuts(&mut self, shortcuts: GuestModalShortcuts) {
+        self.guest_modal_shortcuts = shortcuts;
+    }
+
+    fn guest_modal_shortcuts(&self) -> GuestModalShortcuts {
+        self.guest_modal_shortcuts.clone()
     }
 
     fn arm_forward_pause(&mut self) {
@@ -1316,6 +1325,7 @@ impl TerminalPane {
             guest_modal: HashMap::new(),
             guest_choice_indicators: HashMap::new(),
             guest_session_name: None,
+            guest_modal_shortcuts: GuestModalShortcuts::default(),
             pending_pty_input: VecDeque::new(),
         }
     }

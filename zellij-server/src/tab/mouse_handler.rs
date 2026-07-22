@@ -372,6 +372,7 @@ impl MouseHandler {
             return Ok(None);
         }
         let hit_option = if event.event_type == MouseEventType::Release && event.left {
+            let style = tab.style;
             if let Some(pane) = tab.get_pane_with_id(pane_id) {
                 let relative_position = pane.relative_position(&event.position);
                 let rows = pane.get_content_rows();
@@ -380,10 +381,17 @@ impl MouseHandler {
                 if row < 0 {
                     None
                 } else {
+                    let session_name = pane.guest_session_name().unwrap_or_default();
+                    let selection = pane.guest_modal_selection(client_id).unwrap_or(0);
+                    let shortcuts = pane.guest_modal_shortcuts();
                     crate::panes::terminal_character::guest_modal_option_at_content_row(
                         rows,
                         columns,
                         row as usize,
+                        &style,
+                        &session_name,
+                        selection,
+                        &shortcuts,
                     )
                 }
             } else {

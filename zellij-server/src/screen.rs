@@ -71,7 +71,7 @@ use crate::background_jobs::BackgroundJob;
 use crate::os_input_output::ResizeCache;
 use crate::pane_groups::PaneGroups;
 use crate::panes::alacritty_functions::xparse_color;
-use crate::panes::terminal_character::AnsiCode;
+use crate::panes::terminal_character::{AnsiCode, GuestModalShortcuts};
 use crate::panes::terminal_pane::{BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END};
 use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
 
@@ -1461,6 +1461,10 @@ pub enum GuestModalOutcome {
     Zoom,
     Descend,
     Dismiss,
+}
+
+fn format_guest_modal_shortcut(keys: &[KeyWithModifier]) -> Vec<String> {
+    keys.iter().map(|key| key.to_string()).collect()
 }
 
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
@@ -2939,6 +2943,7 @@ impl Screen {
             .retain(|(_, choice_pane_id), _| *choice_pane_id != pane_id);
         let connected_client_ids: Vec<ClientId> =
             self.connected_clients.borrow().keys().copied().collect();
+        let guest_modal_shortcuts = self.guest_modal_shortcuts();
         let owning_tab = self
             .tabs
             .values_mut()
@@ -2947,6 +2952,7 @@ impl Screen {
             Some(tab) => {
                 tab.set_pane_is_nested_guest(pane_id, true);
                 tab.set_guest_session_name_on_pane(pane_id, Some(guest_session_name.clone()));
+                tab.set_guest_modal_shortcuts_on_pane(pane_id, guest_modal_shortcuts);
                 tab.clear_all_guest_choice_indicators_on_pane(pane_id);
                 tab.set_guest_modal_on_pane(pane_id, &connected_client_ids);
             },
@@ -3276,6 +3282,23 @@ impl Screen {
             |action| matches!(action, Action::FocusGuestSession),
         )
         .unwrap_or_default()
+    }
+
+    fn own_host_zoom_shortcut(&self) -> Vec<KeyWithModifier> {
+        shortcut_for_action(
+            &self.default_mode_info.keybinds,
+            self.base_input_mode(),
+            |action| matches!(action, Action::ToggleHostFullscreen),
+        )
+        .unwrap_or_default()
+    }
+
+    fn guest_modal_shortcuts(&self) -> GuestModalShortcuts {
+        GuestModalShortcuts {
+            zoom: format_guest_modal_shortcut(&self.own_host_zoom_shortcut()),
+            ascend: format_guest_modal_shortcut(&self.own_ascend_shortcut()),
+            descend: format_guest_modal_shortcut(&self.own_descend_shortcut()),
+        }
     }
 
     fn refresh_nested_ascend_keys_for_pane(&mut self, pane_id: PaneId) {

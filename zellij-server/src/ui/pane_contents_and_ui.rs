@@ -210,6 +210,7 @@ impl<'a> PaneContentsAndUi<'a> {
         let rows = self.pane.get_content_rows();
         let content_x = self.pane.get_content_x();
         let content_y = self.pane.get_content_y();
+        let shortcuts = self.pane.guest_modal_shortcuts();
         let chunks = crate::panes::terminal_character::guest_modal_chunks(
             columns,
             rows,
@@ -218,6 +219,7 @@ impl<'a> PaneContentsAndUi<'a> {
             &self.style,
             &session_name,
             selection,
+            &shortcuts,
         );
         self.output
             .add_character_chunks_to_client(client_id, chunks, self.z_index)

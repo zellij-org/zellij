@@ -925,21 +925,21 @@ pub fn guest_modal_navigation_wraps() {
     assert_eq!(pane.guest_modal_selection(client_id), Some(0));
     press_key(&mut pane, BareKey::Down, client_id);
     assert_eq!(pane.guest_modal_selection(client_id), Some(1));
-    press_key(&mut pane, BareKey::Tab, client_id);
-    assert_eq!(pane.guest_modal_selection(client_id), Some(2));
-    press_key(&mut pane, BareKey::Tab, client_id);
+    press_key(&mut pane, BareKey::Up, client_id);
     assert_eq!(pane.guest_modal_selection(client_id), Some(0));
 }
 
 #[test]
-pub fn guest_modal_shift_tab_moves_up() {
+pub fn guest_modal_tab_is_ignored() {
     use zellij_utils::data::{BareKey, KeyWithModifier};
     let mut pane = create_guest_modal_pane();
     let client_id = 1;
     pane.set_guest_modal(&[client_id]);
+    press_key(&mut pane, BareKey::Tab, client_id);
+    assert_eq!(pane.guest_modal_selection(client_id), Some(0));
     let key = KeyWithModifier::new(BareKey::Tab).with_shift_modifier();
     pane.adjust_input_to_terminal(&Some(key), vec![], false, Some(client_id));
-    assert_eq!(pane.guest_modal_selection(client_id), Some(2));
+    assert_eq!(pane.guest_modal_selection(client_id), Some(0));
 }
 
 #[test]
@@ -1033,25 +1033,33 @@ pub fn guest_modal_no_modal_passes_input_through() {
 
 #[test]
 pub fn guest_modal_chunks_normal_geometry() {
-    use crate::panes::terminal_character::guest_modal_chunks;
+    use crate::panes::terminal_character::{guest_modal_chunks, GuestModalShortcuts};
     let style = Style::default();
-    let chunks = guest_modal_chunks(60, 20, 0, 0, &style, "my-session", 1);
-    assert_eq!(chunks.len(), 20);
+    let shortcuts = GuestModalShortcuts {
+        zoom: vec!["Ctrl g".to_string(), "o".to_string(), "f".to_string()],
+        ascend: vec!["Ctrl o".to_string()],
+        descend: vec!["Ctrl o".to_string(), "d".to_string()],
+    };
+    let chunks = guest_modal_chunks(80, 30, 0, 0, &style, "my-session", 1, &shortcuts);
+    assert_eq!(chunks.len(), 30);
     let rendered: String = chunks
         .iter()
         .flat_map(|chunk| chunk.terminal_characters.iter().map(|c| c.character))
         .collect();
     assert!(rendered.contains("Nested Zellij session detected: my-session"));
+    assert!(rendered.contains("What would you like to do?"));
     assert!(rendered.contains("Zoom in and control this session"));
     assert!(rendered.contains("(AUTO)"));
     assert!(rendered.contains("(MANUAL)"));
+    assert!(rendered.contains("<Ctrl g> + <o> + <f>"));
 }
 
 #[test]
 pub fn guest_modal_chunks_small_geometry_fallback() {
-    use crate::panes::terminal_character::guest_modal_chunks;
+    use crate::panes::terminal_character::{guest_modal_chunks, GuestModalShortcuts};
     let style = Style::default();
-    let chunks = guest_modal_chunks(40, 4, 0, 0, &style, "s", 0);
+    let shortcuts = GuestModalShortcuts::default();
+    let chunks = guest_modal_chunks(40, 4, 0, 0, &style, "s", 0, &shortcuts);
     assert_eq!(chunks.len(), 4);
     let rendered: String = chunks
         .iter()
@@ -1062,32 +1070,44 @@ pub fn guest_modal_chunks_small_geometry_fallback() {
 
 #[test]
 pub fn guest_modal_chunks_tiny_geometry_no_panic() {
-    use crate::panes::terminal_character::guest_modal_chunks;
+    use crate::panes::terminal_character::{guest_modal_chunks, GuestModalShortcuts};
     let style = Style::default();
-    let chunks = guest_modal_chunks(3, 2, 0, 0, &style, "session", 0);
+    let shortcuts = GuestModalShortcuts::default();
+    let chunks = guest_modal_chunks(3, 2, 0, 0, &style, "session", 0, &shortcuts);
     assert_eq!(chunks.len(), 2);
-    let empty = guest_modal_chunks(0, 0, 0, 0, &style, "session", 0);
+    let empty = guest_modal_chunks(0, 0, 0, 0, &style, "session", 0, &shortcuts);
     assert!(empty.is_empty());
 }
 
 #[test]
 pub fn guest_modal_option_hit_test() {
-    use crate::panes::terminal_character::guest_modal_option_at_content_row;
-    let block_height = 7;
-    let start_row = (20 - block_height) / 2;
-    let first_option = start_row + 2;
+    use crate::panes::terminal_character::{
+        guest_modal_option_at_content_row, GuestModalShortcuts,
+    };
+    let style = Style::default();
+    let shortcuts = GuestModalShortcuts {
+        zoom: vec!["Ctrl g".to_string(), "o".to_string(), "f".to_string()],
+        ascend: vec!["Ctrl o".to_string()],
+        descend: vec!["Ctrl o".to_string(), "d".to_string()],
+    };
+    let rows = 40;
+    let columns = 80;
+    let mut hit_rows: Vec<usize> = Vec::new();
+    for row in 0..rows {
+        if let Some(option) = guest_modal_option_at_content_row(
+            rows, columns, row, &style, "session", 0, &shortcuts,
+        ) {
+            assert_eq!(hit_rows.len(), option);
+            hit_rows.push(row);
+        }
+    }
+    assert_eq!(hit_rows.len(), 3);
     assert_eq!(
-        guest_modal_option_at_content_row(20, 60, first_option),
-        Some(0)
+        guest_modal_option_at_content_row(rows, 10, 0, &style, "session", 0, &shortcuts),
+        None
     );
     assert_eq!(
-        guest_modal_option_at_content_row(20, 60, first_option + 1),
-        Some(1)
+        guest_modal_option_at_content_row(4, 10, 2, &style, "session", 0, &shortcuts),
+        None
     );
-    assert_eq!(
-        guest_modal_option_at_content_row(20, 60, first_option + 2),
-        Some(2)
-    );
-    assert_eq!(guest_modal_option_at_content_row(20, 60, 0), None);
-    assert_eq!(guest_modal_option_at_content_row(4, 10, 2), None);
 }

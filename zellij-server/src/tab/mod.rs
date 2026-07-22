@@ -49,6 +49,7 @@ use crate::{
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
     panes::grid::namespace_notification_id,
     panes::sixel::SixelImageStore,
+    panes::terminal_character::GuestModalShortcuts,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane, EMPTY_TERMINAL_CHARACTER},
     plugins::PluginInstruction,
@@ -490,6 +491,10 @@ pub trait Pane {
     fn set_guest_session_name(&mut self, _session_name: Option<String>) {}
     fn guest_session_name(&self) -> Option<String> {
         None
+    }
+    fn set_guest_modal_shortcuts(&mut self, _shortcuts: GuestModalShortcuts) {}
+    fn guest_modal_shortcuts(&self) -> GuestModalShortcuts {
+        GuestModalShortcuts::default()
     }
     /// Mark this pane as awaiting a host-terminal reply for a forward
     /// it just dispatched. While paused, vte byte feeding is buffered
@@ -3950,6 +3955,25 @@ impl Tab {
             })
         {
             pane.set_guest_session_name(session_name);
+        }
+    }
+    pub fn set_guest_modal_shortcuts_on_pane(
+        &mut self,
+        pane_id: PaneId,
+        shortcuts: GuestModalShortcuts,
+    ) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_guest_modal_shortcuts(shortcuts);
         }
     }
     pub fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) -> bool {
