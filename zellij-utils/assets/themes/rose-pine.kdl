@@ -1,0 +1,41 @@
+themes {
+    rose-pine-main {
+        fg "#e0def4"
+		bg "#191724"
+		black "#191724"
+		red "#eb6f92"
+        green "#31748f"
+        yellow "#f6c177"
+        blue "#9ccfd8"
+        magenta "#c4a7e7"
+        cyan "#ebbcba"
+        white "#e0def4"
+        orange "#f6c177"
+    }
+    rose-pine-moon {
+        fg "#e0def4"
+		bg "#232136"
+		black "#232136"
+		red "#eb6f92"
+        green "#3e8fb0"
+        yellow "#f6c177"
+        blue "#9ccfd8"
+        magenta "#c4a7e7"
+        cyan "#ea9a97"
+        white "#e0def4"
+        orange "#f6c177"
+    }
+    rose-pine-dawn {
+        fg "#575279"
+		bg "#faf4ed"
+		black "#faf4ed"
+		red "#b4637a"
+        green "#286983"
+        yellow "#ea9d34"
+        blue "#56949f"
+        magenta "#907aa9"
+        cyan "#d7827e"
+        white "#575279"
+        orange "#ea9d34"
+    }
+}
