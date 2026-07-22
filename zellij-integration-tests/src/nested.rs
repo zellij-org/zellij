@@ -92,7 +92,7 @@ pub fn wait_for_settled_composite(
 }
 
 pub const GUEST_PING_INTERVAL_MS: u64 = 100;
-pub const GUEST_PONG_TIMEOUT_MS: u64 = 8000;
+pub const GUEST_PONG_TIMEOUT_MS: u64 = 4000;
 
 #[derive(Clone, Default)]
 pub struct FrameLog {
