@@ -104,8 +104,12 @@ pub fn tab_style(
     is_hovered: bool,
     palette: Styling,
     capabilities: PluginCapabilities,
+    render_tab_index: bool,
 ) -> LinePart {
     let separator = tab_separator(capabilities);
+    if render_tab_index {
+        tabname = format!("[{}] {}", tab.position + 1, tabname);
+    }
 
     if tab.is_fullscreen_active {
         tabname.push_str(" (FULLSCREEN)");
