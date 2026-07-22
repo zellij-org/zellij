@@ -21,8 +21,9 @@ pub async fn authenticate(
     remember_me: bool,
     ca_cert: Option<&std::path::Path>,
     insecure: bool,
+    custom_headers: &[(String, String)],
 ) -> Result<(String, HttpClientWithCookies, Option<String>), RemoteClientError> {
-    let http_client = HttpClientWithCookies::new(ca_cert, insecure)
+    let http_client = HttpClientWithCookies::new(ca_cert, insecure, custom_headers)
         .map_err(|e| RemoteClientError::Other(Box::new(e)))?;
 
     // Step 1: Login with auth token
@@ -109,8 +110,9 @@ pub async fn validate_session_token(
     session_token: &str,
     ca_cert: Option<&std::path::Path>,
     insecure: bool,
+    custom_headers: &[(String, String)],
 ) -> Result<(String, HttpClientWithCookies), RemoteClientError> {
-    let http_client = HttpClientWithCookies::new(ca_cert, insecure)
+    let http_client = HttpClientWithCookies::new(ca_cert, insecure, custom_headers)
         .map_err(|e| RemoteClientError::Other(Box::new(e)))?;
 
     // Pre-populate the session_token cookie

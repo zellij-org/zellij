@@ -773,6 +773,7 @@ pub(crate) fn start_client(opts: CliArgs) {
             forget,
             ca_cert,
             insecure,
+            headers,
         })) = opts.command.clone()
         {
             if let Some(remote_session_url) = session_name.as_ref().and_then(|s| {
@@ -801,6 +802,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     forget,
                     ca_cert,
                     insecure,
+                    headers,
                     config_options.client_async_worker_tasks,
                 ) {
                     eprintln!("{}", e);

@@ -191,6 +191,7 @@ pub async fn establish_websocket_connections(
     session_name: &str,
     ca_cert: Option<&Path>,
     insecure: bool,
+    custom_headers: &[(String, String)],
 ) -> Result<WebSocketConnections, Box<dyn std::error::Error>> {
     let parsed_url = url::Url::parse(server_base_url)?;
     let host = parsed_url
@@ -249,6 +250,12 @@ pub async fn establish_websocket_connections(
             tokio_tungstenite::tungstenite::handshake::client::generate_key(),
         )
         .header("Sec-WebSocket-Version", "13");
+
+    // Add custom headers
+    for (name, value) in custom_headers {
+        terminal_request = terminal_request.header(name.as_str(), value.as_str());
+        control_request = control_request.header(name.as_str(), value.as_str());
+    }
 
     // Add cookies if available
     if let Some(cookie_header) = http_client.get_cookie_header() {
