@@ -17,6 +17,10 @@ fn last_line_contains(grid_snapshot: &GridSnapshot, needle: &str) -> bool {
         .map_or(false, |last_line| last_line.contains(needle))
 }
 
+fn has_breadcrumb(grid: &GridSnapshot) -> bool {
+    grid.lines().first().map_or(false, |l| l.contains('▸'))
+}
+
 fn normal_mode_bar_settled(grid_snapshot: &GridSnapshot) -> bool {
     last_line_contains(grid_snapshot, "LOCK")
 }
@@ -251,7 +255,7 @@ fn resizing_the_terminal_while_nested_fullscreen_keeps_the_guest_filling_the_dis
     let fullscreen_pane_before = nested.host.wait_until(
         "the guest fills the whole host display before the resize",
         |host_grid| {
-            host_grid.contains("[NESTED]")
+            has_breadcrumb(host_grid)
                 && host_grid.contains("Tab #1")
                 && host_grid.row_count() == TERMINAL_SIZE.rows
         },
@@ -263,7 +267,7 @@ fn resizing_the_terminal_while_nested_fullscreen_keeps_the_guest_filling_the_dis
         "the fullscreened guest still fills the whole enlarged host display",
         |host_grid| {
             host_grid.row_count() == LARGER_SIZE.rows
-                && host_grid.contains("[NESTED]")
+                && has_breadcrumb(host_grid)
                 && host_grid.contains("Tab #1")
         },
     );
@@ -278,7 +282,7 @@ fn resizing_the_terminal_while_nested_fullscreen_keeps_the_guest_filling_the_dis
     nested.guest.wait_until(
         "the guest re-renders filling the enlarged display while fullscreened",
         |guest_grid| {
-            guest_grid.row_count() == LARGER_SIZE.rows && guest_grid.contains("[NESTED]")
+            guest_grid.row_count() == LARGER_SIZE.rows && has_breadcrumb(guest_grid)
         },
     );
 
@@ -303,7 +307,7 @@ fn resizing_the_terminal_while_nested_fullscreen_keeps_the_guest_filling_the_dis
         "the host chrome returns at the enlarged size after exiting fullscreen",
         |host_grid| {
             host_grid.row_count() == LARGER_SIZE.rows
-                && !host_grid.contains("[NESTED]")
+                && !has_breadcrumb(host_grid)
                 && host_grid.tab_bar_appears()
                 && host_grid.status_bar_appears()
         },

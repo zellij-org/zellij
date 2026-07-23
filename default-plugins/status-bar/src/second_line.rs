@@ -398,14 +398,15 @@ fn nested_session_status_hint(
     let palette = help.style.colors;
     let text_color = palette_match!(palette.text_unselected.base);
     let styled_message = Style::new()
-        .fg(text_color)
-        .bold()
+        .dimmed()
+        .italic()
         .paint(format!(" {}", message));
     let mut bits: Vec<ANSIString> = vec![styled_message.clone()];
     if !keys.is_empty() {
         bits.push(
             Style::new()
-                .fg(text_color)
+                .dimmed()
+                .italic()
                 .paint(format!(" {}", shortcut_prefix)),
         );
         for (i, key) in keys.iter().enumerate() {

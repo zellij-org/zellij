@@ -127,11 +127,12 @@ fn host_tab_bar_renamed_to_guest(grid_snapshot: &GridSnapshot, guest_session_nam
 
 fn host_chrome_dimmed(host_grid: &GridSnapshot) -> bool {
     host_grid.line_has_dim("Pane #2")
-        && host_grid.char_dim_of("test-").map_or(true, |dim| !dim)
+        && host_grid.char_dim_of("test-").map_or(false, |dim| dim)
 }
 
 fn host_chrome_undimmed(host_grid: &GridSnapshot) -> bool {
     !host_grid.line_has_dim("Pane #2")
+        && host_grid.char_dim_of("test-").map_or(true, |dim| !dim)
 }
 
 #[test]
@@ -1398,4 +1399,120 @@ fn nested_fullscreen_exit_keeps_hidden_host_floating_panes_hidden() {
         outer_after_second_exit.text,
         zellij_integration_tests::test_env::log_tail(400),
     );
+}
+
+fn column_in_last_line(grid: &GridSnapshot, needle: &str) -> Option<(usize, usize)> {
+    let lines = grid.lines();
+    let y = lines.len().checked_sub(1)?;
+    let line = lines.last()?;
+    let byte_index = line.find(needle)?;
+    Some((line[..byte_index].chars().count(), y))
+}
+
+fn descended_hint_present(grid: &GridSnapshot) -> bool {
+    last_line_contains(grid, "Descended into a nested Zellij session.")
+        && last_line_contains(grid, "To ascend:")
+}
+
+#[test]
+fn descended_host_tab_bar_session_name_is_dimmed() {
+    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+    let host_session_name = nested.host.session_name().to_string();
+
+    build_descended_state_with_host_sibling(&nested);
+
+    let descended = nested.host.wait_until(
+        "descended host renders its dimmed tab-bar with the status hint",
+        |host_grid| {
+            host_grid.contains("Pane #2")
+                && host_grid.contains(&format!("({})", host_session_name))
+                && descended_hint_present(host_grid)
+                && host_grid
+                    .char_dim_of(&format!("({})", host_session_name))
+                    .unwrap_or(false)
+        },
+    );
+
+    assert!(
+        descended
+            .char_dim_of("Zellij")
+            .expect("host tab-bar prefix present"),
+        "the host tab-bar 'Zellij' prefix is dimmed while descended"
+    );
+    assert!(
+        descended
+            .char_dim_of(&format!("({})", host_session_name))
+            .expect("host session name present"),
+        "the host tab-bar session name is dimmed while descended"
+    );
+
+    nested.guest.quit();
+    nested.host.quit();
+}
+
+#[test]
+fn descended_status_hint_is_dim_italic_with_colored_keys() {
+    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+
+    build_descended_state_with_host_sibling(&nested);
+
+    let descended = nested.host.wait_until(
+        "descended host shows the nested session status hint",
+        |host_grid| host_grid.contains("Pane #2") && descended_hint_present(host_grid),
+    );
+
+    let (message_column, message_row) = column_in_last_line(&descended, "Descended")
+        .expect("the descended hint message is present on the last line");
+    assert!(
+        descended.char_is_dim(message_column, message_row),
+        "the descended hint message is dimmed"
+    );
+    assert!(
+        descended.char_is_italic(message_column, message_row),
+        "the descended hint message is italic"
+    );
+
+    let (prefix_column, prefix_row) = column_in_last_line(&descended, "To ascend")
+        .expect("the ascend shortcut prefix is present on the last line");
+    assert!(
+        descended.char_is_dim(prefix_column, prefix_row),
+        "the ascend shortcut prefix is dimmed"
+    );
+    assert!(
+        descended.char_is_italic(prefix_column, prefix_row),
+        "the ascend shortcut prefix is italic"
+    );
+
+    let (key_column, key_row) = column_in_last_line(&descended, "Ctrl")
+        .expect("the ascend shortcut key is present on the last line");
+    assert!(
+        !descended.char_is_dim(key_column, key_row),
+        "the ascend shortcut key retains its coloring and is not dimmed"
+    );
+
+    nested.guest.quit();
+    nested.host.quit();
+}
+
+#[test]
+fn nested_pane_frames_never_render_the_guest_choice_indicator() {
+    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+
+    build_descended_state_with_host_sibling(&nested);
+
+    let descended = nested.host.wait_until(
+        "descended host settled with its guest pane and sibling present",
+        |host_grid| host_grid.contains("Pane #2") && descended_hint_present(host_grid),
+    );
+
+    assert!(
+        !descended.contains("NESTED ZELLIJ")
+            && !descended.contains("NESTED AUTO FOCUS")
+            && !descended.contains("NESTED MANUAL FOCUS"),
+        "no guest-choice indicator is rendered in any pane frame while descended\n=== host grid ===\n{}",
+        descended.text
+    );
+
+    nested.guest.quit();
+    nested.host.quit();
 }

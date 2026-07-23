@@ -11,6 +11,15 @@ fn get_current_title_len(current_title: &[LinePart]) -> usize {
     current_title.iter().map(|p| p.len).sum()
 }
 
+fn dim_style(bg: PaletteColor) -> ansi_term::Style {
+    ansi_term::Style::new()
+        .on(match bg {
+            PaletteColor::Rgb((r, g, b)) => ansi_term::Color::RGB(r, g, b),
+            PaletteColor::EightBit(c) => ansi_term::Color::Fixed(c),
+        })
+        .dimmed()
+}
+
 // move elements from before_active and after_active into tabs_to_render while they fit in cols
 // adds collapsed_tabs to the left and right if there's left over tabs that don't fit
 fn populate_tabs_in_tab_line(
@@ -201,7 +210,7 @@ fn tab_line_prefix(
     let text_color = palette.text_unselected.base;
     let bg_color = palette.text_unselected.background;
     let prefix_style = if dimmed {
-        style!(text_color, bg_color).italic()
+        dim_style(bg_color)
     } else {
         style!(text_color, bg_color).bold()
     };
@@ -216,11 +225,26 @@ fn tab_line_prefix(
         if let Some(name) = session_name {
             let ancestor_text = format!("({} ▸ ", breadcrumb_ancestry.join(" ▸ "));
             let ancestor_len = ancestor_text.width();
-            let name_text = format!("{} [NESTED]) ", name);
+            let name_text = name.to_string();
             let name_len = name_text.width();
-            let ancestor_style = style!(text_color, bg_color).italic();
-            let name_style = style!(text_color, bg_color).bold();
-            if cols.saturating_sub(running_text_len) >= ancestor_len + name_len {
+            let closing_text = ") ".to_string();
+            let closing_len = closing_text.width();
+            let ancestor_style = if dimmed {
+                dim_style(bg_color)
+            } else {
+                style!(text_color, bg_color).italic()
+            };
+            let name_style = if dimmed {
+                dim_style(bg_color)
+            } else {
+                style!(palette.text_unselected.emphasis_0, bg_color).bold()
+            };
+            let closing_style = if dimmed {
+                dim_style(bg_color)
+            } else {
+                style!(text_color, bg_color).bold()
+            };
+            if cols.saturating_sub(running_text_len) >= ancestor_len + name_len + closing_len {
                 let ancestor_start = running_text_len;
                 let ancestor_end = ancestor_start + ancestor_len;
                 breadcrumb_range = Some((ancestor_start, ancestor_end));
@@ -232,6 +256,11 @@ fn tab_line_prefix(
                 parts.push(LinePart {
                     part: name_style.paint(name_text).to_string(),
                     len: name_len,
+                    tab_index: None,
+                });
+                parts.push(LinePart {
+                    part: closing_style.paint(closing_text).to_string(),
+                    len: closing_len,
                     tab_index: None,
                 });
             }

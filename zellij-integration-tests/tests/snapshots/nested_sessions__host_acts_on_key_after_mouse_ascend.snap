@@ -1,9 +1,10 @@
 ---
 source: zellij-integration-tests/tests/nested_sessions.rs
+assertion_line: 439
 expression: normalized(&host_after_new_pane)
 ---
  Zellij (test)  Tab #1  + 
-                           test-1  [ NESTED ZELLIJ · AUTO ]│                           Pane #2
+                           test-1                          │                           Pane #2
  Zellij (test)  Tab #1  +                            │$
                                                            │
                                                            │

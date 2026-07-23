@@ -198,7 +198,8 @@ impl ZellijPlugin for State {
         if self.tabs.is_empty() {
             return;
         }
-        let dimmed = false;
+        let dimmed = self.mode_info.session_ascended == Some(true)
+            || self.mode_info.session_dimmed == Some(true);
         let mut all_tabs: Vec<LinePart> = vec![];
         let mut active_tab_index = 0;
         let mut is_alternate_tab = false;
