@@ -8533,6 +8533,19 @@ impl ForwardCapture {
         }
         out
     }
+
+    /// Drain every pending `ServerInstruction::KeyPassthroughChanged`,
+    /// returning the `notify_guest` flag for each. Other variants are
+    /// dropped.
+    fn drain_key_passthrough_notify_flags(&self) -> Vec<bool> {
+        let mut out = Vec::new();
+        while let Ok((instr, _ctx)) = self.server_rx.try_recv() {
+            if let ServerInstruction::KeyPassthroughChanged(_, _, _, _, _, notify_guest) = instr {
+                out.push(notify_guest);
+            }
+        }
+        out
+    }
 }
 
 fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture) {
@@ -8750,6 +8763,48 @@ fn handle_reply_dispatches_next_queued_forward() {
             .get(&second_token)
             .map(|e| e.pane_id),
         Some(second_pane)
+    );
+}
+
+#[test]
+fn clear_nested_guest_does_not_notify_guest_focus_lost_on_teardown() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane_id = PaneId::Terminal(7);
+    let client_id = 1;
+    screen
+        .nested_guest_choices
+        .insert((client_id, pane_id), super::NestedGuestChoice::Descend);
+
+    screen.clear_nested_guest(pane_id);
+
+    let notify_flags = capture.drain_key_passthrough_notify_flags();
+    assert_eq!(
+        notify_flags,
+        vec![false],
+        "teardown clear must emit KeyPassthroughChanged with notify_guest=false so no FocusLost \
+         frame is written to the exiting guest pane"
+    );
+}
+
+#[test]
+fn remove_client_notifies_guest_focus_lost_on_live_ascend() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane_id = PaneId::Terminal(7);
+    let client_id = 1;
+    screen
+        .nested_guest_choices
+        .insert((client_id, pane_id), super::NestedGuestChoice::Descend);
+
+    screen.remove_client(client_id).expect("remove_client ok");
+
+    let notify_flags = capture.drain_key_passthrough_notify_flags();
+    assert_eq!(
+        notify_flags,
+        vec![true],
+        "a live client leaving a still-alive guest must emit notify_guest=true so the guest is \
+         told it lost focus"
     );
 }
 

@@ -140,7 +140,7 @@ pub enum ServerInstruction {
     /// loop. The main loop writes `ServerToClientMsg::ForwardQueryToHost`
     /// to any connected regular client.
     ForwardQueryToHost(u32, Vec<u8>),
-    KeyPassthroughChanged(ClientId, PaneId, PaneId, bool, Option<Direction>),
+    KeyPassthroughChanged(ClientId, PaneId, PaneId, bool, Option<Direction>, bool),
     EmitNestedSessionFrameToClient(ClientId, Vec<u8>),
 }
 
@@ -368,12 +368,19 @@ impl SessionMetaData {
         }
     }
     pub fn remove_key_passthrough_client(&mut self, client_id: ClientId) {
+        self.remove_key_passthrough_client_with_notify(client_id, true);
+    }
+    pub fn remove_key_passthrough_client_with_notify(
+        &mut self,
+        client_id: ClientId,
+        notify_guest: bool,
+    ) {
         if let Some(pane_id) = self.key_passthrough_clients.remove(&client_id) {
             let pane_still_active = self
                 .key_passthrough_clients
                 .values()
                 .any(|p| *p == pane_id);
-            if !pane_still_active {
+            if !pane_still_active && notify_guest {
                 if let PaneId::Terminal(terminal_id) = pane_id {
                     let frame = zellij_utils::nested_session::encode_frame(
                         &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
@@ -1960,6 +1967,7 @@ pub fn start_server_impl(
                 new_pane_id,
                 should_route,
                 entered_from_direction,
+                notify_guest,
             ) => {
                 let mut session_data = session_data.write().unwrap();
                 if let Some(session_data) = session_data.as_mut() {
@@ -1974,7 +1982,7 @@ pub fn start_server_impl(
                                     .key_passthrough_clients
                                     .values()
                                     .any(|p| *p == previous_pane_id);
-                                if !pane_still_active {
+                                if !pane_still_active && notify_guest {
                                     if let crate::panes::PaneId::Terminal(terminal_id) =
                                         previous_pane_id
                                     {
@@ -2008,7 +2016,8 @@ pub fn start_server_impl(
                             }
                         }
                     } else if previous_pane.is_some() {
-                        session_data.remove_key_passthrough_client(client_id);
+                        session_data
+                            .remove_key_passthrough_client_with_notify(client_id, notify_guest);
                     }
                 }
             },

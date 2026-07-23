@@ -2857,7 +2857,7 @@ impl Screen {
                             self.set_client_dimmed(client_id, false, None);
                             let _ = self.bus.senders.send_to_server(
                                 ServerInstruction::KeyPassthroughChanged(
-                                    client_id, pane_id, pane_id, false, None,
+                                    client_id, pane_id, pane_id, false, None, true,
                                 ),
                             );
                         }
@@ -3096,7 +3096,7 @@ impl Screen {
                 .bus
                 .senders
                 .send_to_server(ServerInstruction::KeyPassthroughChanged(
-                    client_id, pane_id, pane_id, false, None,
+                    client_id, pane_id, pane_id, false, None, false,
                 ));
         }
     }
@@ -3199,6 +3199,7 @@ impl Screen {
             new_pane_id,
             should_route,
             entered_from_direction,
+            true,
         ));
     }
 
@@ -4494,7 +4495,7 @@ impl Screen {
                 .bus
                 .senders
                 .send_to_server(ServerInstruction::KeyPassthroughChanged(
-                    client_id, pane_id, pane_id, false, None,
+                    client_id, pane_id, pane_id, false, None, true,
                 ));
         }
         self.nested_guest_choices
