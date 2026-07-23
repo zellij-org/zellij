@@ -489,6 +489,56 @@ fn innermost_fullscreen_fills_the_whole_outer_terminal_and_zooms_the_chain() {
     );
 }
 
+#[test]
+fn zoom_modal_while_outer_is_ascended_still_fullscreens_the_outer() {
+    let nested = NestedDepthThreeHarness::start_depth_three(TERMINAL_SIZE);
+    let outer_session_name = nested.outer.session_name().to_string();
+    let middle_session_name = nested.middle.session_name().to_string();
+    let inner_session_name = nested.inner.session_name().to_string();
+
+    nested.descend_outer_into_middle_via_modal();
+    nested.middle.wait_for_app_load();
+
+    let ascended = nested.mark_outer_to_middle();
+    nested.outer.send_stdin(&keys::ctrl('o'));
+    nested.middle.wait_until(
+        "middle entered session mode before the ascend key",
+        session_mode_bar_settled,
+    );
+    nested.outer.send_stdin(ARROW_UP);
+    nested.wait_for_outer_to_ascend_from_middle_after(ascended);
+    nested.outer.wait_until(
+        "outer restored its own chrome after ascending out of the middle",
+        |outer_grid| host_own_name_present(outer_grid, &outer_session_name),
+    );
+
+    let outer_told = nested.mark_outer_to_middle();
+    nested.zoom_middle_into_inner_via_modal();
+    nested.outer_to_middle_frames().wait_for_after(
+        outer_told,
+        "outer honors the fullscreen chain even though it is ascended out of the middle",
+        |message| {
+            matches!(
+                message,
+                NestedSessionMessage::FullscreenState { fullscreen: true }
+            )
+        },
+    );
+
+    let expected_breadcrumb = breadcrumb_for(
+        &[&outer_session_name, &middle_session_name],
+        &inner_session_name,
+    );
+    nested.outer.wait_until(
+        "the ascended outer drops its own chrome and shows the full nested fullscreen breadcrumb",
+        |outer_grid| {
+            outer_grid.contains(&expected_breadcrumb)
+                && !host_own_name_present(outer_grid, &outer_session_name)
+                && !host_own_name_present(outer_grid, &middle_session_name)
+        },
+    );
+}
+
 fn ascend_inner_to_middle(nested: &NestedDepthThreeHarness) {
     let requested = nested.mark_inner_to_middle();
     let ascended = nested.mark_middle_to_inner();

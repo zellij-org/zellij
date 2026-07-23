@@ -1461,7 +1461,6 @@ impl NestedGuestChoice {
 pub enum GuestModalOutcome {
     Zoom,
     Descend,
-    Dismiss,
 }
 
 fn format_guest_modal_shortcut(keys: &[KeyWithModifier]) -> Vec<String> {
@@ -2904,9 +2903,7 @@ impl Screen {
                 self.refresh_nested_ascend_keys_for_pane(pane_id);
             },
             NestedSessionMessage::ToggleHostFullscreen { fullscreen } => {
-                if !(self.nested_guest_tracker.is_tracked(pane_id)
-                    && self.any_client_descended_into_pane(pane_id))
-                {
+                if !self.nested_guest_tracker.is_tracked(pane_id) {
                     log::debug!(
                         "ignoring nested fullscreen request from non-live guest pane {:?}",
                         pane_id
@@ -3000,12 +2997,6 @@ impl Screen {
             }
         }
         match outcome {
-            GuestModalOutcome::Dismiss => {
-                self.nested_guest_choices
-                    .insert((client_id, pane_id), NestedGuestChoice::Dismissed);
-                self.sync_guest_choice_indicator(client_id, pane_id);
-                let _ = self.render(None);
-            },
             GuestModalOutcome::Descend => {
                 self.nested_guest_choices
                     .insert((client_id, pane_id), NestedGuestChoice::Descend);
@@ -3146,14 +3137,6 @@ impl Screen {
             }
         }
         false
-    }
-
-    fn any_client_descended_into_pane(&self, pane_id: PaneId) -> bool {
-        self.nested_guest_choices
-            .iter()
-            .any(|((_, choice_pane_id), choice)| {
-                *choice_pane_id == pane_id && choice.enters_passthrough()
-            })
     }
 
     fn downgrade_zoom_choice_to_descend(&mut self, pane_id: PaneId) {
@@ -3436,6 +3419,7 @@ impl Screen {
 
     fn apply_nested_guest_fullscreen(&mut self, pane_id: PaneId, fullscreen: bool) {
         let mut actually_fullscreen = false;
+        let mut displaced_pane_id = None;
         if let Some(tab) = self
             .tabs
             .values_mut()
@@ -3443,11 +3427,21 @@ impl Screen {
         {
             let currently_fullscreen =
                 tab.fullscreen_pane_id() == Some(pane_id) && tab.fullscreen_covers_ui();
-            if currently_fullscreen != fullscreen {
+            if fullscreen && !currently_fullscreen {
+                let existing_fullscreen = tab.fullscreen_pane_id();
+                if existing_fullscreen.is_some() && existing_fullscreen != Some(pane_id) {
+                    displaced_pane_id = existing_fullscreen;
+                    tab.toggle_pane_no_ui_fullscreen(existing_fullscreen.unwrap());
+                }
+                tab.toggle_pane_no_ui_fullscreen(pane_id);
+            } else if !fullscreen && currently_fullscreen {
                 tab.toggle_pane_no_ui_fullscreen(pane_id);
             }
             actually_fullscreen =
                 tab.fullscreen_pane_id() == Some(pane_id) && tab.fullscreen_covers_ui();
+        }
+        if let Some(displaced_pane_id) = displaced_pane_id {
+            self.nested_fullscreen_panes.remove(&displaced_pane_id);
         }
         if actually_fullscreen {
             self.nested_fullscreen_panes.insert(pane_id);

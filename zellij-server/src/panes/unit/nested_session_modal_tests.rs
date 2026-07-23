@@ -44,8 +44,7 @@ fn renders_all_expected_content() {
     assert!(rendered.contains("Nested Zellij session detected: my-session"));
     assert!(rendered.contains("What would you like to do?"));
     assert!(rendered.contains("Zoom in and control this session"));
-    assert!(rendered.contains("Control this session automatically on focus (AUTO)"));
-    assert!(rendered.contains("Leave it be, enter manually later (MANUAL)"));
+    assert!(rendered.contains("Control this session on focus"));
     assert!(rendered.contains("<↓↑> select"));
     assert!(rendered.contains("<Enter> confirm"));
     assert!(rendered.contains("<Esc> dismiss"));
@@ -59,7 +58,6 @@ fn renders_resolved_keybindings_as_joined_tokens() {
     let rendered = rendered_text(&chunks);
     assert!(rendered.contains("<Ctrl g> + <o> + <f>"));
     assert!(rendered.contains("<Ctrl o>"));
-    assert!(rendered.contains("<Ctrl o> + <d>"));
 }
 
 #[test]
@@ -81,9 +79,9 @@ fn selection_marker_moves_with_selected_index() {
     assert!(first.iter().any(|line| line.trim_start().starts_with("2.")));
     assert!(!first.iter().any(|line| line.trim_start().starts_with("> 2.")));
 
-    let third = render_lines(&guest_modal_chunks(80, 30, 0, 0, &style, "s", 2, &shortcuts));
-    assert!(third.iter().any(|line| line.trim_start().starts_with("> 3.")));
-    assert!(!third.iter().any(|line| line.trim_start().starts_with("> 1.")));
+    let second = render_lines(&guest_modal_chunks(80, 30, 0, 0, &style, "s", 1, &shortcuts));
+    assert!(second.iter().any(|line| line.trim_start().starts_with("> 2.")));
+    assert!(!second.iter().any(|line| line.trim_start().starts_with("> 1.")));
 }
 
 fn number_column(line: &str, number: &str) -> usize {
@@ -106,7 +104,7 @@ fn options_are_left_justified_within_the_centered_block() {
         "block must be centered with a left pad before the marker"
     );
 
-    for (number, needle) in [("2.", "2."), ("3.", "3.")] {
+    for (number, needle) in [("2.", "2.")] {
         let line = lines
             .iter()
             .find(|line| line.trim_start().starts_with(needle))
@@ -168,7 +166,7 @@ fn every_rendered_row_spans_the_full_width() {
 }
 
 #[test]
-fn hit_test_round_trips_the_three_options() {
+fn hit_test_round_trips_the_options() {
     let style = Style::default();
     let shortcuts = sample_shortcuts();
     let rows = 40;
@@ -182,7 +180,7 @@ fn hit_test_round_trips_the_three_options() {
             hit_rows.push(row);
         }
     }
-    assert_eq!(hit_rows.len(), 3);
+    assert_eq!(hit_rows.len(), 2);
 }
 
 #[test]
@@ -220,8 +218,7 @@ fn hit_test_matches_rendered_marker_rows() {
         let trimmed = line.trim_start();
         let is_option_line = trimmed.starts_with("> ")
             || trimmed.starts_with("1.")
-            || trimmed.starts_with("2.")
-            || trimmed.starts_with("3.");
+            || trimmed.starts_with("2.");
         assert_eq!(hit.is_some(), is_option_line, "row {} mismatch", row);
     }
 }

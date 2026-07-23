@@ -920,7 +920,7 @@ pub fn guest_modal_navigation_wraps() {
     pane.set_guest_modal(&[client_id]);
     assert_eq!(pane.guest_modal_selection(client_id), Some(0));
     press_key(&mut pane, BareKey::Up, client_id);
-    assert_eq!(pane.guest_modal_selection(client_id), Some(2));
+    assert_eq!(pane.guest_modal_selection(client_id), Some(1));
     press_key(&mut pane, BareKey::Down, client_id);
     assert_eq!(pane.guest_modal_selection(client_id), Some(0));
     press_key(&mut pane, BareKey::Down, client_id);
@@ -957,12 +957,6 @@ pub fn guest_modal_enter_confirms_selection() {
     press_key(&mut pane, BareKey::Down, client_id);
     let outcome = press_key(&mut pane, BareKey::Enter, client_id);
     assert!(matches!(outcome, Some(AdjustedInput::GuestModalDescend)));
-
-    pane.set_guest_modal(&[client_id]);
-    press_key(&mut pane, BareKey::Down, client_id);
-    press_key(&mut pane, BareKey::Down, client_id);
-    let outcome = press_key(&mut pane, BareKey::Enter, client_id);
-    assert!(matches!(outcome, Some(AdjustedInput::GuestModalDismiss)));
 }
 
 #[test]
@@ -979,21 +973,17 @@ pub fn guest_modal_digit_shortcuts() {
     pane.set_guest_modal(&[client_id]);
     let outcome = press_key(&mut pane, BareKey::Char('2'), client_id);
     assert!(matches!(outcome, Some(AdjustedInput::GuestModalDescend)));
-
-    pane.set_guest_modal(&[client_id]);
-    let outcome = press_key(&mut pane, BareKey::Char('3'), client_id);
-    assert!(matches!(outcome, Some(AdjustedInput::GuestModalDismiss)));
 }
 
 #[test]
-pub fn guest_modal_esc_dismisses() {
+pub fn guest_modal_esc_descends() {
     use crate::tab::AdjustedInput;
     use zellij_utils::data::BareKey;
     let mut pane = create_guest_modal_pane();
     let client_id = 1;
     pane.set_guest_modal(&[client_id]);
     let outcome = press_key(&mut pane, BareKey::Esc, client_id);
-    assert!(matches!(outcome, Some(AdjustedInput::GuestModalDismiss)));
+    assert!(matches!(outcome, Some(AdjustedInput::GuestModalDescend)));
 }
 
 #[test]

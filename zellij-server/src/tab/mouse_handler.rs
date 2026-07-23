@@ -403,8 +403,7 @@ impl MouseHandler {
         if let Some(option) = hit_option {
             let outcome = match option {
                 0 => GuestModalOutcome::Zoom,
-                1 => GuestModalOutcome::Descend,
-                _ => GuestModalOutcome::Dismiss,
+                _ => GuestModalOutcome::Descend,
             };
             let _ = tab
                 .senders

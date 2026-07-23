@@ -385,16 +385,14 @@ fn guest_modal_layout(
     )];
     let options = [
         ("1. ", "Zoom in and control this session"),
-        ("2. ", "Control this session automatically on focus (AUTO)"),
-        ("3. ", "Leave it be, enter manually later (MANUAL)"),
+        ("2. ", "Control this session on focus"),
     ];
     let explanation_texts = [
         "The session will take up the whole screen. Toggle this on/off with",
         "When this pane gains focus, keybindings will be sent to this session. Ascend to the current session with",
-        "Manually descend into this session when focused with",
     ];
-    let shortcut_keys = [&shortcuts.zoom, &shortcuts.ascend, &shortcuts.descend];
-    let hint = "<↓↑> select  <Enter> confirm  <1-3> direct  <Esc> dismiss";
+    let shortcut_keys = [&shortcuts.zoom, &shortcuts.ascend];
+    let hint = "<↓↑> select  <Enter> confirm  <1-2> direct  <Esc> dismiss";
     let hint_segments =
         guest_modal_hint_segments(hint, styles.fill.clone(), styles.keycode.clone());
 

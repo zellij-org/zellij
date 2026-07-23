@@ -319,37 +319,34 @@ impl Pane for TerminalPane {
             let digit = key_with_modifier
                 .as_ref()
                 .and_then(|k| match k.bare_key {
-                    BareKey::Char(c @ '1'..='3') if k.key_modifiers.is_empty() => Some(c),
+                    BareKey::Char(c @ '1'..='2') if k.key_modifiers.is_empty() => Some(c),
                     _ => None,
                 })
                 .or_else(|| match raw_input_bytes.as_slice() {
                     b"1" => Some('1'),
                     b"2" => Some('2'),
-                    b"3" => Some('3'),
                     _ => None,
                 });
             if is_up {
-                self.guest_modal.insert(client_id, (selection + 2) % 3);
+                self.guest_modal.insert(client_id, (selection + 1) % 2);
                 self.set_should_render(true);
                 Some(AdjustedInput::GuestModalSelectionChanged)
             } else if is_down {
-                self.guest_modal.insert(client_id, (selection + 1) % 3);
+                self.guest_modal.insert(client_id, (selection + 1) % 2);
                 self.set_should_render(true);
                 Some(AdjustedInput::GuestModalSelectionChanged)
             } else if let Some(digit) = digit {
                 match digit {
                     '1' => Some(AdjustedInput::GuestModalZoom),
-                    '2' => Some(AdjustedInput::GuestModalDescend),
-                    _ => Some(AdjustedInput::GuestModalDismiss),
+                    _ => Some(AdjustedInput::GuestModalDescend),
                 }
             } else if is_enter {
                 match selection {
                     0 => Some(AdjustedInput::GuestModalZoom),
-                    1 => Some(AdjustedInput::GuestModalDescend),
-                    _ => Some(AdjustedInput::GuestModalDismiss),
+                    _ => Some(AdjustedInput::GuestModalDescend),
                 }
             } else if is_esc {
-                Some(AdjustedInput::GuestModalDismiss)
+                Some(AdjustedInput::GuestModalDescend)
             } else {
                 None
             }

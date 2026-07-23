@@ -794,7 +794,6 @@ pub enum AdjustedInput {
     GuestModalSelectionChanged,
     GuestModalZoom,
     GuestModalDescend,
-    GuestModalDismiss,
 }
 pub fn get_next_terminal_position(
     tiled_panes: &TiledPanes,
@@ -4430,17 +4429,6 @@ impl Tab {
                                     client_id,
                                     pane_id: PaneId::Terminal(active_terminal_id),
                                     outcome: GuestModalOutcome::Descend,
-                                },
-                            );
-                        }
-                    },
-                    Some(AdjustedInput::GuestModalDismiss) => {
-                        if let Some(client_id) = client_id {
-                            let _ = self.senders.send_to_screen(
-                                ScreenInstruction::GuestModalChoice {
-                                    client_id,
-                                    pane_id: PaneId::Terminal(active_terminal_id),
-                                    outcome: GuestModalOutcome::Dismiss,
                                 },
                             );
                         }

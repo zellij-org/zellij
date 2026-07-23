@@ -2046,6 +2046,72 @@ fn mouse_focus_clears_bell_on_focused_pane() {
 }
 
 #[test]
+fn nested_guest_fullscreen_moves_from_one_pane_to_another() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+
+    new_tab(&mut screen, 1, 0);
+    let pane_one = PaneId::Terminal(1);
+    let pane_two = PaneId::Terminal(2);
+    {
+        let active_tab = screen.get_active_tab_mut(client_id).unwrap();
+        active_tab
+            .horizontal_split(pane_two, None, client_id, None, None)
+            .unwrap();
+    }
+
+    screen.apply_nested_guest_fullscreen(pane_one, true);
+    {
+        let active_tab = screen.get_active_tab(client_id).unwrap();
+        assert_eq!(
+            active_tab.fullscreen_pane_id(),
+            Some(pane_one),
+            "the first guest pane is fullscreen"
+        );
+        assert!(active_tab.fullscreen_covers_ui());
+    }
+    assert_eq!(
+        screen.nested_fullscreen_panes,
+        [pane_one].into_iter().collect(),
+        "only the first guest pane is tracked as fullscreen"
+    );
+
+    screen.apply_nested_guest_fullscreen(pane_two, true);
+    {
+        let active_tab = screen.get_active_tab(client_id).unwrap();
+        assert_eq!(
+            active_tab.fullscreen_pane_id(),
+            Some(pane_two),
+            "fullscreen moved to the second guest pane"
+        );
+        assert!(active_tab.fullscreen_covers_ui());
+    }
+    assert_eq!(
+        screen.nested_fullscreen_panes,
+        [pane_two].into_iter().collect(),
+        "the first guest pane is no longer tracked as fullscreen, only the second is"
+    );
+
+    screen.apply_nested_guest_fullscreen(pane_two, false);
+    {
+        let active_tab = screen.get_active_tab(client_id).unwrap();
+        assert_eq!(
+            active_tab.fullscreen_pane_id(),
+            None,
+            "unsetting fullscreen restores the tiled layout"
+        );
+    }
+    assert!(
+        screen.nested_fullscreen_panes.is_empty(),
+        "no guest panes are tracked as fullscreen after unsetting"
+    );
+}
+
+#[test]
 fn group_panes_with_keyboard() {
     let size = Size {
         cols: 121,

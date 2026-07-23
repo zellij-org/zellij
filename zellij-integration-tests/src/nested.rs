@@ -364,10 +364,6 @@ impl NestedHarness {
         self.wait_for_host_to_descend_into_guest_after(descended);
     }
 
-    pub fn dismiss_guest_modal(&self) {
-        self.host.send_stdin(b"3");
-    }
-
     pub fn wait_for_host_to_ascend_from_guest(&self) {
         self.wait_for_host_to_ascend_from_guest_after(0);
     }
@@ -537,6 +533,16 @@ impl NestedDepthThreeHarness {
         );
         let descended = self.mark_middle_to_inner();
         self.outer.send_stdin(b"2");
+        self.wait_for_middle_to_descend_into_inner_after(descended);
+    }
+
+    pub fn zoom_middle_into_inner_via_modal(&self) {
+        self.middle_to_inner.wait_for(
+            "the inner guest to announce itself to the middle host before zooming",
+            |message| matches!(message, NestedSessionMessage::AnnounceAck { .. }),
+        );
+        let descended = self.mark_middle_to_inner();
+        self.outer.send_stdin(b"1");
         self.wait_for_middle_to_descend_into_inner_after(descended);
     }
 

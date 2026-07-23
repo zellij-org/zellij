@@ -12,14 +12,6 @@ fn last_line_contains(grid_snapshot: &GridSnapshot, needle: &str) -> bool {
         .map_or(false, |last_line| last_line.contains(needle))
 }
 
-fn normal_mode_bar_settled(grid_snapshot: &GridSnapshot) -> bool {
-    last_line_contains(grid_snapshot, "LOCK")
-}
-
-fn pane_mode_bar_settled(grid_snapshot: &GridSnapshot) -> bool {
-    last_line_contains(grid_snapshot, "Fullscreen")
-}
-
 fn modal_visible(grid_snapshot: &GridSnapshot) -> bool {
     grid_snapshot.contains("Nested Zellij session detected")
 }
@@ -65,9 +57,9 @@ fn modal_renders_expected_ui() {
     let host_with_modal = wait_for_modal(&nested);
     assert!(host_with_modal.contains("What would you like to do?"));
     assert!(host_with_modal.contains("Zoom in and control this session"));
+    assert!(host_with_modal.contains("Control this session on focus"));
     assert!(host_with_modal.contains("<Ctrl y>"));
     assert!(host_with_modal.contains("<Ctrl u>"));
-    assert!(host_with_modal.contains("<Ctrl i>"));
     assert!(host_with_modal.contains("<↓↑> select"));
 
     let steady_modal = nested.host.wait_until(
@@ -75,11 +67,9 @@ fn modal_renders_expected_ui() {
         |host_grid| {
             modal_visible(host_grid)
                 && host_grid.contains("What would you like to do?")
-                && host_grid.contains("(AUTO)")
-                && host_grid.contains("(MANUAL)")
+                && host_grid.contains("Control this session on focus")
                 && host_grid.contains("<Ctrl y>")
                 && host_grid.contains("<Ctrl u>")
-                && host_grid.contains("<Ctrl i>")
                 && host_grid.contains("<↓↑> select")
         },
     );
@@ -123,8 +113,7 @@ fn modal_appears_on_announce_and_occludes_guest_content() {
     let host_with_modal = wait_for_modal(&nested);
     assert!(modal_visible(&host_with_modal));
     assert!(host_with_modal.contains("Zoom in and control this session"));
-    assert!(host_with_modal.contains("(AUTO)"));
-    assert!(host_with_modal.contains("(MANUAL)"));
+    assert!(host_with_modal.contains("Control this session on focus"));
     assert_eq!(
         nested.focus_gained_count(),
         0,
@@ -192,57 +181,38 @@ fn digit_one_zooms_and_enters_passthrough() {
 }
 
 #[test]
-fn dismissing_the_modal_keeps_host_keybindings_working() {
-    let mut nested = NestedHarness::start(TERMINAL_SIZE);
-
-    wait_for_modal(&nested);
-    nested.dismiss_guest_modal();
-    nested.host.wait_until("modal dismissed", |host_grid| {
-        !modal_visible(host_grid)
-    });
-    assert_eq!(
-        nested.focus_gained_count(),
-        0,
-        "dismissing the modal must not enter passthrough"
-    );
-
-    nested.host.send_stdin(&keys::ctrl('p'));
-    nested.host.wait_until(
-        "host acts on its own pane-mode keybinding after dismissing the modal",
-        pane_mode_bar_settled,
-    );
-    nested.host.send_stdin(&keys::ESC);
-    nested.host.wait_until(
-        "host returned to normal mode after dismissing the modal",
-        normal_mode_bar_settled,
-    );
-
-    nested.guest.wait_for_app_load();
-    nested.guest.quit();
-    nested.host.quit();
-}
-
-#[test]
-fn focus_guest_session_descends_after_dismissal() {
+fn focus_guest_session_redescends_after_ascending() {
     let mut nested =
         NestedHarness::start_with_host_config(TERMINAL_SIZE, focus_guest_binding_config());
 
     wait_for_modal(&nested);
-    nested.dismiss_guest_modal();
-    nested.host.wait_until("modal dismissed", |host_grid| {
-        !modal_visible(host_grid)
-    });
 
     let descended = nested.mark_host_to_guest();
-    nested.host.send_stdin(&keys::ctrl('y'));
+    nested.host.send_stdin(b"2");
     nested.wait_for_host_to_descend_into_guest_after(descended);
-
+    nested.host.wait_until("modal answered", |host_grid| {
+        !modal_visible(host_grid)
+    });
     nested.guest.wait_for_app_load();
+
+    let ascended = nested.mark_host_to_guest();
+    nested.host.send_stdin(&keys::ctrl('o'));
+    nested.guest.wait_until(
+        "guest entered session mode before the ascend key",
+        |guest_grid| last_line_contains(guest_grid, "SESSION"),
+    );
+    nested.host.send_stdin(b"\x1b[A");
+    nested.wait_for_host_to_ascend_from_guest_after(ascended);
+
+    let redescended = nested.mark_host_to_guest();
+    nested.host.send_stdin(&keys::ctrl('y'));
+    nested.wait_for_host_to_descend_into_guest_after(redescended);
+
     nested.host.send_stdin(&keys::alt('n'));
     let guest_new_pane = nested.guest.expect_pty_spawn();
     guest_new_pane.output(PROMPT);
     nested.guest.wait_until(
-        "guest spawned a pane from the passed-through key after FocusGuestSession",
+        "guest spawned a pane from the passed-through key after FocusGuestSession re-descended",
         |guest_grid| guest_grid.contains("Pane #2"),
     );
 
@@ -286,13 +256,16 @@ fn two_clients_answer_their_own_modals_independently() {
 }
 
 #[test]
-fn guest_reannounce_reshows_a_dismissed_modal() {
+fn host_stops_pinging_a_frozen_guest_after_answering_the_modal() {
     let mut nested = NestedHarness::start(TERMINAL_SIZE);
 
     wait_for_modal(&nested);
     nested.guest.wait_for_app_load();
-    nested.dismiss_guest_modal();
-    nested.host.wait_until("modal dismissed", |host_grid| {
+
+    let descended = nested.mark_host_to_guest();
+    nested.host.send_stdin(b"2");
+    nested.wait_for_host_to_descend_into_guest_after(descended);
+    nested.host.wait_until("modal answered", |host_grid| {
         !modal_visible(host_grid)
     });
 

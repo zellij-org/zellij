@@ -8,12 +8,9 @@ expression: normalized(&steady_modal)
                                > 1. Zoom in and control this session
                                     The session will take up the whole screen. Toggle
                                     this on/off with <Ctrl y>
-                                 2. Control this session automatically on focus (AUTO)
+                                 2. Control this session on focus
                                     When this pane gains focus, keybindings will be sent
                                     to this session. Ascend to the current session with
                                     <Ctrl u>
-                                 3. Leave it be, enter manually later (MANUAL)
-                                    Manually descend into this session when focused with
-                                    <Ctrl i>
-                               <↓↑> select  <Enter> confirm  <1-3> direct  <Esc> dismiss
+                               <↓↑> select  <Enter> confirm  <1-2> direct  <Esc> dismiss
  Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...
