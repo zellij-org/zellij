@@ -18,8 +18,9 @@ use crate::input::options::{
     PaneFrameStyle,
 };
 use crate::ipc::{
-    ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ResizeCause,
-    ServerToClientMsg,
+    ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
+    MobileSessionPayload, MobileSizePayload, MobileStatePayload, MobileTabPayload, PaneReference,
+    PixelDimensions, ResizeCause, ServerToClientMsg,
 };
 use crate::pane_size::{Size, SizeInPixels};
 use crate::position::Position;
@@ -3389,6 +3390,7 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::ClientExited);
     test_client_roundtrip!(ClientToServerMsg::KillSession);
     test_client_roundtrip!(ClientToServerMsg::ConnStatus);
+    test_client_roundtrip!(ClientToServerMsg::RequestSessionList);
     test_client_roundtrip!(ClientToServerMsg::WebServerStarted {
         base_url: "http://localhost:8080".to_string(),
     });
@@ -3880,6 +3882,76 @@ fn test_server_messages() {
     });
     test_server_roundtrip!(ServerToClientMsg::EmitNestedSessionFrame {
         payload_bytes: (0u8..=255u8).collect(),
+    });
+    test_server_roundtrip!(ServerToClientMsg::SetSoftKeyboard { on: true });
+    test_server_roundtrip!(ServerToClientMsg::SetSoftKeyboard { on: false });
+    test_server_roundtrip!(ServerToClientMsg::MobileState {
+        payload: MobileStatePayload {
+            session_name: String::new(),
+            now_secs: 0,
+            is_welcome_screen: false,
+            desktop_client_connected: false,
+            desktop_size: None,
+            active_pane: None,
+            tabs: vec![],
+            panes: vec![],
+            sessions: vec![],
+        },
+    });
+    test_server_roundtrip!(ServerToClientMsg::MobileState {
+        payload: MobileStatePayload {
+            session_name: "my-session".to_string(),
+            now_secs: 1_700_000_000,
+            is_welcome_screen: true,
+            desktop_client_connected: true,
+            desktop_size: Some(MobileSizePayload {
+                cols: 200,
+                rows: 60,
+            }),
+            active_pane: Some(MobileActivePanePayload {
+                pane_id: 3,
+                is_plugin: true,
+                tab_position: 1,
+            }),
+            tabs: vec![
+                MobileTabPayload {
+                    position: 0,
+                    name: "Tab #1".to_string(),
+                    active: true,
+                },
+                MobileTabPayload {
+                    position: 1,
+                    name: "Tab #2".to_string(),
+                    active: false,
+                },
+            ],
+            panes: vec![
+                MobilePanePayload {
+                    tab_position: 0,
+                    pane_id: 1,
+                    is_plugin: false,
+                    title: "zsh".to_string(),
+                    is_floating: false,
+                    last_activity_secs_ago: 0,
+                },
+                MobilePanePayload {
+                    tab_position: 1,
+                    pane_id: 3,
+                    is_plugin: true,
+                    title: "welcome-screen".to_string(),
+                    is_floating: true,
+                    last_activity_secs_ago: 340,
+                },
+            ],
+            sessions: vec![MobileSessionPayload {
+                name: "other-session".to_string(),
+                web_clients_allowed: true,
+                tab_count: 2,
+                pane_count: 4,
+                connected_clients: 1,
+                creation_secs_ago: 3600,
+            }],
+        },
     });
 }
 

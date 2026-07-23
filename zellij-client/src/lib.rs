@@ -220,6 +220,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::PaneRenderUpdate { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SubscribedPaneClosed { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SetSoftKeyboard { .. } => ClientInstruction::UnblockInputThread,
+            ServerToClientMsg::MobileState { .. } => ClientInstruction::UnblockInputThread,
         }
     }
 }
@@ -749,6 +750,9 @@ pub async fn run_remote_client_terminal_loop(
                                 // no-op
                             }
                             Ok(WebServerToWebClientControlMessage::SetSoftKeyboard{ .. }) => {
+                                // no-op
+                            }
+                            Ok(WebServerToWebClientControlMessage::MobileState{ .. }) => {
                                 // no-op
                             }
                             Err(e) => {

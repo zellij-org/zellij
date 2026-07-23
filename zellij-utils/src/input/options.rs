@@ -60,18 +60,18 @@ impl MobileLayoutConfiguration {
         let rows_match =
             rows_reported && (threshold_rows == 0 || viewport_rows <= threshold_rows as usize);
         let size_match = cols_match || rows_match;
+        if is_web_client {
+            return false;
+        }
         match self {
             MobileLayoutConfiguration::Always => size_match,
             MobileLayoutConfiguration::Never => false,
-            MobileLayoutConfiguration::Web => is_web_client && size_match,
+            MobileLayoutConfiguration::Web => false,
         }
     }
 
     pub fn may_route_web_client_to_mobile(self) -> bool {
-        matches!(
-            self,
-            MobileLayoutConfiguration::Web | MobileLayoutConfiguration::Always
-        )
+        false
     }
 }
 
@@ -854,8 +854,28 @@ mod tests {
     }
 
     #[test]
-    fn web_requires_web_client() {
-        assert!(route(MobileLayoutConfiguration::Web, true, SMALL, (60, 30)));
+    fn web_clients_never_route_to_plugin_mobile() {
+        for &layout in &[
+            MobileLayoutConfiguration::Web,
+            MobileLayoutConfiguration::Always,
+            MobileLayoutConfiguration::Never,
+        ] {
+            for &viewport in &[SMALL, WIDE_SHORT, TALL_NARROW, LARGE] {
+                for &thresholds in &[(60, 30), (0, 0), (0, 30), (60, 0)] {
+                    assert!(
+                        !route(layout, true, viewport, thresholds),
+                        "web clients must never route to plugin mobile (layout={layout:?} viewport={viewport:?} thresholds={thresholds:?})",
+                    );
+                }
+            }
+        }
+        assert!(!MobileLayoutConfiguration::Web.may_route_web_client_to_mobile());
+        assert!(!MobileLayoutConfiguration::Always.may_route_web_client_to_mobile());
+        assert!(!MobileLayoutConfiguration::Never.may_route_web_client_to_mobile());
+    }
+
+    #[test]
+    fn web_layout_never_routes_native_clients() {
         assert!(!route(
             MobileLayoutConfiguration::Web,
             false,
@@ -865,45 +885,11 @@ mod tests {
     }
 
     #[test]
-    fn web_respects_size_in_either_dimension() {
-        assert!(route(
-            MobileLayoutConfiguration::Web,
-            true,
-            TALL_NARROW,
-            (60, 30)
-        ));
-        assert!(route(
-            MobileLayoutConfiguration::Web,
-            true,
-            WIDE_SHORT,
-            (60, 30)
-        ));
-        assert!(!route(
-            MobileLayoutConfiguration::Web,
-            true,
-            LARGE,
-            (60, 30)
-        ));
-    }
-
-    #[test]
-    fn always_routes_any_client_on_size_match() {
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            true,
-            SMALL,
-            (60, 30)
-        ));
+    fn always_routes_native_client_on_size_match() {
         assert!(route(
             MobileLayoutConfiguration::Always,
             false,
             SMALL,
-            (60, 30)
-        ));
-        assert!(!route(
-            MobileLayoutConfiguration::Always,
-            true,
-            LARGE,
             (60, 30)
         ));
         assert!(!route(
@@ -934,7 +920,7 @@ mod tests {
             LARGE,
             (0, 0)
         ));
-        assert!(route(MobileLayoutConfiguration::Web, true, LARGE, (0, 0)));
+        assert!(!route(MobileLayoutConfiguration::Web, true, LARGE, (0, 0)));
         assert!(!route(MobileLayoutConfiguration::Web, false, LARGE, (0, 0)));
     }
 
@@ -960,13 +946,13 @@ mod tests {
         ));
         assert!(route(
             MobileLayoutConfiguration::Always,
-            true,
+            false,
             (40, 0),
             (60, 30)
         ));
         assert!(route(
             MobileLayoutConfiguration::Always,
-            true,
+            false,
             (0, 20),
             (60, 30)
         ));

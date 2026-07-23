@@ -183,6 +183,11 @@ pub fn zellij_server_listener(
                                     WebServerToWebClientControlMessage::SetSoftKeyboard { on },
                                 );
                             },
+                            Some(ServerToClientMsg::MobileState{payload}) => {
+                                client_connection_bus.send_control(
+                                    WebServerToWebClientControlMessage::MobileState { payload },
+                                );
+                            },
                             Some(ServerToClientMsg::Log{lines}) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::Log { lines },

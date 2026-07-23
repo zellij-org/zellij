@@ -3728,6 +3728,10 @@ impl Tab {
             self.tiled_panes.get_active_pane_id(client_id)
         }
     }
+    pub fn get_active_pane_id_or_first_selectable(&self, client_id: ClientId) -> Option<PaneId> {
+        self.get_active_pane_id(client_id)
+            .or_else(|| self.tiled_panes.first_selectable_pane_id())
+    }
     fn get_active_terminal_id(&self, client_id: ClientId) -> Option<u32> {
         if let Some(PaneId::Terminal(pid)) = self.get_active_pane_id(client_id) {
             Some(pid)
@@ -7128,6 +7132,17 @@ impl Tab {
         }
     }
 
+    pub fn pane_last_activity(&self) -> HashMap<PaneId, u64> {
+        let now = Instant::now();
+        let mut activity = HashMap::new();
+        for pane_id in self.get_all_pane_ids() {
+            if let Some(pane) = self.get_pane_with_id(pane_id) {
+                let secs_ago = now.saturating_duration_since(pane.active_at()).as_secs();
+                activity.insert(pane_id, secs_ago);
+            }
+        }
+        activity
+    }
     pub fn pane_infos(&self) -> Vec<PaneInfo> {
         let mut pane_info = vec![];
         let current_pane_group = { self.current_pane_group.borrow().clone_inner() };

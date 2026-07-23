@@ -2843,6 +2843,38 @@ pub(crate) fn route_thread_main(
                                 },
                             }
                         },
+                        ClientToServerMsg::RequestSessionList => {
+                            if let Some(senders) = senders.as_ref() {
+                                if let Some(scan_state) =
+                                    crate::background_jobs::session_scan_state()
+                                {
+                                    let (session_name, available_layouts, plugin_list) = {
+                                        let name =
+                                            scan_state.current_session_name.lock().unwrap().clone();
+                                        let info =
+                                            scan_state.current_session_info.lock().unwrap().clone();
+                                        let plugins = scan_state
+                                            .current_session_plugin_list
+                                            .lock()
+                                            .unwrap()
+                                            .clone();
+                                        (name, info.available_layouts, plugins)
+                                    };
+                                    let (live_sessions_map, resurrectable_sessions_map) =
+                                        crate::background_jobs::scan_session_list_default_dirs(
+                                            &session_name,
+                                            &available_layouts,
+                                            &plugin_list,
+                                        );
+                                    let _ = senders.send_to_screen(
+                                        ScreenInstruction::UpdateSessionInfos(
+                                            live_sessions_map,
+                                            resurrectable_sessions_map,
+                                        ),
+                                    );
+                                }
+                            }
+                        },
                     }
                     Ok(should_break)
                 };

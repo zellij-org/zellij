@@ -99,6 +99,16 @@ export function initWebSockets(
             const wsControlUrl = `${wsBaseUrl}/ws/control`;
             wsControl = new WebSocket(wsControlUrl);
             startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig);
+            window.__zjSendControl = function (payload) {
+                if (wsControl && wsControl.readyState === WebSocket.OPEN) {
+                    wsControl.send(
+                        JSON.stringify({
+                            web_client_id: ownWebClientId,
+                            payload,
+                        })
+                    );
+                }
+            };
         }
 
         let data = event.data;
@@ -289,6 +299,14 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
         } else if (msg.type === "SetSoftKeyboard") {
             const { on } = msg;
             setSoftKeyboard(term, !!on);
+        } else if (msg.type === "MobileState") {
+            const { payload } = msg;
+            if (payload) {
+                window.__zjLastMobileState = payload;
+                if (window.__zjMobileUi) {
+                    window.__zjMobileUi.setData(payload);
+                }
+            }
         }
     };
 

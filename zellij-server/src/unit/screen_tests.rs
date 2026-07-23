@@ -10921,31 +10921,33 @@ fn setup_mobile_screen() -> Screen {
 }
 
 #[test]
-fn reevaluate_mobile_routes_web_client_in_web_mode() {
+fn reevaluate_mobile_never_routes_web_client_to_plugin() {
     use zellij_utils::input::options::MobileLayoutConfiguration;
-    let mut screen = setup_mobile_screen();
-    let client = 10;
-    screen
-        .add_client(client, /* is_web_client */ true)
-        .expect("TEST");
+    for layout in [
+        MobileLayoutConfiguration::Web,
+        MobileLayoutConfiguration::Always,
+        MobileLayoutConfiguration::Never,
+    ] {
+        let mut screen = setup_mobile_screen();
+        let client = 10;
+        screen
+            .add_client(client, /* is_web_client */ true)
+            .expect("TEST");
 
-    screen
-        .reevaluate_mobile_mode(
-            client,
-            MOBILE_SMALL,
-            MobileLayoutConfiguration::Web,
-            MOBILE_THRESHOLDS.0,
-            MOBILE_THRESHOLDS.1,
-        )
-        .expect("TEST");
-    assert!(
-        screen.is_in_mobile_mode(client),
-        "web client + small viewport in Web mode must enter mobile",
-    );
-    assert!(
-        screen.mobile_state.was_auto_entered(client),
-        "auto-entry must be marked so a later resize can auto-demote",
-    );
+        screen
+            .reevaluate_mobile_mode(
+                client,
+                MOBILE_SMALL,
+                layout,
+                MOBILE_THRESHOLDS.0,
+                MOBILE_THRESHOLDS.1,
+            )
+            .expect("TEST");
+        assert!(
+            !screen.is_in_mobile_mode(client),
+            "web clients must never enter the in-terminal mobile plugin (layout={layout:?})",
+        );
+    }
 }
 
 #[test]
@@ -11050,14 +11052,14 @@ fn reevaluate_mobile_auto_demotes_after_growth() {
     let mut screen = setup_mobile_screen();
     let client = 15;
     screen
-        .add_client(client, /* is_web_client */ true)
+        .add_client(client, /* is_web_client */ false)
         .expect("TEST");
 
     screen
         .reevaluate_mobile_mode(
             client,
             MOBILE_SMALL,
-            MobileLayoutConfiguration::Web,
+            MobileLayoutConfiguration::Always,
             MOBILE_THRESHOLDS.0,
             MOBILE_THRESHOLDS.1,
         )
@@ -11068,7 +11070,7 @@ fn reevaluate_mobile_auto_demotes_after_growth() {
         .reevaluate_mobile_mode(
             client,
             MOBILE_LARGE,
-            MobileLayoutConfiguration::Web,
+            MobileLayoutConfiguration::Always,
             MOBILE_THRESHOLDS.0,
             MOBILE_THRESHOLDS.1,
         )
@@ -11145,14 +11147,14 @@ fn exit_mobile_mode_clears_all_consolidated_state() {
     let mut screen = setup_mobile_screen();
     let client = 21;
     screen
-        .add_client(client, /* is_web_client */ true)
+        .add_client(client, /* is_web_client */ false)
         .expect("TEST");
 
     screen
         .reevaluate_mobile_mode(
             client,
             MOBILE_SMALL,
-            MobileLayoutConfiguration::Web,
+            MobileLayoutConfiguration::Always,
             MOBILE_THRESHOLDS.0,
             MOBILE_THRESHOLDS.1,
         )
@@ -11186,14 +11188,14 @@ fn remove_client_clears_all_consolidated_state() {
     let mut screen = setup_mobile_screen();
     let client = 22;
     screen
-        .add_client(client, /* is_web_client */ true)
+        .add_client(client, /* is_web_client */ false)
         .expect("TEST");
 
     screen
         .reevaluate_mobile_mode(
             client,
             MOBILE_SMALL,
-            MobileLayoutConfiguration::Web,
+            MobileLayoutConfiguration::Always,
             MOBILE_THRESHOLDS.0,
             MOBILE_THRESHOLDS.1,
         )

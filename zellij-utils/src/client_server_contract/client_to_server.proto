@@ -29,6 +29,7 @@ message ClientToServerMsg {
     NestedSessionFrameFromHostMsg nested_session_frame_from_host = 22;
     KittyGraphicsSupportMsg kitty_graphics_support = 23;
     SixelSupportMsg sixel_support = 24;
+    RequestSessionListMsg request_session_list = 25;
   }
 }
 
@@ -151,4 +152,8 @@ message KittyGraphicsSupportMsg {
 
 message SixelSupportMsg {
   bool supported = 1;
+}
+
+message RequestSessionListMsg {
+  // Empty message
 }

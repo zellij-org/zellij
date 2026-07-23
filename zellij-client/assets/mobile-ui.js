@@ -21,7 +21,8 @@ const state = {
     activeOverlay: "none",
     armed: { ctrl: false, alt: false },
     kbdVisible: false,
-    data: stubMobileState(),
+    data: emptyMobileState(),
+    dataReceivedAt: 0,
 };
 
 let ctx = null;
@@ -41,19 +42,27 @@ export function initMobileUi(context) {
     evaluateActivation();
     window.addEventListener("resize", evaluateActivation);
     window.__zjMobileUi = { setData, setServerFlag, getState: () => state };
+    if (window.__zjLastMobileState) {
+        setData(window.__zjLastMobileState);
+    }
 }
 
-function overrideActive() {
+function activationOverride() {
     try {
         const params = new URLSearchParams(window.location.search);
         if (params.get("mobile") === "1") {
             localStorage.setItem("zellij:mobile-override", "1");
         } else if (params.get("mobile") === "0") {
+            localStorage.setItem("zellij:mobile-override", "0");
+        } else if (params.get("mobile") === "auto") {
             localStorage.removeItem("zellij:mobile-override");
         }
-        return localStorage.getItem("zellij:mobile-override") === "1";
+        const stored = localStorage.getItem("zellij:mobile-override");
+        if (stored === "1") return "on";
+        if (stored === "0") return "off";
+        return "auto";
     } catch (_) {
-        return false;
+        return "auto";
     }
 }
 
@@ -65,7 +74,10 @@ function setServerFlag(on) {
 }
 
 function shouldActivate() {
-    return overrideActive() || (serverFlag && isMobileViewport());
+    const override = activationOverride();
+    if (override === "on") return true;
+    if (override === "off") return false;
+    return isMobileViewport();
 }
 
 function evaluateActivation() {
@@ -87,7 +99,14 @@ function evaluateActivation() {
 
 function setData(data) {
     state.data = data;
+    state.dataReceivedAt = Date.now();
     render();
+}
+
+function nowSecs() {
+    const base = state.data.now_secs || Math.floor(Date.now() / 1000);
+    const driftMs = state.dataReceivedAt ? Date.now() - state.dataReceivedAt : 0;
+    return base + Math.floor(driftMs / 1000);
 }
 
 function injectStyles() {
@@ -429,10 +448,19 @@ function openOverlay(kind) {
     closeMenu();
     state.activeOverlay = kind;
     render();
-    if (kind === "panes") {
+    if (kind === "panes" || kind === "sessions") {
         startActivityTimer();
     } else {
         stopActivityTimer();
+    }
+    if (kind === "sessions") {
+        requestSessionList();
+    }
+}
+
+function requestSessionList() {
+    if (window.__zjSendControl) {
+        window.__zjSendControl({ type: "RequestSessionList" });
     }
 }
 
@@ -734,7 +762,7 @@ function paneCardData() {
         tabsByPos[t.position] = t.name;
     }
     const active = state.data.active_pane;
-    const now = state.data.now_secs || Math.floor(Date.now() / 1000);
+    const now = nowSecs();
     return state.data.panes.map((p) => {
         const title = p.title || `#${p.pane_id}`;
         const isCurrent =
@@ -757,16 +785,29 @@ function paneCardData() {
 
 function sessionCardData() {
     const current = state.data.session_name;
+    const now = nowSecs();
+    const base = state.data.now_secs || now;
     return state.data.sessions
         .filter(
             (s) => s.name !== current && s.web_clients_allowed !== false
         )
-        .map((s) => ({
-            searchText: s.name,
-            title: s.name,
-            meta: `${s.tab_count} tabs, ${s.pane_count} panes, ${s.connected_clients} client(s)`,
-            name: s.name,
-        }));
+        .map((s) => {
+            const createdSecsAgo =
+                s.creation_secs_ago != null
+                    ? s.creation_secs_ago + (now - base)
+                    : null;
+            const counts = `${s.tab_count} tabs, ${s.pane_count} panes, ${s.connected_clients} client(s)`;
+            const created =
+                createdSecsAgo != null
+                    ? `Created ${formatActivity(createdSecsAgo, now)}`
+                    : "";
+            return {
+                searchText: s.name,
+                title: s.name,
+                meta: created ? `${counts} · ${created}` : counts,
+                name: s.name,
+            };
+        });
 }
 
 function renderCard(kind, item, indices) {
@@ -888,8 +929,11 @@ function formatActivity(secsAgo, now) {
 function startActivityTimer() {
     stopActivityTimer();
     activityTimer = setInterval(() => {
-        if (state.activeOverlay === "panes") {
-            renderCards("panes");
+        if (
+            state.activeOverlay === "panes" ||
+            state.activeOverlay === "sessions"
+        ) {
+            renderCards(state.activeOverlay);
         }
     }, 1000);
 }
@@ -910,60 +954,16 @@ function navigateToSession(name) {
     }
 }
 
-function stubMobileState() {
-    const now = Math.floor(Date.now() / 1000);
+function emptyMobileState() {
     return {
-        session_name: "my-session",
-        now_secs: now,
+        session_name: "",
+        now_secs: Math.floor(Date.now() / 1000),
         is_welcome_screen: false,
         desktop_client_connected: false,
         desktop_size: null,
-        active_pane: { pane_id: 1, is_plugin: false, tab_position: 0 },
-        tabs: [
-            { position: 0, name: "Tab #1", active: true },
-            { position: 1, name: "Tab #2", active: false },
-        ],
-        panes: [
-            {
-                tab_position: 0,
-                pane_id: 1,
-                is_plugin: false,
-                title: "zsh",
-                is_floating: false,
-                last_activity_secs_ago: 0,
-            },
-            {
-                tab_position: 0,
-                pane_id: 2,
-                is_plugin: false,
-                title: "vim",
-                is_floating: false,
-                last_activity_secs_ago: 12,
-            },
-            {
-                tab_position: 1,
-                pane_id: 3,
-                is_plugin: false,
-                title: "htop",
-                is_floating: false,
-                last_activity_secs_ago: 340,
-            },
-        ],
-        sessions: [
-            {
-                name: "other-session",
-                web_clients_allowed: true,
-                tab_count: 2,
-                pane_count: 4,
-                connected_clients: 1,
-            },
-            {
-                name: "no-web-session",
-                web_clients_allowed: false,
-                tab_count: 1,
-                pane_count: 1,
-                connected_clients: 0,
-            },
-        ],
+        active_pane: null,
+        tabs: [],
+        panes: [],
+        sessions: [],
     };
 }

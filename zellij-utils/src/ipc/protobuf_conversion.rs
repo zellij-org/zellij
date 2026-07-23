@@ -11,20 +11,22 @@ use crate::{
         ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, KittyGraphicsSupportMsg,
-        LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg, NestedSessionFrameFromHostMsg,
-        PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, QueryTerminalSizeMsg,
-        RenamedSessionMsg, RenderMsg, ResizeCause as ProtoResizeCause,
-        ServerToClientMsg as ProtoServerToClientMsg, SetSoftKeyboardMsg, SixelSupportMsg,
-        SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
-        SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
-        TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
-        UnblockInputThreadMsg, WebServerStartedMsg,
+        LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg, MobileActivePaneMsg,
+        MobilePaneMsg, MobileSessionMsg, MobileSizeMsg, MobileStateMsg, MobileTabMsg,
+        NestedSessionFrameFromHostMsg, PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
+        QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg, RequestSessionListMsg,
+        ResizeCause as ProtoResizeCause, ServerToClientMsg as ProtoServerToClientMsg,
+        SetSoftKeyboardMsg, SixelSupportMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
+        SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
+        TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
+        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
     ipc::{
-        ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ResizeCause,
-        ServerToClientMsg,
+        ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
+        MobileSessionPayload, MobileSizePayload, MobileStatePayload, MobileTabPayload,
+        PaneReference, PixelDimensions, ResizeCause, ServerToClientMsg,
     },
 };
 use std::collections::BTreeMap;
@@ -169,6 +171,9 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             },
             ClientToServerMsg::SixelSupport { supported } => {
                 client_to_server_msg::Message::SixelSupport(SixelSupportMsg { supported })
+            },
+            ClientToServerMsg::RequestSessionList => {
+                client_to_server_msg::Message::RequestSessionList(RequestSessionListMsg {})
             },
         };
 
@@ -335,6 +340,9 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     supported: msg.supported,
                 })
             },
+            Some(client_to_server_msg::Message::RequestSessionList(_)) => {
+                Ok(ClientToServerMsg::RequestSessionList)
+            },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
     }
@@ -428,11 +436,116 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
                     payload_bytes,
                 })
             },
+            ServerToClientMsg::MobileState { payload } => {
+                server_to_client_msg::Message::MobileState(mobile_state_payload_to_proto(payload))
+            },
         };
 
         ProtoServerToClientMsg {
             message: Some(message),
         }
+    }
+}
+
+fn mobile_state_payload_to_proto(payload: MobileStatePayload) -> MobileStateMsg {
+    MobileStateMsg {
+        session_name: payload.session_name,
+        now_secs: payload.now_secs,
+        is_welcome_screen: payload.is_welcome_screen,
+        desktop_client_connected: payload.desktop_client_connected,
+        desktop_size: payload.desktop_size.map(|s| MobileSizeMsg {
+            cols: s.cols as u32,
+            rows: s.rows as u32,
+        }),
+        active_pane: payload.active_pane.map(|p| MobileActivePaneMsg {
+            pane_id: p.pane_id,
+            is_plugin: p.is_plugin,
+            tab_position: p.tab_position as u32,
+        }),
+        tabs: payload
+            .tabs
+            .into_iter()
+            .map(|t| MobileTabMsg {
+                position: t.position as u32,
+                name: t.name,
+                active: t.active,
+            })
+            .collect(),
+        panes: payload
+            .panes
+            .into_iter()
+            .map(|p| MobilePaneMsg {
+                tab_position: p.tab_position as u32,
+                pane_id: p.pane_id,
+                is_plugin: p.is_plugin,
+                title: p.title,
+                is_floating: p.is_floating,
+                last_activity_secs_ago: p.last_activity_secs_ago,
+            })
+            .collect(),
+        sessions: payload
+            .sessions
+            .into_iter()
+            .map(|s| MobileSessionMsg {
+                name: s.name,
+                web_clients_allowed: s.web_clients_allowed,
+                tab_count: s.tab_count as u32,
+                pane_count: s.pane_count as u32,
+                connected_clients: s.connected_clients as u32,
+                creation_secs_ago: s.creation_secs_ago,
+            })
+            .collect(),
+    }
+}
+
+fn mobile_state_payload_from_proto(msg: MobileStateMsg) -> MobileStatePayload {
+    MobileStatePayload {
+        session_name: msg.session_name,
+        now_secs: msg.now_secs,
+        is_welcome_screen: msg.is_welcome_screen,
+        desktop_client_connected: msg.desktop_client_connected,
+        desktop_size: msg.desktop_size.map(|s| MobileSizePayload {
+            cols: s.cols as usize,
+            rows: s.rows as usize,
+        }),
+        active_pane: msg.active_pane.map(|p| MobileActivePanePayload {
+            pane_id: p.pane_id,
+            is_plugin: p.is_plugin,
+            tab_position: p.tab_position as usize,
+        }),
+        tabs: msg
+            .tabs
+            .into_iter()
+            .map(|t| MobileTabPayload {
+                position: t.position as usize,
+                name: t.name,
+                active: t.active,
+            })
+            .collect(),
+        panes: msg
+            .panes
+            .into_iter()
+            .map(|p| MobilePanePayload {
+                tab_position: p.tab_position as usize,
+                pane_id: p.pane_id,
+                is_plugin: p.is_plugin,
+                title: p.title,
+                is_floating: p.is_floating,
+                last_activity_secs_ago: p.last_activity_secs_ago,
+            })
+            .collect(),
+        sessions: msg
+            .sessions
+            .into_iter()
+            .map(|s| MobileSessionPayload {
+                name: s.name,
+                web_clients_allowed: s.web_clients_allowed,
+                tab_count: s.tab_count as usize,
+                pane_count: s.pane_count as usize,
+                connected_clients: s.connected_clients as usize,
+                creation_secs_ago: s.creation_secs_ago,
+            })
+            .collect(),
     }
 }
 
@@ -546,6 +659,11 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             Some(server_to_client_msg::Message::EmitNestedSessionFrame(msg)) => {
                 Ok(ServerToClientMsg::EmitNestedSessionFrame {
                     payload_bytes: msg.payload_bytes,
+                })
+            },
+            Some(server_to_client_msg::Message::MobileState(msg)) => {
+                Ok(ServerToClientMsg::MobileState {
+                    payload: mobile_state_payload_from_proto(msg),
                 })
             },
             None => Err(anyhow!("Empty ServerToClientMsg message")),

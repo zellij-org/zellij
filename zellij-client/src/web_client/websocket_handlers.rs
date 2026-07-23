@@ -102,6 +102,9 @@ async fn handle_ws_control(
             WebClientToWebServerControlMessagePayload::NestedSessionFrameFromHost {
                 payload_bytes,
             } => ClientToServerMsg::NestedSessionFrameFromHost { payload_bytes },
+            WebClientToWebServerControlMessagePayload::RequestSessionList => {
+                ClientToServerMsg::RequestSessionList
+            },
         };
 
         let _ = client_connection.send_to_server(client_msg);

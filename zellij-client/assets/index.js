@@ -17,16 +17,17 @@ document.addEventListener("DOMContentLoaded", async (event) => {
 
     setupInputHandlers(term, fitAddon, sendAnsiKey);
 
+    let websockets = null;
+    initMobileUi({
+        term,
+        fitAddon,
+        getSendAnsiKey: () => (websockets ? websockets.sendAnsiKey : sendAnsiKey),
+    });
+
     document.title = sessionName;
-    const websockets = initWebSockets(webClientId, sessionName, term, fitAddon, sendAnsiKey);
+    websockets = initWebSockets(webClientId, sessionName, term, fitAddon, sendAnsiKey);
 
     sendAnsiKey = websockets.sendAnsiKey;
 
     setupInputHandlers(term, fitAddon, sendAnsiKey);
-
-    initMobileUi({
-        term,
-        fitAddon,
-        getSendAnsiKey: () => websockets.sendAnsiKey,
-    });
 });

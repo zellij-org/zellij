@@ -55,7 +55,10 @@ use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::options::{
     Clipboard, MobileLayoutConfiguration, NestedSessionHandling, PaneFrameStyle,
 };
-use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
+use zellij_utils::ipc::{
+    ExitReason, MobileActivePanePayload, MobilePanePayload, MobileSessionPayload, MobileSizePayload,
+    MobileStatePayload, MobileTabPayload, ServerToClientMsg,
+};
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::{clean_string_from_control_and_linebreak, detect_theme_hue};
 use zellij_utils::{
@@ -1585,6 +1588,8 @@ pub(crate) struct Screen {
     nested_session_handling: NestedSessionHandling,
     mobile_state: MobileState,
     mobile_render_gate: MobileRenderGate,
+    last_mobile_state_sent: HashMap<ClientId, MobileStatePayload>,
+    pane_output_activity: HashMap<PaneId, Instant>,
 }
 
 /// A pending forward waiting to be dispatched once the current in-flight
@@ -1766,6 +1771,8 @@ impl Screen {
             mobile_state: MobileState::default(),
             nested_session_handling,
             mobile_render_gate: MobileRenderGate::default(),
+            last_mobile_state_sent: HashMap::new(),
+            pane_output_activity: HashMap::new(),
         }
     }
 
@@ -5205,7 +5212,171 @@ impl Screen {
             .senders
             .send_to_background_jobs(BackgroundJob::QueryZellijWebServerStatus)
             .with_context(err_context)?;
+
+        self.report_mobile_state();
         Ok(())
+    }
+    fn report_mobile_state(&mut self) {
+        let web_client_ids: Vec<ClientId> = self
+            .connected_clients
+            .borrow()
+            .iter()
+            .filter(|(_client_id, is_web_client)| **is_web_client)
+            .map(|(client_id, _)| *client_id)
+            .collect();
+        if web_client_ids.is_empty() {
+            self.last_mobile_state_sent
+                .retain(|client_id, _| self.connected_clients.borrow().contains_key(client_id));
+            return;
+        }
+
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        let desktop_client_ids: Vec<ClientId> = self
+            .connected_clients
+            .borrow()
+            .iter()
+            .filter(|(_client_id, is_web_client)| !**is_web_client)
+            .map(|(client_id, _)| *client_id)
+            .collect();
+        let desktop_client_connected = !desktop_client_ids.is_empty();
+        let desktop_size = desktop_client_ids
+            .iter()
+            .filter_map(|client_id| self.client_sizes.get(client_id).copied())
+            .max_by_key(|size| size.cols * size.rows)
+            .map(|s| MobileSizePayload {
+                cols: s.cols,
+                rows: s.rows,
+            });
+
+        let now = Instant::now();
+        let mut tabs: Vec<MobileTabPayload> = Vec::new();
+        let mut panes: Vec<MobilePanePayload> = Vec::new();
+        for tab in self.tabs.values() {
+            tabs.push(MobileTabPayload {
+                position: tab.position,
+                name: tab.name.clone(),
+                active: self.active_tab_ids.values().any(|i| i == &tab.id),
+            });
+            let activity = tab.pane_last_activity();
+            for pane_info in tab.pane_infos() {
+                if pane_info.is_suppressed || !pane_info.is_selectable {
+                    continue;
+                }
+                let pane_id = if pane_info.is_plugin {
+                    PaneId::Plugin(pane_info.id)
+                } else {
+                    PaneId::Terminal(pane_info.id)
+                };
+                let last_activity_secs_ago = self
+                    .pane_output_activity
+                    .get(&pane_id)
+                    .map(|instant| now.saturating_duration_since(*instant).as_secs())
+                    .or_else(|| activity.get(&pane_id).copied())
+                    .unwrap_or_default();
+                panes.push(MobilePanePayload {
+                    tab_position: tab.position,
+                    pane_id: pane_info.id,
+                    is_plugin: pane_info.is_plugin,
+                    title: pane_info.title.clone(),
+                    is_floating: pane_info.is_floating,
+                    last_activity_secs_ago,
+                });
+            }
+        }
+        tabs.sort_by_key(|t| t.position);
+
+        {
+            let live_pane_ids: HashSet<PaneId> = self
+                .tabs
+                .values()
+                .flat_map(|tab| tab.get_all_pane_ids())
+                .collect();
+            self.pane_output_activity
+                .retain(|pane_id, _| live_pane_ids.contains(pane_id));
+        }
+
+        let sessions: Vec<MobileSessionPayload> = self
+            .peer_sessions_cache
+            .values()
+            .map(|info| MobileSessionPayload {
+                name: info.name.clone(),
+                web_clients_allowed: info.web_clients_allowed,
+                tab_count: info.tabs.len(),
+                pane_count: info.panes.panes.values().map(|p| p.len()).sum(),
+                connected_clients: info.connected_clients,
+                creation_secs_ago: info.creation_time.as_secs(),
+            })
+            .collect();
+
+        for client_id in web_client_ids {
+            let active_pane = self
+                .get_active_tab(client_id)
+                .ok()
+                .and_then(|tab| {
+                    tab.get_active_pane_id_or_first_selectable(client_id)
+                        .map(|pane_id| (tab.position, pane_id))
+                })
+                .map(|(tab_position, pane_id)| {
+                    let (id, is_plugin) = match pane_id {
+                        PaneId::Terminal(id) => (id, false),
+                        PaneId::Plugin(id) => (id, true),
+                    };
+                    MobileActivePanePayload {
+                        pane_id: id,
+                        is_plugin,
+                        tab_position,
+                    }
+                });
+
+            let is_welcome_screen = active_pane
+                .as_ref()
+                .map(|ap| {
+                    ap.is_plugin
+                        && panes
+                            .iter()
+                            .find(|p| p.pane_id == ap.pane_id && p.is_plugin)
+                            .map(|p| p.title == "welcome-screen")
+                            .unwrap_or(false)
+                })
+                .unwrap_or(false);
+
+            let payload = MobileStatePayload {
+                session_name: self.session_name.clone(),
+                now_secs,
+                is_welcome_screen,
+                desktop_client_connected,
+                desktop_size: desktop_size.clone(),
+                active_pane,
+                tabs: tabs.clone(),
+                panes: panes.clone(),
+                sessions: sessions.clone(),
+            };
+
+            let mut comparable = payload.clone();
+            comparable.now_secs = 0;
+            for pane in comparable.panes.iter_mut() {
+                pane.last_activity_secs_ago = 0;
+            }
+            if self.last_mobile_state_sent.get(&client_id) == Some(&comparable) {
+                continue;
+            }
+
+            if let Some(os_input) = &self.bus.os_input {
+                let _ = os_input.send_to_client(
+                    client_id,
+                    ServerToClientMsg::MobileState { payload },
+                );
+            }
+            self.last_mobile_state_sent.insert(client_id, comparable);
+        }
+
+        let connected = self.connected_clients.borrow();
+        self.last_mobile_state_sent
+            .retain(|client_id, _| connected.contains_key(client_id));
     }
     fn dump_layout_to_hd(&mut self) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
@@ -5239,6 +5410,7 @@ impl Screen {
                 ),
             )]))
             .context("failed to update session info")?;
+        self.report_mobile_state();
         Ok(())
     }
 
@@ -7591,6 +7763,9 @@ pub(crate) fn screen_thread_main(
 
         match event {
             ScreenInstruction::PtyBytes(pid, vte_bytes) => {
+                screen
+                    .pane_output_activity
+                    .insert(PaneId::Terminal(pid), Instant::now());
                 let all_tabs = screen.get_tabs_mut();
                 let mut vte_bytes = Some(vte_bytes);
                 for tab in all_tabs.values_mut() {

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use zellij_utils::{input::config::Config, pane_size::Size};
+use zellij_utils::{input::config::Config, ipc::MobileStatePayload, pane_size::Size};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 
@@ -17,6 +17,7 @@ pub enum WebClientToWebServerControlMessagePayload {
     TerminalMetrics(TerminalMetricsPayload),
     SoftKeyboardVisibilityChanged { visible: bool },
     NestedSessionFrameFromHost { payload_bytes: Vec<u8> },
+    RequestSessionList,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -36,6 +37,7 @@ pub enum WebServerToWebClientControlMessage {
     LogError { lines: Vec<String> },
     SwitchedSession { new_session_name: String },
     SetSoftKeyboard { on: bool },
+    MobileState { payload: MobileStatePayload },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
