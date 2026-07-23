@@ -3041,7 +3041,7 @@ impl NestedSessionHandling {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -3099,6 +3099,8 @@ pub mod client_to_server_msg {
         SixelSupport(super::SixelSupportMsg),
         #[prost(message, tag="25")]
         RequestSessionList(super::RequestSessionListMsg),
+        #[prost(message, tag="26")]
+        SetMobileRenderPreferences(super::SetMobileRenderPreferencesMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3274,6 +3276,14 @@ pub struct SixelSupportMsg {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RequestSessionListMsg {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetMobileRenderPreferencesMsg {
+    #[prost(bool, tag="1")]
+    pub single_pane: bool,
+    #[prost(bool, tag="2")]
+    pub fit: bool,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -3560,6 +3570,16 @@ pub struct MobileSessionMsg {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MobileRenderPrefsMsg {
+    #[prost(bool, tag="1")]
+    pub single_pane: bool,
+    #[prost(bool, tag="2")]
+    pub fit: bool,
+    #[prost(bool, tag="3")]
+    pub active_pane_is_fullscreen: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MobileStateMsg {
     #[prost(string, tag="1")]
     pub session_name: ::prost::alloc::string::String,
@@ -3579,4 +3599,6 @@ pub struct MobileStateMsg {
     pub panes: ::prost::alloc::vec::Vec<MobilePaneMsg>,
     #[prost(message, repeated, tag="9")]
     pub sessions: ::prost::alloc::vec::Vec<MobileSessionMsg>,
+    #[prost(message, optional, tag="10")]
+    pub render_prefs: ::core::option::Option<MobileRenderPrefsMsg>,
 }

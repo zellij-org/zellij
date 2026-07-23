@@ -103,7 +103,9 @@ use zellij_utils::{
     nested_session::{self, NestedSessionCapability, NestedSessionMessage},
 };
 
-use crate::mobile_mode::{MobileRenderGate, MobileState, ShadowFocusOutcome, FIT_RESIZE_MAX_ITERS};
+use crate::mobile_mode::{
+    MobileRenderGate, MobileState, MobileWebPrefs, ShadowFocusOutcome, FIT_RESIZE_MAX_ITERS,
+};
 
 /// Parses a namespaced OSC 99 response and extracts the original pane ID
 /// and un-namespaced response bytes.
@@ -827,6 +829,11 @@ pub enum ScreenInstruction {
         tab_id: usize,
         fit: Option<(PaneId, Size)>,
     },
+    SetMobileRenderPreferences {
+        client_id: ClientId,
+        single_pane: bool,
+        fit: bool,
+    },
     TogglePaneEmbedOrEjectForPaneId(PaneId),
     CloseTabWithIndex(usize),
     BreakPanesToNewTab {
@@ -1200,6 +1207,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PageScrollDownInPaneId(..) => ScreenContext::PageScrollDownInPaneId,
             ScreenInstruction::TogglePaneIdFullscreen(..) => ScreenContext::TogglePaneIdFullscreen,
             ScreenInstruction::SetTabFit { .. } => ScreenContext::SetTabFit,
+            ScreenInstruction::SetMobileRenderPreferences { .. } => {
+                ScreenContext::SetMobileRenderPreferences
+            },
             ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(..) => {
                 ScreenContext::TogglePaneEmbedOrEjectForPaneId
             },
@@ -1590,6 +1600,7 @@ pub(crate) struct Screen {
     mobile_render_gate: MobileRenderGate,
     last_mobile_state_sent: HashMap<ClientId, MobileStatePayload>,
     pane_output_activity: HashMap<PaneId, Instant>,
+    mobile_web_prefs: HashMap<ClientId, MobileWebPrefs>,
 }
 
 /// A pending forward waiting to be dispatched once the current in-flight
@@ -1773,6 +1784,7 @@ impl Screen {
             mobile_render_gate: MobileRenderGate::default(),
             last_mobile_state_sent: HashMap::new(),
             pane_output_activity: HashMap::new(),
+            mobile_web_prefs: HashMap::new(),
         }
     }
 
@@ -2552,12 +2564,28 @@ impl Screen {
 
         let mut rows: Vec<usize> = Vec::new();
         let mut cols: Vec<usize> = Vec::new();
+        let mut has_fit_disabled_client = false;
         for (client_id, active_tab) in self.active_tab_ids.iter() {
             if *active_tab == tab_id {
+                if self
+                    .mobile_web_prefs
+                    .get(client_id)
+                    .map(|prefs| !prefs.fit)
+                    .unwrap_or(false)
+                {
+                    has_fit_disabled_client = true;
+                    continue;
+                }
                 if let Some(size) = self.client_sizes.get(client_id) {
                     rows.push(size.rows);
                     cols.push(size.cols);
                 }
+            }
+        }
+        if has_fit_disabled_client {
+            if let Some(reference) = self.desktop_reference_size() {
+                rows.push(reference.rows);
+                cols.push(reference.cols);
             }
         }
         if rows.is_empty() || cols.is_empty() {
@@ -2576,6 +2604,34 @@ impl Screen {
             }
         }
         Ok(())
+    }
+
+    fn recompute_fit_disabled_tabs(&mut self) -> Result<()> {
+        let fit_disabled_clients: Vec<ClientId> = self
+            .mobile_web_prefs
+            .iter()
+            .filter(|(_client_id, prefs)| !prefs.fit)
+            .map(|(client_id, _)| *client_id)
+            .collect();
+        let mut tab_ids: HashSet<usize> = HashSet::new();
+        for client_id in fit_disabled_clients {
+            if let Some(tab_id) = self.active_tab_ids.get(&client_id).copied() {
+                tab_ids.insert(tab_id);
+            }
+        }
+        for tab_id in tab_ids {
+            self.recompute_tab_size(tab_id)?;
+        }
+        Ok(())
+    }
+
+    fn desktop_reference_size(&self) -> Option<Size> {
+        let connected = self.connected_clients.borrow();
+        connected
+            .iter()
+            .filter(|(_client_id, is_web_client)| !**is_web_client)
+            .filter_map(|(client_id, _)| self.client_sizes.get(client_id).copied())
+            .max_by_key(|size| size.rows * size.cols)
     }
 
     pub(crate) fn compute_fit_size(&self, tab_id: usize) -> Option<Size> {
@@ -2614,6 +2670,182 @@ impl Screen {
                 Ok(true)
             },
             None => Ok(false),
+        }
+    }
+
+    fn tab_id_containing_pane(&self, pane_id: PaneId) -> Option<usize> {
+        self.tabs
+            .values()
+            .find(|tab| tab.has_pane_with_pid(&pane_id))
+            .map(|tab| tab.id)
+    }
+
+    fn ensure_pane_fullscreen(&mut self, pane_id: PaneId) {
+        let Some(tab_id) = self.tab_id_containing_pane(pane_id) else {
+            return;
+        };
+        let Some(tab) = self.tabs.get_mut(&tab_id) else {
+            return;
+        };
+        if tab.is_fullscreen_active() {
+            if tab.fullscreen_pane_id() == Some(pane_id) {
+                return;
+            }
+            tab.toggle_pane_fullscreen(pane_id);
+        }
+        tab.toggle_pane_fullscreen(pane_id);
+    }
+
+    fn unset_pane_fullscreen(&mut self, pane_id: PaneId) {
+        let Some(tab_id) = self.tab_id_containing_pane(pane_id) else {
+            return;
+        };
+        let Some(tab) = self.tabs.get_mut(&tab_id) else {
+            return;
+        };
+        if tab.is_fullscreen_active() && tab.fullscreen_pane_id() == Some(pane_id) {
+            tab.toggle_pane_fullscreen(pane_id);
+        }
+    }
+
+    fn active_pane_id_for_client(&mut self, client_id: ClientId) -> Option<PaneId> {
+        self.get_active_tab(client_id)
+            .ok()
+            .and_then(|tab| tab.get_active_pane_id_or_first_selectable(client_id))
+    }
+
+    pub fn set_mobile_render_preferences(
+        &mut self,
+        client_id: ClientId,
+        single_pane: bool,
+        fit: bool,
+    ) -> Result<()> {
+        let desktop_client_connected = self
+            .connected_clients
+            .borrow()
+            .iter()
+            .any(|(_client_id, is_web_client)| !*is_web_client);
+        let fit = if !desktop_client_connected { true } else { fit };
+
+        let previous = self.mobile_web_prefs.get(&client_id).copied();
+        let previous_fullscreen = previous.and_then(|p| p.fullscreened_pane);
+
+        let mut fullscreened_pane = previous_fullscreen;
+        if single_pane {
+            let target = self.active_pane_id_for_client(client_id);
+            if let Some(pane_id) = target {
+                if previous_fullscreen != Some(pane_id) {
+                    if let Some(previous_pane) = previous_fullscreen {
+                        self.unset_pane_fullscreen(previous_pane);
+                    }
+                    self.ensure_pane_fullscreen(pane_id);
+                }
+                fullscreened_pane = Some(pane_id);
+            }
+        } else if let Some(previous_pane) = previous_fullscreen {
+            self.unset_pane_fullscreen(previous_pane);
+            fullscreened_pane = None;
+        }
+
+        self.mobile_web_prefs.insert(
+            client_id,
+            MobileWebPrefs {
+                single_pane,
+                fit,
+                fullscreened_pane,
+            },
+        );
+
+        if let Some(&tab_id) = self.active_tab_ids.get(&client_id) {
+            self.recompute_tab_size(tab_id)?;
+        }
+        self.render(None)?;
+        Ok(())
+    }
+
+    fn revert_fit_disabled_on_desktop_disconnect(&mut self) -> Result<()> {
+        let desktop_client_connected = self
+            .connected_clients
+            .borrow()
+            .iter()
+            .any(|(_client_id, is_web_client)| !*is_web_client);
+        if desktop_client_connected {
+            return Ok(());
+        }
+        let reverted: Vec<ClientId> = self
+            .mobile_web_prefs
+            .iter()
+            .filter(|(_client_id, prefs)| !prefs.fit)
+            .map(|(client_id, _)| *client_id)
+            .collect();
+        if reverted.is_empty() {
+            return Ok(());
+        }
+        let mut tabs_to_recompute: HashSet<usize> = HashSet::new();
+        for client_id in reverted {
+            if let Some(prefs) = self.mobile_web_prefs.get_mut(&client_id) {
+                prefs.fit = true;
+            }
+            if let Some(&tab_id) = self.active_tab_ids.get(&client_id) {
+                tabs_to_recompute.insert(tab_id);
+            }
+        }
+        for tab_id in tabs_to_recompute {
+            self.recompute_tab_size(tab_id)?;
+        }
+        Ok(())
+    }
+
+    fn reconcile_all_single_pane_focus(&mut self) {
+        let single_pane_clients: Vec<ClientId> = self
+            .mobile_web_prefs
+            .iter()
+            .filter(|(_client_id, prefs)| prefs.single_pane)
+            .map(|(client_id, _)| *client_id)
+            .collect();
+        for client_id in single_pane_clients {
+            self.reconcile_single_pane_focus(client_id);
+        }
+    }
+
+    fn reconcile_single_pane_focus(&mut self, client_id: ClientId) {
+        let is_single_pane = self
+            .mobile_web_prefs
+            .get(&client_id)
+            .map(|prefs| prefs.single_pane)
+            .unwrap_or(false);
+        if !is_single_pane {
+            return;
+        }
+        let Some(target) = self.active_pane_id_for_client(client_id) else {
+            return;
+        };
+        let previous = self
+            .mobile_web_prefs
+            .get(&client_id)
+            .and_then(|prefs| prefs.fullscreened_pane);
+
+        // Tab-global fullscreen is the source of truth: re-assert single-pane
+        // against the actual tab state rather than the tracked belief, so a
+        // desktop-initiated un-fullscreen (or a stale/closed tracked pane) is
+        // corrected rather than ignored.
+        let target_tab_fullscreen_ok = self
+            .tab_id_containing_pane(target)
+            .and_then(|tab_id| self.tabs.get(&tab_id))
+            .map(|tab| tab.is_fullscreen_active() && tab.fullscreen_pane_id() == Some(target))
+            .unwrap_or(false);
+
+        if previous == Some(target) && target_tab_fullscreen_ok {
+            return;
+        }
+        if let Some(previous_pane) = previous {
+            if previous_pane != target {
+                self.unset_pane_fullscreen(previous_pane);
+            }
+        }
+        self.ensure_pane_fullscreen(target);
+        if let Some(prefs) = self.mobile_web_prefs.get_mut(&client_id) {
+            prefs.fullscreened_pane = Some(target);
         }
     }
 
@@ -4799,6 +5031,12 @@ impl Screen {
         self.mobile_state.forget_client(client_id);
         self.mobile_render_gate.ungate(client_id);
 
+        if let Some(prefs) = self.mobile_web_prefs.remove(&client_id) {
+            if let Some(pane_id) = prefs.fullscreened_pane {
+                self.unset_pane_fullscreen(pane_id);
+            }
+        }
+
         let to_recompute = self
             .mobile_state
             .clear_fits_owned_by(client_id, &mut self.tabs);
@@ -4850,6 +5088,8 @@ impl Screen {
         }
         self.client_sizes.remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
+        self.revert_fit_disabled_on_desktop_disconnect()
+            .with_context(err_context)?;
         if let Some(prev_tab_id) = previously_active_tab_id {
             self.recompute_tab_size(prev_tab_id)
                 .with_context(err_context)?;
@@ -5124,6 +5364,7 @@ impl Screen {
         let err_context = || format!("Failed to log and report session state");
 
         self.update_active_pane_ids();
+        self.reconcile_all_single_pane_focus();
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
@@ -5344,6 +5585,18 @@ impl Screen {
                 })
                 .unwrap_or(false);
 
+            let prefs = self.mobile_web_prefs.get(&client_id).copied();
+            let active_pane_is_fullscreen = self
+                .get_active_tab(client_id)
+                .ok()
+                .map(|tab| tab.is_fullscreen_active())
+                .unwrap_or(false);
+            let render_prefs = zellij_utils::ipc::MobileRenderPrefsPayload {
+                single_pane: prefs.map(|p| p.single_pane).unwrap_or(true),
+                fit: prefs.map(|p| p.fit).unwrap_or(true),
+                active_pane_is_fullscreen,
+            };
+
             let payload = MobileStatePayload {
                 session_name: self.session_name.clone(),
                 now_secs,
@@ -5354,6 +5607,7 @@ impl Screen {
                 tabs: tabs.clone(),
                 panes: panes.clone(),
                 sessions: sessions.clone(),
+                render_prefs,
             };
 
             let mut comparable = payload.clone();
@@ -9232,6 +9486,11 @@ pub(crate) fn screen_thread_main(
                 } else {
                     None
                 };
+                // `is_web_client` may be a placeholder when the NewTab action was
+                // initiated over the web control channel (which cannot carry the
+                // flag); resolve it from the actual connected-client status.
+                let is_web_client =
+                    is_web_client || screen.client_is_web(client_id);
                 let resolved_swap_layouts = (
                     swap_tiled_layouts
                         .unwrap_or_else(|| screen.default_layout.swap_tiled_layouts.clone()),
@@ -9515,6 +9774,11 @@ pub(crate) fn screen_thread_main(
                 let active_tab_id = screen.active_tab_ids.get(&client_id).copied();
                 if let Some(tab_id) = active_tab_id {
                     screen.recompute_tab_size(tab_id)?;
+                }
+                if !screen.client_is_web(client_id) {
+                    screen.recompute_fit_disabled_tabs()?;
+                }
+                if active_tab_id.is_some() || !screen.client_is_web(client_id) {
                     screen.log_and_report_session_state()?;
                     screen.render(None)?;
                 }
@@ -10693,6 +10957,7 @@ pub(crate) fn screen_thread_main(
                             client_id,
                         )?;
                         screen.clear_bell_for_pane_id(pane_id, client_id);
+                        screen.reconcile_single_pane_focus(client_id);
                         screen.log_and_report_session_state()?;
                     }
                 }
@@ -11374,6 +11639,14 @@ pub(crate) fn screen_thread_main(
                 if changed {
                     screen.render(None)?;
                 }
+            },
+            ScreenInstruction::SetMobileRenderPreferences {
+                client_id,
+                single_pane,
+                fit,
+            } => {
+                screen.set_mobile_render_preferences(client_id, single_pane, fit)?;
+                screen.log_and_report_session_state()?;
             },
             ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(pane_id) => {
                 let all_tabs = screen.get_tabs_mut();

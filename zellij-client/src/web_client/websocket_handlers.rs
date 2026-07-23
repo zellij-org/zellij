@@ -20,6 +20,8 @@ use futures::StreamExt;
 use std::sync::{atomic::AtomicBool, Arc};
 use tokio_util::sync::CancellationToken;
 use zellij_utils::{
+    data::PaneId,
+    input::actions::Action,
     input::mouse::MouseEvent,
     ipc::{ClientToServerMsg, PixelDimensions, ResizeCause},
     pane_size::SizeInPixels,
@@ -105,6 +107,58 @@ async fn handle_ws_control(
             WebClientToWebServerControlMessagePayload::RequestSessionList => {
                 ClientToServerMsg::RequestSessionList
             },
+            WebClientToWebServerControlMessagePayload::FocusPane {
+                pane_id,
+                is_plugin,
+            } => {
+                let pane_id = if is_plugin {
+                    PaneId::Plugin(pane_id)
+                } else {
+                    PaneId::Terminal(pane_id)
+                };
+                ClientToServerMsg::Action {
+                    action: Action::FocusPaneByPaneId { pane_id },
+                    terminal_id: None,
+                    client_id: None,
+                    is_cli_client: false,
+                }
+            },
+            WebClientToWebServerControlMessagePayload::NewPaneInTab { tab_id } => {
+                ClientToServerMsg::Action {
+                    action: Action::NewTiledPane {
+                        direction: None,
+                        command: None,
+                        pane_name: None,
+                        near_current_pane: false,
+                        no_focus: false,
+                        borderless: None,
+                        tab_id: Some(tab_id),
+                    },
+                    terminal_id: None,
+                    client_id: None,
+                    is_cli_client: false,
+                }
+            },
+            WebClientToWebServerControlMessagePayload::NewTab => ClientToServerMsg::Action {
+                action: Action::NewTab {
+                    tiled_layout: None,
+                    floating_layouts: vec![],
+                    swap_tiled_layouts: None,
+                    swap_floating_layouts: None,
+                    tab_name: None,
+                    should_change_focus_to_new_tab: true,
+                    cwd: None,
+                    initial_panes: None,
+                    first_pane_unblock_condition: None,
+                },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            },
+            WebClientToWebServerControlMessagePayload::SetMobileRenderPreferences {
+                single_pane,
+                fit,
+            } => ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit },
         };
 
         let _ = client_connection.send_to_server(client_msg);
@@ -439,6 +493,87 @@ mod tests {
                 assert_eq!(size.cols, 80);
             },
             other => panic!("expected TerminalResize, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn focus_pane_payload_deserializes() {
+        let raw = serde_json::json!({
+            "web_client_id": "abc",
+            "payload": {
+                "type": "FocusPane",
+                "pane_id": 7,
+                "is_plugin": true,
+            }
+        });
+        let parsed: WebClientToWebServerControlMessage =
+            serde_json::from_value(raw).expect("parse");
+        match parsed.payload {
+            WebClientToWebServerControlMessagePayload::FocusPane {
+                pane_id,
+                is_plugin,
+            } => {
+                assert_eq!(pane_id, 7);
+                assert!(is_plugin);
+            },
+            other => panic!("expected FocusPane, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn new_pane_in_tab_payload_deserializes() {
+        let raw = serde_json::json!({
+            "web_client_id": "abc",
+            "payload": {
+                "type": "NewPaneInTab",
+                "tab_id": 2,
+            }
+        });
+        let parsed: WebClientToWebServerControlMessage =
+            serde_json::from_value(raw).expect("parse");
+        match parsed.payload {
+            WebClientToWebServerControlMessagePayload::NewPaneInTab { tab_id } => {
+                assert_eq!(tab_id, 2);
+            },
+            other => panic!("expected NewPaneInTab, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn new_tab_payload_deserializes() {
+        let raw = serde_json::json!({
+            "web_client_id": "abc",
+            "payload": { "type": "NewTab" }
+        });
+        let parsed: WebClientToWebServerControlMessage =
+            serde_json::from_value(raw).expect("parse");
+        assert!(matches!(
+            parsed.payload,
+            WebClientToWebServerControlMessagePayload::NewTab
+        ));
+    }
+
+    #[test]
+    fn set_mobile_render_preferences_payload_deserializes() {
+        let raw = serde_json::json!({
+            "web_client_id": "abc",
+            "payload": {
+                "type": "SetMobileRenderPreferences",
+                "single_pane": false,
+                "fit": true,
+            }
+        });
+        let parsed: WebClientToWebServerControlMessage =
+            serde_json::from_value(raw).expect("parse");
+        match parsed.payload {
+            WebClientToWebServerControlMessagePayload::SetMobileRenderPreferences {
+                single_pane,
+                fit,
+            } => {
+                assert!(!single_pane);
+                assert!(fit);
+            },
+            other => panic!("expected SetMobileRenderPreferences, got {:?}", other),
         }
     }
 }

@@ -18,6 +18,10 @@ pub enum WebClientToWebServerControlMessagePayload {
     SoftKeyboardVisibilityChanged { visible: bool },
     NestedSessionFrameFromHost { payload_bytes: Vec<u8> },
     RequestSessionList,
+    FocusPane { pane_id: u32, is_plugin: bool },
+    NewPaneInTab { tab_id: usize },
+    NewTab,
+    SetMobileRenderPreferences { single_pane: bool, fit: bool },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

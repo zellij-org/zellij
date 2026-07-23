@@ -19,8 +19,8 @@ use crate::input::options::{
 };
 use crate::ipc::{
     ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
-    MobileSessionPayload, MobileSizePayload, MobileStatePayload, MobileTabPayload, PaneReference,
-    PixelDimensions, ResizeCause, ServerToClientMsg,
+    MobileRenderPrefsPayload, MobileSessionPayload, MobileSizePayload, MobileStatePayload,
+    MobileTabPayload, PaneReference, PixelDimensions, ResizeCause, ServerToClientMsg,
 };
 use crate::pane_size::{Size, SizeInPixels};
 use crate::position::Position;
@@ -3391,6 +3391,14 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::KillSession);
     test_client_roundtrip!(ClientToServerMsg::ConnStatus);
     test_client_roundtrip!(ClientToServerMsg::RequestSessionList);
+    test_client_roundtrip!(ClientToServerMsg::SetMobileRenderPreferences {
+        single_pane: true,
+        fit: false,
+    });
+    test_client_roundtrip!(ClientToServerMsg::SetMobileRenderPreferences {
+        single_pane: false,
+        fit: true,
+    });
     test_client_roundtrip!(ClientToServerMsg::WebServerStarted {
         base_url: "http://localhost:8080".to_string(),
     });
@@ -3896,6 +3904,11 @@ fn test_server_messages() {
             tabs: vec![],
             panes: vec![],
             sessions: vec![],
+            render_prefs: MobileRenderPrefsPayload {
+                single_pane: true,
+                fit: true,
+                active_pane_is_fullscreen: false,
+            },
         },
     });
     test_server_roundtrip!(ServerToClientMsg::MobileState {
@@ -3951,6 +3964,11 @@ fn test_server_messages() {
                 connected_clients: 1,
                 creation_secs_ago: 3600,
             }],
+            render_prefs: MobileRenderPrefsPayload {
+                single_pane: false,
+                fit: false,
+                active_pane_is_fullscreen: true,
+            },
         },
     });
 }

@@ -41,7 +41,12 @@ export function initMobileUi(context) {
     installResizeReconcileHooks();
     evaluateActivation();
     window.addEventListener("resize", evaluateActivation);
-    window.__zjMobileUi = { setData, setServerFlag, getState: () => state };
+    window.__zjMobileUi = {
+        setData,
+        setServerFlag,
+        getState: () => state,
+        getRenderSizing,
+    };
     if (window.__zjLastMobileState) {
         setData(window.__zjLastMobileState);
     }
@@ -98,9 +103,34 @@ function evaluateActivation() {
 }
 
 function setData(data) {
+    const prevDesktop = state.data.desktop_size;
     state.data = data;
     state.dataReceivedAt = Date.now();
+    reconcileRenderPrefs(data.render_prefs);
+    if (!state.fitEnabled && desktopSizeChanged(prevDesktop, data.desktop_size)) {
+        window.dispatchEvent(new Event("zellij:rendering-resize"));
+    }
     render();
+}
+
+function desktopSizeChanged(a, b) {
+    if (!a && !b) return false;
+    if (!a || !b) return true;
+    return a.cols !== b.cols || a.rows !== b.rows;
+}
+
+function reconcileRenderPrefs(prefs) {
+    if (!prefs) {
+        return;
+    }
+    const nextRenderMode = prefs.single_pane ? "single-pane" : "full";
+    const changed =
+        state.renderMode !== nextRenderMode || state.fitEnabled !== prefs.fit;
+    state.renderMode = nextRenderMode;
+    state.fitEnabled = prefs.fit;
+    if (changed) {
+        reconcileSize();
+    }
 }
 
 function nowSecs() {
@@ -299,7 +329,13 @@ function buildMenu() {
     renderToggle.addEventListener("click", () => {
         state.renderMode =
             state.renderMode === "single-pane" ? "full" : "single-pane";
+        if (state.renderMode === "single-pane") {
+            state.fitEnabled = true;
+        } else {
+            state.fitEnabled = state.data.desktop_client_connected ? false : true;
+        }
         closeMenu();
+        sendRenderPrefs();
         render();
         reconcileSize();
     });
@@ -312,6 +348,7 @@ function buildMenu() {
         }
         state.fitEnabled = !state.fitEnabled;
         closeMenu();
+        sendRenderPrefs();
         render();
         reconcileSize();
     });
@@ -458,10 +495,22 @@ function openOverlay(kind) {
     }
 }
 
-function requestSessionList() {
+function sendControl(payload) {
     if (window.__zjSendControl) {
-        window.__zjSendControl({ type: "RequestSessionList" });
+        window.__zjSendControl(payload);
     }
+}
+
+function requestSessionList() {
+    sendControl({ type: "RequestSessionList" });
+}
+
+function sendRenderPrefs() {
+    sendControl({
+        type: "SetMobileRenderPreferences",
+        single_pane: state.renderMode === "single-pane",
+        fit: state.fitEnabled,
+    });
 }
 
 function closeOverlay() {
@@ -473,6 +522,11 @@ function closeOverlay() {
 function switchToDesktop() {
     closeMenu();
     state.activeOverlay = "none";
+    sendControl({
+        type: "SetMobileRenderPreferences",
+        single_pane: false,
+        fit: true,
+    });
     try {
         localStorage.removeItem("zellij:mobile-override");
     } catch (_) {}
@@ -611,6 +665,22 @@ function updateKeyboardOffset() {
     root.style.setProperty("--zj-kbd-offset", `${occluded}px`);
 }
 
+function getRenderSizing() {
+    if (!state.active || state.fitEnabled) {
+        return { pinned: false };
+    }
+    const size = state.data.desktop_size;
+    if (
+        !state.data.desktop_client_connected ||
+        !size ||
+        !size.cols ||
+        !size.rows
+    ) {
+        return { pinned: false };
+    }
+    return { pinned: true, cols: size.cols, rows: size.rows };
+}
+
 function reconcileSize() {
     const root = document.documentElement;
     if (!state.active) {
@@ -720,6 +790,7 @@ function setupPanesFooter() {
     const newTab = document.createElement("button");
     newTab.textContent = "+ New Tab";
     newTab.addEventListener("click", () => {
+        sendControl({ type: "NewTab" });
         closeOverlay();
     });
     footer.append(newTab);
@@ -728,6 +799,10 @@ function setupPanesFooter() {
         const newPane = document.createElement("button");
         newPane.textContent = "+ New Pane";
         newPane.addEventListener("click", () => {
+            sendControl({
+                type: "NewPaneInTab",
+                tab_id: active.tab_position,
+            });
             closeOverlay();
         });
         footer.append(newPane);
@@ -824,6 +899,11 @@ function renderCard(kind, item, indices) {
         if (kind === "sessions") {
             navigateToSession(item.name);
         } else {
+            sendControl({
+                type: "FocusPane",
+                pane_id: item.pane_id,
+                is_plugin: item.is_plugin,
+            });
             closeOverlay();
         }
     });
@@ -965,5 +1045,10 @@ function emptyMobileState() {
         tabs: [],
         panes: [],
         sessions: [],
+        render_prefs: {
+            single_pane: true,
+            fit: true,
+            active_pane_is_fullscreen: false,
+        },
     };
 }

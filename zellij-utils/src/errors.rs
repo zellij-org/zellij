@@ -412,6 +412,7 @@ pub enum ScreenContext {
     PageScrollDownInPaneId,
     TogglePaneIdFullscreen,
     SetTabFit,
+    SetMobileRenderPreferences,
     TogglePaneEmbedOrEjectForPaneId,
     CloseTabWithIndex,
     BreakPanesToNewTab,

@@ -12,10 +12,11 @@ use crate::{
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, KittyGraphicsSupportMsg,
         LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg, MobileActivePaneMsg,
-        MobilePaneMsg, MobileSessionMsg, MobileSizeMsg, MobileStateMsg, MobileTabMsg,
-        NestedSessionFrameFromHostMsg, PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
-        QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg, RequestSessionListMsg,
-        ResizeCause as ProtoResizeCause, ServerToClientMsg as ProtoServerToClientMsg,
+        MobilePaneMsg, MobileRenderPrefsMsg, MobileSessionMsg, MobileSizeMsg, MobileStateMsg,
+        MobileTabMsg, NestedSessionFrameFromHostMsg, PaneMetadata as ProtoPaneMetadata,
+        PaneRenderUpdateMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
+        RequestSessionListMsg, ResizeCause as ProtoResizeCause,
+        ServerToClientMsg as ProtoServerToClientMsg, SetMobileRenderPreferencesMsg,
         SetSoftKeyboardMsg, SixelSupportMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
         SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
         TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
@@ -25,8 +26,8 @@ use crate::{
     errors::prelude::*,
     ipc::{
         ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
-        MobileSessionPayload, MobileSizePayload, MobileStatePayload, MobileTabPayload,
-        PaneReference, PixelDimensions, ResizeCause, ServerToClientMsg,
+        MobileRenderPrefsPayload, MobileSessionPayload, MobileSizePayload, MobileStatePayload,
+        MobileTabPayload, PaneReference, PixelDimensions, ResizeCause, ServerToClientMsg,
     },
 };
 use std::collections::BTreeMap;
@@ -174,6 +175,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             },
             ClientToServerMsg::RequestSessionList => {
                 client_to_server_msg::Message::RequestSessionList(RequestSessionListMsg {})
+            },
+            ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit } => {
+                client_to_server_msg::Message::SetMobileRenderPreferences(
+                    SetMobileRenderPreferencesMsg { single_pane, fit },
+                )
             },
         };
 
@@ -343,6 +349,12 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
             Some(client_to_server_msg::Message::RequestSessionList(_)) => {
                 Ok(ClientToServerMsg::RequestSessionList)
             },
+            Some(client_to_server_msg::Message::SetMobileRenderPreferences(msg)) => {
+                Ok(ClientToServerMsg::SetMobileRenderPreferences {
+                    single_pane: msg.single_pane,
+                    fit: msg.fit,
+                })
+            },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
     }
@@ -495,6 +507,11 @@ fn mobile_state_payload_to_proto(payload: MobileStatePayload) -> MobileStateMsg 
                 creation_secs_ago: s.creation_secs_ago,
             })
             .collect(),
+        render_prefs: Some(MobileRenderPrefsMsg {
+            single_pane: payload.render_prefs.single_pane,
+            fit: payload.render_prefs.fit,
+            active_pane_is_fullscreen: payload.render_prefs.active_pane_is_fullscreen,
+        }),
     }
 }
 
@@ -546,6 +563,18 @@ fn mobile_state_payload_from_proto(msg: MobileStateMsg) -> MobileStatePayload {
                 creation_secs_ago: s.creation_secs_ago,
             })
             .collect(),
+        render_prefs: msg
+            .render_prefs
+            .map(|p| MobileRenderPrefsPayload {
+                single_pane: p.single_pane,
+                fit: p.fit,
+                active_pane_is_fullscreen: p.active_pane_is_fullscreen,
+            })
+            .unwrap_or(MobileRenderPrefsPayload {
+                single_pane: true,
+                fit: true,
+                active_pane_is_fullscreen: false,
+            }),
     }
 }
 

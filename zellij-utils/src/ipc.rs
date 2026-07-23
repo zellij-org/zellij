@@ -141,6 +141,13 @@ pub struct MobileSessionPayload {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileRenderPrefsPayload {
+    pub single_pane: bool,
+    pub fit: bool,
+    pub active_pane_is_fullscreen: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct MobileStatePayload {
     pub session_name: String,
     pub now_secs: u64,
@@ -151,6 +158,7 @@ pub struct MobileStatePayload {
     pub tabs: Vec<MobileTabPayload>,
     pub panes: Vec<MobilePanePayload>,
     pub sessions: Vec<MobileSessionPayload>,
+    pub render_prefs: MobileRenderPrefsPayload,
 }
 
 // Types of messages sent from the client to the server
@@ -239,6 +247,10 @@ pub enum ClientToServerMsg {
         supported: bool,
     },
     RequestSessionList,
+    SetMobileRenderPreferences {
+        single_pane: bool,
+        fit: bool,
+    },
 }
 
 // Types of messages sent from the server to the client

@@ -28,6 +28,23 @@ struct FitOverride {
     pane_was_fullscreen_before_fit: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MobileWebPrefs {
+    pub single_pane: bool,
+    pub fit: bool,
+    pub fullscreened_pane: Option<PaneId>,
+}
+
+impl Default for MobileWebPrefs {
+    fn default() -> Self {
+        MobileWebPrefs {
+            single_pane: true,
+            fit: true,
+            fullscreened_pane: None,
+        }
+    }
+}
+
 const CLEAR_SCREEN: &str = "\u{1b}[2J\u{1b}[H";
 
 #[derive(Debug, Default)]

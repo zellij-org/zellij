@@ -141,6 +141,12 @@ message MobileSessionMsg {
   uint64 creation_secs_ago = 6;
 }
 
+message MobileRenderPrefsMsg {
+  bool single_pane = 1;
+  bool fit = 2;
+  bool active_pane_is_fullscreen = 3;
+}
+
 message MobileStateMsg {
   string session_name = 1;
   uint64 now_secs = 2;
@@ -151,4 +157,5 @@ message MobileStateMsg {
   repeated MobileTabMsg tabs = 7;
   repeated MobilePaneMsg panes = 8;
   repeated MobileSessionMsg sessions = 9;
+  MobileRenderPrefsMsg render_prefs = 10;
 }

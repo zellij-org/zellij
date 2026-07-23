@@ -276,12 +276,22 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
                 "Settled"
             );
         } else if (msg.type === "QueryTerminalSize") {
-            const fitDimensions = fitAddon.proposeDimensions();
-            const { rows, cols } = fitDimensions;
-            if (rows !== term.rows || cols !== term.cols) {
-                term.resize(cols, rows);
+            const sizing =
+                window.__zjMobileUi && window.__zjMobileUi.getRenderSizing
+                    ? window.__zjMobileUi.getRenderSizing()
+                    : { pinned: false };
+            if (sizing.pinned) {
+                if (sizing.rows !== term.rows || sizing.cols !== term.cols) {
+                    term.resize(sizing.cols, sizing.rows);
+                }
+            } else {
+                const fitDimensions = fitAddon.proposeDimensions();
+                const { rows, cols } = fitDimensions;
+                if (rows !== term.rows || cols !== term.cols) {
+                    term.resize(cols, rows);
+                }
+                sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols);
             }
-            sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols);
         } else if (msg.type === "Log") {
             const { lines } = msg;
             for (const line in lines) {
@@ -341,6 +351,18 @@ export function setupResizeHandler(
     const resizeTerminal = (cause) => {
         const ownWebClientId = getOwnWebClientId();
         if (ownWebClientId === "") {
+            return;
+        }
+
+        const sizing =
+            window.__zjMobileUi && window.__zjMobileUi.getRenderSizing
+                ? window.__zjMobileUi.getRenderSizing()
+                : { pinned: false };
+
+        if (sizing.pinned) {
+            if (sizing.rows !== term.rows || sizing.cols !== term.cols) {
+                term.resize(sizing.cols, sizing.rows);
+            }
             return;
         }
 

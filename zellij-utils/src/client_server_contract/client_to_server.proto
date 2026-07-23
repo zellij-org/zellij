@@ -30,6 +30,7 @@ message ClientToServerMsg {
     KittyGraphicsSupportMsg kitty_graphics_support = 23;
     SixelSupportMsg sixel_support = 24;
     RequestSessionListMsg request_session_list = 25;
+    SetMobileRenderPreferencesMsg set_mobile_render_preferences = 26;
   }
 }
 
@@ -156,4 +157,9 @@ message SixelSupportMsg {
 
 message RequestSessionListMsg {
   // Empty message
+}
+
+message SetMobileRenderPreferencesMsg {
+  bool single_pane = 1;
+  bool fit = 2;
 }

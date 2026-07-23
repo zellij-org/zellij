@@ -2875,6 +2875,18 @@ pub(crate) fn route_thread_main(
                                 }
                             }
                         },
+                        ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit } => {
+                            let _ = send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::SetMobileRenderPreferences {
+                                    client_id,
+                                    single_pane,
+                                    fit,
+                                },
+                                instruction,
+                                retry_queue
+                            );
+                        },
                     }
                     Ok(should_break)
                 };
