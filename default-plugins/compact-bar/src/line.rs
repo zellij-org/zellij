@@ -5,13 +5,25 @@ use crate::{LinePart, TabRenderData, ARROW_SEPARATOR};
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
+pub struct TabLineOutput {
+    pub parts: Vec<LinePart>,
+    pub breadcrumb_range: Option<(usize, usize)>,
+}
+
 pub fn tab_line(
     mode_info: &ModeInfo,
     tab_data: TabRenderData,
     cols: usize,
     toggle_tooltip_key: Option<String>,
     tooltip_is_active: bool,
-) -> Vec<LinePart> {
+) -> TabLineOutput {
+    let dimmed = mode_info.session_ascended == Some(true) || mode_info.session_dimmed == Some(true);
+    let breadcrumb_ancestry = if mode_info.host_fullscreen == Some(true) {
+        mode_info.session_ancestry.clone()
+    } else {
+        Vec::new()
+    };
+    let nested_hint = NestedSessionHint::from_mode_info(mode_info);
     let config = TabLineConfig {
         session_name: mode_info.session_name.to_owned(),
         hide_session_name: mode_info.style.hide_session_name,
@@ -20,11 +32,36 @@ pub fn tab_line(
         is_swap_layout_dirty: tab_data.is_swap_layout_dirty,
         toggle_tooltip_key,
         tooltip_is_active,
-        dimmed: false,
+        dimmed,
+        breadcrumb_ancestry,
+        nested_hint,
     };
 
     let builder = TabLineBuilder::new(config, mode_info.style.colors, mode_info.capabilities, cols);
     builder.build(tab_data.tabs, tab_data.active_tab_index)
+}
+
+#[derive(Debug, Clone)]
+pub enum NestedSessionHint {
+    None,
+    Ascend(Vec<KeyWithModifier>),
+    Descend(Vec<KeyWithModifier>),
+}
+
+impl NestedSessionHint {
+    fn from_mode_info(mode_info: &ModeInfo) -> Self {
+        if mode_info.session_dimmed == Some(true) {
+            NestedSessionHint::Ascend(mode_info.nested_ascend_keys.clone())
+        } else if mode_info.session_ascended == Some(true) {
+            NestedSessionHint::Descend(mode_info.nested_descend_keys.clone())
+        } else {
+            NestedSessionHint::None
+        }
+    }
+
+    fn is_active(&self) -> bool {
+        !matches!(self, NestedSessionHint::None)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -37,10 +74,21 @@ pub struct TabLineConfig {
     pub toggle_tooltip_key: Option<String>,
     pub tooltip_is_active: bool,
     pub dimmed: bool,
+    pub breadcrumb_ancestry: Vec<String>,
+    pub nested_hint: NestedSessionHint,
 }
 
 fn calculate_total_length(parts: &[LinePart]) -> usize {
     parts.iter().map(|p| p.len).sum()
+}
+
+fn dim_style(bg: PaletteColor) -> ansi_term::Style {
+    ansi_term::Style::new()
+        .on(match bg {
+            PaletteColor::Rgb((r, g, b)) => ansi_term::Color::RGB(r, g, b),
+            PaletteColor::EightBit(c) => ansi_term::Color::Fixed(c),
+        })
+        .dimmed()
 }
 
 struct TabLinePopulator {
@@ -274,27 +322,43 @@ enum TabAction {
     Finish,
 }
 
-struct TabLinePrefixBuilder {
+struct TabLinePrefixBuilder<'a> {
     palette: Styling,
     cols: usize,
     dimmed: bool,
+    breadcrumb_ancestry: &'a [String],
 }
 
-impl TabLinePrefixBuilder {
-    fn new(palette: Styling, cols: usize, dimmed: bool) -> Self {
+struct TabLinePrefix {
+    parts: Vec<LinePart>,
+    breadcrumb_range: Option<(usize, usize)>,
+}
+
+impl<'a> TabLinePrefixBuilder<'a> {
+    fn new(palette: Styling, cols: usize, dimmed: bool, breadcrumb_ancestry: &'a [String]) -> Self {
         Self {
             palette,
             cols,
             dimmed,
+            breadcrumb_ancestry,
         }
     }
 
-    fn build(&self, session_name: Option<&str>, mode: InputMode) -> Vec<LinePart> {
+    fn build(&self, session_name: Option<&str>, mode: InputMode) -> TabLinePrefix {
         let mut parts = vec![self.create_zellij_part()];
         let mut used_len = parts.get(0).map_or(0, |p| p.len);
+        let mut breadcrumb_range = None;
 
         if let Some(name) = session_name {
-            if let Some(name_part) = self.create_session_name_part(name, used_len) {
+            if !self.breadcrumb_ancestry.is_empty() {
+                if let Some((mut breadcrumb_parts, range, breadcrumb_len)) =
+                    self.create_breadcrumb_parts(name, used_len)
+                {
+                    used_len += breadcrumb_len;
+                    breadcrumb_range = Some(range);
+                    parts.append(&mut breadcrumb_parts);
+                }
+            } else if let Some(name_part) = self.create_session_name_part(name, used_len) {
                 used_len += name_part.len;
                 parts.push(name_part);
             }
@@ -304,7 +368,68 @@ impl TabLinePrefixBuilder {
             parts.push(mode_part);
         }
 
-        parts
+        TabLinePrefix {
+            parts,
+            breadcrumb_range,
+        }
+    }
+
+    fn create_breadcrumb_parts(
+        &self,
+        name: &str,
+        used_len: usize,
+    ) -> Option<(Vec<LinePart>, (usize, usize), usize)> {
+        let bg_color = self.palette.text_unselected.background;
+        let text_color = self.palette.text_unselected.base;
+        let ancestor_text = format!("({} ▸ ", self.breadcrumb_ancestry.join(" ▸ "));
+        let ancestor_len = ancestor_text.width();
+        let name_text = name.to_string();
+        let name_len = name_text.width();
+        let closing_text = ") ".to_string();
+        let closing_len = closing_text.width();
+        let total_len = ancestor_len + name_len + closing_len;
+
+        if self.cols.saturating_sub(used_len) < total_len {
+            return None;
+        }
+
+        let ancestor_style = if self.dimmed {
+            dim_style(bg_color)
+        } else {
+            style!(text_color, bg_color).italic()
+        };
+        let name_style = if self.dimmed {
+            dim_style(bg_color)
+        } else {
+            style!(self.palette.text_unselected.emphasis_0, bg_color).bold()
+        };
+        let closing_style = if self.dimmed {
+            dim_style(bg_color)
+        } else {
+            style!(text_color, bg_color).bold()
+        };
+
+        let ancestor_start = used_len;
+        let ancestor_end = ancestor_start + ancestor_len;
+        let parts = vec![
+            LinePart {
+                part: ancestor_style.paint(ancestor_text).to_string(),
+                len: ancestor_len,
+                tab_index: None,
+            },
+            LinePart {
+                part: name_style.paint(name_text).to_string(),
+                len: name_len,
+                tab_index: None,
+            },
+            LinePart {
+                part: closing_style.paint(closing_text).to_string(),
+                len: closing_len,
+                tab_index: None,
+            },
+        ];
+
+        Some((parts, (ancestor_start, ancestor_end), total_len))
     }
 
     fn create_zellij_part(&self) -> LinePart {
@@ -400,6 +525,13 @@ impl RightSideElementsBuilder {
     }
 
     fn build(&self, config: &TabLineConfig, available_space: usize) -> Vec<LinePart> {
+        if config.nested_hint.is_active() {
+            if let Some(hint) = self.create_nested_hint(&config.nested_hint, available_space) {
+                return vec![hint];
+            }
+            return Vec::new();
+        }
+
         let mut elements = Vec::new();
 
         if let Some(ref tooltip_key) = config.toggle_tooltip_key {
@@ -411,6 +543,59 @@ impl RightSideElementsBuilder {
         }
 
         elements
+    }
+
+    fn create_nested_hint(
+        &self,
+        hint: &NestedSessionHint,
+        max_len: usize,
+    ) -> Option<LinePart> {
+        let (prefix, keys) = match hint {
+            NestedSessionHint::Ascend(keys) => ("To ascend: ", keys),
+            NestedSessionHint::Descend(keys) => ("To descend, focus pane, then: ", keys),
+            NestedSessionHint::None => return None,
+        };
+
+        let bg = self.palette.text_unselected.background;
+        let key_color = self.palette.text_unselected.emphasis_0;
+        let keys_text: Vec<String> = keys.iter().map(|key| key.to_string()).collect();
+
+        let prefix_len = prefix.width() + 1;
+        let keys_display_len: usize = keys_text.iter().map(|k| k.width()).sum::<usize>()
+            + keys_text.len().saturating_sub(1) * 2;
+
+        if !keys_text.is_empty() && prefix_len + keys_display_len <= max_len {
+            let prefix_style = dim_style(bg).italic();
+            let mut part = prefix_style.paint(format!(" {}", prefix)).to_string();
+            for (i, key) in keys_text.iter().enumerate() {
+                if i > 0 {
+                    part.push_str(&style!(key_color, bg).paint(", ").to_string());
+                }
+                part.push_str(&style!(key_color, bg).bold().paint(key).to_string());
+            }
+            return Some(LinePart {
+                part,
+                len: prefix_len + keys_display_len,
+                tab_index: None,
+            });
+        }
+
+        let message = match hint {
+            NestedSessionHint::Ascend(_) => " nested session",
+            NestedSessionHint::Descend(_) => " host session",
+            NestedSessionHint::None => return None,
+        };
+        let message_len = message.width();
+        if message_len <= max_len {
+            let style = dim_style(bg).italic();
+            return Some(LinePart {
+                part: style.paint(message).to_string(),
+                len: message_len,
+                tab_index: None,
+            });
+        }
+
+        None
     }
 
     fn create_tooltip_indicator(&self, toggle_key: &str, is_active: bool) -> LinePart {
@@ -557,22 +742,37 @@ impl TabLineBuilder {
         }
     }
 
-    pub fn build(self, all_tabs: Vec<LinePart>, active_tab_index: usize) -> Vec<LinePart> {
+    pub fn build(self, all_tabs: Vec<LinePart>, active_tab_index: usize) -> TabLineOutput {
         let (tabs_before_active, active_tab, tabs_after_active) =
             self.split_tabs(all_tabs, active_tab_index);
 
-        let prefix_builder = TabLinePrefixBuilder::new(self.palette, self.cols, self.config.dimmed);
         let session_name = if self.config.hide_session_name {
             None
         } else {
             self.config.session_name.as_deref()
         };
+        let breadcrumb_ancestry: &[String] = if self.config.hide_session_name {
+            &[]
+        } else {
+            &self.config.breadcrumb_ancestry
+        };
+        let prefix_builder = TabLinePrefixBuilder::new(
+            self.palette,
+            self.cols,
+            self.config.dimmed,
+            breadcrumb_ancestry,
+        );
 
-        let mut prefix = prefix_builder.build(session_name, self.config.mode);
+        let prefix_result = prefix_builder.build(session_name, self.config.mode);
+        let mut prefix = prefix_result.parts;
+        let breadcrumb_range = prefix_result.breadcrumb_range;
         let prefix_len = calculate_total_length(&prefix);
 
         if prefix_len + active_tab.len > self.cols {
-            return prefix;
+            return TabLineOutput {
+                parts: prefix,
+                breadcrumb_range,
+            };
         }
 
         let mut tabs_to_render = vec![active_tab];
@@ -590,7 +790,10 @@ impl TabLineBuilder {
         prefix.append(&mut tabs_to_render);
 
         self.add_right_side_elements(&mut prefix);
-        prefix
+        TabLineOutput {
+            parts: prefix,
+            breadcrumb_range,
+        }
     }
 
     fn split_tabs(

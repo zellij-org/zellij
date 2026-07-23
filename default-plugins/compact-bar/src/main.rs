@@ -41,6 +41,7 @@ struct State {
     // Display state
     mode_info: ModeInfo,
     tab_line: Vec<LinePart>,
+    breadcrumb_range: Option<(usize, usize)>,
     display_area_rows: usize,
     display_area_cols: usize,
 
@@ -278,11 +279,21 @@ impl State {
         }
 
         match mouse_event {
-            Mouse::LeftClick(_, col) => self.handle_tab_click(col),
+            Mouse::LeftClick(_, col) => {
+                if self.click_is_on_breadcrumb(col) {
+                    focus_host_session();
+                } else {
+                    self.handle_tab_click(col);
+                }
+            },
             Mouse::ScrollUp(_) => self.scroll_tab_up(),
             Mouse::ScrollDown(_) => self.scroll_tab_down(),
             _ => {},
         }
+    }
+
+    fn click_is_on_breadcrumb(&self, col: usize) -> bool {
+        matches!(self.breadcrumb_range, Some((start, end)) if col >= start && col < end)
     }
 
     fn handle_clipboard_copy(&mut self, copy_destination: CopyDestination) -> bool {
@@ -514,13 +525,15 @@ impl State {
         }
 
         let tab_data = self.prepare_tab_data();
-        self.tab_line = tab_line(
+        let tab_line_output = tab_line(
             &self.mode_info,
             tab_data,
             cols,
             self.toggle_tooltip_key.clone(),
             self.tooltip_is_active,
         );
+        self.tab_line = tab_line_output.parts;
+        self.breadcrumb_range = tab_line_output.breadcrumb_range;
 
         let output = self
             .tab_line
@@ -536,6 +549,8 @@ impl State {
         let mut active_swap_layout_name = None;
         let mut is_swap_layout_dirty = false;
         let mut is_alternate_tab = false;
+        let dimmed = self.mode_info.session_ascended == Some(true)
+            || self.mode_info.session_dimmed == Some(true);
 
         for tab in &self.tabs {
             let tab_name = self.get_tab_display_name(tab);
@@ -554,7 +569,7 @@ impl State {
                 is_alternate_tab,
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
-                false,
+                dimmed,
             );
 
             is_alternate_tab = !is_alternate_tab;
