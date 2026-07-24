@@ -414,6 +414,13 @@ impl UnixPtyBackend {
         }
     }
 
+    pub fn tcgetpgrp(&self, terminal_id: u32) -> Option<i32> {
+        match self.terminal_id_to_raw_fd.lock().ok()?.get(&terminal_id) {
+            Some(Some(fd)) => unistd::tcgetpgrp(*fd).ok().map(|pgid| pgid.as_raw()),
+            _ => None,
+        }
+    }
+
     pub fn kill(&self, pid: u32) -> Result<()> {
         let _ = kill(unistd::Pid::from_raw(pid as i32), Some(Signal::SIGHUP));
         Ok(())

@@ -178,6 +178,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -216,6 +217,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -266,6 +268,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -304,6 +307,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -360,6 +364,7 @@ fn create_new_tab_with_cell_size(
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -398,6 +403,7 @@ fn create_new_tab_with_cell_size(
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -16184,6 +16190,40 @@ pub fn interactive_rename_appends_to_existing_name() {
     let _ = tab.update_active_pane_name(vec![b's'], client_id);
     let pane = tab.get_pane_with_id(pane_id).unwrap();
     assert_eq!(pane.current_title(), "flames");
+}
+
+#[test]
+pub fn interactive_rename_nul_clears_existing_name() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    let _ = tab.update_active_pane_name(vec![0], client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.custom_title(), None);
+
+    let _ = tab.update_active_pane_name(b"spark".to_vec(), client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.custom_title(), Some("spark".to_owned()));
+}
+
+#[test]
+pub fn interactive_rename_sanitizes_other_control_characters() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    let _ = tab.update_active_pane_name(vec![0x01, 0x07, b'\n', b'\r', 0x1b], client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.custom_title(), Some("flame".to_owned()));
 }
 
 #[test]

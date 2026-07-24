@@ -284,6 +284,7 @@ fn create_new_screen(
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
     let visual_bell = true;
+    let mouse_scroll_resize = true;
     let screen = Screen::new(
         bus,
         &client_attributes,
@@ -311,6 +312,7 @@ fn create_new_screen(
         false,
         web_sharing,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         mouse_hover_effects,
         visual_bell,
         false, // focus_follows_mouse
@@ -3252,6 +3254,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: Some(false),
         tab_id: None,
     };
@@ -3307,6 +3310,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: Some(false),
         tab_id: None,
     };
@@ -3362,6 +3366,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: Some(false),
         tab_id: None,
     };
@@ -3428,6 +3433,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: Some(false),
         tab_id: None,
     };
@@ -3472,6 +3478,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         pinned: None,
         borderless: Some(false),
         near_current_pane: false,
+        no_focus: false,
         tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -3515,6 +3522,7 @@ pub fn send_cli_edit_action_with_line_number() {
         pinned: None,
         borderless: Some(false),
         near_current_pane: false,
+        no_focus: false,
         tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -3558,6 +3566,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         pinned: None,
         borderless: Some(false),
         near_current_pane: false,
+        no_focus: false,
         tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -3759,6 +3768,7 @@ pub fn send_cli_new_tab_action_default_params() {
         block_until_exit: false,
         block_until_exit_success: false,
         block_until_exit_failure: false,
+        no_focus: false,
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3807,6 +3817,7 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
         block_until_exit: false,
         block_until_exit_success: false,
         block_until_exit_failure: false,
+        no_focus: false,
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -5250,6 +5261,7 @@ pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: None,
         tab_id: None,
     };
@@ -5301,6 +5313,7 @@ pub fn send_cli_edit_in_place_with_close_replaced_pane() {
         height: None,
         pinned: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: None,
         tab_id: None,
     };
@@ -5431,6 +5444,7 @@ fn create_new_screen_with_message_capture(
         None,
         false,
         web_sharing,
+        true,
         true,
         true,
         visual_bell,
@@ -7853,6 +7867,7 @@ pub fn send_cli_new_tab_action_with_layout_string() {
         block_until_exit: false,
         block_until_exit_success: false,
         block_until_exit_failure: false,
+        no_focus: false,
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -7907,6 +7922,7 @@ pub fn send_cli_new_tab_action_with_layout_string_and_name() {
         block_until_exit: false,
         block_until_exit_success: false,
         block_until_exit_failure: false,
+        no_focus: false,
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -7977,6 +7993,7 @@ pub fn send_cli_new_pane_action_with_tab_id() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: Some(false),
         tab_id: Some(0),
     };
@@ -8039,6 +8056,7 @@ pub fn send_cli_new_floating_pane_action_with_tab_id() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: None,
         tab_id: Some(0),
     };
@@ -8088,6 +8106,7 @@ pub fn send_cli_edit_action_with_tab_id() {
         height: None,
         pinned: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: None,
         tab_id: Some(0),
     };
@@ -8149,6 +8168,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_direction() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: Some(false),
         tab_id: Some(0),
     };
@@ -8210,6 +8230,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_stacked() {
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: None,
         tab_id: Some(0),
     };
@@ -8506,6 +8527,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         None,
         false,
         web_sharing,
+        true,
         true,
         true,
         visual_bell,
@@ -9093,6 +9115,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         true,
         true,
         true,
+        true,
         false,
         false,
         web_server_ip,
@@ -9571,6 +9594,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         false,
         WebSharing::Off,
         true,  // advanced_mouse_actions
+        true,  // mouse_scroll_resize
         true,  // mouse_hover_effects
         true,  // visual_bell
         false, // focus_follows_mouse

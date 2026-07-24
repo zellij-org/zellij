@@ -1,5 +1,7 @@
 use crate::keyboard_parser::{KittyKeyboardParser, KittyParseOutcome};
 use crate::os_input_output::ClientOsApi;
+#[cfg(windows)]
+use crate::os_input_output_windows::use_vt_path;
 use crate::stdin_ansi_parser::{PendingPartial, StdinAnsiParser};
 #[cfg(windows)]
 use crate::stdin_handler_windows::enable_vt_input;
@@ -21,19 +23,11 @@ pub(crate) fn stdin_loop(
     explicitly_disable_kitty_keyboard_protocol: bool,
     resize_sender: Option<std::sync::mpsc::Sender<()>>,
 ) {
-    // On Windows, choose between two input strategies early — we need this
-    // decision before the startup ANSI query below.
-    //
-    // 1. Native console (no TERM env var): Use crossterm's event::read() which
-    //    reads INPUT_RECORDs via ReadConsoleInput. Works in cmd.exe, PowerShell,
-    //    and Windows Terminal where ALT is reported as a modifier flag.
-    //
-    // 2. Terminal emulator (TERM is set, e.g. Alacritty): Enable
-    //    ENABLE_VIRTUAL_TERMINAL_INPUT so ReadFile on stdin returns raw VT bytes,
-    //    bypassing conpty's lossy VT→INPUT_RECORD translation. Then use the
-    //    termwiz byte parser (same as Unix) which understands ESC-prefixed ALT.
+    // On Windows we choose between the VT byte path (termwiz/kitty parsing)
+    // and the native-console path (crossterm INPUT_RECORDs) early, before the
+    // startup ANSI query below. See `use_vt_path()` for the trigger conditions.
     #[cfg(windows)]
-    let use_vt_reader = std::env::var("TERM").is_ok() && enable_vt_input();
+    let use_vt_reader = use_vt_path() && enable_vt_input();
 
     // Send the startup host query string so the host terminal replies
     // with its live pixel dimensions, fg/bg, sync-output support, and
@@ -183,11 +177,11 @@ pub(crate) fn stdin_loop(
                         // Ambiguous events (if any) will be finalized later only if 50ms
                         // passes with no new input
                         let maybe_more = true;
-                        let mut events = vec![];
-                        input_parser.parse(
+                        let mut events: Vec<(InputEvent, usize)> = vec![];
+                        input_parser.parse_with_consumed(
                             &residue,
-                            |input_event: InputEvent| {
-                                events.push(input_event);
+                            |input_event: InputEvent, consumed: usize| {
+                                events.push((input_event, consumed));
                             },
                             maybe_more,
                         );
@@ -196,12 +190,14 @@ pub(crate) fn stdin_loop(
                         // reports — `StdinAnsiParser::feed` strips both
                         // before the keyboard parser sees the bytes.
                         // Every termwiz event is a key/mouse/paste/etc.
-                        for input_event in events.into_iter() {
+                        // Each event is forwarded with exactly the bytes
+                        // that produced it, never bytes belonging to other
+                        // events decoded from the same read.
+                        for (input_event, consumed) in events.into_iter() {
+                            let take = consumed.min(current_buffer.len());
+                            let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
                             send_input_instructions
-                                .send(InputInstruction::KeyEvent(
-                                    input_event,
-                                    current_buffer.drain(..).collect(),
-                                ))
+                                .send(InputInstruction::KeyEvent(input_event, raw_bytes))
                                 .unwrap();
                         }
 
@@ -295,20 +291,19 @@ fn drain_partial_to_keyboard(
         current_buffer.extend_from_slice(&drained);
     }
 
-    let mut events = vec![];
-    input_parser.parse(
+    let mut events: Vec<(InputEvent, usize)> = vec![];
+    input_parser.parse_with_consumed(
         &drained,
-        |input_event: InputEvent| {
-            events.push(input_event);
+        |input_event: InputEvent, consumed: usize| {
+            events.push((input_event, consumed));
         },
         false,
     );
-    for input_event in events {
+    for (input_event, consumed) in events {
+        let take = consumed.min(current_buffer.len());
+        let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
         send_input_instructions
-            .send(InputInstruction::KeyEvent(
-                input_event,
-                current_buffer.drain(..).collect(),
-            ))
+            .send(InputInstruction::KeyEvent(input_event, raw_bytes))
             .unwrap();
     }
 }

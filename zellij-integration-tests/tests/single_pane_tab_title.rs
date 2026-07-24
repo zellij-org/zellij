@@ -37,6 +37,7 @@ fn replace_pane_in_place_with_held_command(
         block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
+        no_focus: false,
         borderless: None,
         tab_id: None,
     });

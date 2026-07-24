@@ -42,8 +42,6 @@ struct State {
     classic_ui: bool,
     base_mode_is_locked: bool,
     cached_keybinds: KeybindsVec,
-    hint_text: Option<BTreeMap<usize, StyledText>>,
-    outstanding_hint_timeouts: usize,
     new_pane_ribbon_range: Option<(usize, usize)>,
     floating_ribbon_range: Option<(usize, usize)>,
     new_pane_ribbon_hovered: bool,
@@ -222,8 +220,6 @@ impl ZellijPlugin for State {
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
             EventType::InitialKeybinds,
-            EventType::HintText,
-            EventType::Timer,
             EventType::Mouse,
         ]);
     }
@@ -276,33 +272,11 @@ impl ZellijPlugin for State {
             Event::InputReceived => {
                 if self.text_copy_destination.is_some()
                     || self.display_system_clipboard_failure == true
-                    || self.hint_text.is_some()
                 {
                     should_render = true;
                 }
                 self.text_copy_destination = None;
                 self.display_system_clipboard_failure = false;
-                self.hint_text = None;
-            },
-            Event::HintText(hint_variants) => {
-                if hint_variants.is_empty() {
-                    if self.hint_text.is_some() {
-                        self.hint_text = None;
-                        should_render = true;
-                    }
-                } else {
-                    self.hint_text = Some(hint_variants);
-                    self.outstanding_hint_timeouts += 1;
-                    set_timeout(5.0);
-                    should_render = true;
-                }
-            },
-            Event::Timer(_) => {
-                self.outstanding_hint_timeouts = self.outstanding_hint_timeouts.saturating_sub(1);
-                if self.outstanding_hint_timeouts == 0 && self.hint_text.is_some() {
-                    self.hint_text = None;
-                    should_render = true;
-                }
             },
             Event::Mouse(mouse_event) => match mouse_event {
                 Mouse::LeftClick(_, col) => {
@@ -347,12 +321,6 @@ impl ZellijPlugin for State {
                 PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
             };
             let active_tab = self.tabs.iter().find(|t| t.active);
-            let full_pane_frames = self.mode_info.pane_frame_style == Some(PaneFrameStyle::Full);
-            let hint_text = if full_pane_frames {
-                None
-            } else {
-                self.hint_text.as_ref()
-            };
             let (line, new_pane_ribbon_range, floating_ribbon_range) = one_line_ui(
                 &self.mode_info,
                 active_tab,
@@ -361,7 +329,6 @@ impl ZellijPlugin for State {
                 self.base_mode_is_locked,
                 self.text_copy_destination,
                 self.display_system_clipboard_failure,
-                hint_text,
                 self.new_pane_ribbon_hovered,
                 self.floating_ribbon_hovered,
             );

@@ -2,7 +2,7 @@
 source: src/tests/e2e/cases.rs
 expression: last_snapshot
 ---
- Zellij (e2e-test)  Tab #1  Tab #2  Tab #3  Tab #4  + 
+ Zellij (e2e-test)  Tab #1  Tab #2  Tab #3  Tab #4  +        <ENTER> run, <ESC> drop to shell, <Ctrl-c> exit  
                            Pane #1                         │                           Pane #2                          
 $                                                          │$                                                           
                                                            │                                                            

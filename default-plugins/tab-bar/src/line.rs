@@ -1,4 +1,5 @@
 use ansi_term::ANSIStrings;
+use std::collections::BTreeMap;
 use unicode_width::UnicodeWidthStr;
 
 use crate::{LinePart, ARROW_SEPARATOR};
@@ -225,6 +226,7 @@ pub fn tab_line(
     hide_swap_layout_indicator: bool,
     background: &PaletteColor,
     active_pane_scroll: Option<(usize, usize)>,
+    hint: Option<&BTreeMap<usize, StyledText>>,
     is_alternate_tab: bool,
     new_tab_button_is_hovered: bool,
 ) -> (Vec<LinePart>, Option<(usize, usize)>) {
@@ -258,6 +260,10 @@ pub fn tab_line(
 
     // Drop indicator if it would cause wrapping (active tab always rendered unconditionally)
     let prefix_len = get_current_title_len(&prefix);
+    let hint_budget = cols.saturating_sub(prefix_len + active_tab.len);
+    if let Some(hint_part) = hint.and_then(|hint| hint_line_part(hint, hint_budget)) {
+        swap_layout_indicator = Some(hint_part);
+    }
     let indicator_len = swap_layout_indicator.as_ref().map(|s| s.len).unwrap_or(0);
     if indicator_len > 0 && prefix_len + active_tab.len + indicator_len > cols {
         swap_layout_indicator = None;
@@ -360,6 +366,20 @@ fn swap_layout_status(
         },
         None => None,
     }
+}
+
+fn hint_line_part(hint: &BTreeMap<usize, StyledText>, max_len: usize) -> Option<LinePart> {
+    let fitting_variant = hint
+        .range(..=max_len)
+        .next_back()
+        .map(|(_width, styled_text)| styled_text)?;
+    let len = fitting_variant.text.width();
+    let part = serialize_text(&Text::from(fitting_variant.clone()));
+    Some(LinePart {
+        part,
+        len,
+        tab_index: None,
+    })
 }
 
 fn scroll_status(scroll: (usize, usize), palette: Styling) -> LinePart {

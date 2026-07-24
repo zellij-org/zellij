@@ -355,6 +355,7 @@ impl TryFrom<ProtobufAction> for Action {
                         start_suppressed: false,
                         coordinates: None,
                         near_current_pane,
+                        no_focus: false,
                         tab_id: None,
                     })
                 },
@@ -371,6 +372,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name,
                             coordinates: None,
                             near_current_pane,
+                            no_focus: false,
                             tab_id: None,
                         })
                     } else {
@@ -379,6 +381,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name: None,
                             coordinates: None,
                             near_current_pane,
+                            no_focus: false,
                             tab_id: None,
                         })
                     }
@@ -401,6 +404,7 @@ impl TryFrom<ProtobufAction> for Action {
                             command: Some(run_command_action),
                             pane_name,
                             near_current_pane,
+                            no_focus: false,
                             borderless,
                             tab_id: None,
                         })
@@ -410,6 +414,7 @@ impl TryFrom<ProtobufAction> for Action {
                             command: None,
                             pane_name: None,
                             near_current_pane,
+                            no_focus: false,
                             borderless,
                             tab_id: None,
                         })
@@ -620,6 +625,7 @@ impl TryFrom<ProtobufAction> for Action {
                     Ok(Action::Run {
                         command: run_command_action,
                         near_current_pane: false,
+                        no_focus: false,
                     })
                 },
                 _ => Err("Wrong payload for Action::Run"),
@@ -723,6 +729,7 @@ impl TryFrom<ProtobufAction> for Action {
                         close_replaced_pane: false,
                         skip_cache: skip_plugin_cache,
                         cwd: None,
+                        no_focus: false,
                         tab_id: None,
                     })
                 },
@@ -843,6 +850,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name,
                             skip_cache: skip_plugin_cache,
                             cwd: None,
+                            no_focus: false,
                             tab_id: None,
                         })
                     },
@@ -869,6 +877,7 @@ impl TryFrom<ProtobufAction> for Action {
                             skip_cache: skip_plugin_cache,
                             cwd: None,
                             coordinates: None,
+                            no_focus: false,
                             tab_id: None,
                         })
                     },
@@ -1022,6 +1031,7 @@ impl TryFrom<ProtobufAction> for Action {
                     command: None,
                     pane_name: None,
                     near_current_pane: false,
+                    no_focus: false,
                     tab_id: None,
                 }),
             },
@@ -1044,6 +1054,7 @@ impl TryFrom<ProtobufAction> for Action {
                         command,
                         unblock_condition,
                         near_current_pane,
+                        no_focus: false,
                         tab_id: None,
                     })
                 },
@@ -1062,6 +1073,7 @@ impl TryFrom<ProtobufAction> for Action {
                             command: Some(run_command_action),
                             pane_name,
                             near_current_pane,
+                            no_focus: false,
                             pane_id_to_replace,
                             close_replaced_pane,
                             tab_id: None,
@@ -1071,6 +1083,7 @@ impl TryFrom<ProtobufAction> for Action {
                             command: None,
                             pane_name: payload.pane_name,
                             near_current_pane,
+                            no_focus: false,
                             pane_id_to_replace,
                             close_replaced_pane,
                             tab_id: None,
@@ -1598,6 +1611,7 @@ impl TryFrom<Action> for ProtobufAction {
             Action::Run {
                 command: run_command_action,
                 near_current_pane: _,
+                no_focus: _,
             } => {
                 let run_command_action: ProtobufRunCommandAction = run_command_action.try_into()?;
                 Ok(ProtobufAction {

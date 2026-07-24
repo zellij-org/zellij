@@ -454,7 +454,7 @@ fn new_stacked_pane() {
 
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('s'));
-    let grid_snapshot = spawn_second_pane_and_wait_for_grid(&zellij, col(2).row(3));
+    let grid_snapshot = spawn_second_pane_and_wait_for_grid(&zellij, col(2).row(4));
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
@@ -630,7 +630,7 @@ fn toggle_frames_with_stacked_panes() {
 
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('s'));
-    spawn_second_pane_and_wait_for_grid(&zellij, col(2).row(3));
+    spawn_second_pane_and_wait_for_grid(&zellij, col(2).row(4));
 
     zellij.wait_until("stacked panes show their titles", |grid_snapshot| {
         grid_snapshot.contains("Pane #1")
