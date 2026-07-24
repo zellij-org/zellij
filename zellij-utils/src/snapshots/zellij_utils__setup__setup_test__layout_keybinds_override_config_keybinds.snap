@@ -143,6 +143,7 @@ Config {
         mobile_layout: None,
         mobile_threshold_cols: None,
         mobile_threshold_rows: None,
+        nested_session_handling: None,
     },
     themes: {},
     plugins: PluginAliases {

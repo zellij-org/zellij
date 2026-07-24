@@ -619,4 +619,12 @@ web_client {
 // Row breakpoint for mobile_layout (web/always). 0 = always match.
 // Default: 30
 // mobile_threshold_rows 30
-
+ 
+// How to handle a nested Zellij session detected inside a pane.
+// Options:
+//   - "ask" (Default — prompt with a modal)
+//   - "fullscreen" (always zoom into the nested session)
+//   - "descend" (always control the nested session on focus)
+//   - "never" (never prompt or descend; do it manually)
+// 
+// nested_session_handling "ask"

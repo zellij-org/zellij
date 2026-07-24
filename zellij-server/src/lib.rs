@@ -474,6 +474,10 @@ impl SessionMetaData {
                     visual_bell: new_config.options.visual_bell.unwrap_or(true),
                     focus_follows_mouse: new_config.options.focus_follows_mouse.unwrap_or(false),
                     mouse_click_through: new_config.options.mouse_click_through.unwrap_or(false),
+                    nested_session_handling: new_config
+                        .options
+                        .nested_session_handling
+                        .unwrap_or_default(),
                 })
                 .unwrap();
             self.senders

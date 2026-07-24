@@ -1210,6 +1210,7 @@ message Options {
   optional uint32 mobile_threshold_rows = 50;
   optional string pane_frame_style = 51;
   optional bool stacked_pane_list = 52;
+  optional NestedSessionHandling nested_session_handling = 53;
 }
 
 enum OnForceClose {
@@ -1242,6 +1243,14 @@ enum MobileLayout {
   MOBILE_LAYOUT_WEB = 1;
   MOBILE_LAYOUT_ALWAYS = 2;
   MOBILE_LAYOUT_NEVER = 3;
+}
+
+enum NestedSessionHandling {
+  NESTED_SESSION_HANDLING_UNSPECIFIED = 0;
+  NESTED_SESSION_HANDLING_ASK = 1;
+  NESTED_SESSION_HANDLING_FULLSCREEN = 2;
+  NESTED_SESSION_HANDLING_DESCEND = 3;
+  NESTED_SESSION_HANDLING_NEVER = 4;
 }
 
 // Pane-targeting action messages

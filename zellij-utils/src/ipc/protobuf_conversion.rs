@@ -796,6 +796,18 @@ impl From<crate::input::options::Options>
                 crate::input::options::PaneFrameStyle::Titles => "titles".to_owned(),
                 crate::input::options::PaneFrameStyle::None => "none".to_owned(),
             }),
+            nested_session_handling: options.nested_session_handling.map(|n| {
+                use crate::client_server_contract::client_server_contract::NestedSessionHandling as ProtoNestedSessionHandling;
+                use crate::input::options::NestedSessionHandling;
+                match n {
+                    NestedSessionHandling::Ask => ProtoNestedSessionHandling::Ask as i32,
+                    NestedSessionHandling::Fullscreen => {
+                        ProtoNestedSessionHandling::Fullscreen as i32
+                    },
+                    NestedSessionHandling::Descend => ProtoNestedSessionHandling::Descend as i32,
+                    NestedSessionHandling::Never => ProtoNestedSessionHandling::Never as i32,
+                }
+            }),
         }
     }
 }
@@ -809,7 +821,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
     ) -> Result<Self> {
         use crate::client_server_contract::client_server_contract::{
             Clipboard as ProtoClipboard, MobileLayout as ProtoMobileLayout,
-            OnForceClose as ProtoOnForceClose, WebSharing as ProtoWebSharing,
+            NestedSessionHandling as ProtoNestedSessionHandling, OnForceClose as ProtoOnForceClose,
+            WebSharing as ProtoWebSharing,
         };
 
         Ok(Self {
@@ -918,6 +931,26 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 .transpose()?,
             mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u16),
             mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u16),
+            nested_session_handling: options
+                .nested_session_handling
+                .map(
+                    |n| match ProtoNestedSessionHandling::from_i32(n) {
+                        Some(ProtoNestedSessionHandling::Ask) => {
+                            Ok(crate::input::options::NestedSessionHandling::Ask)
+                        },
+                        Some(ProtoNestedSessionHandling::Fullscreen) => {
+                            Ok(crate::input::options::NestedSessionHandling::Fullscreen)
+                        },
+                        Some(ProtoNestedSessionHandling::Descend) => {
+                            Ok(crate::input::options::NestedSessionHandling::Descend)
+                        },
+                        Some(ProtoNestedSessionHandling::Never) => {
+                            Ok(crate::input::options::NestedSessionHandling::Never)
+                        },
+                        _ => Err(anyhow!("Invalid NestedSessionHandling value: {}", n)),
+                    },
+                )
+                .transpose()?,
         })
     }
 }

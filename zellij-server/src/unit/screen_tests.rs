@@ -18,7 +18,7 @@ use zellij_utils::input::layout::{
     RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, TiledPaneLayout,
 };
 use zellij_utils::input::mouse::MouseEvent;
-use zellij_utils::input::options::{Options, PaneFrameStyle};
+use zellij_utils::input::options::{NestedSessionHandling, Options, PaneFrameStyle};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
@@ -319,6 +319,7 @@ fn create_new_screen(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        NestedSessionHandling::default(),
     );
     screen
 }
@@ -5525,6 +5526,7 @@ fn create_new_screen_with_message_capture(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        NestedSessionHandling::default(),
     );
     (screen, messages)
 }
@@ -8621,6 +8623,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        NestedSessionHandling::default(),
     );
     (
         screen,
@@ -9248,6 +9251,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         false,
         web_server_ip,
         web_server_port,
+        NestedSessionHandling::default(),
     );
     (
         screen,
@@ -9775,6 +9779,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         false, // mouse_click_through
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         8080,
+        NestedSessionHandling::default(),
     )
 }
 
@@ -11406,6 +11411,54 @@ pub fn nested_guest_announce_gets_announce_ack_with_ancestry() {
             descend_keys: vec![],
         }
     );
+    assert!(received_background_jobs
+        .lock()
+        .unwrap()
+        .iter()
+        .any(
+            |job| matches!(job, BackgroundJob::StartNestedGuestPing(PaneId::Terminal(0)))
+        ));
+}
+
+#[test]
+pub fn nested_guest_announce_in_never_mode_still_completes_handshake() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.config.options.nested_session_handling =
+        Some(NestedSessionHandling::Never);
+    let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
+    let received_background_jobs = mock_screen.received_background_jobs.clone();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_writer_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyWriteInstruction::Exit,
+        pty_writer_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::NestedSessionMessageFromPane {
+            pane_id: PaneId::Terminal(0),
+            message: guest_announce_message(),
+        });
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
+    let announce_ack = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|instruction| match instruction {
+            PtyWriteInstruction::Write(bytes, 0, None) => decode_nested_frame(bytes),
+            _ => None,
+        })
+        .expect("an announce_ack frame written to the guest pane even in never mode");
+    assert!(matches!(
+        announce_ack,
+        zellij_utils::nested_session::NestedSessionMessage::AnnounceAck { .. }
+    ));
     assert!(received_background_jobs
         .lock()
         .unwrap()

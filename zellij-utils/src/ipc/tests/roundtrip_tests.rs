@@ -14,7 +14,8 @@ use crate::input::layout::{
 };
 use crate::input::mouse::{MouseEvent, MouseEventType};
 use crate::input::options::{
-    Clipboard, MobileLayoutConfiguration, OnForceClose, Options, PaneFrameStyle,
+    Clipboard, MobileLayoutConfiguration, NestedSessionHandling, OnForceClose, Options,
+    PaneFrameStyle,
 };
 use crate::ipc::{
     ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ResizeCause,
@@ -487,6 +488,7 @@ fn test_client_messages() {
                 mobile_layout: Some(MobileLayoutConfiguration::Always),
                 mobile_threshold_cols: Some(72),
                 mobile_threshold_rows: Some(40),
+                nested_session_handling: Some(NestedSessionHandling::Fullscreen),
             }),
             layout: None,
             terminal_window_size: Size { rows: 80, cols: 42 },
@@ -678,6 +680,46 @@ fn test_client_messages() {
         },
         is_web_client: true,
     });
+    test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
+        cli_assets: CliAssets {
+            configuration_options: Some(Options {
+                nested_session_handling: Some(NestedSessionHandling::Ask),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        is_web_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
+        cli_assets: CliAssets {
+            configuration_options: Some(Options {
+                nested_session_handling: Some(NestedSessionHandling::Fullscreen),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        is_web_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
+        cli_assets: CliAssets {
+            configuration_options: Some(Options {
+                nested_session_handling: Some(NestedSessionHandling::Descend),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        is_web_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
+        cli_assets: CliAssets {
+            configuration_options: Some(Options {
+                nested_session_handling: Some(NestedSessionHandling::Never),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        is_web_client: true,
+    });
     test_client_roundtrip!(ClientToServerMsg::AttachClient {
         cli_assets: CliAssets::default(),
         tab_position_to_focus: None,
@@ -707,6 +749,18 @@ fn test_client_messages() {
             is_plugin: true,
         }),
         is_web_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::AttachClient {
+        cli_assets: CliAssets {
+            configuration_options: Some(Options {
+                nested_session_handling: Some(NestedSessionHandling::Descend),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        tab_position_to_focus: None,
+        pane_to_focus: None,
+        is_web_client: false,
     });
     // TODO: Action
     test_client_roundtrip!(ClientToServerMsg::Action {

@@ -2033,6 +2033,8 @@ pub struct Options {
     pub pane_frame_style: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="52")]
     pub stacked_pane_list: ::core::option::Option<bool>,
+    #[prost(enumeration="NestedSessionHandling", optional, tag="53")]
+    pub nested_session_handling: ::core::option::Option<i32>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -2994,6 +2996,41 @@ impl MobileLayout {
             "MOBILE_LAYOUT_WEB" => Some(Self::Web),
             "MOBILE_LAYOUT_ALWAYS" => Some(Self::Always),
             "MOBILE_LAYOUT_NEVER" => Some(Self::Never),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum NestedSessionHandling {
+    Unspecified = 0,
+    Ask = 1,
+    Fullscreen = 2,
+    Descend = 3,
+    Never = 4,
+}
+impl NestedSessionHandling {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            NestedSessionHandling::Unspecified => "NESTED_SESSION_HANDLING_UNSPECIFIED",
+            NestedSessionHandling::Ask => "NESTED_SESSION_HANDLING_ASK",
+            NestedSessionHandling::Fullscreen => "NESTED_SESSION_HANDLING_FULLSCREEN",
+            NestedSessionHandling::Descend => "NESTED_SESSION_HANDLING_DESCEND",
+            NestedSessionHandling::Never => "NESTED_SESSION_HANDLING_NEVER",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "NESTED_SESSION_HANDLING_UNSPECIFIED" => Some(Self::Unspecified),
+            "NESTED_SESSION_HANDLING_ASK" => Some(Self::Ask),
+            "NESTED_SESSION_HANDLING_FULLSCREEN" => Some(Self::Fullscreen),
+            "NESTED_SESSION_HANDLING_DESCEND" => Some(Self::Descend),
+            "NESTED_SESSION_HANDLING_NEVER" => Some(Self::Never),
             _ => None,
         }
     }

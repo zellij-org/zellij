@@ -265,6 +265,15 @@ load_plugins {
 //
 // on_force_close "quit"
 
+// Choose how to handle a nested Zellij session detected running inside a pane
+// Options:
+//   - ask (Default - prompt with a modal to zoom in or control on focus)
+//   - fullscreen (always zoom into the nested session)
+//   - descend (always control the nested session on focus)
+//   - never (never prompt or descend; do it manually)
+//
+// nested_session_handling "ask"
+
 //  Send a request for a simplified ui (without arrow fonts) to plugins
 //  Options:
 //    - true

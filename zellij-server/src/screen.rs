@@ -52,7 +52,9 @@ use zellij_utils::input::config::Config;
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::keybinds::{shortcut_for_action, Keybinds};
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
-use zellij_utils::input::options::{Clipboard, MobileLayoutConfiguration, PaneFrameStyle};
+use zellij_utils::input::options::{
+    Clipboard, MobileLayoutConfiguration, NestedSessionHandling, PaneFrameStyle,
+};
 use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::{clean_string_from_control_and_linebreak, detect_theme_hue};
@@ -777,6 +779,7 @@ pub enum ScreenInstruction {
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
+        nested_session_handling: NestedSessionHandling,
     },
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -1561,6 +1564,7 @@ pub(crate) struct Screen {
     host_terminal_theme_mode: Option<HostTerminalThemeMode>,
     host_theme_dark_styling: Option<Styling>,
     host_theme_light_styling: Option<Styling>,
+    nested_session_handling: NestedSessionHandling,
     mobile_state: MobileState,
     mobile_render_gate: MobileRenderGate,
 }
@@ -1646,6 +1650,7 @@ impl Screen {
         mouse_click_through: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
+        nested_session_handling: NestedSessionHandling,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -1735,6 +1740,7 @@ impl Screen {
             host_theme_dark_styling: None,
             host_theme_light_styling: None,
             mobile_state: MobileState::default(),
+            nested_session_handling,
             mobile_render_gate: MobileRenderGate::default(),
         }
     }
@@ -2952,7 +2958,9 @@ impl Screen {
                 tab.set_guest_session_name_on_pane(pane_id, Some(guest_session_name.clone()));
                 tab.set_guest_modal_shortcuts_on_pane(pane_id, guest_modal_shortcuts);
                 tab.clear_all_guest_choice_indicators_on_pane(pane_id);
-                tab.set_guest_modal_on_pane(pane_id, &connected_client_ids);
+                if self.nested_session_handling == NestedSessionHandling::Ask {
+                    tab.set_guest_modal_on_pane(pane_id, &connected_client_ids);
+                }
             },
             None => return,
         }
@@ -2976,6 +2984,7 @@ impl Screen {
             .bus
             .senders
             .send_to_background_jobs(BackgroundJob::StartNestedGuestPing(pane_id));
+        self.auto_apply_nested_session_handling(pane_id, &connected_client_ids);
         let _ = self.render(None);
         log::info!(
             "nested session handshake: guest session {:?} announced in pane {:?}, sent announce_ack",
@@ -3027,6 +3036,59 @@ impl Screen {
                 let _ = self.render(None);
                 let _ = self.log_and_report_session_state();
             },
+        }
+    }
+
+    fn record_nested_guest_choice_for_client(
+        &mut self,
+        client_id: ClientId,
+        pane_id: PaneId,
+        choice: NestedGuestChoice,
+    ) {
+        for tab in self.tabs.values_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                tab.clear_guest_modal_on_pane(pane_id, client_id);
+                break;
+            }
+        }
+        self.nested_guest_choices.insert((client_id, pane_id), choice);
+        self.sync_guest_choice_indicator(client_id, pane_id);
+        if self.get_active_pane_id(&client_id) == Some(pane_id) {
+            self.report_key_passthrough_state(client_id, pane_id, pane_id);
+        }
+    }
+
+    fn auto_apply_nested_session_handling(&mut self, pane_id: PaneId, client_ids: &[ClientId]) {
+        match self.nested_session_handling {
+            NestedSessionHandling::Descend => {
+                for client_id in client_ids {
+                    self.record_nested_guest_choice_for_client(
+                        *client_id,
+                        pane_id,
+                        NestedGuestChoice::Descend,
+                    );
+                }
+            },
+            NestedSessionHandling::Fullscreen => {
+                for client_id in client_ids {
+                    self.record_nested_guest_choice_for_client(
+                        *client_id,
+                        pane_id,
+                        NestedGuestChoice::Zoom,
+                    );
+                }
+                self.apply_nested_guest_fullscreen(pane_id, true);
+                self.sync_nested_guest_fullscreen_state();
+                if let Some(via_client_id) = self.nested_via_client_id {
+                    let payload = nested_session::encode_payload(
+                        &NestedSessionMessage::ToggleHostFullscreen { fullscreen: true },
+                    );
+                    let _ = self.bus.senders.send_to_server(
+                        ServerInstruction::EmitNestedSessionFrameToClient(via_client_id, payload),
+                    );
+                }
+            },
+            NestedSessionHandling::Ask | NestedSessionHandling::Never => {},
         }
     }
 
@@ -3114,11 +3176,30 @@ impl Screen {
             if self.nested_guest_choices.contains_key(&(client_id, pane_id)) {
                 continue;
             }
-            for tab in self.tabs.values_mut() {
-                if tab.has_pane_with_pid(&pane_id) {
-                    tab.set_guest_modal_on_pane(pane_id, &[client_id]);
-                    break;
-                }
+            match self.nested_session_handling {
+                NestedSessionHandling::Ask => {
+                    for tab in self.tabs.values_mut() {
+                        if tab.has_pane_with_pid(&pane_id) {
+                            tab.set_guest_modal_on_pane(pane_id, &[client_id]);
+                            break;
+                        }
+                    }
+                },
+                NestedSessionHandling::Descend => {
+                    self.record_nested_guest_choice_for_client(
+                        client_id,
+                        pane_id,
+                        NestedGuestChoice::Descend,
+                    );
+                },
+                NestedSessionHandling::Fullscreen => {
+                    self.record_nested_guest_choice_for_client(
+                        client_id,
+                        pane_id,
+                        NestedGuestChoice::Zoom,
+                    );
+                },
+                NestedSessionHandling::Never => {},
             }
         }
     }
@@ -6034,6 +6115,7 @@ impl Screen {
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
+        nested_session_handling: NestedSessionHandling,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -6060,6 +6142,7 @@ impl Screen {
         self.visual_bell = visual_bell;
         self.focus_follows_mouse = focus_follows_mouse;
         self.mouse_click_through = mouse_click_through;
+        self.nested_session_handling = nested_session_handling;
         self.default_mode_info
             .update_arrow_fonts(should_support_arrow_fonts);
         self.default_mode_info
@@ -7229,6 +7312,7 @@ pub(crate) fn screen_thread_main(
     let visual_bell = config_options.visual_bell.unwrap_or(true);
     let focus_follows_mouse = config_options.focus_follows_mouse.unwrap_or(false);
     let mouse_click_through = config_options.mouse_click_through.unwrap_or(false);
+    let nested_session_handling = config_options.nested_session_handling.unwrap_or_default();
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -7274,6 +7358,7 @@ pub(crate) fn screen_thread_main(
         mouse_click_through,
         web_server_ip,
         web_server_port,
+        nested_session_handling,
     );
     screen.host_theme_dark_styling = host_theme_dark_styling;
     screen.host_theme_light_styling = host_theme_light_styling;
@@ -10598,6 +10683,7 @@ pub(crate) fn screen_thread_main(
                 visual_bell,
                 focus_follows_mouse,
                 mouse_click_through,
+                nested_session_handling,
             } => {
                 screen.host_theme_dark_styling = host_theme_dark;
                 screen.host_theme_light_styling = host_theme_light;
@@ -10624,6 +10710,7 @@ pub(crate) fn screen_thread_main(
                         visual_bell,
                         focus_follows_mouse,
                         mouse_click_through,
+                        nested_session_handling,
                         client_id,
                     )
                     .non_fatal();
