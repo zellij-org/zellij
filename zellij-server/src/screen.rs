@@ -4247,29 +4247,12 @@ impl Screen {
             mode_info.session_name = Some(self.session_name.clone());
         }
 
-        let err_context = || {
-            format!(
-                "failed to change from mode '{:?}' to mode '{:?}' for client {client_id}",
-                previous_mode, new_mode
-            )
-        };
-
         // If we leave the Search-related modes, we need to clear all previous searches
         let search_related_modes = [InputMode::EnterSearch, InputMode::Search, InputMode::Scroll];
         if search_related_modes.contains(&previous_mode)
             && !search_related_modes.contains(&mode_info.mode)
         {
             active_tab!(self, client_id, |tab: &mut Tab| tab.clear_search(client_id));
-        }
-
-        if previous_mode == InputMode::Scroll
-            && (mode_info.mode == InputMode::Normal || mode_info.mode == InputMode::Locked)
-        {
-            if let Ok(active_tab) = self.get_active_tab_mut(client_id) {
-                active_tab
-                    .clear_active_terminal_scroll(client_id)
-                    .with_context(err_context)?;
-            }
         }
 
         if mode_info.mode == InputMode::RenameTab {
@@ -4313,6 +4296,42 @@ impl Screen {
                 .context("failed to update background plugins with mode info")?;
         }
         Ok(())
+    }
+    // Keep the client's mode in sync with the pane it just focused: entering a scrolled
+    // pane switches to Scroll so its position is navigable, leaving it returns to the
+    // default mode. Only the default<->Scroll pair is touched (Normal by default, Locked
+    // under unlock-first), so a client in another mode (Pane, Tab, Search, ...) is never
+    // pulled out of it. See #638.
+    fn sync_scroll_mode_on_focus(&mut self, client_id: ClientId) -> Result<()> {
+        // base_mode is the default config reloads keep current; .mode is the fallback.
+        let default_mode = self
+            .default_mode_info
+            .base_mode
+            .unwrap_or(self.default_mode_info.mode);
+        if default_mode == InputMode::Scroll {
+            return Ok(());
+        }
+        let current_mode = match self.mode_info.get(&client_id) {
+            Some(mode_info) => mode_info.mode,
+            None => return Ok(()),
+        };
+        let active_pane_is_scrolled = self
+            .get_active_tab(client_id)
+            .map(|tab| tab.active_pane_is_scrolled(client_id))
+            .unwrap_or(false);
+        let new_mode = match (current_mode, active_pane_is_scrolled) {
+            (mode, true) if mode == default_mode => InputMode::Scroll,
+            (InputMode::Scroll, false) => default_mode,
+            _ => return Ok(()),
+        };
+        // Route through the server like SwitchToMode does, so the client's authoritative
+        // input mode (current_input_modes, used for keybind resolution) is updated and not
+        // just the mode_info used for rendering. A direct change_mode() would desync the
+        // two: the status line would show Scroll while keys still resolved in Normal.
+        self.bus
+            .senders
+            .send_to_server(ServerInstruction::ChangeMode(client_id, new_mode, None))
+            .with_context(|| format!("failed to sync scroll mode on focus for client {client_id}"))
     }
     pub fn change_mode_for_all_clients(
         &mut self,
@@ -5442,6 +5461,9 @@ impl Screen {
                         && active_pane_id_before != active_pane_id_after
                     {
                         self.clear_bell_for_focused_pane(client_id);
+                        // A mouse focus change (click, click-through, focus-follows-mouse)
+                        // syncs the scroll mode too, same as a keyboard focus move.
+                        let _ = self.sync_scroll_mode_on_focus(client_id);
                     }
                     should_render = true;
                 }
@@ -6744,6 +6766,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.focus_next_pane(client_id)
                 );
+                screen.sync_scroll_mode_on_focus(client_id)?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
@@ -6760,6 +6783,7 @@ pub(crate) fn screen_thread_main(
                         client_id,
                         |tab: &mut Tab, client_id: ClientId| tab.focus_next_pane(client_id)
                     );
+                    screen.sync_scroll_mode_on_focus(client_id)?;
                     screen.render(None)?;
                 }
             },
@@ -6776,6 +6800,7 @@ pub(crate) fn screen_thread_main(
                         client_id,
                         |tab: &mut Tab, client_id: ClientId| tab.focus_previous_pane(client_id)
                     );
+                    screen.sync_scroll_mode_on_focus(client_id)?;
                     screen.render(None)?;
                     screen.log_and_report_session_state()?;
                 }
@@ -6790,6 +6815,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.focus_last_pane(client_id)
                 );
+                screen.sync_scroll_mode_on_focus(client_id)?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
@@ -6809,6 +6835,7 @@ pub(crate) fn screen_thread_main(
                     );
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.sync_scroll_mode_on_focus(client_id)?;
                     screen.render(None)?;
                     screen.log_and_report_session_state()?;
                 }
@@ -6824,6 +6851,7 @@ pub(crate) fn screen_thread_main(
                     screen.move_focus_left_or_previous_tab(client_id)?;
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.sync_scroll_mode_on_focus(client_id)?;
                     screen.render(None)?;
                     screen.log_and_report_session_state()?;
                 }
@@ -6844,6 +6872,7 @@ pub(crate) fn screen_thread_main(
                     );
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.sync_scroll_mode_on_focus(client_id)?;
                     screen.render(None)?;
                     screen.log_and_report_session_state()?;
                 }
@@ -6864,6 +6893,7 @@ pub(crate) fn screen_thread_main(
                     );
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.sync_scroll_mode_on_focus(client_id)?;
                     screen.render(None)?;
                     screen.log_and_report_session_state()?;
                 }
@@ -6879,6 +6909,7 @@ pub(crate) fn screen_thread_main(
                     screen.move_focus_right_or_next_tab(client_id)?;
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.sync_scroll_mode_on_focus(client_id)?;
                     screen.render(None)?;
                     screen.log_and_report_session_state()?;
                 }
@@ -6899,6 +6930,7 @@ pub(crate) fn screen_thread_main(
                     );
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.sync_scroll_mode_on_focus(client_id)?;
                     screen.render(None)?;
                     screen.log_and_report_session_state()?;
                 }
