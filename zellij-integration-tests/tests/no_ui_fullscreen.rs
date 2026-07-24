@@ -211,7 +211,7 @@ fn no_ui_fullscreen_with_frameless_panes() {
 }
 
 #[test]
-fn no_ui_fullscreen_blocked_while_floating_panes_visible() {
+fn no_ui_fullscreen_on_focused_floating_pane_covers_display() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);
 
@@ -219,18 +219,36 @@ fn no_ui_fullscreen_blocked_while_floating_panes_visible() {
     zellij.send_stdin(&keys::key('w'));
     let floating_terminal = zellij.expect_pty_spawn();
     floating_terminal.output(PROMPT);
-    zellij.wait_until("floating pane rendered", |grid_snapshot| {
-        grid_snapshot.contains(FULL_FRAME_CORNER)
-    });
-
-    toggle_no_ui_fullscreen_via_keybinding(&zellij);
     floating_terminal.output(b"floating_marker");
+    zellij.wait_until(
+        "floating pane rendered and focused in normal mode",
+        |grid_snapshot| {
+            grid_snapshot.contains(FULL_FRAME_CORNER)
+                && grid_snapshot.contains("floating_marker")
+                && grid_snapshot.status_bar_appears()
+                && grid_snapshot.tab_bar_appears()
+        },
+    );
+
+    let exit_code = zellij.run_cli_action(CliAction::ToggleNoUiFullscreen { pane_id: None });
+    assert_eq!(exit_code, 0, "toggle-no-ui-fullscreen exited cleanly");
 
     zellij.wait_until(
-        "toggle attempt processed with floating panes and chrome intact",
+        "focused floating pane goes no-ui fullscreen and hides the chrome",
         |grid_snapshot| {
             grid_snapshot.contains("floating_marker")
-                && grid_snapshot.tab_bar_appears()
+                && !grid_snapshot.tab_bar_appears()
+                && !grid_snapshot.status_bar_appears()
+                && !grid_snapshot.contains(FULL_FRAME_CORNER)
+        },
+    );
+
+    let exit_code = zellij.run_cli_action(CliAction::ToggleNoUiFullscreen { pane_id: None });
+    assert_eq!(exit_code, 0, "toggle-no-ui-fullscreen exited cleanly");
+    zellij.wait_until(
+        "toggling off restores the chrome and the floating frame",
+        |grid_snapshot| {
+            grid_snapshot.tab_bar_appears()
                 && grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains(FULL_FRAME_CORNER)
         },

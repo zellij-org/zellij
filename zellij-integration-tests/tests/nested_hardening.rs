@@ -151,9 +151,8 @@ fn build_descended_state_with_host_sibling(nested: &NestedHarness) -> FakePtyHan
 }
 
 fn quit_guest_then_host(mut nested: NestedHarness) {
-    let released = nested.mark_host_to_guest();
     nested.guest.quit();
-    nested.wait_for_host_to_ascend_from_guest_after(released);
+    nested.wait_for_host_to_reclaim_focus_after_guest_exit();
     nested.host.quit();
 }
 
@@ -478,9 +477,8 @@ fn detaching_the_guest_client_while_descended_returns_control_to_the_host() {
 
     boot_and_descend_on_first_load(&nested);
 
-    let released = nested.mark_host_to_guest();
     nested.guest.detach_main_client();
-    nested.wait_for_host_to_ascend_from_guest_after(released);
+    nested.wait_for_host_to_reclaim_focus_after_guest_exit();
 
     let sibling = split_host_sibling(&nested);
     sibling.output(PROMPT);

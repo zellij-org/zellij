@@ -913,6 +913,7 @@ impl Tab {
             mode_info.clone(),
             character_cell_size.clone(),
             fullscreen_covers_ui.clone(),
+            pane_frame_style,
             session_is_mirrored,
             default_mode_info.clone(),
             style,
@@ -4550,6 +4551,15 @@ impl Tab {
         )
     }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
+        if self.floating_panes.fullscreen_is_active()
+            || (self.floating_panes.panes_are_visible()
+                && self.floating_panes.has_active_panes())
+        {
+            self.floating_panes.toggle_active_pane_fullscreen(client_id);
+            self.set_force_render();
+            self.set_should_clear_display_before_rendering();
+            return;
+        }
         if self.floating_panes.panes_are_visible() {
             return;
         }
@@ -4557,6 +4567,12 @@ impl Tab {
         self.tiled_panes.toggle_active_pane_fullscreen(client_id);
     }
     pub fn toggle_pane_fullscreen(&mut self, pane_id: PaneId) {
+        if self.floating_panes.panes_contain(&pane_id) {
+            self.floating_panes.toggle_pane_fullscreen(pane_id);
+            self.set_force_render();
+            self.set_should_clear_display_before_rendering();
+            return;
+        }
         if self.pane_is_hidden_stack_list_member(&pane_id) {
             self.make_hidden_stack_list_member_visible(pane_id);
         }
@@ -4568,6 +4584,16 @@ impl Tab {
         }
     }
     pub fn toggle_active_pane_no_ui_fullscreen(&mut self, client_id: ClientId) {
+        if self.floating_panes.fullscreen_is_active()
+            || (self.floating_panes.panes_are_visible()
+                && self.floating_panes.has_active_panes())
+        {
+            self.floating_panes
+                .toggle_active_pane_no_ui_fullscreen(client_id);
+            self.set_force_render();
+            self.set_should_clear_display_before_rendering();
+            return;
+        }
         if self.floating_panes.panes_are_visible() {
             return;
         }
@@ -4576,6 +4602,12 @@ impl Tab {
             .toggle_active_pane_no_ui_fullscreen(client_id);
     }
     pub fn toggle_pane_no_ui_fullscreen(&mut self, pane_id: PaneId) {
+        if self.floating_panes.panes_contain(&pane_id) {
+            self.floating_panes.toggle_pane_no_ui_fullscreen(pane_id);
+            self.set_force_render();
+            self.set_should_clear_display_before_rendering();
+            return;
+        }
         if self.pane_is_hidden_stack_list_member(&pane_id) {
             self.make_hidden_stack_list_member_visible(pane_id);
         }
@@ -4587,13 +4619,15 @@ impl Tab {
         }
     }
     pub fn is_fullscreen_active(&self) -> bool {
-        self.tiled_panes.fullscreen_is_active()
+        self.tiled_panes.fullscreen_is_active() || self.floating_panes.fullscreen_is_active()
     }
     pub fn fullscreen_covers_ui(&self) -> bool {
-        self.tiled_panes.fullscreen_covers_ui()
+        self.tiled_panes.fullscreen_covers_ui() || self.floating_panes.fullscreen_covers_ui()
     }
     pub fn fullscreen_pane_id(&self) -> Option<PaneId> {
-        self.tiled_panes.fullscreen_pane_id()
+        self.tiled_panes
+            .fullscreen_pane_id()
+            .or_else(|| self.floating_panes.fullscreen_pane_id())
     }
     pub fn are_floating_panes_visible(&self) -> bool {
         self.floating_panes.panes_are_visible()
@@ -4937,9 +4971,14 @@ impl Tab {
         // panes retain stale geometry from before the resize and the layout
         // solver fails when fullscreen is later toggled off.
         let fullscreen_pane_to_restore = self.tiled_panes.fullscreen_pane_id();
-        let fullscreen_covered_ui = self.fullscreen_covers_ui();
+        let fullscreen_covered_ui = self.tiled_panes.fullscreen_covers_ui();
         if fullscreen_pane_to_restore.is_some() {
             self.tiled_panes.unset_fullscreen();
+        }
+        let floating_fullscreen_pane_to_restore = self.floating_panes.fullscreen_pane_id();
+        let floating_fullscreen_covered_ui = self.floating_panes.fullscreen_covers_ui();
+        if floating_fullscreen_pane_to_restore.is_some() {
+            self.floating_panes.unset_fullscreen();
         }
         self.floating_panes.resize(new_screen_size);
         // we need to do this explicitly because floating_panes.resize does not do this
@@ -4979,11 +5018,23 @@ impl Tab {
                 }
             }
         }
+        if let Some(pane_id) = floating_fullscreen_pane_to_restore {
+            if self.floating_panes.panes_contain(&pane_id) {
+                if floating_fullscreen_covered_ui {
+                    self.floating_panes.toggle_pane_no_ui_fullscreen(pane_id);
+                } else {
+                    self.floating_panes.toggle_pane_fullscreen(pane_id);
+                }
+            }
+        }
         self.resize_all_stack_list_hidden_members();
         Ok(())
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
         let err_context = || format!("unable to resize pane");
+        if self.floating_panes.fullscreen_is_active() {
+            return Ok(());
+        }
         if self.floating_panes.panes_are_visible() {
             let successfully_resized = self
                 .floating_panes
@@ -5421,7 +5472,7 @@ impl Tab {
         if let Some(pane) = self.floating_panes.get_pane(pane_id) {
             let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
             info.is_focused = false;
-            info.is_fullscreen = false;
+            info.is_fullscreen = self.floating_panes.fullscreen_pane_id() == Some(pane_id);
             info.is_floating = true;
             info.is_suppressed = false;
             return Some(info);
@@ -5510,6 +5561,9 @@ impl Tab {
             };
         }
         let closed_pane = if self.floating_panes.panes_contain(&id) {
+            if self.floating_panes.fullscreen_pane_id() == Some(id) {
+                self.floating_panes.unset_fullscreen();
+            }
             let closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_selectable_panes() {
@@ -5596,6 +5650,9 @@ impl Tab {
             };
         }
         if self.floating_panes.panes_contain(&id) {
+            if self.floating_panes.fullscreen_pane_id() == Some(id) {
+                self.floating_panes.unset_fullscreen();
+            }
             let mut closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_panes() {
@@ -6514,6 +6571,7 @@ impl Tab {
 
     pub fn set_pane_frames(&mut self, pane_frame_style: PaneFrameStyle) {
         self.tiled_panes.set_pane_frames(pane_frame_style);
+        self.floating_panes.set_pane_frame_style(pane_frame_style);
         self.pane_frame_style = pane_frame_style;
         self.set_should_clear_display_before_rendering();
         self.set_force_render();
@@ -6744,6 +6802,9 @@ impl Tab {
     pub fn hide_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking
         // floating_panes.toggle_show_panes(false)
+        if self.floating_panes.fullscreen_is_active() {
+            self.floating_panes.unset_fullscreen();
+        }
         self.floating_panes.toggle_show_panes(false);
         self.tiled_panes.focus_all_panes();
         self.set_force_render();
@@ -7023,6 +7084,9 @@ impl Tab {
         client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to add floating pane");
+        if self.floating_panes.fullscreen_is_active() {
+            self.floating_panes.unset_fullscreen();
+        }
         if let Some(mut new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
             if let Some(floating_pane_coordinates) = &floating_pane_coordinates {
                 let viewport = self.viewport.borrow();

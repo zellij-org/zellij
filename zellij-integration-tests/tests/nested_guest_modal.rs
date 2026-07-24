@@ -147,9 +147,8 @@ fn selecting_descend_enters_passthrough() {
         |guest_grid| guest_grid.contains("Pane #2"),
     );
 
-    let released = nested.mark_host_to_guest();
     nested.guest.quit();
-    nested.wait_for_host_to_ascend_from_guest_after(released);
+    nested.wait_for_host_to_reclaim_focus_after_guest_exit();
     nested.host.quit();
 }
 
@@ -174,9 +173,8 @@ fn digit_one_zooms_and_enters_passthrough() {
         |guest_grid| guest_grid.contains("Pane #2"),
     );
 
-    let released = nested.mark_host_to_guest();
     nested.guest.quit();
-    nested.wait_for_host_to_ascend_from_guest_after(released);
+    nested.wait_for_host_to_reclaim_focus_after_guest_exit();
     nested.host.quit();
 }
 
@@ -216,9 +214,8 @@ fn focus_guest_session_redescends_after_ascending() {
         |guest_grid| guest_grid.contains("Pane #2"),
     );
 
-    let released = nested.mark_host_to_guest();
     nested.guest.quit();
-    nested.wait_for_host_to_ascend_from_guest_after(released);
+    nested.wait_for_host_to_reclaim_focus_after_guest_exit();
     nested.host.quit();
 }
 
@@ -249,9 +246,8 @@ fn two_clients_answer_their_own_modals_independently() {
 
     nested.guest.wait_for_app_load();
     second.quit();
-    let released = nested.mark_host_to_guest();
     nested.guest.quit();
-    nested.wait_for_host_to_ascend_from_guest_after(released);
+    nested.wait_for_host_to_reclaim_focus_after_guest_exit();
     nested.host.quit();
 }
 

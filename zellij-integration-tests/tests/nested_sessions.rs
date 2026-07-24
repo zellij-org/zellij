@@ -273,9 +273,8 @@ fn build_descended_state_with_host_sibling_below(nested: &NestedHarness) {
 }
 
 fn quit_guest_then_host(mut nested: NestedHarness) {
-    let released = nested.mark_host_to_guest();
     nested.guest.quit();
-    nested.wait_for_host_to_ascend_from_guest_after(released);
+    nested.wait_for_host_to_reclaim_focus_after_guest_exit();
     nested.host.quit();
 }
 
@@ -686,9 +685,8 @@ fn descend_on_first_load_when_guest_pane_is_already_focused() {
         normalized(&guest_after_new_pane)
     );
 
-    let released = nested.mark_host_to_guest();
     nested.guest.quit();
-    nested.wait_for_host_to_ascend_from_guest_after(released);
+    nested.wait_for_host_to_reclaim_focus_after_guest_exit();
     nested.host.quit();
 }
 
@@ -709,10 +707,9 @@ fn guest_going_away_clears_passthrough() {
         },
     );
 
-    let ascended = nested.mark_host_to_guest();
     nested.freeze_guest();
     nested.assert_host_stops_pinging_frozen_guest();
-    nested.wait_for_host_to_ascend_from_guest_after(ascended);
+    nested.wait_for_host_to_reclaim_focus_after_guest_exit();
 
     nested.host.send_stdin(&keys::alt('n'));
     let host_new_pane = nested.host.expect_pty_spawn();
@@ -809,9 +806,8 @@ fn descend_and_ascend_work_at_depth_three() {
 
     nested.inner.quit();
 
-    let outer_released_middle = nested.mark_outer_to_middle();
     nested.middle.quit();
-    nested.wait_for_outer_to_ascend_from_middle_after(outer_released_middle);
+    nested.wait_for_outer_to_reclaim_focus_after_middle_exit();
 
     nested.outer.quit();
 }

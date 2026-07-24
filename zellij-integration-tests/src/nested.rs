@@ -11,6 +11,11 @@ use crate::fake_pty::FakePtyHandle;
 use crate::runner::{GuestResizer, TestRunner, TestSession};
 use crate::Size;
 
+pub fn host_chrome_undimmed_after_guest_exit(host_grid: &GridSnapshot) -> bool {
+    !host_grid.line_has_dim("Pane #2")
+        && host_grid.char_dim_of("test-").map_or(true, |dim| !dim)
+}
+
 pub fn composite_contains_settled_guest_grid(
     host_grid: &GridSnapshot,
     guest_grid: &GridSnapshot,
@@ -334,9 +339,13 @@ impl NestedHarness {
     }
 
     pub fn wait_for_host_to_release_guest_focus(&self) {
-        self.host_to_guest.wait_for(
-            "the outer (host) session to notice the guest is gone and stop routing keys into its pane",
-            |message| matches!(message, NestedSessionMessage::FocusLost),
+        self.wait_for_host_to_reclaim_focus_after_guest_exit();
+    }
+
+    pub fn wait_for_host_to_reclaim_focus_after_guest_exit(&self) {
+        self.host.wait_until(
+            "the outer (host) session to notice the guest is gone and reclaim focus (undim its chrome)",
+            host_chrome_undimmed_after_guest_exit,
         );
     }
 
@@ -585,6 +594,13 @@ impl NestedDepthThreeHarness {
             since,
             "the outer host to ascend back out of the middle guest pane",
             |message| matches!(message, NestedSessionMessage::FocusLost),
+        );
+    }
+
+    pub fn wait_for_outer_to_reclaim_focus_after_middle_exit(&self) {
+        self.outer.wait_until(
+            "the outer host to notice the middle guest is gone and reclaim focus (undim its chrome)",
+            host_chrome_undimmed_after_guest_exit,
         );
     }
 
