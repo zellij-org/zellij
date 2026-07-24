@@ -11230,18 +11230,29 @@ pub fn keep_scroll_position_when_exiting_scroll_mode() {
 
 #[test]
 pub fn focusing_a_scrolled_pane_enters_scroll_mode() {
-    // Focusing a scrolled pane should put the client in Scroll mode, and focusing an
-    // unscrolled pane should return it to Normal. The switch must be routed through the
-    // server (ServerInstruction::ChangeMode) like SwitchToMode is, so the client's
-    // authoritative input mode used for keybind resolution (current_input_modes) is
-    // updated, not just the mode_info used for rendering. Asserting on the emitted
-    // instruction catches a desync where the status line flips but keys still resolve in
-    // the old mode. See #638.
+    assert_focus_change_syncs_scroll_mode(InputMode::Normal);
+}
+
+#[test]
+pub fn focusing_a_scrolled_pane_enters_scroll_mode_with_locked_default() {
+    // Unlock-first users have Locked as their default mode; leaving a scrolled pane must
+    // return them to Locked (not Normal), and Scroll is entered from Locked.
+    assert_focus_change_syncs_scroll_mode(InputMode::Locked);
+}
+
+// Focusing a scrolled pane should put the client in Scroll mode, and focusing an
+// unscrolled pane should return it to the default mode. The switch must be routed through
+// the server (ServerInstruction::ChangeMode) like SwitchToMode is, so the client's
+// authoritative input mode used for keybind resolution (current_input_modes) is updated,
+// not just the mode_info used for rendering. Asserting on the emitted instruction catches
+// a desync where the status line flips but keys still resolve in the old mode. See #638.
+fn assert_focus_change_syncs_scroll_mode(default_mode: InputMode) {
     let size = Size { cols: 80, rows: 10 };
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
+    mock_screen.config.options.default_mode = Some(default_mode);
     // Drive the connected client: focus and mode both hang off it.
     let client_id = mock_screen.main_client_id;
     let session_metadata = mock_screen.clone_session_metadata();
@@ -11267,10 +11278,10 @@ pub fn focusing_a_scrolled_pane_enters_scroll_mode() {
             })
     };
 
-    // Fill the first (left) pane, scroll it up in Scroll mode, then return to Normal. The
-    // scroll position survives (see keep_scroll_position_when_exiting_scroll_mode), so the
-    // left pane is left scrolled while the client is back in Normal; the right pane is
-    // unscrolled.
+    // Fill the first (left) pane, scroll it up in Scroll mode, then return to the default
+    // mode. The scroll position survives (see keep_scroll_position_when_exiting_scroll_mode),
+    // so the left pane is left scrolled while the client is back in its default mode; the
+    // right pane is unscrolled.
     let mut pane_contents = String::new();
     for i in 0..20 {
         pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
@@ -11291,14 +11302,14 @@ pub fn focusing_a_scrolled_pane_enters_scroll_mode() {
         send_cli_action_to_server(&session_metadata, scroll_up.clone(), client_id);
     }
     let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
-        InputMode::Normal,
+        default_mode,
         None,
         client_id,
         None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
 
-    // From Normal, focus the unscrolled (right) pane: nothing to sync, no ChangeMode.
+    // From the default mode, focus the unscrolled (right) pane: nothing to sync.
     send_cli_action_to_server(
         &session_metadata,
         CliAction::MoveFocus {
@@ -11331,7 +11342,7 @@ pub fn focusing_a_scrolled_pane_enters_scroll_mode() {
         None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
-    // Focus the unscrolled (right) pane: the client should return to Normal.
+    // Focus the unscrolled (right) pane: the client should return to its default mode.
     send_cli_action_to_server(
         &session_metadata,
         CliAction::MoveFocus {
@@ -11342,8 +11353,93 @@ pub fn focusing_a_scrolled_pane_enters_scroll_mode() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     assert_eq!(
         last_change_mode(),
-        Some(InputMode::Normal),
-        "focusing the unscrolled pane should return the client to Normal mode",
+        Some(default_mode),
+        "focusing the unscrolled pane should return the client to its default mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
+pub fn focusing_a_scrolled_pane_with_the_mouse_enters_scroll_mode() {
+    // Same sync as the keyboard path, but the focus change comes from a mouse click. Any
+    // mouse action that moves focus must sync the mode too. See #638.
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let last_change_mode = || -> Option<InputMode> {
+        received_server_instructions
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find_map(|instruction| match instruction {
+                ServerInstruction::ChangeMode(cid, mode, _) if *cid == client_id => Some(*mode),
+                _ => None,
+            })
+    };
+
+    // Fill and scroll the left pane, then return to Normal; its scroll position survives.
+    let mut pane_contents = String::new();
+    for i in 0..20 {
+        pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        pane_contents.as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    let scroll_up = CliAction::ScrollUp { pane_id: None };
+    for _ in 0..4 {
+        send_cli_action_to_server(&session_metadata, scroll_up.clone(), client_id);
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // The vertical split puts the left pane on the left half of the 80-column screen and the
+    // right pane on the right half. Click the unscrolled right pane, then click back on the
+    // scrolled left pane so the second click is a real focus change.
+    for &(line, column) in &[(5, 70), (5, 10)] {
+        let _ = mock_screen.to_screen.send(ScreenInstruction::MouseEvent(
+            MouseEvent::new_left_press_event(Position::new(line, column)),
+            client_id,
+            None,
+        ));
+        let _ = mock_screen.to_screen.send(ScreenInstruction::MouseEvent(
+            MouseEvent::new_left_release_event(Position::new(line, column)),
+            client_id,
+            None,
+        ));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert_eq!(
+        last_change_mode(),
+        Some(InputMode::Scroll),
+        "clicking the scrolled pane should switch the client to Scroll mode",
     );
 
     mock_screen.teardown(vec![server_thread, screen_thread]);

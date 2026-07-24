@@ -4298,10 +4298,19 @@ impl Screen {
         Ok(())
     }
     // Keep the client's mode in sync with the pane it just focused: entering a scrolled
-    // pane switches to Scroll so its position is navigable, leaving it returns to Normal.
-    // Only the Normal<->Scroll pair is touched, so a client in another mode (Pane, Tab,
-    // Search, Locked, ...) is never pulled out of it. See #638.
+    // pane switches to Scroll so its position is navigable, leaving it returns to the
+    // default mode. Only the default<->Scroll pair is touched (Normal by default, Locked
+    // under unlock-first), so a client in another mode (Pane, Tab, Search, ...) is never
+    // pulled out of it. See #638.
     fn sync_scroll_mode_on_focus(&mut self, client_id: ClientId) -> Result<()> {
+        // base_mode is the default config reloads keep current; .mode is the fallback.
+        let default_mode = self
+            .default_mode_info
+            .base_mode
+            .unwrap_or(self.default_mode_info.mode);
+        if default_mode == InputMode::Scroll {
+            return Ok(());
+        }
         let current_mode = match self.mode_info.get(&client_id) {
             Some(mode_info) => mode_info.mode,
             None => return Ok(()),
@@ -4311,8 +4320,8 @@ impl Screen {
             .map(|tab| tab.active_pane_is_scrolled(client_id))
             .unwrap_or(false);
         let new_mode = match (current_mode, active_pane_is_scrolled) {
-            (InputMode::Normal, true) => InputMode::Scroll,
-            (InputMode::Scroll, false) => InputMode::Normal,
+            (mode, true) if mode == default_mode => InputMode::Scroll,
+            (InputMode::Scroll, false) => default_mode,
             _ => return Ok(()),
         };
         // Route through the server like SwitchToMode does, so the client's authoritative
@@ -5452,6 +5461,9 @@ impl Screen {
                         && active_pane_id_before != active_pane_id_after
                     {
                         self.clear_bell_for_focused_pane(client_id);
+                        // A mouse focus change (click, click-through, focus-follows-mouse)
+                        // syncs the scroll mode too, same as a keyboard focus move.
+                        let _ = self.sync_scroll_mode_on_focus(client_id);
                     }
                     should_render = true;
                 }
