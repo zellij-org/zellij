@@ -499,6 +499,50 @@ impl From<&PaneGeom> for Size {
     }
 }
 
+/// Parse a size string in the format "WIDTH,HEIGHT" or "WIDTH%,HEIGHT%"
+pub fn parse_size(size_str: &str) -> Result<(Dimension, Dimension), String> {
+    let parts: Vec<&str> = size_str.split(',').collect();
+
+    if parts.len() != 2 {
+        return Err(format!(
+            "Expected format: WIDTH,HEIGHT (e.g., '80,24' or '50%,50%')",
+        ));
+    }
+
+    let width = parse_dimension(parts[0])?;
+    let height = parse_dimension(parts[1])?;
+
+    Ok((width, height))
+}
+
+fn parse_dimension(dim_str: &str) -> Result<Dimension, String> {
+    if dim_str.ends_with('%') {
+        let percent_str = dim_str.trim_end_matches('%');
+        let percent: f64 = percent_str
+            .parse()
+            .map_err(|_| format!("Invalid percentage value: {}", dim_str))?;
+
+        if percent < 0.0 || percent > 100.0 {
+            return Err(format!(
+                "Percentage must be between 0 and 100, got: {}%",
+                percent
+            ));
+        }
+
+        Ok(Dimension::percent(percent))
+    } else {
+        let fixed: usize = dim_str
+            .parse()
+            .map_err(|_| format!("Invalid fixed size value: {}", dim_str))?;
+
+        if fixed == 0 {
+            return Err("Fixed size cannot be 0".into());
+        }
+
+        Ok(Dimension::fixed(fixed))
+    }
+}
+
 impl From<&Size> for PaneGeom {
     fn from(size: &Size) -> Self {
         let mut rows = Dimension::percent(100.0);
