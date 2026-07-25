@@ -83,6 +83,7 @@ Each node has following fields:
   split in given direction.
 * **split_size:** - this indicates either a percentage of the node's parent's
   space or a fixed size of columns/rows from its parent's space.
+  See [PANE_SIZES.md](https://github.com/zellij-org/zellij/blob/main/docs/PANE_SIZES.md) for detailed guidance on when to use which type.
     * __Percent: <1-100\>__
     * __Fixed: <lines_number/columns_number\>__
 * __plugin: /path/to/plugin.wasm__ - optional path to a compiled Zellij plugin.
