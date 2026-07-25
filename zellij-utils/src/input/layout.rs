@@ -713,28 +713,48 @@ pub struct TabLayoutInfo {
     pub swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
-pub enum PercentOrFixed {
-    Percent(usize), // 1 to 100
-    Fixed(usize),   // An absolute number of columns or rows
+/// Canonical size constraint used in layouts, KDL parsing, and floating panes.
+/// Represents whether a pane dimension should be flexible (percentage-based) or fixed (exact pixel count).
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DimensionConstraint {
+    Percent(usize), // 1 to 100 — flexible proportion of available space
+    Fixed(usize),   // An absolute number of columns or rows — exact size, doesn't resize with terminal
 }
 
-impl From<Dimension> for PercentOrFixed {
+impl From<Dimension> for DimensionConstraint {
     fn from(dimension: Dimension) -> Self {
         match dimension.constraint {
-            Constraint::Percent(percent) => PercentOrFixed::Percent(percent as usize),
-            Constraint::Fixed(fixed_size) => PercentOrFixed::Fixed(fixed_size),
+            Constraint::Percent(percent) => DimensionConstraint::Percent(percent as usize),
+            Constraint::Fixed(fixed_size) => DimensionConstraint::Fixed(fixed_size),
         }
     }
 }
 
-impl PercentOrFixed {
+impl FromStr for DimensionConstraint {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.chars().last() == Some('%') {
+            let char_count = s.chars().count();
+            let percent_size = usize::from_str_radix(&s[..char_count.saturating_sub(1)], 10)?;
+            if percent_size <= 100 {
+                Ok(DimensionConstraint::Percent(percent_size))
+            } else {
+                Err("Percent must be between 0 and 100".into())
+            }
+        } else {
+            let fixed_size = usize::from_str_radix(s, 10)?;
+            Ok(DimensionConstraint::Fixed(fixed_size))
+        }
+    }
+}
+
+impl DimensionConstraint {
     pub fn to_position(&self, whole: usize) -> usize {
         match self {
-            PercentOrFixed::Percent(percent) => {
+            DimensionConstraint::Percent(percent) => {
                 (whole as f64 / 100.0 * *percent as f64).ceil() as usize
             },
-            PercentOrFixed::Fixed(fixed) => {
+            DimensionConstraint::Fixed(fixed) => {
                 if *fixed > whole {
                     whole
                 } else {
@@ -745,40 +765,23 @@ impl PercentOrFixed {
     }
     pub fn to_fixed(&self, whole: usize) -> usize {
         match self {
-            PercentOrFixed::Percent(percent) => {
+            DimensionConstraint::Percent(percent) => {
                 ((*percent as f64 / 100.0) * whole as f64).floor() as usize
             },
-            PercentOrFixed::Fixed(fixed) => *fixed,
+            DimensionConstraint::Fixed(fixed) => *fixed,
         }
     }
-}
-
-impl PercentOrFixed {
     pub fn is_zero(&self) -> bool {
         match self {
-            PercentOrFixed::Percent(percent) => *percent == 0,
-            PercentOrFixed::Fixed(fixed) => *fixed == 0,
+            DimensionConstraint::Percent(percent) => *percent == 0,
+            DimensionConstraint::Fixed(fixed) => *fixed == 0,
         }
     }
 }
 
-impl FromStr for PercentOrFixed {
-    type Err = Box<dyn std::error::Error>;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.chars().last() == Some('%') {
-            let char_count = s.chars().count();
-            let percent_size = usize::from_str_radix(&s[..char_count.saturating_sub(1)], 10)?;
-            if percent_size <= 100 {
-                Ok(PercentOrFixed::Percent(percent_size))
-            } else {
-                Err("Percent must be between 0 and 100".into())
-            }
-        } else {
-            let fixed_size = usize::from_str_radix(s, 10)?;
-            Ok(PercentOrFixed::Fixed(fixed_size))
-        }
-    }
-}
+/// Deprecated alias for `DimensionConstraint`. Kept for backward compatibility during migration.
+#[deprecated(since = "0.46.0", note = "Use DimensionConstraint instead")]
+pub type PercentOrFixed = DimensionConstraint;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct FloatingPaneLayout {
