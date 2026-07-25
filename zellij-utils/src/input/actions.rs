@@ -1053,6 +1053,7 @@ impl Action {
                 no_focus,
                 borderless,
                 tab_id,
+                custom_size: _,
             } => {
                 let pane_id_to_replace = match pane_id {
                     Some(pane_id_str) => match PaneId::from_str(&pane_id_str) {
@@ -1313,6 +1314,7 @@ impl Action {
                 no_focus,
                 borderless,
                 tab_id,
+                custom_size: _,
             } => {
                 let mut file = file;
                 let current_dir = get_current_dir();
