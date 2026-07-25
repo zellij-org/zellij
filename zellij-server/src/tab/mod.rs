@@ -7545,3 +7545,7 @@ mod tab_integration_tests;
 #[cfg(test)]
 #[path = "./unit/layout_applier_tests.rs"]
 mod layout_applier_tests;
+
+#[cfg(test)]
+#[path = "./unit/pane_size_tests.rs"]
+mod pane_size_tests;
