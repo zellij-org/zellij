@@ -407,6 +407,10 @@ pub enum Sessions {
         #[clap(last(true), required(true))]
         command: Vec<String>,
 
+        /// Specify size for the new pane as WIDTH,HEIGHT (e.g., "80,24") or percentage (e.g., "50%,50%")
+        #[clap(short = 'S', long, value_parser)]
+        size: Option<String>,
+
         /// Direction to open the new pane in
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
@@ -1082,6 +1086,10 @@ pub enum CliAction {
             conflicts_with("in-place")
         )]
         tab_id: Option<usize>,
+
+        /// Optional custom pane size (width, height) in fixed or percentage format [e.g., "80,24" or "50%,50%"]
+        #[clap(skip)]
+        custom_size: Option<(crate::pane_size::Dimension, crate::pane_size::Dimension)>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -1160,6 +1168,10 @@ pub enum CliAction {
             conflicts_with("in-place")
         )]
         tab_id: Option<usize>,
+
+        /// Optional custom pane size (width, height) in fixed or percentage format [e.g., "80,24" or "50%,50%"]
+        #[clap(skip)]
+        custom_size: Option<(crate::pane_size::Dimension, crate::pane_size::Dimension)>,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {
