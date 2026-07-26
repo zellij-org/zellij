@@ -1025,6 +1025,7 @@ impl Action {
                 None => Ok(vec![Action::ToggleActiveSyncTab]),
             },
             CliAction::NewPane {
+                custom_size,
                 direction,
                 command,
                 plugin,
@@ -1053,7 +1054,6 @@ impl Action {
                 no_focus,
                 borderless,
                 tab_id,
-                custom_size: _,
             } => {
                 let pane_id_to_replace = match pane_id {
                     Some(pane_id_str) => match PaneId::from_str(&pane_id_str) {
@@ -1298,6 +1298,7 @@ impl Action {
                 }
             },
             CliAction::Edit {
+        custom_size: _,
                 direction,
                 file,
                 line_number,
@@ -3616,6 +3617,7 @@ mod tests {
     #[test]
     fn test_new_pane_tiled_with_tab_id() {
         let cli_action = CliAction::NewPane {
+        custom_size: None,
             direction: Some(Direction::Right),
             command: vec![],
             plugin: None,
@@ -3660,6 +3662,7 @@ mod tests {
     #[test]
     fn test_new_pane_tiled_without_tab_id() {
         let cli_action = CliAction::NewPane {
+        custom_size: None,
             direction: None,
             command: vec![],
             plugin: None,
@@ -3704,6 +3707,7 @@ mod tests {
     #[test]
     fn test_new_in_place_pane_with_pane_id_to_replace() {
         let cli_action = CliAction::NewPane {
+        custom_size: None,
             direction: None,
             command: vec![],
             plugin: None,
@@ -3750,6 +3754,7 @@ mod tests {
     #[test]
     fn test_new_in_place_pane_with_malformed_pane_id() {
         let cli_action = CliAction::NewPane {
+        custom_size: None,
             direction: None,
             command: vec![],
             plugin: None,
@@ -3787,6 +3792,7 @@ mod tests {
     #[test]
     fn test_new_pane_floating_with_tab_id() {
         let cli_action = CliAction::NewPane {
+        custom_size: None,
             direction: None,
             command: vec![],
             plugin: None,
@@ -3831,6 +3837,7 @@ mod tests {
     #[test]
     fn test_new_pane_stacked_with_tab_id() {
         let cli_action = CliAction::NewPane {
+        custom_size: None,
             direction: None,
             command: vec!["ls".into()],
             plugin: None,
@@ -3875,6 +3882,7 @@ mod tests {
     #[test]
     fn test_new_pane_blocking_with_tab_id() {
         let cli_action = CliAction::NewPane {
+        custom_size: None,
             direction: None,
             command: vec!["ls".into()],
             plugin: None,
@@ -3919,6 +3927,7 @@ mod tests {
     #[test]
     fn test_edit_with_tab_id() {
         let cli_action = CliAction::Edit {
+        custom_size: _,
             file: PathBuf::from("/tmp/test.rs"),
             direction: None,
             line_number: None,
@@ -3951,6 +3960,7 @@ mod tests {
     #[test]
     fn test_edit_without_tab_id() {
         let cli_action = CliAction::Edit {
+        custom_size: _,
             file: PathBuf::from("/tmp/test.rs"),
             direction: None,
             line_number: None,
@@ -3983,6 +3993,7 @@ mod tests {
     #[test]
     fn test_new_pane_plugin_tiled_with_tab_id() {
         let cli_action = CliAction::NewPane {
+        custom_size: None,
             direction: None,
             command: vec![],
             plugin: Some("zellij:strider".into()),
@@ -4027,6 +4038,7 @@ mod tests {
     #[test]
     fn test_new_pane_plugin_floating_with_tab_id() {
         let cli_action = CliAction::NewPane {
+        custom_size: None,
             direction: None,
             command: vec![],
             plugin: Some("zellij:strider".into()),
