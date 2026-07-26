@@ -1298,7 +1298,7 @@ impl Action {
                 }
             },
             CliAction::Edit {
-        custom_size: _,
+                custom_size,
                 direction,
                 file,
                 line_number,
@@ -1315,7 +1315,6 @@ impl Action {
                 no_focus,
                 borderless,
                 tab_id,
-                custom_size: _,
             } => {
                 let mut file = file;
                 let current_dir = get_current_dir();
@@ -3927,7 +3926,7 @@ mod tests {
     #[test]
     fn test_edit_with_tab_id() {
         let cli_action = CliAction::Edit {
-        custom_size: _,
+        custom_size: None,
             file: PathBuf::from("/tmp/test.rs"),
             direction: None,
             line_number: None,
@@ -3960,7 +3959,7 @@ mod tests {
     #[test]
     fn test_edit_without_tab_id() {
         let cli_action = CliAction::Edit {
-        custom_size: _,
+        custom_size: None,
             file: PathBuf::from("/tmp/test.rs"),
             direction: None,
             line_number: None,
