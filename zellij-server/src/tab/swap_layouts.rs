@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 use zellij_utils::{
+    pane_size::Dimension,
     input::layout::{
         FloatingPaneLayout, LayoutConstraint, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
@@ -262,7 +263,13 @@ impl SwapLayouts {
                             let display_area = self.display_area.borrow();
                             // TODO: reuse the assets from position_panes_in_space here?
                             let pane_count = tiled_panes.visible_panes_count();
-                            let display_area = PaneGeom::from(&*display_area);
+                            let display_area = PaneGeom {
+                                rows: Dimension::fixed((*display_area).rows),
+                                cols: Dimension::fixed((*display_area).cols),
+                                x: 0,
+                                y: 0,
+                                ..Default::default()
+                            };
                             if layout
                                 .position_panes_in_space(
                                     &display_area,

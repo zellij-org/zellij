@@ -53,7 +53,7 @@ use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::options::{Clipboard, MobileLayoutConfiguration, PaneFrameStyle};
 use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
-use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
+use zellij_utils::pane_size::{Dimension, PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use zellij_utils::{
     consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
@@ -4725,7 +4725,13 @@ impl Screen {
             // temporarily to the new tab (eg. if it was stacked or had a fixed size), the size
             // will be adjusted before the next render, further down the pipeline, when we apply
             // the layout to this new tab
-            let new_geom = PaneGeom::from(&self.size);
+            let new_geom = PaneGeom {
+                rows: Dimension::fixed(self.size.rows),
+                cols: Dimension::fixed(self.size.cols),
+                x: 0,
+                y: 0,
+                ..Default::default()
+            };
             pane.set_geom(new_geom);
 
             // here we pass None instead of the ClientId, because we do not want this pane to be
@@ -4887,7 +4893,13 @@ impl Screen {
                     // temporarily to the new tab (eg. if it was stacked or had a fixed size), the size
                     // will be adjusted before the next render, further down the pipeline, when we apply
                     // the layout to this new tab
-                    let new_geom = PaneGeom::from(&screen_size);
+                    let new_geom = PaneGeom {
+                        rows: Dimension::fixed(screen_size.rows),
+                        cols: Dimension::fixed(screen_size.cols),
+                        x: 0,
+                        y: 0,
+                        ..Default::default()
+                    };
                     pane.set_geom(new_geom);
 
                     new_active_tab.add_tiled_pane(pane, pane_id, false, None)?;
