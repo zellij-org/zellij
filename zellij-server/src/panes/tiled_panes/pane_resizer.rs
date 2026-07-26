@@ -155,7 +155,11 @@ impl<'a> PaneResizer<'a> {
                     .unwrap();
                 if span.size.as_usize() < min_stack_height {
                     // Track which fixed pane is causing the issue
-                    fixed_pane_ids.push((span.pid.to_u32(), false));
+                    let pid_u32 = match span.pid {
+                        PaneId::Terminal(id) => id,
+                        PaneId::Plugin(id) => id,
+                    };
+                    fixed_pane_ids.push((pid_u32, false));
                     return false;
                 }
             }
@@ -165,7 +169,11 @@ impl<'a> PaneResizer<'a> {
         for span in spans {
             if span.size.is_fixed() {
                 // Fixed sizes participate less in cassowary solving, potentially causing gaps/overlaps
-                fixed_pane_ids.push((span.pid.to_u32(), false));
+                let pid_u32 = match span.pid {
+                    PaneId::Terminal(id) => id,
+                    PaneId::Plugin(id) => id,
+                };
+                fixed_pane_ids.push((pid_u32, false));
             }
         }
         
