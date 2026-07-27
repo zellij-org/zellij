@@ -21,7 +21,11 @@ fn sample_shortcuts() -> GuestModalShortcuts {
 fn render_lines(chunks: &[CharacterChunk]) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     for chunk in chunks {
-        let text: String = chunk.terminal_characters.iter().map(|c| c.character).collect();
+        let text: String = chunk
+            .terminal_characters
+            .iter()
+            .map(|c| c.character)
+            .collect();
         lines.push(text);
     }
     lines
@@ -74,14 +78,26 @@ fn selection_marker_moves_with_selected_index() {
     let style = Style::default();
     let shortcuts = sample_shortcuts();
 
-    let first = render_lines(&guest_modal_chunks(80, 30, 0, 0, &style, "s", 0, &shortcuts));
-    assert!(first.iter().any(|line| line.trim_start().starts_with("> 1.")));
+    let first = render_lines(&guest_modal_chunks(
+        80, 30, 0, 0, &style, "s", 0, &shortcuts,
+    ));
+    assert!(first
+        .iter()
+        .any(|line| line.trim_start().starts_with("> 1.")));
     assert!(first.iter().any(|line| line.trim_start().starts_with("2.")));
-    assert!(!first.iter().any(|line| line.trim_start().starts_with("> 2.")));
+    assert!(!first
+        .iter()
+        .any(|line| line.trim_start().starts_with("> 2.")));
 
-    let second = render_lines(&guest_modal_chunks(80, 30, 0, 0, &style, "s", 1, &shortcuts));
-    assert!(second.iter().any(|line| line.trim_start().starts_with("> 2.")));
-    assert!(!second.iter().any(|line| line.trim_start().starts_with("> 1.")));
+    let second = render_lines(&guest_modal_chunks(
+        80, 30, 0, 0, &style, "s", 1, &shortcuts,
+    ));
+    assert!(second
+        .iter()
+        .any(|line| line.trim_start().starts_with("> 2.")));
+    assert!(!second
+        .iter()
+        .any(|line| line.trim_start().starts_with("> 1.")));
 }
 
 fn number_column(line: &str, number: &str) -> usize {
@@ -216,9 +232,8 @@ fn hit_test_matches_rendered_marker_rows() {
             rows, columns, row, &style, "session", selected, &shortcuts,
         );
         let trimmed = line.trim_start();
-        let is_option_line = trimmed.starts_with("> ")
-            || trimmed.starts_with("1.")
-            || trimmed.starts_with("2.");
+        let is_option_line =
+            trimmed.starts_with("> ") || trimmed.starts_with("1.") || trimmed.starts_with("2.");
         assert_eq!(hit.is_some(), is_option_line, "row {} mismatch", row);
     }
 }
@@ -297,8 +312,7 @@ fn keycode_words_join_with_plus_separators() {
     let style = Style::default();
     let styles = guest_modal_styles(&style);
     let keys = vec!["Ctrl g".to_string(), "o".to_string()];
-    let words =
-        guest_modal_keycode_words(&keys, styles.fill.clone(), styles.keycode.clone());
+    let words = guest_modal_keycode_words(&keys, styles.fill.clone(), styles.keycode.clone());
     let joined: String = words.iter().map(|(text, _)| text.as_str()).collect();
     assert_eq!(joined, "<Ctrl g>+<o>");
     assert_eq!(words[0].1, styles.keycode);

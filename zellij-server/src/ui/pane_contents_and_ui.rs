@@ -101,8 +101,7 @@ impl<'a> PaneContentsAndUi<'a> {
         }
     }
     fn frame_is_dimmed_for_client(&self, client_id: ClientId) -> bool {
-        self.dimmed_for_clients.contains(&client_id)
-            && !self.focused_clients.contains(&client_id)
+        self.dimmed_for_clients.contains(&client_id) && !self.focused_clients.contains(&client_id)
     }
     pub fn set_frame_geom_override(&mut self, frame_geom_override: Option<PaneGeom>) {
         self.frame_geom_override = frame_geom_override;

@@ -8820,7 +8820,9 @@ fn suspend_nested_guest_preserves_choices_for_later_revival() {
     screen
         .nested_guest_choices
         .insert((client_id, pane_id), super::NestedGuestChoice::Descend);
-    screen.nested_guest_tracker.on_announce(pane_id, std::time::Instant::now());
+    screen
+        .nested_guest_tracker
+        .on_announce(pane_id, std::time::Instant::now());
 
     screen.suspend_nested_guest(pane_id);
 
@@ -11457,9 +11459,10 @@ pub fn nested_guest_announce_gets_announce_ack_with_ancestry() {
         .lock()
         .unwrap()
         .iter()
-        .any(
-            |job| matches!(job, BackgroundJob::StartNestedGuestPing(PaneId::Terminal(0)))
-        ));
+        .any(|job| matches!(
+            job,
+            BackgroundJob::StartNestedGuestPing(PaneId::Terminal(0))
+        )));
 }
 
 #[test]
@@ -11469,8 +11472,7 @@ pub fn nested_guest_announce_in_never_mode_still_completes_handshake() {
         rows: 20,
     };
     let mut mock_screen = MockScreen::new(size);
-    mock_screen.config.options.nested_session_handling =
-        Some(NestedSessionHandling::Never);
+    mock_screen.config.options.nested_session_handling = Some(NestedSessionHandling::Never);
     let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
     let received_background_jobs = mock_screen.received_background_jobs.clone();
     let screen_thread = mock_screen.run(None, vec![]);
@@ -11505,9 +11507,10 @@ pub fn nested_guest_announce_in_never_mode_still_completes_handshake() {
         .lock()
         .unwrap()
         .iter()
-        .any(
-            |job| matches!(job, BackgroundJob::StartNestedGuestPing(PaneId::Terminal(0)))
-        ));
+        .any(|job| matches!(
+            job,
+            BackgroundJob::StartNestedGuestPing(PaneId::Terminal(0))
+        )));
 }
 
 #[test]
@@ -11562,7 +11565,5 @@ pub fn nested_guest_bye_stops_liveness_pings() {
         .lock()
         .unwrap()
         .iter()
-        .any(
-            |job| matches!(job, BackgroundJob::StopNestedGuestPing(PaneId::Terminal(0)))
-        ));
+        .any(|job| matches!(job, BackgroundJob::StopNestedGuestPing(PaneId::Terminal(0)))));
 }

@@ -175,33 +175,33 @@ fn toggle_off_restores_the_host_layout_exactly() {
     let guest_session_name = nested.guest.session_name().to_string();
     let expected_breadcrumb = breadcrumb_for(&[&host_session_name], &guest_session_name);
 
-    let before_fullscreen = nested.host.wait_until(
-        "host chrome present before fullscreen",
-        |host_grid| {
-            host_grid.status_bar_appears()
-                && host_grid.tab_bar_appears()
-                && host_descended_bar_with_ascend_keys_settled(host_grid)
-                && host_own_name_present(host_grid, &host_session_name)
-                && !guest_fullscreen_breadcrumb_line(host_grid)
-        },
-    );
+    let before_fullscreen =
+        nested
+            .host
+            .wait_until("host chrome present before fullscreen", |host_grid| {
+                host_grid.status_bar_appears()
+                    && host_grid.tab_bar_appears()
+                    && host_descended_bar_with_ascend_keys_settled(host_grid)
+                    && host_own_name_present(host_grid, &host_session_name)
+                    && !guest_fullscreen_breadcrumb_line(host_grid)
+            });
 
     let entered = nested.mark_guest_to_host();
     enter_fullscreen_from_descended_guest(&nested);
-    nested.guest_to_host().wait_for_after(
-        entered,
-        "guest asks host to fullscreen",
-        |message| {
+    nested
+        .guest_to_host()
+        .wait_for_after(entered, "guest asks host to fullscreen", |message| {
             matches!(
                 message,
                 NestedSessionMessage::ToggleHostFullscreen { fullscreen: true }
             )
-        },
-    );
-    nested.host.wait_until("host chrome hidden while fullscreen", |host_grid| {
-        host_grid.contains(&expected_breadcrumb)
-            && !host_own_name_present(host_grid, &host_session_name)
-    });
+        });
+    nested
+        .host
+        .wait_until("host chrome hidden while fullscreen", |host_grid| {
+            host_grid.contains(&expected_breadcrumb)
+                && !host_own_name_present(host_grid, &host_session_name)
+        });
 
     let exited = nested.mark_guest_to_host();
     nested.host.send_stdin(&keys::ctrl('o'));
@@ -374,9 +374,10 @@ fn breadcrumb_is_present_only_while_fullscreened() {
     nested.guest.wait_until(
         "guest breadcrumb gone after fullscreen exit",
         |guest_grid| {
-            guest_grid.lines().first().map_or(false, |first_line| {
-                !first_line.contains('▸')
-            })
+            guest_grid
+                .lines()
+                .first()
+                .map_or(false, |first_line| !first_line.contains('▸'))
         },
     );
 }
@@ -391,9 +392,10 @@ fn nested_but_tiled_guest_shows_no_breadcrumb() {
         .guest
         .wait_until("nested guest tab-bar settled while tiled", guest_ui_settled);
     assert!(
-        tiled.lines().first().map_or(true, |first_line| {
-            !first_line.contains('▸')
-        }),
+        tiled
+            .lines()
+            .first()
+            .map_or(true, |first_line| { !first_line.contains('▸') }),
         "a nested but not fullscreened guest shows no breadcrumb"
     );
 }
@@ -767,30 +769,29 @@ fn host_floating_layer_is_hidden_during_nested_fullscreen_and_reappears_on_exit(
     });
 
     descend_into_guest_on_the_left(&nested);
-    nested.guest.wait_until("guest settled after descend", guest_ui_settled);
+    nested
+        .guest
+        .wait_until("guest settled after descend", guest_ui_settled);
 
     let entered = nested.mark_guest_to_host();
     enter_fullscreen_from_descended_guest(&nested);
-    nested.guest_to_host().wait_for_after(
-        entered,
-        "guest asks host to fullscreen",
-        |message| {
+    nested
+        .guest_to_host()
+        .wait_for_after(entered, "guest asks host to fullscreen", |message| {
             matches!(
                 message,
                 NestedSessionMessage::ToggleHostFullscreen { fullscreen: true }
             )
-        },
-    );
+        });
     let host_session_name = nested.host.session_name().to_string();
     let guest_session_name = nested.guest.session_name().to_string();
     let expected_breadcrumb = breadcrumb_for(&[&host_session_name], &guest_session_name);
-    nested.host.wait_until(
-        "guest fullscreened over the host display",
-        |host_grid| {
+    nested
+        .host
+        .wait_until("guest fullscreened over the host display", |host_grid| {
             host_grid.contains(&expected_breadcrumb)
                 && !host_own_name_present(host_grid, &host_session_name)
-        },
-    );
+        });
 
     observer.send_stdin(&keys::alt('f'));
     observer.wait_until(
@@ -890,18 +891,20 @@ fn restoring_the_innermost_fullscreen_unzooms_the_whole_chain() {
         |outer_grid| {
             outer_grid.status_bar_appears()
                 && host_own_name_present(outer_grid, &outer_session_name)
-                && outer_grid.lines().first().map_or(false, |first_line| {
-                    !first_line.contains('▸')
-                })
+                && outer_grid
+                    .lines()
+                    .first()
+                    .map_or(false, |first_line| !first_line.contains('▸'))
         },
     );
     nested.middle.wait_until(
         "middle chrome restored after chain un-zoom",
         |middle_grid| {
             middle_grid.status_bar_appears()
-                && middle_grid.lines().first().map_or(false, |first_line| {
-                    !first_line.contains('▸')
-                })
+                && middle_grid
+                    .lines()
+                    .first()
+                    .map_or(false, |first_line| !first_line.contains('▸'))
         },
     );
 }
@@ -939,15 +942,15 @@ fn clicking_the_ancestor_breadcrumb_segment_ascends_out_of_the_guest() {
     nested
         .host
         .send_stdin(&format!("\u{1b}[<0;{};1m", name_column).into_bytes());
-    nested
-        .guest
-        .wait_until("guest still fullscreened after a non-ancestor click", |guest_grid| {
-            guest_ui_settled(guest_grid)
-        });
+    nested.guest.wait_until(
+        "guest still fullscreened after a non-ancestor click",
+        |guest_grid| guest_ui_settled(guest_grid),
+    );
     assert_eq!(
-        nested
-            .guest_to_host()
-            .count(|message| matches!(message, NestedSessionMessage::FocusHost { direction: None })),
+        nested.guest_to_host().count(|message| matches!(
+            message,
+            NestedSessionMessage::FocusHost { direction: None }
+        )),
         non_ascend_before,
         "clicking the own-name part of the breadcrumb must not ascend"
     );
@@ -955,7 +958,9 @@ fn clicking_the_ancestor_breadcrumb_segment_ascends_out_of_the_guest() {
     let requested = nested.mark_guest_to_host();
     let ascended = nested.mark_host_to_guest();
     let ancestor_click_column = (ancestor_start + ancestor_end) / 2 + 1;
-    nested.host.send_stdin(&sgr_mouse_report(ancestor_click_column, 1, 0));
+    nested
+        .host
+        .send_stdin(&sgr_mouse_report(ancestor_click_column, 1, 0));
     nested
         .host
         .send_stdin(&format!("\u{1b}[<0;{};1m", ancestor_click_column).into_bytes());
@@ -969,8 +974,7 @@ fn clicking_the_ancestor_breadcrumb_segment_ascends_out_of_the_guest() {
     nested.host.wait_until(
         "host regained control and restored its chrome after the breadcrumb click",
         |host_grid| {
-            host_grid.status_bar_appears()
-                && host_own_name_present(host_grid, &host_session_name)
+            host_grid.status_bar_appears() && host_own_name_present(host_grid, &host_session_name)
         },
     );
 
@@ -1004,16 +1008,21 @@ fn host_manually_breaking_fullscreen_drifts_the_guest_to_not_fullscreen() {
         },
     );
     let expected_breadcrumb = breadcrumb_for(&[&host_session_name], &guest_session_name);
-    nested.host.wait_until("guest fullscreened over the host display", |host_grid| {
-        host_grid.contains(&expected_breadcrumb)
-            && !host_own_name_present(host_grid, &host_session_name)
-    });
+    nested
+        .host
+        .wait_until("guest fullscreened over the host display", |host_grid| {
+            host_grid.contains(&expected_breadcrumb)
+                && !host_own_name_present(host_grid, &host_session_name)
+        });
 
     let drifted = nested.mark_host_to_guest();
     let exit_code = nested
         .host
         .run_cli_action(CliAction::ToggleNoUiFullscreen { pane_id: None });
-    assert_eq!(exit_code, 0, "host toggled its own no-ui fullscreen off cleanly");
+    assert_eq!(
+        exit_code, 0,
+        "host toggled its own no-ui fullscreen off cleanly"
+    );
 
     nested.host_to_guest().wait_for_after(
         drifted,
@@ -1028,16 +1037,16 @@ fn host_manually_breaking_fullscreen_drifts_the_guest_to_not_fullscreen() {
     nested.guest.wait_until(
         "guest breadcrumb clears after the host manually broke the fullscreen",
         |guest_grid| {
-            guest_grid.lines().first().map_or(false, |first_line| {
-                !first_line.contains('▸')
-            })
+            guest_grid
+                .lines()
+                .first()
+                .map_or(false, |first_line| !first_line.contains('▸'))
         },
     );
     nested.host.wait_until(
         "host chrome restored after manually breaking the fullscreen",
         |host_grid| {
-            host_grid.status_bar_appears()
-                && host_own_name_present(host_grid, &host_session_name)
+            host_grid.status_bar_appears() && host_own_name_present(host_grid, &host_session_name)
         },
     );
 }
@@ -1079,9 +1088,10 @@ fn guest_killed_while_fullscreened_unzooms_the_host_after_liveness_timeout() {
         |host_grid| {
             host_grid.status_bar_appears()
                 && host_own_name_present(host_grid, &host_session_name)
-                && host_grid.lines().first().map_or(false, |first_line| {
-                    !first_line.contains('▸')
-                })
+                && host_grid
+                    .lines()
+                    .first()
+                    .map_or(false, |first_line| !first_line.contains('▸'))
         },
     );
 }
@@ -1111,8 +1121,7 @@ fn fullscreen_breadcrumb_has_no_nested_marker_and_an_emphasized_own_name() {
         "the breadcrumb no longer contains the [NESTED] marker"
     );
     assert!(
-        first_line.contains(&format!("{})", guest_session_name))
-            && first_line.contains('▸'),
+        first_line.contains(&format!("{})", guest_session_name)) && first_line.contains('▸'),
         "the breadcrumb shows the guest's own name closed by a paren after the arrow"
     );
 

@@ -191,9 +191,7 @@ impl From<&ServerInstruction> for ServerContext {
             },
             ServerInstruction::ClearMouseHelpText(..) => ServerContext::ClearMouseHelpText,
             ServerInstruction::ForwardQueryToHost(..) => ServerContext::ForwardQueryToHost,
-            ServerInstruction::KeyPassthroughChanged(..) => {
-                ServerContext::KeyPassthroughChanged
-            },
+            ServerInstruction::KeyPassthroughChanged(..) => ServerContext::KeyPassthroughChanged,
             ServerInstruction::EmitNestedSessionFrameToClient(..) => {
                 ServerContext::EmitNestedSessionFrameToClient
             },
@@ -376,18 +374,17 @@ impl SessionMetaData {
         notify_guest: bool,
     ) {
         if let Some(pane_id) = self.key_passthrough_clients.remove(&client_id) {
-            let pane_still_active = self
-                .key_passthrough_clients
-                .values()
-                .any(|p| *p == pane_id);
+            let pane_still_active = self.key_passthrough_clients.values().any(|p| *p == pane_id);
             if !pane_still_active && notify_guest {
                 if let PaneId::Terminal(terminal_id) = pane_id {
                     let frame = zellij_utils::nested_session::encode_frame(
                         &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
                     );
-                    let _ = self
-                        .senders
-                        .send_to_pty_writer(PtyWriteInstruction::Write(frame, terminal_id, None));
+                    let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Write(
+                        frame,
+                        terminal_id,
+                        None,
+                    ));
                 }
             }
         }
@@ -1975,8 +1972,10 @@ pub fn start_server_impl(
             ) => {
                 let mut session_data = session_data.write().unwrap();
                 if let Some(session_data) = session_data.as_mut() {
-                    let previous_pane =
-                        session_data.key_passthrough_clients.get(&client_id).copied();
+                    let previous_pane = session_data
+                        .key_passthrough_clients
+                        .get(&client_id)
+                        .copied();
 
                     if should_route {
                         if previous_pane != Some(new_pane_id) {

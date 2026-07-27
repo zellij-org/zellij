@@ -141,7 +141,10 @@ mod tests {
             GuestPingTickAction::Suspended
         );
         let much_later = start + millis(PONG_TIMEOUT_MS + 120_000);
-        assert_eq!(tracker.on_announce(pane_id, much_later), AnnounceKind::Revived);
+        assert_eq!(
+            tracker.on_announce(pane_id, much_later),
+            AnnounceKind::Revived
+        );
         assert!(tracker.is_tracked(pane_id));
         assert!(!tracker.is_dormant(pane_id));
         assert_eq!(

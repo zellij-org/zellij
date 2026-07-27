@@ -532,7 +532,8 @@ impl FloatingPanes {
 
         let fullscreen_pane_id = self.fullscreen_pane_id;
         let no_ui_fullscreen = self.floating_fullscreen_covers_ui && fullscreen_pane_id.is_some();
-        let regular_fullscreen = fullscreen_pane_id.is_some() && !self.floating_fullscreen_covers_ui;
+        let regular_fullscreen =
+            fullscreen_pane_id.is_some() && !self.floating_fullscreen_covers_ui;
         let pane_frame_style = self.pane_frame_style;
         let mut floating_panes: Vec<_> = if let Some(fullscreen_pane_id) = fullscreen_pane_id {
             self.panes

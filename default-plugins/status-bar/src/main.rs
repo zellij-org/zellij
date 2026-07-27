@@ -94,13 +94,16 @@ pub struct SegmentStyle {
 // we need different colors from palette for the default theme
 // plus here we can add new sources in the future, like Theme
 // that can be defined in the config perhaps
-fn color_elements(palette: Styling, different_color_alternates: bool, dimmed: bool) -> ColoredElements {
+fn color_elements(
+    palette: Styling,
+    different_color_alternates: bool,
+    dimmed: bool,
+) -> ColoredElements {
     if dimmed {
         let background = palette.text_unselected.background;
         let foreground = palette.text_unselected.base;
         let ribbon_background = palette.ribbon_unselected.background;
-        let italic_on_ribbon =
-            style!(palette.ribbon_unselected.base, ribbon_background).italic();
+        let italic_on_ribbon = style!(palette.ribbon_unselected.base, ribbon_background).italic();
         let dim_segment = SegmentStyle {
             prefix_separator: style!(background, ribbon_background),
             char_left_separator: italic_on_ribbon,

@@ -135,7 +135,11 @@ fn newest_file_time(dir: &Path) -> Option<std::time::SystemTime> {
             Err(_) => continue,
         };
         if file_type.is_dir() {
-            if path.file_name().map(|name| name == "target").unwrap_or(false) {
+            if path
+                .file_name()
+                .map(|name| name == "target")
+                .unwrap_or(false)
+            {
                 continue;
             }
             if let Some(child) = newest_file_time(&path) {

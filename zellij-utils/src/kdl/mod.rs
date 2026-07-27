@@ -2946,18 +2946,19 @@ impl Options {
                 },
                 None => None,
             };
-        let nested_session_handling =
-            match kdl_property_first_arg_as_string_or_error!(kdl_options, "nested_session_handling")
-            {
-                Some((value, entry)) => {
-                    use crate::input::options::NestedSessionHandling;
-                    match value.parse::<NestedSessionHandling>() {
-                        Ok(v) => Some(v),
-                        Err(e) => return Err(kdl_parsing_error!(e, entry)),
-                    }
-                },
-                None => None,
-            };
+        let nested_session_handling = match kdl_property_first_arg_as_string_or_error!(
+            kdl_options,
+            "nested_session_handling"
+        ) {
+            Some((value, entry)) => {
+                use crate::input::options::NestedSessionHandling;
+                match value.parse::<NestedSessionHandling>() {
+                    Ok(v) => Some(v),
+                    Err(e) => return Err(kdl_parsing_error!(e, entry)),
+                }
+            },
+            None => None,
+        };
 
         Ok(Options {
             simplified_ui,

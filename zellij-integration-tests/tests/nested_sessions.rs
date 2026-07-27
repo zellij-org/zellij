@@ -128,13 +128,11 @@ fn host_tab_bar_renamed_to_guest(grid_snapshot: &GridSnapshot, guest_session_nam
 }
 
 fn host_chrome_dimmed(host_grid: &GridSnapshot) -> bool {
-    host_grid.line_has_dim("Pane #2")
-        && host_grid.char_dim_of("test-").map_or(false, |dim| dim)
+    host_grid.line_has_dim("Pane #2") && host_grid.char_dim_of("test-").map_or(false, |dim| dim)
 }
 
 fn host_chrome_undimmed(host_grid: &GridSnapshot) -> bool {
-    !host_grid.line_has_dim("Pane #2")
-        && host_grid.char_dim_of("test-").map_or(true, |dim| !dim)
+    !host_grid.line_has_dim("Pane #2") && host_grid.char_dim_of("test-").map_or(true, |dim| !dim)
 }
 
 #[test]
@@ -568,7 +566,9 @@ fn clicking_a_host_tab_while_descended_switches_tabs_and_ascends() {
     nested.wait_for_host_to_descend_into_guest_after(descended_by_tab_one);
 
     let ascended_by_tab_two = nested.mark_host_to_guest();
-    nested.host.send_stdin(&sgr_left_click(second_tab_column, 1));
+    nested
+        .host
+        .send_stdin(&sgr_left_click(second_tab_column, 1));
     nested.wait_for_host_to_ascend_from_guest_after(ascended_by_tab_two);
     nested.host.wait_until(
         "clicking the second host tab switches away from the guest tab in normal mode",
@@ -904,26 +904,25 @@ fn host_chrome_restores_exactly_after_ascend() {
     ascend_via_focus_host_binding(&nested);
     split_host_sibling(&nested);
 
-    let before_descend = nested.host.wait_until(
-        "host chrome is undimmed before descending",
-        |host_grid| {
-            host_own_tab_bar_settled(host_grid, &guest_session_name)
-                && host_grid.contains("Pane #2")
-                && normal_mode_bar_settled(host_grid)
-                && host_chrome_undimmed(host_grid)
-        },
-    );
+    let before_descend =
+        nested
+            .host
+            .wait_until("host chrome is undimmed before descending", |host_grid| {
+                host_own_tab_bar_settled(host_grid, &guest_session_name)
+                    && host_grid.contains("Pane #2")
+                    && normal_mode_bar_settled(host_grid)
+                    && host_chrome_undimmed(host_grid)
+            });
     let before_chrome = host_chrome_rows(&before_descend);
 
     descend_into_guest_on_the_left(&nested);
-    nested.host.wait_until(
-        "host chrome dims while descended",
-        |host_grid| {
+    nested
+        .host
+        .wait_until("host chrome dims while descended", |host_grid| {
             host_own_tab_bar_settled(host_grid, &guest_session_name)
                 && host_grid.contains("Pane #2")
                 && host_chrome_dimmed(host_grid)
-        },
-    );
+        });
 
     let released = nested.mark_host_to_guest();
     nested.host.send_stdin(&keys::ctrl('o'));
@@ -1059,9 +1058,7 @@ fn no_bubble_when_the_focus_move_stays_inside_the_guest() {
     nested.guest.wait_until(
         "guest focus moved to the left pane while staying in pane mode",
         |guest_grid| {
-            guest_grid
-                .cursor
-                .map_or(false, |cursor| cursor.x < 15)
+            guest_grid.cursor.map_or(false, |cursor| cursor.x < 15)
                 && guest_pane_mode_bar_settled(guest_grid)
         },
     );
@@ -1085,10 +1082,11 @@ fn fullscreened_guest_pane_still_bubbles_at_the_edges() {
 
     pass_ctrl_p_to_guest(&nested);
     nested.host.send_stdin(&keys::key('f'));
-    nested.guest.wait_until(
-        "guest fullscreened its focused pane",
-        |guest_grid| guest_grid.contains("FULLSCREEN") || guest_ui_settled(guest_grid),
-    );
+    nested
+        .guest
+        .wait_until("guest fullscreened its focused pane", |guest_grid| {
+            guest_grid.contains("FULLSCREEN") || guest_ui_settled(guest_grid)
+        });
 
     let requested = nested.mark_guest_to_host();
     let ascended = nested.mark_host_to_guest();
@@ -1171,10 +1169,11 @@ fn move_focus_or_tab_wraps_tabs_without_bubbling_when_the_guest_has_multiple_tab
         guest_tab_mode_bar_settled,
     );
     nested.host.send_stdin(&keys::key('n'));
-    nested.guest.wait_until(
-        "guest opened a second tab and focused it",
-        |guest_grid| guest_grid.contains("Tab #2") && guest_normal_mode_bar_settled(guest_grid),
-    );
+    nested
+        .guest
+        .wait_until("guest opened a second tab and focused it", |guest_grid| {
+            guest_grid.contains("Tab #2") && guest_normal_mode_bar_settled(guest_grid)
+        });
 
     let focus_host_before = nested
         .guest_to_host()
@@ -1183,13 +1182,9 @@ fn move_focus_or_tab_wraps_tabs_without_bubbling_when_the_guest_has_multiple_tab
     nested.guest.wait_until(
         "guest wrapped back to the first tab instead of bubbling",
         |guest_grid| {
-            guest_grid
-                .lines()
-                .first()
-                .map_or(false, |first_line| {
-                    first_line.contains("Tab #1") && first_line.contains("Tab #2")
-                })
-                && guest_normal_mode_bar_settled(guest_grid)
+            guest_grid.lines().first().map_or(false, |first_line| {
+                first_line.contains("Tab #1") && first_line.contains("Tab #2")
+            }) && guest_normal_mode_bar_settled(guest_grid)
         },
     );
     assert_eq!(

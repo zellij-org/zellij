@@ -133,9 +133,8 @@ pub(crate) fn stdin_loop(
                                 .send(InputInstruction::DesktopNotificationResponse(payload));
                         }
                         for payload_bytes in parse_output.nested_frames {
-                            let _ = send_input_instructions.send(
-                                InputInstruction::NestedSessionFrameFromHost(payload_bytes),
-                            );
+                            let _ = send_input_instructions
+                                .send(InputInstruction::NestedSessionFrameFromHost(payload_bytes));
                         }
                         let residue = parse_output.residue;
                         if residue.is_empty() {

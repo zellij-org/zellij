@@ -5,20 +5,19 @@ use crate::{
         client_to_server_msg, server_to_client_msg, ActionMsg, AttachClientMsg,
         AttachWatcherClientMsg, BackgroundColorMsg, CliPipeOutputMsg, ClientExitedMsg,
         ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
-        ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg, ExitMsg,
-        ExitReason as ProtoExitReason, FailedToStartWebServerMsg, FirstClientConnectedMsg,
-        EmitNestedSessionFrameMsg, ForegroundColorMsg, ForwardQueryToHostMsg,
-        ForwardedReplyFromHostMsg, HostTerminalThemeChangedMsg,
+        ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg,
+        EmitNestedSessionFrameMsg, ExitMsg, ExitReason as ProtoExitReason,
+        FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
+        ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
-        LogErrorMsg, LogMsg, NestedSessionFrameFromHostMsg,
-        PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
-        QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg, ResizeCause as ProtoResizeCause,
-        ServerToClientMsg as ProtoServerToClientMsg, SetSoftKeyboardMsg,
-        SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
-        SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
-        TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
-        UnblockInputThreadMsg, WebServerStartedMsg,
+        LogErrorMsg, LogMsg, NestedSessionFrameFromHostMsg, PaneMetadata as ProtoPaneMetadata,
+        PaneRenderUpdateMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
+        ResizeCause as ProtoResizeCause, ServerToClientMsg as ProtoServerToClientMsg,
+        SetSoftKeyboardMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
+        SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
+        TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
+        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
@@ -933,23 +932,21 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u16),
             nested_session_handling: options
                 .nested_session_handling
-                .map(
-                    |n| match ProtoNestedSessionHandling::from_i32(n) {
-                        Some(ProtoNestedSessionHandling::Ask) => {
-                            Ok(crate::input::options::NestedSessionHandling::Ask)
-                        },
-                        Some(ProtoNestedSessionHandling::Fullscreen) => {
-                            Ok(crate::input::options::NestedSessionHandling::Fullscreen)
-                        },
-                        Some(ProtoNestedSessionHandling::Descend) => {
-                            Ok(crate::input::options::NestedSessionHandling::Descend)
-                        },
-                        Some(ProtoNestedSessionHandling::Never) => {
-                            Ok(crate::input::options::NestedSessionHandling::Never)
-                        },
-                        _ => Err(anyhow!("Invalid NestedSessionHandling value: {}", n)),
+                .map(|n| match ProtoNestedSessionHandling::from_i32(n) {
+                    Some(ProtoNestedSessionHandling::Ask) => {
+                        Ok(crate::input::options::NestedSessionHandling::Ask)
                     },
-                )
+                    Some(ProtoNestedSessionHandling::Fullscreen) => {
+                        Ok(crate::input::options::NestedSessionHandling::Fullscreen)
+                    },
+                    Some(ProtoNestedSessionHandling::Descend) => {
+                        Ok(crate::input::options::NestedSessionHandling::Descend)
+                    },
+                    Some(ProtoNestedSessionHandling::Never) => {
+                        Ok(crate::input::options::NestedSessionHandling::Never)
+                    },
+                    _ => Err(anyhow!("Invalid NestedSessionHandling value: {}", n)),
+                })
                 .transpose()?,
         })
     }
@@ -986,10 +983,9 @@ impl From<crate::input::actions::Action>
             EditFileAction,
             EditScrollbackAction,
             EditScrollbackByPaneIdAction,
-            FocusLastPaneAction,
-            FocusHostSessionAction,
             FocusGuestSessionAction,
-            ToggleHostFullscreenAction,
+            FocusHostSessionAction,
+            FocusLastPaneAction,
             FocusNextPaneAction,
             FocusPaneByPaneIdAction,
             FocusPluginPaneWithIdAction,
@@ -1091,6 +1087,7 @@ impl From<crate::input::actions::Action>
             ToggleFocusNoUiFullscreenAction,
             ToggleFullscreenByPaneIdAction,
             ToggleGroupMarkingAction,
+            ToggleHostFullscreenAction,
             ToggleMouseModeAction,
             ToggleNoUiFullscreenByPaneIdAction,
             TogglePaneBorderlessAction,

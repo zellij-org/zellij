@@ -12,8 +12,7 @@ use crate::runner::{GuestResizer, TestRunner, TestSession};
 use crate::Size;
 
 pub fn host_chrome_undimmed_after_guest_exit(host_grid: &GridSnapshot) -> bool {
-    !host_grid.line_has_dim("Pane #2")
-        && host_grid.char_dim_of("test-").map_or(true, |dim| !dim)
+    !host_grid.line_has_dim("Pane #2") && host_grid.char_dim_of("test-").map_or(true, |dim| !dim)
 }
 
 pub fn composite_contains_settled_guest_grid(
@@ -64,9 +63,10 @@ pub fn composite_contains_settled_guest_grid(
 }
 
 pub fn host_descended_bar_settled(host_grid: &GridSnapshot) -> bool {
-    host_grid.lines().last().map_or(false, |last_line| {
-        last_line.contains("Ascend:")
-    })
+    host_grid
+        .lines()
+        .last()
+        .map_or(false, |last_line| last_line.contains("Ascend:"))
 }
 
 pub fn host_descended_bar_with_ascend_keys_settled(host_grid: &GridSnapshot) -> bool {
@@ -76,9 +76,10 @@ pub fn host_descended_bar_with_ascend_keys_settled(host_grid: &GridSnapshot) -> 
 }
 
 pub fn guest_ascended_bar_settled(guest_grid: &GridSnapshot) -> bool {
-    guest_grid.lines().last().map_or(false, |last_line| {
-        last_line.contains("Descend:")
-    })
+    guest_grid
+        .lines()
+        .last()
+        .map_or(false, |last_line| last_line.contains("Descend:"))
 }
 
 pub fn wait_for_settled_composite(

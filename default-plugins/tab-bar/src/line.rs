@@ -308,7 +308,11 @@ pub fn tab_line(
     new_tab_button_is_hovered: bool,
     dimmed: bool,
     breadcrumb_ancestry: &[String],
-) -> (Vec<LinePart>, Option<(usize, usize)>, Option<(usize, usize)>) {
+) -> (
+    Vec<LinePart>,
+    Option<(usize, usize)>,
+    Option<(usize, usize)>,
+) {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
     let active_tab = if !tabs_after_active.is_empty() {

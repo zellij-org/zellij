@@ -6403,7 +6403,10 @@ fn render_ui_component(component_name: &str, serialized_params: &str) -> Grid {
     grid
 }
 
-fn styled_cells_of(grid: &Grid, needle: char) -> Vec<crate::panes::terminal_character::CharacterStyles> {
+fn styled_cells_of(
+    grid: &Grid,
+    needle: char,
+) -> Vec<crate::panes::terminal_character::CharacterStyles> {
     let mut styles = vec![];
     for line in grid.as_character_lines() {
         for terminal_character in line {
@@ -6457,7 +6460,10 @@ fn ui_component_flag_prefixes_parse_order_independently() {
     let baseline = render_ui_component("text", &format!("xzd{}", serialize_text_bytes("RES")));
     let baseline_styles = styled_cells_of(&baseline, 'R');
     for prefix in ["xdz", "zxd", "zdx", "dxz", "dzx"] {
-        let grid = render_ui_component("text", &format!("{}{}", prefix, serialize_text_bytes("RES")));
+        let grid = render_ui_component(
+            "text",
+            &format!("{}{}", prefix, serialize_text_bytes("RES")),
+        );
         assert_eq!(
             styled_cells_of(&grid, 'R'),
             baseline_styles,

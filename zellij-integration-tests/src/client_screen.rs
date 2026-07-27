@@ -217,9 +217,7 @@ impl GridSnapshot {
         self.styles.len()
     }
     pub fn row_of_line(&self, needle: &str) -> Option<usize> {
-        self.text
-            .lines()
-            .position(|line| line.contains(needle))
+        self.text.lines().position(|line| line.contains(needle))
     }
     pub fn region_has_dim(
         &self,

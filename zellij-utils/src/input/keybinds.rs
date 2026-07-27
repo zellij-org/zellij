@@ -148,7 +148,10 @@ pub fn shortcut_for_action(
         for (mode, path) in &queue {
             for (key, actions) in mode_binds(*mode) {
                 for action in &actions {
-                    if let Action::SwitchToMode { input_mode: next_mode } = action {
+                    if let Action::SwitchToMode {
+                        input_mode: next_mode,
+                    } = action
+                    {
                         if !visited.contains(next_mode) {
                             visited.push(*next_mode);
                             let mut next_path = path.clone();

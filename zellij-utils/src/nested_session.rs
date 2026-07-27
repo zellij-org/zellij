@@ -85,9 +85,7 @@ fn capabilities_to_proto(capabilities: &[NestedSessionCapability]) -> Vec<i32> {
     capabilities
         .iter()
         .map(|capability| match capability {
-            NestedSessionCapability::NestedControl => {
-                proto::NestedCapability::NestedControl as i32
-            },
+            NestedSessionCapability::NestedControl => proto::NestedCapability::NestedControl as i32,
         })
         .collect()
 }
@@ -95,12 +93,14 @@ fn capabilities_to_proto(capabilities: &[NestedSessionCapability]) -> Vec<i32> {
 fn capabilities_from_proto(capabilities: &[i32]) -> Vec<NestedSessionCapability> {
     capabilities
         .iter()
-        .filter_map(|capability| match proto::NestedCapability::from_i32(*capability) {
-            Some(proto::NestedCapability::NestedControl) => {
-                Some(NestedSessionCapability::NestedControl)
+        .filter_map(
+            |capability| match proto::NestedCapability::from_i32(*capability) {
+                Some(proto::NestedCapability::NestedControl) => {
+                    Some(NestedSessionCapability::NestedControl)
+                },
+                _ => None,
             },
-            _ => None,
-        })
+        )
         .collect()
 }
 
@@ -245,8 +245,9 @@ pub fn encode_frame(message: &NestedSessionMessage) -> Vec<u8> {
 
 pub fn encode_frame_from_payload(payload_bytes: &[u8]) -> Vec<u8> {
     let encoded = base64::encode(payload_bytes);
-    let mut frame =
-        Vec::with_capacity(NESTED_FRAME_HEADER.len() + encoded.len() + NESTED_FRAME_TERMINATOR.len());
+    let mut frame = Vec::with_capacity(
+        NESTED_FRAME_HEADER.len() + encoded.len() + NESTED_FRAME_TERMINATOR.len(),
+    );
     frame.extend_from_slice(NESTED_FRAME_HEADER);
     frame.extend_from_slice(encoded.as_bytes());
     frame.extend_from_slice(NESTED_FRAME_TERMINATOR);

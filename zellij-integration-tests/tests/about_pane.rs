@@ -1,6 +1,8 @@
 #![cfg(unix)]
 
-use zellij_integration_tests::{keys, FakePtyHandle, Size, TestRunner, TestSession, PROMPT, TERMINAL_SIZE};
+use zellij_integration_tests::{
+    keys, FakePtyHandle, Size, TestRunner, TestSession, PROMPT, TERMINAL_SIZE,
+};
 
 const PIN_MARKER: &str = "PIN [ ]";
 
@@ -28,9 +30,10 @@ fn hidden_startup_tip_stays_hidden_after_terminal_resize() {
         cols: 140,
         rows: 30,
     });
-    terminal.wait_for_size("terminal pane resized to the larger display", |cols, _rows| {
-        cols > 120
-    });
+    terminal.wait_for_size(
+        "terminal pane resized to the larger display",
+        |cols, _rows| cols > 120,
+    );
     zellij.wait_until("display settled at the new size", |grid_snapshot| {
         grid_snapshot.status_bar_appears()
     });

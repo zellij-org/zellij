@@ -48,8 +48,8 @@ use crate::{
     output::{CharacterChunk, Output, SixelImageChunk},
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
     panes::grid::namespace_notification_id,
-    panes::sixel::SixelImageStore,
     panes::nested_session_modal::GuestModalShortcuts,
+    panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane, EMPTY_TERMINAL_CHARACTER},
     plugins::PluginInstruction,
@@ -4169,12 +4169,12 @@ impl Tab {
                     });
             }
             for message in nested_session_messages {
-                let _ = self
-                    .senders
-                    .send_to_screen(ScreenInstruction::NestedSessionMessageFromPane {
-                        pane_id: PaneId::Terminal(pid),
-                        message,
-                    });
+                let _ =
+                    self.senders
+                        .send_to_screen(ScreenInstruction::NestedSessionMessageFromPane {
+                            pane_id: PaneId::Terminal(pid),
+                            message,
+                        });
             }
             if let Some(string) = clipboard_update {
                 self.write_selection_to_clipboard(&string)
@@ -4414,24 +4414,24 @@ impl Tab {
                     },
                     Some(AdjustedInput::GuestModalZoom) => {
                         if let Some(client_id) = client_id {
-                            let _ = self.senders.send_to_screen(
-                                ScreenInstruction::GuestModalChoice {
-                                    client_id,
-                                    pane_id: PaneId::Terminal(active_terminal_id),
-                                    outcome: GuestModalOutcome::Zoom,
-                                },
-                            );
+                            let _ =
+                                self.senders
+                                    .send_to_screen(ScreenInstruction::GuestModalChoice {
+                                        client_id,
+                                        pane_id: PaneId::Terminal(active_terminal_id),
+                                        outcome: GuestModalOutcome::Zoom,
+                                    });
                         }
                     },
                     Some(AdjustedInput::GuestModalDescend) => {
                         if let Some(client_id) = client_id {
-                            let _ = self.senders.send_to_screen(
-                                ScreenInstruction::GuestModalChoice {
-                                    client_id,
-                                    pane_id: PaneId::Terminal(active_terminal_id),
-                                    outcome: GuestModalOutcome::Descend,
-                                },
-                            );
+                            let _ =
+                                self.senders
+                                    .send_to_screen(ScreenInstruction::GuestModalChoice {
+                                        client_id,
+                                        pane_id: PaneId::Terminal(active_terminal_id),
+                                        outcome: GuestModalOutcome::Descend,
+                                    });
                         }
                     },
                     Some(_) => {},
@@ -4552,8 +4552,7 @@ impl Tab {
     }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
         if self.floating_panes.fullscreen_is_active()
-            || (self.floating_panes.panes_are_visible()
-                && self.floating_panes.has_active_panes())
+            || (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
         {
             self.floating_panes.toggle_active_pane_fullscreen(client_id);
             self.set_force_render();
@@ -4585,8 +4584,7 @@ impl Tab {
     }
     pub fn toggle_active_pane_no_ui_fullscreen(&mut self, client_id: ClientId) {
         if self.floating_panes.fullscreen_is_active()
-            || (self.floating_panes.panes_are_visible()
-                && self.floating_panes.has_active_panes())
+            || (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
         {
             self.floating_panes
                 .toggle_active_pane_no_ui_fullscreen(client_id);

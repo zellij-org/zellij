@@ -235,12 +235,11 @@ impl ZellijPlugin for State {
         } else {
             self.hint_text.as_ref()
         };
-        let breadcrumb_ancestry: Vec<String> =
-            if self.mode_info.host_fullscreen == Some(true) {
-                self.mode_info.session_ancestry.clone()
-            } else {
-                vec![]
-            };
+        let breadcrumb_ancestry: Vec<String> = if self.mode_info.host_fullscreen == Some(true) {
+            self.mode_info.session_ancestry.clone()
+        } else {
+            vec![]
+        };
         let (line, new_tab_button_range, breadcrumb_range) = tab_line(
             self.mode_info.session_name.as_deref(),
             all_tabs,

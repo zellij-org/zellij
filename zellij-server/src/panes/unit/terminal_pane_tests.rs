@@ -1020,5 +1020,3 @@ pub fn guest_modal_no_modal_passes_input_through() {
         Some(crate::tab::AdjustedInput::WriteBytesToTerminal(_))
     ));
 }
-
-

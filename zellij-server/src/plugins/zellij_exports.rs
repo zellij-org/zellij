@@ -3174,12 +3174,7 @@ fn toggle_focus_no_ui_fullscreen(env: &PluginEnv) {
 fn focus_host_session(env: &PluginEnv) {
     env.senders
         .send_to_screen(ScreenInstruction::FocusHostSession(env.client_id, None))
-        .with_context(|| {
-            format!(
-                "failed to focus host session from plugin {}",
-                env.name()
-            )
-        })
+        .with_context(|| format!("failed to focus host session from plugin {}", env.name()))
         .non_fatal();
 }
 

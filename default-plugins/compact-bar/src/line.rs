@@ -545,11 +545,7 @@ impl RightSideElementsBuilder {
         elements
     }
 
-    fn create_nested_hint(
-        &self,
-        hint: &NestedSessionHint,
-        max_len: usize,
-    ) -> Option<LinePart> {
+    fn create_nested_hint(&self, hint: &NestedSessionHint, max_len: usize) -> Option<LinePart> {
         let (prefix, keys) = match hint {
             NestedSessionHint::Ascend(keys) => ("Ascend: ", keys),
             NestedSessionHint::Descend(keys) => ("Descend: ", keys),

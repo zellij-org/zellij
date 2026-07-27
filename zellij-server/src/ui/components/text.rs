@@ -1,4 +1,6 @@
-use super::{is_too_wide, parse_disabled, parse_indices, parse_opaque, parse_selected, Coordinates};
+use super::{
+    is_too_wide, parse_disabled, parse_indices, parse_opaque, parse_selected, Coordinates,
+};
 use crate::panes::terminal_character::RESET_STYLES;
 use crate::panes::{terminal_character::CharacterStyles, AnsiCode};
 use zellij_utils::{

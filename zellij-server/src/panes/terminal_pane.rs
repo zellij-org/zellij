@@ -4,9 +4,7 @@ use crate::panes::LinkHandler;
 use crate::panes::{
     grid::Grid,
     nested_session_modal::GuestModalShortcuts,
-    terminal_character::{
-        render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
-    },
+    terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::pty::VteBytes;
 use crate::route::NotificationEnd;
@@ -310,7 +308,10 @@ impl Pane for TerminalPane {
                 .as_ref()
                 .map(|k| k.is_key_without_modifier(BareKey::Enter))
                 .unwrap_or(false)
-                || matches!(raw_input_bytes.as_slice(), ENTER_CARRIAGE_RETURN | ENTER_NEWLINE);
+                || matches!(
+                    raw_input_bytes.as_slice(),
+                    ENTER_CARRIAGE_RETURN | ENTER_NEWLINE
+                );
             let is_esc = key_with_modifier
                 .as_ref()
                 .map(|k| k.is_key_without_modifier(BareKey::Esc))
@@ -693,7 +694,10 @@ impl Pane for TerminalPane {
     }
 
     fn drain_nested_session_messages(&mut self) -> Vec<NestedSessionMessage> {
-        self.grid.pending_nested_session_messages.drain(..).collect()
+        self.grid
+            .pending_nested_session_messages
+            .drain(..)
+            .collect()
     }
 
     fn is_nested_guest(&self) -> bool {

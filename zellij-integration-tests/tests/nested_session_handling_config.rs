@@ -30,10 +30,11 @@ fn descend_mode_auto_descends_without_modal() {
     nested.wait_for_guest_to_announce();
     nested.wait_for_host_to_acknowledge_guest();
     nested.wait_for_host_to_descend_into_guest();
-    nested.host.wait_until(
-        "no modal is shown in descend mode",
-        |host_grid| !modal_visible(host_grid),
-    );
+    nested
+        .host
+        .wait_until("no modal is shown in descend mode", |host_grid| {
+            !modal_visible(host_grid)
+        });
 
     nested.guest.wait_for_app_load();
     nested.host.send_stdin(&keys::alt('n'));
@@ -56,10 +57,11 @@ fn fullscreen_mode_auto_zooms_without_modal() {
     nested.wait_for_guest_to_announce();
     nested.wait_for_host_to_acknowledge_guest();
     nested.wait_for_host_to_descend_into_guest();
-    nested.host.wait_until(
-        "no modal is shown in fullscreen mode",
-        |host_grid| !modal_visible(host_grid),
-    );
+    nested
+        .host
+        .wait_until("no modal is shown in fullscreen mode", |host_grid| {
+            !modal_visible(host_grid)
+        });
 
     nested.guest.wait_for_app_load();
     nested.host.send_stdin(&keys::alt('n'));
@@ -83,10 +85,11 @@ fn never_mode_shows_no_modal_and_never_descends() {
     nested.wait_for_host_to_acknowledge_guest();
     nested.guest.wait_for_app_load();
 
-    nested.host.wait_until(
-        "no modal is shown in never mode",
-        |host_grid| !modal_visible(host_grid),
-    );
+    nested
+        .host
+        .wait_until("no modal is shown in never mode", |host_grid| {
+            !modal_visible(host_grid)
+        });
     assert_eq!(
         nested.focus_gained_count(),
         0,

@@ -29,7 +29,11 @@ pub fn one_line_ui(
     floating_hovered: bool,
 ) -> (LinePart, Option<(usize, usize)>, Option<(usize, usize)>) {
     if help.session_dimmed.unwrap_or(false) {
-        return (descended_into_nested_session_hint(help, max_len), None, None);
+        return (
+            descended_into_nested_session_hint(help, max_len),
+            None,
+            None,
+        );
     }
     if help.session_ascended.unwrap_or(false) {
         return (ascended_to_host_session_hint(help, max_len), None, None);
@@ -761,10 +765,8 @@ fn render_common_modifiers(
         serialize_text(&Text::new(&prefix_text).opaque())
     };
     let suffix_separator = palette.superkey_suffix_separator.paint(separator);
-    line_part_to_render.part = format!(
-        "{}{}{}",
-        line_part_to_render.part, prefix, suffix_separator
-    );
+    line_part_to_render.part =
+        format!("{}{}{}", line_part_to_render.part, prefix, suffix_separator);
     line_part_to_render.len += prefix_text.chars().count() + separator.chars().count();
 }
 

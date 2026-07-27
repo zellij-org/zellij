@@ -156,10 +156,7 @@ fn quit_guest_then_host(mut nested: NestedHarness) {
     nested.host.quit();
 }
 
-const SMALLER_SIZE: Size = Size {
-    cols: 90,
-    rows: 18,
-};
+const SMALLER_SIZE: Size = Size { cols: 90, rows: 18 };
 
 const LARGER_SIZE: Size = Size {
     cols: 140,
@@ -181,16 +178,14 @@ fn resizing_the_terminal_while_descended_keeps_the_guest_sized_to_its_pane() {
         move |cols, rows| (cols, rows) != guest_pane_before,
     );
     assert!(
-        guest_pane_smaller.0 < guest_pane_before.0
-            || guest_pane_smaller.1 < guest_pane_before.1,
+        guest_pane_smaller.0 < guest_pane_before.0 || guest_pane_smaller.1 < guest_pane_before.1,
         "the guest pane must shrink when the host terminal shrinks \
          (before={guest_pane_before:?}, after={guest_pane_smaller:?})",
     );
     let guest_after_shrink = nested.guest.wait_until(
         "the guest re-renders at the smaller pane size while staying descended",
         |guest_grid| {
-            guest_grid.row_count() == guest_pane_smaller.1 as usize
-                && guest_grid.tab_bar_appears()
+            guest_grid.row_count() == guest_pane_smaller.1 as usize && guest_grid.tab_bar_appears()
         },
     );
     assert!(
@@ -206,8 +201,7 @@ fn resizing_the_terminal_while_descended_keeps_the_guest_sized_to_its_pane() {
     nested.guest.wait_until(
         "the guest re-renders at the larger pane size while staying descended",
         |guest_grid| {
-            guest_grid.row_count() == guest_pane_larger.1 as usize
-                && guest_ui_settled(guest_grid)
+            guest_grid.row_count() == guest_pane_larger.1 as usize && guest_ui_settled(guest_grid)
         },
     );
 
@@ -280,9 +274,7 @@ fn resizing_the_terminal_while_nested_fullscreen_keeps_the_guest_filling_the_dis
     );
     nested.guest.wait_until(
         "the guest re-renders filling the enlarged display while fullscreened",
-        |guest_grid| {
-            guest_grid.row_count() == LARGER_SIZE.rows && has_breadcrumb(guest_grid)
-        },
+        |guest_grid| guest_grid.row_count() == LARGER_SIZE.rows && has_breadcrumb(guest_grid),
     );
 
     let exited = nested.mark_guest_to_host();

@@ -1,7 +1,9 @@
 #![cfg(unix)]
 
 use insta::assert_snapshot;
-use zellij_integration_tests::{keys, normalized, GridSnapshot, NestedHarness, PROMPT, TERMINAL_SIZE};
+use zellij_integration_tests::{
+    keys, normalized, GridSnapshot, NestedHarness, PROMPT, TERMINAL_SIZE,
+};
 
 const ARROW_DOWN: &[u8] = b"\x1b[B";
 
@@ -86,10 +88,11 @@ fn modal_selection_moves_with_arrow_keys() {
         NestedHarness::start_with_host_config(TERMINAL_SIZE, modal_shortcut_binding_config());
 
     wait_for_modal(&nested);
-    let first_selection = nested.host.wait_until(
-        "first option selected on initial render",
-        |host_grid| grid_contains_line_starting_with(host_grid, "> 1."),
-    );
+    let first_selection = nested
+        .host
+        .wait_until("first option selected on initial render", |host_grid| {
+            grid_contains_line_starting_with(host_grid, "> 1.")
+        });
     assert!(grid_contains_line_starting_with(&first_selection, "> 1."));
     assert!(!grid_contains_line_starting_with(&first_selection, "> 2."));
 
@@ -134,9 +137,11 @@ fn selecting_descend_enters_passthrough() {
     nested.host.send_stdin(ARROW_DOWN);
     nested.host.send_stdin(b"\r");
     nested.wait_for_host_to_descend_into_guest_after(descended);
-    nested.host.wait_until("modal dismissed after descend", |host_grid| {
-        !modal_visible(host_grid)
-    });
+    nested
+        .host
+        .wait_until("modal dismissed after descend", |host_grid| {
+            !modal_visible(host_grid)
+        });
 
     nested.guest.wait_for_app_load();
     nested.host.send_stdin(&keys::alt('n'));
@@ -160,9 +165,11 @@ fn digit_one_zooms_and_enters_passthrough() {
     let zoomed = nested.mark_host_to_guest();
     nested.host.send_stdin(b"1");
     nested.wait_for_host_to_descend_into_guest_after(zoomed);
-    nested.host.wait_until("modal dismissed after zoom", |host_grid| {
-        !modal_visible(host_grid)
-    });
+    nested
+        .host
+        .wait_until("modal dismissed after zoom", |host_grid| {
+            !modal_visible(host_grid)
+        });
 
     nested.guest.wait_for_app_load();
     nested.host.send_stdin(&keys::alt('n'));
@@ -188,9 +195,9 @@ fn focus_guest_session_redescends_after_ascending() {
     let descended = nested.mark_host_to_guest();
     nested.host.send_stdin(b"2");
     nested.wait_for_host_to_descend_into_guest_after(descended);
-    nested.host.wait_until("modal answered", |host_grid| {
-        !modal_visible(host_grid)
-    });
+    nested
+        .host
+        .wait_until("modal answered", |host_grid| !modal_visible(host_grid));
     nested.guest.wait_for_app_load();
 
     let ascended = nested.mark_host_to_guest();
@@ -261,9 +268,9 @@ fn host_stops_pinging_a_frozen_guest_after_answering_the_modal() {
     let descended = nested.mark_host_to_guest();
     nested.host.send_stdin(b"2");
     nested.wait_for_host_to_descend_into_guest_after(descended);
-    nested.host.wait_until("modal answered", |host_grid| {
-        !modal_visible(host_grid)
-    });
+    nested
+        .host
+        .wait_until("modal answered", |host_grid| !modal_visible(host_grid));
 
     nested.freeze_guest();
     nested.assert_host_stops_pinging_frozen_guest();

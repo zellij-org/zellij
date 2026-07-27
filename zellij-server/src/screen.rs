@@ -47,9 +47,9 @@ use zellij_utils::data::{
     ResizeStrategy, SessionInfo, Styling, TabInfo, ThemeHue, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
+use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
-use zellij_utils::input::actions::Action;
 use zellij_utils::input::keybinds::{shortcut_for_action, Keybinds};
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::options::{
@@ -2944,7 +2944,9 @@ impl Screen {
             PaneId::Terminal(terminal_id) => terminal_id,
             PaneId::Plugin(_) => return,
         };
-        let announce_kind = self.nested_guest_tracker.on_announce(pane_id, Instant::now());
+        let announce_kind = self
+            .nested_guest_tracker
+            .on_announce(pane_id, Instant::now());
         let is_fresh = announce_kind == AnnounceKind::New;
         if is_fresh {
             self.nested_guest_choices
@@ -3039,8 +3041,7 @@ impl Screen {
     fn revive_nested_guest(&mut self, pane_id: PaneId) {
         self.broadcast_ancestry_update_to_guests();
         self.sync_nested_guest_fullscreen_state();
-        let client_ids: Vec<ClientId> =
-            self.connected_clients.borrow().keys().copied().collect();
+        let client_ids: Vec<ClientId> = self.connected_clients.borrow().keys().copied().collect();
         for client_id in client_ids {
             self.sync_guest_choice_indicator(client_id, pane_id);
             if self.get_active_pane_id(&client_id) == Some(pane_id) {
@@ -3107,7 +3108,8 @@ impl Screen {
                 break;
             }
         }
-        self.nested_guest_choices.insert((client_id, pane_id), choice);
+        self.nested_guest_choices
+            .insert((client_id, pane_id), choice);
         self.sync_guest_choice_indicator(client_id, pane_id);
         if self.get_active_pane_id(&client_id) == Some(pane_id) {
             self.report_key_passthrough_state(client_id, pane_id, pane_id);
@@ -3153,11 +3155,9 @@ impl Screen {
             Some(pane_id) => pane_id,
             None => return,
         };
-        let is_live_guest = self
-            .tabs
-            .values()
-            .any(|tab| tab.has_pane_with_pid(&focused_pane_id) && tab.is_pane_nested_guest(focused_pane_id))
-            && self.nested_guest_tracker.is_tracked(focused_pane_id);
+        let is_live_guest = self.tabs.values().any(|tab| {
+            tab.has_pane_with_pid(&focused_pane_id) && tab.is_pane_nested_guest(focused_pane_id)
+        }) && self.nested_guest_tracker.is_tracked(focused_pane_id);
         if !is_live_guest {
             return;
         }
@@ -3229,7 +3229,10 @@ impl Screen {
             }
         }
         for pane_id in live_guest_panes {
-            if self.nested_guest_choices.contains_key(&(client_id, pane_id)) {
+            if self
+                .nested_guest_choices
+                .contains_key(&(client_id, pane_id))
+            {
                 continue;
             }
             match self.nested_session_handling {
@@ -3328,16 +3331,23 @@ impl Screen {
         entered_from_direction: Option<Direction>,
     ) {
         let should_route = self.should_route_keys_to_pane(client_id, new_pane_id);
-        let guest_pane_id = if should_route { Some(new_pane_id) } else { None };
+        let guest_pane_id = if should_route {
+            Some(new_pane_id)
+        } else {
+            None
+        };
         self.set_client_dimmed(client_id, should_route, guest_pane_id);
-        let _ = self.bus.senders.send_to_server(ServerInstruction::KeyPassthroughChanged(
-            client_id,
-            old_pane_id,
-            new_pane_id,
-            should_route,
-            entered_from_direction,
-            true,
-        ));
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::KeyPassthroughChanged(
+                client_id,
+                old_pane_id,
+                new_pane_id,
+                should_route,
+                entered_from_direction,
+                true,
+            ));
     }
 
     fn set_client_dimmed(
@@ -3469,9 +3479,12 @@ impl Screen {
                 ascend_keys: self.own_ascend_shortcut(),
                 descend_keys: vec![],
             });
-            let _ = self.bus.senders.send_to_server(
-                ServerInstruction::EmitNestedSessionFrameToClient(client_id, payload),
-            );
+            let _ =
+                self.bus
+                    .senders
+                    .send_to_server(ServerInstruction::EmitNestedSessionFrameToClient(
+                        client_id, payload,
+                    ));
         }
         let frame = nested_session::encode_frame(&NestedSessionMessage::ShortcutUpdate {
             ascend_keys: vec![],
@@ -3594,12 +3607,16 @@ impl Screen {
         }
         self.apply_nested_guest_fullscreen(pane_id, false);
         if let Some(client_id) = self.nested_via_client_id {
-            let payload = nested_session::encode_payload(
-                &NestedSessionMessage::ToggleHostFullscreen { fullscreen: false },
-            );
-            let _ = self.bus.senders.send_to_server(
-                ServerInstruction::EmitNestedSessionFrameToClient(client_id, payload),
-            );
+            let payload =
+                nested_session::encode_payload(&NestedSessionMessage::ToggleHostFullscreen {
+                    fullscreen: false,
+                });
+            let _ =
+                self.bus
+                    .senders
+                    .send_to_server(ServerInstruction::EmitNestedSessionFrameToClient(
+                        client_id, payload,
+                    ));
         }
     }
 
@@ -3623,7 +3640,8 @@ impl Screen {
                 if let PaneId::Terminal(terminal_id) = pane_id {
                     updates.push((*terminal_id, *is_fullscreen));
                 }
-                self.reported_guest_fullscreen.insert(*pane_id, *is_fullscreen);
+                self.reported_guest_fullscreen
+                    .insert(*pane_id, *is_fullscreen);
             }
         }
         self.reported_guest_fullscreen
@@ -3694,12 +3712,11 @@ impl Screen {
                 self.host_descend_keys = descend_keys;
                 self.update_all_clients_nesting_mode_info();
                 self.broadcast_ancestry_update_to_guests();
-                let payload = nested_session::encode_payload(
-                    &NestedSessionMessage::ShortcutUpdate {
+                let payload =
+                    nested_session::encode_payload(&NestedSessionMessage::ShortcutUpdate {
                         ascend_keys: self.own_ascend_shortcut(),
                         descend_keys: vec![],
-                    },
-                );
+                    });
                 let _ = self.bus.senders.send_to_server(
                     ServerInstruction::EmitNestedSessionFrameToClient(client_id, payload),
                 );
@@ -7863,10 +7880,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::SwitchFocus(
-                client_id,
-                _completion_tx,
-            ) => {
+            ScreenInstruction::SwitchFocus(client_id, _completion_tx) => {
                 let old_pane_id = screen.get_active_pane_id(&client_id);
                 active_tab_and_connected_client_id!(
                     screen,
@@ -7923,10 +7937,7 @@ pub(crate) fn screen_thread_main(
                     screen.log_and_report_session_state()?;
                 }
             },
-            ScreenInstruction::FocusLastPane(
-                client_id,
-                _completion_tx,
-            ) => {
+            ScreenInstruction::FocusLastPane(client_id, _completion_tx) => {
                 let old_pane_id = screen.get_active_pane_id(&client_id);
                 active_tab_and_connected_client_id!(
                     screen,
@@ -11976,9 +11987,9 @@ pub(crate) fn screen_thread_main(
                 screen.set_shadow_focus(client_id, pane_id)?;
             },
             ScreenInstruction::FocusHostSession(client_id, _completion_tx) => {
-                let payload = nested_session::encode_payload(
-                    &NestedSessionMessage::FocusHost { direction: None },
-                );
+                let payload = nested_session::encode_payload(&NestedSessionMessage::FocusHost {
+                    direction: None,
+                });
                 let _ = screen.bus.senders.send_to_server(
                     ServerInstruction::EmitNestedSessionFrameToClient(client_id, payload),
                 );
@@ -11989,9 +12000,10 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ToggleHostFullscreen(client_id, _completion_tx) => {
                 screen.own_fullscreen_requested = !screen.own_fullscreen_requested;
                 let fullscreen = screen.own_fullscreen_requested;
-                let payload = nested_session::encode_payload(
-                    &NestedSessionMessage::ToggleHostFullscreen { fullscreen },
-                );
+                let payload =
+                    nested_session::encode_payload(&NestedSessionMessage::ToggleHostFullscreen {
+                        fullscreen,
+                    });
                 let _ = screen.bus.senders.send_to_server(
                     ServerInstruction::EmitNestedSessionFrameToClient(client_id, payload),
                 );
