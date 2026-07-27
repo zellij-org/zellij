@@ -1,3 +1,7 @@
 [profile.default]
 slow-timeout = { period = "30s", terminate-after = 2 }
 fail-fast = false
+
+[[profile.default.overrides]]
+filter = 'binary(nested_fullscreen) + binary(nested_sessions) + binary(nested_hardening) + binary(nested_guest_modal) + binary(nested_status_hints) + binary(startup_host_query)'
+threads-required = 4

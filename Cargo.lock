@@ -5130,6 +5130,7 @@ version = "0.45.0"
 dependencies = [
  "anyhow",
  "backtrace",
+ "base64 0.13.0",
  "bitflags 2.11.0",
  "clap",
  "clap_complete",

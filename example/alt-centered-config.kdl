@@ -46,6 +46,7 @@ keybinds {
         bind "n" { NewPane; }
         bind "x" { CloseFocus; }
         bind "f" { ToggleFocusFullscreen; }
+        bind "Shift f" { ToggleFocusNoUiFullscreen; }
         bind "z" { TogglePaneFrames; }
     }
 

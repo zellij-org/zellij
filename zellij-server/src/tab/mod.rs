@@ -30,7 +30,7 @@ use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::pty_writer::PtyWriteInstruction;
-use crate::screen::{CopyOptions, ScreenInstruction};
+use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction};
 use crate::ui::hint_text::{
     held_hint_variants, hover_hint_variants, resize_hint_variants, HintExitStatus,
 };
@@ -48,6 +48,7 @@ use crate::{
     output::{CharacterChunk, Output, SixelImageChunk},
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
     panes::grid::namespace_notification_id,
+    panes::nested_session_modal::GuestModalShortcuts,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane, EMPTY_TERMINAL_CHARACTER},
@@ -74,6 +75,7 @@ use zellij_utils::{
         options::PaneFrameStyle,
         parse_keys,
     },
+    nested_session::NestedSessionMessage,
     pane_size::{Dimension, Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -243,6 +245,7 @@ pub(crate) struct Tab {
     web_clients_allowed: bool,
     web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
+    dimmed_clients: HashSet<ClientId>,
     plugin_hover_pane_id: HashMap<ClientId, PaneId>,
     mouse_last_pane_id: HashMap<ClientId, PaneId>,
     mouse_help_text_visible: HashMap<ClientId, bool>,
@@ -458,6 +461,40 @@ pub trait Pane {
         // Only terminal panes forward whitelisted queries to the host;
         // plugin panes have no such concept.
         vec![]
+    }
+    fn drain_nested_session_messages(&mut self) -> Vec<NestedSessionMessage> {
+        vec![]
+    }
+    fn is_nested_guest(&self) -> bool {
+        false
+    }
+    fn set_is_nested_guest(&mut self, _is_nested_guest: bool) {}
+    fn set_guest_modal(&mut self, _client_ids: &[ClientId]) {}
+    fn clear_guest_modal(&mut self, _client_id: ClientId) {}
+    fn clear_all_guest_modals(&mut self) {}
+    fn guest_modal_selection(&self, _client_id: ClientId) -> Option<usize> {
+        None
+    }
+    fn has_guest_modal_for_any_client(&self) -> bool {
+        false
+    }
+    fn set_guest_choice_indicator(
+        &mut self,
+        _client_id: ClientId,
+        _indicator: Option<GuestChoiceIndicator>,
+    ) {
+    }
+    fn guest_choice_indicator(&self, _client_id: ClientId) -> Option<GuestChoiceIndicator> {
+        None
+    }
+    fn clear_all_guest_choice_indicators(&mut self) {}
+    fn set_guest_session_name(&mut self, _session_name: Option<String>) {}
+    fn guest_session_name(&self) -> Option<String> {
+        None
+    }
+    fn set_guest_modal_shortcuts(&mut self, _shortcuts: GuestModalShortcuts) {}
+    fn guest_modal_shortcuts(&self) -> GuestModalShortcuts {
+        GuestModalShortcuts::default()
     }
     /// Mark this pane as awaiting a host-terminal reply for a forward
     /// it just dispatched. While paused, vte byte feeding is buffered
@@ -740,6 +777,12 @@ pub trait Pane {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GuestChoiceIndicator {
+    Descended,
+    Dismissed,
+}
+
 #[derive(Clone, Debug)]
 pub enum AdjustedInput {
     WriteBytesToTerminal(Vec<u8>),
@@ -748,6 +791,9 @@ pub enum AdjustedInput {
     CloseThisPane,
     DropToShellInThisPane { working_dir: Option<PathBuf> },
     WriteKeyToPlugin(KeyWithModifier),
+    GuestModalSelectionChanged,
+    GuestModalZoom,
+    GuestModalDescend,
 }
 pub fn get_next_terminal_position(
     tiled_panes: &TiledPanes,
@@ -839,6 +885,7 @@ impl Tab {
         let mode_info = Rc::new(RefCell::new(HashMap::new()));
         let reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>> =
             Rc::new(RefCell::new(HashMap::new()));
+        let fullscreen_covers_ui = Rc::new(RefCell::new(false));
 
         let tiled_panes = TiledPanes::new(
             display_area.clone(),
@@ -850,6 +897,7 @@ impl Tab {
             stacked_resize.clone(),
             stacked_pane_list.clone(),
             reserved_top_rows.clone(),
+            fullscreen_covers_ui.clone(),
             session_is_mirrored,
             pane_frame_style,
             default_mode_info.clone(),
@@ -864,6 +912,8 @@ impl Tab {
             connected_clients_in_app.clone(),
             mode_info.clone(),
             character_cell_size.clone(),
+            fullscreen_covers_ui.clone(),
+            pane_frame_style,
             session_is_mirrored,
             default_mode_info.clone(),
             style,
@@ -954,7 +1004,18 @@ impl Tab {
             tab_has_pending_bell: false,
             tab_bell_flash: false,
             tab_bell_ring: false,
+            dimmed_clients: HashSet::new(),
         }
+    }
+
+    pub fn set_client_dimmed(&mut self, client_id: ClientId, dimmed: bool) {
+        if dimmed {
+            self.dimmed_clients.insert(client_id);
+        } else {
+            self.dimmed_clients.remove(&client_id);
+        }
+        self.tiled_panes.set_client_dimmed(client_id, dimmed);
+        self.floating_panes.set_client_dimmed(client_id, dimmed);
     }
 
     pub fn stacked_pane_list_is_active(&self) -> bool {
@@ -1587,6 +1648,7 @@ impl Tab {
                     false,
                     false,
                     self.mouse_scroll_resize,
+                    self.dimmed_clients.clone(),
                 );
                 pane_contents_and_ui.set_frame_geom_override(Some(header_geom));
                 pane_contents_and_ui.set_stack_list_entry(
@@ -2179,6 +2241,7 @@ impl Tab {
         self.mouse_help_text_visible.remove(&client_id);
         self.mouse_last_pane_id.remove(&client_id);
         self.last_mouse_activity_time.remove(&client_id);
+        self.set_client_dimmed(client_id, false);
         self.set_force_render();
     }
     pub fn drain_connected_clients(
@@ -3693,24 +3756,6 @@ impl Tab {
                 .values()
                 .any(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
     }
-    /// Whether the pane with `pane_id` (if owned by this tab) is
-    /// currently waiting for a host-forward reply. Used by the
-    /// `ColorPaletteMode` short-circuit to decide whether an empty
-    /// "host mode unknown" answer needs to drive an unblock cycle:
-    /// if the pane is not paused, no work is owed.
-    pub fn is_pane_forward_paused(&self, pane_id: PaneId) -> bool {
-        self.tiled_panes
-            .get_pane(pane_id)
-            .or_else(|| self.floating_panes.get_pane(pane_id))
-            .or_else(|| {
-                self.suppressed_panes
-                    .values()
-                    .find(|s_p| s_p.1.pid() == pane_id)
-                    .map(|s_p| &s_p.1)
-            })
-            .map(|p| p.is_forward_paused())
-            .unwrap_or(false)
-    }
     pub fn has_plugin(&self, plugin_id: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Plugin(plugin_id))
             || self
@@ -3747,6 +3792,189 @@ impl Tab {
     }
     pub fn has_non_suppressed_pane_with_pid(&self, pid: &PaneId) -> bool {
         self.tiled_panes.panes_contain(pid) || self.floating_panes.panes_contain(pid)
+    }
+    pub fn set_pane_is_nested_guest(&mut self, pane_id: PaneId, is_nested_guest: bool) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_is_nested_guest(is_nested_guest);
+        }
+    }
+    pub fn is_pane_nested_guest(&self, pane_id: PaneId) -> bool {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane(pane_id)
+            .or_else(|| self.floating_panes.get_pane(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &s_p.1)
+            })
+        {
+            pane.is_nested_guest()
+        } else {
+            false
+        }
+    }
+    pub fn nested_guest_pane_ids(&self) -> Vec<PaneId> {
+        self.get_all_pane_ids()
+            .into_iter()
+            .filter(|pane_id| self.is_pane_nested_guest(*pane_id))
+            .collect()
+    }
+    pub fn set_guest_modal_on_pane(&mut self, pane_id: PaneId, client_ids: &[ClientId]) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_guest_modal(client_ids);
+        }
+    }
+    pub fn clear_guest_modal_on_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.clear_guest_modal(client_id);
+        }
+    }
+    pub fn clear_all_guest_modals_on_pane(&mut self, pane_id: PaneId) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.clear_all_guest_modals();
+        }
+    }
+    pub fn set_guest_choice_indicator_on_pane(
+        &mut self,
+        pane_id: PaneId,
+        client_id: ClientId,
+        indicator: Option<GuestChoiceIndicator>,
+    ) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_guest_choice_indicator(client_id, indicator);
+        }
+    }
+    pub fn clear_all_guest_choice_indicators_on_pane(&mut self, pane_id: PaneId) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.clear_all_guest_choice_indicators();
+        }
+    }
+    pub fn pane_has_guest_modal_for_client(&self, pane_id: PaneId, client_id: ClientId) -> bool {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane(pane_id)
+            .or_else(|| self.floating_panes.get_pane(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &s_p.1)
+            })
+        {
+            pane.guest_modal_selection(client_id).is_some()
+        } else {
+            false
+        }
+    }
+    pub fn clear_guest_modal_for_client_on_all_panes(&mut self, client_id: ClientId) {
+        for pane_id in self.get_all_pane_ids() {
+            self.clear_guest_modal_on_pane(pane_id, client_id);
+        }
+    }
+    pub fn clear_guest_choice_indicator_for_client_on_all_panes(&mut self, client_id: ClientId) {
+        for pane_id in self.get_all_pane_ids() {
+            self.set_guest_choice_indicator_on_pane(pane_id, client_id, None);
+        }
+    }
+    pub fn set_guest_session_name_on_pane(
+        &mut self,
+        pane_id: PaneId,
+        session_name: Option<String>,
+    ) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_guest_session_name(session_name);
+        }
+    }
+    pub fn set_guest_modal_shortcuts_on_pane(
+        &mut self,
+        pane_id: PaneId,
+        shortcuts: GuestModalShortcuts,
+    ) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_guest_modal_shortcuts(shortcuts);
+        }
     }
     pub fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) -> bool {
         if self.tiled_panes.panes_contain(&pane_id) {
@@ -3924,6 +4152,7 @@ impl Tab {
             if !forwarded_queries.is_empty() {
                 terminal_output.arm_forward_pause();
             }
+            let nested_session_messages = terminal_output.drain_nested_session_messages();
             let clipboard_update = terminal_output.drain_clipboard_update();
             let desktop_notifications = terminal_output.drain_desktop_notifications();
             let osc7_cwd = terminal_output.drain_osc7_cwd();
@@ -3938,6 +4167,14 @@ impl Tab {
                         pane_id: PaneId::Terminal(pid),
                         query,
                     });
+            }
+            for message in nested_session_messages {
+                let _ =
+                    self.senders
+                        .send_to_screen(ScreenInstruction::NestedSessionMessageFromPane {
+                            pane_id: PaneId::Terminal(pid),
+                            message,
+                        });
             }
             if let Some(string) = clipboard_update {
                 self.write_selection_to_clipboard(&string)
@@ -4172,6 +4409,31 @@ impl Tab {
                             .with_context(err_context)?;
                         should_update_ui = true;
                     },
+                    Some(AdjustedInput::GuestModalSelectionChanged) => {
+                        should_update_ui = true;
+                    },
+                    Some(AdjustedInput::GuestModalZoom) => {
+                        if let Some(client_id) = client_id {
+                            let _ =
+                                self.senders
+                                    .send_to_screen(ScreenInstruction::GuestModalChoice {
+                                        client_id,
+                                        pane_id: PaneId::Terminal(active_terminal_id),
+                                        outcome: GuestModalOutcome::Zoom,
+                                    });
+                        }
+                    },
+                    Some(AdjustedInput::GuestModalDescend) => {
+                        if let Some(client_id) = client_id {
+                            let _ =
+                                self.senders
+                                    .send_to_screen(ScreenInstruction::GuestModalChoice {
+                                        client_id,
+                                        pane_id: PaneId::Terminal(active_terminal_id),
+                                        outcome: GuestModalOutcome::Descend,
+                                    });
+                        }
+                    },
                     Some(_) => {},
                     None => {},
                 }
@@ -4289,6 +4551,14 @@ impl Tab {
         )
     }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
+        if self.floating_panes.fullscreen_is_active()
+            || (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
+        {
+            self.floating_panes.toggle_active_pane_fullscreen(client_id);
+            self.set_force_render();
+            self.set_should_clear_display_before_rendering();
+            return;
+        }
         if self.floating_panes.panes_are_visible() {
             return;
         }
@@ -4296,6 +4566,12 @@ impl Tab {
         self.tiled_panes.toggle_active_pane_fullscreen(client_id);
     }
     pub fn toggle_pane_fullscreen(&mut self, pane_id: PaneId) {
+        if self.floating_panes.panes_contain(&pane_id) {
+            self.floating_panes.toggle_pane_fullscreen(pane_id);
+            self.set_force_render();
+            self.set_should_clear_display_before_rendering();
+            return;
+        }
         if self.pane_is_hidden_stack_list_member(&pane_id) {
             self.make_hidden_stack_list_member_visible(pane_id);
         }
@@ -4306,11 +4582,50 @@ impl Tab {
             log::error!("No tiled pane with id: {:?} found", pane_id);
         }
     }
+    pub fn toggle_active_pane_no_ui_fullscreen(&mut self, client_id: ClientId) {
+        if self.floating_panes.fullscreen_is_active()
+            || (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
+        {
+            self.floating_panes
+                .toggle_active_pane_no_ui_fullscreen(client_id);
+            self.set_force_render();
+            self.set_should_clear_display_before_rendering();
+            return;
+        }
+        if self.floating_panes.panes_are_visible() {
+            return;
+        }
+        self.dissolve_stack_lists_for_classic_mutation();
+        self.tiled_panes
+            .toggle_active_pane_no_ui_fullscreen(client_id);
+    }
+    pub fn toggle_pane_no_ui_fullscreen(&mut self, pane_id: PaneId) {
+        if self.floating_panes.panes_contain(&pane_id) {
+            self.floating_panes.toggle_pane_no_ui_fullscreen(pane_id);
+            self.set_force_render();
+            self.set_should_clear_display_before_rendering();
+            return;
+        }
+        if self.pane_is_hidden_stack_list_member(&pane_id) {
+            self.make_hidden_stack_list_member_visible(pane_id);
+        }
+        self.dissolve_stack_lists_for_classic_mutation();
+        if self.tiled_panes.panes_contain(&pane_id) {
+            self.tiled_panes.toggle_pane_no_ui_fullscreen(pane_id);
+        } else {
+            log::error!("No tiled pane with id: {:?} found", pane_id);
+        }
+    }
     pub fn is_fullscreen_active(&self) -> bool {
-        self.tiled_panes.fullscreen_is_active()
+        self.tiled_panes.fullscreen_is_active() || self.floating_panes.fullscreen_is_active()
+    }
+    pub fn fullscreen_covers_ui(&self) -> bool {
+        self.tiled_panes.fullscreen_covers_ui() || self.floating_panes.fullscreen_covers_ui()
     }
     pub fn fullscreen_pane_id(&self) -> Option<PaneId> {
-        self.tiled_panes.fullscreen_pane_id()
+        self.tiled_panes
+            .fullscreen_pane_id()
+            .or_else(|| self.floating_panes.fullscreen_pane_id())
     }
     pub fn are_floating_panes_visible(&self) -> bool {
         self.floating_panes.panes_are_visible()
@@ -4329,19 +4644,19 @@ impl Tab {
 
         return self.tiled_panes.focus_pane_right_fullscreen(client_id);
     }
-    pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
-            return;
+            return false;
         }
 
-        self.tiled_panes.focus_pane_up_fullscreen(client_id);
+        return self.tiled_panes.focus_pane_up_fullscreen(client_id);
     }
-    pub fn focus_pane_down_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_down_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
-            return;
+            return false;
         }
 
-        self.tiled_panes.focus_pane_down_fullscreen(client_id);
+        return self.tiled_panes.focus_pane_down_fullscreen(client_id);
     }
     pub fn switch_next_pane_fullscreen(&mut self, client_id: ClientId) {
         if !self.is_fullscreen_active() {
@@ -4453,8 +4768,10 @@ impl Tab {
             .with_context(err_context)?;
         self.render_stack_list_headers(output, client_id_override)
             .with_context(err_context)?;
-        if (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
-            || self.floating_panes.has_pinned_panes()
+        let no_ui_fullscreen_active = self.tiled_panes.fullscreen_covers_ui();
+        if !no_ui_fullscreen_active
+            && ((self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
+                || self.floating_panes.has_pinned_panes())
         {
             self.floating_panes
                 .render(
@@ -4652,8 +4969,14 @@ impl Tab {
         // panes retain stale geometry from before the resize and the layout
         // solver fails when fullscreen is later toggled off.
         let fullscreen_pane_to_restore = self.tiled_panes.fullscreen_pane_id();
+        let fullscreen_covered_ui = self.tiled_panes.fullscreen_covers_ui();
         if fullscreen_pane_to_restore.is_some() {
             self.tiled_panes.unset_fullscreen();
+        }
+        let floating_fullscreen_pane_to_restore = self.floating_panes.fullscreen_pane_id();
+        let floating_fullscreen_covered_ui = self.floating_panes.fullscreen_covers_ui();
+        if floating_fullscreen_pane_to_restore.is_some() {
+            self.floating_panes.unset_fullscreen();
         }
         self.floating_panes.resize(new_screen_size);
         // we need to do this explicitly because floating_panes.resize does not do this
@@ -4686,7 +5009,20 @@ impl Tab {
         );
         if let Some(pane_id) = fullscreen_pane_to_restore {
             if self.tiled_panes.panes_contain(&pane_id) {
-                self.tiled_panes.toggle_pane_fullscreen(pane_id);
+                if fullscreen_covered_ui {
+                    self.tiled_panes.toggle_pane_no_ui_fullscreen(pane_id);
+                } else {
+                    self.tiled_panes.toggle_pane_fullscreen(pane_id);
+                }
+            }
+        }
+        if let Some(pane_id) = floating_fullscreen_pane_to_restore {
+            if self.floating_panes.panes_contain(&pane_id) {
+                if floating_fullscreen_covered_ui {
+                    self.floating_panes.toggle_pane_no_ui_fullscreen(pane_id);
+                } else {
+                    self.floating_panes.toggle_pane_fullscreen(pane_id);
+                }
             }
         }
         self.resize_all_stack_list_hidden_members();
@@ -4694,6 +5030,9 @@ impl Tab {
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
         let err_context = || format!("unable to resize pane");
+        if self.floating_panes.fullscreen_is_active() {
+            return Ok(());
+        }
         if self.floating_panes.panes_are_visible() {
             let successfully_resized = self
                 .floating_panes
@@ -4779,6 +5118,23 @@ impl Tab {
             self.tiled_panes.focus_pane_on_edge(direction, client_id);
         }
     }
+    pub fn focus_pane_adjacent_to(
+        &mut self,
+        pane_id: PaneId,
+        direction: Direction,
+        client_id: ClientId,
+    ) -> Option<PaneId> {
+        if self.floating_panes.panes_are_visible() {
+            return self
+                .floating_panes
+                .focus_pane_adjacent_to(pane_id, direction, client_id);
+        }
+        if self.tiled_panes.fullscreen_is_active() {
+            return None;
+        }
+        self.tiled_panes
+            .focus_pane_adjacent_to(pane_id, direction, client_id)
+    }
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_left(&mut self, client_id: ClientId) -> Result<bool> {
         let err_context = || format!("failed to move focus left for client {}", client_id);
@@ -4817,8 +5173,7 @@ impl Tab {
                 return Ok(false);
             }
             if self.tiled_panes.fullscreen_is_active() {
-                self.focus_pane_down_fullscreen(client_id);
-                return Ok(true);
+                return Ok(self.focus_pane_down_fullscreen(client_id));
             }
             if self.stacked_pane_list_is_active()
                 && self.move_focus_within_stack_list(client_id, true)
@@ -4844,8 +5199,7 @@ impl Tab {
                 return Ok(false);
             }
             if self.tiled_panes.fullscreen_is_active() {
-                self.focus_pane_up_fullscreen(client_id);
-                return Ok(true);
+                return Ok(self.focus_pane_up_fullscreen(client_id));
             }
             if self.stacked_pane_list_is_active()
                 && self.move_focus_within_stack_list(client_id, false)
@@ -5116,7 +5470,7 @@ impl Tab {
         if let Some(pane) = self.floating_panes.get_pane(pane_id) {
             let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
             info.is_focused = false;
-            info.is_fullscreen = false;
+            info.is_fullscreen = self.floating_panes.fullscreen_pane_id() == Some(pane_id);
             info.is_floating = true;
             info.is_suppressed = false;
             return Some(info);
@@ -5205,6 +5559,9 @@ impl Tab {
             };
         }
         let closed_pane = if self.floating_panes.panes_contain(&id) {
+            if self.floating_panes.fullscreen_pane_id() == Some(id) {
+                self.floating_panes.unset_fullscreen();
+            }
             let closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_selectable_panes() {
@@ -5291,6 +5648,9 @@ impl Tab {
             };
         }
         if self.floating_panes.panes_contain(&id) {
+            if self.floating_panes.fullscreen_pane_id() == Some(id) {
+                self.floating_panes.unset_fullscreen();
+            }
             let mut closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_panes() {
@@ -5911,19 +6271,12 @@ impl Tab {
         let err_context = || format!("failed to get id of pane at position {point:?}");
 
         if self.tiled_panes.fullscreen_is_active()
-            && self
-                .is_position_inside_viewport(point)
-                .with_context(err_context)?
+            && (self.tiled_panes.fullscreen_covers_ui()
+                || self
+                    .is_position_inside_viewport(point)
+                    .with_context(err_context)?)
         {
-            // TODO: instead of doing this, record the pane that is in fullscreen
-            let first_client_id = self
-                .connected_clients
-                .borrow()
-                .iter()
-                .copied()
-                .next()
-                .with_context(err_context)?;
-            return Ok(self.tiled_panes.get_active_pane_id(first_client_id));
+            return Ok(self.tiled_panes.fullscreen_pane_id());
         }
 
         let (stacked_pane_ids_under_flexible_pane, _stacked_pane_ids_over_flexible_pane) = {
@@ -6216,6 +6569,7 @@ impl Tab {
 
     pub fn set_pane_frames(&mut self, pane_frame_style: PaneFrameStyle) {
         self.tiled_panes.set_pane_frames(pane_frame_style);
+        self.floating_panes.set_pane_frame_style(pane_frame_style);
         self.pane_frame_style = pane_frame_style;
         self.set_should_clear_display_before_rendering();
         self.set_force_render();
@@ -6446,6 +6800,9 @@ impl Tab {
     pub fn hide_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking
         // floating_panes.toggle_show_panes(false)
+        if self.floating_panes.fullscreen_is_active() {
+            self.floating_panes.unset_fullscreen();
+        }
         self.floating_panes.toggle_show_panes(false);
         self.tiled_panes.focus_all_panes();
         self.set_force_render();
@@ -6725,6 +7082,9 @@ impl Tab {
         client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to add floating pane");
+        if self.floating_panes.fullscreen_is_active() {
+            self.floating_panes.unset_fullscreen();
+        }
         if let Some(mut new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
             if let Some(floating_pane_coordinates) = &floating_pane_coordinates {
                 let viewport = self.viewport.borrow();
@@ -7445,6 +7805,9 @@ impl Tab {
     }
     pub fn toggle_fullscreen_by_pane_id(&mut self, pane_id: PaneId) {
         self.toggle_pane_fullscreen(pane_id);
+    }
+    pub fn toggle_no_ui_fullscreen_by_pane_id(&mut self, pane_id: PaneId) {
+        self.toggle_pane_no_ui_fullscreen(pane_id);
     }
     pub fn close_pane_by_pane_id(
         &mut self,

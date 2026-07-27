@@ -368,6 +368,60 @@ pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
     best_effort_shortcut_list(help, tip_body.short, max_width)
 }
 
+pub fn descended_into_nested_session_hint(help: &ModeInfo, max_len: usize) -> LinePart {
+    nested_session_status_hint(help, "Ascend: ", &help.nested_ascend_keys, max_len)
+}
+
+pub fn ascended_to_host_session_hint(help: &ModeInfo, max_len: usize) -> LinePart {
+    nested_session_status_hint(help, "Descend: ", &help.nested_descend_keys, max_len)
+}
+
+fn nested_session_status_hint(
+    help: &ModeInfo,
+    label: &str,
+    keys: &[KeyWithModifier],
+    max_len: usize,
+) -> LinePart {
+    let palette = help.style.colors;
+    let text_color = palette_match!(palette.text_unselected.base);
+    let styled_label = Style::new().dimmed().italic().paint(format!(" {}", label));
+    let mut key_bits: Vec<ANSIString> = vec![];
+    if keys.is_empty() {
+        key_bits.push(Style::new().dimmed().italic().paint("<unbound>"));
+    } else {
+        for (i, key) in keys.iter().enumerate() {
+            if i > 0 {
+                key_bits.push(Style::new().fg(text_color).paint(" + "));
+            }
+            key_bits.extend(style_key_with_modifier(
+                std::slice::from_ref(key),
+                &palette,
+                None,
+            ));
+        }
+    }
+    let mut bits: Vec<ANSIString> = vec![styled_label];
+    bits.extend(key_bits.clone());
+    let part = ANSIStrings(&bits);
+    let len = unstyled_len(&part);
+    if len <= max_len {
+        return LinePart {
+            part: part.to_string(),
+            len,
+        };
+    }
+    let part = ANSIStrings(&key_bits);
+    let len = unstyled_len(&part);
+    if len <= max_len {
+        LinePart {
+            part: part.to_string(),
+            len,
+        }
+    } else {
+        LinePart::default()
+    }
+}
+
 pub fn text_copied_hint(copy_destination: CopyDestination) -> LinePart {
     let hint = match copy_destination {
         CopyDestination::Command => "Text piped to external command",

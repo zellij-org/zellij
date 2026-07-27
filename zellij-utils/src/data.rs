@@ -254,6 +254,7 @@ impl FromStr for BareKey {
             "end" => Ok(BareKey::End),
             "backspace" => Ok(BareKey::Backspace),
             "delete" => Ok(BareKey::Delete),
+            "del" => Ok(BareKey::Delete),
             "insert" => Ok(BareKey::Insert),
             "f1" => Ok(BareKey::F(1)),
             "f2" => Ok(BareKey::F(2)),
@@ -1751,6 +1752,12 @@ pub struct ModeInfo {
     pub web_server_port: Option<u16>,
     pub web_server_capability: Option<bool>,
     pub pane_frame_style: Option<PaneFrameStyle>,
+    pub session_dimmed: Option<bool>,
+    pub session_ancestry: Vec<String>,
+    pub host_fullscreen: Option<bool>,
+    pub nested_ascend_keys: Vec<KeyWithModifier>,
+    pub session_ascended: Option<bool>,
+    pub nested_descend_keys: Vec<KeyWithModifier>,
 }
 
 impl ModeInfo {
@@ -3416,6 +3423,7 @@ pub enum PluginCommand {
     PageScrollUp,
     PageScrollDown,
     ToggleFocusFullscreen,
+    ToggleFocusNoUiFullscreen,
     TogglePaneFrames,
     SetPaneFrameStyle(PaneFrameStyle),
     TogglePaneEmbedOrEject,
@@ -3645,6 +3653,7 @@ pub enum PluginCommand {
     },
     SetShadowFocus(PaneId),
     ExitMobileMode,
+    FocusHostSession,
 }
 
 // Response type for plugin API methods that open a pane in a new tab

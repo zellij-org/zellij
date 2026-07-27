@@ -2,6 +2,7 @@ pub mod alacritty_functions;
 pub mod grid;
 pub mod hyperlink_tracker;
 pub mod link_handler;
+pub mod nested_session_modal;
 pub mod selection;
 pub mod sixel;
 pub mod terminal_character;

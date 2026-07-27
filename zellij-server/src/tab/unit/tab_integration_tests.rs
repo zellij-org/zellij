@@ -3446,6 +3446,228 @@ fn float_embedded_pane_without_pane_frames() {
     assert_snapshot!(snapshot);
 }
 
+fn setup_tab_with_focused_floating_pane(
+    size: Size,
+    client_id: ClientId,
+    frame_style: PaneFrameStyle,
+) -> Tab {
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.set_pane_frames(frame_style);
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("\n\n\n                   I am a floating pane".as_bytes()),
+    )
+    .unwrap();
+    tab
+}
+
+#[test]
+fn floating_fullscreen_full_frame_style() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::Full);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn floating_fullscreen_titles_frame_style() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::Titles);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn floating_fullscreen_none_frame_style() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::None);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn changing_frame_style_while_floating_fullscreen_reflows_content() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::Full);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.set_pane_frames(PaneFrameStyle::None);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn exiting_floating_fullscreen_clears_background() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("\n\n\n                   I am a floating pane".as_bytes()),
+    )
+    .unwrap();
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn floating_no_ui_fullscreen_covers_tab_and_status_bar() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::Full);
+    let mut output = Output::default();
+    tab.toggle_active_pane_no_ui_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn floating_fullscreen_hides_other_floating_and_pinned_panes() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.set_floating_pane_pinned(PaneId::Terminal(3), true);
+    tab.handle_pty_bytes(2, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(3, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    let _ = tab.focus_pane_with_id(PaneId::Terminal(2), false, false, client_id);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
 #[test]
 fn cannot_float_only_embedded_pane() {
     let size = Size {

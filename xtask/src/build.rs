@@ -45,30 +45,14 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
             crate::status(msg);
             eprintln!("{}", msg);
 
-            let mut base_cmd = cmd!(sh, "{cargo} build --target wasm32-wasip1");
             if flags.release {
-                base_cmd = base_cmd.arg("--release");
-            }
-            for member in &plugin_members {
-                let plugin_name = member
-                    .crate_name
-                    .rsplit_once('/')
-                    .context("Cannot determine plugin name from crate path")?
-                    .1;
-                base_cmd = base_cmd.args(["-p", plugin_name]);
-            }
-            base_cmd.run().context("failed to build plugins")?;
-
-            if flags.release {
-                for member in &plugin_members {
-                    let plugin_name = member
-                        .crate_name
-                        .rsplit_once('/')
-                        .context("Cannot determine plugin name from crate path")?
-                        .1;
-                    move_plugin_to_assets(sh, plugin_name)?;
-                }
+                build_plugins_release_into_assets(sh, &plugin_members)?;
             } else {
+                let mut base_cmd = cmd!(sh, "{cargo} build --target wasm32-wasip1");
+                for member in &plugin_members {
+                    base_cmd = base_cmd.args(["-p", plugin_name_of(member)?]);
+                }
+                base_cmd.run().context("failed to build plugins")?;
                 write_plugin_stamp(sh);
             }
         }
@@ -126,6 +110,113 @@ fn plugins_force() -> bool {
     std::env::var_os("ZELLIJ_FORCE_PLUGINS").is_some()
 }
 
+fn plugin_asset_path(plugin_name: &str) -> PathBuf {
+    crate::asset_dir()
+        .join("plugins")
+        .join(plugin_name)
+        .with_extension("wasm")
+}
+
+fn newest_plugin_source_time() -> Option<std::time::SystemTime> {
+    let root = crate::project_root();
+    ["default-plugins", "zellij-tile", "zellij-tile-utils"]
+        .iter()
+        .filter_map(|dir| newest_file_time(&root.join(dir)))
+        .max()
+}
+
+fn newest_file_time(dir: &Path) -> Option<std::time::SystemTime> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    let mut newest: Option<std::time::SystemTime> = None;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => continue,
+        };
+        if file_type.is_dir() {
+            if path
+                .file_name()
+                .map(|name| name == "target")
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            if let Some(child) = newest_file_time(&path) {
+                newest = Some(newest.map_or(child, |current| current.max(child)));
+            }
+        } else if let Ok(modified) = entry.metadata().and_then(|m| m.modified()) {
+            newest = Some(newest.map_or(modified, |current| current.max(modified)));
+        }
+    }
+    newest
+}
+
+pub fn ensure_plugin_assets(sh: &Shell) -> anyhow::Result<()> {
+    let plugin_members: Vec<&WorkspaceMember> = crate::workspace_members()
+        .iter()
+        .filter(|m| m.build && m.crate_name.contains("plugins"))
+        .collect();
+    if plugin_members.is_empty() {
+        return Ok(());
+    }
+
+    let newest_source = newest_plugin_source_time();
+    let stale = plugins_force()
+        || plugin_members.iter().any(|member| {
+            let plugin_name = match member.crate_name.rsplit_once('/') {
+                Some((_, name)) => name,
+                None => return true,
+            };
+            let asset_time = std::fs::metadata(plugin_asset_path(plugin_name))
+                .and_then(|m| m.modified())
+                .ok();
+            match (asset_time, newest_source) {
+                (Some(asset_time), Some(newest_source)) => asset_time < newest_source,
+                _ => true,
+            }
+        });
+
+    if !stale {
+        let msg = ">> Plugin assets up to date, skipping plugin build";
+        crate::status(msg);
+        eprintln!("{}", msg);
+        return Ok(());
+    }
+
+    let msg = ">> Building plugin assets (release)";
+    crate::status(msg);
+    eprintln!("{}", msg);
+
+    build_plugins_release_into_assets(sh, &plugin_members)
+}
+
+fn build_plugins_release_into_assets(
+    sh: &Shell,
+    plugin_members: &[&WorkspaceMember],
+) -> anyhow::Result<()> {
+    let cargo = crate::cargo()?;
+    let mut base_cmd = cmd!(sh, "{cargo} build --target wasm32-wasip1 --release");
+    for member in plugin_members {
+        let plugin_name = plugin_name_of(member)?;
+        base_cmd = base_cmd.args(["-p", plugin_name]);
+    }
+    base_cmd.run().context("failed to build plugin assets")?;
+
+    for member in plugin_members {
+        move_plugin_to_assets(sh, plugin_name_of(member)?)?;
+    }
+    Ok(())
+}
+
+fn plugin_name_of(member: &WorkspaceMember) -> anyhow::Result<&'static str> {
+    Ok(member
+        .crate_name
+        .rsplit_once('/')
+        .context("Cannot determine plugin name from crate path")?
+        .1)
+}
+
 fn plugin_stamp_path() -> PathBuf {
     PathBuf::from(
         std::env::var_os("CARGO_TARGET_DIR")
@@ -143,41 +234,10 @@ fn plugin_sources_changed() -> bool {
         Ok(stamp_time) => stamp_time,
         Err(_) => return true,
     };
-    let root = crate::project_root();
-    ["default-plugins", "zellij-tile", "zellij-tile-utils"]
-        .iter()
-        .any(|dir| dir_changed_since(&root.join(dir), stamp_time))
-}
-
-fn dir_changed_since(dir: &Path, since: std::time::SystemTime) -> bool {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(_) => return false,
-    };
-    for entry in entries.flatten() {
-        let file_type = match entry.file_type() {
-            Ok(file_type) => file_type,
-            Err(_) => continue,
-        };
-        let path = entry.path();
-        if file_type.is_dir() {
-            if path
-                .file_name()
-                .map(|name| name == "target")
-                .unwrap_or(false)
-            {
-                continue;
-            }
-            if dir_changed_since(&path, since) {
-                return true;
-            }
-        } else if let Ok(modified) = entry.metadata().and_then(|m| m.modified()) {
-            if modified > since {
-                return true;
-            }
-        }
+    match newest_plugin_source_time() {
+        Some(newest_source) => newest_source > stamp_time,
+        None => true,
     }
-    false
 }
 
 pub fn proto(sh: &Shell) -> anyhow::Result<()> {
@@ -204,6 +264,11 @@ fn run_proto_codegen(sh: &Shell, force: bool) {
             "assets/prost_web_server",
             "src/web_server_contract",
             "generated_web_server_api.rs",
+        ),
+        (
+            "assets/prost_nested_session",
+            "src/nested_session_contract",
+            "generated_nested_session_api.rs",
         ),
     ];
 

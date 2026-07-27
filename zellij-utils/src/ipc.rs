@@ -176,6 +176,9 @@ pub enum ClientToServerMsg {
     SoftKeyboardVisibilityChanged {
         visible: bool,
     },
+    NestedSessionFrameFromHost {
+        payload_bytes: Vec<u8>,
+    },
 }
 
 // Types of messages sent from the server to the client
@@ -226,6 +229,9 @@ pub enum ServerToClientMsg {
     ForwardQueryToHost {
         token: u32,
         query_bytes: Vec<u8>,
+    },
+    EmitNestedSessionFrame {
+        payload_bytes: Vec<u8>,
     },
 }
 

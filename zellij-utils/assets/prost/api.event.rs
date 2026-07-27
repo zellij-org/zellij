@@ -703,6 +703,18 @@ pub struct ModeUpdatePayload {
     pub web_server_capability: ::core::option::Option<bool>,
     #[prost(enumeration="PaneFrameStyle", optional, tag="16")]
     pub pane_frame_style: ::core::option::Option<i32>,
+    #[prost(bool, optional, tag="17")]
+    pub session_dimmed: ::core::option::Option<bool>,
+    #[prost(string, repeated, tag="18")]
+    pub ancestry: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="19")]
+    pub host_fullscreen: ::core::option::Option<bool>,
+    #[prost(string, repeated, tag="20")]
+    pub nested_ascend_keys: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="21")]
+    pub session_ascended: ::core::option::Option<bool>,
+    #[prost(string, repeated, tag="22")]
+    pub nested_descend_keys: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

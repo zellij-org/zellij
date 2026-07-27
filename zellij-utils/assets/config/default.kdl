@@ -33,6 +33,7 @@ keybinds {
         bind "s" { NewPane "stacked"; SwitchToMode "Normal"; }
         bind "x" { CloseFocus; SwitchToMode "Normal"; }
         bind "f" { ToggleFocusFullscreen; SwitchToMode "Normal"; }
+        bind "Shift f" { ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }
         bind "z" { TogglePaneFrames; SwitchToMode "Normal"; }
         bind "w" { ToggleFloatingPanes; SwitchToMode "Normal"; }
         bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }
@@ -115,6 +116,9 @@ keybinds {
         bind "Ctrl o" { SwitchToMode "Normal"; }
         bind "Ctrl s" { SwitchToMode "Scroll"; }
         bind "d" { Detach; }
+        bind "]" { FocusHostSession; SwitchToMode "Normal"; }
+        bind "[" { FocusGuestSession; SwitchToMode "Normal"; }
+        bind "f" { ToggleHostFullscreen; SwitchToMode "Normal"; }
         bind "w" {
             LaunchOrFocusPlugin "session-manager" {
                 floating true
@@ -260,6 +264,15 @@ load_plugins {
 //   - quit
 //
 // on_force_close "quit"
+
+// Choose how to handle a nested Zellij session detected running inside a pane
+// Options:
+//   - ask (Default - prompt with a modal to zoom in or control on focus)
+//   - fullscreen (always zoom into the nested session)
+//   - descend (always control the nested session on focus)
+//   - never (never prompt or descend; do it manually)
+//
+// nested_session_handling "ask"
 
 //  Send a request for a simplified ui (without arrow fonts) to plugins
 //  Options:
