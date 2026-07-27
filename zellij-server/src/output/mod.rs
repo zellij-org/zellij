@@ -18,6 +18,7 @@ use std::{
 };
 use zellij_utils::data::{HighlightLayer, PaneContents, PaneRenderReport};
 use zellij_utils::errors::prelude::*;
+use zellij_utils::shared::eightbit_to_rgb;
 use zellij_utils::pane_size::SizeInPixels;
 use zellij_utils::pane_size::{PaneGeom, Size};
 
@@ -46,10 +47,39 @@ pub struct HighlightSelection {
     pub selection: Selection,
     pub bg: Option<AnsiCode>,
     pub fg: Option<AnsiCode>,
+    /// When set, `bg` is the selection color to alpha-composite over each
+    /// cell's own foreground and background by this weight (0–255), instead
+    /// of overriding them. Preserves contrast so same-colored text survives.
+    pub alpha: Option<u8>,
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,
     pub layer: HighlightLayer,
+}
+
+/// Resolve an `AnsiCode` color to RGB, mapping indexed and named colors
+/// through the 256-color palette. Returns `None` for non-color codes.
+fn ansi_code_to_rgb(code: AnsiCode) -> Option<(u8, u8, u8)> {
+    match code {
+        AnsiCode::RgbCode(rgb) => Some(rgb),
+        AnsiCode::ColorIndex(index) => Some(eightbit_to_rgb(index)),
+        // `NamedColor` is declared in ANSI order (Black = 0 .. BrightWhite = 15),
+        // matching the first 16 entries of the 256-color palette.
+        AnsiCode::NamedColor(named) => Some(eightbit_to_rgb(named as u8)),
+        _ => None,
+    }
+}
+
+/// Linear blend of `cell` toward `selection` by `alpha` (0 = none, 255 = full).
+fn blend_rgb(cell: (u8, u8, u8), selection: (u8, u8, u8), alpha: u8) -> (u8, u8, u8) {
+    let a = alpha as u16;
+    let inv = 255 - a;
+    let mix = |c: u8, s: u8| (((c as u16) * inv + (s as u16) * a) / 255) as u8;
+    (
+        mix(cell.0, selection.0),
+        mix(cell.1, selection.1),
+        mix(cell.2, selection.2),
+    )
 }
 
 fn adjust_styles_for_possible_selection(
@@ -57,17 +87,49 @@ fn adjust_styles_for_possible_selection(
     character_styles: CharacterStyles,
     chunk_y: usize,
     chunk_width: usize,
+    pane_default_fg: Option<AnsiCode>,
+    pane_default_bg: Option<AnsiCode>,
 ) -> CharacterStyles {
     chunk_selection_and_colors
         .iter()
         .find(|hs| hs.selection.contains(chunk_y, chunk_width))
         .map(|hs| {
             let mut styles = character_styles;
-            if let Some(bg) = hs.bg {
-                styles = styles.background(Some(bg));
-            }
-            if let Some(fg) = hs.fg {
-                styles = styles.foreground(Some(fg));
+            match hs.alpha {
+                Some(alpha) => {
+                    // Alpha-composite the selection color (`hs.bg`) over the cell's
+                    // own foreground AND background. Because both shift toward the
+                    // selection color by the same weight, their relative contrast is
+                    // preserved, so text matching the selection color isn't erased
+                    // (mirrors macOS Terminal's translucent selection layer).
+                    if let Some(selection) = hs.bg.and_then(ansi_code_to_rgb) {
+                        let cell_bg = styles
+                            .background
+                            .or(pane_default_bg)
+                            .and_then(ansi_code_to_rgb)
+                            .unwrap_or((0, 0, 0));
+                        styles = styles.background(Some(AnsiCode::RgbCode(blend_rgb(
+                            cell_bg, selection, alpha,
+                        ))));
+                        if let Some(cell_fg) = styles
+                            .foreground
+                            .or(pane_default_fg)
+                            .and_then(ansi_code_to_rgb)
+                        {
+                            styles = styles.foreground(Some(AnsiCode::RgbCode(blend_rgb(
+                                cell_fg, selection, alpha,
+                            ))));
+                        }
+                    }
+                },
+                None => {
+                    if let Some(bg) = hs.bg {
+                        styles = styles.background(Some(bg));
+                    }
+                    if let Some(fg) = hs.fg {
+                        styles = styles.foreground(Some(fg));
+                    }
+                },
             }
             if hs.bold {
                 styles = styles.bold(Some(AnsiCode::On));
@@ -175,6 +237,8 @@ fn serialize_chunks_with_newlines(
                     *t_character.styles,
                     character_chunk.y,
                     chunk_width,
+                    pane_default_fg,
+                    pane_default_bg,
                 ),
                 pane_default_fg,
                 pane_default_bg,
@@ -240,6 +304,8 @@ fn serialize_chunks(
                     *t_character.styles,
                     character_chunk.y,
                     chunk_width,
+                    pane_default_fg,
+                    pane_default_bg,
                 ),
                 pane_default_fg,
                 pane_default_bg,

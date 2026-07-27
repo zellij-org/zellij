@@ -1409,6 +1409,22 @@ impl Coloration {
 pub struct Styling {
     pub text_unselected: StyleDeclaration,
     pub text_selected: StyleDeclaration,
+    /// Color of mouse-drag selection of terminal pane content.
+    /// When `None`, falls back to `text_selected` so existing themes are
+    /// byte-for-byte unchanged. (POC for issue #2160.)
+    pub pane_selection: Option<StyleDeclaration>,
+    /// When a `pane_selection` style is given without a `base` (foreground),
+    /// preserve each cell's own foreground and only recolor the background —
+    /// a terminal-native selection (like macOS Terminal). Only ever `true`
+    /// when `pane_selection` is `Some`.
+    pub pane_selection_keep_foreground: bool,
+    /// When set, the `pane_selection` background color is alpha-composited over
+    /// each selected cell's own foreground AND background by this weight
+    /// (0 = none, 255 = fully opaque). Because fg and bg shift toward the
+    /// selection color equally, relative contrast is preserved, so text that
+    /// matches the selection color isn't erased (mirrors macOS Terminal's
+    /// translucent selection). Only ever `Some` when `pane_selection` is `Some`.
+    pub pane_selection_alpha: Option<u8>,
     pub ribbon_unselected: StyleDeclaration,
     pub ribbon_selected: StyleDeclaration,
     pub table_title: StyleDeclaration,
@@ -1497,6 +1513,9 @@ pub const DEFAULT_STYLES: Styling = Styling {
         emphasis_3: PaletteColor::EightBit(default_colors::PURPLE),
         background: PaletteColor::EightBit(default_colors::GRAY),
     },
+    pane_selection: None,
+    pane_selection_keep_foreground: false,
+    pane_selection_alpha: None,
     frame_unselected: None,
     frame_selected: StyleDeclaration {
         base: PaletteColor::EightBit(default_colors::GREEN),
@@ -1655,6 +1674,9 @@ impl From<Palette> for Styling {
                 emphasis_3: palette.purple,
                 background: Default::default(),
             },
+            pane_selection: None,
+            pane_selection_keep_foreground: false,
+            pane_selection_alpha: None,
             frame_unselected: None,
             frame_selected: StyleDeclaration {
                 base: palette.green,
