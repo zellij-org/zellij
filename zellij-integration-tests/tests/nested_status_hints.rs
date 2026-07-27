@@ -23,6 +23,6 @@ fn guest_shows_the_ascended_hint_on_boot() {
     );
     nested.guest.wait_until(
         "the guest status bar to show the ascended hint",
-        |guest_grid| guest_grid.contains("Ascended into the host Zellij session"),
+        |guest_grid| guest_grid.contains("Descend:"),
     );
 }

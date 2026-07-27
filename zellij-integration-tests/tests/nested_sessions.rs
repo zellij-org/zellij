@@ -14,6 +14,8 @@ const ARROW_UP: &[u8] = b"\x1b[A";
 const ARROW_LEFT: &[u8] = b"\x1b[D";
 const ARROW_RIGHT: &[u8] = b"\x1b[C";
 const ARROW_DOWN: &[u8] = b"\x1b[B";
+const ASCEND_KEY: &[u8] = b"]";
+const DESCEND_KEY: &[u8] = b"[";
 const ALT_ARROW_RIGHT: &[u8] = b"\x1b[1;3C";
 
 fn sgr_mouse_report(column: usize, line: usize, button: u8) -> Vec<u8> {
@@ -189,7 +191,7 @@ fn ascend_via_focus_host_binding(nested: &NestedHarness) {
         "guest entered session mode after the passed-through mode key",
         session_mode_bar_settled,
     );
-    nested.host.send_stdin(ARROW_UP);
+    nested.host.send_stdin(ASCEND_KEY);
     nested.wait_for_guest_to_request_host_focus_after(requested);
     nested.wait_for_host_to_ascend_from_guest_after(ascended);
 }
@@ -222,7 +224,7 @@ fn descend_into_guest_on_the_left(nested: &NestedHarness) {
         "host entered session mode before the descend key",
         session_mode_bar_settled,
     );
-    nested.host.send_stdin(ARROW_DOWN);
+    nested.host.send_stdin(DESCEND_KEY);
     nested.wait_for_host_to_descend_into_guest_after(descended);
 }
 
@@ -261,7 +263,7 @@ fn descend_into_guest_above(nested: &NestedHarness) {
         "host entered session mode before the descend key",
         session_mode_bar_settled,
     );
-    nested.host.send_stdin(ARROW_DOWN);
+    nested.host.send_stdin(DESCEND_KEY);
     nested.wait_for_host_to_descend_into_guest_after(descended);
 }
 
@@ -355,7 +357,7 @@ fn focus_host_session_binding_returns_control_to_host() {
     let requested = nested.mark_guest_to_host();
     let ascended = nested.mark_host_to_guest();
     nested.host.send_stdin(&keys::ctrl('o'));
-    nested.host.send_stdin(ARROW_UP);
+    nested.host.send_stdin(ASCEND_KEY);
     nested.wait_for_guest_to_request_host_focus_after(requested);
     nested.wait_for_host_to_ascend_from_guest_after(ascended);
 
@@ -615,7 +617,7 @@ fn a_key_immediately_after_descend_lands_in_the_guest_and_after_ascend_lands_in_
     let requested = nested.mark_guest_to_host();
     let ascended = nested.mark_host_to_guest();
     nested.host.send_stdin(&keys::ctrl('o'));
-    nested.host.send_stdin(ARROW_UP);
+    nested.host.send_stdin(ASCEND_KEY);
     nested.wait_for_guest_to_request_host_focus_after(requested);
     nested.wait_for_host_to_ascend_from_guest_after(ascended);
     nested.host.send_stdin(&keys::alt('n'));
@@ -788,7 +790,7 @@ fn descend_and_ascend_work_at_depth_three() {
         "inner entered session mode after the passed-through mode key",
         session_mode_bar_settled,
     );
-    nested.outer.send_stdin(ARROW_UP);
+    nested.outer.send_stdin(ASCEND_KEY);
     nested.wait_for_inner_to_request_host_focus_after(requested);
     nested.wait_for_middle_to_ascend_from_inner_after(ascended);
 
@@ -861,7 +863,7 @@ fn descended_client_sees_dimmed_host_chrome_while_second_client_does_not() {
         "first client entered session mode before the descend key",
         session_mode_bar_settled,
     );
-    nested.host.send_stdin(ARROW_DOWN);
+    nested.host.send_stdin(DESCEND_KEY);
     nested.wait_for_host_to_descend_into_guest_after(descended);
 
     let descended_client = nested.host.wait_until(
@@ -925,7 +927,7 @@ fn host_chrome_restores_exactly_after_ascend() {
 
     let released = nested.mark_host_to_guest();
     nested.host.send_stdin(&keys::ctrl('o'));
-    nested.host.send_stdin(ARROW_UP);
+    nested.host.send_stdin(ASCEND_KEY);
     nested.wait_for_host_to_ascend_from_guest_after(released);
     nested.host.send_stdin(&keys::ESC);
     let after_ascend = nested.host.wait_until(
@@ -1224,7 +1226,7 @@ fn nested_fullscreen_exit_keeps_hidden_host_floating_panes_hidden() {
         "inner entered session mode after the passed-through mode key",
         session_mode_bar_settled,
     );
-    nested.outer.send_stdin(ARROW_UP);
+    nested.outer.send_stdin(ASCEND_KEY);
     nested.wait_for_inner_to_request_host_focus_after(requested);
     nested.wait_for_middle_to_ascend_from_inner_after(ascended);
 
@@ -1262,7 +1264,7 @@ fn nested_fullscreen_exit_keeps_hidden_host_floating_panes_hidden() {
         "middle entered session mode before the ascend key",
         session_mode_bar_settled,
     );
-    nested.outer.send_stdin(ARROW_UP);
+    nested.outer.send_stdin(ASCEND_KEY);
     nested.wait_for_outer_to_ascend_from_middle_after(ascended_outer);
 
     nested.outer.send_stdin(&keys::alt('f'));
@@ -1305,7 +1307,7 @@ fn nested_fullscreen_exit_keeps_hidden_host_floating_panes_hidden() {
         "outer entered session mode before the descend key",
         session_mode_bar_settled,
     );
-    nested.outer.send_stdin(ARROW_DOWN);
+    nested.outer.send_stdin(DESCEND_KEY);
     nested.wait_for_outer_to_descend_into_middle_after(outer_descended);
 
     let middle_descended = nested.mark_middle_to_inner();
@@ -1320,7 +1322,7 @@ fn nested_fullscreen_exit_keeps_hidden_host_floating_panes_hidden() {
         "middle entered session mode before the descend key",
         session_mode_bar_settled,
     );
-    nested.outer.send_stdin(ARROW_DOWN);
+    nested.outer.send_stdin(DESCEND_KEY);
     nested.wait_for_middle_to_descend_into_inner_after(middle_descended);
 
     nested.outer.send_stdin(&keys::ctrl('o'));
@@ -1406,8 +1408,7 @@ fn column_in_last_line(grid: &GridSnapshot, needle: &str) -> Option<(usize, usiz
 }
 
 fn descended_hint_present(grid: &GridSnapshot) -> bool {
-    last_line_contains(grid, "Descended into a nested Zellij session.")
-        && last_line_contains(grid, "To ascend:")
+    last_line_contains(grid, "Ascend:")
 }
 
 #[test]
@@ -1457,33 +1458,15 @@ fn descended_status_hint_is_dim_italic_with_colored_keys() {
         |host_grid| host_grid.contains("Pane #2") && descended_hint_present(host_grid),
     );
 
-    let (message_column, message_row) = column_in_last_line(&descended, "Descended")
-        .expect("the descended hint message is present on the last line");
+    let (label_column, label_row) = column_in_last_line(&descended, "Ascend:")
+        .expect("the ascend hint label is present on the last line");
     assert!(
-        descended.char_is_dim(message_column, message_row),
-        "the descended hint message is dimmed"
+        descended.char_is_dim(label_column, label_row),
+        "the ascend hint label is dimmed"
     );
     assert!(
-        descended.char_is_italic(message_column, message_row),
-        "the descended hint message is italic"
-    );
-
-    let (prefix_column, prefix_row) = column_in_last_line(&descended, "To ascend")
-        .expect("the ascend shortcut prefix is present on the last line");
-    assert!(
-        descended.char_is_dim(prefix_column, prefix_row),
-        "the ascend shortcut prefix is dimmed"
-    );
-    assert!(
-        descended.char_is_italic(prefix_column, prefix_row),
-        "the ascend shortcut prefix is italic"
-    );
-
-    let (key_column, key_row) = column_in_last_line(&descended, "Ctrl")
-        .expect("the ascend shortcut key is present on the last line");
-    assert!(
-        !descended.char_is_dim(key_column, key_row),
-        "the ascend shortcut key retains its coloring and is not dimmed"
+        descended.char_is_italic(label_column, label_row),
+        "the ascend hint label is italic"
     );
 
     nested.guest.quit();

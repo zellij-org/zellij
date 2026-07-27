@@ -65,19 +65,19 @@ pub fn composite_contains_settled_guest_grid(
 
 pub fn host_descended_bar_settled(host_grid: &GridSnapshot) -> bool {
     host_grid.lines().last().map_or(false, |last_line| {
-        last_line.contains("Descended into a nested Zellij session")
+        last_line.contains("Ascend:")
     })
 }
 
 pub fn host_descended_bar_with_ascend_keys_settled(host_grid: &GridSnapshot) -> bool {
     host_grid.lines().last().map_or(false, |last_line| {
-        last_line.contains("Descended into a nested Zellij session") && last_line.contains("To ascend:")
+        last_line.contains("Ascend:") && !last_line.contains("<unbound>")
     })
 }
 
 pub fn guest_ascended_bar_settled(guest_grid: &GridSnapshot) -> bool {
     guest_grid.lines().last().map_or(false, |last_line| {
-        last_line.contains("Ascended into the host Zellij session")
+        last_line.contains("Descend:")
     })
 }
 

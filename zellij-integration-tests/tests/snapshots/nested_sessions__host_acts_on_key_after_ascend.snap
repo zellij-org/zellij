@@ -1,6 +1,5 @@
 ---
 source: zellij-integration-tests/tests/nested_sessions.rs
-assertion_line: 391
 expression: normalized(&host_after_new_pane)
 ---
  Zellij (test)  Tab #1  + 
@@ -13,7 +12,7 @@ expression: normalized(&host_after_new_pane)
                                                            │
                                                            │
                                                            │
- Ascended into the host Zellij session.                    │
+ Descend: Ctrl + <o> + <[>                                 │
 ───────────────────────────────────────────────────────────┤
                            Pane #3                         │
 $ █                                                        │

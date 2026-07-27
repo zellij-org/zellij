@@ -369,57 +369,39 @@ pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
 }
 
 pub fn descended_into_nested_session_hint(help: &ModeInfo, max_len: usize) -> LinePart {
-    nested_session_status_hint(
-        help,
-        "Descended into a nested Zellij session.",
-        "To ascend: ",
-        &help.nested_ascend_keys,
-        max_len,
-    )
+    nested_session_status_hint(help, "Ascend: ", &help.nested_ascend_keys, max_len)
 }
 
 pub fn ascended_to_host_session_hint(help: &ModeInfo, max_len: usize) -> LinePart {
-    nested_session_status_hint(
-        help,
-        "Ascended into the host Zellij session.",
-        "To descend: focus this pane, then: ",
-        &help.nested_descend_keys,
-        max_len,
-    )
+    nested_session_status_hint(help, "Descend: ", &help.nested_descend_keys, max_len)
 }
 
 fn nested_session_status_hint(
     help: &ModeInfo,
-    message: &str,
-    shortcut_prefix: &str,
+    label: &str,
     keys: &[KeyWithModifier],
     max_len: usize,
 ) -> LinePart {
     let palette = help.style.colors;
     let text_color = palette_match!(palette.text_unselected.base);
-    let styled_message = Style::new()
-        .dimmed()
-        .italic()
-        .paint(format!(" {}", message));
-    let mut bits: Vec<ANSIString> = vec![styled_message.clone()];
-    if !keys.is_empty() {
-        bits.push(
-            Style::new()
-                .dimmed()
-                .italic()
-                .paint(format!(" {}", shortcut_prefix)),
-        );
+    let styled_label = Style::new().dimmed().italic().paint(format!(" {}", label));
+    let mut key_bits: Vec<ANSIString> = vec![];
+    if keys.is_empty() {
+        key_bits.push(Style::new().dimmed().italic().paint("<unbound>"));
+    } else {
         for (i, key) in keys.iter().enumerate() {
             if i > 0 {
-                bits.push(Style::new().fg(text_color).paint(", "));
+                key_bits.push(Style::new().fg(text_color).paint(" + "));
             }
-            bits.extend(style_key_with_modifier(
+            key_bits.extend(style_key_with_modifier(
                 std::slice::from_ref(key),
                 &palette,
                 None,
             ));
         }
     }
+    let mut bits: Vec<ANSIString> = vec![styled_label];
+    bits.extend(key_bits.clone());
     let part = ANSIStrings(&bits);
     let len = unstyled_len(&part);
     if len <= max_len {
@@ -428,8 +410,7 @@ fn nested_session_status_hint(
             len,
         };
     }
-    let message_only = vec![styled_message];
-    let part = ANSIStrings(&message_only);
+    let part = ANSIStrings(&key_bits);
     let len = unstyled_len(&part);
     if len <= max_len {
         LinePart {

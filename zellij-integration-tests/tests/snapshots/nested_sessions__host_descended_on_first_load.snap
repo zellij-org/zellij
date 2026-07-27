@@ -6,4 +6,4 @@ expression: normalized(&host_descended_on_load)
  Zellij (test)  Tab #1  + 
 █
  Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...
- Descended into a nested Zellij session. To ascend: Ctrl + <o>, <↑>                                                     
+ Ascend: Ctrl + <o> + <]>                                                                                               

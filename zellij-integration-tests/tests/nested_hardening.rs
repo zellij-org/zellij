@@ -6,8 +6,8 @@ use zellij_integration_tests::{
 };
 use zellij_utils::nested_session::NestedSessionMessage;
 
-const ARROW_UP: &[u8] = b"\x1b[A";
-const ARROW_DOWN: &[u8] = b"\x1b[B";
+const ASCEND_KEY: &[u8] = b"]";
+const DESCEND_KEY: &[u8] = b"[";
 const ARROW_LEFT: &[u8] = b"\x1b[D";
 
 fn last_line_contains(grid_snapshot: &GridSnapshot, needle: &str) -> bool {
@@ -104,7 +104,7 @@ fn ascend_via_focus_host_binding(nested: &NestedHarness) {
         "guest entered session mode after the passed-through mode key",
         session_mode_bar_settled,
     );
-    nested.host.send_stdin(ARROW_UP);
+    nested.host.send_stdin(ASCEND_KEY);
     nested.wait_for_guest_to_request_host_focus_after(requested);
     nested.wait_for_host_to_ascend_from_guest_after(ascended);
 }
@@ -138,7 +138,7 @@ fn descend_into_guest_on_the_left(nested: &NestedHarness) {
         "host entered session mode before the descend key",
         session_mode_bar_settled,
     );
-    nested.host.send_stdin(ARROW_DOWN);
+    nested.host.send_stdin(DESCEND_KEY);
     nested.wait_for_host_to_descend_into_guest_after(descended);
 }
 

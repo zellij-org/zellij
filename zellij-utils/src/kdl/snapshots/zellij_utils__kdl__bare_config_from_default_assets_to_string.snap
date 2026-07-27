@@ -101,8 +101,8 @@ keybinds clear-defaults=true {
         bind "w" { SearchToggleOption "Wrap"; }
     }
     session {
-        bind "down" { FocusGuestSession; SwitchToMode "normal"; }
-        bind "up" { FocusHostSession; SwitchToMode "normal"; }
+        bind "[" { FocusGuestSession; SwitchToMode "normal"; }
+        bind "]" { FocusHostSession; SwitchToMode "normal"; }
         bind "a" {
             LaunchOrFocusPlugin "zellij:about" {
                 floating true
@@ -281,4 +281,3 @@ load_plugins {
 web_client {
     font "monospace"
 }
-

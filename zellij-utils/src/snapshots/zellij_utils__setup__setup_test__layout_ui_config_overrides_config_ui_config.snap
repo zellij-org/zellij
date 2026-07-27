@@ -4092,30 +4092,12 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Down,
-                key_modifiers: {},
-            }: [
-                FocusGuestSession,
-                SwitchToMode {
-                    input_mode: Normal,
-                },
-            ],
-            KeyWithModifier {
-                bare_key: Down,
                 key_modifiers: {
                     Alt,
                 },
             }: [
                 MoveFocus {
                     direction: Down,
-                },
-            ],
-            KeyWithModifier {
-                bare_key: Up,
-                key_modifiers: {},
-            }: [
-                FocusHostSession,
-                SwitchToMode {
-                    input_mode: Normal,
                 },
             ],
             KeyWithModifier {
@@ -4181,11 +4163,33 @@ Config {
                 bare_key: Char(
                     '[',
                 ),
+                key_modifiers: {},
+            }: [
+                FocusGuestSession,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
                 PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {},
+            }: [
+                FocusHostSession,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(

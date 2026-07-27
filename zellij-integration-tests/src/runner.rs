@@ -398,7 +398,7 @@ impl TestSession {
     pub fn wait_for_app_load(&self) -> GridSnapshot {
         self.main_client.wait_until("app to load", |grid_snapshot| {
             (grid_snapshot.status_bar_appears()
-                || grid_snapshot.contains("Ascended into the host"))
+                || grid_snapshot.contains("Descend:"))
                 && grid_snapshot.tab_bar_appears()
                 && grid_snapshot.cursor.is_some()
         })

@@ -199,7 +199,7 @@ fn focus_guest_session_redescends_after_ascending() {
         "guest entered session mode before the ascend key",
         |guest_grid| last_line_contains(guest_grid, "SESSION"),
     );
-    nested.host.send_stdin(b"\x1b[A");
+    nested.host.send_stdin(b"]");
     nested.wait_for_host_to_ascend_from_guest_after(ascended);
 
     let redescended = nested.mark_host_to_guest();

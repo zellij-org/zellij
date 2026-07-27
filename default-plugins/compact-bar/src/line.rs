@@ -551,27 +551,36 @@ impl RightSideElementsBuilder {
         max_len: usize,
     ) -> Option<LinePart> {
         let (prefix, keys) = match hint {
-            NestedSessionHint::Ascend(keys) => ("To ascend: ", keys),
-            NestedSessionHint::Descend(keys) => ("To descend, focus pane, then: ", keys),
+            NestedSessionHint::Ascend(keys) => ("Ascend: ", keys),
+            NestedSessionHint::Descend(keys) => ("Descend: ", keys),
             NestedSessionHint::None => return None,
         };
 
         let bg = self.palette.text_unselected.background;
         let key_color = self.palette.text_unselected.emphasis_0;
-        let keys_text: Vec<String> = keys.iter().map(|key| key.to_string()).collect();
+        let sep_color = self.palette.text_unselected.base;
+        let keys_text: Vec<String> = if keys.is_empty() {
+            vec!["<unbound>".to_string()]
+        } else {
+            keys.iter().map(|key| format!("<{}>", key)).collect()
+        };
 
         let prefix_len = prefix.width() + 1;
         let keys_display_len: usize = keys_text.iter().map(|k| k.width()).sum::<usize>()
-            + keys_text.len().saturating_sub(1) * 2;
+            + keys_text.len().saturating_sub(1) * 3;
 
         if !keys_text.is_empty() && prefix_len + keys_display_len <= max_len {
             let prefix_style = dim_style(bg).italic();
             let mut part = prefix_style.paint(format!(" {}", prefix)).to_string();
             for (i, key) in keys_text.iter().enumerate() {
                 if i > 0 {
-                    part.push_str(&style!(key_color, bg).paint(", ").to_string());
+                    part.push_str(&style!(sep_color, bg).paint(" + ").to_string());
                 }
-                part.push_str(&style!(key_color, bg).bold().paint(key).to_string());
+                if keys.is_empty() {
+                    part.push_str(&dim_style(bg).italic().paint(key).to_string());
+                } else {
+                    part.push_str(&style!(key_color, bg).bold().paint(key).to_string());
+                }
             }
             return Some(LinePart {
                 part,

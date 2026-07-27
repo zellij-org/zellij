@@ -9,8 +9,8 @@ use zellij_integration_tests::{
 use zellij_utils::cli::CliAction;
 use zellij_utils::nested_session::NestedSessionMessage;
 
-const ARROW_UP: &[u8] = b"\x1b[A";
-const ARROW_DOWN: &[u8] = b"\x1b[B";
+const ASCEND_KEY: &[u8] = b"]";
+const DESCEND_KEY: &[u8] = b"[";
 const ARROW_LEFT: &[u8] = b"\x1b[D";
 
 fn sgr_mouse_report(column: usize, line: usize, button: u8) -> Vec<u8> {
@@ -505,7 +505,7 @@ fn zoom_modal_while_outer_is_ascended_still_fullscreens_the_outer() {
         "middle entered session mode before the ascend key",
         session_mode_bar_settled,
     );
-    nested.outer.send_stdin(ARROW_UP);
+    nested.outer.send_stdin(ASCEND_KEY);
     nested.wait_for_outer_to_ascend_from_middle_after(ascended);
     nested.outer.wait_until(
         "outer restored its own chrome after ascending out of the middle",
@@ -547,7 +547,7 @@ fn ascend_inner_to_middle(nested: &NestedDepthThreeHarness) {
         "inner entered session mode before ascending to the middle",
         session_mode_bar_settled,
     );
-    nested.outer.send_stdin(ARROW_UP);
+    nested.outer.send_stdin(ASCEND_KEY);
     nested.wait_for_inner_to_request_host_focus_after(requested);
     nested.wait_for_middle_to_ascend_from_inner_after(ascended);
 }
@@ -567,7 +567,7 @@ fn redescend_middle_into_inner(nested: &NestedDepthThreeHarness) {
         "middle entered session mode before the descend key",
         session_mode_bar_settled,
     );
-    nested.outer.send_stdin(ARROW_DOWN);
+    nested.outer.send_stdin(DESCEND_KEY);
     nested.wait_for_middle_to_descend_into_inner_after(descended);
 }
 
@@ -697,7 +697,7 @@ fn ascend_via_focus_host_binding(nested: &NestedHarness) {
         "guest entered session mode after the passed-through mode key",
         session_mode_bar_settled,
     );
-    nested.host.send_stdin(ARROW_UP);
+    nested.host.send_stdin(ASCEND_KEY);
     nested.wait_for_guest_to_request_host_focus_after(requested);
     nested.wait_for_host_to_ascend_from_guest_after(ascended);
 }
@@ -730,7 +730,7 @@ fn descend_into_guest_on_the_left(nested: &NestedHarness) {
         "host entered session mode before the descend key",
         session_mode_bar_settled,
     );
-    nested.host.send_stdin(ARROW_DOWN);
+    nested.host.send_stdin(DESCEND_KEY);
     nested.wait_for_host_to_descend_into_guest_after(descended);
 }
 

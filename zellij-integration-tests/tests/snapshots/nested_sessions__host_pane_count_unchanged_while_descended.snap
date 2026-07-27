@@ -1,6 +1,5 @@
 ---
 source: zellij-integration-tests/tests/nested_sessions.rs
-assertion_line: 341
 expression: normalized(&host_pane_count_unchanged)
 ---
  Zellij (test)  Tab #1  + 
@@ -26,4 +25,4 @@ $                            │█                            │
                              │                             │
                              │                             │
  Ctrl + g  p  t  n  h  s  o  q         ...│
- Descended into a nested Zellij session. To ascend: Ctrl + <o>, <↑>                                                     
+ Ascend: Ctrl + <o> + <]>                                                                                               
