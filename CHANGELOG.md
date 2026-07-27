@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: properly pad lines before CUF (https://github.com/zellij-org/zellij/pull/5377)
 * fix: clear existing pane name when entering rename input (https://github.com/zellij-org/zellij/pull/5369)
 * fix: occasional input spam when pressing ESC and holding the mouse over slow SSH connections (https://github.com/zellij-org/zellij/pull/5323)
+* chore: switch cassowary deps to maintained fork kasuari (https://github.com/zellij-org/zellij/pull/5416)
 
 ## [0.44.3] - 2026-05-13
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)
