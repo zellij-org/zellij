@@ -8812,6 +8812,48 @@ fn remove_client_notifies_guest_focus_lost_on_live_ascend() {
 }
 
 #[test]
+fn suspend_nested_guest_preserves_choices_for_later_revival() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_forward_capture(size);
+    let pane_id = PaneId::Terminal(7);
+    let client_id = 1;
+    screen
+        .nested_guest_choices
+        .insert((client_id, pane_id), super::NestedGuestChoice::Descend);
+    screen.nested_guest_tracker.on_announce(pane_id, std::time::Instant::now());
+
+    screen.suspend_nested_guest(pane_id);
+
+    assert!(
+        screen
+            .nested_guest_choices
+            .contains_key(&(client_id, pane_id)),
+        "suspend must preserve the client's descend choice so a re-announcing guest can be revived \
+         into the exact prior state"
+    );
+}
+
+#[test]
+fn clear_nested_guest_discards_choices_unlike_suspend() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_forward_capture(size);
+    let pane_id = PaneId::Terminal(7);
+    let client_id = 1;
+    screen
+        .nested_guest_choices
+        .insert((client_id, pane_id), super::NestedGuestChoice::Descend);
+
+    screen.clear_nested_guest(pane_id);
+
+    assert!(
+        !screen
+            .nested_guest_choices
+            .contains_key(&(client_id, pane_id)),
+        "a full teardown (Bye/ClosePane) must discard choices, distinguishing it from suspend"
+    );
+}
+
+#[test]
 fn handle_reply_with_unknown_token_is_silent_noop() {
     // Token not in the map AND not the in-flight token: the handler
     // must not panic, must not write any bytes, and crucially must

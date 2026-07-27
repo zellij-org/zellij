@@ -2939,12 +2939,17 @@ impl Screen {
     }
 
     fn handle_nested_guest_announce(&mut self, pane_id: PaneId, guest_session_name: String) {
+        use crate::nested_guest::AnnounceKind;
         let terminal_id = match pane_id {
             PaneId::Terminal(terminal_id) => terminal_id,
             PaneId::Plugin(_) => return,
         };
-        self.nested_guest_choices
-            .retain(|(_, choice_pane_id), _| *choice_pane_id != pane_id);
+        let announce_kind = self.nested_guest_tracker.on_announce(pane_id, Instant::now());
+        let is_fresh = announce_kind == AnnounceKind::New;
+        if is_fresh {
+            self.nested_guest_choices
+                .retain(|(_, choice_pane_id), _| *choice_pane_id != pane_id);
+        }
         let connected_client_ids: Vec<ClientId> =
             self.connected_clients.borrow().keys().copied().collect();
         let guest_modal_shortcuts = self.guest_modal_shortcuts();
@@ -2957,14 +2962,18 @@ impl Screen {
                 tab.set_pane_is_nested_guest(pane_id, true);
                 tab.set_guest_session_name_on_pane(pane_id, Some(guest_session_name.clone()));
                 tab.set_guest_modal_shortcuts_on_pane(pane_id, guest_modal_shortcuts);
-                tab.clear_all_guest_choice_indicators_on_pane(pane_id);
-                if self.nested_session_handling == NestedSessionHandling::Ask {
-                    tab.set_guest_modal_on_pane(pane_id, &connected_client_ids);
+                if is_fresh {
+                    tab.clear_all_guest_choice_indicators_on_pane(pane_id);
+                    if self.nested_session_handling == NestedSessionHandling::Ask {
+                        tab.set_guest_modal_on_pane(pane_id, &connected_client_ids);
+                    }
                 }
             },
-            None => return,
+            None => {
+                self.nested_guest_tracker.remove(pane_id);
+                return;
+            },
         }
-        self.nested_guest_tracker.on_announce(pane_id, Instant::now());
         let mut ancestry = self.nested_ancestry.clone();
         ancestry.push(self.session_name.clone());
         let announce_ack = NestedSessionMessage::AnnounceAck {
@@ -2984,13 +2993,60 @@ impl Screen {
             .bus
             .senders
             .send_to_background_jobs(BackgroundJob::StartNestedGuestPing(pane_id));
-        self.auto_apply_nested_session_handling(pane_id, &connected_client_ids);
+        if is_fresh {
+            self.auto_apply_nested_session_handling(pane_id, &connected_client_ids);
+        } else {
+            self.revive_nested_guest(pane_id);
+        }
         let _ = self.render(None);
         log::info!(
-            "nested session handshake: guest session {:?} announced in pane {:?}, sent announce_ack",
+            "nested session handshake ({:?}): guest session {:?} announced in pane {:?}, sent announce_ack",
+            announce_kind,
             guest_session_name,
             pane_id
         );
+    }
+
+    fn suspend_nested_guest(&mut self, pane_id: PaneId) {
+        let _ = self
+            .bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::StopNestedGuestPing(pane_id));
+        self.unset_nested_fullscreen_if_active(pane_id);
+        self.reported_guest_fullscreen.remove(&pane_id);
+        let affected_clients: Vec<ClientId> = self
+            .clients_with_pane_focused(pane_id)
+            .into_iter()
+            .chain(self.dimmed_clients.iter().copied())
+            .collect();
+        for tab in self.tabs.values_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                tab.clear_all_guest_modals_on_pane(pane_id);
+                break;
+            }
+        }
+        for client_id in affected_clients {
+            self.set_client_dimmed(client_id, false, None);
+            let _ = self
+                .bus
+                .senders
+                .send_to_server(ServerInstruction::KeyPassthroughChanged(
+                    client_id, pane_id, pane_id, false, None, false,
+                ));
+        }
+    }
+
+    fn revive_nested_guest(&mut self, pane_id: PaneId) {
+        self.broadcast_ancestry_update_to_guests();
+        self.sync_nested_guest_fullscreen_state();
+        let client_ids: Vec<ClientId> =
+            self.connected_clients.borrow().keys().copied().collect();
+        for client_id in client_ids {
+            self.sync_guest_choice_indicator(client_id, pane_id);
+            if self.get_active_pane_id(&client_id) == Some(pane_id) {
+                self.report_key_passthrough_state(client_id, pane_id, pane_id);
+            }
+        }
     }
 
     fn handle_guest_modal_choice(
@@ -3719,12 +3775,12 @@ impl Screen {
                     log::debug!("pinged nested session guest in pane {:?}", pane_id);
                 }
             },
-            GuestPingTickAction::Expired => {
+            GuestPingTickAction::Suspended => {
                 log::info!(
-                    "nested session guest in pane {:?} missed the pong timeout, clearing guest flag",
+                    "nested session guest in pane {:?} missed the pong timeout, suspending until it re-announces",
                     pane_id
                 );
-                self.clear_nested_guest(pane_id);
+                self.suspend_nested_guest(pane_id);
             },
             GuestPingTickAction::Unknown => {
                 let _ = self

@@ -7,6 +7,23 @@ pub const NESTED_DCS_PARAM: u16 = 26661;
 pub const NESTED_FRAME_HEADER: &[u8] = b"\x1bP26661n";
 pub const NESTED_FRAME_TERMINATOR: &[u8] = b"\x1b\\";
 
+pub const REANNOUNCE_SILENCE_MS: u64 = 3000;
+pub const REANNOUNCE_CHECK_INTERVAL_MS: u64 = 1000;
+
+pub fn reannounce_silence_ms() -> u64 {
+    std::env::var("ZELLIJ_NESTED_REANNOUNCE_SILENCE_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(REANNOUNCE_SILENCE_MS)
+}
+
+pub fn reannounce_check_interval_ms() -> u64 {
+    std::env::var("ZELLIJ_NESTED_REANNOUNCE_CHECK_INTERVAL_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(REANNOUNCE_CHECK_INTERVAL_MS)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NestedSessionCapability {
     NestedControl,

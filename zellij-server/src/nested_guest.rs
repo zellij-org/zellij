@@ -1,5 +1,5 @@
 use crate::panes::PaneId;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 pub const PING_INTERVAL_MS: u64 = 2000;
@@ -22,18 +22,35 @@ pub fn pong_timeout_ms() -> u64 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GuestPingTickAction {
     SendPing,
-    Expired,
+    Suspended,
     Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnnounceKind {
+    New,
+    Revived,
+    Refresh,
 }
 
 #[derive(Debug, Default)]
 pub struct NestedGuestTracker {
     last_heard_from: HashMap<PaneId, Instant>,
+    dormant: HashSet<PaneId>,
 }
 
 impl NestedGuestTracker {
-    pub fn on_announce(&mut self, pane_id: PaneId, now: Instant) {
+    pub fn on_announce(&mut self, pane_id: PaneId, now: Instant) -> AnnounceKind {
+        let was_tracked = self.last_heard_from.contains_key(&pane_id);
+        let was_dormant = self.dormant.remove(&pane_id);
         self.last_heard_from.insert(pane_id, now);
+        if was_tracked {
+            AnnounceKind::Refresh
+        } else if was_dormant {
+            AnnounceKind::Revived
+        } else {
+            AnnounceKind::New
+        }
     }
     pub fn on_pong(&mut self, pane_id: PaneId, now: Instant) {
         if let Some(last_heard_from) = self.last_heard_from.get_mut(&pane_id) {
@@ -47,7 +64,8 @@ impl NestedGuestTracker {
                     > Duration::from_millis(pong_timeout_ms()) =>
             {
                 self.last_heard_from.remove(&pane_id);
-                GuestPingTickAction::Expired
+                self.dormant.insert(pane_id);
+                GuestPingTickAction::Suspended
             },
             Some(_) => GuestPingTickAction::SendPing,
             None => GuestPingTickAction::Unknown,
@@ -55,9 +73,16 @@ impl NestedGuestTracker {
     }
     pub fn remove(&mut self, pane_id: PaneId) {
         self.last_heard_from.remove(&pane_id);
+        self.dormant.remove(&pane_id);
     }
     pub fn is_tracked(&self, pane_id: PaneId) -> bool {
         self.last_heard_from.contains_key(&pane_id)
+    }
+    pub fn is_dormant(&self, pane_id: PaneId) -> bool {
+        self.dormant.contains(&pane_id)
+    }
+    pub fn is_known(&self, pane_id: PaneId) -> bool {
+        self.is_tracked(pane_id) || self.is_dormant(pane_id)
     }
 }
 
@@ -87,20 +112,55 @@ mod tests {
     }
 
     #[test]
-    fn guest_that_never_pongs_expires_after_timeout() {
+    fn guest_that_never_pongs_suspends_after_timeout() {
         let mut tracker = NestedGuestTracker::default();
         let pane_id = PaneId::Terminal(1);
         let start = Instant::now();
         tracker.on_announce(pane_id, start);
         assert_eq!(
             tracker.on_tick(pane_id, start + millis(PONG_TIMEOUT_MS + 1)),
-            GuestPingTickAction::Expired
+            GuestPingTickAction::Suspended
         );
         assert!(!tracker.is_tracked(pane_id));
+        assert!(tracker.is_dormant(pane_id));
+        assert!(tracker.is_known(pane_id));
         assert_eq!(
             tracker.on_tick(pane_id, start + millis(PONG_TIMEOUT_MS + 2)),
             GuestPingTickAction::Unknown
         );
+    }
+
+    #[test]
+    fn suspended_guest_revives_on_reannounce_however_long_later() {
+        let mut tracker = NestedGuestTracker::default();
+        let pane_id = PaneId::Terminal(1);
+        let start = Instant::now();
+        tracker.on_announce(pane_id, start);
+        assert_eq!(
+            tracker.on_tick(pane_id, start + millis(PONG_TIMEOUT_MS + 1)),
+            GuestPingTickAction::Suspended
+        );
+        let much_later = start + millis(PONG_TIMEOUT_MS + 120_000);
+        assert_eq!(tracker.on_announce(pane_id, much_later), AnnounceKind::Revived);
+        assert!(tracker.is_tracked(pane_id));
+        assert!(!tracker.is_dormant(pane_id));
+        assert_eq!(
+            tracker.on_tick(pane_id, much_later + millis(PING_INTERVAL_MS)),
+            GuestPingTickAction::SendPing
+        );
+    }
+
+    #[test]
+    fn reannounce_of_live_guest_is_a_refresh() {
+        let mut tracker = NestedGuestTracker::default();
+        let pane_id = PaneId::Terminal(1);
+        let start = Instant::now();
+        assert_eq!(tracker.on_announce(pane_id, start), AnnounceKind::New);
+        assert_eq!(
+            tracker.on_announce(pane_id, start + millis(1000)),
+            AnnounceKind::Refresh
+        );
+        assert!(tracker.is_tracked(pane_id));
     }
 
     #[test]
@@ -116,7 +176,7 @@ mod tests {
         );
         assert_eq!(
             tracker.on_tick(pane_id, start + millis(4000 + PONG_TIMEOUT_MS + 1)),
-            GuestPingTickAction::Expired
+            GuestPingTickAction::Suspended
         );
     }
 

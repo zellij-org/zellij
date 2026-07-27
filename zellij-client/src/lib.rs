@@ -11,6 +11,7 @@ pub mod cli_client;
 mod command_is_executing;
 mod input_handler;
 mod keyboard_parser;
+mod nested_reannounce;
 pub mod old_config_converter;
 #[cfg(feature = "web_server_capability")]
 pub mod remote_attach;
@@ -537,6 +538,7 @@ pub(crate) enum InputInstruction {
 pub async fn run_remote_client_terminal_loop(
     os_input: Box<dyn ClientOsApi>,
     mut connections: remote_attach::WebSocketConnections,
+    nested_session_name: Option<String>,
 ) -> Result<Option<ConnectToSession>, RemoteClientError> {
     use crate::os_input_output::{AsyncSignals, AsyncStdin};
 
@@ -571,6 +573,11 @@ pub async fn run_remote_client_terminal_loop(
     }
 
     let mut nested_frame_extractor = nested_session::NestedFrameExtractor::new();
+    let mut last_heard_from_host = std::time::Instant::now();
+    let mut reannounce_check = tokio::time::interval(std::time::Duration::from_millis(
+        nested_session::reannounce_check_interval_ms(),
+    ));
+    reannounce_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
         tokio::select! {
@@ -580,6 +587,7 @@ pub async fn run_remote_client_terminal_loop(
                     Ok(buf) if !buf.is_empty() => {
                         let (cleaned, nested_frames) = nested_frame_extractor.extract(&buf);
                         for payload_bytes in nested_frames {
+                            last_heard_from_host = std::time::Instant::now();
                             match nested_session::decode_payload(&payload_bytes) {
                                 Some(nested_session::NestedSessionMessage::Ping) => {
                                     let mut stdout = os_input.get_stdout_writer();
@@ -619,6 +627,26 @@ pub async fn run_remote_client_terminal_loop(
                     Err(e) => {
                         log::error!("Error reading from stdin: {}", e);
                         break;
+                    }
+                }
+            }
+
+            _ = reannounce_check.tick() => {
+                if let Some(session_name) = &nested_session_name {
+                    if last_heard_from_host.elapsed()
+                        >= std::time::Duration::from_millis(nested_session::reannounce_silence_ms())
+                    {
+                        let announce = nested_session::NestedSessionMessage::Announce {
+                            session_name: session_name.clone(),
+                            capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
+                        };
+                        let mut stdout = os_input.get_stdout_writer();
+                        if stdout
+                            .write_all(&nested_session::encode_frame(&announce))
+                            .is_ok()
+                        {
+                            let _ = stdout.flush();
+                        }
                     }
                 }
             }
@@ -841,9 +869,15 @@ pub fn start_remote_client(
         std::process::exit(exit_status);
     };
 
+    let nested_session_name = if is_nested_inside_zellij_pane {
+        Some(remote_session_name.clone())
+    } else {
+        None
+    };
     runtime.block_on(run_remote_client_terminal_loop(
         os_input.clone(),
         connections,
+        nested_session_name,
     ))?;
 
     if is_nested_inside_zellij_pane {
@@ -1110,7 +1144,7 @@ pub fn start_client(
     os_input.set_raw_mode();
     let mut stdout = os_input.get_stdout_writer();
     stdout.write_all(ENABLE_BRACKETED_PASTE.as_bytes()).unwrap();
-    if is_nested_inside_zellij_pane {
+    let nested_reannounce = if is_nested_inside_zellij_pane {
         let announce = nested_session::NestedSessionMessage::Announce {
             session_name: own_session_name.clone(),
             capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
@@ -1119,7 +1153,13 @@ pub fn start_client(
             .write_all(&nested_session::encode_frame(&announce))
             .unwrap();
         let _ = stdout.flush();
-    }
+        Some(crate::nested_reannounce::NestedReannounce::spawn(
+            os_input.clone(),
+            own_session_name.clone(),
+        ))
+    } else {
+        None
+    };
 
     let (send_client_instructions, receive_client_instructions): ChannelWithContext<
         ClientInstruction,
@@ -1193,6 +1233,7 @@ pub fn start_client(
             let command_is_executing = command_is_executing.clone();
             let os_input = os_input.clone();
             let default_mode = config_options.default_mode.unwrap_or_default();
+            let nested_reannounce = nested_reannounce.clone();
             move || {
                 input_loop(
                     os_input,
@@ -1202,6 +1243,7 @@ pub fn start_client(
                     send_client_instructions,
                     default_mode,
                     receive_input_instructions,
+                    nested_reannounce,
                 )
             }
         });
@@ -1431,6 +1473,10 @@ pub fn start_client(
             },
             _ => {},
         }
+    }
+
+    if let Some(nested_reannounce) = &nested_reannounce {
+        nested_reannounce.stop();
     }
 
     router_thread.join().unwrap();

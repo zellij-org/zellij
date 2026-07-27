@@ -1,7 +1,8 @@
 //! Main input logic.
 use crate::{
-    os_input_output::ClientOsApi, stdin_ansi_parser::AnsiStdinInstruction, ClientId,
-    ClientInstruction, CommandIsExecuting, InputInstruction,
+    nested_reannounce::NestedReannounce, os_input_output::ClientOsApi,
+    stdin_ansi_parser::AnsiStdinInstruction, ClientId, ClientInstruction, CommandIsExecuting,
+    InputInstruction,
 };
 use zellij_utils::{
     channels::{Receiver, SenderWithContext, OPENCALLS},
@@ -36,6 +37,7 @@ struct InputHandler {
     receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
     mouse_old_event: MouseEvent,
     mouse_mode_active: bool,
+    nested_reannounce: Option<NestedReannounce>,
 }
 
 fn termwiz_mouse_convert(original_event: &mut MouseEvent, event: &TermwizMouseEvent) {
@@ -137,6 +139,7 @@ impl InputHandler {
         mode: InputMode, // TODO: we can probably get rid of this now that we're tracking it on the
         // server instead
         receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
+        nested_reannounce: Option<NestedReannounce>,
     ) -> Self {
         InputHandler {
             mode,
@@ -149,6 +152,7 @@ impl InputHandler {
             receive_input_instructions,
             mouse_old_event: MouseEvent::new(),
             mouse_mode_active: false,
+            nested_reannounce,
         }
     }
 
@@ -337,6 +341,9 @@ impl InputHandler {
         }
     }
     fn handle_nested_session_frame_from_host(&mut self, payload_bytes: Vec<u8>) {
+        if let Some(nested_reannounce) = &self.nested_reannounce {
+            nested_reannounce.note_host_contact();
+        }
         match nested_session::decode_payload(&payload_bytes) {
             Some(NestedSessionMessage::Ping) => {
                 self.send_client_instructions
@@ -477,6 +484,7 @@ pub(crate) fn input_loop(
     send_client_instructions: SenderWithContext<ClientInstruction>,
     default_mode: InputMode,
     receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
+    nested_reannounce: Option<NestedReannounce>,
 ) {
     let _handler = InputHandler::new(
         os_input,
@@ -486,6 +494,7 @@ pub(crate) fn input_loop(
         send_client_instructions,
         default_mode,
         receive_input_instructions,
+        nested_reannounce,
     )
     .handle_input();
 }
