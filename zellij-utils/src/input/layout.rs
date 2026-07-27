@@ -718,7 +718,7 @@ pub struct TabLayoutInfo {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DimensionConstraint {
     Percent(usize), // 1 to 100 — flexible proportion of available space
-    Fixed(usize),   // An absolute number of columns or rows — exact size, doesn't resize with terminal
+    Fixed(usize), // An absolute number of columns or rows — exact size, doesn't resize with terminal
 }
 
 impl From<Dimension> for DimensionConstraint {

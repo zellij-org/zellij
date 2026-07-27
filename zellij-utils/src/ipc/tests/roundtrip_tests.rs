@@ -1299,12 +1299,10 @@ fn test_client_messages() {
                 direction: None,
                 hold_on_close: false,
                 hold_on_start: false,
-    
+
                 originating_plugin: None,
                 use_terminal_title: false,
                 size: None,
-
-
             }),
             pane_name: Some("my_pane_name".to_owned()),
             coordinates: FloatingPaneCoordinates::new(
@@ -1339,7 +1337,6 @@ fn test_client_messages() {
                 }),
                 use_terminal_title: false,
                 size: None,
-
             }),
             pane_name: Some("my_pane_name".to_owned()),
             coordinates: FloatingPaneCoordinates::new(
@@ -1388,7 +1385,6 @@ fn test_client_messages() {
                 }),
                 use_terminal_title: false,
                 size: None,
-
             }),
             direction: Some(Direction::Right),
             pane_name: Some("my_pane_name".to_owned()),
@@ -1417,7 +1413,6 @@ fn test_client_messages() {
                 }),
                 use_terminal_title: false,
                 size: None,
-
             }),
             pane_name: Some("my_pane_name".to_owned()),
             near_current_pane: false,
@@ -1460,7 +1455,6 @@ fn test_client_messages() {
                 }),
                 use_terminal_title: false,
                 size: None,
-
             }),
             pane_name: Some("my_pane_name".to_owned()),
             near_current_pane: false,
@@ -1943,11 +1937,10 @@ fn test_client_messages() {
                     cwd: None,
                     hold_on_close: false,
                     hold_on_start: false,
-    
+
                     originating_plugin: None,
                     use_terminal_title: true,
                     size: None,
-    
                 })),
                 ..Default::default()
             }),
@@ -1980,7 +1973,6 @@ fn test_client_messages() {
                     }),
                     use_terminal_title: true,
                     size: None,
-    
                 })),
                 ..Default::default()
             }),
@@ -2173,10 +2165,10 @@ fn test_client_messages() {
                     direction: None,
                     hold_on_close: false,
                     hold_on_start: false,
-    
+
                     originating_plugin: None,
                     use_terminal_title: false,
-                size: None,
+                    size: None,
                 }),
                 CommandOrPlugin::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin::default())),
             ]),
@@ -2282,11 +2274,10 @@ fn test_client_messages() {
                 direction: None,
                 hold_on_close: false,
                 hold_on_start: false,
-    
+
                 originating_plugin: None,
                 use_terminal_title: false,
                 size: None,
-
             },
             near_current_pane: false,
             no_focus: false,

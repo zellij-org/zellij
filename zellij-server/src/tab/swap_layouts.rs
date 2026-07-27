@@ -3,10 +3,10 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 use zellij_utils::{
-    pane_size::Dimension,
     input::layout::{
         FloatingPaneLayout, LayoutConstraint, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
+    pane_size::Dimension,
     pane_size::{PaneGeom, Size},
 };
 

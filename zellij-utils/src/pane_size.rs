@@ -505,7 +505,10 @@ impl From<&PaneGeom> for Size {
 pub fn parse_size(size_str: &str) -> Result<(Dimension, Dimension), String> {
     let parts: Vec<&str> = size_str.split(',').collect();
     if parts.len() != 2 {
-        return Err(format!("Invalid size format: '{}', expected 'WIDTH,HEIGHT'", size_str));
+        return Err(format!(
+            "Invalid size format: '{}', expected 'WIDTH,HEIGHT'",
+            size_str
+        ));
     }
 
     let width_part = parts[0].trim();
@@ -513,21 +516,29 @@ pub fn parse_size(size_str: &str) -> Result<(Dimension, Dimension), String> {
 
     // Parse as percentage or fixed based on presence of '%' character
     let width_dim = if width_part.ends_with('%') {
-        let percent: f64 = width_part.strip_suffix('%').unwrap().parse()
+        let percent: f64 = width_part
+            .strip_suffix('%')
+            .unwrap()
+            .parse()
             .map_err(|e| format!("Failed to parse width '{}': {}", width_part, e))?;
         Dimension::percent(percent)
     } else {
-        let fixed: usize = width_part.parse()
+        let fixed: usize = width_part
+            .parse()
             .map_err(|e| format!("Failed to parse width '{}': {}", width_part, e))?;
         Dimension::fixed(fixed)
     };
 
     let height_dim = if height_part.ends_with('%') {
-        let percent: f64 = height_part.strip_suffix('%').unwrap().parse()
+        let percent: f64 = height_part
+            .strip_suffix('%')
+            .unwrap()
+            .parse()
             .map_err(|e| format!("Failed to parse height '{}': {}", height_part, e))?;
         Dimension::percent(percent)
     } else {
-        let fixed: usize = height_part.parse()
+        let fixed: usize = height_part
+            .parse()
             .map_err(|e| format!("Failed to parse height '{}': {}", height_part, e))?;
         Dimension::fixed(fixed)
     };

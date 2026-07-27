@@ -164,7 +164,7 @@ impl<'a> PaneResizer<'a> {
                 }
             }
         }
-        
+
         // Check for any fixed-size spans that might make layout unsolvable
         for span in spans {
             if span.size.is_fixed() {
@@ -176,7 +176,7 @@ impl<'a> PaneResizer<'a> {
                 fixed_pane_ids.push((pid_u32, false));
             }
         }
-        
+
         !fixed_pane_ids.is_empty()
     }
 
