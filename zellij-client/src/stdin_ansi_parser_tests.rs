@@ -4,6 +4,12 @@ use super::{schedule_forward_timeout, HostReply, PendingPartial, StdinAnsiParser
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+const TEXT_AREA_QUERY: &[u8] = b"\x1b[14t";
+const CHARACTER_CELL_QUERY: &[u8] = b"\x1b[16t";
+const FOREGROUND_QUERY: &[u8] = b"\x1b]10;?\x1b\\";
+const BACKGROUND_QUERY: &[u8] = b"\x1b]11;?\x1b\\";
+type MatchingReplyCase<'a> = (&'a [u8], &'a [u8], fn(&HostReply) -> bool, &'a str);
+
 /// Helper: collect replies and residue from a single `feed` call.
 fn feed_once(parser: &mut StdinAnsiParser, bytes: &[u8]) -> (Vec<HostReply>, Vec<u8>) {
     let out = parser.feed(bytes);
@@ -138,7 +144,7 @@ fn unterminated_osc_within_single_chunk_is_buffered() {
 #[test]
 fn forwarding_window_accumulates_and_barrier_closes() {
     let mut parser = StdinAnsiParser::new();
-    parser.open_forward(42);
+    parser.open_forward(42, BACKGROUND_QUERY);
     // Feed an OSC 11 reply, then the Primary-DA barrier. Use color
     // bytes that do NOT contain `c` so the barrier-absence assertion
     // below can use a simple byte search.
@@ -170,12 +176,12 @@ fn forwarding_window_accumulates_and_barrier_closes() {
 }
 
 #[test]
-fn unsolicited_osc_between_forwarded_query_and_barrier() {
+fn unrelated_osc_between_forwarded_query_and_barrier_is_not_forwarded() {
     // Scenario: host emits a stray OSC 10 between the app's OSC 11 query
-    // and the barrier. Both replies should end up in the forwarded
-    // buffer, and the barrier closes the window.
+    // and the barrier. Both replies should update Zellij's cached state,
+    // but only the OSC 11 answer belongs in the pane's forwarded buffer.
     let mut parser = StdinAnsiParser::new();
-    parser.open_forward(7);
+    parser.open_forward(7, BACKGROUND_QUERY);
     let mut chunk = Vec::new();
     chunk.extend_from_slice(b"\x1b]11;rgb:1111/1111/1111\x1b\\");
     chunk.extend_from_slice(b"\x1b]10;rgb:2222/2222/2222\x1b\\");
@@ -184,9 +190,51 @@ fn unsolicited_osc_between_forwarded_query_and_barrier() {
     assert_eq!(out.replies.len(), 2);
     let (token, reply_bytes) = out.completed_forward.unwrap();
     assert_eq!(token, 7);
-    // Both OSCs present.
+    // Only the reply matching the pane's query is present.
     assert!(reply_bytes.windows(4).any(|w| w == b"]11;"));
-    assert!(reply_bytes.windows(4).any(|w| w == b"]10;"));
+    assert!(!reply_bytes.windows(4).any(|w| w == b"]10;"));
+}
+
+#[test]
+fn attach_startup_replies_do_not_leak_into_forwarded_pane_reply() {
+    // Exact shape from the Windows Terminal -> SSH attach trace for #5365.
+    // The first stdin read ended after the ESC[ prefix of the cell-size
+    // response. The pane's OSC 10 forwarding window opened before the rest
+    // of the startup reply batch arrived.
+    let mut parser = StdinAnsiParser::new();
+    let first = parser.feed(b"\x1b[4;1160;2220t\x1b[");
+    assert_eq!(first.replies.len(), 1);
+    assert!(first.has_partial_state);
+    assert!(first.residue.is_empty());
+
+    parser.open_forward(5365, FOREGROUND_QUERY);
+
+    let mut second_chunk = Vec::new();
+    second_chunk.extend_from_slice(b"6;20;10t");
+    second_chunk.extend_from_slice(b"\x1b]11;rgb:1111/1111/1111\x1b\\");
+    // Delayed response to Zellij's own startup OSC 10 query. It has the
+    // right type, but the later response to the pane's query must replace it.
+    second_chunk.extend_from_slice(b"\x1b]10;rgb:2222/2222/2222\x1b\\");
+    second_chunk.extend_from_slice(b"\x1b[?2026;2$y");
+    second_chunk.extend_from_slice(b"\x1b]10;rgb:3333/3333/3333\x1b\\");
+    second_chunk.extend_from_slice(b"\x1b[?65;1c");
+
+    let out = parser.feed(&second_chunk);
+    assert_eq!(
+        out.replies.len(),
+        5,
+        "all recognised host replies must still update Zellij's cache"
+    );
+    assert!(out.residue.is_empty());
+    let (token, reply_bytes) = out
+        .completed_forward
+        .expect("Primary-DA barrier must complete the pane forward");
+    assert_eq!(token, 5365);
+    assert_eq!(
+        reply_bytes, b"\x1b]10;rgb:3333/3333/3333\x1b\\",
+        "the pane must receive only the reply to its own OSC 10 query"
+    );
+    assert!(parser.active_forward_token().is_none());
 }
 
 #[test]
@@ -202,7 +250,7 @@ fn double_dispatch_without_active_forward_still_emits_reply() {
 #[test]
 fn timeout_flushes_accumulated_bytes() {
     let mut parser = StdinAnsiParser::new();
-    parser.open_forward(99);
+    parser.open_forward(99, BACKGROUND_QUERY);
     let out = parser.feed(b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\");
     assert!(out.completed_forward.is_none(), "no barrier yet");
     assert!(parser.active_forward_token() == Some(99));
@@ -217,7 +265,7 @@ fn timeout_flushes_accumulated_bytes() {
 #[test]
 fn stale_token_timeout_does_nothing() {
     let mut parser = StdinAnsiParser::new();
-    parser.open_forward(1);
+    parser.open_forward(1, BACKGROUND_QUERY);
     // Ask to timeout a different token — nothing happens.
     assert!(parser.close_forward_on_timeout(999).is_none());
     assert_eq!(parser.active_forward_token(), Some(1));
@@ -435,45 +483,39 @@ fn cross_chunk_osc_assembles_across_feeds() {
 }
 
 #[test]
-fn double_dispatch_matrix_with_forward_active() {
-    // For each whitelisted reply variant, opening a forward window and
-    // feeding the reply must (a) classify the variant into
-    // `ParseOutput.replies` and (b) accumulate the raw bytes into the
-    // forward's reply buffer — both paths always fire, so cached state
-    // and the forwarded-to pane stay in sync. OSC 11 is already
-    // covered by `forwarding_window_accumulates_and_barrier_closes`;
-    // this test sweeps OSC 10, OSC 4, CSI 14t / 16t replies, and
-    // DECRPM 2026.
-    let cases: Vec<(&[u8], fn(&HostReply) -> bool, &str)> = vec![
+fn matching_reply_matrix_with_forward_active() {
+    // For every query Zellij can forward, its matching reply must both update
+    // cached state and enter the pane's forward buffer. Unrelated recognised
+    // replies are covered by the attach-startup regression above.
+    let cases: Vec<MatchingReplyCase<'_>> = vec![
         (
+            FOREGROUND_QUERY,
             b"\x1b]10;rgb:1111/2222/3333\x1b\\",
             |r| matches!(r, HostReply::ForegroundColor(_)),
             "OSC 10",
         ),
         (
+            b"\x1b]4;9;?\x1b\\",
             b"\x1b]4;9;rgb:4444/5555/6666\x1b\\",
             |r| matches!(r, HostReply::ColorRegisters(_)),
             "OSC 4",
         ),
         (
+            TEXT_AREA_QUERY,
             b"\x1b[4;720;1280t",
             |r| matches!(r, HostReply::PixelDimensions(_)),
             "CSI 14t reply",
         ),
         (
+            CHARACTER_CELL_QUERY,
             b"\x1b[6;18;9t",
             |r| matches!(r, HostReply::PixelDimensions(_)),
             "CSI 16t reply",
         ),
-        (
-            b"\x1b[?2026;1$y",
-            |r| matches!(r, HostReply::SynchronizedOutput(_)),
-            "DECRPM 2026",
-        ),
     ];
-    for (bytes, is_expected_variant, label) in cases {
+    for (query, bytes, is_expected_variant, label) in cases {
         let mut parser = StdinAnsiParser::new();
-        parser.open_forward(11);
+        parser.open_forward(11, query);
         let out = parser.feed(bytes);
         assert_eq!(
             out.replies.len(),
@@ -493,17 +535,51 @@ fn double_dispatch_matrix_with_forward_active() {
             "{}: no barrier yet, slot must stay open",
             label
         );
-        // Close the window to inspect the forward buffer.
         let (token, raw) = parser
             .close_forward_on_timeout(11)
             .expect("forward slot should still be open");
         assert_eq!(token, 11, "{}: token preserved", label);
-        assert!(
-            !raw.is_empty(),
-            "{}: reply bytes must have been accumulated into the forward buffer",
-            label
-        );
+        assert_eq!(raw, bytes, "{}: only the matching reply is retained", label);
     }
+}
+
+#[test]
+fn palette_forward_requires_the_queried_register() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(9, b"\x1b]4;9;?\x07");
+    let out = parser.feed(b"\x1b]4;8;rgb:1111/1111/1111\x1b\\");
+    assert_eq!(out.replies.len(), 1);
+    let out = parser.feed(b"\x1b]4;9;rgb:2222/2222/2222\x07");
+    assert_eq!(out.replies.len(), 1);
+    let (_, bytes) = parser.close_forward_on_timeout(9).unwrap();
+    assert_eq!(
+        bytes, b"\x1b]4;9;rgb:2222/2222/2222\x1b\\",
+        "a BEL-terminated query must accept only its matching palette register"
+    );
+}
+
+#[test]
+fn unrecognised_forward_query_fails_closed() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(2026, b"\x1b[?2026$p");
+    let out = parser.feed(
+        b"\x1b[4;720;1280t\
+          \x1b[6;18;9t\
+          \x1b]10;rgb:1111/1111/1111\x1b\\\
+          \x1b]11;rgb:2222/2222/2222\x1b\\\
+          \x1b]4;9;rgb:3333/3333/3333\x1b\\\
+          \x1b[?2026;2$y\
+          \x1b[?997;1n\
+          \x1b[c",
+    );
+    assert_eq!(
+        out.replies.len(),
+        7,
+        "unknown queries must not prevent recognised reports updating cache"
+    );
+    let (token, bytes) = out.completed_forward.unwrap();
+    assert_eq!(token, 2026);
+    assert!(bytes.is_empty());
 }
 
 #[test]
@@ -518,7 +594,7 @@ fn primary_da_barrier_accepts_extended_forms() {
         b"\x1b[>0;276;0c".as_ref(),
     ] {
         let mut parser = StdinAnsiParser::new();
-        parser.open_forward(5);
+        parser.open_forward(5, BACKGROUND_QUERY);
         let mut chunk = Vec::new();
         chunk.extend_from_slice(b"\x1b]11;rgb:aaaa/bbbb/cccc\x1b\\");
         chunk.extend_from_slice(barrier);
@@ -549,8 +625,8 @@ fn open_forward_debug_asserts_on_reentry() {
     // be impossible given `forward_in_flight` serialization, but the
     // parser asserts it anyway so regressions surface in CI.
     let mut parser = StdinAnsiParser::new();
-    parser.open_forward(1);
-    parser.open_forward(2); // panics via debug_assert!
+    parser.open_forward(1, BACKGROUND_QUERY);
+    parser.open_forward(2, BACKGROUND_QUERY); // panics via debug_assert!
 }
 
 // =====================================================================
@@ -572,7 +648,7 @@ fn paused_runtime() -> tokio::runtime::Runtime {
 fn timer_fires_after_deadline_and_closes_slot() {
     let rt = paused_runtime();
     let parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
-    parser.lock().unwrap().open_forward(7);
+    parser.lock().unwrap().open_forward(7, BACKGROUND_QUERY);
 
     let captured: Arc<Mutex<Option<(u32, Vec<u8>)>>> = Arc::new(Mutex::new(None));
     let captured_clone = captured.clone();
@@ -615,7 +691,7 @@ fn timer_fires_after_deadline_and_closes_slot() {
 fn timer_is_noop_when_barrier_already_closed_the_slot() {
     let rt = paused_runtime();
     let parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
-    parser.lock().unwrap().open_forward(11);
+    parser.lock().unwrap().open_forward(11, BACKGROUND_QUERY);
 
     let fired: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let fired_clone = fired.clone();
@@ -663,7 +739,7 @@ fn timer_is_noop_when_slot_holds_a_different_token() {
     // callback doesn't fire.
     let rt = paused_runtime();
     let parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
-    parser.lock().unwrap().open_forward(1);
+    parser.lock().unwrap().open_forward(1, BACKGROUND_QUERY);
 
     let fired: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let fired_clone = fired.clone();
@@ -685,7 +761,7 @@ fn timer_is_noop_when_slot_holds_a_different_token() {
         let mut chunk = Vec::new();
         chunk.extend_from_slice(b"\x1b[c");
         let _ = p.feed(&chunk); // close via barrier
-        p.open_forward(2);
+        p.open_forward(2, BACKGROUND_QUERY);
     }
 
     rt.block_on(async {
@@ -712,7 +788,7 @@ fn timer_preserves_accumulated_reply_bytes_on_timeout() {
     // pane sees *something* — empty is fine, partial is better.
     let rt = paused_runtime();
     let parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
-    parser.lock().unwrap().open_forward(22);
+    parser.lock().unwrap().open_forward(22, BACKGROUND_QUERY);
 
     // Simulate a single OSC 11 reply arriving before the host goes
     // silent.
@@ -858,7 +934,7 @@ fn kitty_kbd_event_does_not_wedge_subsequent_forward_reply() {
         let _ = parser.feed(kbd);
 
         // Forward dispatched — slot opens for token=42.
-        parser.open_forward(42);
+        parser.open_forward(42, BACKGROUND_QUERY);
 
         // Host's reply arrives in two chunks (matches captured wire:
         // OSC 11 reply 25B, then DA1 barrier 10B).

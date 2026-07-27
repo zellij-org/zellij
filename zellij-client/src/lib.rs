@@ -517,8 +517,8 @@ pub(crate) enum InputInstruction {
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
     DesktopNotificationResponse(Vec<u8>),
     /// The continuous host-reply parser closed a forwarding window (barrier
-    /// reply seen or timeout fired). Payload is the accumulated raw bytes
-    /// to ship to the server.
+    /// reply seen or timeout fired). Payload is the latest raw reply matching
+    /// the forwarded query, ready to ship to the server.
     ForwardedReplyFromHostComplete {
         token: u32,
         reply_bytes: Vec<u8>,
@@ -1095,8 +1095,8 @@ pub fn start_client(
     // of queries to the host terminal (bg/fg colour, palette
     // registers, window pixel dimensions). Each query opens a
     // "forward slot" on the client: we write the query + a
-    // Primary-DA barrier to stdout, then collect any reply bytes
-    // that arrive on stdin until the barrier reply closes the slot.
+    // Primary-DA barrier to stdout, then collect the latest reply matching
+    // that query until the barrier reply closes the slot.
     // The pane that asked gets the captured bytes piped to its pty.
     //
     // If the host never answers, we must close the slot anyway so
@@ -1306,9 +1306,12 @@ pub fn start_client(
                 }
             },
             ClientInstruction::ForwardQueryToHost { token, query_bytes } => {
-                // 1. Open a forwarding window on the parser so any reply
-                //    events that arrive before the barrier are captured.
-                stdin_ansi_parser.lock().unwrap().open_forward(token);
+                // 1. Open a forwarding window on the parser so only a reply
+                //    matching this query is captured before the barrier.
+                stdin_ansi_parser
+                    .lock()
+                    .unwrap()
+                    .open_forward(token, &query_bytes);
                 // 2. Spawn a per-forward timer on the dedicated async
                 //    runtime. When the deadline fires, the task closes
                 //    the slot (if it's still open for this token) and
