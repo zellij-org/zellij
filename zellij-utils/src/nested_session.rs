@@ -1,7 +1,17 @@
 use crate::data::{Direction, KeyWithModifier};
 use crate::nested_session_contract::nested_session_contract as proto;
+use base64::alphabet::STANDARD as BASE64_STANDARD_ALPHABET;
+use base64::engine::general_purpose::{
+    GeneralPurpose, GeneralPurposeConfig, STANDARD as BASE64_STANDARD,
+};
+use base64::engine::{DecodePaddingMode, Engine as _};
 use prost::Message;
 use std::str::FromStr;
+
+const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
+    &BASE64_STANDARD_ALPHABET,
+    GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
+);
 
 pub const NESTED_DCS_PARAM: u16 = 26661;
 pub const NESTED_FRAME_HEADER: &[u8] = b"\x1bP26661n";
@@ -244,7 +254,7 @@ pub fn encode_frame(message: &NestedSessionMessage) -> Vec<u8> {
 }
 
 pub fn encode_frame_from_payload(payload_bytes: &[u8]) -> Vec<u8> {
-    let encoded = base64::encode(payload_bytes);
+    let encoded = BASE64_STANDARD.encode(payload_bytes);
     let mut frame = Vec::with_capacity(
         NESTED_FRAME_HEADER.len() + encoded.len() + NESTED_FRAME_TERMINATOR.len(),
     );
@@ -255,7 +265,7 @@ pub fn encode_frame_from_payload(payload_bytes: &[u8]) -> Vec<u8> {
 }
 
 pub fn decode_base64(encoded: &[u8]) -> Option<Vec<u8>> {
-    base64::decode(encoded).ok()
+    BASE64_DECODER.decode(encoded).ok()
 }
 
 const MAX_PARTIAL_FRAME_BYTES: usize = 1024 * 1024;

@@ -13,12 +13,12 @@ ansi_term = { workspace = true }
 anyhow = { workspace = true }
 arrayvec = { version = "0.7.2", default-features = false, features = ["std"] }
 async-trait = { version = "0.1.50", default-features = false }
-base64 = { version = "0.13.0", default-features = false, features = ["std"] }
+base64 = { version = "0.22", default-features = false, features = ["std"] }
 byteorder = { version = "1.4.3", default-features = false, features = ["std"] }
 bytes = { version = "1.6.0", default-features = false, features = ["std"] }
 chrono = { version = "0.4.19", default-features = false, features = ["std", "clock"] }
 crossbeam = { version = "0.8", default-features = false, features = ["crossbeam-channel", "std"] }
-highway = { version = "0.6.4", default-features = false, features = ["std"] }
+highway = { version = "=1.2.0", default-features = false, features = ["std"] }
 interprocess = { workspace = true }
 isahc = { workspace = true }
 kasuari = { version = "0.4.12", default-features = false }
