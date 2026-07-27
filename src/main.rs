@@ -62,7 +62,9 @@ fn main() {
 
             // Parse the custom size if provided
             let custom_size = size.as_ref().and_then(|size_str| {
-                parse_size(size_str).map(|(width_dim, height_dim)| (width_dim, height_dim)).ok()
+                parse_size(size_str)
+                    .map(|(width_dim, height_dim)| (width_dim, height_dim))
+                    .ok()
             });
 
             // Compute the unblock condition
