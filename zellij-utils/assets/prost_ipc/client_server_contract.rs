@@ -2007,6 +2007,8 @@ pub struct Options {
     pub pane_frame_style: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="52")]
     pub stacked_pane_list: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="53")]
+    pub allow_osc_passthrough: ::core::option::Option<bool>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]
