@@ -337,6 +337,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::PageScrollUp => page_scroll_up(env),
                     PluginCommand::PageScrollDown => page_scroll_down(env),
                     PluginCommand::ToggleFocusFullscreen => toggle_focus_fullscreen(env),
+                    PluginCommand::ToggleFocusNoUiFullscreen => toggle_focus_no_ui_fullscreen(env),
+                    PluginCommand::FocusHostSession => focus_host_session(env),
                     PluginCommand::TogglePaneFrames => toggle_pane_frames(env),
                     PluginCommand::SetPaneFrameStyle(pane_frame_style) => {
                         set_pane_frame_style(env, pane_frame_style)
@@ -3167,6 +3169,24 @@ fn toggle_focus_fullscreen(env: &PluginEnv) {
     apply_action!(action, error_msg, env);
 }
 
+fn toggle_focus_no_ui_fullscreen(env: &PluginEnv) {
+    let error_msg = || {
+        format!(
+            "failed to toggle no-ui full screen in plugin {}",
+            env.name()
+        )
+    };
+    let action = Action::ToggleFocusNoUiFullscreen;
+    apply_action!(action, error_msg, env);
+}
+
+fn focus_host_session(env: &PluginEnv) {
+    env.senders
+        .send_to_screen(ScreenInstruction::FocusHostSession(env.client_id, None))
+        .with_context(|| format!("failed to focus host session from plugin {}", env.name()))
+        .non_fatal();
+}
+
 fn toggle_pane_frames(env: &PluginEnv) {
     let error_msg = || format!("failed to toggle full screen in plugin {}", env.name());
     let action = Action::TogglePaneFrames;
@@ -5544,6 +5564,8 @@ fn check_command_permission(
         | PluginCommand::PageScrollDown
         | PluginCommand::PageScrollDownInPaneId(..)
         | PluginCommand::ToggleFocusFullscreen
+        | PluginCommand::ToggleFocusNoUiFullscreen
+        | PluginCommand::FocusHostSession
         | PluginCommand::TogglePaneIdFullscreen(..)
         | PluginCommand::TogglePaneFrames
         | PluginCommand::SetPaneFrameStyle(..)

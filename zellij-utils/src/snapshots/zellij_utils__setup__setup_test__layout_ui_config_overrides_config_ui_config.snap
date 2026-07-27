@@ -1073,6 +1073,19 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Shift,
+                },
+            }: [
+                ToggleFocusNoUiFullscreen,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -4150,11 +4163,33 @@ Config {
                 bare_key: Char(
                     '[',
                 ),
+                key_modifiers: {},
+            }: [
+                FocusGuestSession,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
                 PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {},
+            }: [
+                FocusHostSession,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -4247,6 +4282,17 @@ Config {
                 key_modifiers: {},
             }: [
                 Detach,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleHostFullscreen,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -6035,6 +6081,7 @@ Config {
         mobile_layout: None,
         mobile_threshold_cols: None,
         mobile_threshold_rows: None,
+        nested_session_handling: None,
     },
     themes: {},
     plugins: PluginAliases {

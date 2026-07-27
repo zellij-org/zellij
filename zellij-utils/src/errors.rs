@@ -281,6 +281,7 @@ pub enum ScreenContext {
     CloseFocusedPane,
     ToggleActiveSyncTab,
     ToggleActiveTerminalFullscreen,
+    ToggleActiveTerminalNoUiFullscreen,
     TogglePaneFrames,
     SetPaneFrameStyle,
     SetSelectable,
@@ -314,6 +315,10 @@ pub enum ScreenContext {
     TerminalForegroundColor,
     TerminalColorRegisters,
     ForwardHostQuery,
+    NestedSessionMessageFromPane,
+    NestedGuestPingTick,
+    NestedSessionMessageFromHost,
+    GuestModalChoice,
     ForwardedReplyFromHost,
     ResumePaneAfterForward,
     HostTerminalThemeChanged,
@@ -453,6 +458,7 @@ pub enum ScreenContext {
     ClearScreenWithPaneId,
     EditScrollbackWithPaneId,
     ToggleFullscreenWithPaneId,
+    ToggleNoUiFullscreenWithPaneId,
     TogglePaneEmbedOrFloatingWithPaneId,
     CloseFocusWithPaneId,
     RenamePaneWithPaneId,
@@ -475,6 +481,9 @@ pub enum ScreenContext {
     ReevaluateMobileMode,
     SetSoftKeyboard,
     SetShadowFocus,
+    FocusHostSession,
+    FocusGuestSession,
+    ToggleHostFullscreen,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -586,6 +595,7 @@ pub enum ClientContext {
     RenamedSession,
     ConfigFileUpdated,
     ForwardQueryToHost,
+    EmitNestedSessionFrame,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -622,6 +632,8 @@ pub enum ServerContext {
     SendWebClientsForbidden,
     ClearMouseHelpText,
     ForwardQueryToHost,
+    KeyPassthroughChanged,
+    EmitNestedSessionFrameToClient,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -653,6 +665,8 @@ pub enum BackgroundJobContext {
     FlashTabBell,
     StopFlashTabBell,
     MobileGateTimeout,
+    StartNestedGuestPing,
+    StopNestedGuestPing,
     Exit,
 }
 

@@ -5,19 +5,19 @@ use crate::{
         client_to_server_msg, server_to_client_msg, ActionMsg, AttachClientMsg,
         AttachWatcherClientMsg, BackgroundColorMsg, CliPipeOutputMsg, ClientExitedMsg,
         ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
-        ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg, ExitMsg,
-        ExitReason as ProtoExitReason, FailedToStartWebServerMsg, FirstClientConnectedMsg,
-        ForegroundColorMsg, ForwardQueryToHostMsg, ForwardedReplyFromHostMsg,
-        HostTerminalThemeChangedMsg,
+        ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg,
+        EmitNestedSessionFrameMsg, ExitMsg, ExitReason as ProtoExitReason,
+        FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
+        ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
-        LogErrorMsg, LogMsg, PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
-        QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg, ResizeCause as ProtoResizeCause,
-        ServerToClientMsg as ProtoServerToClientMsg, SetSoftKeyboardMsg,
-        SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
-        SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
-        TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
-        UnblockInputThreadMsg, WebServerStartedMsg,
+        LogErrorMsg, LogMsg, NestedSessionFrameFromHostMsg, PaneMetadata as ProtoPaneMetadata,
+        PaneRenderUpdateMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
+        ResizeCause as ProtoResizeCause, ServerToClientMsg as ProtoServerToClientMsg,
+        SetSoftKeyboardMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
+        SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
+        TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
+        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
@@ -154,6 +154,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             ClientToServerMsg::SoftKeyboardVisibilityChanged { visible } => {
                 client_to_server_msg::Message::SoftKeyboardVisibilityChanged(
                     SoftKeyboardVisibilityChangedMsg { visible },
+                )
+            },
+            ClientToServerMsg::NestedSessionFrameFromHost { payload_bytes } => {
+                client_to_server_msg::Message::NestedSessionFrameFromHost(
+                    NestedSessionFrameFromHostMsg { payload_bytes },
                 )
             },
         };
@@ -306,6 +311,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     visible: msg.visible,
                 })
             },
+            Some(client_to_server_msg::Message::NestedSessionFrameFromHost(msg)) => {
+                Ok(ClientToServerMsg::NestedSessionFrameFromHost {
+                    payload_bytes: msg.payload_bytes,
+                })
+            },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
     }
@@ -393,6 +403,11 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             },
             ServerToClientMsg::SetSoftKeyboard { on } => {
                 server_to_client_msg::Message::SetSoftKeyboard(SetSoftKeyboardMsg { on })
+            },
+            ServerToClientMsg::EmitNestedSessionFrame { payload_bytes } => {
+                server_to_client_msg::Message::EmitNestedSessionFrame(EmitNestedSessionFrameMsg {
+                    payload_bytes,
+                })
             },
         };
 
@@ -508,6 +523,11 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             },
             Some(server_to_client_msg::Message::SetSoftKeyboard(msg)) => {
                 Ok(ServerToClientMsg::SetSoftKeyboard { on: msg.on })
+            },
+            Some(server_to_client_msg::Message::EmitNestedSessionFrame(msg)) => {
+                Ok(ServerToClientMsg::EmitNestedSessionFrame {
+                    payload_bytes: msg.payload_bytes,
+                })
             },
             None => Err(anyhow!("Empty ServerToClientMsg message")),
         }
@@ -775,6 +795,18 @@ impl From<crate::input::options::Options>
                 crate::input::options::PaneFrameStyle::Titles => "titles".to_owned(),
                 crate::input::options::PaneFrameStyle::None => "none".to_owned(),
             }),
+            nested_session_handling: options.nested_session_handling.map(|n| {
+                use crate::client_server_contract::client_server_contract::NestedSessionHandling as ProtoNestedSessionHandling;
+                use crate::input::options::NestedSessionHandling;
+                match n {
+                    NestedSessionHandling::Ask => ProtoNestedSessionHandling::Ask as i32,
+                    NestedSessionHandling::Fullscreen => {
+                        ProtoNestedSessionHandling::Fullscreen as i32
+                    },
+                    NestedSessionHandling::Descend => ProtoNestedSessionHandling::Descend as i32,
+                    NestedSessionHandling::Never => ProtoNestedSessionHandling::Never as i32,
+                }
+            }),
         }
     }
 }
@@ -788,7 +820,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
     ) -> Result<Self> {
         use crate::client_server_contract::client_server_contract::{
             Clipboard as ProtoClipboard, MobileLayout as ProtoMobileLayout,
-            OnForceClose as ProtoOnForceClose, WebSharing as ProtoWebSharing,
+            NestedSessionHandling as ProtoNestedSessionHandling, OnForceClose as ProtoOnForceClose,
+            WebSharing as ProtoWebSharing,
         };
 
         Ok(Self {
@@ -897,6 +930,24 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 .transpose()?,
             mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u16),
             mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u16),
+            nested_session_handling: options
+                .nested_session_handling
+                .map(|n| match ProtoNestedSessionHandling::from_i32(n) {
+                    Some(ProtoNestedSessionHandling::Ask) => {
+                        Ok(crate::input::options::NestedSessionHandling::Ask)
+                    },
+                    Some(ProtoNestedSessionHandling::Fullscreen) => {
+                        Ok(crate::input::options::NestedSessionHandling::Fullscreen)
+                    },
+                    Some(ProtoNestedSessionHandling::Descend) => {
+                        Ok(crate::input::options::NestedSessionHandling::Descend)
+                    },
+                    Some(ProtoNestedSessionHandling::Never) => {
+                        Ok(crate::input::options::NestedSessionHandling::Never)
+                    },
+                    _ => Err(anyhow!("Invalid NestedSessionHandling value: {}", n)),
+                })
+                .transpose()?,
         })
     }
 }
@@ -932,6 +983,8 @@ impl From<crate::input::actions::Action>
             EditFileAction,
             EditScrollbackAction,
             EditScrollbackByPaneIdAction,
+            FocusGuestSessionAction,
+            FocusHostSessionAction,
             FocusLastPaneAction,
             FocusNextPaneAction,
             FocusPaneByPaneIdAction,
@@ -1031,9 +1084,12 @@ impl From<crate::input::actions::Action>
             ToggleFloatingPanesAction,
             ToggleFloatingPanesByTabIdAction,
             ToggleFocusFullscreenAction,
+            ToggleFocusNoUiFullscreenAction,
             ToggleFullscreenByPaneIdAction,
             ToggleGroupMarkingAction,
+            ToggleHostFullscreenAction,
             ToggleMouseModeAction,
+            ToggleNoUiFullscreenByPaneIdAction,
             TogglePaneBorderlessAction,
             TogglePaneEmbedOrFloatingAction,
             TogglePaneEmbedOrFloatingByPaneIdAction,
@@ -1111,6 +1167,15 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::FocusLastPane => {
                 ActionType::FocusLastPane(FocusLastPaneAction {})
+            },
+            crate::input::actions::Action::FocusHostSession => {
+                ActionType::FocusHostSession(FocusHostSessionAction {})
+            },
+            crate::input::actions::Action::FocusGuestSession => {
+                ActionType::FocusGuestSession(FocusGuestSessionAction {})
+            },
+            crate::input::actions::Action::ToggleHostFullscreen => {
+                ActionType::ToggleHostFullscreen(ToggleHostFullscreenAction {})
             },
             crate::input::actions::Action::SwitchFocus => {
                 ActionType::SwitchFocus(SwitchFocusAction {})
@@ -1191,6 +1256,9 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::ToggleFocusFullscreen => {
                 ActionType::ToggleFocusFullscreen(ToggleFocusFullscreenAction {})
+            },
+            crate::input::actions::Action::ToggleFocusNoUiFullscreen => {
+                ActionType::ToggleFocusNoUiFullscreen(ToggleFocusNoUiFullscreenAction {})
             },
             crate::input::actions::Action::TogglePaneFrames => {
                 ActionType::TogglePaneFrames(TogglePaneFramesAction {})
@@ -1877,6 +1945,11 @@ impl From<crate::input::actions::Action>
                     pane_id: Some(pane_id.into()),
                 })
             },
+            crate::input::actions::Action::ToggleFocusNoUiFullscreenByPaneId { pane_id } => {
+                ActionType::ToggleNoUiFullscreenByPaneId(ToggleNoUiFullscreenByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
             crate::input::actions::Action::TogglePaneEmbedOrFloatingByPaneId { pane_id } => {
                 ActionType::TogglePaneEmbedOrFloatingByPaneId(
                     TogglePaneEmbedOrFloatingByPaneIdAction {
@@ -2085,6 +2158,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::ToggleFocusFullscreen(_) => {
                 Ok(crate::input::actions::Action::ToggleFocusFullscreen)
+            },
+            ActionType::ToggleFocusNoUiFullscreen(_) => {
+                Ok(crate::input::actions::Action::ToggleFocusNoUiFullscreen)
             },
             ActionType::TogglePaneFrames(_) => Ok(crate::input::actions::Action::TogglePaneFrames),
             ActionType::SetPaneFrameStyle(set_pane_frame_style_action) => {
@@ -2552,6 +2628,13 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::BreakPane(_) => Ok(crate::input::actions::Action::BreakPane),
             ActionType::BreakPaneRight(_) => Ok(crate::input::actions::Action::BreakPaneRight),
             ActionType::BreakPaneLeft(_) => Ok(crate::input::actions::Action::BreakPaneLeft),
+            ActionType::FocusHostSession(_) => Ok(crate::input::actions::Action::FocusHostSession),
+            ActionType::FocusGuestSession(_) => {
+                Ok(crate::input::actions::Action::FocusGuestSession)
+            },
+            ActionType::ToggleHostFullscreen(_) => {
+                Ok(crate::input::actions::Action::ToggleHostFullscreen)
+            },
             ActionType::RenameSession(rename_session_action) => {
                 Ok(crate::input::actions::Action::RenameSession {
                     name: rename_session_action.name,
@@ -2807,6 +2890,14 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     pane_id: a
                         .pane_id
                         .ok_or_else(|| anyhow!("ToggleFullscreenByPaneId missing pane_id"))?
+                        .try_into()?,
+                },
+            ),
+            ActionType::ToggleNoUiFullscreenByPaneId(a) => Ok(
+                crate::input::actions::Action::ToggleFocusNoUiFullscreenByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("ToggleNoUiFullscreenByPaneId missing pane_id"))?
                         .try_into()?,
                 },
             ),

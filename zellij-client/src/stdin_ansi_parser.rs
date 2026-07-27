@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use zellij_utils::{
     data::HostTerminalThemeMode,
     ipc::PixelDimensions,
+    nested_session,
     pane_size::SizeInPixels,
     vendored::termwiz::input::{InputEvent, InputParser},
 };
@@ -187,6 +188,7 @@ pub struct ParseOutput {
     /// Residue bytes that were not classified as host replies. These are
     /// the bytes the caller should feed to the keyboard parser.
     pub residue: Vec<u8>,
+    pub nested_frames: Vec<Vec<u8>>,
     /// `true` when the parser still holds buffered partial OSC/CSI
     /// bytes that need an idle-flush to release. The caller uses this
     /// to schedule a finalize tick even when the current chunk
@@ -264,6 +266,7 @@ pub struct StdinAnsiParser {
     /// Same for CSI device-control reports.
     partial_csi: Vec<u8>,
     partial_paste: Vec<u8>,
+    nested_frame_extractor: nested_session::NestedFrameExtractor,
     in_bracketed_paste: bool,
 }
 
@@ -285,6 +288,7 @@ impl StdinAnsiParser {
             partial_osc: Vec::new(),
             partial_csi: Vec::new(),
             partial_paste: Vec::new(),
+            nested_frame_extractor: nested_session::NestedFrameExtractor::new(),
             in_bracketed_paste: false,
         }
     }
@@ -349,6 +353,9 @@ impl StdinAnsiParser {
     /// are the bytes the caller should feed to the keyboard parser.
     pub fn feed(&mut self, bytes: &[u8]) -> ParseOutput {
         let mut out = ParseOutput::default();
+        let (bytes, nested_frames) = self.nested_frame_extractor.extract(bytes);
+        let bytes = &bytes[..];
+        out.nested_frames = nested_frames;
         // Collect events first (borrow-splits the InputParser across the
         // callback and the post-processing mutations).
         let mut events = Vec::new();
@@ -431,12 +438,20 @@ impl StdinAnsiParser {
         out.residue = residue;
         out.has_partial_state = !self.partial_osc.is_empty()
             || !self.partial_csi.is_empty()
-            || !self.partial_paste.is_empty();
+            || !self.partial_paste.is_empty()
+            || !self.nested_frame_extractor.partial_bytes().is_empty();
         out
     }
 
     pub fn pending_partial(&self) -> PendingPartial {
         if !self.partial_paste.is_empty() {
+            PendingPartial::ReplyInProgress
+        } else if self.partial_csi.is_empty()
+            && self.partial_osc.is_empty()
+            && self.nested_frame_extractor.partial_bytes() == [0x1b]
+        {
+            PendingPartial::LoneEsc
+        } else if !self.nested_frame_extractor.partial_bytes().is_empty() {
             PendingPartial::ReplyInProgress
         } else if self.partial_csi.is_empty() && self.partial_osc.is_empty() {
             PendingPartial::None
@@ -450,6 +465,13 @@ impl StdinAnsiParser {
     pub fn finalize_lone_esc(&mut self) -> Vec<u8> {
         if self.partial_csi.is_empty()
             && self.partial_paste.is_empty()
+            && self.partial_osc.is_empty()
+            && self.nested_frame_extractor.partial_bytes() == [0x1b]
+        {
+            self.nested_frame_extractor.take_partial()
+        } else if self.partial_csi.is_empty()
+            && self.partial_paste.is_empty()
+            && self.nested_frame_extractor.partial_bytes().is_empty()
             && self.partial_osc == [0x1b]
         {
             std::mem::take(&mut self.partial_osc)
@@ -460,12 +482,17 @@ impl StdinAnsiParser {
 
     pub fn finalize_force(&mut self) -> Vec<u8> {
         self.in_bracketed_paste = false;
+        let mut partial_nested_frame = self.nested_frame_extractor.take_partial();
         let mut out = Vec::with_capacity(
-            self.partial_osc.len() + self.partial_csi.len() + self.partial_paste.len(),
+            self.partial_osc.len()
+                + self.partial_csi.len()
+                + self.partial_paste.len()
+                + partial_nested_frame.len(),
         );
         out.append(&mut self.partial_osc);
         out.append(&mut self.partial_csi);
         out.append(&mut self.partial_paste);
+        out.append(&mut partial_nested_frame);
         out
     }
 

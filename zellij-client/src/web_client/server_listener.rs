@@ -255,6 +255,7 @@ pub fn zellij_server_listener(
                             // Subscribe-only messages — not relevant for web clients
                             Some(ServerToClientMsg::PaneRenderUpdate { .. }) => {},
                             Some(ServerToClientMsg::SubscribedPaneClosed { .. }) => {},
+                            Some(ServerToClientMsg::EmitNestedSessionFrame { .. }) => {},
                             Some(ServerToClientMsg::ForwardQueryToHost { token, .. }) => {
                                 // Reply immediately with empty reply_bytes.
                                 // This is the existing convention that signals

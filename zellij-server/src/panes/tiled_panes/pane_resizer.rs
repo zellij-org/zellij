@@ -1,10 +1,6 @@
 use super::stacked_panes::StackedPanes;
 use crate::{panes::PaneId, tab::Pane};
-use cassowary::{
-    strength::{REQUIRED, STRONG},
-    Expression, Solver, Variable,
-    WeightedRelation::EQ,
-};
+use kasuari::{Expression, Solver, Strength, Variable, WeightedRelation::EQ};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -78,7 +74,7 @@ impl<'a> PaneResizer<'a> {
             .collect();
 
         self.solver
-            .add_constraints(&constraints)
+            .add_constraints(constraints)
             .map_err(|e| format!("{:?}", e))?;
 
         Ok(grid)
@@ -331,7 +327,7 @@ impl<'a> PaneResizer<'a> {
     }
 }
 
-fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constraint> {
+fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<kasuari::Constraint> {
     let mut constraints = HashSet::new();
 
     // Calculating "flexible" space (space not consumed by fixed-size spans)
@@ -347,14 +343,17 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
     let full_size = spans
         .iter()
         .fold(Expression::from_constant(0.0), |acc, s| acc + s.size_var);
-    constraints.insert(full_size.clone() | EQ(REQUIRED) | space as f64);
+    constraints.insert(full_size.clone() | EQ(Strength::REQUIRED) | space as f64);
 
     // Try to maintain ratios and lock non-flexible sizes
     for span in spans {
         match span.size.constraint {
-            Constraint::Fixed(s) => constraints.insert(span.size_var | EQ(REQUIRED) | s as f64),
-            Constraint::Percent(p) => constraints
-                .insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | (p / 100.0)),
+            Constraint::Fixed(s) => {
+                constraints.insert(span.size_var | EQ(Strength::REQUIRED) | s as f64)
+            },
+            Constraint::Percent(p) => constraints.insert(
+                (span.size_var / new_flex_space as f64) | EQ(Strength::STRONG) | (p / 100.0),
+            ),
         };
     }
 

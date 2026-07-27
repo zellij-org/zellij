@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use zellij_server::os_input_output::AsyncReader;
@@ -19,6 +19,7 @@ pub(crate) struct FakePtyState {
     pub quit_cb: Option<QuitCb>,
     pub exited: bool,
     pub echo: bool,
+    pub stdin_tap: Option<crossbeam::channel::Sender<Vec<u8>>>,
 }
 
 impl FakePtyState {
@@ -116,6 +117,7 @@ impl SharedPtys {
                     quit_cb,
                     exited: false,
                     echo: true,
+                    stdin_tap: None,
                 },
             );
             fake_pty_registry.spawn_queue.push_back(terminal_id);
@@ -172,6 +174,18 @@ impl SharedPtys {
         });
     }
 
+    pub(crate) fn set_stdin_tap(
+        &self,
+        terminal_id: u32,
+        sender: crossbeam::channel::Sender<Vec<u8>>,
+    ) {
+        self.mutate(|fake_pty_registry| {
+            if let Some(fake_pty_state) = fake_pty_registry.fake_pty_states.get_mut(&terminal_id) {
+                fake_pty_state.stdin_tap = Some(sender);
+            }
+        });
+    }
+
     pub(crate) fn write_output(&self, terminal_id: u32, bytes: &[u8]) {
         self.read(|fake_pty_registry| {
             if let Some(fake_pty_state) = fake_pty_registry.fake_pty_states.get(&terminal_id) {
@@ -191,6 +205,9 @@ impl SharedPtys {
                         if let Some(output_tx) = fake_pty_state.output_tx.as_ref() {
                             let _ = output_tx.send(bytes.to_vec());
                         }
+                    }
+                    if let Some(stdin_tap) = fake_pty_state.stdin_tap.as_ref() {
+                        let _ = stdin_tap.send(bytes.to_vec());
                     }
                     true
                 },
@@ -224,6 +241,32 @@ impl SharedPtys {
                 .inner
                 .change_signal
                 .wait_timeout(fake_pty_registry, deadline - now)
+                .unwrap();
+            fake_pty_registry = guard;
+        }
+    }
+
+    pub(crate) fn wait_for_change(
+        &self,
+        terminal_id: u32,
+        last_seen: (u16, u16),
+    ) -> Option<(u16, u16)> {
+        let mut fake_pty_registry = self.lock_registry();
+        loop {
+            match fake_pty_registry.fake_pty_states.get(&terminal_id) {
+                None => return None,
+                Some(fake_pty_state) => {
+                    if let Some((cols, rows)) = fake_pty_state.size {
+                        if (cols, rows) != last_seen {
+                            return Some((cols, rows));
+                        }
+                    }
+                },
+            }
+            let (guard, _) = self
+                .inner
+                .change_signal
+                .wait_timeout(fake_pty_registry, Duration::from_millis(200))
                 .unwrap();
             fake_pty_registry = guard;
         }
@@ -302,6 +345,16 @@ impl FakePtyHandle {
         })
     }
 
+    pub fn try_output(&self, bytes: &[u8]) {
+        self.shared_ptys.write_output(self.terminal_id, bytes);
+    }
+
+    pub fn tap_stdin(&self) -> crossbeam::channel::Receiver<Vec<u8>> {
+        let (sender, receiver) = crossbeam::channel::unbounded();
+        self.shared_ptys.set_stdin_tap(self.terminal_id, sender);
+        receiver
+    }
+
     pub fn exit(&self, exit_status: Option<i32>) {
         self.shared_ptys
             .exit_terminal(self.terminal_id, exit_status);
@@ -361,5 +414,10 @@ impl FakePtyHandle {
                 .and_then(|fake_pty_state| fake_pty_state.size)
                 .filter(|(cols, rows)| predicate(*cols, *rows))
         })
+    }
+
+    pub fn wait_for_size_change(&self, last_seen: (u16, u16)) -> Option<(u16, u16)> {
+        self.shared_ptys
+            .wait_for_change(self.terminal_id, last_seen)
     }
 }

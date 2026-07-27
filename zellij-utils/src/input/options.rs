@@ -75,6 +75,37 @@ impl MobileLayoutConfiguration {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ArgEnum)]
+pub enum NestedSessionHandling {
+    #[serde(alias = "ask")]
+    Ask,
+    #[serde(alias = "fullscreen")]
+    Fullscreen,
+    #[serde(alias = "descend")]
+    Descend,
+    #[serde(alias = "never")]
+    Never,
+}
+
+impl Default for NestedSessionHandling {
+    fn default() -> Self {
+        Self::Ask
+    }
+}
+
+impl FromStr for NestedSessionHandling {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Ask" | "ask" => Ok(Self::Ask),
+            "Fullscreen" | "fullscreen" => Ok(Self::Fullscreen),
+            "Descend" | "descend" => Ok(Self::Descend),
+            "Never" | "never" => Ok(Self::Never),
+            _ => Err(format!("No such nested_session_handling: {}", s)),
+        }
+    }
+}
+
 impl Default for OnForceClose {
     fn default() -> Self {
         Self::Detach
@@ -415,6 +446,12 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub mobile_threshold_rows: Option<u16>,
+
+    /// How to handle a nested Zellij session detected inside a pane
+    /// (ask, fullscreen, descend, never)
+    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[serde(default)]
+    pub nested_session_handling: Option<NestedSessionHandling>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -527,6 +564,9 @@ impl Options {
         let mobile_layout = other.mobile_layout.or(self.mobile_layout);
         let mobile_threshold_cols = other.mobile_threshold_cols.or(self.mobile_threshold_cols);
         let mobile_threshold_rows = other.mobile_threshold_rows.or(self.mobile_threshold_rows);
+        let nested_session_handling = other
+            .nested_session_handling
+            .or(self.nested_session_handling);
 
         Options {
             simplified_ui,
@@ -582,6 +622,7 @@ impl Options {
             mobile_layout,
             mobile_threshold_cols,
             mobile_threshold_rows,
+            nested_session_handling,
         }
     }
 
@@ -674,6 +715,9 @@ impl Options {
         let mobile_layout = other.mobile_layout.or(self.mobile_layout);
         let mobile_threshold_cols = other.mobile_threshold_cols.or(self.mobile_threshold_cols);
         let mobile_threshold_rows = other.mobile_threshold_rows.or(self.mobile_threshold_rows);
+        let nested_session_handling = other
+            .nested_session_handling
+            .or(self.nested_session_handling);
 
         Options {
             simplified_ui,
@@ -729,6 +773,7 @@ impl Options {
             mobile_layout,
             mobile_threshold_cols,
             mobile_threshold_rows,
+            nested_session_handling,
         }
     }
 

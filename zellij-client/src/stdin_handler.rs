@@ -97,7 +97,7 @@ pub(crate) fn stdin_loop(
         });
     let mut needs_finalization = false;
     let mut reply_in_progress_since: Option<Instant> = None;
-    loop {
+    'stdin: loop {
         match if needs_finalization {
             stdin_rx.recv_timeout(LONE_ESC_FLUSH_INTERVAL)
         } else {
@@ -132,6 +132,10 @@ pub(crate) fn stdin_loop(
                             let _ = send_input_instructions
                                 .send(InputInstruction::DesktopNotificationResponse(payload));
                         }
+                        for payload_bytes in parse_output.nested_frames {
+                            let _ = send_input_instructions
+                                .send(InputInstruction::NestedSessionFrameFromHost(payload_bytes));
+                        }
                         let residue = parse_output.residue;
                         if residue.is_empty() {
                             schedule_finalization(
@@ -153,13 +157,16 @@ pub(crate) fn stdin_loop(
                             // continuation completes the sequence.
                             match kitty_parser.feed(&residue) {
                                 KittyParseOutcome::Complete(key_with_modifier) => {
-                                    send_input_instructions
+                                    if send_input_instructions
                                         .send(InputInstruction::KeyWithModifierEvent(
                                             key_with_modifier,
                                             current_buffer.drain(..).collect(),
                                             true,
                                         ))
-                                        .unwrap();
+                                        .is_err()
+                                    {
+                                        break 'stdin;
+                                    }
                                     schedule_finalization(
                                         &stdin_ansi_parser,
                                         false,
@@ -196,9 +203,12 @@ pub(crate) fn stdin_loop(
                         for (input_event, consumed) in events.into_iter() {
                             let take = consumed.min(current_buffer.len());
                             let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
-                            send_input_instructions
+                            if send_input_instructions
                                 .send(InputInstruction::KeyEvent(input_event, raw_bytes))
-                                .unwrap();
+                                .is_err()
+                            {
+                                break 'stdin;
+                            }
                         }
 
                         schedule_finalization(
@@ -317,12 +327,22 @@ fn build_startup_query_string() -> String {
     // <ESC>]11;?<ESC>\ => get background color
     // <ESC>]10;?<ESC>\ => get foreground color
     // <ESC>[?2026$p => get synchronised output mode
-    String::from("\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p")
+    format!(
+        "{}\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p",
+        PIXEL_SIZE_QUERY
+    )
 }
+
+pub(crate) const PIXEL_SIZE_QUERY: &str = "\u{1b}[14t\u{1b}[16t";
 
 #[cfg(test)]
 mod tests {
-    use super::build_startup_query_string;
+    use super::{build_startup_query_string, PIXEL_SIZE_QUERY};
+
+    #[test]
+    fn pixel_size_query_probes_text_area_and_character_cell() {
+        assert_eq!(PIXEL_SIZE_QUERY, "\u{1b}[14t\u{1b}[16t");
+    }
 
     #[test]
     fn startup_query_has_no_palette_register_loop() {

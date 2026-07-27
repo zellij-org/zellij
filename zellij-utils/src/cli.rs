@@ -904,6 +904,18 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         pane_id: Option<String>,
     },
+    #[clap(
+        about = "Toggle between fullscreen over the entire display (including the UI bars) and normal layout"
+    )]
+    ToggleNoUiFullscreen {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)"
+        )]
+        pane_id: Option<String>,
+    },
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
     SetPaneFrameStyle {

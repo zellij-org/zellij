@@ -22,6 +22,7 @@ use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{Palette, PaletteColor, Styling},
     input::mouse::{MouseEvent, MouseEventType},
+    nested_session::{self, NestedSessionMessage},
     pane_size::SizeInPixels,
     position::Position,
 };
@@ -652,7 +653,9 @@ pub struct Grid {
     /// Zellij should forward to the host terminal; the host's reply is
     /// later routed back to this pane's pty.
     pub pending_forwarded_queries: Vec<crate::host_query::HostQuery>,
+    pub pending_nested_session_messages: Vec<NestedSessionMessage>,
     ui_component_bytes: Option<Vec<u8>>,
+    nested_frame_bytes: Option<Vec<u8>>,
     style: Style,
     debug: bool,
     arrow_fonts: bool,
@@ -971,7 +974,9 @@ impl Grid {
             pending_osc7_cwd: None,
             pending_desktop_notifications: Vec::new(),
             pending_forwarded_queries: Vec::new(),
+            pending_nested_session_messages: Vec::new(),
             ui_component_bytes: None,
+            nested_frame_bytes: None,
             style,
             debug,
             arrow_fonts,
@@ -3508,6 +3513,12 @@ impl Perform for Grid {
         } else if c == 'z' {
             // UI-component (Zellij internal)
             self.ui_component_bytes = Some(vec![]);
+        } else if c == 'n'
+            && intermediates.is_empty()
+            && params.len() == 1
+            && params.iter().next() == Some(&[nested_session::NESTED_DCS_PARAM][..])
+        {
+            self.nested_frame_bytes = Some(vec![]);
         }
     }
 
@@ -3519,6 +3530,8 @@ impl Perform for Grid {
             self.should_render = false;
         } else if let Some(ui_component_bytes) = self.ui_component_bytes.as_mut() {
             ui_component_bytes.push(byte);
+        } else if let Some(nested_frame_bytes) = self.nested_frame_bytes.as_mut() {
+            nested_frame_bytes.push(byte);
         }
     }
 
@@ -3532,6 +3545,12 @@ impl Perform for Grid {
             UiComponentParser::new(self, style, arrow_fonts)
                 .parse(component_bytes.collect())
                 .non_fatal();
+        } else if let Some(nested_frame_bytes) = self.nested_frame_bytes.take() {
+            if let Some(message) = nested_session::decode_base64(&nested_frame_bytes)
+                .and_then(|payload_bytes| nested_session::decode_payload(&payload_bytes))
+            {
+                self.pending_nested_session_messages.push(message);
+            }
         }
         self.mark_for_rerender();
     }

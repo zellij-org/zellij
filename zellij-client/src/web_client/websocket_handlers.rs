@@ -99,6 +99,9 @@ async fn handle_ws_control(
             WebClientToWebServerControlMessagePayload::SoftKeyboardVisibilityChanged {
                 visible,
             } => ClientToServerMsg::SoftKeyboardVisibilityChanged { visible },
+            WebClientToWebServerControlMessagePayload::NestedSessionFrameFromHost {
+                payload_bytes,
+            } => ClientToServerMsg::NestedSessionFrameFromHost { payload_bytes },
         };
 
         let _ = client_connection.send_to_server(client_msg);

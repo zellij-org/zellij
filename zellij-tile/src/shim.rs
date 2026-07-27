@@ -1292,6 +1292,20 @@ pub fn toggle_focus_fullscreen() {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn toggle_focus_no_ui_fullscreen() {
+    let plugin_command = PluginCommand::ToggleFocusNoUiFullscreen;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn focus_host_session() {
+    let plugin_command = PluginCommand::FocusHostSession;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Toggle the UI pane frames on or off
 pub fn toggle_pane_frames() {
     let plugin_command = PluginCommand::TogglePaneFrames;

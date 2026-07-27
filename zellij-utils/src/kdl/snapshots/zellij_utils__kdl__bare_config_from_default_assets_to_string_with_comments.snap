@@ -15,6 +15,7 @@ keybinds clear-defaults=true {
         bind "d" { NewPane "down"; SwitchToMode "normal"; }
         bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "normal"; }
         bind "f" { ToggleFocusFullscreen; SwitchToMode "normal"; }
+        bind "Shift f" { ToggleFocusNoUiFullscreen; SwitchToMode "normal"; }
         bind "h" { MoveFocus "left"; }
         bind "i" { TogglePanePinned; SwitchToMode "normal"; }
         bind "j" { MoveFocus "down"; }
@@ -100,6 +101,8 @@ keybinds clear-defaults=true {
         bind "w" { SearchToggleOption "Wrap"; }
     }
     session {
+        bind "[" { FocusGuestSession; SwitchToMode "normal"; }
+        bind "]" { FocusHostSession; SwitchToMode "normal"; }
         bind "a" {
             LaunchOrFocusPlugin "zellij:about" {
                 floating true
@@ -114,6 +117,7 @@ keybinds clear-defaults=true {
             }
             SwitchToMode "normal"
         }
+        bind "f" { ToggleHostFullscreen; SwitchToMode "normal"; }
         bind "l" {
             LaunchOrFocusPlugin "zellij:layout-manager" {
                 floating true
@@ -615,3 +619,12 @@ web_client {
 // Row breakpoint for mobile_layout (web/always). 0 = always match.
 // Default: 30
 // mobile_threshold_rows 30
+ 
+// How to handle a nested Zellij session detected inside a pane.
+// Options:
+//   - "ask" (Default — prompt with a modal)
+//   - "fullscreen" (always zoom into the nested session)
+//   - "descend" (always control the nested session on focus)
+//   - "never" (never prompt or descend; do it manually)
+// 
+// nested_session_handling "ask"

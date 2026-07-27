@@ -1225,3 +1225,107 @@ fn unsolicited_theme_notification_classifies_without_outstanding_query() {
         other => panic!("expected HostTerminalThemeChanged, got {:?}", other),
     }
 }
+
+fn announce_frame_and_payload() -> (Vec<u8>, Vec<u8>) {
+    use zellij_utils::nested_session::{
+        encode_frame, encode_payload, NestedSessionCapability, NestedSessionMessage,
+    };
+    let message = NestedSessionMessage::Announce {
+        session_name: "guest-session".to_owned(),
+        capabilities: vec![NestedSessionCapability::NestedControl],
+    };
+    (encode_frame(&message), encode_payload(&message))
+}
+
+#[test]
+fn nested_frame_in_one_chunk_is_extracted_with_no_residue() {
+    let (frame, payload) = announce_frame_and_payload();
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(&frame);
+    assert_eq!(out.nested_frames, vec![payload]);
+    assert!(out.residue.is_empty(), "residue: {:?}", out.residue);
+    assert_eq!(p.pending_partial(), PendingPartial::None);
+}
+
+#[test]
+fn nested_frame_split_at_every_boundary_is_extracted() {
+    let (frame, payload) = announce_frame_and_payload();
+    for split_at in 1..frame.len() {
+        let mut p = StdinAnsiParser::new();
+        let first = p.feed(&frame[..split_at]);
+        let second = p.feed(&frame[split_at..]);
+        let mut extracted = first.nested_frames.clone();
+        extracted.extend(second.nested_frames.clone());
+        assert_eq!(extracted, vec![payload.clone()], "split at {}", split_at);
+        assert!(
+            first.residue.is_empty() && second.residue.is_empty(),
+            "split at {}: residue {:?} / {:?}",
+            split_at,
+            first.residue,
+            second.residue
+        );
+    }
+}
+
+#[test]
+fn keystrokes_around_nested_frame_survive_as_residue() {
+    let (frame, payload) = announce_frame_and_payload();
+    let mut chunk = b"abc".to_vec();
+    chunk.extend_from_slice(&frame);
+    chunk.extend_from_slice(b"def");
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(&chunk);
+    assert_eq!(out.nested_frames, vec![payload]);
+    assert_eq!(out.residue, b"abcdef".to_vec());
+}
+
+#[test]
+fn nested_frame_with_garbage_base64_is_stripped_without_payload() {
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(b"\x1bP26661n!!!not-base64!!!\x1b\\");
+    assert!(out.nested_frames.is_empty());
+    assert!(out.residue.is_empty(), "residue: {:?}", out.residue);
+}
+
+#[test]
+fn foreign_dcs_passes_through_untouched() {
+    let foreign_dcs = b"\x1bP1$qm\x1b\\q".to_vec();
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(&foreign_dcs);
+    assert!(out.nested_frames.is_empty());
+    assert_eq!(out.residue, foreign_dcs);
+}
+
+#[test]
+fn lone_esc_claimed_by_frame_prepass_reroutes_on_next_chunk() {
+    let mut p = StdinAnsiParser::new();
+    let first = p.feed(b"\x1b");
+    assert!(first.residue.is_empty());
+    assert!(first.has_partial_state);
+    assert_eq!(p.pending_partial(), PendingPartial::LoneEsc);
+    let second = p.feed(b"abc");
+    assert_eq!(second.residue, b"\x1babc".to_vec());
+    assert_eq!(p.pending_partial(), PendingPartial::None);
+}
+
+#[test]
+fn unterminated_frame_header_prefix_is_released_by_force_drain() {
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(b"\x1bP26");
+    assert!(out.residue.is_empty());
+    assert!(out.has_partial_state);
+    assert_eq!(p.pending_partial(), PendingPartial::ReplyInProgress);
+    assert_eq!(p.finalize_force(), b"\x1bP26".to_vec());
+    assert_eq!(p.pending_partial(), PendingPartial::None);
+}
+
+#[test]
+fn two_nested_frames_in_one_chunk_are_both_extracted() {
+    let (frame, payload) = announce_frame_and_payload();
+    let mut chunk = frame.clone();
+    chunk.extend_from_slice(&frame);
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(&chunk);
+    assert_eq!(out.nested_frames, vec![payload.clone(), payload]);
+    assert!(out.residue.is_empty());
+}

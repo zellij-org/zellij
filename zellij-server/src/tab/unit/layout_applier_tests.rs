@@ -189,6 +189,7 @@ fn create_layout_applier_fixtures(
     let stacked_resize = Rc::new(RefCell::new(false));
     let stacked_pane_list = Rc::new(RefCell::new(false));
     let reserved_top_rows = Rc::new(RefCell::new(HashMap::new()));
+    let fullscreen_covers_ui = Rc::new(RefCell::new(false));
     let session_is_mirrored = true;
     let draw_pane_frames = PaneFrameStyle::Full;
     let default_mode_info = ModeInfo::default();
@@ -203,6 +204,7 @@ fn create_layout_applier_fixtures(
         stacked_resize,
         stacked_pane_list,
         reserved_top_rows,
+        fullscreen_covers_ui.clone(),
         session_is_mirrored,
         draw_pane_frames,
         default_mode_info.clone(),
@@ -219,6 +221,8 @@ fn create_layout_applier_fixtures(
         connected_clients.clone(),
         mode_info,
         character_cell_size.clone(),
+        fullscreen_covers_ui,
+        draw_pane_frames,
         session_is_mirrored,
         default_mode_info,
         style.clone(),
@@ -323,6 +327,7 @@ fn create_layout_applier_fixtures_with_receivers(
     let stacked_resize = Rc::new(RefCell::new(false));
     let stacked_pane_list = Rc::new(RefCell::new(false));
     let reserved_top_rows = Rc::new(RefCell::new(HashMap::new()));
+    let fullscreen_covers_ui = Rc::new(RefCell::new(false));
     let session_is_mirrored = true;
     let draw_pane_frames = PaneFrameStyle::Full;
     let default_mode_info = ModeInfo::default();
@@ -337,6 +342,7 @@ fn create_layout_applier_fixtures_with_receivers(
         stacked_resize,
         stacked_pane_list,
         reserved_top_rows,
+        fullscreen_covers_ui.clone(),
         session_is_mirrored,
         draw_pane_frames,
         default_mode_info.clone(),
@@ -353,6 +359,8 @@ fn create_layout_applier_fixtures_with_receivers(
         connected_clients.clone(),
         mode_info,
         character_cell_size.clone(),
+        fullscreen_covers_ui,
+        draw_pane_frames,
         session_is_mirrored,
         default_mode_info,
         style.clone(),

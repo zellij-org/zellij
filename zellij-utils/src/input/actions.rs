@@ -216,6 +216,7 @@ pub enum Action {
     HalfPageScrollDown,
     /// Toggle between fullscreen focus pane and normal layout.
     ToggleFocusFullscreen,
+    ToggleFocusNoUiFullscreen,
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
     SetPaneFrameStyle(PaneFrameStyle),
@@ -508,6 +509,9 @@ pub enum Action {
     BreakPane,
     BreakPaneRight,
     BreakPaneLeft,
+    FocusHostSession,
+    FocusGuestSession,
+    ToggleHostFullscreen,
     RenameSession {
         name: String,
     },
@@ -621,6 +625,9 @@ pub enum Action {
         ansi: bool,
     },
     ToggleFocusFullscreenByPaneId {
+        pane_id: PaneId,
+    },
+    ToggleFocusNoUiFullscreenByPaneId {
         pane_id: PaneId,
     },
     TogglePaneEmbedOrFloatingByPaneId {
@@ -1017,6 +1024,16 @@ impl Action {
                     Ok(vec![Action::ToggleFocusFullscreenByPaneId { pane_id }])
                 },
                 None => Ok(vec![Action::ToggleFocusFullscreen]),
+            },
+            CliAction::ToggleNoUiFullscreen { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::ToggleFocusNoUiFullscreenByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::ToggleFocusNoUiFullscreen]),
             },
             CliAction::TogglePaneFrames => Ok(vec![Action::TogglePaneFrames]),
             CliAction::SetPaneFrameStyle { style } => Ok(vec![Action::SetPaneFrameStyle(style)]),
@@ -2883,6 +2900,33 @@ mod tests {
         let actions = result.unwrap();
         assert_eq!(actions.len(), 1);
         assert!(matches!(actions[0], Action::ToggleFocusFullscreen));
+    }
+
+    #[test]
+    fn test_toggle_no_ui_fullscreen_with_pane_id() {
+        let cli_action = CliAction::ToggleNoUiFullscreen {
+            pane_id: Some("terminal_16".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::ToggleFocusNoUiFullscreenByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(16)));
+            },
+            _ => panic!("Expected ToggleFocusNoUiFullscreenByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_toggle_no_ui_fullscreen_without_pane_id() {
+        let cli_action = CliAction::ToggleNoUiFullscreen { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::ToggleFocusNoUiFullscreen));
     }
 
     // 15. TogglePaneEmbedOrFloating

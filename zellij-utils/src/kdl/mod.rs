@@ -49,6 +49,9 @@ macro_rules! parse_kdl_action_arguments {
                 "FocusNextPane" => Ok(Action::FocusNextPane),
                 "FocusPreviousPane" => Ok(Action::FocusPreviousPane),
                 "FocusLastPane" => Ok(Action::FocusLastPane),
+                "FocusHostSession" => Ok(Action::FocusHostSession),
+                "FocusGuestSession" => Ok(Action::FocusGuestSession),
+                "ToggleHostFullscreen" => Ok(Action::ToggleHostFullscreen),
                 "SwitchFocus" => Ok(Action::SwitchFocus),
                 "EditScrollback" => Ok(Action::EditScrollback { ansi: false }),
                 "ScrollUp" => Ok(Action::ScrollUp),
@@ -60,6 +63,7 @@ macro_rules! parse_kdl_action_arguments {
                 "HalfPageScrollUp" => Ok(Action::HalfPageScrollUp),
                 "HalfPageScrollDown" => Ok(Action::HalfPageScrollDown),
                 "ToggleFocusFullscreen" => Ok(Action::ToggleFocusFullscreen),
+                "ToggleFocusNoUiFullscreen" => Ok(Action::ToggleFocusNoUiFullscreen),
                 "TogglePaneFrames" => Ok(Action::TogglePaneFrames),
                 "ToggleActiveSyncTab" => Ok(Action::ToggleActiveSyncTab),
                 "TogglePaneEmbedOrFloating" => Ok(Action::TogglePaneEmbedOrFloating),
@@ -744,6 +748,7 @@ impl Action {
             Action::HalfPageScrollUp => Some(KdlNode::new("HalfPageScrollUp")),
             Action::HalfPageScrollDown => Some(KdlNode::new("HalfPageScrollDown")),
             Action::ToggleFocusFullscreen => Some(KdlNode::new("ToggleFocusFullscreen")),
+            Action::ToggleFocusNoUiFullscreen => Some(KdlNode::new("ToggleFocusNoUiFullscreen")),
             Action::TogglePaneFrames => Some(KdlNode::new("TogglePaneFrames")),
             Action::SetPaneFrameStyle(style) => {
                 let mut node = KdlNode::new("SetPaneFrameStyle");
@@ -1350,6 +1355,9 @@ impl Action {
             Action::SetDarkTheme => Some(KdlNode::new("SetDarkTheme")),
             Action::SetLightTheme => Some(KdlNode::new("SetLightTheme")),
             Action::ToggleTheme => Some(KdlNode::new("ToggleTheme")),
+            Action::FocusHostSession => Some(KdlNode::new("FocusHostSession")),
+            Action::FocusGuestSession => Some(KdlNode::new("FocusGuestSession")),
+            Action::ToggleHostFullscreen => Some(KdlNode::new("ToggleHostFullscreen")),
             _ => None,
         }
     }
@@ -1541,6 +1549,15 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "FocusLastPane" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
+            "FocusHostSession" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "FocusGuestSession" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "ToggleHostFullscreen" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
             "SwitchFocus" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "EditScrollback" => {
                 let ansi = crate::kdl_get_bool_property_or_child_value!(kdl_action, "ansi")
@@ -1568,6 +1585,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "ToggleFocusFullscreen" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "ToggleFocusNoUiFullscreen" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "TogglePaneFrames" => {
@@ -2926,6 +2946,19 @@ impl Options {
                 },
                 None => None,
             };
+        let nested_session_handling = match kdl_property_first_arg_as_string_or_error!(
+            kdl_options,
+            "nested_session_handling"
+        ) {
+            Some((value, entry)) => {
+                use crate::input::options::NestedSessionHandling;
+                match value.parse::<NestedSessionHandling>() {
+                    Ok(v) => Some(v),
+                    Err(e) => return Err(kdl_parsing_error!(e, entry)),
+                }
+            },
+            None => None,
+        };
 
         Ok(Options {
             simplified_ui,
@@ -2981,6 +3014,7 @@ impl Options {
             mobile_layout,
             mobile_threshold_cols,
             mobile_threshold_rows,
+            nested_session_handling,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -4505,6 +4539,44 @@ impl Options {
             None
         }
     }
+    fn nested_session_handling_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        use crate::input::options::NestedSessionHandling;
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// How to handle a nested Zellij session detected inside a pane.",
+            "// Options:",
+            "//   - \"ask\" (Default — prompt with a modal)",
+            "//   - \"fullscreen\" (always zoom into the nested session)",
+            "//   - \"descend\" (always control the nested session on focus)",
+            "//   - \"never\" (never prompt or descend; do it manually)",
+            "// ",
+        );
+        let create_node = |value: NestedSessionHandling| -> KdlNode {
+            let mut node = KdlNode::new("nested_session_handling");
+            let s = match value {
+                NestedSessionHandling::Ask => "ask",
+                NestedSessionHandling::Fullscreen => "fullscreen",
+                NestedSessionHandling::Descend => "descend",
+                NestedSessionHandling::Never => "never",
+            };
+            node.push(KdlValue::String(s.to_string()));
+            node
+        };
+        if let Some(value) = self.nested_session_handling {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(NestedSessionHandling::Ask);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn client_async_worker_tasks_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = r#"
 // Number of async worker tasks to spawn per active client.
@@ -4700,6 +4772,9 @@ impl Options {
         }
         if let Some(mobile_threshold_rows) = self.mobile_threshold_rows_to_kdl(add_comments) {
             nodes.push(mobile_threshold_rows);
+        }
+        if let Some(nested_session_handling) = self.nested_session_handling_to_kdl(add_comments) {
+            nodes.push(nested_session_handling);
         }
         nodes
     }
@@ -7575,6 +7650,38 @@ fn mobile_layout_kdl_round_trip_for_every_variant() {
         assert_eq!(parsed.mobile_layout, Some(expected), "case: {value}");
         assert_eq!(parsed.mobile_threshold_cols, Some(cols), "case: {value}");
         assert_eq!(parsed.mobile_threshold_rows, Some(rows), "case: {value}");
+
+        let mut serialized = Options::to_kdl(&parsed, false);
+        let mut fake_document = KdlDocument::new();
+        fake_document.nodes_mut().append(&mut serialized);
+        let reparsed =
+            Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+        assert_eq!(parsed, reparsed, "round-trip mismatch for {value}");
+    }
+}
+
+#[test]
+fn nested_session_handling_kdl_round_trip_for_every_variant() {
+    use crate::input::options::NestedSessionHandling;
+    let cases = [
+        ("ask", NestedSessionHandling::Ask),
+        ("fullscreen", NestedSessionHandling::Fullscreen),
+        ("descend", NestedSessionHandling::Descend),
+        ("never", NestedSessionHandling::Never),
+    ];
+    for (value, expected) in cases {
+        let fake_config = format!(
+            r##"
+                nested_session_handling "{value}"
+            "##
+        );
+        let document: KdlDocument = fake_config.parse().unwrap();
+        let parsed = Options::from_kdl(&document).unwrap();
+        assert_eq!(
+            parsed.nested_session_handling,
+            Some(expected),
+            "case: {value}"
+        );
 
         let mut serialized = Options::to_kdl(&parsed, false);
         let mut fake_document = KdlDocument::new();
