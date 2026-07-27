@@ -1479,6 +1479,8 @@ mod tests {
                 stack_list_entry: None,
                 blank_title: false,
                 mouse_scroll_resize,
+                dimmed: false,
+                guest_choice_indicator: None,
             },
         )
     }

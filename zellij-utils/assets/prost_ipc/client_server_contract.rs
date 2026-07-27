@@ -1993,7 +1993,7 @@ pub struct Options {
     pub show_release_notes: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="33")]
     pub advanced_mouse_actions: ::core::option::Option<bool>,
-    #[prost(bool, optional, tag="53")]
+    #[prost(bool, optional, tag="54")]
     pub mouse_scroll_resize: ::core::option::Option<bool>,
     #[prost(string, optional, tag="34")]
     pub web_server_ip: ::core::option::Option<::prost::alloc::string::String>,
