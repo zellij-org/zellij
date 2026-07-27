@@ -2,6 +2,14 @@ mod pane_resizer;
 mod stacked_panes;
 mod tiled_pane_grid;
 
+#[cfg(test)]
+#[path = "./unit/mock_pane.rs"]
+mod pane_resizer_test_mock;
+
+#[cfg(test)]
+#[path = "./unit/pane_resizer_tests.rs"]
+mod pane_resizer_tests;
+
 use crate::resize_pty;
 use tiled_pane_grid::{split, TiledPaneGrid, RESIZE_PERCENT};
 

@@ -1159,7 +1159,7 @@ pub fn resize_while_fullscreen_updates_hidden_pane_geometry() {
     // When a host-terminal resize arrives while a pane is fullscreen, every
     // hidden pane's geometry must be updated to match the new display area.
     // Otherwise their `inner` cell counts stay sized for the old display and
-    // toggling fullscreen off hands the cassowary solver coordinates that
+    // toggling fullscreen off hands the layout solver coordinates that
     // fall outside the viewport, producing layout-solve failures and a
     // corrupt render.
     //
@@ -1197,7 +1197,7 @@ pub fn resize_while_fullscreen_updates_hidden_pane_geometry() {
 
     // Collect the panes hidden by the fullscreen state and verify each one
     // already fits the new display area; if any extends beyond it, exiting
-    // fullscreen would hand the cassowary solver an unsatisfiable layout.
+    // fullscreen would hand the layout solver an unsatisfiable layout.
     let hidden_pane_ids: Vec<PaneId> = tab
         .tiled_panes
         .panes
