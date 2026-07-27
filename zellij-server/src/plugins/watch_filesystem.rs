@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use notify_debouncer_full::{
     new_debouncer,
-    notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher},
-    DebounceEventResult, Debouncer, FileIdMap,
+    notify::{EventKind, RecommendedWatcher, RecursiveMode},
+    DebounceEventResult, Debouncer, RecommendedCache,
 };
 use zellij_utils::{data::Event, errors::prelude::Result};
 
@@ -17,7 +17,7 @@ const DEBOUNCE_DURATION_MS: u64 = 400;
 pub fn watch_filesystem(
     senders: ThreadSenders,
     zellij_cwd: &Path,
-) -> Result<Debouncer<RecommendedWatcher, FileIdMap>> {
+) -> Result<Debouncer<RecommendedWatcher, RecommendedCache>> {
     let path_prefix_in_plugins = PathBuf::from("/host");
     let current_dir = PathBuf::from(zellij_cwd);
     let mut debouncer = new_debouncer(
@@ -128,8 +128,6 @@ pub fn watch_filesystem(
         },
     )?;
 
-    debouncer
-        .watcher()
-        .watch(zellij_cwd, RecursiveMode::Recursive)?;
+    debouncer.watch(zellij_cwd, RecursiveMode::Recursive)?;
     Ok(debouncer)
 }

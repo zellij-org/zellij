@@ -55,7 +55,7 @@ features = ["std"]
 close_fds = "0.3.2"
 daemonize = { workspace = true }
 libc = { workspace = true }
-nix = { workspace = true }
+nix = { workspace = true, features = ["fs", "process", "signal", "term"] }
 signal-hook = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]

@@ -30,9 +30,6 @@ suggest = { workspace = true }
 thiserror = { workspace = true }
 isahc = { workspace = true }
 
-[target.'cfg(unix)'.dependencies]
-nix = { workspace = true }
-
 [target.'cfg(windows)'.build-dependencies]
 embed-resource = "3"
 
@@ -92,10 +89,10 @@ kdl = { version = "4.5.0", default-features = false, features = ["span"] }
 lazy_static = { version = "1.4.0", default-features = false }
 libc = { version = "0.2", default-features = false, features = ["std"] }
 log = { version = "0.4.17", default-features = false }
-miette = { version = "5.7.0", default-features = false, features = ["fancy"] }
-nix = { version = "0.23.1", default-features = false }
-notify-debouncer-full = { version = "0.3.1", default-features = false }
-notify = { version = "6.1.1", default-features = false, features = ["macos_kqueue"] }
+miette = { version = "7.6", default-features = false, features = ["derive", "fancy"] }
+nix = { version = "0.30", default-features = false }
+notify-debouncer-full = { version = "0.5", default-features = false }
+notify = { version = "8.2", default-features = false, features = ["macos_kqueue"] }
 num_cpus = { version = "1.16", default-features = false }
 prost = { version = "0.12.6", default-features = false, features = ["std", "prost-derive"] }
 regex = { version = "1.5.5", default-features = false, features = ["perf", "std", "unicode-perl"] }
