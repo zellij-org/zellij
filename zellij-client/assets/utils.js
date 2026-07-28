@@ -31,6 +31,26 @@ export function getBaseUrl() {
 }
 
 /**
+ * Check whether a target URL points at the page already being displayed,
+ * ignoring the query string and fragment.
+ * @param {string} target absolute or relative URL
+ * @returns {boolean} true if navigating there would only reload the page
+ */
+export function isCurrentLocation(target) {
+    try {
+        const targetUrl = new URL(target, window.location.href);
+        const stripTrailingSlash = (path) => path.replace(/\/$/, "");
+        return (
+            targetUrl.origin === window.location.origin &&
+            stripTrailingSlash(targetUrl.pathname) ===
+                stripTrailingSlash(window.location.pathname)
+        );
+    } catch (_) {
+        return false;
+    }
+}
+
+/**
  * Detect a mobile viewport (coarse pointer + small width, or a mobile UA).
  * @returns {boolean} true if the current viewport is considered mobile
  */

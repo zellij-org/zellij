@@ -85,6 +85,8 @@ pub struct ConnectionTable {
     pub client_session_token_hash: HashMap<String, String>,
 }
 
+const MAX_PENDING_CONTROL_MESSAGES: usize = 64;
+
 #[derive(Debug, Clone)]
 pub struct ClientChannels {
     pub os_api: Box<dyn ClientOsApi>,
@@ -92,6 +94,7 @@ pub struct ClientChannels {
     pub terminal_channel_tx: Option<UnboundedSender<String>>,
     terminal_channel_cancellation_token: Option<CancellationToken>,
     pub should_not_reconnect: Arc<AtomicBool>,
+    pending_control_messages: Vec<Message>,
 }
 
 impl ClientChannels {
@@ -102,11 +105,22 @@ impl ClientChannels {
             terminal_channel_tx: None,
             terminal_channel_cancellation_token: None,
             should_not_reconnect: Arc::new(AtomicBool::new(false)),
+            pending_control_messages: Vec::new(),
         }
     }
 
     pub fn add_control_tx(&mut self, control_channel_tx: UnboundedSender<Message>) {
+        for message in self.pending_control_messages.drain(..) {
+            let _ = control_channel_tx.send(message);
+        }
         self.control_channel_tx = Some(control_channel_tx);
+    }
+
+    pub fn queue_control_message(&mut self, message: Message) {
+        if self.pending_control_messages.len() >= MAX_PENDING_CONTROL_MESSAGES {
+            self.pending_control_messages.remove(0);
+        }
+        self.pending_control_messages.push(message);
     }
 
     pub fn add_terminal_tx(&mut self, terminal_channel_tx: UnboundedSender<String>) {

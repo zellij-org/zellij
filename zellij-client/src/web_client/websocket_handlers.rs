@@ -107,10 +107,7 @@ async fn handle_ws_control(
             WebClientToWebServerControlMessagePayload::RequestSessionList => {
                 ClientToServerMsg::RequestSessionList
             },
-            WebClientToWebServerControlMessagePayload::FocusPane {
-                pane_id,
-                is_plugin,
-            } => {
+            WebClientToWebServerControlMessagePayload::FocusPane { pane_id, is_plugin } => {
                 let pane_id = if is_plugin {
                     PaneId::Plugin(pane_id)
                 } else {
@@ -509,10 +506,7 @@ mod tests {
         let parsed: WebClientToWebServerControlMessage =
             serde_json::from_value(raw).expect("parse");
         match parsed.payload {
-            WebClientToWebServerControlMessagePayload::FocusPane {
-                pane_id,
-                is_plugin,
-            } => {
+            WebClientToWebServerControlMessagePayload::FocusPane { pane_id, is_plugin } => {
                 assert_eq!(pane_id, 7);
                 assert!(is_plugin);
             },

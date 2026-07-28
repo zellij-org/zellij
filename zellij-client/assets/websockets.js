@@ -1,5 +1,10 @@
 import { handleReconnection, handleDisconnected, markConnectionEstablished } from "./connection.js";
-import { getBaseUrl, getWebSocketBaseUrl, isMobileViewport } from "./utils.js";
+import {
+    getBaseUrl,
+    getWebSocketBaseUrl,
+    isCurrentLocation,
+    isMobileViewport,
+} from "./utils.js";
 import { setSoftKeyboard } from "./input.js";
 import { applyFontSize } from "./terminal.js";
 
@@ -212,6 +217,14 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             if (sizing.rows !== term.rows || sizing.cols !== term.cols) {
                 term.resize(sizing.cols, sizing.rows);
             }
+            sendSizeUpdate(
+                wsControl,
+                ownWebClientId,
+                term,
+                sizing.rows,
+                sizing.cols,
+                "Settled"
+            );
             return;
         }
         const fitDimensions = fitAddon.proposeDimensions();
@@ -333,7 +346,10 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
         } else if (msg.type === "SwitchedSession") {
             const { new_session_name } = msg;
             const baseUrl = getBaseUrl();
-            window.location.href = `${baseUrl}/${encodeURIComponent(new_session_name)}`;
+            const target = `${baseUrl}/${encodeURIComponent(new_session_name)}`;
+            if (!isCurrentLocation(target)) {
+                window.location.href = target;
+            }
         } else if (msg.type === "SetSoftKeyboard") {
             const { on } = msg;
             setSoftKeyboard(term, !!on);
