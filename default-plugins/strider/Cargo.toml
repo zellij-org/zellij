@@ -8,10 +8,6 @@ license.workspace = true
 
 [dependencies]
 zellij-tile = { path = "../../zellij-tile" }
-pretty-bytes = "0.2.2"
-ignore = "0.4.20"
-fuzzy-matcher = "0.3.7"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-unicode-width = "0.1.8"
-ansi_term = "0.12.1"
+pretty-bytes = { workspace = true }
+fuzzy-matcher = { workspace = true }
+unicode-width = { workspace = true }

@@ -6,7 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-ansi_term = "0.12"
-unicode-width = "0.1.8"
+ansi_term = { workspace = true }
+unicode-width = { workspace = true }
 zellij-tile = { path = "../../zellij-tile" }
 zellij-tile-utils = { path = "../../zellij-tile-utils" }

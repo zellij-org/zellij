@@ -29,7 +29,7 @@ prost = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 shellexpand = { version = "3.0.0", default-features = false, features = ["base-0", "tilde"] }
-strip-ansi-escapes = { version = "0.2.1", default-features = false }
+strip-ansi-escapes = { workspace = true }
 strum = { workspace = true }
 strum_macros = { workspace = true }
 tempfile = { workspace = true }

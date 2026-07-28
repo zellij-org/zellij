@@ -6,5 +6,5 @@ edition.workspace = true
 
 [dependencies]
 zellij-tile = { path = "../../zellij-tile" }
-fuzzy-matcher = "0.3.7"
-unicode-width = "0.1.10"
+fuzzy-matcher = { workspace = true }
+unicode-width = { workspace = true }
