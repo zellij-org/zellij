@@ -4552,6 +4552,10 @@ impl Perform for Grid {
             },
         }
     }
+
+    fn terminated(&self) -> bool {
+        !self.pending_forwarded_queries.is_empty()
+    }
 }
 
 #[derive(Clone)]

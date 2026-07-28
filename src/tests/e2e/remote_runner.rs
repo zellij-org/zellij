@@ -206,9 +206,7 @@ fn read_from_channel(
                             should_sleep = true;
                         },
                         Ok(count) => {
-                            for byte in buf.iter().take(count) {
-                                vte_parser.advance(&mut terminal_output.grid, *byte);
-                            }
+                            vte_parser.advance(&mut terminal_output.grid, &buf[..count]);
                             let current_snapshot = take_snapshot(&mut terminal_output);
                             let mut last_snapshot = last_snapshot.lock().unwrap();
                             *cursor_coordinates.lock().unwrap() = terminal_output

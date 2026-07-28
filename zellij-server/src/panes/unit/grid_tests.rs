@@ -51,9 +51,7 @@ fn vttest1_0() {
     );
     let fixture_name = "vttest1-0";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -84,9 +82,7 @@ fn vttest1_1() {
     );
     let fixture_name = "vttest1-1";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -117,9 +113,7 @@ fn vttest1_2() {
     );
     let fixture_name = "vttest1-2";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -150,9 +144,7 @@ fn vttest1_3() {
     );
     let fixture_name = "vttest1-3";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -183,9 +175,7 @@ fn vttest1_4() {
     );
     let fixture_name = "vttest1-4";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -216,9 +206,7 @@ fn vttest1_5() {
     );
     let fixture_name = "vttest1-5";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -249,9 +237,7 @@ fn vttest2_0() {
     );
     let fixture_name = "vttest2-0";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -282,9 +268,7 @@ fn vttest2_1() {
     );
     let fixture_name = "vttest2-1";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -315,9 +299,7 @@ fn vttest2_2() {
     );
     let fixture_name = "vttest2-2";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -348,9 +330,7 @@ fn vttest2_3() {
     );
     let fixture_name = "vttest2-3";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -381,9 +361,7 @@ fn vttest2_4() {
     );
     let fixture_name = "vttest2-4";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -414,9 +392,7 @@ fn vttest2_5() {
     );
     let fixture_name = "vttest2-5";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -447,9 +423,7 @@ fn vttest2_6() {
     );
     let fixture_name = "vttest2-6";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -480,9 +454,7 @@ fn vttest2_7() {
     );
     let fixture_name = "vttest2-7";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -513,9 +485,7 @@ fn vttest2_8() {
     );
     let fixture_name = "vttest2-8";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -546,9 +516,7 @@ fn vttest2_9() {
     );
     let fixture_name = "vttest2-9";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -579,9 +547,7 @@ fn vttest2_10() {
     );
     let fixture_name = "vttest2-10";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -612,9 +578,7 @@ fn vttest2_11() {
     );
     let fixture_name = "vttest2-11";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -645,9 +609,7 @@ fn vttest2_12() {
     );
     let fixture_name = "vttest2-12";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -678,9 +640,7 @@ fn vttest2_13() {
     );
     let fixture_name = "vttest2-13";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -711,9 +671,7 @@ fn vttest2_14() {
     );
     let fixture_name = "vttest2-14";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -744,9 +702,7 @@ fn vttest3_0() {
     );
     let fixture_name = "vttest3-0";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -777,9 +733,7 @@ fn vttest8_0() {
     );
     let fixture_name = "vttest8-0";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -810,9 +764,7 @@ fn vttest8_1() {
     );
     let fixture_name = "vttest8-1";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -843,9 +795,7 @@ fn vttest8_2() {
     );
     let fixture_name = "vttest8-2";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -876,9 +826,7 @@ fn vttest8_3() {
     );
     let fixture_name = "vttest8-3";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -909,9 +857,7 @@ fn vttest8_4() {
     );
     let fixture_name = "vttest8-4";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -942,9 +888,7 @@ fn vttest8_5() {
     );
     let fixture_name = "vttest8-5";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -975,9 +919,7 @@ fn csi_b() {
     );
     let fixture_name = "csi-b";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1008,9 +950,7 @@ fn csi_capital_i() {
     );
     let fixture_name = "csi-capital-i";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1041,9 +981,7 @@ fn csi_capital_z() {
     );
     let fixture_name = "csi-capital-z";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1074,9 +1012,7 @@ fn terminal_reports() {
     );
     let fixture_name = "terminal_reports";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid.pending_messages_to_pty));
 }
 
@@ -1107,9 +1043,7 @@ fn wide_characters() {
     );
     let fixture_name = "wide_characters";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1140,9 +1074,7 @@ fn wide_characters_line_wrap() {
     );
     let fixture_name = "wide_characters_line_wrap";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1173,9 +1105,7 @@ fn insert_character_in_line_with_wide_character() {
     );
     let fixture_name = "wide_characters_middle_line_insert";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1206,9 +1136,7 @@ fn delete_char_in_middle_of_line_with_widechar() {
     );
     let fixture_name = "wide-chars-delete-middle";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1239,9 +1167,7 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
     );
     let fixture_name = "wide-chars-delete-middle-after-multi";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1272,9 +1198,7 @@ fn fish_wide_characters_override_clock() {
     );
     let fixture_name = "fish_wide_characters_override_clock";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1305,9 +1229,7 @@ fn bash_delete_wide_characters() {
     );
     let fixture_name = "bash_delete_wide_characters";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1338,9 +1260,7 @@ fn delete_wide_characters_before_cursor() {
     );
     let fixture_name = "delete_wide_characters_before_cursor";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1371,9 +1291,7 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
     );
     let fixture_name = "delete_wide_characters_before_cursor_when_cursor_is_on_wide_character";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1404,9 +1322,7 @@ fn delete_wide_character_under_cursor() {
     );
     let fixture_name = "delete_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1437,9 +1353,7 @@ fn replace_wide_character_under_cursor() {
     );
     let fixture_name = "replace_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1470,9 +1384,7 @@ fn wrap_wide_characters() {
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1503,9 +1415,7 @@ fn wrap_wide_characters_on_size_change() {
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid.change_size(21, 90);
     assert_snapshot!(format!("{:?}", grid));
 }
@@ -1537,9 +1447,7 @@ fn unwrap_wide_characters_on_size_change() {
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid.change_size(21, 90);
     grid.change_size(21, 93);
     assert_snapshot!(format!("{:?}", grid));
@@ -1572,9 +1480,7 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
     );
     let fixture_name = "wide_characters_line_middle";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1605,9 +1511,7 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
     );
     let fixture_name = "wide_characters_line_end";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1638,9 +1542,7 @@ fn copy_selected_text_from_viewport() {
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
 
     grid.start_selection(&Position::new(23, 6));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
@@ -1679,9 +1581,7 @@ fn copy_wrapped_selected_text_from_viewport() {
     );
     let fixture_name = "grid_copy_wrapped";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
 
     grid.start_selection(&Position::new(5, 0));
     grid.end_selection(&Position::new(8, 42));
@@ -1719,9 +1619,7 @@ fn copy_selected_text_from_lines_above() {
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
 
     grid.start_selection(&Position::new(-2, 10));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
@@ -1760,9 +1658,7 @@ fn copy_selected_text_from_lines_below() {
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
 
     grid.move_viewport_up(40);
 
@@ -1809,9 +1705,7 @@ fn run_bandwhich_from_fish_shell() {
     );
     let fixture_name = "fish_and_bandwhich";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1842,9 +1736,7 @@ fn fish_tab_completion_options() {
     );
     let fixture_name = "fish_tab_completion_options";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1881,9 +1773,7 @@ pub fn fish_select_tab_completion_options() {
     );
     let fixture_name = "fish_select_tab_completion_options";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1924,9 +1814,7 @@ pub fn vim_scroll_region_down() {
     );
     let fixture_name = "vim_scroll_region_down";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1964,9 +1852,7 @@ pub fn vim_ctrl_d() {
     );
     let fixture_name = "vim_ctrl_d";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2003,9 +1889,7 @@ pub fn vim_ctrl_u() {
     );
     let fixture_name = "vim_ctrl_u";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2036,9 +1920,7 @@ pub fn htop() {
     );
     let fixture_name = "htop";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2069,9 +1951,7 @@ pub fn htop_scrolling() {
     );
     let fixture_name = "htop_scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2102,9 +1982,7 @@ pub fn htop_right_scrolling() {
     );
     let fixture_name = "htop_right_scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2145,9 +2023,7 @@ pub fn vim_overwrite() {
     );
     let fixture_name = "vim_overwrite";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2180,9 +2056,7 @@ pub fn clear_scroll_region() {
     );
     let fixture_name = "clear_scroll_region";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2213,9 +2087,7 @@ pub fn display_tab_characters_properly() {
     );
     let fixture_name = "tab_characters";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2246,9 +2118,7 @@ pub fn neovim_insert_mode() {
     );
     let fixture_name = "nvim_insert";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2279,9 +2149,7 @@ pub fn bash_cursor_linewrap() {
     );
     let fixture_name = "bash_cursor_linewrap";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2314,9 +2182,7 @@ pub fn fish_paste_multiline() {
     );
     let fixture_name = "fish_paste_multiline";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2347,9 +2213,7 @@ pub fn git_log() {
     );
     let fixture_name = "git_log";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2382,9 +2246,7 @@ pub fn git_diff_scrollup() {
     );
     let fixture_name = "git_diff_scrollup";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2415,9 +2277,7 @@ pub fn emacs_longbuf() {
     );
     let fixture_name = "emacs_longbuf_tutorial";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2448,9 +2308,7 @@ pub fn top_and_quit() {
     );
     let fixture_name = "top_and_quit";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2488,9 +2346,7 @@ pub fn exa_plus_omf_theme() {
     );
     let fixture_name = "exa_plus_omf_theme";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2521,9 +2377,7 @@ pub fn scroll_up() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid.scroll_up_one_line();
     assert_snapshot!(format!("{:?}", grid));
 }
@@ -2555,9 +2409,7 @@ pub fn scroll_down() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid.scroll_up_one_line();
     grid.scroll_down_one_line();
     assert_snapshot!(format!("{:?}", grid));
@@ -2590,9 +2442,7 @@ pub fn scroll_up_with_line_wraps() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid.scroll_up_one_line();
     assert_snapshot!(format!("{:?}", grid));
 }
@@ -2624,9 +2474,7 @@ pub fn scroll_down_with_line_wraps() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid.scroll_up_one_line();
     grid.scroll_down_one_line();
     assert_snapshot!(format!("{:?}", grid));
@@ -2659,9 +2507,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     for _ in 0..10 {
         grid.scroll_up_one_line();
     }
@@ -2699,9 +2545,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     for _ in 0..10 {
         grid.scroll_up_one_line();
     }
@@ -2738,9 +2582,7 @@ fn saved_cursor_across_resize() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut parse = |s, grid: &mut Grid| {
-        for b in Vec::from(s) {
-            vte_parser.advance(&mut *grid, b)
-        }
+        vte_parser.advance(&mut *grid, &Vec::from(s));
     };
     let content = "
 \rLine 1 >fill to 20_<
@@ -2787,9 +2629,7 @@ fn saved_cursor_across_resize_longline() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut parse = |s, grid: &mut Grid| {
-        for b in Vec::from(s) {
-            vte_parser.advance(&mut *grid, b)
-        }
+        vte_parser.advance(&mut *grid, &Vec::from(s));
     };
     let content = "
 \rLine 1 >fill \u{1b}[sto 20_<";
@@ -2829,9 +2669,7 @@ fn saved_cursor_across_resize_rewrap() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut parse = |s, grid: &mut Grid| {
-        for b in Vec::from(s) {
-            vte_parser.advance(&mut *grid, b)
-        }
+        vte_parser.advance(&mut *grid, &Vec::from(s));
     };
     let content = "
 \r12345678123456781234567\u{1b}[s812345678"; // 4*8 chars
@@ -2872,9 +2710,7 @@ pub fn move_cursor_below_scroll_region() {
     );
     let fixture_name = "move_cursor_below_scroll_region";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2905,9 +2741,7 @@ pub fn insert_wide_characters_in_existing_line() {
     );
     let fixture_name = "chinese_characters_line_middle";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2944,9 +2778,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
     );
     let fixture_name = "scroll_region_full_screen";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid.scroll_up_one_line();
     grid.scroll_up_one_line();
     grid.scroll_up_one_line();
@@ -2980,9 +2812,7 @@ pub fn ring_bell() {
     );
     let fixture_name = "ring_bell";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert!(grid.ring_bell);
 }
 
@@ -3013,9 +2843,7 @@ pub fn alternate_screen_change_size() {
     );
     let fixture_name = "alternate_screen_change_size";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     // no scrollback in alternate screen
     assert_eq!(grid.scrollback_position_and_length(), (0, 0));
     grid.change_size(10, 10);
@@ -3050,9 +2878,7 @@ pub fn fzf_fullscreen() {
     );
     let fixture_name = "fzf_fullscreen";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3087,9 +2913,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
     );
     let fixture_name = "replace_multiple_wide_characters";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3124,9 +2948,7 @@ pub fn replace_non_wide_characters_with_wide_characters() {
     );
     let fixture_name = "replace_non_wide_characters_with_wide_characters";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3157,9 +2979,7 @@ pub fn scroll_down_ansi() {
     );
     let fixture_name = "scroll_down";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3189,9 +3009,7 @@ pub fn ansi_capital_t() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "foo\u{1b}[14Tbar".as_bytes();
-    for byte in content {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3221,9 +3039,7 @@ pub fn ansi_capital_s() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nfoo\u{1b}[14Sbar".as_bytes();
-    for byte in content {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3257,9 +3073,7 @@ fn terminal_pixel_size_reports() {
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     // CSI 14t and CSI 16t are forwarded to the host; Zellij no longer
     // synthesises local replies from character_cell_size for these.
     assert!(grid.pending_messages_to_pty.is_empty());
@@ -3300,9 +3114,7 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     // Forwarding is independent of character_cell_size availability —
     // the host terminal is authoritative for these queries regardless
     // of what Zellij knows locally.
@@ -3343,9 +3155,7 @@ pub fn ansi_csi_at_sign() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "foo\u{1b}[2D\u{1b}[2@".as_bytes();
-    for byte in content {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3379,9 +3189,7 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
-    for byte in pane_content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &pane_content);
     for _ in 0..10_051 {
         // scrollbuffer limit + viewport height
         grid.add_canonical_line();
@@ -3424,9 +3232,7 @@ pub fn sixel_images_are_reaped_when_resetting() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
-    for byte in pane_content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &pane_content);
     grid.reset_terminal_state();
     let _ = grid.read_changes(0, 0); // we do this because this is where the images are reaped
     assert_eq!(
@@ -3467,20 +3273,14 @@ pub fn sixel_image_in_alternate_buffer() {
     );
 
     let move_to_alternate_screen = "\u{1b}[?1049h";
-    for byte in move_to_alternate_screen.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, move_to_alternate_screen.as_bytes());
 
     let pane_content = read_fixture("sixel-image-500px.six");
-    for byte in pane_content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &pane_content);
     assert_snapshot!(format!("{:?}", grid)); // should include the image
                                              //
     let move_away_from_alternate_screen = "\u{1b}[?1049l";
-    for byte in move_away_from_alternate_screen.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, move_away_from_alternate_screen.as_bytes());
     assert_snapshot!(format!("{:?}", grid)); // should note include the image
     assert_eq!(
         sixel_image_store.borrow().image_count(),
@@ -3521,45 +3321,33 @@ pub fn sixel_with_image_scrolling_decsdm() {
 
     // enter DECSDM
     let move_to_decsdm = "\u{1b}[?80h";
-    for byte in move_to_decsdm.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, move_to_decsdm.as_bytes());
 
     // write some text
     let mut text_to_fill_pane = String::new();
     for i in 0..10 {
         writeln!(&mut text_to_fill_pane, "\rline {}", i + 1).unwrap();
     }
-    for byte in text_to_fill_pane.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, text_to_fill_pane.as_bytes());
 
     // render a sixel image (will appear on the top left and partially cover the text)
     let pane_content = read_fixture("sixel-image-100px.six");
-    for byte in pane_content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &pane_content);
     // image should be on the top left corner of the grid
     assert_snapshot!(format!("{:?}", grid));
 
     // leave DECSDM
     let move_away_from_decsdm = "\u{1b}[?80l";
-    for byte in move_away_from_decsdm.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, move_away_from_decsdm.as_bytes());
 
     // Go down to the beginning of the next line
     let mut go_down_once = String::new();
     writeln!(&mut go_down_once, "\n\r").unwrap();
-    for byte in go_down_once.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, go_down_once.as_bytes());
 
     // render another sixel image, should appear under the cursor
     let pane_content = read_fixture("sixel-image-100px.six");
-    for byte in pane_content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &pane_content);
 
     // image should appear in cursor position
     assert_snapshot!(format!("{:?}", grid));
@@ -3591,9 +3379,7 @@ pub fn osc_4_background_query() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}]10;?\u{1b}\\";
-    for byte in content.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, content.as_bytes());
     // Post-refactor: OSC 10;? is forwarded to the host, not answered
     // from Zellij's cached palette. pending_messages_to_pty must stay
     // empty.
@@ -3632,9 +3418,7 @@ pub fn osc_4_foreground_query() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}]11;?\u{1b}\\";
-    for byte in content.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, content.as_bytes());
     assert!(grid.pending_messages_to_pty.is_empty());
     let forwarded_string: String = grid
         .pending_forwarded_queries
@@ -3672,9 +3456,7 @@ pub fn osc_4_color_query() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}]4;222;?\u{1b}\\";
-    for byte in content.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, content.as_bytes());
     // OSC 4;N;? is forwarded to the host for the real palette value.
     assert!(grid.pending_messages_to_pty.is_empty());
     let forwarded_string: String = grid
@@ -3711,9 +3493,7 @@ pub fn xtsmgraphics_color_register_count() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}[?1;1;S\u{1b}\\";
-    for byte in content.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, content.as_bytes());
     let message_string = grid
         .pending_messages_to_pty
         .iter()
@@ -3755,9 +3535,7 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}[?2;1;S\u{1b}\\";
-    for byte in content.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, content.as_bytes());
     let message_string = grid
         .pending_messages_to_pty
         .iter()
@@ -3800,36 +3578,28 @@ pub fn cursor_hide_persists_through_alternate_screen() {
     );
 
     let hide_cursor = "\u{1b}[?25l";
-    for byte in hide_cursor.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, hide_cursor.as_bytes());
     assert!(
         matches!(grid.cursor_coordinates(), Some((_, _, false))),
         "Cursor hidden properly"
     );
 
     let move_to_alternate_screen = "\u{1b}[?1049h";
-    for byte in move_to_alternate_screen.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, move_to_alternate_screen.as_bytes());
     assert!(
         matches!(grid.cursor_coordinates(), Some((_, _, false))),
         "Cursor still hidden in alternate screen"
     );
 
     let show_cursor = "\u{1b}[?25h";
-    for byte in show_cursor.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, show_cursor.as_bytes());
     assert!(
         matches!(grid.cursor_coordinates(), Some((_, _, true))),
         "Cursor shown"
     );
 
     let move_away_from_alternate_screen = "\u{1b}[?1049l";
-    for byte in move_away_from_alternate_screen.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, move_away_from_alternate_screen.as_bytes());
     assert!(
         matches!(grid.cursor_coordinates(), Some((_, _, true))),
         "Cursor still shown away from alternate screen"
@@ -3863,9 +3633,7 @@ fn table_ui_component() {
     );
     let fixture_name = "table-ui-component";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3896,9 +3664,7 @@ fn table_ui_component_with_coordinates() {
     );
     let fixture_name = "table-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3929,9 +3695,7 @@ fn ribbon_ui_component() {
     );
     let fixture_name = "ribbon-ui-component";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3962,9 +3726,7 @@ fn ribbon_ui_component_with_coordinates() {
     );
     let fixture_name = "ribbon-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3995,9 +3757,7 @@ fn nested_list_ui_component() {
     );
     let fixture_name = "nested-list-ui-component";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -4028,9 +3788,7 @@ fn nested_list_ui_component_with_coordinates() {
     );
     let fixture_name = "nested-list-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -4061,9 +3819,7 @@ fn text_ui_component() {
     );
     let fixture_name = "text-ui-component";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -4094,9 +3850,7 @@ fn text_ui_component_with_coordinates() {
     );
     let fixture_name = "text-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -4134,9 +3888,7 @@ fn cannot_escape_scroll_region() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}[1;42r\u{1b}[42;1HHi there!".as_bytes();
-    for byte in content {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -4169,9 +3921,7 @@ fn preserve_background_color_on_resize() {
     );
 
     let mut parse = |s, grid: &mut Grid| {
-        for b in Vec::from(s) {
-            vte_parser.advance(&mut *grid, b)
-        }
+        vte_parser.advance(&mut *grid, &Vec::from(s));
     };
 
     // Write text with red background that extends to end of line
@@ -4250,9 +4000,7 @@ fn create_grid_with_content(content: &str) -> Grid {
         true,
         false,
     );
-    for byte in content.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, content.as_bytes());
     grid
 }
 
@@ -4426,9 +4174,7 @@ fn osc_11_set_and_query_pane_default_bg() {
 
     // Set background via OSC 11
     let set_bg = b"\x1b]11;#001a3a\x07";
-    for byte in set_bg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, set_bg);
 
     assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
@@ -4439,9 +4185,7 @@ fn osc_11_set_and_query_pane_default_bg() {
     // `rgb:RRRR/GGGG/BBBB` form with each 8-bit channel widened by
     // repetition (0x00 → 0x0000, 0x1a → 0x1a1a, 0x3a → 0x3a3a).
     let query_bg = b"\x1b]11;?\x07";
-    for byte in query_bg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, query_bg);
 
     assert!(
         grid.pending_forwarded_queries.is_empty(),
@@ -4477,9 +4221,7 @@ fn osc_10_set_and_query_pane_default_fg() {
 
     // Set foreground via OSC 10
     let set_fg = b"\x1b]10;#00e000\x07";
-    for byte in set_fg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, set_fg);
 
     assert_eq!(grid.pane_default_fg, Some((0, 224, 0)));
 
@@ -4487,9 +4229,7 @@ fn osc_10_set_and_query_pane_default_fg() {
     // so the query is answered locally (see OSC 11 equivalent test for
     // the short-circuit rationale).
     let query_fg = b"\x1b]10;?\x07";
-    for byte in query_fg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, query_fg);
 
     assert!(
         grid.pending_forwarded_queries.is_empty(),
@@ -4525,30 +4265,22 @@ fn osc_110_111_reset_pane_default_colors() {
 
     // Set both fg and bg
     let set_fg = b"\x1b]10;#00e000\x07";
-    for byte in set_fg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, set_fg);
     let set_bg = b"\x1b]11;#001a3a\x07";
-    for byte in set_bg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, set_bg);
 
     assert_eq!(grid.pane_default_fg, Some((0, 224, 0)));
     assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
     // Reset foreground via OSC 110
     let reset_fg = b"\x1b]110\x07";
-    for byte in reset_fg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, reset_fg);
     assert_eq!(grid.pane_default_fg, None);
     assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
     // Reset background via OSC 111
     let reset_bg = b"\x1b]111\x07";
-    for byte in reset_bg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, reset_bg);
     assert_eq!(grid.pane_default_fg, None);
     assert_eq!(grid.pane_default_bg, None);
 }
@@ -4578,9 +4310,7 @@ fn osc_11_set_bg_produces_ansi_in_render_output() {
 
     // Set background via OSC 11
     let set_bg = b"\x1b]11;#001a3a\x07";
-    for byte in set_bg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, set_bg);
 
     assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
@@ -4844,9 +4574,7 @@ fn plugin_highlight_at_wrapped_line() {
     // Feed a long string that wraps: "abcdefghij" fills row 0, "klmnopqrst" fills row 1
     let content = "abcdefghijklmnopqrst";
     let mut vte_parser = vte::Parser::new();
-    for &byte in content.as_bytes() {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, content.as_bytes());
 
     // Set a highlight for "jklm" which spans the wrap boundary
     let highlights = vec![create_highlight(
@@ -5003,9 +4731,7 @@ fn create_grid_with_scrollback() -> Grid {
     let mut parser = vte::Parser::new();
     for i in 0..25 {
         let line = format!("scrollback line {}\r\n", i);
-        for byte in line.as_bytes() {
-            parser.advance(&mut grid, *byte);
-        }
+        parser.advance(&mut grid, line.as_bytes());
     }
     grid
 }
@@ -5095,9 +4821,7 @@ fn create_grid_with_colored_scrollback() -> Grid {
     let mut parser = vte::Parser::new();
     for i in 0..25 {
         let line = format!("\x1b[31mred line {}\x1b[0m\r\n", i);
-        for byte in line.as_bytes() {
-            parser.advance(&mut grid, *byte);
-        }
+        parser.advance(&mut grid, line.as_bytes());
     }
     grid
 }
@@ -5447,17 +5171,13 @@ fn create_grid_with_size_and_raw(rows: usize, cols: usize, content: &[u8]) -> Gr
         true,
         false,
     );
-    for byte in content {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid
 }
 
 fn feed_bytes(grid: &mut Grid, bytes: &[u8]) {
     let mut vte_parser = vte::Parser::new();
-    for byte in bytes {
-        vte_parser.advance(grid, *byte);
-    }
+    vte_parser.advance(grid, bytes);
 }
 
 // All tests below use a 10-row, 40-col grid with scroll region 1;8
@@ -5919,9 +5639,7 @@ fn csi_14t_forwards_to_host_not_local() {
     // the terminal's real window pixel dimensions.
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b[14t" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[14t");
     assert!(
         grid.pending_messages_to_pty.is_empty(),
         "local reply path must not fire for 14t"
@@ -5938,9 +5656,7 @@ fn csi_14t_forwards_to_host_not_local() {
 fn csi_16t_forwards_to_host_not_local() {
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b[16t" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[16t");
     assert!(grid.pending_messages_to_pty.is_empty());
     assert_eq!(grid.pending_forwarded_queries.len(), 1);
     assert_eq!(
@@ -5955,9 +5671,7 @@ fn csi_18t_still_answered_locally() {
     // authoritative for this, do NOT forward.
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b[18t" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[18t");
     assert_eq!(grid.pending_messages_to_pty.len(), 1);
     assert!(grid.pending_forwarded_queries.is_empty());
 }
@@ -5968,9 +5682,7 @@ fn osc_11_set_stays_local() {
     // to track it for its own rendering.
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b]11;rgb:ffff/ffff/ffff\x07" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b]11;rgb:ffff/ffff/ffff\x07");
     assert!(grid.pending_messages_to_pty.is_empty());
     assert!(
         grid.pending_forwarded_queries.is_empty(),
@@ -5986,9 +5698,7 @@ fn osc_11_query_without_override_forwards_to_host() {
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
     assert!(grid.pane_default_bg.is_none());
-    for byte in b"\x1b]11;?\x07" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b]11;?\x07");
     assert!(
         grid.pending_messages_to_pty.is_empty(),
         "no override → no local reply"
@@ -6005,9 +5715,7 @@ fn osc_10_query_without_override_forwards_to_host() {
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
     assert!(grid.pane_default_fg.is_none());
-    for byte in b"\x1b]10;?\x07" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b]10;?\x07");
     assert!(grid.pending_messages_to_pty.is_empty());
     assert_eq!(grid.pending_forwarded_queries.len(), 1);
     assert!(matches!(
@@ -6027,12 +5735,8 @@ fn set_pane_default_colors_short_circuits_osc_queries() {
     let mut grid = new_grid_for_forwarding_test();
     grid.set_pane_default_colors(Some("#ff8040".to_string()), Some("#102030".to_string()));
 
-    for byte in b"\x1b]10;?\x07" {
-        parser.advance(&mut grid, *byte);
-    }
-    for byte in b"\x1b]11;?\x07" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b]10;?\x07");
+    parser.advance(&mut grid, b"\x1b]11;?\x07");
 
     assert!(
         grid.pending_forwarded_queries.is_empty(),
@@ -6052,15 +5756,11 @@ fn osc_11_override_short_circuits_only_the_overridden_channel() {
     // populated, an OSC 10 query (fg) still goes to the host.
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b]11;rgb:1010/2020/3030\x07" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b]11;rgb:1010/2020/3030\x07");
     assert!(grid.pane_default_bg.is_some());
     assert!(grid.pane_default_fg.is_none());
 
-    for byte in b"\x1b]10;?\x07" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b]10;?\x07");
     assert!(
         grid.pending_messages_to_pty.is_empty(),
         "fg has no override → must forward"
@@ -6076,9 +5776,7 @@ fn csi_2026_dollar_p_stays_local() {
     // own frames, so individual panes are treated as "not enabled").
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b[?2026$p" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[?2026$p");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "CSI ?2026$p is emulated locally, must not forward"
@@ -6097,9 +5795,7 @@ fn csi_2031_dollar_p_when_disabled_replies_reset() {
     // is reset, so the DECRPM reply must report value=2.
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b[?2031$p" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[?2031$p");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "CSI ?2031$p is answered locally, must not forward"
@@ -6117,9 +5813,7 @@ fn csi_2031_dollar_p_when_enabled_replies_set() {
     // pane, a DECRQM probe must report value=1 (set).
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b[?2031h\x1b[?2031$p" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[?2031h\x1b[?2031$p");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "CSI ?2031$p is answered locally, must not forward"
@@ -6141,9 +5835,7 @@ fn csi_22t_and_23t_stay_local() {
     let mut grid = new_grid_for_forwarding_test();
     grid.set_title("hello".to_string());
 
-    for byte in b"\x1b[22;0t" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[22;0t");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "22t is a stack op, not a query"
@@ -6155,9 +5847,7 @@ fn csi_22t_and_23t_stay_local() {
 
     // The push actually landed on Zellij's per-pane stack: restore it.
     grid.set_title("different".to_string());
-    for byte in b"\x1b[23;0t" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[23;0t");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "23t is a stack op, not a query"
@@ -6179,9 +5869,7 @@ fn osc_4_set_stays_local() {
     // the query form (`OSC 4;N;?`) ever forwards to the host.
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b]4;5;rgb:ffff/0000/0000\x07" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b]4;5;rgb:ffff/0000/0000\x07");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "OSC 4 set must not forward"
@@ -6204,16 +5892,12 @@ fn decset_2031_enables_color_palette_notification() {
         !grid.color_palette_notification_enabled,
         "default state must be disabled"
     );
-    for byte in b"\x1b[?2031h" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[?2031h");
     assert!(
         grid.color_palette_notification_enabled,
         "DECSET 2031 must enable the flag"
     );
-    for byte in b"\x1b[?2031l" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[?2031l");
     assert!(
         !grid.color_palette_notification_enabled,
         "DECRST 2031 must disable the flag"
@@ -6256,9 +5940,7 @@ fn csi_996n_pushes_color_palette_mode_query_to_forwarded_queries() {
     use crate::host_query::HostQuery;
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b[?996n" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[?996n");
     assert_eq!(
         grid.pending_forwarded_queries,
         vec![HostQuery::ColorPaletteMode],
@@ -6276,9 +5958,7 @@ fn csi_5n_status_query_still_handled_locally() {
     let mut grid = new_grid_for_forwarding_test();
     // Plain DSR 5 (no `?` intermediate) is not the new theme query and
     // must continue to receive its `\e[0n` "all good" reply locally.
-    for byte in b"\x1b[5n" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[5n");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "DSR 5 is not a forwarded query"
@@ -6322,9 +6002,7 @@ fn nested_session_frame_is_staged_for_dispatch() {
     let mut vte_parser = vte::Parser::new();
     let mut grid = new_grid_for_nested_frames();
     let message = nested_announce_message();
-    for byte in zellij_utils::nested_session::encode_frame(&message) {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &zellij_utils::nested_session::encode_frame(&message));
     assert_eq!(grid.pending_nested_session_messages, vec![message]);
 }
 
@@ -6335,13 +6013,9 @@ fn nested_session_frame_split_across_feeds_is_staged() {
     let message = nested_announce_message();
     let frame = zellij_utils::nested_session::encode_frame(&message);
     let (first_half, second_half) = frame.split_at(frame.len() / 2);
-    for byte in first_half {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, first_half);
     assert!(grid.pending_nested_session_messages.is_empty());
-    for byte in second_half {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, second_half);
     assert_eq!(grid.pending_nested_session_messages, vec![message]);
 }
 
@@ -6349,9 +6023,7 @@ fn nested_session_frame_split_across_feeds_is_staged() {
 fn dcs_with_wrong_magic_param_is_not_staged() {
     let mut vte_parser = vte::Parser::new();
     let mut grid = new_grid_for_nested_frames();
-    for byte in b"\x1bP26662nAAAA\x1b\\" {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, b"\x1bP26662nAAAA\x1b\\");
     assert!(grid.pending_nested_session_messages.is_empty());
 }
 
@@ -6359,9 +6031,7 @@ fn dcs_with_wrong_magic_param_is_not_staged() {
 fn dcs_with_intermediates_is_not_staged() {
     let mut vte_parser = vte::Parser::new();
     let mut grid = new_grid_for_nested_frames();
-    for byte in b"\x1bP26661$nAAAA\x1b\\" {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, b"\x1bP26661$nAAAA\x1b\\");
     assert!(grid.pending_nested_session_messages.is_empty());
 }
 
@@ -6369,9 +6039,7 @@ fn dcs_with_intermediates_is_not_staged() {
 fn dcs_n_without_params_is_not_staged() {
     let mut vte_parser = vte::Parser::new();
     let mut grid = new_grid_for_nested_frames();
-    for byte in b"\x1bPnAAAA\x1b\\" {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, b"\x1bPnAAAA\x1b\\");
     assert!(grid.pending_nested_session_messages.is_empty());
 }
 
@@ -6379,9 +6047,7 @@ fn dcs_n_without_params_is_not_staged() {
 fn nested_session_frame_with_garbage_payload_is_dropped() {
     let mut vte_parser = vte::Parser::new();
     let mut grid = new_grid_for_nested_frames();
-    for byte in b"\x1bP26661n!!!not-base64!!!\x1b\\" {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, b"\x1bP26661n!!!not-base64!!!\x1b\\");
     assert!(grid.pending_nested_session_messages.is_empty());
 }
 
@@ -6397,9 +6063,7 @@ fn render_ui_component(component_name: &str, serialized_params: &str) -> Grid {
     let mut vte_parser = vte::Parser::new();
     let mut grid = new_grid_for_nested_frames();
     let dcs = format!("\u{1b}Pz{};{}\u{1b}\\", component_name, serialized_params);
-    for byte in dcs.bytes() {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, dcs.as_bytes());
     grid
 }
 

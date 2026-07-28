@@ -1044,9 +1044,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut vte_parser = vte::Parser::new();
-    for &byte in ansi_instructions.as_bytes() {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
     format!("{:?}", grid)
 }
 
@@ -1083,9 +1081,7 @@ fn take_snapshot_with_sixel(
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut vte_parser = vte::Parser::new();
-    for &byte in ansi_instructions.as_bytes() {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
     format!("{:?}", grid)
 }
 
@@ -1119,9 +1115,7 @@ fn take_snapshot_and_cursor_position(
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut vte_parser = vte::Parser::new();
-    for &byte in ansi_instructions.as_bytes() {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
     let coords = grid
         .cursor_coordinates()
         .and_then(|(x, y, visible)| if visible { Some((x, y)) } else { None });
@@ -15364,9 +15358,7 @@ fn osc99_grid_parses_and_stores_notification() {
 
     // Feed OSC 99 through vte parser
     let mut vte_parser = vte::Parser::new();
-    for &byte in b"\x1b]99;i=gridtest:p=title;Grid notification\x07" {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, b"\x1b]99;i=gridtest:p=title;Grid notification\x07");
 
     assert_eq!(
         grid.pending_desktop_notifications.len(),

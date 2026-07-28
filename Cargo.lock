@@ -4028,12 +4028,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
-name = "utf8parse"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "936e4b492acfd135421d8dca4b1aa80a7bfc26e702ef3af710e0752684df5372"
-
-[[package]]
 name = "uuid"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4077,16 +4071,6 @@ dependencies = [
 
 [[package]]
 name = "vte"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1aae21c12ad2ec2d168c236f369c38ff332bc1134f7246350dca641437365045"
-dependencies = [
- "utf8parse",
- "vte_generate_state_changes",
-]
-
-[[package]]
-name = "vte"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "231fdcd7ef3037e8330d8e17e61011a2c244126acc0a982f4040ac3f9f0bc077"
@@ -4095,13 +4079,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "vte_generate_state_changes"
-version = "0.1.1"
+name = "vte"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d257817081c7dffcdbab24b9e62d2def62e2ff7d00b1c20062551e6cccc145ff"
+checksum = "a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd"
 dependencies = [
- "proc-macro2",
- "quote",
+ "arrayvec",
+ "memchr",
 ]
 
 [[package]]
@@ -4918,7 +4902,7 @@ dependencies = [
  "ssh2",
  "suggest",
  "thiserror 1.0.61",
- "vte 0.11.0",
+ "vte 0.15.0",
  "zellij-client",
  "zellij-server",
  "zellij-utils",
@@ -4983,7 +4967,7 @@ dependencies = [
  "log",
  "regex",
  "tokio",
- "vte 0.11.0",
+ "vte 0.15.0",
  "zellij-client",
  "zellij-server",
  "zellij-utils",
@@ -5032,7 +5016,7 @@ dependencies = [
  "unicode-width 0.1.14",
  "url",
  "uuid",
- "vte 0.11.0",
+ "vte 0.15.0",
  "wasmi",
  "wasmi_wasi",
  "windows-sys 0.59.0",
