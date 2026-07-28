@@ -93,34 +93,44 @@ pub fn watch_filesystem(
                 // TODO: at some point we might want to add FileMetadata to these, but right now
                 // the API is a bit unstable, so let's not rock the boat too much by adding another
                 // expensive syscall
-                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![
-                    (
+                let mut updates = vec![];
+                if !read_paths.is_empty() {
+                    updates.push((
                         None,
                         None,
                         Event::FileSystemRead(read_paths.into_iter().map(|p| (p, None)).collect()),
-                    ),
-                    (
+                    ));
+                }
+                if !create_paths.is_empty() {
+                    updates.push((
                         None,
                         None,
                         Event::FileSystemCreate(
                             create_paths.into_iter().map(|p| (p, None)).collect(),
                         ),
-                    ),
-                    (
+                    ));
+                }
+                if !update_paths.is_empty() {
+                    updates.push((
                         None,
                         None,
                         Event::FileSystemUpdate(
                             update_paths.into_iter().map(|p| (p, None)).collect(),
                         ),
-                    ),
-                    (
+                    ));
+                }
+                if !delete_paths.is_empty() {
+                    updates.push((
                         None,
                         None,
                         Event::FileSystemDelete(
                             delete_paths.into_iter().map(|p| (p, None)).collect(),
                         ),
-                    ),
-                ]));
+                    ));
+                }
+                if !updates.is_empty() {
+                    let _ = senders.send_to_plugin(PluginInstruction::Update(updates));
+                }
             },
             Err(errors) => errors
                 .iter()
