@@ -10,14 +10,15 @@ use crate::{
         FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
         ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
-        InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
-        LogErrorMsg, LogMsg, NestedSessionFrameFromHostMsg, PaneMetadata as ProtoPaneMetadata,
-        PaneRenderUpdateMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
-        ResizeCause as ProtoResizeCause, ServerToClientMsg as ProtoServerToClientMsg,
-        SetSoftKeyboardMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
-        SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
-        TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
-        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
+        InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, KittyGraphicsSupportMsg,
+        LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg, NestedSessionFrameFromHostMsg,
+        PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, QueryTerminalSizeMsg,
+        RenamedSessionMsg, RenderMsg, ResizeCause as ProtoResizeCause,
+        ServerToClientMsg as ProtoServerToClientMsg, SetSoftKeyboardMsg,
+        SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
+        SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
+        TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
+        UnblockInputThreadMsg, WebServerStartedMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
@@ -160,6 +161,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                 client_to_server_msg::Message::NestedSessionFrameFromHost(
                     NestedSessionFrameFromHostMsg { payload_bytes },
                 )
+            },
+            ClientToServerMsg::KittyGraphicsSupport { supported } => {
+                client_to_server_msg::Message::KittyGraphicsSupport(KittyGraphicsSupportMsg {
+                    supported,
+                })
             },
         };
 
@@ -314,6 +320,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
             Some(client_to_server_msg::Message::NestedSessionFrameFromHost(msg)) => {
                 Ok(ClientToServerMsg::NestedSessionFrameFromHost {
                     payload_bytes: msg.payload_bytes,
+                })
+            },
+            Some(client_to_server_msg::Message::KittyGraphicsSupport(msg)) => {
+                Ok(ClientToServerMsg::KittyGraphicsSupport {
+                    supported: msg.supported,
                 })
             },
             None => Err(anyhow!("Empty ClientToServerMsg message")),

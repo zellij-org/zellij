@@ -2,7 +2,7 @@ use crate::keyboard_parser::{KittyKeyboardParser, KittyParseOutcome};
 use crate::os_input_output::ClientOsApi;
 #[cfg(windows)]
 use crate::os_input_output_windows::use_vt_path;
-use crate::stdin_ansi_parser::{PendingPartial, StdinAnsiParser};
+use crate::stdin_ansi_parser::{HostReply, PendingPartial, StdinAnsiParser};
 #[cfg(windows)]
 use crate::stdin_handler_windows::enable_vt_input;
 use crate::InputInstruction;
@@ -49,6 +49,11 @@ pub(crate) fn stdin_loop(
                 .get_stdout_writer()
                 .write(query_string.as_bytes())
                 .unwrap();
+            stdin_ansi_parser.lock().unwrap().expect_kitty_probe_reply();
+        } else {
+            let _ = send_input_instructions.send(InputInstruction::AnsiStdinInstructions(vec![
+                HostReply::KittyGraphicsSupport(false),
+            ]));
         }
     }
 
@@ -327,8 +332,11 @@ fn build_startup_query_string() -> String {
     // <ESC>]11;?<ESC>\ => get background color
     // <ESC>]10;?<ESC>\ => get foreground color
     // <ESC>[?2026$p => get synchronised output mode
+    // <ESC>_Ga=q,...<ESC>\ => probe kitty graphics support, answered by
+    // capable terminals only; the trailing Primary DA is the barrier that
+    // resolves the probe negatively when it goes unanswered
     format!(
-        "{}\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p",
+        "{}\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}\u{1b}[c",
         PIXEL_SIZE_QUERY
     )
 }
@@ -349,12 +357,21 @@ mod tests {
         let query = build_startup_query_string();
         assert_eq!(
             query,
-            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p"
+            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}\u{1b}[c"
         );
         assert!(
             !query.contains("\u{1b}]4;"),
             "startup query must not contain OSC 4 palette-register probes: {:?}",
             query
         );
+    }
+
+    #[test]
+    fn startup_query_contains_kitty_probe_before_barrier() {
+        let query = build_startup_query_string();
+        assert!(query.contains("\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}"));
+        let probe_pos = query.find("\u{1b}_Ga=q,i=31,").unwrap();
+        let barrier_pos = query.find("\u{1b}[c").unwrap();
+        assert!(probe_pos < barrier_pos);
     }
 }

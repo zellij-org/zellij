@@ -3039,7 +3039,7 @@ impl NestedSessionHandling {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -3091,6 +3091,8 @@ pub mod client_to_server_msg {
         SoftKeyboardVisibilityChanged(super::SoftKeyboardVisibilityChangedMsg),
         #[prost(message, tag="22")]
         NestedSessionFrameFromHost(super::NestedSessionFrameFromHostMsg),
+        #[prost(message, tag="23")]
+        KittyGraphicsSupport(super::KittyGraphicsSupportMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3249,6 +3251,12 @@ pub struct SoftKeyboardVisibilityChangedMsg {
 pub struct NestedSessionFrameFromHostMsg {
     #[prost(bytes="vec", tag="1")]
     pub payload_bytes: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct KittyGraphicsSupportMsg {
+    #[prost(bool, tag="1")]
+    pub supported: bool,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

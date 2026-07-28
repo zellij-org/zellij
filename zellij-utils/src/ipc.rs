@@ -179,6 +179,9 @@ pub enum ClientToServerMsg {
     NestedSessionFrameFromHost {
         payload_bytes: Vec<u8>,
     },
+    KittyGraphicsSupport {
+        supported: bool,
+    },
 }
 
 // Types of messages sent from the server to the client

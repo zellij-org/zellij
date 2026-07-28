@@ -18,6 +18,7 @@ byteorder = { version = "1.4.3", default-features = false, features = ["std"] }
 bytes = { version = "1.6.0", default-features = false, features = ["std"] }
 chrono = { workspace = true }
 crossbeam = { version = "0.8", default-features = false, features = ["crossbeam-channel", "std"] }
+flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
 highway = { version = "=1.2.0", default-features = false, features = ["std"] }
 interprocess = { workspace = true }
 isahc = { workspace = true }
@@ -26,6 +27,7 @@ kdl = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 notify-debouncer-full = { workspace = true }
+png = { version = "0.17.16", default-features = false }
 prost = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }

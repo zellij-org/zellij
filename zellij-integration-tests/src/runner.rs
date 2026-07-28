@@ -271,6 +271,10 @@ impl TestClient {
         self.fake_client_handle.client_screen.snapshot()
     }
 
+    pub fn raw_bytes(&self) -> Vec<u8> {
+        self.fake_client_handle.client_screen.raw_bytes()
+    }
+
     pub fn quit(mut self) {
         self.send_stdin(&keys::ctrl('q'));
         self.join();
@@ -391,6 +395,10 @@ impl TestSession {
 
     pub fn snapshot(&self) -> GridSnapshot {
         self.main_client.snapshot()
+    }
+
+    pub fn raw_bytes(&self) -> Vec<u8> {
+        self.main_client.raw_bytes()
     }
 
     pub fn wait_for_app_load(&self) -> GridSnapshot {

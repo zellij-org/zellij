@@ -1,4 +1,5 @@
-use crate::output::{CharacterChunk, SixelImageChunk};
+use crate::output::{CharacterChunk, KittyImageChunk, SixelImageChunk};
+use crate::panes::kitty_graphics::{InterceptorResult, KittyApcInterceptor, KittyImageStore};
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::panes::{
@@ -173,6 +174,7 @@ pub struct TerminalPane {
     /// remaining bytes in the queue to be drained after the host reply
     /// has been written.
     pending_pty_input: VecDeque<u8>,
+    kitty_interceptor: KittyApcInterceptor,
 }
 
 impl Pane for TerminalPane {
@@ -229,11 +231,40 @@ impl Pane for TerminalPane {
             self.pending_pty_input.extend(bytes);
             return;
         }
+        let mut forwarded: Vec<u8> = Vec::with_capacity(bytes.len());
+        let mut index = 0;
+        while index < bytes.len() {
+            let byte = bytes[index];
+            index += 1;
+            match self.kitty_interceptor.advance(byte) {
+                InterceptorResult::Forward(fwd) => forwarded.extend_from_slice(fwd.as_slice()),
+                InterceptorResult::Swallow => {},
+                InterceptorResult::Captured(cmd) => {
+                    let consumed = self
+                        .vte_parser
+                        .advance_until_terminated(&mut self.grid, &forwarded);
+                    if consumed < forwarded.len() {
+                        // Grid produced a forward. Stop feeding; queue the
+                        // un-fed remainder so Tab can replay it after the
+                        // reply.
+                        self.pending_pty_input.extend(&forwarded[consumed..]);
+                        self.pending_pty_input.extend(&bytes[index..]);
+                        return;
+                    }
+                    forwarded.clear();
+                    self.grid.handle_kitty_apc(&cmd);
+                    if !self.grid.pending_forwarded_queries.is_empty() {
+                        self.pending_pty_input.extend(&bytes[index..]);
+                        return;
+                    }
+                },
+            }
+        }
         let consumed = self
             .vte_parser
-            .advance_until_terminated(&mut self.grid, &bytes);
-        if consumed < bytes.len() {
-            self.pending_pty_input.extend(&bytes[consumed..]);
+            .advance_until_terminated(&mut self.grid, &forwarded);
+        if consumed < forwarded.len() {
+            self.pending_pty_input.extend(&forwarded[consumed..]);
         }
     }
     fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
@@ -426,7 +457,14 @@ impl Pane for TerminalPane {
     fn render(
         &mut self,
         _client_id: Option<ClientId>,
-    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
+    ) -> Result<
+        Option<(
+            Vec<CharacterChunk>,
+            Option<String>,
+            Vec<SixelImageChunk>,
+            Vec<KittyImageChunk>,
+        )>,
+    > {
         if self.should_render() {
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
@@ -1119,6 +1157,9 @@ impl Pane for TerminalPane {
         self.arrow_fonts = should_support_arrow_fonts;
         self.grid.update_arrow_fonts(should_support_arrow_fonts);
     }
+    fn update_kitty_host_support(&mut self, supported: bool) {
+        self.grid.update_kitty_host_support(supported);
+    }
     fn update_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;
         self.frame.clear();
@@ -1260,6 +1301,7 @@ impl TerminalPane {
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
+        kitty_image_store: Rc<RefCell<KittyImageStore>>,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         initial_pane_title: Option<String>,
@@ -1281,6 +1323,7 @@ impl TerminalPane {
             link_handler,
             character_cell_size,
             sixel_image_store,
+            kitty_image_store,
             style.clone(),
             debug,
             arrow_fonts,
@@ -1324,6 +1367,7 @@ impl TerminalPane {
             guest_session_name: None,
             guest_modal_shortcuts: GuestModalShortcuts::default(),
             pending_pty_input: VecDeque::new(),
+            kitty_interceptor: KittyApcInterceptor::new(),
         }
     }
     pub fn get_x(&self) -> usize {

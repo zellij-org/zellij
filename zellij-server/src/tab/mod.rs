@@ -45,9 +45,10 @@ use self::clipboard::ClipboardProvider;
 use crate::route::NotificationEnd;
 use crate::{
     os_input_output::ServerOsApi,
-    output::{CharacterChunk, Output, SixelImageChunk},
+    output::{CharacterChunk, KittyImageChunk, Output, SixelImageChunk},
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
     panes::grid::namespace_notification_id,
+    panes::kitty_graphics::KittyImageStore,
     panes::nested_session_modal::GuestModalShortcuts,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
@@ -206,6 +207,7 @@ pub(crate) struct Tab {
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
+    kitty_image_store: Rc<RefCell<KittyImageStore>>,
     os_api: Box<dyn ServerOsApi>,
     pub senders: ThreadSenders,
     synchronize_is_active: bool,
@@ -239,6 +241,7 @@ pub(crate) struct Tab {
     default_editor: Option<PathBuf>,
     debug: bool,
     arrow_fonts: bool,
+    kitty_host_support: Option<bool>,
     styled_underlines: bool,
     osc8_hyperlinks: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
@@ -315,7 +318,14 @@ pub trait Pane {
     fn render(
         &mut self,
         client_id: Option<ClientId>,
-    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>>; // TODO: better
+    ) -> Result<
+        Option<(
+            Vec<CharacterChunk>,
+            Option<String>,
+            Vec<SixelImageChunk>,
+            Vec<KittyImageChunk>,
+        )>,
+    >; // TODO: better
     fn render_frame(
         &mut self,
         client_id: ClientId,
@@ -725,6 +735,7 @@ pub trait Pane {
     } // only relevant to terminal panes
     fn update_theme(&mut self, _theme: Styling) {}
     fn update_arrow_fonts(&mut self, _should_support_arrow_fonts: bool) {}
+    fn update_kitty_host_support(&mut self, _supported: bool) {}
     fn update_rounded_corners(&mut self, _rounded_corners: bool) {}
     fn set_should_be_suppressed(&mut self, _should_be_suppressed: bool) {}
     fn query_should_be_suppressed(&self) -> bool {
@@ -828,6 +839,7 @@ impl Tab {
         stacked_resize: Rc<RefCell<bool>>,
         stacked_pane_list: Rc<RefCell<bool>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
+        kitty_image_store: Rc<RefCell<KittyImageStore>>,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
@@ -950,6 +962,7 @@ impl Tab {
             display_area,
             character_cell_size,
             sixel_image_store,
+            kitty_image_store,
             synchronize_is_active: false,
             os_api,
             senders,
@@ -977,6 +990,7 @@ impl Tab {
             default_shell,
             debug,
             arrow_fonts,
+            kitty_host_support: None,
             styled_underlines,
             osc8_hyperlinks,
             explicitly_disable_kitty_keyboard_protocol,
@@ -1697,6 +1711,7 @@ impl Tab {
             &self.viewport,
             &self.senders,
             &self.sixel_image_store,
+            &self.kitty_image_store,
             &self.link_handler,
             &self.terminal_emulator_colors,
             &self.terminal_emulator_color_codes,
@@ -1747,6 +1762,11 @@ impl Tab {
                 self.apply_buffered_instructions().non_fatal();
             },
         }
+        if let Some(supported) = self.kitty_host_support {
+            self.tiled_panes.update_pane_kitty_host_support(supported);
+            self.floating_panes
+                .update_pane_kitty_host_support(supported);
+        }
         Ok(())
     }
     pub fn override_layout(
@@ -1775,6 +1795,7 @@ impl Tab {
             &self.viewport,
             &self.senders,
             &self.sixel_image_store,
+            &self.kitty_image_store,
             &self.link_handler,
             &self.terminal_emulator_colors,
             &self.terminal_emulator_color_codes,
@@ -1868,6 +1889,7 @@ impl Tab {
                 &self.viewport,
                 &self.senders,
                 &self.sixel_image_store,
+                &self.kitty_image_store,
                 &self.link_handler,
                 &self.terminal_emulator_colors,
                 &self.terminal_emulator_color_codes,
@@ -1909,6 +1931,7 @@ impl Tab {
                 &self.viewport,
                 &self.senders,
                 &self.sixel_image_store,
+                &self.kitty_image_store,
                 &self.link_handler,
                 &self.terminal_emulator_colors,
                 &self.terminal_emulator_color_codes,
@@ -2571,6 +2594,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
@@ -2595,6 +2619,7 @@ impl Tab {
                     initial_pane_title.unwrap_or("".to_owned()),
                     String::new(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
@@ -2684,6 +2709,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
@@ -2708,6 +2734,7 @@ impl Tab {
                     initial_pane_title.unwrap_or("".to_owned()),
                     String::new(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
@@ -2787,6 +2814,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
@@ -2811,6 +2839,7 @@ impl Tab {
                     initial_pane_title.unwrap_or("".to_owned()),
                     String::new(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
@@ -2939,6 +2968,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
@@ -2963,6 +2993,7 @@ impl Tab {
                     initial_pane_title.unwrap_or("".to_owned()),
                     String::new(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
@@ -3165,6 +3196,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     None,
@@ -3176,6 +3208,9 @@ impl Tab {
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
                 );
+                if let Some(supported) = self.kitty_host_support {
+                    new_pane.update_kitty_host_support(supported);
+                }
                 if let Some(borderless) = borderless {
                     new_pane.set_borderless(borderless);
                 }
@@ -3237,6 +3272,7 @@ impl Tab {
                     String::new(),
                     String::new(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
@@ -3383,6 +3419,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
@@ -3394,6 +3431,9 @@ impl Tab {
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
                 );
+                if let Some(supported) = self.kitty_host_support {
+                    new_terminal.update_kitty_host_support(supported);
+                }
                 if let Some(borderless) = borderless {
                     new_terminal.set_borderless(borderless);
                 }
@@ -3451,6 +3491,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
@@ -3462,6 +3503,9 @@ impl Tab {
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
                 );
+                if let Some(supported) = self.kitty_host_support {
+                    new_terminal.update_kitty_host_support(supported);
+                }
                 if let Some(borderless) = borderless {
                     new_terminal.set_borderless(borderless);
                 }
@@ -3576,6 +3620,7 @@ impl Tab {
                 self.link_handler.clone(),
                 self.character_cell_size.clone(),
                 self.sixel_image_store.clone(),
+                self.kitty_image_store.clone(),
                 self.terminal_emulator_colors.clone(),
                 self.terminal_emulator_color_codes.clone(),
                 initial_pane_title,
@@ -3587,6 +3632,9 @@ impl Tab {
                 self.explicitly_disable_kitty_keyboard_protocol,
                 completion_tx,
             );
+            if let Some(supported) = self.kitty_host_support {
+                new_terminal.update_kitty_host_support(supported);
+            }
             if let Some(borderless) = borderless {
                 new_terminal.set_borderless(borderless);
             }
@@ -5423,6 +5471,13 @@ impl Tab {
     }
     pub fn get_tiled_pane_ids(&self) -> Vec<PaneId> {
         self.get_tiled_panes().map(|(&pid, _)| pid).collect()
+    }
+    pub fn kitty_visible_pane_ids(&self) -> HashSet<PaneId> {
+        let mut pane_ids: HashSet<PaneId> = self.tiled_panes.pane_ids().copied().collect();
+        if self.floating_panes.panes_are_visible() {
+            pane_ids.extend(self.floating_panes.pane_ids().copied());
+        }
+        pane_ids
     }
     pub fn get_all_pane_ids(&self) -> Vec<PaneId> {
         let mut static_and_floating_pane_ids = self.get_static_and_floating_pane_ids();
@@ -7352,6 +7407,15 @@ impl Tab {
             pane.update_arrow_fonts(should_support_arrow_fonts);
         }
     }
+    pub fn update_kitty_host_support(&mut self, supported: bool) {
+        self.kitty_host_support = Some(supported);
+        self.floating_panes
+            .update_pane_kitty_host_support(supported);
+        self.tiled_panes.update_pane_kitty_host_support(supported);
+        for (_, pane) in self.suppressed_panes.values_mut() {
+            pane.update_kitty_host_support(supported);
+        }
+    }
     pub fn update_default_shell(&mut self, mut default_shell: Option<PathBuf>) {
         if let Some(default_shell) = default_shell.take() {
             self.default_shell = default_shell;
@@ -7612,6 +7676,7 @@ impl Tab {
             self.link_handler.clone(),
             self.character_cell_size.clone(),
             self.sixel_image_store.clone(),
+            self.kitty_image_store.clone(),
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
             None,
@@ -7623,6 +7688,9 @@ impl Tab {
             self.explicitly_disable_kitty_keyboard_protocol,
             None,
         );
+        if let Some(supported) = self.kitty_host_support {
+            new_pane.update_kitty_host_support(supported);
+        }
         new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
                                                     // constructor so it won't be overrided
                                                     // by the editor

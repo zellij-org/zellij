@@ -1,10 +1,15 @@
-use super::super::{CharacterChunk, FloatingPanesStack, Output, OutputBuffer, SixelImageChunk};
+use super::super::{
+    CharacterChunk, FloatingPanesStack, HostKittyState, KittyImageChunk, Output, OutputBuffer,
+    SixelImageChunk,
+};
+use crate::panes::kitty_graphics::parser::{DecodedImage, KittyFormat};
+use crate::panes::kitty_graphics::store::{InternalImageId, KittyImageStore};
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::terminal_character::AnsiCode;
-use crate::panes::{LinkHandler, Row, TerminalCharacter};
+use crate::panes::{LinkHandler, PaneId, Row, TerminalCharacter};
 use crate::ClientId;
 use std::cell::RefCell;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size, SizeInPixels};
 
@@ -22,6 +27,9 @@ fn create_test_output() -> Output {
         character_cell_size,
         styled_underlines,
         osc8_hyperlinks,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(HashMap::new())),
     )
 }
 
@@ -1110,4 +1118,275 @@ fn test_pane_defaults_preserved_when_right_covered() {
         visible[0].pane_default_bg, pane_bg,
         "Remaining chunk should preserve pane_default_bg"
     );
+}
+
+type KittyTestParts = (
+    Rc<RefCell<KittyImageStore>>,
+    Rc<RefCell<HashMap<ClientId, bool>>>,
+    Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
+);
+
+fn create_test_kitty_parts() -> KittyTestParts {
+    let kitty_image_store = Rc::new(RefCell::new(KittyImageStore::default()));
+    let capabilities = Rc::new(RefCell::new(HashMap::new()));
+    capabilities.borrow_mut().insert(1, true);
+    let host_state = Rc::new(RefCell::new(HashMap::new()));
+    (kitty_image_store, capabilities, host_state)
+}
+
+fn create_test_kitty_output(parts: &KittyTestParts) -> Output {
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        height: 20,
+        width: 10,
+    })));
+    Output::new(
+        sixel_image_store,
+        character_cell_size,
+        true,
+        true,
+        parts.0.clone(),
+        parts.1.clone(),
+        parts.2.clone(),
+    )
+}
+
+fn store_test_kitty_image(
+    kitty_image_store: &Rc<RefCell<KittyImageStore>>,
+    width: u32,
+    height: u32,
+) -> InternalImageId {
+    kitty_image_store
+        .borrow_mut()
+        .store_image(DecodedImage {
+            bytes: vec![255u8; (width * height * 4) as usize],
+            width,
+            height,
+            format: KittyFormat::Rgba32,
+        })
+        .unwrap()
+}
+
+fn kitty_chunk(
+    internal_image_id: InternalImageId,
+    placement_uid: u64,
+    cell_x: usize,
+    cell_y: usize,
+) -> KittyImageChunk {
+    KittyImageChunk {
+        cell_x,
+        cell_y,
+        internal_image_id,
+        source_px_x: 0,
+        source_px_y: 0,
+        source_px_width: 30,
+        source_px_height: 40,
+        cell_offset_x: 0,
+        cell_offset_y: 0,
+        z_index: 0,
+        dest_cells: (3, 2),
+        scaled_px: None,
+        placement_uid,
+    }
+}
+
+fn run_kitty_frame(
+    parts: &KittyTestParts,
+    chunks: Vec<KittyImageChunk>,
+    floating_panes_stack: Option<FloatingPanesStack>,
+) -> String {
+    let mut output = create_test_kitty_output(parts);
+    let client_ids: HashSet<ClientId> = create_test_clients(1);
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    output.add_clients(&client_ids, link_handler, floating_panes_stack);
+    output.add_kitty_image_chunks_to_client(1, PaneId::Terminal(1), chunks, None);
+    output.serialize().unwrap().remove(&1).unwrap_or_default()
+}
+
+fn parse_kitty_placement_crops(output: &str) -> Vec<(usize, usize, usize, usize, usize, usize)> {
+    let marker = "\u{1b}_Ga=p,q=2,";
+    let mut crops = vec![];
+    let mut search_start = 0;
+    while let Some(position) = output[search_start..].find(marker) {
+        let absolute_position = search_start + position;
+        let after = &output[absolute_position + marker.len()..];
+        let end = after.find("\u{1b}\\").unwrap();
+        let mut params: HashMap<&str, &str> = HashMap::new();
+        for key_value in after[..end].split(',') {
+            let mut parts = key_value.splitn(2, '=');
+            let key = parts.next().unwrap();
+            let value = parts.next().unwrap_or("");
+            params.insert(key, value);
+        }
+        let before = output[..absolute_position]
+            .strip_suffix("\u{1b}[m")
+            .unwrap();
+        let goto_start = before.rfind("\u{1b}[").unwrap();
+        let coordinates = &before[goto_start + 2..before.len() - 1];
+        let mut coordinate_parts = coordinates.split(';');
+        let row: usize = coordinate_parts.next().unwrap().parse().unwrap();
+        let column: usize = coordinate_parts.next().unwrap().parse().unwrap();
+        crops.push((
+            column - 1,
+            row - 1,
+            params["x"].parse().unwrap(),
+            params["y"].parse().unwrap(),
+            params["w"].parse().unwrap(),
+            params["h"].parse().unwrap(),
+        ));
+        search_start = absolute_position + marker.len();
+    }
+    crops
+}
+
+#[test]
+fn kitty_transmit_only_once_across_frames() {
+    let parts = create_test_kitty_parts();
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let frame_a = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 0, 0)], None);
+    let frame_b = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 0, 0)], None);
+    let combined = format!("{}{}", frame_a, frame_b);
+    assert_eq!(combined.matches("\u{1b}_Ga=t").count(), 1);
+    assert!(!frame_b.contains("\u{1b}_G"));
+}
+
+#[test]
+fn kitty_placement_bytes_with_negative_z() {
+    let parts = create_test_kitty_parts();
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let mut chunk = kitty_chunk(internal, 1, 5, 3);
+    chunk.z_index = -1;
+    let output = run_kitty_frame(&parts, vec![chunk], None);
+    assert!(output.contains("\u{1b}_Ga=t,q=2,f=32,t=d,i=4000000000,s=30,v=40,m=1;"));
+    assert!(output.contains("\u{1b}_Gm=0;"));
+    let placement = "\u{1b}[4;6H\u{1b}[m\u{1b}_Ga=p,q=2,i=4000000000,p=1,x=0,y=0,w=30,h=40,X=0,Y=0,z=-1,C=1\u{1b}\\";
+    assert!(output.contains(placement));
+    let save_position = output.find("\u{1b}[s").unwrap();
+    let transmit_position = output.find("\u{1b}_Ga=t").unwrap();
+    let restore_position = output.rfind("\u{1b}[u").unwrap();
+    assert!(save_position < transmit_position);
+    assert!(transmit_position < restore_position);
+}
+
+#[test]
+fn kitty_diff_move_remove_free_retransmit() {
+    let parts = create_test_kitty_parts();
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let frame_1 = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 2, 2)], None);
+    assert_eq!(frame_1.matches("\u{1b}_Ga=t").count(), 1);
+    assert!(frame_1.contains("\u{1b}_Ga=p,q=2,i=4000000000,p=1,"));
+    let frame_2 = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 2, 5)], None);
+    assert!(frame_2.contains("\u{1b}_Ga=p,q=2,i=4000000000,p=1,"));
+    assert!(!frame_2.contains("a=d"));
+    assert!(!frame_2.contains("\u{1b}_Ga=t"));
+    let frame_3 = run_kitty_frame(&parts, vec![], None);
+    assert!(frame_3.contains("\u{1b}_Ga=d,q=2,d=i,i=4000000000,p=1\u{1b}\\"));
+    assert!(!frame_3.contains("d=I"));
+    parts.0.borrow_mut().free(internal);
+    let frame_4 = run_kitty_frame(&parts, vec![], None);
+    assert!(frame_4.contains("\u{1b}_Ga=d,q=2,d=I,i=4000000000\u{1b}\\"));
+    let new_internal = store_test_kitty_image(&parts.0, 30, 40);
+    let frame_5 = run_kitty_frame(&parts, vec![kitty_chunk(new_internal, 2, 0, 0)], None);
+    assert!(frame_5.contains("\u{1b}_Ga=t,q=2,f=32,t=d,i=4000000001,"));
+}
+
+#[test]
+fn kitty_occlusion_crops_exclude_covered_quarter() {
+    let parts = create_test_kitty_parts();
+    let internal = store_test_kitty_image(&parts.0, 40, 80);
+    let pane_geom = create_pane_geom(2, 0, 2, 2);
+    let floating_panes_stack = FloatingPanesStack {
+        layers: vec![pane_geom],
+    };
+    let mut chunk = kitty_chunk(internal, 1, 0, 0);
+    chunk.source_px_width = 40;
+    chunk.source_px_height = 80;
+    chunk.dest_cells = (4, 4);
+    let output = run_kitty_frame(&parts, vec![chunk], Some(floating_panes_stack));
+    let crops = parse_kitty_placement_crops(&output);
+    let crop_set: HashSet<(usize, usize, usize, usize, usize, usize)> =
+        crops.iter().copied().collect();
+    let expected_crop_set: HashSet<(usize, usize, usize, usize, usize, usize)> =
+        [(0, 0, 0, 0, 20, 40), (0, 2, 0, 40, 40, 40)]
+            .into_iter()
+            .collect();
+    assert_eq!(crop_set, expected_crop_set);
+    let image_area = 40 * 80;
+    let covered_area = (4 - 2) * 10 * ((2 - 0) * 20);
+    let union_area: usize = crops.iter().map(|(_, _, _, _, w, h)| w * h).sum();
+    assert_eq!(union_area, image_area - covered_area);
+    let covered_x_range = 20..40;
+    let covered_y_range = 0..40;
+    for (cell_x, cell_y, _, _, w, h) in &crops {
+        let absolute_x = cell_x * 10;
+        let absolute_y = cell_y * 20;
+        let intersects_horizontally =
+            absolute_x < covered_x_range.end && absolute_x + w > covered_x_range.start;
+        let intersects_vertically =
+            absolute_y < covered_y_range.end && absolute_y + h > covered_y_range.start;
+        assert!(
+            !(intersects_horizontally && intersects_vertically),
+            "crop at ({}, {}) size {}x{} intersects the covered pane rect",
+            cell_x,
+            cell_y,
+            w,
+            h
+        );
+    }
+}
+
+#[test]
+fn kitty_capability_gating_suppresses_all_apc() {
+    let parts_with_false = create_test_kitty_parts();
+    parts_with_false.1.borrow_mut().insert(1, false);
+    let internal = store_test_kitty_image(&parts_with_false.0, 30, 40);
+    let output = run_kitty_frame(
+        &parts_with_false,
+        vec![kitty_chunk(internal, 1, 0, 0)],
+        None,
+    );
+    assert!(!output.contains("\u{1b}_G"));
+    assert!(!parts_with_false.2.borrow().contains_key(&1));
+
+    let parts_with_absent = create_test_kitty_parts();
+    parts_with_absent.1.borrow_mut().clear();
+    let internal = store_test_kitty_image(&parts_with_absent.0, 30, 40);
+    let output = run_kitty_frame(
+        &parts_with_absent,
+        vec![kitty_chunk(internal, 1, 0, 0)],
+        None,
+    );
+    assert!(!output.contains("\u{1b}_G"));
+    assert!(!parts_with_absent.2.borrow().contains_key(&1));
+}
+
+#[test]
+fn is_dirty_with_kitty_chunks_and_pending_deletes() {
+    let parts = create_test_kitty_parts();
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let mut output = create_test_kitty_output(&parts);
+    let client_ids = create_test_clients(1);
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    output.add_clients(&client_ids, link_handler, None);
+    output.add_kitty_image_chunks_to_client(
+        1,
+        PaneId::Terminal(1),
+        vec![kitty_chunk(internal, 1, 0, 0)],
+        None,
+    );
+    assert!(output.is_dirty());
+    assert!(output.has_rendered_assets());
+
+    let pending_parts = create_test_kitty_parts();
+    let mut transmitted = HashMap::new();
+    transmitted.insert((1 as InternalImageId, None), 4_000_000_000u32);
+    pending_parts.2.borrow_mut().insert(
+        1,
+        HostKittyState {
+            transmitted,
+            ..Default::default()
+        },
+    );
+    let pending_output = create_test_kitty_output(&pending_parts);
+    assert!(pending_output.is_dirty());
 }

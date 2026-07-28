@@ -1,4 +1,5 @@
 use super::{Output, Tab};
+use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
 use crate::screen::CopyOptions;
 use crate::Arc;
@@ -249,6 +250,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -346,6 +348,7 @@ fn create_new_tab_with_stacked_pane_list(
         stacked_resize,
         stacked_pane_list,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -439,6 +442,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -545,6 +549,7 @@ fn create_new_tab_with_swap_layouts(
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -656,6 +661,7 @@ fn create_new_tab_with_os_api(
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -749,6 +755,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -856,6 +863,7 @@ fn create_new_tab_with_mock_pty_writer(
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -954,6 +962,7 @@ fn create_new_tab_with_sixel_support(
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -1036,6 +1045,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1073,6 +1083,7 @@ fn take_snapshot_with_sixel(
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1107,6 +1118,7 @@ fn take_snapshot_and_cursor_position(
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3849,7 +3861,15 @@ fn move_floating_pane_with_sixel_image() {
         width: 8,
         height: 21,
     })));
-    let mut output = Output::new(sixel_image_store.clone(), character_cell_size, true, true);
+    let mut output = Output::new(
+        sixel_image_store.clone(),
+        character_cell_size,
+        true,
+        true,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(HashMap::new())),
+    );
 
     tab.toggle_floating_panes(Some(client_id), None, None)
         .unwrap();
@@ -3908,7 +3928,15 @@ fn floating_pane_above_sixel_image() {
         width: 8,
         height: 21,
     })));
-    let mut output = Output::new(sixel_image_store.clone(), character_cell_size, true, true);
+    let mut output = Output::new(
+        sixel_image_store.clone(),
+        character_cell_size,
+        true,
+        true,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(HashMap::new())),
+    );
 
     tab.toggle_floating_panes(Some(client_id), None, None)
         .unwrap();
@@ -13306,6 +13334,7 @@ fn create_new_tab_with_plugin_receiver(
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -15093,6 +15122,7 @@ fn create_new_tab_with_server_receiver(
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -15348,6 +15378,7 @@ fn osc99_grid_parses_and_stores_notification() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         false, // debug
         true,  // arrow_fonts
