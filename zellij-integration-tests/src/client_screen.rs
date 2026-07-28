@@ -276,9 +276,7 @@ impl std::fmt::Display for GridSnapshot {
 fn render_bytes(bytes: &[u8], win_size: Size) -> GridSnapshot {
     let mut terminal_pane = build_terminal_pane(win_size);
     let mut vte_parser = vte::Parser::new();
-    for &byte in bytes {
-        vte_parser.advance(&mut terminal_pane.grid, byte);
-    }
+    vte_parser.advance(&mut terminal_pane.grid, bytes);
 
     let cursor = terminal_pane
         .cursor_coordinates()

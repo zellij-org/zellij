@@ -14,7 +14,7 @@ use crate::{
         options::Options,
     },
 };
-use clap::{Args, IntoApp};
+use clap::{Args, CommandFactory};
 use clap_complete::Shell;
 use log::info;
 use serde::{Deserialize, Serialize};
@@ -271,8 +271,7 @@ pub struct Setup {
         value_name = "DIR",
         value_parser,
         exclusive = true,
-        min_values = 0,
-        max_values = 1
+        num_args(0..=1)
     )]
     pub dump_plugins: Option<Option<PathBuf>>,
 

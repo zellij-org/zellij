@@ -229,16 +229,11 @@ impl Pane for TerminalPane {
             self.pending_pty_input.extend(bytes);
             return;
         }
-        let mut iter = bytes.into_iter();
-        while let Some(byte) = iter.next() {
-            self.vte_parser.advance(&mut self.grid, byte);
-            if !self.grid.pending_forwarded_queries.is_empty() {
-                // Grid produced a forward. Stop feeding; queue the
-                // un-fed remainder so Tab can replay it after the
-                // reply.
-                self.pending_pty_input.extend(iter);
-                break;
-            }
+        let consumed = self
+            .vte_parser
+            .advance_until_terminated(&mut self.grid, &bytes);
+        if consumed < bytes.len() {
+            self.pending_pty_input.extend(&bytes[consumed..]);
         }
     }
     fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {

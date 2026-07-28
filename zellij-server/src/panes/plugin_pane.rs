@@ -246,9 +246,7 @@ impl Pane for PluginPane {
             .entry(client_id)
             .or_insert_with(|| vte::Parser::new());
 
-        for &byte in &vte_bytes {
-            vte_parser.advance(grid, byte);
-        }
+        vte_parser.advance(grid, &vte_bytes);
 
         self.should_render.insert(client_id, true);
     }

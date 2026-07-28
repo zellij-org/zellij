@@ -20,7 +20,7 @@ use std::{
     collections::BTreeMap,
     fs::File,
     io,
-    os::fd::FromRawFd,
+    os::fd::{BorrowedFd, FromRawFd, IntoRawFd},
     os::unix::{
         io::{AsRawFd, RawFd},
         process::CommandExt,
@@ -53,11 +53,13 @@ struct RawFdAsyncReader {
 impl RawFdAsyncReader {
     fn new(fd: RawFd) -> io::Result<Self> {
         // Set O_NONBLOCK so AsyncFd can use epoll correctly
-        let flags =
-            fcntl(fd, FcntlArg::F_GETFL).map_err(|e| io::Error::from_raw_os_error(e as i32))?;
+        let borrowed_fd = unsafe { BorrowedFd::borrow_raw(fd) };
+        let flags = fcntl(borrowed_fd, FcntlArg::F_GETFL)
+            .map_err(|e| io::Error::from_raw_os_error(e as i32))?;
         let mut oflags = OFlag::from_bits_truncate(flags);
         oflags.insert(OFlag::O_NONBLOCK);
-        fcntl(fd, FcntlArg::F_SETFL(oflags)).map_err(|e| io::Error::from_raw_os_error(e as i32))?;
+        fcntl(borrowed_fd, FcntlArg::F_SETFL(oflags))
+            .map_err(|e| io::Error::from_raw_os_error(e as i32))?;
 
         let file = unsafe { File::from_raw_fd(fd) };
         Ok(Self {
@@ -195,8 +197,8 @@ fn handle_openpty(
     };
 
     // primary side of pty and child fd
-    let pid_primary = open_pty_res.master;
-    let pid_secondary = open_pty_res.slave;
+    let pid_primary = open_pty_res.master.into_raw_fd();
+    let pid_secondary = open_pty_res.slave.into_raw_fd();
 
     if !command_exists(&cmd) {
         return Err(ZellijError::CommandNotFound {
@@ -291,7 +293,7 @@ pub(crate) struct UnixPtyBackend {
 fn try_write_to_fd(fd: RawFd, buf: &[u8]) -> Result<usize> {
     let mut written = 0;
     while written < buf.len() {
-        match unistd::write(fd, &buf[written..]) {
+        match unistd::write(unsafe { BorrowedFd::borrow_raw(fd) }, &buf[written..]) {
             Ok(0) => break, // fd returned 0 on non-empty buf; treat like EAGAIN
             Ok(n) => written += n,
             Err(nix::errno::Errno::EINTR) => continue,
@@ -304,7 +306,7 @@ fn try_write_to_fd(fd: RawFd, buf: &[u8]) -> Result<usize> {
 
 impl UnixPtyBackend {
     pub fn new() -> Result<Self, io::Error> {
-        let current_termios = termios::tcgetattr(0).ok();
+        let current_termios = termios::tcgetattr(io::stdin()).ok();
         if current_termios.is_none() {
             log::warn!("Starting a server without a controlling terminal, using the default termios configuration.");
         }
@@ -409,14 +411,18 @@ impl UnixPtyBackend {
             .with_context(err_context)?
             .get(&terminal_id)
         {
-            Some(Some(fd)) => termios::tcdrain(*fd).with_context(err_context),
+            Some(Some(fd)) => {
+                termios::tcdrain(unsafe { BorrowedFd::borrow_raw(*fd) }).with_context(err_context)
+            },
             _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
         }
     }
 
     pub fn tcgetpgrp(&self, terminal_id: u32) -> Option<i32> {
         match self.terminal_id_to_raw_fd.lock().ok()?.get(&terminal_id) {
-            Some(Some(fd)) => unistd::tcgetpgrp(*fd).ok().map(|pgid| pgid.as_raw()),
+            Some(Some(fd)) => unistd::tcgetpgrp(unsafe { BorrowedFd::borrow_raw(*fd) })
+                .ok()
+                .map(|pgid| pgid.as_raw()),
             _ => None,
         }
     }
@@ -475,22 +481,27 @@ mod tests {
     #[test]
     fn try_write_to_fd_returns_partial_on_full_buffer() {
         let pty = openpty(None, &None).expect("openpty failed");
+        let master_fd = pty.master.into_raw_fd();
+        let slave_fd = pty.slave.into_raw_fd();
+        let borrowed_master = unsafe { BorrowedFd::borrow_raw(master_fd) };
+        let borrowed_slave = unsafe { BorrowedFd::borrow_raw(slave_fd) };
 
-        let mut attrs = termios::tcgetattr(pty.slave).expect("tcgetattr failed");
+        let mut attrs = termios::tcgetattr(borrowed_slave).expect("tcgetattr failed");
         termios::cfmakeraw(&mut attrs);
-        termios::tcsetattr(pty.slave, termios::SetArg::TCSANOW, &attrs).expect("tcsetattr failed");
+        termios::tcsetattr(borrowed_slave, termios::SetArg::TCSANOW, &attrs)
+            .expect("tcsetattr failed");
 
         // O_NONBLOCK so write() returns EAGAIN instead of blocking
-        let flags = fcntl(pty.master, FcntlArg::F_GETFL).expect("F_GETFL");
+        let flags = fcntl(borrowed_master, FcntlArg::F_GETFL).expect("F_GETFL");
         let mut oflags = OFlag::from_bits_truncate(flags);
         oflags.insert(OFlag::O_NONBLOCK);
-        fcntl(pty.master, FcntlArg::F_SETFL(oflags)).expect("F_SETFL");
+        fcntl(borrowed_master, FcntlArg::F_SETFL(oflags)).expect("F_SETFL");
 
         // Fill most of the buffer, leaving some space
         let chunk = vec![0x42u8; 1024];
         let mut total_filled = 0;
         loop {
-            match super::try_write_to_fd(pty.master, &chunk) {
+            match super::try_write_to_fd(master_fd, &chunk) {
                 Ok(0) => break,
                 Ok(n) => total_filled += n,
                 Err(e) => panic!("unexpected error filling buffer: {e}"),
@@ -503,7 +514,7 @@ mod tests {
 
         // Read a small amount from the slave to free partial space
         let mut drain = vec![0u8; 512];
-        let slave_file = unsafe { std::fs::File::from_raw_fd(pty.slave) };
+        let slave_file = unsafe { std::fs::File::from_raw_fd(slave_fd) };
         let mut slave_reader = std::io::BufReader::new(&slave_file);
         let drained = slave_reader.read(&mut drain).expect("slave read failed");
         assert!(drained > 0, "should have drained some bytes");
@@ -513,7 +524,7 @@ mod tests {
         // Now write more than the freed space — should get a partial write
         let size = 128 * 1024;
         let data: Vec<u8> = (0..size).map(|i| (i % 256) as u8).collect();
-        let written = super::try_write_to_fd(pty.master, &data)
+        let written = super::try_write_to_fd(master_fd, &data)
             .expect("try_write_to_fd should not error on EAGAIN");
 
         assert!(
@@ -522,8 +533,8 @@ mod tests {
         );
 
         unsafe {
-            libc::close(pty.master);
-            libc::close(pty.slave);
+            libc::close(master_fd);
+            libc::close(slave_fd);
         }
     }
 
@@ -532,20 +543,25 @@ mod tests {
     #[test]
     fn try_write_to_fd_returns_zero_on_stuck_pty() {
         let pty = openpty(None, &None).expect("openpty failed");
+        let master_fd = pty.master.into_raw_fd();
+        let slave_fd = pty.slave.into_raw_fd();
+        let borrowed_master = unsafe { BorrowedFd::borrow_raw(master_fd) };
+        let borrowed_slave = unsafe { BorrowedFd::borrow_raw(slave_fd) };
 
-        let mut attrs = termios::tcgetattr(pty.slave).expect("tcgetattr failed");
+        let mut attrs = termios::tcgetattr(borrowed_slave).expect("tcgetattr failed");
         termios::cfmakeraw(&mut attrs);
-        termios::tcsetattr(pty.slave, termios::SetArg::TCSANOW, &attrs).expect("tcsetattr failed");
+        termios::tcsetattr(borrowed_slave, termios::SetArg::TCSANOW, &attrs)
+            .expect("tcsetattr failed");
 
-        let flags = fcntl(pty.master, FcntlArg::F_GETFL).expect("F_GETFL");
+        let flags = fcntl(borrowed_master, FcntlArg::F_GETFL).expect("F_GETFL");
         let mut oflags = OFlag::from_bits_truncate(flags);
         oflags.insert(OFlag::O_NONBLOCK);
-        fcntl(pty.master, FcntlArg::F_SETFL(oflags)).expect("F_SETFL");
+        fcntl(borrowed_master, FcntlArg::F_SETFL(oflags)).expect("F_SETFL");
 
         // Fill the buffer completely — keep writing until we get Ok(0)
         let fill = vec![0x42u8; 1024];
         loop {
-            match super::try_write_to_fd(pty.master, &fill) {
+            match super::try_write_to_fd(master_fd, &fill) {
                 Ok(0) => break,
                 Ok(_) => continue,
                 Err(e) => panic!("unexpected error filling buffer: {e}"),
@@ -553,14 +569,14 @@ mod tests {
         }
 
         // Now the buffer is full — next write should return Ok(0)
-        let written = super::try_write_to_fd(pty.master, &[0x01, 0x02, 0x03])
+        let written = super::try_write_to_fd(master_fd, &[0x01, 0x02, 0x03])
             .expect("try_write_to_fd should not error on EAGAIN");
 
         assert_eq!(written, 0, "expected zero bytes written on full buffer");
 
         unsafe {
-            libc::close(pty.master);
-            libc::close(pty.slave);
+            libc::close(master_fd);
+            libc::close(slave_fd);
         }
     }
 }

@@ -28,9 +28,7 @@ macro_rules! parse_next_param {
 macro_rules! parse_vte_bytes {
     ($self:expr, $encoded_component:expr) => {{
         let mut vte_parser = vte::Parser::new();
-        for &byte in &$encoded_component {
-            vte_parser.advance($self.grid, byte);
-        }
+        vte_parser.advance($self.grid, &$encoded_component);
     }};
 }
 

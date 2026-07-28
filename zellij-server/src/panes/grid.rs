@@ -1,4 +1,7 @@
 use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
+use base64::alphabet::STANDARD as BASE64_STANDARD_ALPHABET;
+use base64::engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig};
+use base64::engine::{DecodePaddingMode, Engine as _};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -29,6 +32,11 @@ use zellij_utils::{
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
+
+const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
+    &BASE64_STANDARD_ALPHABET,
+    GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
+);
 
 /// Rewrites OSC 99 metadata for multiplexer forwarding:
 ///
@@ -3740,7 +3748,7 @@ impl Perform for Grid {
                         // TBD: paste from own clipboard - currently unsupported
                     },
                     base64 => {
-                        if let Ok(bytes) = base64::decode(base64) {
+                        if let Ok(bytes) = BASE64_DECODER.decode(base64) {
                             if let Ok(string) = String::from_utf8(bytes) {
                                 self.pending_clipboard_update = Some(string);
                             }
@@ -4543,6 +4551,10 @@ impl Perform for Grid {
                 }
             },
         }
+    }
+
+    fn terminated(&self) -> bool {
+        !self.pending_forwarded_queries.is_empty()
     }
 }
 

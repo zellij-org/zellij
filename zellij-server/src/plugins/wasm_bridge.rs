@@ -11,7 +11,7 @@ use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use highway::{HighwayHash, PortableHash};
 use log::info;
-use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
+use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, RecommendedCache};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
@@ -185,7 +185,7 @@ pub struct WasmBridge {
     loading_plugins: HashSet<(PluginId, RunPlugin)>, // tracks loading plugins without handles
     pending_plugin_reloads: HashSet<RunPlugin>,
     path_to_default_shell: PathBuf,
-    watcher: Option<Debouncer<RecommendedWatcher, FileIdMap>>,
+    watcher: Option<Debouncer<RecommendedWatcher, RecommendedCache>>,
     zellij_cwd: PathBuf,
     session_env_vars: std::collections::BTreeMap<String, String>,
     default_shell: Option<TerminalAction>,

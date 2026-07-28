@@ -14,11 +14,11 @@ anyhow = { workspace = true }
 backtrace = { version = "0.3.55", default-features = false, features = ["std"] }
 bitflags = { version = "2.5.0", default-features = false }
 clap = { workspace = true }
-clap_complete = { version = "3.2.1", default-features = false }
-colored = { version = "2.0.0", default-features = false }
+clap_complete = { version = "4.6", default-features = false }
+colored = { version = "3.1", default-features = false }
 colorsys = { version = "0.6.5", default-features = false, features = ["std"] }
 crossbeam = { version = "0.8.1", default-features = false, features = ["alloc", "std"] }
-directories = { version = "5.0", default-features = false }
+directories = { version = "6.0", default-features = false }
 include_dir = { version = "0.7.3", default-features = false }
 kdl = { version = "4.5.0", default-features = false, features = ["span"] }
 lazy_static = { workspace = true }
@@ -29,7 +29,7 @@ prost = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 shellexpand = { version = "3.0.0", default-features = false, features = ["base-0", "tilde"] }
-strip-ansi-escapes = { version = "0.1.0", default-features = false }
+strip-ansi-escapes = { workspace = true }
 strum = { workspace = true }
 strum_macros = { workspace = true }
 tempfile = { workspace = true }
@@ -41,7 +41,7 @@ sha2 = { workspace = true }
 libc = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-base64 = { version = "0.13.0", default-features = false, features = ["std"] }
+base64 = { version = "0.22", default-features = false, features = ["std"] }
 tokio = { workspace = true }
 tokio-stream = { version = "0.1" }
 tokio-util = { version = "0.7", default-features = false, features = ["compat", "io"] }
@@ -57,7 +57,7 @@ rusqlite = { version = "0.30", default-features = false, features = ["bundled"],
 notify = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
-nix = { workspace = true }
+nix = { workspace = true, features = ["user"] }
 
 [target.'cfg(windows)'.dependencies]
 crossterm = { workspace = true, features = ["events"] }

@@ -26,7 +26,6 @@ dialoguer = { workspace = true }
 interprocess = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
-notify = { workspace = true }
 num_cpus = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
@@ -53,7 +52,7 @@ signal-hook = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 daemonize = { workspace = true }
-nix = { workspace = true }
+nix = { workspace = true, features = ["fs"] }
 
 [target.'cfg(windows)'.dependencies]
 crossterm = { workspace = true }

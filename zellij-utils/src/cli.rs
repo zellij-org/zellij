@@ -7,11 +7,25 @@ use crate::{
         options::{Options, PaneFrameStyle},
     },
 };
-use clap::{ArgEnum, Args, Parser, Subcommand};
+use clap::builder::styling::{AnsiColor, Color, Style, Styles};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use std::path::PathBuf;
 use url::Url;
+
+const fn ansi(color: AnsiColor) -> Style {
+    Style::new().fg_color(Some(Color::Ansi(color)))
+}
+
+const CLI_STYLES: Styles = Styles::styled()
+    .header(ansi(AnsiColor::Yellow))
+    .usage(ansi(AnsiColor::Yellow))
+    .literal(ansi(AnsiColor::Green))
+    .placeholder(Style::new())
+    .error(ansi(AnsiColor::Red))
+    .valid(ansi(AnsiColor::Green))
+    .invalid(ansi(AnsiColor::Yellow));
 
 fn validate_session(name: &str) -> Result<String, String> {
     #[cfg(unix)]
@@ -38,7 +52,7 @@ fn validate_session(name: &str) -> Result<String, String> {
 }
 
 #[derive(Parser, Default, Debug, Clone, Serialize, Deserialize)]
-#[clap(version, name = "zellij")]
+#[clap(version, name = "zellij", styles = CLI_STYLES, args_override_self = true)]
 pub struct CliArgs {
     /// Maximum panes on screen, caution: opening more panes will close old ones
     #[clap(long, value_parser)]
@@ -65,7 +79,7 @@ pub struct CliArgs {
     /// Raw KDL layout string to use directly (instead of a file path)
     /// if inside a session (or using the --session flag) will be added to the session as a new tab
     /// or tabs, otherwise will start a new session
-    #[clap(long, value_parser, conflicts_with_all = &["layout", "new-session-with-layout"])]
+    #[clap(long, value_parser, conflicts_with_all = &["layout", "new_session_with_layout"])]
     pub layout_string: Option<String>,
 
     /// Name of a predefined layout inside the layout directory or the path to a layout file
@@ -143,8 +157,7 @@ pub struct SubscribeCli {
         short,
         long,
         required = true,
-        multiple_values = true,
-        multiple_occurrences = true
+        num_args(1..)
     )]
     pub pane_id: Vec<String>,
 
@@ -153,22 +166,21 @@ pub struct SubscribeCli {
     #[clap(
         short,
         long,
-        min_values = 0,
-        max_values = 1,
-        default_missing_value = "0"
+        default_missing_value = "0",
+        num_args(0..=1)
     )]
     pub scrollback: Option<usize>,
 
     /// Output format
-    #[clap(short, long, default_value = "raw", arg_enum)]
+    #[clap(short, long, default_value = "raw", value_enum)]
     pub format: SubscribeFormat,
 
     /// Preserve ANSI styling in the output
-    #[clap(long, value_parser, default_value("false"), takes_value(false))]
+    #[clap(long)]
     pub ansi: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ArgEnum)]
+#[derive(Debug, Clone, Serialize, Deserialize, ValueEnum)]
 pub enum SubscribeFormat {
     Raw,
     Json,
@@ -197,7 +209,7 @@ pub struct WebCli {
         short,
         long,
         value_parser,
-        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        conflicts_with_all(&["stop", "status", "create_token", "revoke_token", "revoke_all_tokens"]),
         display_order = 5
     )]
     pub daemonize: bool,
@@ -235,7 +247,7 @@ pub struct WebCli {
     #[clap(
         long,
         value_parser,
-        conflicts_with_all(&["stop", "create-token", "revoke-token", "revoke-all-tokens"]),
+        conflicts_with_all(&["stop", "create_token", "revoke_token", "revoke_all_tokens"]),
         display_order = 13
     )]
     pub ip: Option<IpAddr>,
@@ -243,7 +255,7 @@ pub struct WebCli {
     #[clap(
         long,
         value_parser,
-        conflicts_with_all(&["stop", "create-token", "revoke-token", "revoke-all-tokens"]),
+        conflicts_with_all(&["stop", "create_token", "revoke_token", "revoke_all_tokens"]),
         display_order = 14
     )]
     pub port: Option<u16>,
@@ -251,7 +263,7 @@ pub struct WebCli {
     #[clap(
         long,
         value_parser,
-        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        conflicts_with_all(&["stop", "status", "create_token", "revoke_token", "revoke_all_tokens"]),
         display_order = 15
     )]
     pub cert: Option<PathBuf>,
@@ -259,7 +271,7 @@ pub struct WebCli {
     #[clap(
         long,
         value_parser,
-        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        conflicts_with_all(&["stop", "status", "create_token", "revoke_token", "revoke_all_tokens"]),
         display_order = 16
     )]
     pub key: Option<PathBuf>,
@@ -291,15 +303,15 @@ pub enum Sessions {
     #[clap(visible_alias = "ls")]
     ListSessions {
         /// Do not add colors and formatting to the list (useful for parsing)
-        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(short, long)]
         no_formatting: bool,
 
         /// Print just the session name
-        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(short, long)]
         short: bool,
 
         /// List the sessions in reverse order (default is ascending order)
-        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(short, long)]
         reverse: bool,
     },
     /// List existing plugin aliases
@@ -329,7 +341,7 @@ pub enum Sessions {
         options: Option<Box<SessionCommand>>,
 
         /// If resurrecting a dead session, immediately run all its commands on startup
-        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(short, long)]
         force_run_commands: bool,
 
         /// Authentication token for remote sessions
@@ -376,7 +388,7 @@ pub enum Sessions {
         #[clap(value_parser)]
         target_session: Option<String>,
         /// Kill the session if it's running before deleting it
-        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(short, long)]
         force: bool,
     },
 
@@ -395,7 +407,7 @@ pub enum Sessions {
         #[clap(short, long, value_parser)]
         yes: bool,
         /// Kill the sessions if they're running before deleting them
-        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(short, long)]
         force: bool,
     },
 
@@ -416,29 +428,15 @@ pub enum Sessions {
         cwd: Option<PathBuf>,
 
         /// Open the new pane in floating mode
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         floating: bool,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
-        #[clap(
-            short,
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            conflicts_with("floating"),
-            conflicts_with("direction")
-        )]
+        #[clap(short, long, conflicts_with("floating"), conflicts_with("direction"))]
         in_place: bool,
 
         /// Close the replaced pane instead of suspending it (only effective with --in-place)
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("in-place")
-        )]
+        #[clap(long, requires("in_place"))]
         close_replaced_pane: bool,
 
         /// Name of the new pane
@@ -446,11 +444,11 @@ pub enum Sessions {
         name: Option<String>,
 
         /// Close the pane immediately when its command exits
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         close_on_exit: bool,
 
         /// Start the command suspended, only running after you first presses ENTER
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         start_suspended: bool,
 
         /// The x coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
@@ -468,28 +466,18 @@ pub enum Sessions {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
-        #[clap(
-            long,
-            conflicts_with("floating"),
-            conflicts_with("direction"),
-            value_parser,
-            default_value("false"),
-            takes_value(false)
-        )]
+        #[clap(long, conflicts_with("floating"), conflicts_with("direction"))]
         stacked: bool,
         /// Block until the command has finished and its pane has been closed
-        #[clap(long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(long)]
         blocking: bool,
 
         /// Block until the command exits successfully (exit status 0) OR its pane has been closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
             conflicts_with("blocking"),
-            conflicts_with("block-until-exit-failure"),
-            conflicts_with("block-until-exit")
+            conflicts_with("block_until_exit_failure"),
+            conflicts_with("block_until_exit")
         )]
         block_until_exit_success: bool,
 
@@ -497,24 +485,18 @@ pub enum Sessions {
         /// closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
             conflicts_with("blocking"),
-            conflicts_with("block-until-exit-success"),
-            conflicts_with("block-until-exit")
+            conflicts_with("block_until_exit_success"),
+            conflicts_with("block_until_exit")
         )]
         block_until_exit_failure: bool,
 
         /// Block until the command exits (regardless of exit status) OR its pane has been closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
             conflicts_with("blocking"),
-            conflicts_with("block-until-exit-success"),
-            conflicts_with("block-until-exit-failure")
+            conflicts_with("block_until_exit_success"),
+            conflicts_with("block_until_exit_failure")
         )]
         block_until_exit: bool,
         /// if set, will open the pane near the current one rather than following the user's focus
@@ -533,8 +515,8 @@ pub enum Sessions {
         #[clap(
             long,
             value_parser,
-            conflicts_with("near-current-pane"),
-            conflicts_with("in-place")
+            conflicts_with("near_current_pane"),
+            conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
     },
@@ -551,32 +533,19 @@ pub enum Sessions {
         configuration: Option<PluginUserConfiguration>,
 
         /// Open the new pane in floating mode
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         floating: bool,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
-        #[clap(
-            short,
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            conflicts_with("floating")
-        )]
+        #[clap(short, long, conflicts_with("floating"))]
         in_place: bool,
 
         /// Close the replaced pane instead of suspending it (only effective with --in-place)
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("in-place")
-        )]
+        #[clap(long, requires("in_place"))]
         close_replaced_pane: bool,
 
         /// Skip the memory and HD cache and force recompile of the plugin (good for development)
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         skip_plugin_cache: bool,
         /// The x coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
         #[clap(short, long, requires("floating"))]
@@ -603,7 +572,7 @@ pub enum Sessions {
         #[clap(short, long, value_parser)]
         borderless: Option<bool>,
         /// Target a specific tab by ID
-        #[clap(long, value_parser, conflicts_with("in-place"))]
+        #[clap(long, value_parser, conflicts_with("in_place"))]
         tab_id: Option<usize>,
     },
     /// Edit file with default $EDITOR / $VISUAL
@@ -621,29 +590,15 @@ pub enum Sessions {
         direction: Option<Direction>,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
-        #[clap(
-            short,
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            conflicts_with("floating"),
-            conflicts_with("direction")
-        )]
+        #[clap(short, long, conflicts_with("floating"), conflicts_with("direction"))]
         in_place: bool,
 
         /// Close the replaced pane instead of suspending it (only effective with --in-place)
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("in-place")
-        )]
+        #[clap(long, requires("in_place"))]
         close_replaced_pane: bool,
 
         /// Open the new pane in floating mode
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         floating: bool,
 
         /// Change the working directory of the editor
@@ -680,8 +635,8 @@ pub enum Sessions {
         #[clap(
             long,
             value_parser,
-            conflicts_with("near-current-pane"),
-            conflicts_with("in-place")
+            conflicts_with("near_current_pane"),
+            conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
     },
@@ -821,7 +776,7 @@ pub enum CliAction {
         path: Option<PathBuf>,
 
         /// Dump the pane with full scrollback
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         full: bool,
 
         /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3). If not specified, dumps the focused pane.
@@ -829,7 +784,7 @@ pub enum CliAction {
         pane_id: Option<String>,
 
         /// Preserve ANSI styling in the dump output
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         ansi: bool,
     },
     /// Dump current layout to stdout
@@ -843,7 +798,7 @@ pub enum CliAction {
         pane_id: Option<String>,
 
         /// Preserve ANSI styling in the scrollback dump
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         ansi: bool,
     },
     /// Scroll up in the focused pane
@@ -915,7 +870,7 @@ pub enum CliAction {
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
     SetPaneFrameStyle {
-        #[clap(arg_enum, value_parser)]
+        #[clap(value_enum, value_parser)]
         style: PaneFrameStyle,
     },
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
@@ -943,29 +898,15 @@ pub enum CliAction {
         cwd: Option<PathBuf>,
 
         /// Open the new pane in floating mode
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         floating: bool,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
-        #[clap(
-            short,
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            conflicts_with("floating"),
-            conflicts_with("direction")
-        )]
+        #[clap(short, long, conflicts_with("floating"), conflicts_with("direction"))]
         in_place: bool,
 
         /// Close the replaced pane instead of suspending it (only effective with --in-place)
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("in-place")
-        )]
+        #[clap(long, requires("in_place"))]
         close_replaced_pane: bool,
 
         /// The pane to replace when opening in place, eg. terminal_1, plugin_2 or 3 (only
@@ -973,8 +914,8 @@ pub enum CliAction {
         #[clap(
             long,
             value_parser,
-            requires("in-place"),
-            conflicts_with("near-current-pane")
+            requires("in_place"),
+            conflicts_with("near_current_pane")
         )]
         pane_id: Option<String>,
 
@@ -983,24 +924,10 @@ pub enum CliAction {
         name: Option<String>,
 
         /// Close the pane immediately when its command exits
-        #[clap(
-            short,
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("command")
-        )]
+        #[clap(short, long, requires("command"))]
         close_on_exit: bool,
         /// Start the command suspended, only running it after the you first press ENTER
-        #[clap(
-            short,
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("command")
-        )]
+        #[clap(short, long, requires("command"))]
         start_suspended: bool,
         #[clap(long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
@@ -1021,14 +948,7 @@ pub enum CliAction {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
-        #[clap(
-            long,
-            conflicts_with("floating"),
-            conflicts_with("direction"),
-            value_parser,
-            default_value("false"),
-            takes_value(false)
-        )]
+        #[clap(long, conflicts_with("floating"), conflicts_with("direction"))]
         stacked: bool,
         /// Block until the command has finished and its pane has been closed
         #[clap(short, long)]
@@ -1037,12 +957,9 @@ pub enum CliAction {
         /// Block until the command exits successfully (exit status 0) OR its pane has been closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
             conflicts_with("blocking"),
-            conflicts_with("block-until-exit-failure"),
-            conflicts_with("block-until-exit")
+            conflicts_with("block_until_exit_failure"),
+            conflicts_with("block_until_exit")
         )]
         block_until_exit_success: bool,
 
@@ -1050,24 +967,18 @@ pub enum CliAction {
         /// closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
             conflicts_with("blocking"),
-            conflicts_with("block-until-exit-success"),
-            conflicts_with("block-until-exit")
+            conflicts_with("block_until_exit_success"),
+            conflicts_with("block_until_exit")
         )]
         block_until_exit_failure: bool,
 
         /// Block until the command exits (regardless of exit status) OR its pane has been closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
             conflicts_with("blocking"),
-            conflicts_with("block-until-exit-success"),
-            conflicts_with("block-until-exit-failure")
+            conflicts_with("block_until_exit_success"),
+            conflicts_with("block_until_exit_failure")
         )]
         block_until_exit: bool,
 
@@ -1090,8 +1001,8 @@ pub enum CliAction {
         #[clap(
             long,
             value_parser,
-            conflicts_with("near-current-pane"),
-            conflicts_with("in-place")
+            conflicts_with("near_current_pane"),
+            conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
     },
@@ -1109,29 +1020,15 @@ pub enum CliAction {
         line_number: Option<usize>,
 
         /// Open the new pane in floating mode
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         floating: bool,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
-        #[clap(
-            short,
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            conflicts_with("floating"),
-            conflicts_with("direction")
-        )]
+        #[clap(short, long, conflicts_with("floating"), conflicts_with("direction"))]
         in_place: bool,
 
         /// Close the replaced pane instead of suspending it (only effective with --in-place)
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("in-place")
-        )]
+        #[clap(long, requires("in_place"))]
         close_replaced_pane: bool,
 
         /// Change the working directory of the editor
@@ -1168,8 +1065,8 @@ pub enum CliAction {
         #[clap(
             long,
             value_parser,
-            conflicts_with("near-current-pane"),
-            conflicts_with("in-place")
+            conflicts_with("near_current_pane"),
+            conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
     },
@@ -1284,7 +1181,7 @@ pub enum CliAction {
     /// Returns: The created tab's ID as a single number on stdout
     NewTab {
         /// Layout to use for the new tab
-        #[clap(short, long, value_parser, conflicts_with = "layout-string")]
+        #[clap(short, long, value_parser, conflicts_with = "layout_string")]
         layout: Option<PathBuf>,
 
         /// Raw KDL layout string to use directly (instead of a layout file path)
@@ -1304,72 +1201,45 @@ pub enum CliAction {
         cwd: Option<PathBuf>,
 
         /// Optional initial command to run in the new tab
-        #[clap(
-            value_parser,
-            conflicts_with("initial-plugin"),
-            multiple_values(true),
-            takes_value(true),
-            last(true)
-        )]
+        #[clap(value_parser, conflicts_with("initial_plugin"), last(true))]
         initial_command: Vec<String>,
 
         /// Initial plugin to load in the new tab
-        #[clap(long, value_parser, conflicts_with("initial-command"))]
+        #[clap(long, value_parser, conflicts_with("initial_command"))]
         initial_plugin: Option<String>,
 
         /// Close the pane immediately when its command exits
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("initial-command")
-        )]
+        #[clap(long, requires("initial_command"))]
         close_on_exit: bool,
 
         /// Start the command suspended, only running it after you first press ENTER
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("initial-command")
-        )]
+        #[clap(long, requires("initial_command"))]
         start_suspended: bool,
 
         /// Block until the command exits successfully (exit status 0) OR its pane has been closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("initial-command"),
-            conflicts_with("block-until-exit-failure"),
-            conflicts_with("block-until-exit")
+            requires("initial_command"),
+            conflicts_with("block_until_exit_failure"),
+            conflicts_with("block_until_exit")
         )]
         block_until_exit_success: bool,
 
         /// Block until the command exits with failure (non-zero exit status) OR its pane has been closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("initial-command"),
-            conflicts_with("block-until-exit-success"),
-            conflicts_with("block-until-exit")
+            requires("initial_command"),
+            conflicts_with("block_until_exit_success"),
+            conflicts_with("block_until_exit")
         )]
         block_until_exit_failure: bool,
 
         /// Block until the command exits (regardless of exit status) OR its pane has been closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("initial-command"),
-            conflicts_with("block-until-exit-success"),
-            conflicts_with("block-until-exit-failure")
+            requires("initial_command"),
+            conflicts_with("block_until_exit_success"),
+            conflicts_with("block_until_exit_failure")
         )]
         block_until_exit: bool,
 
@@ -1401,8 +1271,8 @@ pub enum CliAction {
         /// Path to the layout file
         #[clap(
             value_parser,
-            required_unless_present = "layout-string",
-            conflicts_with = "layout-string"
+            required_unless_present = "layout_string",
+            conflicts_with = "layout_string"
         )]
         layout: Option<PathBuf>,
 
@@ -1415,16 +1285,16 @@ pub enum CliAction {
         layout_dir: Option<PathBuf>,
 
         /// Retain existing terminal panes that do not fit in the layout (default: false)
-        #[clap(long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(long)]
         retain_existing_terminal_panes: bool,
 
         /// Retain existing plugin panes that do not fit with the layout default: false)
-        #[clap(long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(long)]
         retain_existing_plugin_panes: bool,
 
         /// Only apply the layout to the active tab (uses just the first layout tab if it has
         /// multiple)
-        #[clap(long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(long)]
         apply_only_to_active_tab: bool,
     },
     /// Query all tab names
@@ -1441,13 +1311,7 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         in_place: bool,
         /// Close the replaced pane instead of suspending it (only effective with --in-place)
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("in-place")
-        )]
+        #[clap(long, requires("in_place"))]
         close_replaced_pane: bool,
         #[clap(short, long, value_parser)]
         move_to_focused_tab: bool,
@@ -1457,7 +1321,7 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         skip_plugin_cache: bool,
         /// Target a specific tab by ID
-        #[clap(long, value_parser, conflicts_with("in-place"))]
+        #[clap(long, value_parser, conflicts_with("in_place"))]
         tab_id: Option<usize>,
     },
     /// Returns: Plugin pane ID (format: plugin_<id>)
@@ -1467,13 +1331,7 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         in_place: bool,
         /// Close the replaced pane instead of suspending it (only effective with --in-place)
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("in-place")
-        )]
+        #[clap(long, requires("in_place"))]
         close_replaced_pane: bool,
         url: Url,
         #[clap(short, long, value_parser)]
@@ -1486,7 +1344,7 @@ pub enum CliAction {
         )]
         no_focus: bool,
         /// Target a specific tab by ID
-        #[clap(long, value_parser, conflicts_with("in-place"))]
+        #[clap(long, value_parser, conflicts_with("in_place"))]
         tab_id: Option<usize>,
     },
     RenameSession {
@@ -1529,24 +1387,10 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short('c'), long, value_parser, display_order(4))]
         plugin_configuration: Option<PluginUserConfiguration>,
         /// Launch a new plugin even if one is already running
-        #[clap(
-            short('l'),
-            long,
-            value_parser,
-            takes_value(false),
-            default_value("false"),
-            display_order(5)
-        )]
+        #[clap(short('l'), long, display_order(5))]
         force_launch_plugin: bool,
         /// If launching a new plugin, skip cache and force-compile the plugin
-        #[clap(
-            short('s'),
-            long,
-            value_parser,
-            takes_value(false),
-            default_value("false"),
-            display_order(6)
-        )]
+        #[clap(short('s'), long, display_order(6))]
         skip_plugin_cache: bool,
         /// If launching a plugin, should it be floating or not, defaults to floating
         #[clap(short('f'), long, value_parser, display_order(7))]
@@ -1556,7 +1400,7 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
             short('i'),
             long,
             value_parser,
-            conflicts_with("floating-plugin"),
+            conflicts_with("floating_plugin"),
             display_order(8)
         )]
         in_place_plugin: Option<bool>,
@@ -1705,7 +1549,7 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(long)]
         pane_id: Option<String>,
         /// Layout to apply when switching to the session (relative paths start at layout-dir)
-        #[clap(short, long, value_parser, conflicts_with = "layout-string")]
+        #[clap(short, long, value_parser, conflicts_with = "layout_string")]
         layout: Option<PathBuf>,
         /// Raw KDL layout string to use directly
         #[clap(long, value_parser, conflicts_with = "layout")]
