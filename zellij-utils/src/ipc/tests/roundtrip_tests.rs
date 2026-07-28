@@ -14,8 +14,7 @@ use crate::input::layout::{
 };
 use crate::input::mouse::{MouseEvent, MouseEventType};
 use crate::input::options::{
-    Clipboard, MobileLayoutConfiguration, NestedSessionHandling, OnForceClose, Options,
-    PaneFrameStyle,
+    Clipboard, NestedSessionHandling, OnForceClose, Options, PaneFrameStyle,
 };
 use crate::ipc::{
     ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
@@ -500,9 +499,6 @@ fn test_client_messages() {
                 visual_bell: Some(true),
                 focus_follows_mouse: Some(false),
                 mouse_click_through: Some(false),
-                mobile_layout: Some(MobileLayoutConfiguration::Always),
-                mobile_threshold_cols: Some(72),
-                mobile_threshold_rows: Some(40),
                 nested_session_handling: Some(NestedSessionHandling::Fullscreen),
             }),
             layout: None,

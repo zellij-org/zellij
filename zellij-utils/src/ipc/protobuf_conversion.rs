@@ -946,17 +946,6 @@ impl From<crate::input::options::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
-            mobile_layout: options.mobile_layout.map(|m| {
-                use crate::client_server_contract::client_server_contract::MobileLayout as ProtoMobileLayout;
-                use crate::input::options::MobileLayoutConfiguration;
-                match m {
-                    MobileLayoutConfiguration::Web => ProtoMobileLayout::Web as i32,
-                    MobileLayoutConfiguration::Always => ProtoMobileLayout::Always as i32,
-                    MobileLayoutConfiguration::Never => ProtoMobileLayout::Never as i32,
-                }
-            }),
-            mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u32),
-            mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u32),
             pane_frame_style: options.pane_frame_style.map(|s| match s {
                 crate::input::options::PaneFrameStyle::Full => "full".to_owned(),
                 crate::input::options::PaneFrameStyle::Titles => "titles".to_owned(),
@@ -986,7 +975,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
         options: crate::client_server_contract::client_server_contract::Options,
     ) -> Result<Self> {
         use crate::client_server_contract::client_server_contract::{
-            Clipboard as ProtoClipboard, MobileLayout as ProtoMobileLayout,
+            Clipboard as ProtoClipboard,
             NestedSessionHandling as ProtoNestedSessionHandling, OnForceClose as ProtoOnForceClose,
             WebSharing as ProtoWebSharing,
         };
@@ -1081,23 +1070,6 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
-            mobile_layout: options
-                .mobile_layout
-                .map(|m| match ProtoMobileLayout::from_i32(m) {
-                    Some(ProtoMobileLayout::Web) => {
-                        Ok(crate::input::options::MobileLayoutConfiguration::Web)
-                    },
-                    Some(ProtoMobileLayout::Always) => {
-                        Ok(crate::input::options::MobileLayoutConfiguration::Always)
-                    },
-                    Some(ProtoMobileLayout::Never) => {
-                        Ok(crate::input::options::MobileLayoutConfiguration::Never)
-                    },
-                    _ => Err(anyhow!("Invalid MobileLayout value: {}", m)),
-                })
-                .transpose()?,
-            mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u16),
-            mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u16),
             nested_session_handling: options
                 .nested_session_handling
                 .map(|n| match ProtoNestedSessionHandling::from_i32(n) {
@@ -1754,9 +1726,6 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ToggleMouseMode => {
                 ActionType::ToggleMouseMode(ToggleMouseModeAction {})
             },
-            crate::input::actions::Action::ToggleMobileMode => ActionType::ToggleMobileMode(
-                crate::client_server_contract::client_server_contract::ToggleMobileModeAction {},
-            ),
             crate::input::actions::Action::PreviousSwapLayout => {
                 ActionType::PreviousSwapLayout(PreviousSwapLayoutAction {})
             },
@@ -2652,7 +2621,6 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::ToggleMouseMode(_) => Ok(crate::input::actions::Action::ToggleMouseMode),
-            ActionType::ToggleMobileMode(_) => Ok(crate::input::actions::Action::ToggleMobileMode),
             ActionType::PreviousSwapLayout(_) => {
                 Ok(crate::input::actions::Action::PreviousSwapLayout)
             },

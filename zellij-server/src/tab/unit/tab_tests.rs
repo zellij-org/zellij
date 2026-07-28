@@ -225,7 +225,6 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -316,7 +315,6 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -413,7 +411,6 @@ fn create_new_tab_with_cell_size(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -17444,211 +17441,4 @@ pub fn scroll_terminal_down_nonexistent_pane_id_is_a_noop() {
 
     let writes = drain_pty_writer(&rx);
     assert!(writes.is_empty());
-}
-
-#[test]
-pub fn set_shadow_focus_returns_true_when_pane_is_in_tab() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
-        .unwrap();
-
-    let placed = tab.set_shadow_focus(99, PaneId::Terminal(2));
-
-    assert!(
-        placed,
-        "pane is in the tab — should report a successful placement"
-    );
-    assert!(
-        tab.has_shadow_focus_on(99, PaneId::Terminal(2)),
-        "shadow focus must be recorded on the target pane",
-    );
-}
-
-#[test]
-pub fn set_shadow_focus_returns_false_when_pane_not_in_tab() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-
-    let placed = tab.set_shadow_focus(99, PaneId::Terminal(42));
-
-    assert!(!placed, "no pane 42 in this tab — placement must fail");
-    assert!(
-        !tab.has_shadow_focus_on(99, PaneId::Terminal(42)),
-        "nothing should have been recorded",
-    );
-    assert!(
-        tab.shadow_focus_clients().is_empty(),
-        "no shadow markers should exist",
-    );
-}
-
-#[test]
-pub fn clear_shadow_focus_removes_marker_and_entry() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-    tab.set_shadow_focus(99, PaneId::Terminal(1));
-    assert_eq!(tab.shadow_focus_clients(), vec![99]);
-
-    tab.clear_shadow_focus(99);
-
-    assert!(
-        tab.shadow_focus_clients().is_empty(),
-        "marker should be gone after clear",
-    );
-    assert!(
-        !tab.has_shadow_focus_on(99, PaneId::Terminal(1)),
-        "the active_panes entry should be gone too",
-    );
-}
-
-#[test]
-pub fn clear_shadow_focus_is_a_noop_when_absent() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-
-    tab.clear_shadow_focus(99);
-
-    assert!(
-        tab.tiled_panes.pane_id_is_focused(&PaneId::Terminal(1)),
-        "real client's focus on pane 1 must survive an unrelated clear",
-    );
-}
-
-#[test]
-pub fn has_shadow_focus_on_is_pane_specific() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
-        .unwrap();
-
-    tab.set_shadow_focus(99, PaneId::Terminal(2));
-
-    assert!(tab.has_shadow_focus_on(99, PaneId::Terminal(2)));
-    assert!(
-        !tab.has_shadow_focus_on(99, PaneId::Terminal(1)),
-        "must NOT match a different pane id",
-    );
-    assert!(
-        !tab.has_shadow_focus_on(7, PaneId::Terminal(2)),
-        "must NOT match a different client id",
-    );
-}
-
-#[test]
-pub fn has_shadow_focus_on_does_not_match_real_focus() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let tab = create_new_tab(size, true);
-
-    assert!(
-        tab.tiled_panes.pane_id_is_focused(&PaneId::Terminal(1)),
-        "precondition: client 1 has real focus on pane 1",
-    );
-    assert!(
-        !tab.has_shadow_focus_on(1, PaneId::Terminal(1)),
-        "real focus must not register as shadow focus",
-    );
-}
-
-#[test]
-pub fn shadow_focus_clients_lists_only_marked_clients() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
-        .unwrap();
-
-    tab.set_shadow_focus(99, PaneId::Terminal(1));
-    tab.set_shadow_focus(100, PaneId::Terminal(2));
-
-    let mut clients = tab.shadow_focus_clients();
-    clients.sort_unstable();
-    assert_eq!(clients, vec![99, 100]);
-}
-
-#[test]
-pub fn real_focus_supersedes_shadow_marker() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-    tab.set_shadow_focus(99, PaneId::Terminal(1));
-    assert_eq!(tab.shadow_focus_clients(), vec![99]);
-
-    tab.tiled_panes.focus_pane(PaneId::Terminal(1), 99);
-
-    assert!(
-        tab.shadow_focus_clients().is_empty(),
-        "real focus must clear any prior shadow marker for the same client",
-    );
-    assert!(
-        tab.tiled_panes.pane_id_is_focused(&PaneId::Terminal(1)),
-        "real focus must still be recorded",
-    );
-}
-
-#[test]
-pub fn moving_shadow_focus_updates_pane_target() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
-        .unwrap();
-
-    tab.set_shadow_focus(99, PaneId::Terminal(1));
-    tab.set_shadow_focus(99, PaneId::Terminal(2));
-
-    assert!(tab.has_shadow_focus_on(99, PaneId::Terminal(2)));
-    assert!(
-        !tab.has_shadow_focus_on(99, PaneId::Terminal(1)),
-        "previous shadow target must be overwritten",
-    );
-    assert_eq!(
-        tab.shadow_focus_clients(),
-        vec![99],
-        "still only one shadow client",
-    );
-}
-
-#[test]
-pub fn closing_a_pane_silently_drops_shadow_clients() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
-        .unwrap();
-    tab.set_shadow_focus(99, PaneId::Terminal(2));
-    assert!(tab.has_shadow_focus_on(99, PaneId::Terminal(2)));
-
-    tab.close_pane(PaneId::Terminal(2), false, None);
-
-    assert!(
-        tab.shadow_focus_clients().is_empty(),
-        "shadow client must be dropped when its pane is closed",
-    );
 }

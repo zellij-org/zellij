@@ -10,7 +10,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -88,8 +88,6 @@ pub mod event {
         PluginConfigurationChangedPayload(super::PluginConfigurationChangedPayload),
         #[prost(message, tag="36")]
         HighlightClickedPayload(super::HighlightClickedPayload),
-        #[prost(message, tag="37")]
-        PaneRenderReportWithAnsiPayload(super::PaneRenderReportPayload),
         #[prost(message, tag="38")]
         InitialKeybindsPayload(super::InitialKeybindsPayload),
         #[prost(message, tag="39")]
@@ -892,7 +890,6 @@ pub enum EventType {
     AvailableLayoutInfo = 40,
     PluginConfigurationChanged = 41,
     HighlightClicked = 42,
-    PaneRenderReportWithAnsi = 43,
     InitialKeybinds = 44,
     CommandChanged = 45,
     HostTerminalThemeChanged = 46,
@@ -949,7 +946,6 @@ impl EventType {
             EventType::AvailableLayoutInfo => "AvailableLayoutInfo",
             EventType::PluginConfigurationChanged => "PluginConfigurationChanged",
             EventType::HighlightClicked => "HighlightClicked",
-            EventType::PaneRenderReportWithAnsi => "PaneRenderReportWithAnsi",
             EventType::InitialKeybinds => "InitialKeybinds",
             EventType::CommandChanged => "CommandChanged",
             EventType::HostTerminalThemeChanged => "HostTerminalThemeChanged",
@@ -1003,7 +999,6 @@ impl EventType {
             "AvailableLayoutInfo" => Some(Self::AvailableLayoutInfo),
             "PluginConfigurationChanged" => Some(Self::PluginConfigurationChanged),
             "HighlightClicked" => Some(Self::HighlightClicked),
-            "PaneRenderReportWithAnsi" => Some(Self::PaneRenderReportWithAnsi),
             "InitialKeybinds" => Some(Self::InitialKeybinds),
             "CommandChanged" => Some(Self::CommandChanged),
             "HostTerminalThemeChanged" => Some(Self::HostTerminalThemeChanged),

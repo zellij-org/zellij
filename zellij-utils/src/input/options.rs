@@ -17,65 +17,6 @@ pub enum OnForceClose {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
-pub enum MobileLayoutConfiguration {
-    #[serde(alias = "web")]
-    Web,
-    #[serde(alias = "always")]
-    Always,
-    #[serde(alias = "never")]
-    Never,
-}
-
-impl Default for MobileLayoutConfiguration {
-    fn default() -> Self {
-        Self::Web
-    }
-}
-
-impl FromStr for MobileLayoutConfiguration {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Web" | "web" => Ok(Self::Web),
-            "Always" | "always" => Ok(Self::Always),
-            "Never" | "never" => Ok(Self::Never),
-            _ => Err(format!("No such mobile_layout: {}", s)),
-        }
-    }
-}
-
-impl MobileLayoutConfiguration {
-    pub fn should_route_to_mobile(
-        self,
-        is_web_client: bool,
-        viewport_cols: usize,
-        viewport_rows: usize,
-        threshold_cols: u16,
-        threshold_rows: u16,
-    ) -> bool {
-        let cols_reported = viewport_cols > 0;
-        let rows_reported = viewport_rows > 0;
-        let cols_match =
-            cols_reported && (threshold_cols == 0 || viewport_cols <= threshold_cols as usize);
-        let rows_match =
-            rows_reported && (threshold_rows == 0 || viewport_rows <= threshold_rows as usize);
-        let size_match = cols_match || rows_match;
-        if is_web_client {
-            return false;
-        }
-        match self {
-            MobileLayoutConfiguration::Always => size_match,
-            MobileLayoutConfiguration::Never => false,
-            MobileLayoutConfiguration::Web => false,
-        }
-    }
-
-    pub fn may_route_web_client_to_mobile(self) -> bool {
-        false
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
 pub enum NestedSessionHandling {
     #[serde(alias = "ask")]
     Ask,
@@ -438,21 +379,6 @@ pub struct Options {
     #[clap(long)]
     pub client_async_worker_tasks: Option<usize>,
 
-    /// When a newly-attaching client should land in the mobile UI plugin (web, always, never)
-    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
-    #[serde(default)]
-    pub mobile_layout: Option<MobileLayoutConfiguration>,
-
-    /// Column breakpoint for mobile_layout (0 to always match)
-    #[clap(long, value_parser)]
-    #[serde(default)]
-    pub mobile_threshold_cols: Option<u16>,
-
-    /// Row breakpoint for mobile_layout (0 to always match)
-    #[clap(long, value_parser)]
-    #[serde(default)]
-    pub mobile_threshold_rows: Option<u16>,
-
     /// How to handle a nested Zellij session detected inside a pane
     /// (ask, fullscreen, descend, never)
     #[clap(long, value_enum, hide_possible_values = true, value_parser)]
@@ -570,9 +496,6 @@ impl Options {
         let client_async_worker_tasks = other
             .client_async_worker_tasks
             .or(self.client_async_worker_tasks);
-        let mobile_layout = other.mobile_layout.or(self.mobile_layout);
-        let mobile_threshold_cols = other.mobile_threshold_cols.or(self.mobile_threshold_cols);
-        let mobile_threshold_rows = other.mobile_threshold_rows.or(self.mobile_threshold_rows);
         let nested_session_handling = other
             .nested_session_handling
             .or(self.nested_session_handling);
@@ -629,9 +552,6 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
-            mobile_layout,
-            mobile_threshold_cols,
-            mobile_threshold_rows,
             nested_session_handling,
         }
     }
@@ -725,9 +645,6 @@ impl Options {
         let client_async_worker_tasks = other
             .client_async_worker_tasks
             .or(self.client_async_worker_tasks);
-        let mobile_layout = other.mobile_layout.or(self.mobile_layout);
-        let mobile_threshold_cols = other.mobile_threshold_cols.or(self.mobile_threshold_cols);
-        let mobile_threshold_rows = other.mobile_threshold_rows.or(self.mobile_threshold_rows);
         let nested_session_handling = other
             .nested_session_handling
             .or(self.nested_session_handling);
@@ -784,9 +701,6 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
-            mobile_layout,
-            mobile_threshold_cols,
-            mobile_threshold_rows,
             nested_session_handling,
         }
     }
@@ -803,11 +717,6 @@ impl Options {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const SMALL: (usize, usize) = (40, 20);
-    const WIDE_SHORT: (usize, usize) = (200, 20);
-    const TALL_NARROW: (usize, usize) = (40, 200);
-    const LARGE: (usize, usize) = (200, 200);
 
     #[test]
     fn pane_frame_style_from_str_accepts_all_variants() {
@@ -828,184 +737,5 @@ mod tests {
             PaneFrameStyle::None
         );
         assert!("bogus".parse::<PaneFrameStyle>().is_err());
-    }
-
-    fn route(
-        layout: MobileLayoutConfiguration,
-        is_web: bool,
-        viewport: (usize, usize),
-        thresholds: (u16, u16),
-    ) -> bool {
-        layout.should_route_to_mobile(is_web, viewport.0, viewport.1, thresholds.0, thresholds.1)
-    }
-
-    #[test]
-    fn never_never_routes_to_mobile() {
-        for &is_web in &[true, false] {
-            for &viewport in &[SMALL, WIDE_SHORT, TALL_NARROW, LARGE] {
-                for &thresholds in &[(60, 30), (0, 0), (0, 30), (60, 0)] {
-                    assert!(
-                        !route(MobileLayoutConfiguration::Never, is_web, viewport, thresholds),
-                        "Never must never route (is_web={is_web} viewport={viewport:?} thresholds={thresholds:?})",
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn web_clients_never_route_to_plugin_mobile() {
-        for &layout in &[
-            MobileLayoutConfiguration::Web,
-            MobileLayoutConfiguration::Always,
-            MobileLayoutConfiguration::Never,
-        ] {
-            for &viewport in &[SMALL, WIDE_SHORT, TALL_NARROW, LARGE] {
-                for &thresholds in &[(60, 30), (0, 0), (0, 30), (60, 0)] {
-                    assert!(
-                        !route(layout, true, viewport, thresholds),
-                        "web clients must never route to plugin mobile (layout={layout:?} viewport={viewport:?} thresholds={thresholds:?})",
-                    );
-                }
-            }
-        }
-        assert!(!MobileLayoutConfiguration::Web.may_route_web_client_to_mobile());
-        assert!(!MobileLayoutConfiguration::Always.may_route_web_client_to_mobile());
-        assert!(!MobileLayoutConfiguration::Never.may_route_web_client_to_mobile());
-    }
-
-    #[test]
-    fn web_layout_never_routes_native_clients() {
-        assert!(!route(
-            MobileLayoutConfiguration::Web,
-            false,
-            SMALL,
-            (60, 30)
-        ));
-    }
-
-    #[test]
-    fn always_routes_native_client_on_size_match() {
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            false,
-            SMALL,
-            (60, 30)
-        ));
-        assert!(!route(
-            MobileLayoutConfiguration::Always,
-            false,
-            LARGE,
-            (60, 30)
-        ));
-    }
-
-    #[test]
-    fn zero_threshold_makes_dimension_unconditional() {
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            false,
-            LARGE,
-            (0, 30)
-        ));
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            false,
-            LARGE,
-            (60, 0)
-        ));
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            false,
-            LARGE,
-            (0, 0)
-        ));
-        assert!(!route(MobileLayoutConfiguration::Web, true, LARGE, (0, 0)));
-        assert!(!route(MobileLayoutConfiguration::Web, false, LARGE, (0, 0)));
-    }
-
-    #[test]
-    fn zero_viewport_is_treated_as_unknown() {
-        assert!(!route(
-            MobileLayoutConfiguration::Always,
-            true,
-            (0, 0),
-            (60, 30)
-        ));
-        assert!(!route(
-            MobileLayoutConfiguration::Web,
-            true,
-            (0, 0),
-            (60, 30)
-        ));
-        assert!(!route(
-            MobileLayoutConfiguration::Always,
-            true,
-            (0, 0),
-            (0, 0)
-        ));
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            false,
-            (40, 0),
-            (60, 30)
-        ));
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            false,
-            (0, 20),
-            (60, 30)
-        ));
-    }
-
-    #[test]
-    fn boundary_inclusive_at_threshold() {
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            false,
-            (60, 200),
-            (60, 30)
-        ));
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            false,
-            (200, 30),
-            (60, 30)
-        ));
-        assert!(!route(
-            MobileLayoutConfiguration::Always,
-            false,
-            (61, 31),
-            (60, 30)
-        ));
-    }
-
-    #[test]
-    fn from_str_accepts_canonical_and_lowercase() {
-        assert_eq!(
-            "web".parse::<MobileLayoutConfiguration>(),
-            Ok(MobileLayoutConfiguration::Web)
-        );
-        assert_eq!(
-            "Web".parse::<MobileLayoutConfiguration>(),
-            Ok(MobileLayoutConfiguration::Web)
-        );
-        assert_eq!(
-            "always".parse::<MobileLayoutConfiguration>(),
-            Ok(MobileLayoutConfiguration::Always)
-        );
-        assert_eq!(
-            "never".parse::<MobileLayoutConfiguration>(),
-            Ok(MobileLayoutConfiguration::Never)
-        );
-        assert!("auto".parse::<MobileLayoutConfiguration>().is_err());
-    }
-
-    #[test]
-    fn default_is_web() {
-        assert_eq!(
-            MobileLayoutConfiguration::default(),
-            MobileLayoutConfiguration::Web
-        );
     }
 }

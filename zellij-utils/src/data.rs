@@ -6,7 +6,7 @@ use crate::input::layout::{
     Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
 pub use crate::input::options::PaneFrameStyle;
-use crate::pane_size::{PaneGeom, Size};
+use crate::pane_size::PaneGeom;
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
 use clap::ValueEnum;
@@ -1020,7 +1020,6 @@ pub enum Event {
     /// An action was performed by the user (requires InterceptInput permission)
     UserAction(Action, ClientId, Option<u32>, Option<ClientId>), // Action, client_id, terminal_id, cli_client_id
     PaneRenderReport(HashMap<PaneId, PaneContents>),
-    PaneRenderReportWithAnsi(HashMap<PaneId, PaneContents>),
     ActionComplete(Action, Option<PaneId>, BTreeMap<String, String>), // Action, pane_id, context
     CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
     CommandChanged(PaneId, Vec<String>, bool, Vec<ClientId>), // pane_id, command, is_foreground, focused_client_ids
@@ -3647,12 +3646,6 @@ pub enum PluginCommand {
     DeleteDeadSessionAndReply(String), // session name; sends a response back
     DeleteAllDeadSessionsAndReply,     // no payload; sends a response back
     SetSoftKeyboard(bool),
-    SetTabFit {
-        tab_id: usize,
-        fit: Option<(PaneId, Size)>,
-    },
-    SetShadowFocus(PaneId),
-    ExitMobileMode,
     FocusHostSession,
 }
 

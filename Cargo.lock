@@ -2311,15 +2311,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mobile"
-version = "0.1.0"
-dependencies = [
- "fuzzy-matcher",
- "unicode-width 0.2.2",
- "zellij-tile",
-]
-
-[[package]]
 name = "multimap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

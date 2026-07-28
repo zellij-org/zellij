@@ -43,7 +43,6 @@ export function initMobileUi(context) {
     window.addEventListener("resize", evaluateActivation);
     window.__zjMobileUi = {
         setData,
-        setServerFlag,
         getState: () => state,
         getRenderSizing,
     };
@@ -52,42 +51,36 @@ export function initMobileUi(context) {
     }
 }
 
-function activationOverride() {
+const ACTIVATION_PREFERENCE_KEY = "zellij:mobile-ui";
+
+function activationPreference() {
     try {
-        const params = new URLSearchParams(window.location.search);
-        if (params.get("mobile") === "1") {
-            localStorage.setItem("zellij:mobile-override", "1");
-        } else if (params.get("mobile") === "0") {
-            localStorage.setItem("zellij:mobile-override", "0");
-        } else if (params.get("mobile") === "auto") {
-            localStorage.removeItem("zellij:mobile-override");
-        }
-        const stored = localStorage.getItem("zellij:mobile-override");
-        if (stored === "1") return "on";
-        if (stored === "0") return "off";
+        const stored = localStorage.getItem(ACTIVATION_PREFERENCE_KEY);
+        if (stored === "on") return "on";
+        if (stored === "off") return "off";
         return "auto";
     } catch (_) {
         return "auto";
     }
 }
 
-let serverFlag = false;
-
-function setServerFlag(on) {
-    serverFlag = !!on;
-    evaluateActivation();
+function setActivationPreference(value) {
+    try {
+        localStorage.setItem(ACTIVATION_PREFERENCE_KEY, value);
+    } catch (_) {}
 }
 
 function shouldActivate() {
-    const override = activationOverride();
-    if (override === "on") return true;
-    if (override === "off") return false;
+    const preference = activationPreference();
+    if (preference === "on") return true;
+    if (preference === "off") return false;
     return isMobileViewport();
 }
 
 function evaluateActivation() {
     const next = shouldActivate();
     if (next === state.active) {
+        renderReturnPill();
         return;
     }
     state.active = next;
@@ -161,6 +154,21 @@ function injectStyles() {
     body.zj-mobile-panning #terminal {
       touch-action: none;
     }
+
+    .zj-mobile-return {
+      display: none;
+      position: fixed; right: 12px; bottom: 12px;
+      z-index: 700;
+      min-height: 44px; padding: 0 16px;
+      border: 1px solid ${COLORS.green};
+      border-radius: 22px;
+      background: ${COLORS.medium};
+      color: ${COLORS.text};
+      font-family: 'JetBrains Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    body.zj-mobile-active .zj-mobile-return { display: none !important; }
 
     .zj-mobile-topbar {
       position: fixed; top: 0; left: 0; right: 0;
@@ -311,6 +319,13 @@ function buildDom() {
     root.append(topbar, menu, modbar, panes, sessions, newSession);
     document.body.appendChild(root);
 
+    const returnPill = document.createElement("button");
+    returnPill.id = "zj-mobile-return";
+    returnPill.className = "zj-mobile-return";
+    returnPill.textContent = "\u2630 Mobile UI";
+    returnPill.addEventListener("click", returnToMobileUi);
+    document.body.appendChild(returnPill);
+
     els = {
         root,
         topbar,
@@ -322,6 +337,7 @@ function buildDom() {
         panes,
         sessions,
         newSession,
+        returnPill,
     };
 }
 
@@ -532,14 +548,16 @@ function switchToDesktop() {
         single_pane: false,
         fit: true,
     });
-    try {
-        localStorage.removeItem("zellij:mobile-override");
-    } catch (_) {}
-    serverFlag = false;
+    setActivationPreference("off");
     state.active = false;
     document.body.classList.remove("zj-mobile-active");
     render();
     reconcileSize();
+}
+
+function returnToMobileUi() {
+    setActivationPreference("on");
+    evaluateActivation();
 }
 
 function handleModCell(cell) {
@@ -727,6 +745,15 @@ function render() {
     renderMenu();
     renderModifierBar();
     renderOverlays();
+    renderReturnPill();
+}
+
+function renderReturnPill() {
+    if (!els || !els.returnPill) {
+        return;
+    }
+    const visible = activationPreference() === "off" && isMobileViewport();
+    els.returnPill.style.display = visible ? "block" : "none";
 }
 
 function activePaneLabel() {

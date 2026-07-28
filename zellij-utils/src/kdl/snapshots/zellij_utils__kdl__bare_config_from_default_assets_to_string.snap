@@ -265,7 +265,6 @@ plugins {
     filepicker location="zellij:strider" {
         cwd "/"
     }
-    mobile location="zellij:mobile"
     plugin-manager location="zellij:plugin-manager"
     session-manager location="zellij:session-manager"
     status-bar location="zellij:status-bar"
@@ -281,3 +280,4 @@ load_plugins {
 web_client {
     font "monospace"
 }
+

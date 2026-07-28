@@ -28,7 +28,7 @@ use zellij_utils::{
         actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
     },
-    ipc::{ClientToServerMsg, ExitReason, IpcReceiverWithContext, ResizeCause, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg},
 };
 
 use crate::ClientId;
@@ -1287,14 +1287,6 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::ToggleMouseMode => {}, // Handled client side
-        Action::ToggleMobileMode => {
-            senders
-                .send_to_screen(ScreenInstruction::ToggleMobileMode(
-                    client_id,
-                    Some(NotificationEnd::new(completion_tx)),
-                ))
-                .with_context(err_context)?;
-        },
         Action::PreviousSwapLayout => {
             senders
                 .send_to_screen(ScreenInstruction::PreviousSwapLayout(
@@ -2457,7 +2449,7 @@ pub(crate) fn route_thread_main(
                                 }
                             }
                         },
-                        ClientToServerMsg::TerminalResize { new_size, cause } => {
+                        ClientToServerMsg::TerminalResize { new_size, .. } => {
                             // Check if this is a watcher or regular client
                             if is_watcher {
                                 // For watchers: send size to Screen for tracking, don't affect screen size
@@ -2484,51 +2476,6 @@ pub(crate) fn route_thread_main(
                                         client_id, new_size,
                                     ))
                                 });
-                                if matches!(cause, ResizeCause::Viewport) {
-                                    let mobile_options =
-                                        session_data.read().ok().and_then(|guard| {
-                                            guard.as_ref().map(|s| {
-                                                let config = s
-                                                    .session_configuration
-                                                    .get_client_configuration(&client_id);
-                                                (
-                                                    config
-                                                        .options
-                                                        .mobile_layout
-                                                        .unwrap_or_default(),
-                                                    config
-                                                        .options
-                                                        .mobile_threshold_cols
-                                                        .unwrap_or(60),
-                                                    config
-                                                        .options
-                                                        .mobile_threshold_rows
-                                                        .unwrap_or(30),
-                                                )
-                                            })
-                                        });
-                                    if let Some((mobile_layout, threshold_cols, threshold_rows)) =
-                                        mobile_options
-                                    {
-                                        let _ = senders.as_ref().map(|s| {
-                                            s.send_to_screen(
-                                                ScreenInstruction::ReevaluateMobileMode {
-                                                    client_id,
-                                                    new_size,
-                                                    mobile_layout,
-                                                    threshold_cols,
-                                                    threshold_rows,
-                                                },
-                                            )
-                                        });
-                                    }
-                                } else if matches!(cause, ResizeCause::SizeSettled) {
-                                    let _ = senders.as_ref().map(|s| {
-                                        s.send_to_screen(ScreenInstruction::MobileSizeSettled(
-                                            client_id,
-                                        ))
-                                    });
-                                }
                             }
                         },
                         ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions } => {

@@ -191,7 +191,6 @@ pub(crate) struct Tab {
     pub prev_name: String,
     default_name: String,
     pub size: Size,
-    pub visible_to: Option<HashSet<ClientId>>,
     tiled_panes: TiledPanes,
     floating_panes: FloatingPanes,
     suppressed_panes: SuppressedPanes,
@@ -874,10 +873,9 @@ impl Tab {
         mouse_click_through: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
-        mobile_tab_count: usize,
     ) -> Self {
         let default_name = if name.is_empty() {
-            format!("Tab #{}", (id + 1).saturating_sub(mobile_tab_count))
+            format!("Tab #{}", id + 1)
         } else {
             String::new()
         };
@@ -958,7 +956,6 @@ impl Tab {
             prev_name: name,
             default_name,
             size: initial_size,
-            visible_to: None,
             max_panes,
             viewport,
             display_area,
@@ -4048,36 +4045,6 @@ impl Tab {
             pane.set_guest_modal_shortcuts(shortcuts);
         }
     }
-    pub fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) -> bool {
-        if self.tiled_panes.panes_contain(&pane_id) {
-            self.tiled_panes.set_shadow_focus(client_id, pane_id);
-            true
-        } else if self.floating_panes.panes_contain(&pane_id) {
-            self.floating_panes.set_shadow_focus(client_id, pane_id);
-            true
-        } else {
-            false
-        }
-    }
-    pub fn clear_shadow_focus(&mut self, client_id: ClientId) {
-        if self.tiled_panes.is_shadow_focus_client(&client_id) {
-            self.tiled_panes.clear_shadow_focus(client_id);
-        }
-        if self.floating_panes.is_shadow_focus_client(&client_id) {
-            self.floating_panes.clear_shadow_focus(client_id);
-        }
-    }
-    pub fn shadow_focus_clients(&self) -> Vec<ClientId> {
-        let mut out = self.tiled_panes.shadow_focus_clients();
-        out.extend(self.floating_panes.shadow_focus_clients());
-        out.sort_unstable();
-        out.dedup();
-        out
-    }
-    pub fn has_shadow_focus_on(&self, client_id: ClientId, pane_id: PaneId) -> bool {
-        self.tiled_panes.has_shadow_focus_on(client_id, pane_id)
-            || self.floating_panes.has_shadow_focus_on(client_id, pane_id)
-    }
     pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
         if self.is_pending {
             self.pending_instructions
@@ -4762,10 +4729,6 @@ impl Tab {
         self.should_clear_display_before_rendering = true;
         self.floating_panes.set_force_render(); // we do this to make sure pinned panes are
                                                 // rendered even if their surface is not visible
-    }
-    #[cfg(test)]
-    pub fn should_clear_display_before_rendering(&self) -> bool {
-        self.should_clear_display_before_rendering
     }
     pub fn is_sync_panes_active(&self) -> bool {
         self.synchronize_is_active
