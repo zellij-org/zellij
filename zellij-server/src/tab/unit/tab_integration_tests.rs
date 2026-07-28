@@ -15358,7 +15358,10 @@ fn osc99_grid_parses_and_stores_notification() {
 
     // Feed OSC 99 through vte parser
     let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]99;i=gridtest:p=title;Grid notification\x07");
+    vte_parser.advance(
+        &mut grid,
+        b"\x1b]99;i=gridtest:p=title;Grid notification\x07",
+    );
 
     assert_eq!(
         grid.pending_desktop_notifications.len(),

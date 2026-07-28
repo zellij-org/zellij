@@ -14,7 +14,7 @@ anyhow = { workspace = true }
 backtrace = { version = "0.3.55", default-features = false, features = ["std"] }
 bitflags = { version = "2.5.0", default-features = false }
 clap = { workspace = true }
-clap_complete = { version = "3.2.1", default-features = false }
+clap_complete = { version = "4.6", default-features = false }
 colored = { version = "3.1", default-features = false }
 colorsys = { version = "0.6.5", default-features = false, features = ["std"] }
 crossbeam = { version = "0.8.1", default-features = false, features = ["alloc", "std"] }

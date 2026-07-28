@@ -411,8 +411,9 @@ impl UnixPtyBackend {
             .with_context(err_context)?
             .get(&terminal_id)
         {
-            Some(Some(fd)) => termios::tcdrain(unsafe { BorrowedFd::borrow_raw(*fd) })
-                .with_context(err_context),
+            Some(Some(fd)) => {
+                termios::tcdrain(unsafe { BorrowedFd::borrow_raw(*fd) }).with_context(err_context)
+            },
             _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
         }
     }

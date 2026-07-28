@@ -6002,7 +6002,10 @@ fn nested_session_frame_is_staged_for_dispatch() {
     let mut vte_parser = vte::Parser::new();
     let mut grid = new_grid_for_nested_frames();
     let message = nested_announce_message();
-    vte_parser.advance(&mut grid, &zellij_utils::nested_session::encode_frame(&message));
+    vte_parser.advance(
+        &mut grid,
+        &zellij_utils::nested_session::encode_frame(&message),
+    );
     assert_eq!(grid.pending_nested_session_messages, vec![message]);
 }
 

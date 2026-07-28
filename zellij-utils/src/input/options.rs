@@ -1,14 +1,14 @@
 //! Handles cli and configuration options
 use crate::cli::Command;
 use crate::data::{InputMode, WebSharing};
-use clap::{ArgEnum, Args};
+use clap::{Args, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use std::net::IpAddr;
 
-#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ArgEnum)]
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ValueEnum)]
 pub enum OnForceClose {
     #[serde(alias = "quit")]
     Quit,
@@ -16,7 +16,7 @@ pub enum OnForceClose {
     Detach,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ArgEnum)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
 pub enum MobileLayoutConfiguration {
     #[serde(alias = "web")]
     Web,
@@ -75,7 +75,7 @@ impl MobileLayoutConfiguration {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ArgEnum)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
 pub enum NestedSessionHandling {
     #[serde(alias = "ask")]
     Ask,
@@ -124,7 +124,7 @@ impl FromStr for OnForceClose {
     }
 }
 
-#[derive(ArgEnum, Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PaneFrameStyle {
     Full,
@@ -199,7 +199,7 @@ pub struct Options {
     #[clap(long, value_parser)]
     pub theme_light: Option<String>,
     /// Set the default mode
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     pub default_mode: Option<InputMode>,
     /// Set the default shell
     #[clap(long, value_parser)]
@@ -227,7 +227,7 @@ pub struct Options {
     #[serde(default)]
     /// Set display of the pane frames (true or false)
     pub pane_frames: Option<bool>,
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     #[serde(default)]
     pub pane_frame_style: Option<PaneFrameStyle>,
     #[clap(long, value_parser)]
@@ -235,7 +235,7 @@ pub struct Options {
     /// Mirror session when multiple users are connected (true or false)
     pub mirror_session: Option<bool>,
     /// Set behaviour on force close (quit or detach)
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     pub on_force_close: Option<OnForceClose>,
     #[clap(long, value_parser)]
     pub scroll_buffer_size: Option<usize>,
@@ -248,9 +248,9 @@ pub struct Options {
     /// OSC52 destination clipboard
     #[clap(
         long,
-        arg_enum,
+        value_enum,
         ignore_case = true,
-        conflicts_with = "copy-command",
+        conflicts_with = "copy_command",
         value_parser
     )]
     #[serde(default)]
@@ -433,7 +433,7 @@ pub struct Options {
     pub client_async_worker_tasks: Option<usize>,
 
     /// When a newly-attaching client should land in the mobile UI plugin (web, always, never)
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     #[serde(default)]
     pub mobile_layout: Option<MobileLayoutConfiguration>,
 
@@ -449,12 +449,12 @@ pub struct Options {
 
     /// How to handle a nested Zellij session detected inside a pane
     /// (ask, fullscreen, descend, never)
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     #[serde(default)]
     pub nested_session_handling: Option<NestedSessionHandling>,
 }
 
-#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
+#[derive(ValueEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
 pub enum Clipboard {
     #[serde(alias = "system")]
     System,

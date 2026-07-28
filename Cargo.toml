@@ -78,7 +78,7 @@ rust-version = "1.92"
 ansi_term = { version = "0.12.1", default-features = false }
 anyhow = { version = "1.0.70", default-features = false, features = ["backtrace", "std"] }
 async-trait = { version = "0.1", default-features = false }
-clap = { version = "3.2.2", default-features = false, features = ["env", "derive", "color", "std", "suggestions"] }
+clap = { version = "4.6", default-features = false, features = ["std", "color", "help", "usage", "error-context", "suggestions", "wrap_help", "derive", "env"] }
 crossterm = { version = "0.29", default-features = false, features = ["windows"] }
 daemonize = { package = "daemonix", version = "0.1", default-features = false }
 dialoguer = { version = "0.11", default-features = false, features = ["password", "completion"] }

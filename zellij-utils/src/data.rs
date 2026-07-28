@@ -9,7 +9,7 @@ pub use crate::input::options::PaneFrameStyle;
 use crate::pane_size::{PaneGeom, Size};
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
-use clap::ArgEnum;
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
@@ -1152,7 +1152,7 @@ impl PluginPermission {
     EnumIter,
     Serialize,
     Deserialize,
-    ArgEnum,
+    ValueEnum,
     PartialOrd,
     Ord,
 )]
@@ -3187,7 +3187,7 @@ impl OriginatingPlugin {
     }
 }
 
-#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(ValueEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WebSharing {
     #[serde(alias = "on")]
     On,
