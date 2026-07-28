@@ -56,8 +56,8 @@ use zellij_utils::input::options::{
     Clipboard, MobileLayoutConfiguration, NestedSessionHandling, PaneFrameStyle,
 };
 use zellij_utils::ipc::{
-    ExitReason, MobileActivePanePayload, MobilePanePayload, MobileSessionPayload, MobileSizePayload,
-    MobileStatePayload, MobileTabPayload, ServerToClientMsg,
+    ExitReason, MobileActivePanePayload, MobilePanePayload, MobileSessionPayload,
+    MobileSizePayload, MobileStatePayload, MobileTabPayload, ServerToClientMsg,
 };
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::{clean_string_from_control_and_linebreak, detect_theme_hue};
@@ -2564,7 +2564,7 @@ impl Screen {
 
         let mut rows: Vec<usize> = Vec::new();
         let mut cols: Vec<usize> = Vec::new();
-        let mut has_fit_disabled_client = false;
+        let mut fit_disabled_clients: Vec<ClientId> = Vec::new();
         for (client_id, active_tab) in self.active_tab_ids.iter() {
             if *active_tab == tab_id {
                 if self
@@ -2573,7 +2573,7 @@ impl Screen {
                     .map(|prefs| !prefs.fit)
                     .unwrap_or(false)
                 {
-                    has_fit_disabled_client = true;
+                    fit_disabled_clients.push(*client_id);
                     continue;
                 }
                 if let Some(size) = self.client_sizes.get(client_id) {
@@ -2582,8 +2582,8 @@ impl Screen {
                 }
             }
         }
-        if has_fit_disabled_client {
-            if let Some(reference) = self.desktop_reference_size() {
+        for client_id in fit_disabled_clients {
+            if let Some(reference) = self.reference_size_for_client(client_id) {
                 rows.push(reference.rows);
                 cols.push(reference.cols);
             }
@@ -2625,13 +2625,18 @@ impl Screen {
         Ok(())
     }
 
-    fn desktop_reference_size(&self) -> Option<Size> {
+    fn reference_size_for_client(&self, client_id: ClientId) -> Option<Size> {
         let connected = self.connected_clients.borrow();
         connected
-            .iter()
-            .filter(|(_client_id, is_web_client)| !**is_web_client)
-            .filter_map(|(client_id, _)| self.client_sizes.get(client_id).copied())
+            .keys()
+            .filter(|other_id| **other_id != client_id)
+            .filter_map(|other_id| self.client_sizes.get(other_id).copied())
             .max_by_key(|size| size.rows * size.cols)
+    }
+
+    fn has_reference_client(&self, client_id: ClientId) -> bool {
+        let connected = self.connected_clients.borrow();
+        connected.keys().any(|other_id| *other_id != client_id)
     }
 
     pub(crate) fn compute_fit_size(&self, tab_id: usize) -> Option<Size> {
@@ -2720,12 +2725,12 @@ impl Screen {
         single_pane: bool,
         fit: bool,
     ) -> Result<()> {
-        let desktop_client_connected = self
-            .connected_clients
-            .borrow()
-            .iter()
-            .any(|(_client_id, is_web_client)| !*is_web_client);
-        let fit = if !desktop_client_connected { true } else { fit };
+        let reference_client_connected = self.has_reference_client(client_id);
+        let fit = if !reference_client_connected {
+            true
+        } else {
+            fit
+        };
 
         let previous = self.mobile_web_prefs.get(&client_id).copied();
         let previous_fullscreen = previous.and_then(|p| p.fullscreened_pane);
@@ -2764,19 +2769,12 @@ impl Screen {
     }
 
     fn revert_fit_disabled_on_desktop_disconnect(&mut self) -> Result<()> {
-        let desktop_client_connected = self
-            .connected_clients
-            .borrow()
-            .iter()
-            .any(|(_client_id, is_web_client)| !*is_web_client);
-        if desktop_client_connected {
-            return Ok(());
-        }
         let reverted: Vec<ClientId> = self
             .mobile_web_prefs
             .iter()
             .filter(|(_client_id, prefs)| !prefs.fit)
             .map(|(client_id, _)| *client_id)
+            .filter(|client_id| !self.has_reference_client(*client_id))
             .collect();
         if reverted.is_empty() {
             return Ok(());
@@ -5476,23 +5474,6 @@ impl Screen {
             .map(|d| d.as_secs())
             .unwrap_or(0);
 
-        let desktop_client_ids: Vec<ClientId> = self
-            .connected_clients
-            .borrow()
-            .iter()
-            .filter(|(_client_id, is_web_client)| !**is_web_client)
-            .map(|(client_id, _)| *client_id)
-            .collect();
-        let desktop_client_connected = !desktop_client_ids.is_empty();
-        let desktop_size = desktop_client_ids
-            .iter()
-            .filter_map(|client_id| self.client_sizes.get(client_id).copied())
-            .max_by_key(|size| size.cols * size.rows)
-            .map(|s| MobileSizePayload {
-                cols: s.cols,
-                rows: s.rows,
-            });
-
         let now = Instant::now();
         let mut tabs: Vec<MobileTabPayload> = Vec::new();
         let mut panes: Vec<MobilePanePayload> = Vec::new();
@@ -5597,12 +5578,20 @@ impl Screen {
                 active_pane_is_fullscreen,
             };
 
+            let desktop_client_connected = self.has_reference_client(client_id);
+            let desktop_size =
+                self.reference_size_for_client(client_id)
+                    .map(|s| MobileSizePayload {
+                        cols: s.cols,
+                        rows: s.rows,
+                    });
+
             let payload = MobileStatePayload {
                 session_name: self.session_name.clone(),
                 now_secs,
                 is_welcome_screen,
                 desktop_client_connected,
-                desktop_size: desktop_size.clone(),
+                desktop_size,
                 active_pane,
                 tabs: tabs.clone(),
                 panes: panes.clone(),
@@ -5620,10 +5609,8 @@ impl Screen {
             }
 
             if let Some(os_input) = &self.bus.os_input {
-                let _ = os_input.send_to_client(
-                    client_id,
-                    ServerToClientMsg::MobileState { payload },
-                );
+                let _ =
+                    os_input.send_to_client(client_id, ServerToClientMsg::MobileState { payload });
             }
             self.last_mobile_state_sent.insert(client_id, comparable);
         }
@@ -9489,8 +9476,7 @@ pub(crate) fn screen_thread_main(
                 // `is_web_client` may be a placeholder when the NewTab action was
                 // initiated over the web control channel (which cannot carry the
                 // flag); resolve it from the actual connected-client status.
-                let is_web_client =
-                    is_web_client || screen.client_is_web(client_id);
+                let is_web_client = is_web_client || screen.client_is_web(client_id);
                 let resolved_swap_layouts = (
                     swap_tiled_layouts
                         .unwrap_or_else(|| screen.default_layout.swap_tiled_layouts.clone()),

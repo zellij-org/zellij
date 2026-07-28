@@ -28,6 +28,12 @@ function getCellPixelDimensions(term) {
     return null;
 }
 
+function getRenderSizing() {
+    return window.__zjMobileUi && window.__zjMobileUi.getRenderSizing
+        ? window.__zjMobileUi.getRenderSizing()
+        : { pinned: false };
+}
+
 function sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols, cause) {
     if (!wsControl || !ownWebClientId) {
         return;
@@ -201,6 +207,13 @@ export function initWebSockets(
 
 function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
     wsControl.onopen = function (event) {
+        const sizing = getRenderSizing();
+        if (sizing.pinned) {
+            if (sizing.rows !== term.rows || sizing.cols !== term.cols) {
+                term.resize(sizing.cols, sizing.rows);
+            }
+            return;
+        }
         const fitDimensions = fitAddon.proposeDimensions();
         const { rows, cols } = fitDimensions;
         sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols);
@@ -267,23 +280,38 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             const terminal = document.getElementById("terminal");
             terminal.style.background = theme.background;
 
-            sendSizeUpdate(
-                wsControl,
-                ownWebClientId,
-                term,
-                term.rows,
-                term.cols,
-                "Settled"
-            );
+            const settledSizing = getRenderSizing();
+            if (settledSizing.pinned) {
+                if (
+                    settledSizing.rows !== term.rows ||
+                    settledSizing.cols !== term.cols
+                ) {
+                    term.resize(settledSizing.cols, settledSizing.rows);
+                }
+            } else {
+                sendSizeUpdate(
+                    wsControl,
+                    ownWebClientId,
+                    term,
+                    term.rows,
+                    term.cols,
+                    "Settled"
+                );
+            }
         } else if (msg.type === "QueryTerminalSize") {
-            const sizing =
-                window.__zjMobileUi && window.__zjMobileUi.getRenderSizing
-                    ? window.__zjMobileUi.getRenderSizing()
-                    : { pinned: false };
+            const sizing = getRenderSizing();
             if (sizing.pinned) {
                 if (sizing.rows !== term.rows || sizing.cols !== term.cols) {
                     term.resize(sizing.cols, sizing.rows);
                 }
+                sendSizeUpdate(
+                    wsControl,
+                    ownWebClientId,
+                    term,
+                    sizing.rows,
+                    sizing.cols,
+                    "Settled"
+                );
             } else {
                 const fitDimensions = fitAddon.proposeDimensions();
                 const { rows, cols } = fitDimensions;
@@ -354,14 +382,14 @@ export function setupResizeHandler(
             return;
         }
 
-        const sizing =
-            window.__zjMobileUi && window.__zjMobileUi.getRenderSizing
-                ? window.__zjMobileUi.getRenderSizing()
-                : { pinned: false };
+        const sizing = getRenderSizing();
 
         if (sizing.pinned) {
             if (sizing.rows !== term.rows || sizing.cols !== term.cols) {
                 term.resize(sizing.cols, sizing.rows);
+            }
+            if (window.__zjMobilePan) {
+                window.__zjMobilePan.recompute();
             }
             return;
         }

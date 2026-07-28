@@ -110,6 +110,7 @@ function setData(data) {
     if (!state.fitEnabled && desktopSizeChanged(prevDesktop, data.desktop_size)) {
         window.dispatchEvent(new Event("zellij:rendering-resize"));
     }
+    requestAnimationFrame(syncPan);
     render();
 }
 
@@ -155,6 +156,10 @@ function injectStyles() {
     body.zj-mobile-active #terminal {
       height: calc(var(--dynamic-vh, 100vh) - var(--zj-chrome-top, 0px) - var(--zj-chrome-bottom, 0px));
       margin-top: var(--zj-chrome-top, 0px);
+    }
+
+    body.zj-mobile-panning #terminal {
+      touch-action: none;
     }
 
     .zj-mobile-topbar {
@@ -681,12 +686,20 @@ function getRenderSizing() {
     return { pinned: true, cols: size.cols, rows: size.rows };
 }
 
+function syncPan() {
+    if (!window.__zjMobilePan) {
+        return;
+    }
+    window.__zjMobilePan.setActive(getRenderSizing().pinned);
+}
+
 function reconcileSize() {
     const root = document.documentElement;
     if (!state.active) {
         root.style.setProperty("--zj-chrome-top", "0px");
         root.style.setProperty("--zj-chrome-bottom", "0px");
         window.dispatchEvent(new Event("zellij:rendering-resize"));
+        requestAnimationFrame(syncPan);
         return;
     }
     const topVisible =
@@ -698,6 +711,7 @@ function reconcileSize() {
     root.style.setProperty("--zj-chrome-top", `${topH}px`);
     root.style.setProperty("--zj-chrome-bottom", `${modH}px`);
     window.dispatchEvent(new Event("zellij:rendering-resize"));
+    requestAnimationFrame(syncPan);
 }
 
 function render() {

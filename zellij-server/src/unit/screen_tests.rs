@@ -3407,19 +3407,20 @@ pub fn web_new_pane_in_tab_action_targets_requested_tab() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_thread, screen_thread]);
 
-    let spawned_with_tab_index = received_pty_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .any(|i| match i {
-            PtyInstruction::SpawnTerminal(_, _, _, _, client_tab_index_or_pane_id, ..) => {
-                matches!(
-                    client_tab_index_or_pane_id,
-                    ClientTabIndexOrPaneId::TabIndex(0)
-                )
-            },
-            _ => false,
-        });
+    let spawned_with_tab_index =
+        received_pty_instructions
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|i| match i {
+                PtyInstruction::SpawnTerminal(_, _, _, _, client_tab_index_or_pane_id, ..) => {
+                    matches!(
+                        client_tab_index_or_pane_id,
+                        ClientTabIndexOrPaneId::TabIndex(0)
+                    )
+                },
+                _ => false,
+            });
     assert!(
         spawned_with_tab_index,
         "NewPaneInTab must spawn a terminal targeting the requested tab index; got {:?}",
@@ -11818,7 +11819,9 @@ fn fit_disabled_excludes_web_client_from_min_size() {
     let initial_size = Size { cols: 80, rows: 20 };
     let mut screen = create_new_screen(initial_size, true, true);
     new_tab(&mut screen, 1, 0);
-    screen.add_client(2, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(2, /* is_web_client */ true)
+        .expect("TEST");
     screen.set_client_size(1, Size { cols: 80, rows: 20 });
     screen.set_client_size(2, Size { cols: 40, rows: 10 });
 
@@ -11842,7 +11845,9 @@ fn fit_disabled_pins_lone_mobile_tab_to_desktop_reference_size() {
     let mut screen = create_non_mirrored_screen(initial_size);
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
-    screen.add_client(2, /* is_web_client */ false).expect("TEST");
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
     screen.set_client_size(1, Size { cols: 40, rows: 10 });
     screen.set_client_size(
         2,
@@ -11877,7 +11882,9 @@ fn fit_disabled_tab_repins_on_desktop_resize() {
     let mut screen = create_non_mirrored_screen(initial_size);
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
-    screen.add_client(2, /* is_web_client */ false).expect("TEST");
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
     screen.set_client_size(1, Size { cols: 40, rows: 10 });
     screen.set_client_size(
         2,
@@ -11922,11 +11929,38 @@ fn fit_disabled_tab_repins_on_desktop_resize() {
 }
 
 #[test]
+fn fit_disabled_allowed_when_only_other_client_is_web() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen
+        .add_client(1, /* is_web_client */ true)
+        .expect("TEST");
+    screen
+        .add_client(2, /* is_web_client */ true)
+        .expect("TEST");
+    screen.set_client_size(1, Size { cols: 80, rows: 20 });
+    screen.set_client_size(2, Size { cols: 40, rows: 10 });
+
+    screen
+        .set_mobile_render_preferences(2, /* single_pane */ false, /* fit */ false)
+        .expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 20 },
+        "A web client counts as a reference; fit-disabled is honored and the tab stays at the reference size"
+    );
+}
+
+#[test]
 fn fit_disabled_without_desktop_client_forces_enabled() {
     let initial_size = Size { cols: 80, rows: 20 };
     let mut screen = create_new_screen(initial_size, true, true);
     new_tab(&mut screen, 1, 0);
-    screen.add_client(1, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(1, /* is_web_client */ true)
+        .expect("TEST");
     screen.set_client_size(1, Size { cols: 40, rows: 10 });
 
     screen
@@ -11945,7 +11979,9 @@ fn desktop_disconnect_reverts_fit_disabled() {
     let initial_size = Size { cols: 80, rows: 20 };
     let mut screen = create_new_screen(initial_size, true, true);
     new_tab(&mut screen, 1, 0);
-    screen.add_client(2, /* is_web_client */ true).expect("TEST");
+    screen
+        .add_client(2, /* is_web_client */ true)
+        .expect("TEST");
     screen.set_client_size(1, Size { cols: 80, rows: 20 });
     screen.set_client_size(2, Size { cols: 40, rows: 10 });
 
@@ -12001,7 +12037,9 @@ fn focus_pane_by_id_is_per_client_and_does_not_steal_global_focus() {
     let mut screen = create_non_mirrored_screen(initial_size);
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
-    screen.add_client(2, /* is_web_client */ false).expect("TEST");
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
     screen.switch_active_tab(0, None, true, 1).expect("TEST");
     screen.switch_active_tab(1, None, true, 2).expect("TEST");
 
