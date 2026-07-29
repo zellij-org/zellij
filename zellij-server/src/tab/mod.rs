@@ -7897,14 +7897,3 @@ pub fn pane_info_for_pane(
     pane_info
 }
 
-#[cfg(test)]
-#[path = "./unit/tab_tests.rs"]
-mod tab_tests;
-
-#[cfg(test)]
-#[path = "./unit/tab_integration_tests.rs"]
-mod tab_integration_tests;
-
-#[cfg(test)]
-#[path = "./unit/layout_applier_tests.rs"]
-mod layout_applier_tests;

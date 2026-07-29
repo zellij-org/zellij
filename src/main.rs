@@ -10,6 +10,7 @@ use zellij_utils::{
     envs,
     input::config::Config,
     logging::*,
+    pane_size::parse_size,
     setup::Setup,
     shared::web_server_base_url_from_config,
 };
@@ -53,10 +54,18 @@ fn main() {
             no_focus,
             borderless,
             tab_id,
+            size,
         })) = opts.command
         {
             let cwd = cwd.or_else(|| std::env::current_dir().ok());
             let skip_plugin_cache = false; // N/A for this action
+
+            // Parse the custom size if provided
+            let custom_size = size.as_ref().and_then(|size_str| {
+                parse_size(size_str)
+                    .map(|(width_dim, height_dim)| (width_dim, height_dim))
+                    .ok()
+            });
 
             // Compute the unblock condition
             let unblock_condition = if block_until_exit_success {
@@ -98,6 +107,7 @@ fn main() {
                 no_focus,
                 borderless,
                 tab_id,
+                custom_size,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -152,6 +162,7 @@ fn main() {
                 no_focus,
                 borderless,
                 tab_id,
+                custom_size: None, // Plugins don't have size option yet
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -199,6 +210,7 @@ fn main() {
                 no_focus,
                 borderless,
                 tab_id,
+                custom_size: None, // Edit doesn't have size option yet
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);

@@ -53,6 +53,10 @@ impl<'a> PaneResizer<'a> {
 
         if self.is_layout_valid(&spans) {
             self.apply_spans(spans)?;
+        } else {
+            // Layout is invalid (likely due to fixed-size panes making the layout unsolvable)
+            return Err(ZellijError::CantResizeFixedPanes { pane_ids: vec![] })
+                .with_context(|| "Cannot resize: fixed-size panes prevent valid layout");
         }
         Ok(())
     }
@@ -132,6 +136,7 @@ impl<'a> PaneResizer<'a> {
     fn is_layout_valid(&self, spans: &[Span]) -> bool {
         // If pane stacks are too tall to fit on the screen, abandon ship before the status bar gets caught up in
         // any erroneous resizing...
+        let mut fixed_pane_ids = Vec::new();
         for span in spans {
             let pane_is_stacked = self
                 .panes
@@ -145,11 +150,30 @@ impl<'a> PaneResizer<'a> {
                     .min_stack_height(&span.pid)
                     .unwrap();
                 if span.size.as_usize() < min_stack_height {
+                    // Track which fixed pane is causing the issue
+                    let pid_u32 = match span.pid {
+                        PaneId::Terminal(id) => id,
+                        PaneId::Plugin(id) => id,
+                    };
+                    fixed_pane_ids.push((pid_u32, false));
                     return false;
                 }
             }
         }
-        true
+
+        // Check for any fixed-size spans that might make layout unsolvable
+        for span in spans {
+            if span.size.is_fixed() {
+                // Fixed sizes participate less in cassowary solving, potentially causing gaps/overlaps
+                let pid_u32 = match span.pid {
+                    PaneId::Terminal(id) => id,
+                    PaneId::Plugin(id) => id,
+                };
+                fixed_pane_ids.push((pid_u32, false));
+            }
+        }
+
+        !fixed_pane_ids.is_empty()
     }
 
     fn apply_spans(&mut self, spans: Vec<Span>) -> Result<()> {

@@ -1,5 +1,6 @@
 //! Trigger a command
 use crate::data::{Direction, OriginatingPlugin};
+use crate::pane_size::Dimension;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -72,6 +73,9 @@ pub struct RunCommand {
     pub originating_plugin: Option<OriginatingPlugin>,
     #[serde(default)]
     pub use_terminal_title: bool,
+    /// Optional custom size for the pane (width, height) in fixed or percentage format
+    #[serde(default)]
+    pub size: Option<(Dimension, Dimension)>,
 }
 
 impl std::fmt::Display for RunCommand {
@@ -109,6 +113,9 @@ pub struct RunCommandAction {
     pub originating_plugin: Option<OriginatingPlugin>,
     #[serde(default)]
     pub use_terminal_title: bool,
+    /// Optional custom size for the pane (width, height) in fixed or percentage format
+    #[serde(default)]
+    pub size: Option<(Dimension, Dimension)>,
 }
 
 impl From<RunCommandAction> for RunCommand {
@@ -121,6 +128,7 @@ impl From<RunCommandAction> for RunCommand {
             hold_on_start: action.hold_on_start,
             originating_plugin: action.originating_plugin,
             use_terminal_title: action.use_terminal_title,
+            size: action.size,
         }
     }
 }
@@ -136,6 +144,7 @@ impl From<RunCommand> for RunCommandAction {
             hold_on_start: run_command.hold_on_start,
             originating_plugin: run_command.originating_plugin,
             use_terminal_title: run_command.use_terminal_title,
+            size: run_command.size,
         }
     }
 }
