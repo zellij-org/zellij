@@ -640,15 +640,6 @@ pub enum Sessions {
         )]
         tab_id: Option<usize>,
     },
-    ConvertConfig {
-        old_config_file: PathBuf,
-    },
-    ConvertLayout {
-        old_layout_file: PathBuf,
-    },
-    ConvertTheme {
-        old_theme_file: PathBuf,
-    },
     /// Send data to one or more plugins, launch them if they are not running.
     #[clap(override_usage(
 r#"

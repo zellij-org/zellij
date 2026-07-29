@@ -30,7 +30,6 @@ num_cpus = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yaml = { version = "0.8", default-features = false }
 url = { workspace = true }
 uuid = { workspace = true }
 include_dir = { workspace = true }

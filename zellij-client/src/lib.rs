@@ -12,7 +12,6 @@ mod command_is_executing;
 mod input_handler;
 mod keyboard_parser;
 mod nested_reannounce;
-pub mod old_config_converter;
 #[cfg(feature = "web_server_capability")]
 pub mod remote_attach;
 mod stdin_ansi_parser;
