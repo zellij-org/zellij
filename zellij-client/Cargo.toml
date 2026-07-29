@@ -38,7 +38,7 @@ zellij-utils = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 isahc = { workspace = true }
-tokio-tungstenite = "0.20"
+tokio-tungstenite = "0.28"
 rustls = { version = "0.23", default-features = false, features = ["std"] }
 tokio-rustls = "0.26"
 rustls-pemfile = "2"
@@ -63,7 +63,7 @@ windows-sys = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
-insta = "1.6.0"
+insta = "1.48"
 rcgen = "0.13"
 serde_json = "1.0"
 serial_test = "3.0"

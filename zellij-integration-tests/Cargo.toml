@@ -16,7 +16,7 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 crossbeam = { version = "0.8", default-features = false, features = ["crossbeam-channel", "std"] }
 interprocess = { workspace = true }
-insta = { version = "1.6.0", features = ["backtrace"] }
+insta = "1.48"
 log = { workspace = true }
 regex = { workspace = true }
 tokio = { workspace = true }

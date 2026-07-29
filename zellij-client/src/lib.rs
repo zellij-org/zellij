@@ -558,7 +558,8 @@ pub async fn run_remote_client_terminal_loop(
                 web_client_id: connections.web_client_id.clone(),
                 payload: WebClientToWebServerControlMessagePayload::TerminalResize(size),
             })
-            .unwrap(),
+            .unwrap()
+            .into(),
         )
     };
 
@@ -604,7 +605,8 @@ pub async fn run_remote_client_terminal_loop(
                                                 payload_bytes,
                                             },
                                         })
-                                        .unwrap(),
+                                        .unwrap()
+                                        .into(),
                                     );
                                     if let Err(e) = connections.control_ws.send(control_msg).await {
                                         log::error!("Failed to forward nested session frame over control WebSocket: {}", e);
@@ -614,7 +616,7 @@ pub async fn run_remote_client_terminal_loop(
                             }
                         }
                         if !cleaned.is_empty() {
-                            if let Err(e) = connections.terminal_ws.send(Message::Binary(cleaned)).await {
+                            if let Err(e) = connections.terminal_ws.send(Message::Binary(cleaned.into())).await {
                                 log::error!("Failed to send stdin to terminal WebSocket: {}", e);
                                 break;
                             }

@@ -268,7 +268,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
     let manifest = sh
         .read_file(project_dir.join("Cargo.toml"))
         .context(err_context)?
-        .parse::<toml::Value>()
+        .parse::<toml::Table>()
         .context(err_context)?;
     // Version of the core crate
     let version = manifest

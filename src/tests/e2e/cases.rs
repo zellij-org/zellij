@@ -13,7 +13,7 @@ use zellij_utils::{
     position::{Column, Line, Position},
 };
 
-use rand::Rng;
+use rand::RngExt;
 use regex::Regex;
 
 use std::fmt::Write;

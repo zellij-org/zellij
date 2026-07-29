@@ -772,7 +772,7 @@ mod not_wasm {
     const MAX_THREAD_CALL_STACK: usize = 6;
 
     #[derive(Debug, ThisError, Diagnostic)]
-    #[error("{0}{}", self.show_backtrace())]
+    #[error("{0}{backtrace}", backtrace = self.show_backtrace())]
     #[diagnostic(help("{}", self.show_help()))]
     struct Panic(String);
 

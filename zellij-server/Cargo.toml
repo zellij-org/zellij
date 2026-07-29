@@ -28,7 +28,6 @@ log = { workspace = true }
 notify-debouncer-full = { workspace = true }
 prost = { workspace = true }
 regex = { workspace = true }
-semver = { version = "0.11.0", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sixel-image = { version = "0.2.1", default-features = false }
@@ -36,7 +35,6 @@ sixel-tokenizer = { version = "0.1.0", default-features = false }
 sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 tempfile = { workspace = true }
 tokio = { workspace = true }
-typetag = { version = "0.1.7", default-features = false }
 unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
@@ -69,7 +67,7 @@ windows-sys = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
-insta = "1.6.0"
+insta = "1.48"
 tempfile = "3.2.0"
 wasmi = { version = "1.1.0", features = ["std"] }
 
