@@ -26,10 +26,19 @@ use crate::position::Position;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
+const ROUNDTRIP_TEST_STACK_SIZE: usize = 32 * 1024 * 1024;
+
 #[test]
 fn server_client_contract() {
-    test_client_messages();
-    test_server_messages();
+    std::thread::Builder::new()
+        .stack_size(ROUNDTRIP_TEST_STACK_SIZE)
+        .spawn(|| {
+            test_client_messages();
+            test_server_messages();
+        })
+        .expect("failed to spawn roundtrip test thread")
+        .join()
+        .expect("roundtrip test thread panicked");
 }
 
 fn test_client_messages() {

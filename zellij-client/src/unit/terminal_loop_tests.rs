@@ -254,15 +254,19 @@ mod mock_ws_server {
         let recv_task = tokio::spawn(async move {
             while let Some(Ok(axum_msg)) = ws_rx.next().await {
                 let tungstenite_msg = match axum_msg {
-                    axum::extract::ws::Message::Text(text) => Message::Text(text.to_string()),
-                    axum::extract::ws::Message::Binary(data) => Message::Binary(data.to_vec()),
-                    axum::extract::ws::Message::Ping(data) => Message::Ping(data.to_vec()),
-                    axum::extract::ws::Message::Pong(data) => Message::Pong(data.to_vec()),
+                    axum::extract::ws::Message::Text(text) => {
+                        Message::Text(text.to_string().into())
+                    },
+                    axum::extract::ws::Message::Binary(data) => {
+                        Message::Binary(data.to_vec().into())
+                    },
+                    axum::extract::ws::Message::Ping(data) => Message::Ping(data.to_vec().into()),
+                    axum::extract::ws::Message::Pong(data) => Message::Pong(data.to_vec().into()),
                     axum::extract::ws::Message::Close(frame) => {
                         if let Some(f) = frame {
                             Message::Close(Some(tokio_tungstenite::tungstenite::protocol::CloseFrame {
                                 code: tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::from(f.code),
-                                reason: std::borrow::Cow::Owned(f.reason.to_string()),
+                                reason: f.reason.to_string().into(),
                             }))
                         } else {
                             Message::Close(None)
@@ -278,10 +282,18 @@ mod mock_ws_server {
             match msg {
                 Ok(tungstenite_msg) => {
                     let axum_msg = match tungstenite_msg {
-                        Message::Text(text) => axum::extract::ws::Message::Text(text.into()),
-                        Message::Binary(data) => axum::extract::ws::Message::Binary(data.into()),
-                        Message::Ping(data) => axum::extract::ws::Message::Ping(data.into()),
-                        Message::Pong(data) => axum::extract::ws::Message::Pong(data.into()),
+                        Message::Text(text) => {
+                            axum::extract::ws::Message::Text(text.to_string().into())
+                        },
+                        Message::Binary(data) => {
+                            axum::extract::ws::Message::Binary(data.to_vec().into())
+                        },
+                        Message::Ping(data) => {
+                            axum::extract::ws::Message::Ping(data.to_vec().into())
+                        },
+                        Message::Pong(data) => {
+                            axum::extract::ws::Message::Pong(data.to_vec().into())
+                        },
                         Message::Close(frame) => {
                             if let Some(f) = frame {
                                 axum::extract::ws::Message::Close(Some(
@@ -429,7 +441,7 @@ async fn test_terminal_output_written_to_stdout() {
     let test_output = "Hello from terminal";
     server
         .terminal_to_client_tx
-        .send(Message::Text(test_output.to_string()))
+        .send(Message::Text(test_output.to_string().into()))
         .unwrap();
 
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -712,7 +724,9 @@ async fn test_control_message_handling() {
     let query_msg = WebServerToWebClientControlMessage::QueryTerminalSize;
     server
         .control_to_client_tx
-        .send(Message::Text(serde_json::to_string(&query_msg).unwrap()))
+        .send(Message::Text(
+            serde_json::to_string(&query_msg).unwrap().into(),
+        ))
         .unwrap();
 
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -744,7 +758,9 @@ async fn test_control_message_handling() {
     };
     server
         .control_to_client_tx
-        .send(Message::Text(serde_json::to_string(&log_msg).unwrap()))
+        .send(Message::Text(
+            serde_json::to_string(&log_msg).unwrap().into(),
+        ))
         .unwrap();
 
     tokio::time::sleep(Duration::from_millis(100)).await;
