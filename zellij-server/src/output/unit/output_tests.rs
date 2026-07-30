@@ -1257,9 +1257,9 @@ fn kitty_placement_bytes_with_negative_z() {
     let mut chunk = kitty_chunk(internal, 1, 5, 3);
     chunk.z_index = -1;
     let output = run_kitty_frame(&parts, vec![chunk], None);
-    assert!(output.contains("\u{1b}_Ga=t,q=2,f=32,t=d,i=4000000000,s=30,v=40,m=1;"));
+    assert!(output.contains("\u{1b}_Ga=t,q=2,f=32,t=d,i=2000000000,s=30,v=40,m=1;"));
     assert!(output.contains("\u{1b}_Gm=0;"));
-    let placement = "\u{1b}[4;6H\u{1b}[m\u{1b}_Ga=p,q=2,i=4000000000,p=1,x=0,y=0,w=30,h=40,X=0,Y=0,z=-1,C=1\u{1b}\\";
+    let placement = "\u{1b}[4;6H\u{1b}[m\u{1b}_Ga=p,q=2,i=2000000000,p=1,x=0,y=0,w=30,h=40,X=0,Y=0,z=-1,C=1\u{1b}\\";
     assert!(output.contains(placement));
     let save_position = output.find("\u{1b}[s").unwrap();
     let transmit_position = output.find("\u{1b}_Ga=t").unwrap();
@@ -1274,20 +1274,20 @@ fn kitty_diff_move_remove_free_retransmit() {
     let internal = store_test_kitty_image(&parts.0, 30, 40);
     let frame_1 = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 2, 2)], None);
     assert_eq!(frame_1.matches("\u{1b}_Ga=t").count(), 1);
-    assert!(frame_1.contains("\u{1b}_Ga=p,q=2,i=4000000000,p=1,"));
+    assert!(frame_1.contains("\u{1b}_Ga=p,q=2,i=2000000000,p=1,"));
     let frame_2 = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 2, 5)], None);
-    assert!(frame_2.contains("\u{1b}_Ga=p,q=2,i=4000000000,p=1,"));
+    assert!(frame_2.contains("\u{1b}_Ga=p,q=2,i=2000000000,p=1,"));
     assert!(!frame_2.contains("a=d"));
     assert!(!frame_2.contains("\u{1b}_Ga=t"));
     let frame_3 = run_kitty_frame(&parts, vec![], None);
-    assert!(frame_3.contains("\u{1b}_Ga=d,q=2,d=i,i=4000000000,p=1\u{1b}\\"));
+    assert!(frame_3.contains("\u{1b}_Ga=d,q=2,d=i,i=2000000000,p=1\u{1b}\\"));
     assert!(!frame_3.contains("d=I"));
     parts.0.borrow_mut().free(internal);
     let frame_4 = run_kitty_frame(&parts, vec![], None);
-    assert!(frame_4.contains("\u{1b}_Ga=d,q=2,d=I,i=4000000000\u{1b}\\"));
+    assert!(frame_4.contains("\u{1b}_Ga=d,q=2,d=I,i=2000000000\u{1b}\\"));
     let new_internal = store_test_kitty_image(&parts.0, 30, 40);
     let frame_5 = run_kitty_frame(&parts, vec![kitty_chunk(new_internal, 2, 0, 0)], None);
-    assert!(frame_5.contains("\u{1b}_Ga=t,q=2,f=32,t=d,i=4000000001,"));
+    assert!(frame_5.contains("\u{1b}_Ga=t,q=2,f=32,t=d,i=2000000001,"));
 }
 
 #[test]
@@ -1379,7 +1379,7 @@ fn is_dirty_with_kitty_chunks_and_pending_deletes() {
 
     let pending_parts = create_test_kitty_parts();
     let mut transmitted = HashMap::new();
-    transmitted.insert((1 as InternalImageId, None), 4_000_000_000u32);
+    transmitted.insert((1 as InternalImageId, None), 2_000_000_000u32);
     pending_parts.2.borrow_mut().insert(
         1,
         HostKittyState {

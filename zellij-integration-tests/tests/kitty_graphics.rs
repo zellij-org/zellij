@@ -6,9 +6,9 @@ use zellij_integration_tests::{
 };
 
 const KITTY_PROBE_ACK: &[u8] = b"\x1b_Gi=31;OK\x1b\\";
-const TRANSMIT_HEADER: &[u8] = b"\x1b_Ga=t,q=2,f=32,t=d,i=4000000000,s=2,v=2,m=0;";
-const PLACEMENT: &[u8] = b"\x1b_Ga=p,q=2,i=4000000000,p=1,x=0,y=0,w=2,h=2,X=0,Y=0,z=0,C=1\x1b\\";
-const IMAGE_FREE_DELETE: &[u8] = b"\x1b_Ga=d,q=2,d=I,i=4000000000\x1b\\";
+const TRANSMIT_HEADER: &[u8] = b"\x1b_Ga=t,q=2,f=32,t=d,i=2000000000,s=2,v=2,m=0;";
+const PLACEMENT: &[u8] = b"\x1b_Ga=p,q=2,i=2000000000,p=1,x=0,y=0,w=2,h=2,X=0,Y=0,z=0,C=1\x1b\\";
+const IMAGE_FREE_DELETE: &[u8] = b"\x1b_Ga=d,q=2,d=I,i=2000000000\x1b\\";
 const RGB_2X2_A_T: &[u8] = b"\x1b_Ga=T,q=2,f=24,s=2,v=2,m=0;////////////////\x1b\\";
 
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
@@ -141,8 +141,8 @@ fn closing_pane_flushes_kitty_deletes_and_host_ids_are_never_reused() {
     let delete_position = find_bytes(&bytes, IMAGE_FREE_DELETE).unwrap();
     let tail = &bytes[delete_position + IMAGE_FREE_DELETE.len()..];
     assert!(
-        !contains_bytes(tail, b"i=4000000000"),
-        "host image id 4000000000 was referenced after its delete"
+        !contains_bytes(tail, b"i=2000000000"),
+        "host image id 2000000000 was referenced after its delete"
     );
 }
 

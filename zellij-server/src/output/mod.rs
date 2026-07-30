@@ -388,7 +388,7 @@ impl Default for HostKittyState {
         HostKittyState {
             transmitted: HashMap::new(),
             live_placements: HashMap::new(),
-            next_host_image_id: 4_000_000_000,
+            next_host_image_id: 2_000_000_000,
             next_host_placement_id: 1,
         }
     }
