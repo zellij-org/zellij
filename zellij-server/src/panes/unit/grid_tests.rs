@@ -7534,3 +7534,52 @@ fn kitty_conformance_transmit_with_both_id_and_number_is_einval() {
         reply
     );
 }
+
+fn kitty_screen_relative_row(grid: &Grid) -> isize {
+    let placement = &grid.kitty_placements()[0];
+    let cell_height = 20isize;
+    (placement.display_rect.y - grid.lines_above.len() as isize * cell_height) / cell_height
+}
+
+#[test]
+fn kitty_placement_keeps_screen_row_across_width_reflow() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(6, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    for line in 0..5 {
+        let text = format!("row{}-{}", line, "x".repeat(30));
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, text.as_bytes());
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\r\n");
+    }
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[3;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    let screen_row_before = kitty_screen_relative_row(&grid);
+    assert_eq!(screen_row_before, 2);
+    let lines_above_before = grid.lines_above.len();
+
+    grid.change_size(6, 10);
+    assert_ne!(
+        grid.lines_above.len(),
+        lines_above_before,
+        "width reflow must change the scrollback row count for this test to be meaningful"
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(
+        kitty_screen_relative_row(&grid),
+        screen_row_before,
+        "image must keep its screen-relative row across a narrowing width reflow"
+    );
+
+    grid.change_size(6, 40);
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(
+        kitty_screen_relative_row(&grid),
+        screen_row_before,
+        "image must keep its screen-relative row across a widening width reflow"
+    );
+}

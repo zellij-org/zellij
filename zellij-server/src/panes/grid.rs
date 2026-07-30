@@ -1329,6 +1329,8 @@ impl Grid {
         self.selection.reset();
         self.sixel_grid.character_cell_size_possibly_changed();
         self.kitty_grid.character_cell_size_possibly_changed();
+        let kitty_lines_above_before = self.lines_above.len();
+        let kitty_front_drops_before = self.kitty_grid.front_drops();
         let cursors = if new_columns != self.width {
             self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
@@ -1532,6 +1534,12 @@ impl Grid {
                 }
             };
         }
+        let kitty_lines_above_delta =
+            self.lines_above.len() as isize - kitty_lines_above_before as isize;
+        let kitty_front_drops_delta =
+            (self.kitty_grid.front_drops() - kitty_front_drops_before) as isize;
+        self.kitty_grid
+            .shift_placements_after_reflow(kitty_lines_above_delta + kitty_front_drops_delta);
         self.height = new_rows;
         self.width = new_columns;
         self.set_scroll_region_to_viewport_size();

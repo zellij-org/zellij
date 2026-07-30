@@ -572,6 +572,27 @@ impl KittyGrid {
             self.placements = kept;
         }
     }
+    pub fn shift_placements_after_reflow(&mut self, cell_row_delta: isize) {
+        if cell_row_delta == 0 {
+            return;
+        }
+        let cell_height = match *self.character_cell_size.borrow() {
+            Some(cell) => cell.height as isize,
+            None => return,
+        };
+        let pixel_delta = cell_row_delta * cell_height;
+        let mut store = self.kitty_image_store.borrow_mut();
+        let mut kept = Vec::with_capacity(self.placements.len());
+        for mut placement in self.placements.drain(..) {
+            placement.display_rect.y += pixel_delta;
+            if placement.display_rect.y + placement.display_rect.height as isize <= 0 {
+                store.free(placement.internal_id);
+            } else {
+                kept.push(placement);
+            }
+        }
+        self.placements = kept;
+    }
     pub fn apply_region_scroll(
         &mut self,
         region_top_px: isize,

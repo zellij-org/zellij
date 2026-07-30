@@ -400,6 +400,7 @@ pub struct KittyFrameInput<'a> {
     pub visible_panes: Option<&'a HashSet<PaneId>>,
     pub kitty_image_store: &'a mut KittyImageStore,
     pub host_state: &'a mut HostKittyState,
+    pub host_display_cleared: bool,
 }
 
 fn pane_sort_key(pane_id: PaneId) -> (u8, u32) {
@@ -461,8 +462,13 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
         visible_panes,
         kitty_image_store,
         host_state,
+        host_display_cleared,
     } = kitty_input;
     let mut out = String::new();
+    if host_display_cleared {
+        host_state.live_placements.clear();
+        host_state.transmitted.clear();
+    }
     let mut freed: Vec<((InternalImageId, Option<(u16, u16)>), u32)> = host_state
         .transmitted
         .iter()
@@ -865,10 +871,14 @@ impl Output {
             let mut client_serialized_render_instructions = String::new();
 
             // append pre-vte instructions for this client
+            let mut host_display_cleared = false;
             if let Some(pre_vte_instructions_for_client) =
                 self.pre_vte_instructions.remove(&client_id)
             {
                 for vte_instruction in pre_vte_instructions_for_client {
+                    if vte_instruction.contains("\u{1b}[2J") {
+                        host_display_cleared = true;
+                    }
                     client_serialized_render_instructions.push_str(&vte_instruction);
                 }
             }
@@ -893,6 +903,7 @@ impl Output {
                     visible_panes: kitty_visible_panes.as_ref(),
                     kitty_image_store: &mut *kitty_image_store,
                     host_state: kitty_host_state_map.entry(client_id).or_default(),
+                    host_display_cleared,
                 })
             } else {
                 None

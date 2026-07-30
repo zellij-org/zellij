@@ -1205,6 +1205,19 @@ fn run_kitty_frame(
     output.serialize().unwrap().remove(&1).unwrap_or_default()
 }
 
+fn run_kitty_frame_with_host_clear(
+    parts: &KittyTestParts,
+    chunks: Vec<KittyImageChunk>,
+) -> String {
+    let mut output = create_test_kitty_output(parts);
+    let client_ids: HashSet<ClientId> = create_test_clients(1);
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    output.add_clients(&client_ids, link_handler, None);
+    output.add_pre_vte_instruction_to_client(1, "\u{1b}[m\u{1b}[2J");
+    output.add_kitty_image_chunks_to_client(1, PaneId::Terminal(1), chunks, None);
+    output.serialize().unwrap().remove(&1).unwrap_or_default()
+}
+
 fn parse_kitty_placement_crops(output: &str) -> Vec<(usize, usize, usize, usize, usize, usize)> {
     let marker = "\u{1b}_Ga=p,q=2,";
     let mut crops = vec![];
@@ -1268,6 +1281,40 @@ fn kitty_placement_bytes_with_negative_z() {
     let restore_position = output.rfind("\u{1b}[u").unwrap();
     assert!(save_position < transmit_position);
     assert!(transmit_position < restore_position);
+}
+
+#[test]
+fn kitty_host_display_clear_forces_replacement_next_frame() {
+    let parts = create_test_kitty_parts();
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let frame_1 = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 0, 0)], None);
+    assert_eq!(frame_1.matches("\u{1b}_Ga=p,q=2,").count(), 1);
+
+    let frame_2 = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 0, 0)], None);
+    assert!(!frame_2.contains("\u{1b}_Ga=p,q=2,"));
+
+    let frame_3 = run_kitty_frame_with_host_clear(&parts, vec![kitty_chunk(internal, 1, 0, 0)]);
+    assert!(
+        frame_3.contains("\u{1b}[2J"),
+        "frame must carry the host clear"
+    );
+    assert_eq!(
+        frame_3.matches("\u{1b}_Ga=t").count(),
+        1,
+        "a host display clear must force the image to be re-transmitted (host may drop image data on 2J)"
+    );
+    assert_eq!(
+        frame_3.matches("\u{1b}_Ga=p,q=2,").count(),
+        1,
+        "a host display clear must force the placement to be re-emitted"
+    );
+    let clear_pos = frame_3.find("\u{1b}[2J").unwrap();
+    let transmit_pos = frame_3.find("\u{1b}_Ga=t").unwrap();
+    let place_pos = frame_3.find("\u{1b}_Ga=p,q=2,").unwrap();
+    assert!(
+        clear_pos < transmit_pos && transmit_pos < place_pos,
+        "after a host clear the order must be 2J, then re-transmit, then re-place"
+    );
 }
 
 #[test]

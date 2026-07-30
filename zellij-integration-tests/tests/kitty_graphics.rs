@@ -1,8 +1,8 @@
 #![cfg(unix)]
 
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, keys, split_right_and_wait_for_prompt, start_zellij,
-    FakePtyHandle, TestSession,
+    claim_first_terminal_and_wait_for_prompt, keys, split_down_and_wait_for_prompt,
+    split_right_and_wait_for_prompt, start_zellij, FakePtyHandle, TestSession,
 };
 
 const KITTY_PROBE_ACK: &[u8] = b"\x1b_Gi=31;OK\x1b\\";
@@ -181,3 +181,41 @@ fn closing_pane_flushes_kitty_deletes_and_host_ids_are_never_reused() {
     );
 }
 
+#[test]
+fn opening_new_pane_keeps_existing_pane_image_on_host() {
+    let mut zellij = start_zellij();
+    let first_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    setup_kitty_host(&zellij, &first_terminal);
+
+    first_terminal.output(b"\x1b[H");
+    first_terminal.output(&rgb_tall_transmit_and_display());
+    let bytes = zellij.wait_until_raw_output("first pane placement reaches the host", |bytes| {
+        contains_bytes(bytes, b"\x1b_Ga=p,q=2,i=2000000000,p=1,")
+    });
+    let baseline_len = bytes.len();
+
+    let _second_terminal = split_down_and_wait_for_prompt(&zellij);
+
+    let bytes = zellij.wait_until_raw_output(
+        "existing pane image is re-transmitted and re-placed after the layout clears the host display",
+        |bytes| {
+            let after_split = &bytes[baseline_len..];
+            contains_bytes(after_split, b"\x1b_Ga=t") && contains_bytes(after_split, b"\x1b_Ga=p,q=2,")
+        },
+    );
+    let after_split = &bytes[baseline_len..];
+    assert!(
+        contains_bytes(after_split, b"\x1b[2J"),
+        "opening a new pane must clear the host display"
+    );
+    assert!(
+        contains_bytes(after_split, b"\x1b_Ga=t"),
+        "existing pane image was not re-transmitted after the host display was cleared"
+    );
+    assert!(
+        contains_bytes(after_split, b"\x1b_Ga=p,q=2,"),
+        "existing pane image was not re-placed after the host display was cleared"
+    );
+
+    zellij.quit();
+}
