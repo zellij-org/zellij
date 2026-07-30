@@ -71,7 +71,7 @@ use zellij_utils::{
         config::{watch_config_file_changes, watch_layout_dir_changes, Config},
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, PluginAlias, Run, RunPluginOrAlias},
-        options::Options,
+        options::{Options, WindowSize},
         plugins::PluginAliases,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
@@ -85,7 +85,8 @@ pub type ClientId = u16;
 pub enum ServerInstruction {
     FirstClientConnected(
         CliAssets,
-        bool, // is_web_client
+        bool,               // is_web_client
+        Option<WindowSize>, // per-attach window_size override (None => use config)
         ClientId,
     ),
     Render(Option<HashMap<ClientId, String>>),
@@ -100,6 +101,7 @@ pub enum ServerInstruction {
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
         bool,                // is_web_client
+        Option<WindowSize>,  // per-attach window_size override (None => use config)
         ClientId,
     ),
     AttachWatcherClient(ClientId, Size, bool), // bool -> is_web_client
@@ -967,7 +969,12 @@ pub fn start_server_impl(
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
-            ServerInstruction::FirstClientConnected(cli_assets, is_web_client, client_id) => {
+            ServerInstruction::FirstClientConnected(
+                cli_assets,
+                is_web_client,
+                window_size,
+                client_id,
+            ) => {
                 let (config, layout) = cli_assets.load_config_and_layout();
                 let layout_is_welcome_screen = cli_assets.layout
                     == Some(LayoutInfo::BuiltIn("welcome".to_owned()))
@@ -985,12 +992,16 @@ pub fn start_server_impl(
                 // false, we should never launch it.
                 let should_launch_setup_wizard = successfully_written_config;
 
-                let runtime_config_options = match &cli_assets.configuration_options {
+                let mut runtime_config_options = match &cli_assets.configuration_options {
                     Some(configuration_options) => {
                         config.options.merge(configuration_options.clone())
                     },
                     None => config.options.clone(),
                 };
+                // apply the creating client's `--window-size` (no AddClient carries it here)
+                if let Some(window_size) = window_size {
+                    runtime_config_options.window_size = Some(window_size);
+                }
 
                 let client_attributes = ClientAttributes {
                     size: cli_assets.terminal_window_size,
@@ -1165,6 +1176,7 @@ pub fn start_server_impl(
                 tab_position_to_focus,
                 pane_id_to_focus,
                 is_web_client,
+                window_size,
                 client_id,
             ) => {
                 let mut rlock = session_data.write().unwrap();
@@ -1223,6 +1235,7 @@ pub fn start_server_impl(
                         client_attributes.size,
                         tab_position_to_focus,
                         pane_id_to_focus,
+                        window_size,
                     ))
                     .unwrap();
                 session_data

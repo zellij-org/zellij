@@ -2269,6 +2269,9 @@ pub struct TabInfo {
     pub is_sync_panes_active: bool,
     pub are_floating_panes_visible: bool,
     pub other_focused_clients: Vec<ClientId>,
+    /// Whether this client is the session's active (most-recently-interacted) one,
+    /// i.e. the one driving `window-size latest`. Used for the tab-bar indicator.
+    pub is_active_client: bool,
     pub active_swap_layout_name: Option<String>,
     /// Whether the user manually changed the layout, moving out of the swap layout scheme
     pub is_swap_layout_dirty: bool,

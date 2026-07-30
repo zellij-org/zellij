@@ -2856,6 +2856,17 @@ impl Options {
         let show_release_notes =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_release_notes")
                 .map(|(v, _)| v);
+        let window_size =
+            match kdl_property_first_arg_as_string_or_error!(kdl_options, "window_size") {
+                Some((value, entry)) => {
+                    use crate::input::options::WindowSize;
+                    match value.parse::<WindowSize>() {
+                        Ok(v) => Some(v),
+                        Err(e) => return Err(kdl_parsing_error!(e, entry)),
+                    }
+                },
+                None => None,
+            };
         let advanced_mouse_actions =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "advanced_mouse_actions")
                 .map(|(v, _)| v);
@@ -2998,6 +3009,7 @@ impl Options {
             stacked_pane_list,
             show_startup_tips,
             show_release_notes,
+            window_size,
             advanced_mouse_actions,
             mouse_scroll_resize,
             mouse_hover_effects,
@@ -3494,6 +3506,20 @@ impl Options {
         } else {
             None
         }
+    }
+    fn window_size_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        // Only serialize an explicitly-set value, so it survives a config rewrite;
+        // leave the default (None) implicit to keep the generated config minimal.
+        let window_size = self.window_size.as_ref()?;
+        let mut node = KdlNode::new("window_size");
+        node.push(window_size.to_string());
+        if add_comments {
+            node.set_leading(
+                "\n// How the session is sized with multiple clients\n// (smallest, largest, latest)\n"
+                    .to_string(),
+            );
+        }
+        Some(node)
     }
     fn scroll_buffer_size_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
@@ -4652,6 +4678,9 @@ impl Options {
         }
         if let Some(on_force_close) = self.on_force_close_to_kdl(add_comments) {
             nodes.push(on_force_close);
+        }
+        if let Some(window_size) = self.window_size_to_kdl(add_comments) {
+            nodes.push(window_size);
         }
         if let Some(scroll_buffer_size) = self.scroll_buffer_size_to_kdl(add_comments) {
             nodes.push(scroll_buffer_size);
@@ -6251,6 +6280,7 @@ impl TabInfo {
             tab_id,
             has_bell_notification: false,
             is_flashing_bell: false,
+            is_active_client: false,
         })
     }
     pub fn encode_to_kdl(&self) -> KdlDocument {
@@ -6690,6 +6720,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 tab_id: 0,
                 is_flashing_bell: false,
                 has_bell_notification: false,
+                is_active_client: false,
             },
             TabInfo {
                 position: 1,
@@ -6711,6 +6742,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 tab_id: 1,
                 is_flashing_bell: false,
                 has_bell_notification: false,
+                is_active_client: false,
             },
         ],
         panes: PaneManifest { panes },

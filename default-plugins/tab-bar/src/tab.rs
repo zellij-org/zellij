@@ -52,6 +52,9 @@ pub fn render_tab(
         } else {
             palette.ribbon_unselected.emphasis_3
         }
+    } else if tab.active && tab.is_active_client {
+        // accent for the active client's tab (the one driving `window-size latest`)
+        palette.ribbon_selected.emphasis_1
     } else if tab.active {
         palette.ribbon_selected.base
     } else {

@@ -64,20 +64,24 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             ClientToServerMsg::FirstClientConnected {
                 cli_assets,
                 is_web_client,
+                window_size,
             } => client_to_server_msg::Message::FirstClientConnected(FirstClientConnectedMsg {
                 cli_assets: Some(cli_assets.into()),
                 is_web_client,
+                window_size: window_size.map(|w| w.to_string()),
             }),
             ClientToServerMsg::AttachClient {
                 cli_assets,
                 tab_position_to_focus,
                 pane_to_focus,
                 is_web_client,
+                window_size,
             } => client_to_server_msg::Message::AttachClient(AttachClientMsg {
                 cli_assets: Some(cli_assets.into()),
                 tab_position_to_focus: tab_position_to_focus.map(|pos| pos as u32),
                 pane_to_focus: pane_to_focus.map(|p| p.into()),
                 is_web_client,
+                window_size: window_size.map(|w| w.to_string()),
             }),
             ClientToServerMsg::AttachWatcherClient {
                 terminal_size,
@@ -226,6 +230,9 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                         .ok_or_else(|| anyhow!("Missing cli_assets"))?
                         .try_into()?,
                     is_web_client: first_client.is_web_client,
+                    window_size: first_client
+                        .window_size
+                        .and_then(|s| s.parse::<crate::input::options::WindowSize>().ok()),
                 })
             },
             Some(client_to_server_msg::Message::AttachClient(attach)) => {
@@ -237,6 +244,9 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     tab_position_to_focus: attach.tab_position_to_focus.map(|pos| pos as usize),
                     pane_to_focus: attach.pane_to_focus.map(|p| p.try_into()).transpose()?,
                     is_web_client: attach.is_web_client,
+                    window_size: attach
+                        .window_size
+                        .and_then(|s| s.parse::<crate::input::options::WindowSize>().ok()),
                 })
             },
             Some(client_to_server_msg::Message::AttachWatcherClient(attach_watcher)) => {
@@ -762,6 +772,7 @@ impl From<crate::input::options::Options>
             stacked_pane_list: options.stacked_pane_list,
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
+            window_size: options.window_size.map(|w| w.to_string()),
             advanced_mouse_actions: options.advanced_mouse_actions,
             mouse_scroll_resize: options.mouse_scroll_resize,
             mouse_hover_effects: options.mouse_hover_effects,
@@ -896,6 +907,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             stacked_pane_list: options.stacked_pane_list,
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
+            window_size: options
+                .window_size
+                .and_then(|s| s.parse::<crate::input::options::WindowSize>().ok()),
             advanced_mouse_actions: options.advanced_mouse_actions,
             mouse_scroll_resize: options.mouse_scroll_resize,
             mouse_hover_effects: options.mouse_hover_effects,

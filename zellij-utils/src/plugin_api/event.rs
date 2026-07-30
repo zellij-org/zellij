@@ -1912,6 +1912,7 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
             tab_id: protobuf_tab_info.tab_id as usize,
             has_bell_notification: protobuf_tab_info.has_bell_notification,
             is_flashing_bell: protobuf_tab_info.is_flashing_bell,
+            is_active_client: protobuf_tab_info.is_active_client,
         })
     }
 }
@@ -1943,6 +1944,7 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
             tab_id: tab_info.tab_id as u32,
             has_bell_notification: tab_info.has_bell_notification,
             is_flashing_bell: tab_info.is_flashing_bell,
+            is_active_client: tab_info.is_active_client,
         })
     }
 }
@@ -2569,6 +2571,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             tab_id: 0,
             has_bell_notification: false,
             is_flashing_bell: false,
+            is_active_client: false,
         },
         TabInfo {
             position: 1,
@@ -2590,6 +2593,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             tab_id: 1,
             has_bell_notification: false,
             is_flashing_bell: false,
+            is_active_client: false,
         },
         TabInfo::default(),
     ]);
@@ -2915,6 +2919,7 @@ fn serialize_session_update_event_with_non_default_values() {
             tab_id: 0,
             has_bell_notification: false,
             is_flashing_bell: false,
+            is_active_client: false,
         },
         TabInfo {
             position: 1,
@@ -2936,6 +2941,7 @@ fn serialize_session_update_event_with_non_default_values() {
             tab_id: 1,
             has_bell_notification: false,
             is_flashing_bell: false,
+            is_active_client: false,
         },
         TabInfo::default(),
     ];

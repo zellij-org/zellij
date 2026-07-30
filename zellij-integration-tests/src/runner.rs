@@ -213,6 +213,7 @@ fn spawn_client_thread(
                 client_info,
                 tab_position_to_focus,
                 pane_id_to_focus,
+                None, // window_size
                 is_a_reconnect,
                 start_detached_and_exit,
             )

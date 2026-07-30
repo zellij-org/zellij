@@ -107,6 +107,7 @@ pub fn create_first_message(
         ClientToServerMsg::FirstClientConnected {
             cli_assets,
             is_web_client,
+            window_size: None,
         }
     } else {
         let cli_assets = CliAssets {
@@ -129,6 +130,8 @@ pub fn create_first_message(
             tab_position_to_focus: None,
             pane_to_focus: None,
             is_web_client,
+            // mobile/web clients drive sizing through mobile mode; no per-attach override
+            window_size: None,
         }
     }
 }
