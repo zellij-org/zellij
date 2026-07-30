@@ -1401,6 +1401,13 @@ impl MouseHandler {
                     });
                 }
             }
+            let is_active_pane = Some(details.pane_id) == ctx.active_pane_id;
+            if is_active_pane && details.terminal_wants_mouse {
+                return Ok(MouseAction::SendToTerminal {
+                    pane_id: details.pane_id,
+                    event: *event,
+                });
+            }
             return Ok(MouseAction::NoAction);
         }
 
