@@ -222,6 +222,7 @@ mod tls_mock_server {
     use axum::Router;
     use axum_server::tls_rustls::RustlsConfig;
     use axum_server::Handle;
+    use std::net::SocketAddr;
     use std::path::PathBuf;
     use std::time::Duration;
 
@@ -252,7 +253,8 @@ mod tls_mock_server {
         ))];
         server_params.extended_key_usages = vec![rcgen::ExtendedKeyUsagePurpose::ServerAuth];
         let server_key = rcgen::KeyPair::generate().unwrap();
-        let server_cert = server_params.signed_by(&server_key, &ca, &ca_key).unwrap();
+        let ca_issuer = rcgen::Issuer::from_params(&ca_params, &ca_key);
+        let server_cert = server_params.signed_by(&server_key, &ca_issuer).unwrap();
 
         // Write to temp files
         let ca_cert_file = tempfile::NamedTempFile::new().unwrap();
@@ -277,7 +279,7 @@ mod tls_mock_server {
     pub async fn start_tls_mock_server(
         state: MockRemoteServerState,
         certs: &TlsTestCerts,
-    ) -> (u16, Handle, tokio::task::JoinHandle<()>) {
+    ) -> (u16, Handle<SocketAddr>, tokio::task::JoinHandle<()>) {
         let app = Router::new()
             .route("/command/login", post(super::mock_server::handle_login))
             .route("/session", post(super::mock_server::handle_session))
@@ -296,6 +298,9 @@ mod tls_mock_server {
 
         let listener =
             std::net::TcpListener::bind("127.0.0.1:0").expect("Failed to bind test TLS server");
+        listener
+            .set_nonblocking(true)
+            .expect("Failed to set test TLS server listener to non-blocking");
         let port = listener.local_addr().unwrap().port();
 
         let handle = Handle::new();
@@ -303,6 +308,7 @@ mod tls_mock_server {
 
         let server_task = tokio::spawn(async move {
             axum_server::from_tcp_rustls(listener, rustls_config)
+                .unwrap()
                 .handle(server_handle)
                 .serve(app.into_make_service())
                 .await
@@ -315,7 +321,10 @@ mod tls_mock_server {
         (port, handle, server_task)
     }
 
-    pub async fn shutdown_server(handle: Handle, server_task: tokio::task::JoinHandle<()>) {
+    pub async fn shutdown_server(
+        handle: Handle<SocketAddr>,
+        server_task: tokio::task::JoinHandle<()>,
+    ) {
         handle.graceful_shutdown(Some(Duration::from_secs(1)));
         let _ = server_task.await;
     }
