@@ -22,15 +22,12 @@ If you're still eager to contribute minor fixes, please note that we might take 
 To build Zellij, we're using cargo xtask. This is a standalone package shipped
 inside the repository, so you don't have to install additional dependencies.
 
-To edit our manpage, the mandown crate (`cargo install --locked
-mandown`) is used and the work is done on a markdown file in docs/MANPAGE.md.
-
 To build zellij, you'll need [`protoc`](https://github.com/protocolbuffers/protobuf#protobuf-compiler-installation) installed. This is used to compile the .proto files into Rust assets. These protocol buffers are used for communication between Zellij and its plugins across the wasm boundary.
 
 Here are some of the commands currently supported by the build system:
 
 ```sh
-# Format code, build, then run tests and clippy
+# Format code, build, then run tests
 cargo xtask
 # You can also perform these actions individually
 cargo xtask format
@@ -39,14 +36,10 @@ cargo xtask test
 # Run Zellij (optionally with additional arguments)
 cargo xtask run
 cargo xtask run -- -l strider
-# Run Clippy
-cargo xtask clippy
 # Install Zellij to some directory
 cargo xtask install /path/of/zellij/binary
 # Publish the zellij and zellij-tile crates
 cargo xtask publish
-# Update manpage
-cargo xtask manpage
 ```
 
 You can see a list of all commands (with supported arguments) with `cargo xtask
@@ -97,14 +90,6 @@ To enable the singlepass compiler, use the `singlepass` flag. E.g.:
 ```sh
 cargo xtask run --singlepass
 ```
-
-## How we treat clippy lints
-
-We currently use clippy in [GitHub Actions](https://github.com/zellij-org/zellij/blob/main/.github/workflows/rust.yml) with the default settings that report only [`clippy::correctness`](https://github.com/rust-lang/rust-clippy#readme) as errors and other lints as warnings because Zellij is still unstable. This means that all warnings can be ignored depending on the situation at that time, even though they are also helpful to keep the code quality.
-Since we just cannot afford to manage them, we are always welcome to fix them!
-
-Here is [the detailed discussion](https://github.com/zellij-org/zellij/pull/1090) if you want to see it.
-
 
 ## Toolchain Versions and MSRV
 

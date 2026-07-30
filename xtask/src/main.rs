@@ -8,8 +8,6 @@
 
 mod build;
 mod ci;
-mod clippy;
-mod dist;
 mod flags;
 mod format;
 mod integration_test;
@@ -127,13 +125,10 @@ fn main() -> anyhow::Result<()> {
 
     match flags.subcommand {
         flags::XtaskCmd::Deprecated(_flags) => deprecation_notice(),
-        flags::XtaskCmd::Dist(flags) => pipelines::dist(shell, flags),
         flags::XtaskCmd::Build(flags) => build::build(shell, flags),
-        flags::XtaskCmd::Clippy(flags) => clippy::clippy(shell, flags),
         flags::XtaskCmd::Format(flags) => format::format(shell, flags),
         flags::XtaskCmd::Test(flags) => test::test(shell, flags),
         flags::XtaskCmd::IntegrationTest(flags) => integration_test::integration_test(shell, flags),
-        flags::XtaskCmd::Manpage(_flags) => build::manpage(shell),
         flags::XtaskCmd::Proto(_flags) => build::proto(shell),
         // Pipelines
         // These are composite commands, made up of multiple "stages" defined above.
@@ -162,6 +157,13 @@ fn project_root() -> PathBuf {
 
 fn asset_dir() -> PathBuf {
     crate::project_root().join("zellij-utils").join("assets")
+}
+
+pub fn target_dir() -> PathBuf {
+    match env::var_os("CARGO_TARGET_DIR") {
+        Some(dir) => PathBuf::from(dir),
+        None => crate::project_root().join("target"),
+    }
 }
 
 pub fn cargo() -> anyhow::Result<PathBuf> {
@@ -193,11 +195,8 @@ anything!
 | make test                       | xtask test                    |
 | make run                        | xtask run                     |
 | make run -l strider             | xtask run -- -l strider       |
-| make clippy                     | xtask clippy                  |
-| make clippy -W clippy::pedantic | N/A                           |
 | make install /path/to/binary    | xtask install /path/to/binary |
 | make publish                    | xtask publish                 |
-| make manpage                    | xtask manpage                 |
 
 
 In order to disable xtask during the transitioning period: Delete/comment the
