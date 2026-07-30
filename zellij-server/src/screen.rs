@@ -5996,7 +5996,7 @@ impl Screen {
             return Ok(());
         }
         let screen_size = self.size;
-        if let Some(new_active_tab) = self.get_indexed_tab_mut(tab_index) {
+        if let Some(new_active_tab) = self.get_tab_by_position_mut(tab_index) {
             for (pane_was_floating, mut pane) in extracted_panes {
                 let pane_id = pane.pid();
                 if pane_was_floating {
@@ -10475,32 +10475,32 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 mut completion_tx,
             } => {
-                // Verify tab exists
-                if screen.get_tab_by_id(tab_id).is_none() {
-                    log::error!("Tab with ID {} not found", tab_id);
+                match screen.get_tab_position_by_id(tab_id) {
+                    Some(position) => {
+                        // The helper takes a display position, not a tab id
+                        screen.break_multiple_panes_to_tab_with_index(
+                            pane_ids,
+                            position,
+                            should_change_focus_to_target_tab,
+                            client_id,
+                        )?;
+                        // Set affected tab ID (tab_id is the ID here)
+                        completion_tx
+                            .as_mut()
+                            .map(|c| c.set_affected_tab_id(tab_id));
+                        let pane_group = screen.get_client_pane_group(&client_id);
+                        if !pane_group.is_empty() {
+                            let _ = screen.bus.senders.send_to_background_jobs(
+                                BackgroundJob::HighlightPanesWithMessage(
+                                    pane_group.iter().copied().collect(),
+                                    "BROKEN OUT".to_owned(),
+                                ),
+                            );
+                        }
+                        screen.clear_pane_group(&client_id);
+                    },
                     // Don't set affected_tab_id, it will remain None to signal failure
-                } else {
-                    // break_multiple_panes_to_tab_with_index uses tab ID
-                    screen.break_multiple_panes_to_tab_with_index(
-                        pane_ids,
-                        tab_id,
-                        should_change_focus_to_target_tab,
-                        client_id,
-                    )?;
-                    // Set affected tab ID (tab_id is the ID here)
-                    completion_tx
-                        .as_mut()
-                        .map(|c| c.set_affected_tab_id(tab_id));
-                    let pane_group = screen.get_client_pane_group(&client_id);
-                    if !pane_group.is_empty() {
-                        let _ = screen.bus.senders.send_to_background_jobs(
-                            BackgroundJob::HighlightPanesWithMessage(
-                                pane_group.iter().copied().collect(),
-                                "BROKEN OUT".to_owned(),
-                            ),
-                        );
-                    }
-                    screen.clear_pane_group(&client_id);
+                    None => log::error!("Tab with ID {} not found", tab_id),
                 }
             },
             ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission) => {
@@ -11113,27 +11113,33 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 mut completion_tx,
             } => {
-                // tab_index is the target tab ID
-                screen.break_multiple_panes_to_tab_with_index(
-                    pane_ids,
-                    tab_index,
-                    should_change_focus_to_new_tab,
-                    client_id,
-                )?;
-                // Set affected tab ID (tab_index is the ID here)
-                completion_tx
-                    .as_mut()
-                    .map(|c| c.set_affected_tab_id(tab_index));
-                let pane_group = screen.get_client_pane_group(&client_id);
-                if !pane_group.is_empty() {
-                    let _ = screen.bus.senders.send_to_background_jobs(
-                        BackgroundJob::HighlightPanesWithMessage(
-                            pane_group.iter().copied().collect(),
-                            "BROKEN OUT".to_owned(),
-                        ),
-                    );
+                match screen.get_tab_id_at_position(tab_index) {
+                    Some(tab_id) => {
+                        // tab_index is the target tab position
+                        screen.break_multiple_panes_to_tab_with_index(
+                            pane_ids,
+                            tab_index,
+                            should_change_focus_to_new_tab,
+                            client_id,
+                        )?;
+                        // affected_tab_id is the stable tab id at this display position
+                        completion_tx
+                            .as_mut()
+                            .map(|c| c.set_affected_tab_id(tab_id));
+                        let pane_group = screen.get_client_pane_group(&client_id);
+                        if !pane_group.is_empty() {
+                            let _ = screen.bus.senders.send_to_background_jobs(
+                                BackgroundJob::HighlightPanesWithMessage(
+                                    pane_group.iter().copied().collect(),
+                                    "BROKEN OUT".to_owned(),
+                                ),
+                            );
+                        }
+                        screen.clear_pane_group(&client_id);
+                    },
+                    // Don't set affected_tab_id, it will remain None to signal failure
+                    None => log::error!("Cannot find tab with index: {tab_index}"),
                 }
-                screen.clear_pane_group(&client_id);
             },
             ScreenInstruction::TogglePanePinned(
                 client_id,
