@@ -23,6 +23,12 @@ pub struct KittyImageChunk {
     pub placement_uid: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct KittyVerticalAnchor {
+    pub canonical_line: usize,
+    pub offset_px_from_line_start: isize,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct KittyPlacement {
     pub image_id: u32,
@@ -37,6 +43,7 @@ pub struct KittyPlacement {
     pub dest_cells: (u16, u16),
     pub cell_offset: (u32, u32),
     pub z_index: i32,
+    pub vertical_anchor: KittyVerticalAnchor,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -122,6 +129,21 @@ impl KittyGrid {
     }
     pub fn placements(&self) -> &[KittyPlacement] {
         &self.placements
+    }
+    pub fn placements_mut(&mut self) -> &mut [KittyPlacement] {
+        &mut self.placements
+    }
+    pub fn retain_placements<F: FnMut(&KittyPlacement) -> bool>(&mut self, mut keep: F) {
+        let mut store = self.kitty_image_store.borrow_mut();
+        let mut kept = Vec::with_capacity(self.placements.len());
+        for placement in self.placements.drain(..) {
+            if keep(&placement) {
+                kept.push(placement);
+            } else {
+                store.free(placement.internal_id);
+            }
+        }
+        self.placements = kept;
     }
     pub fn placement_count(&self) -> usize {
         self.placements.len()
@@ -226,6 +248,7 @@ impl KittyGrid {
         command: &KittyCommand,
         cursor_px: (usize, usize),
         cell: SizeInPixels,
+        vertical_anchor: KittyVerticalAnchor,
     ) -> Result<(u16, u16), KittyError> {
         let (image_width, image_height) = {
             let store = self.kitty_image_store.borrow();
@@ -361,6 +384,7 @@ impl KittyGrid {
             dest_cells,
             cell_offset: (off_x as u32, off_y as u32),
             z_index: command.z_index,
+            vertical_anchor,
         });
         self.kitty_image_store
             .borrow_mut()
@@ -571,27 +595,6 @@ impl KittyGrid {
             }
             self.placements = kept;
         }
-    }
-    pub fn shift_placements_after_reflow(&mut self, cell_row_delta: isize) {
-        if cell_row_delta == 0 {
-            return;
-        }
-        let cell_height = match *self.character_cell_size.borrow() {
-            Some(cell) => cell.height as isize,
-            None => return,
-        };
-        let pixel_delta = cell_row_delta * cell_height;
-        let mut store = self.kitty_image_store.borrow_mut();
-        let mut kept = Vec::with_capacity(self.placements.len());
-        for mut placement in self.placements.drain(..) {
-            placement.display_rect.y += pixel_delta;
-            if placement.display_rect.y + placement.display_rect.height as isize <= 0 {
-                store.free(placement.internal_id);
-            } else {
-                kept.push(placement);
-            }
-        }
-        self.placements = kept;
     }
     pub fn apply_region_scroll(
         &mut self,

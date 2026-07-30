@@ -1,7 +1,7 @@
 use super::kitty_graphics::{
     format_kitty_error, format_kitty_reply, KittyAction, KittyCommand, KittyCommandParser,
     KittyError, KittyErrorCode, KittyGrid, KittyImageChunk, KittyImageStore, KittyPlacement,
-    KittyReplyData,
+    KittyReplyData, KittyVerticalAnchor,
 };
 use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
 use base64::alphabet::STANDARD as BASE64_STANDARD_ALPHABET;
@@ -1205,6 +1205,79 @@ impl Grid {
         }
         y_coordinates
     }
+    fn kitty_canonical_line_starts(&self) -> Vec<usize> {
+        let mut starts = Vec::new();
+        let mut wrapped_row = 0usize;
+        for row in self.lines_above.iter().chain(self.viewport.iter()) {
+            if row.is_canonical {
+                starts.push(wrapped_row);
+            }
+            wrapped_row += 1;
+        }
+        starts
+    }
+    fn kitty_anchor_from_pixel_y(
+        pixel_y: isize,
+        cell_height: isize,
+        starts: &[usize],
+    ) -> KittyVerticalAnchor {
+        let wrapped_row = pixel_y.div_euclid(cell_height);
+        let canonical_line = match starts.binary_search(&wrapped_row.max(0).try_into().unwrap_or(0)) {
+            Ok(index) => index,
+            Err(index) => index.saturating_sub(1),
+        };
+        let line_start_px = *starts.get(canonical_line).unwrap_or(&0) as isize * cell_height;
+        KittyVerticalAnchor {
+            canonical_line,
+            offset_px_from_line_start: pixel_y - line_start_px,
+        }
+    }
+    fn kitty_pixel_y_from_anchor(
+        anchor: &KittyVerticalAnchor,
+        cell_height: isize,
+        starts: &[usize],
+    ) -> Option<isize> {
+        starts
+            .get(anchor.canonical_line)
+            .map(|line_start| *line_start as isize * cell_height + anchor.offset_px_from_line_start)
+    }
+    fn kitty_reanchor_all_from_pixels(&mut self) {
+        if self.kitty_grid.placement_count() == 0 {
+            return;
+        }
+        let cell_height = match *self.character_cell_size.borrow() {
+            Some(cell) => cell.height as isize,
+            None => return,
+        };
+        let starts = self.kitty_canonical_line_starts();
+        if starts.is_empty() {
+            return;
+        }
+        for placement in self.kitty_grid.placements_mut() {
+            placement.vertical_anchor =
+                Self::kitty_anchor_from_pixel_y(placement.display_rect.y, cell_height, &starts);
+        }
+    }
+    fn kitty_reproject_all_from_anchor(&mut self) {
+        if self.kitty_grid.placement_count() == 0 {
+            return;
+        }
+        let cell_height = match *self.character_cell_size.borrow() {
+            Some(cell) => cell.height as isize,
+            None => return,
+        };
+        let starts = self.kitty_canonical_line_starts();
+        let line_count = starts.len();
+        self.kitty_grid
+            .retain_placements(|placement| placement.vertical_anchor.canonical_line < line_count);
+        for placement in self.kitty_grid.placements_mut() {
+            if let Some(pixel_y) =
+                Self::kitty_pixel_y_from_anchor(&placement.vertical_anchor, cell_height, &starts)
+            {
+                placement.display_rect.y = pixel_y;
+            }
+        }
+    }
 
     pub fn scroll_up_one_line(&mut self) -> bool {
         let mut found_something = false;
@@ -1329,8 +1402,7 @@ impl Grid {
         self.selection.reset();
         self.sixel_grid.character_cell_size_possibly_changed();
         self.kitty_grid.character_cell_size_possibly_changed();
-        let kitty_lines_above_before = self.lines_above.len();
-        let kitty_front_drops_before = self.kitty_grid.front_drops();
+        self.kitty_reanchor_all_from_pixels();
         let cursors = if new_columns != self.width {
             self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
@@ -1534,12 +1606,7 @@ impl Grid {
                 }
             };
         }
-        let kitty_lines_above_delta =
-            self.lines_above.len() as isize - kitty_lines_above_before as isize;
-        let kitty_front_drops_delta =
-            (self.kitty_grid.front_drops() - kitty_front_drops_before) as isize;
-        self.kitty_grid
-            .shift_placements_after_reflow(kitty_lines_above_delta + kitty_front_drops_delta);
+        self.kitty_reproject_all_from_anchor();
         self.height = new_rows;
         self.width = new_columns;
         self.set_scroll_region_to_viewport_size();
@@ -1914,7 +1981,8 @@ impl Grid {
         la_before: usize,
         drops_before: u64,
     ) {
-        if let Some(character_cell_size) = { *self.character_cell_size.borrow() } {
+        let cell_size = { *self.character_cell_size.borrow() };
+        if let Some(character_cell_size) = cell_size {
             let cell_h = character_cell_size.height as isize;
             let la_delta = (self.lines_above.len() as isize - la_before as isize)
                 + (self.kitty_grid.front_drops() - drops_before) as isize;
@@ -1929,6 +1997,7 @@ impl Grid {
                 la_delta_px,
                 viewport_top_px,
             );
+            self.kitty_reanchor_all_from_pixels();
         }
     }
     fn scroll_region_up_at_bottom(&mut self, new_row: Row, offset_hyperlinks: bool) {
@@ -2005,6 +2074,7 @@ impl Grid {
             let scroll_bg = self.cursor.pending_styles.background;
             let new_row = Row::new().canonical().with_bg_color(scroll_bg);
             self.scroll_region_up_at_bottom(new_row, false);
+            self.kitty_reanchor_all_from_pixels();
             return;
         }
         if self.viewport.len() <= self.cursor.y + 1 {
@@ -2331,6 +2401,8 @@ impl Grid {
             // so we delete the current line(s) and add an empty line at the end of the scroll
             // region
             for _ in 0..count {
+                let la_before = self.lines_above.len();
+                let drops_before = self.kitty_grid.front_drops();
                 if current_line_index == 0
                     && scroll_region_top == 0
                     && self.alternate_screen_state.is_none()
@@ -2349,6 +2421,13 @@ impl Grid {
                     self.viewport
                         .push_back(Row::from_columns(columns).canonical());
                 }
+                self.kitty_region_scroll(
+                    current_line_index,
+                    scroll_region_bottom,
+                    1,
+                    la_before,
+                    drops_before,
+                );
             }
             self.output_buffer.update_all_lines(); // TODO: move accurately
         }
@@ -2366,12 +2445,21 @@ impl Grid {
             // so we add an empty line where the cursor currently is, and delete the last line
             // of the scroll region
             for _ in 0..count {
+                let la_before = self.lines_above.len();
+                let drops_before = self.kitty_grid.front_drops();
                 if scroll_region_bottom < self.viewport.len() {
                     self.viewport.remove(scroll_region_bottom);
                 }
                 let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
                 self.viewport
                     .insert(current_line_index, Row::from_columns(columns).canonical());
+                self.kitty_region_scroll(
+                    current_line_index,
+                    scroll_region_bottom,
+                    -1,
+                    la_before,
+                    drops_before,
+                );
             }
             self.output_buffer.update_all_lines(); // TODO: move accurately
         }
@@ -3271,14 +3359,25 @@ impl Grid {
                         });
                     },
                 };
-                match self
-                    .kitty_grid
-                    .place(pane_image_id, internal, &command, cursor_px, cell)
-                {
+                let placement_top_px = (cursor_px.1
+                    + std::cmp::min(command.cell_offset_y as usize, cell.height - 1))
+                    as isize;
+                let starts = self.kitty_canonical_line_starts();
+                let vertical_anchor =
+                    Self::kitty_anchor_from_pixel_y(placement_top_px, cell.height as isize, &starts);
+                match self.kitty_grid.place(
+                    pane_image_id,
+                    internal,
+                    &command,
+                    cursor_px,
+                    cell,
+                    vertical_anchor,
+                ) {
                     Ok((cols, rows)) => {
                         if !command.suppress_cursor_movement {
                             self.advance_cursor_after_kitty_placement(cols as usize, rows as usize);
                         }
+                        self.kitty_reanchor_all_from_pixels();
                         self.render_full_viewport();
                         self.mark_for_rerender();
                         Ok(KittyReplyData {

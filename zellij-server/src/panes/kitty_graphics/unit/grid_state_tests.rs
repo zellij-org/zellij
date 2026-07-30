@@ -1,4 +1,4 @@
-use super::{crop_rgba, scale_rgba, KittyGrid, KittyPlacement};
+use super::{crop_rgba, scale_rgba, KittyGrid, KittyPlacement, KittyVerticalAnchor};
 use crate::panes::kitty_graphics::store::KittyImageStore;
 use crate::panes::sixel::PixelRect;
 use std::cell::RefCell;
@@ -51,6 +51,10 @@ fn test_placement(y: isize, height: usize) -> KittyPlacement {
         dest_cells: (2, 2),
         cell_offset: (0, 0),
         z_index: 0,
+        vertical_anchor: KittyVerticalAnchor {
+            canonical_line: 0,
+            offset_px_from_line_start: 0,
+        },
     }
 }
 

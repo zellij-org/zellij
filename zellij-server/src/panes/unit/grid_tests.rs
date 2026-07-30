@@ -7535,10 +7535,11 @@ fn kitty_conformance_transmit_with_both_id_and_number_is_einval() {
     );
 }
 
-fn kitty_screen_relative_row(grid: &Grid) -> isize {
+fn kitty_image_px_below_canonical_line(grid: &Grid, canonical_index: usize) -> isize {
     let placement = &grid.kitty_placements()[0];
     let cell_height = 20isize;
-    (placement.display_rect.y - grid.lines_above.len() as isize * cell_height) / cell_height
+    let line_start = buffer_cell_row_of_canonical_line(grid, canonical_index);
+    placement.display_rect.y - line_start * cell_height
 }
 
 #[test]
@@ -7558,8 +7559,8 @@ fn kitty_placement_keeps_screen_row_across_width_reflow() {
         &mut interceptor,
         &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
     );
-    let screen_row_before = kitty_screen_relative_row(&grid);
-    assert_eq!(screen_row_before, 2);
+    let anchor_canonical_line = grid.kitty_placements()[0].vertical_anchor.canonical_line;
+    let px_below_before = kitty_image_px_below_canonical_line(&grid, anchor_canonical_line);
     let lines_above_before = grid.lines_above.len();
 
     grid.change_size(6, 10);
@@ -7570,16 +7571,168 @@ fn kitty_placement_keeps_screen_row_across_width_reflow() {
     );
     assert_eq!(grid.kitty_placement_count(), 1);
     assert_eq!(
-        kitty_screen_relative_row(&grid),
-        screen_row_before,
-        "image must keep its screen-relative row across a narrowing width reflow"
+        kitty_image_px_below_canonical_line(&grid, anchor_canonical_line),
+        px_below_before,
+        "image must keep the same pixel offset below its anchor canonical line (track the text) across a narrowing width reflow"
     );
 
     grid.change_size(6, 40);
     assert_eq!(grid.kitty_placement_count(), 1);
     assert_eq!(
-        kitty_screen_relative_row(&grid),
-        screen_row_before,
-        "image must keep its screen-relative row across a widening width reflow"
+        kitty_image_px_below_canonical_line(&grid, anchor_canonical_line),
+        px_below_before,
+        "image must keep the same pixel offset below its anchor canonical line (track the text) across a widening width reflow"
+    );
+}
+
+fn kitty_image_absolute_cell_row(grid: &Grid) -> isize {
+    let placement = &grid.kitty_placements()[0];
+    let cell_height = 20isize;
+    placement.display_rect.y.div_euclid(cell_height)
+}
+
+fn buffer_cell_row_of_canonical_line(grid: &Grid, canonical_index: usize) -> isize {
+    let mut canonical_seen = 0usize;
+    let mut wrapped_row = 0isize;
+    for row in grid.lines_above.iter().chain(grid.viewport.iter()) {
+        if row.is_canonical {
+            if canonical_seen == canonical_index {
+                return wrapped_row;
+            }
+            canonical_seen += 1;
+        }
+        wrapped_row += 1;
+    }
+    -1
+}
+
+#[test]
+fn kitty_placement_follows_text_across_width_reflow() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    for line in 0..3 {
+        let text = format!("r{}-{}", line, "x".repeat(34));
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, text.as_bytes());
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\r\n");
+    }
+    let image_canonical_line = 3usize;
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[7;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+
+    let image_row_before = kitty_image_absolute_cell_row(&grid);
+    let text_row_before = buffer_cell_row_of_canonical_line(&grid, image_canonical_line);
+    assert_eq!(
+        image_row_before, text_row_before,
+        "image top must sit on the buffer cell row of its canonical line before reflow"
+    );
+
+    grid.change_size(10, 10);
+    assert_eq!(grid.kitty_placement_count(), 1);
+    let image_row_narrow = kitty_image_absolute_cell_row(&grid);
+    let text_row_narrow = buffer_cell_row_of_canonical_line(&grid, image_canonical_line);
+    assert_eq!(
+        image_row_narrow, text_row_narrow,
+        "image must track its canonical text line after narrowing reflow (lines above rewrap into more rows)"
+    );
+    assert!(
+        text_row_narrow > text_row_before,
+        "narrowing must push the image's canonical line further down the buffer for the test to be meaningful"
+    );
+
+    grid.change_size(10, 40);
+    assert_eq!(grid.kitty_placement_count(), 1);
+    let image_row_wide = kitty_image_absolute_cell_row(&grid);
+    let text_row_wide = buffer_cell_row_of_canonical_line(&grid, image_canonical_line);
+    assert_eq!(
+        image_row_wide, text_row_wide,
+        "image must track its canonical text line after widening reflow (lines above rewrap into fewer rows)"
+    );
+    assert!(
+        text_row_wide < text_row_narrow,
+        "widening must pull the image's canonical line back up for the test to be meaningful"
+    );
+}
+
+#[test]
+fn kitty_placement_moves_with_csi_insert_lines() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[6;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    let row_before = kitty_image_absolute_cell_row(&grid);
+    assert_eq!(row_before, 5);
+
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[3;1H");
+    let inserted = 2usize;
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2L");
+
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        row_before + inserted as isize,
+        "image below the insertion point must shift down by the inserted line count"
+    );
+}
+
+#[test]
+fn kitty_placement_moves_with_csi_delete_lines() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[6;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    let row_before = kitty_image_absolute_cell_row(&grid);
+    assert_eq!(row_before, 5);
+
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[3;1H");
+    let deleted = 2usize;
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2M");
+
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        row_before - deleted as isize,
+        "image below the deletion point must shift up by the deleted line count"
+    );
+}
+
+#[test]
+fn kitty_placement_in_deleted_range_is_removed() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[4;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(kitty_image_absolute_cell_row(&grid), 3);
+
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[4;1H");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1M");
+
+    assert_eq!(
+        grid.kitty_placement_count(),
+        0,
+        "an image whose only row is deleted by CSI M must be removed"
     );
 }
