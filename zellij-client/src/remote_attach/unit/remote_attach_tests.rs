@@ -321,7 +321,10 @@ mod tls_mock_server {
         (port, handle, server_task)
     }
 
-    pub async fn shutdown_server(handle: Handle<SocketAddr>, server_task: tokio::task::JoinHandle<()>) {
+    pub async fn shutdown_server(
+        handle: Handle<SocketAddr>,
+        server_task: tokio::task::JoinHandle<()>,
+    ) {
         handle.graceful_shutdown(Some(Duration::from_secs(1)));
         let _ = server_task.await;
     }
