@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * chore: switch cassowary deps to maintained fork kasuari (https://github.com/zellij-org/zellij/pull/5416)
 * chore: switch unmaintained daemonize with maintained fork daemonix (https://github.com/zellij-org/zellij/pull/4512)
 * feat: handle nested Zellij sessions (https://github.com/zellij-org/zellij/pull/5417)
+* chore: remove outdated manpage and some build fixes (https://github.com/zellij-org/zellij/pull/5426)
 
 ## [0.44.3] - 2026-05-13
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)

@@ -3,7 +3,6 @@
 //! Currently has the following functions:
 //!
 //! - [`build`]: Builds general cargo projects (i.e. zellij components) with `cargo build`
-//! - [`manpage`]: Builds the manpage with `mandown`
 use crate::{flags, metadata, WorkspaceMember};
 use anyhow::Context;
 use std::path::{Path, PathBuf};
@@ -99,6 +98,7 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
                     },
                 }
             }
+            base_cmd = base_cmd.args(&flags.args);
             base_cmd.run().with_context(err_context)?;
         }
     }
@@ -218,11 +218,7 @@ fn plugin_name_of(member: &WorkspaceMember) -> anyhow::Result<&'static str> {
 }
 
 fn plugin_stamp_path() -> PathBuf {
-    PathBuf::from(
-        std::env::var_os("CARGO_TARGET_DIR")
-            .unwrap_or(crate::project_root().join("target").into_os_string()),
-    )
-    .join(".xtask-plugins-stamp")
+    crate::target_dir().join(".xtask-plugins-stamp")
 }
 
 fn write_plugin_stamp(sh: &Shell) {
@@ -322,14 +318,11 @@ fn move_plugin_to_assets(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
         .with_extension("wasm");
 
     // Get plugin path
-    let plugin = PathBuf::from(
-        std::env::var_os("CARGO_TARGET_DIR")
-            .unwrap_or(crate::project_root().join("target").into_os_string()),
-    )
-    .join("wasm32-wasip1")
-    .join("release")
-    .join(plugin_name)
-    .with_extension("wasm");
+    let plugin = crate::target_dir()
+        .join("wasm32-wasip1")
+        .join("release")
+        .join(plugin_name)
+        .with_extension("wasm");
 
     if !plugin.is_file() {
         return Err(anyhow::anyhow!("No plugin found at '{}'", plugin.display()))
@@ -340,37 +333,4 @@ fn move_plugin_to_assets(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
     let from = plugin.as_path();
     let to = asset_name.as_path();
     sh.copy_file(from, to).with_context(err_context)
-}
-
-/// Build the manpage with `mandown`.
-//      mkdir -p ${root_dir}/assets/man
-//      mandown ${root_dir}/docs/MANPAGE.md 1 > ${root_dir}/assets/man/zellij.1
-pub fn manpage(sh: &Shell) -> anyhow::Result<()> {
-    let err_context = "failed to generate manpage";
-
-    let mandown = mandown(sh).context(err_context)?;
-
-    let project_root = crate::project_root();
-    let asset_dir = &project_root.join("assets").join("man");
-    sh.create_dir(asset_dir).context(err_context)?;
-    let _pd = sh.push_dir(asset_dir);
-
-    cmd!(sh, "{mandown} {project_root}/docs/MANPAGE.md 1")
-        .read()
-        .and_then(|text| sh.write_file("zellij.1", text))
-        .context(err_context)
-}
-
-/// Get the path to a `mandown` executable.
-///
-/// If the executable isn't found, an error is returned instead.
-fn mandown(_sh: &Shell) -> anyhow::Result<PathBuf> {
-    match which::which("mandown") {
-        Ok(path) => Ok(path),
-        Err(e) => {
-            eprintln!("!! 'mandown' wasn't found but is needed for this build step.");
-            eprintln!("!! Please install it with: `cargo install mandown`");
-            Err(e).context("Couldn't find 'mandown' executable")
-        },
-    }
 }

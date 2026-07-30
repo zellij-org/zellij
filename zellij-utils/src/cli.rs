@@ -52,7 +52,13 @@ fn validate_session(name: &str) -> Result<String, String> {
 }
 
 #[derive(Parser, Default, Debug, Clone, Serialize, Deserialize)]
-#[clap(version, name = "zellij", styles = CLI_STYLES, args_override_self = true)]
+#[clap(
+    version,
+    name = "zellij",
+    about = "A terminal workspace with batteries included",
+    styles = CLI_STYLES,
+    args_override_self = true
+)]
 pub struct CliArgs {
     /// Maximum panes on screen, caution: opening more panes will close old ones
     #[clap(long, value_parser)]

@@ -139,15 +139,9 @@ codegen-units = 1
 depends = "$auto"
 license-file = ["LICENSE.md", "4"]
 assets = [
-  ["assets/man/zellij.1", "usr/share/man/man1/zellij.1", "644"],
   ["target/release/zellij", "usr/bin/zellij", "755"],
   ["GOVERNANCE.md", "usr/share/doc/zellij/GOVERNANCE.md", "644"],
   ["README.md", "usr/share/doc/zellij/README.md", "644"],
-  ["assets/layouts/*", "usr/share/zellij/layouts/", "644"],
-  ["assets/plugins/*", "usr/share/zellij/plugins/", "644"],
-  ["assets/completions/zellij.bash", "usr/share/bash-completion/completions/zellij.bash", "644"],
-  ["assets/completions/zellij.fish", "usr/share/fish/vendor_completions.d/zellij.fish", "644"],
-  ["assets/completions/_zellij", "usr/share/zsh/vendor-completions/_zellij", "644"],
 ]
 
 [package.metadata.binstall]
