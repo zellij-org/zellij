@@ -2,7 +2,9 @@ use super::super::{
     CharacterChunk, FloatingPanesStack, HostKittyState, KittyImageChunk, Output, OutputBuffer,
     SixelImageChunk,
 };
-use crate::panes::kitty_graphics::parser::{DecodedImage, KittyFormat};
+use crate::panes::kitty_graphics::parser::{
+    DecodedImage, KittyAction, KittyCommandParser, KittyFormat,
+};
 use crate::panes::kitty_graphics::store::{InternalImageId, KittyImageStore};
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::terminal_character::AnsiCode;
@@ -1389,4 +1391,113 @@ fn is_dirty_with_kitty_chunks_and_pending_deletes() {
     );
     let pending_output = create_test_kitty_output(&pending_parts);
     assert!(pending_output.is_dirty());
+}
+
+fn extract_kitty_commands(output: &str) -> Vec<Vec<u8>> {
+    let bytes = output.as_bytes();
+    let mut commands = Vec::new();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == 0x1b && index + 2 < bytes.len() && bytes[index + 1] == b'_' && bytes[index + 2] == b'G' {
+            let body_start = index + 3;
+            let mut end = body_start;
+            while end + 1 < bytes.len() && !(bytes[end] == 0x1b && bytes[end + 1] == b'\\') {
+                end += 1;
+            }
+            commands.push(bytes[body_start..end].to_vec());
+            index = end + 2;
+        } else {
+            index += 1;
+        }
+    }
+    commands
+}
+
+#[test]
+fn kitty_emitted_bytes_roundtrip_through_our_parser() {
+    let parts = create_test_kitty_parts();
+    let internal = store_test_kitty_image(&parts.0, 40, 80);
+    let mut chunk = kitty_chunk(internal, 1, 2, 3);
+    chunk.source_px_x = 5;
+    chunk.source_px_y = 7;
+    chunk.source_px_width = 20;
+    chunk.source_px_height = 40;
+    chunk.cell_offset_x = 3;
+    chunk.cell_offset_y = 4;
+    chunk.z_index = -1;
+    chunk.dest_cells = (2, 2);
+    let output = run_kitty_frame(&parts, vec![chunk.clone()], None);
+    let commands = extract_kitty_commands(&output);
+    assert!(
+        !commands.is_empty(),
+        "expected at least one emitted kitty command"
+    );
+
+    let mut parser = KittyCommandParser::new();
+    let mut decoded_image: Option<(u32, u32, KittyFormat, usize)> = None;
+    let mut placement: Option<crate::panes::kitty_graphics::parser::KittyCommand> = None;
+    for raw in &commands {
+        match parser.parse(raw) {
+            Some(Ok(command)) => match command.action {
+                KittyAction::Transmit => {
+                    let image = command
+                        .image
+                        .as_ref()
+                        .expect("transmit command must carry decoded image data");
+                    decoded_image =
+                        Some((image.width, image.height, image.format, image.bytes.len()));
+                },
+                KittyAction::Display => placement = Some(command),
+                _ => {},
+            },
+            Some(Err(err)) => panic!("emitted command failed to parse: {:?}", err.code),
+            None => {},
+        }
+    }
+
+    let (width, height, format, byte_len) =
+        decoded_image.expect("transmit round-trip produced no decoded image");
+    assert_eq!((width, height), (40, 80));
+    assert_eq!(format, KittyFormat::Rgba32);
+    assert_eq!(byte_len, (40 * 80 * 4) as usize);
+
+    let placement = placement.expect("no placement command round-tripped");
+    assert_eq!(placement.source_x, chunk.source_px_x as u32);
+    assert_eq!(placement.source_y, chunk.source_px_y as u32);
+    assert_eq!(placement.source_w, chunk.source_px_width as u32);
+    assert_eq!(placement.source_h, chunk.source_px_height as u32);
+    assert_eq!(placement.cell_offset_x, chunk.cell_offset_x);
+    assert_eq!(placement.cell_offset_y, chunk.cell_offset_y);
+    assert_eq!(placement.z_index, chunk.z_index);
+    assert!(placement.suppress_cursor_movement);
+}
+
+#[test]
+fn kitty_host_ids_stay_within_signed_32_bit_range() {
+    let parts = create_test_kitty_parts();
+    for id in 0..8u64 {
+        let internal = store_test_kitty_image(&parts.0, 4, 4);
+        let output = run_kitty_frame(&parts, vec![kitty_chunk(internal, id, 0, 0)], None);
+        for command in extract_kitty_commands(&output) {
+            let text = String::from_utf8(command).unwrap();
+            for segment in text.split([',', ';']) {
+                if let Some(value) = segment.strip_prefix("i=") {
+                    let numeric: i64 = value.parse().unwrap();
+                    assert!(
+                        numeric <= i32::MAX as i64,
+                        "host image id {} exceeds signed 32-bit range (Konsole parses with toInt)",
+                        numeric
+                    );
+                }
+                if let Some(value) = segment.strip_prefix("p=") {
+                    let numeric: i64 = value.parse().unwrap();
+                    assert!(
+                        numeric <= i32::MAX as i64,
+                        "host placement id {} exceeds signed 32-bit range",
+                        numeric
+                    );
+                }
+            }
+        }
+    }
 }

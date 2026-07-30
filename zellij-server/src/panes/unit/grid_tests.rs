@@ -7487,3 +7487,25 @@ fn kitty_conformance_margin_scroll_leaves_outside_images_untouched() {
     assert_eq!(grid.kitty_placements()[0].display_rect, outside_before);
     assert_eq!(grid.kitty_placements()[0].emit_y, 0);
 }
+
+#[test]
+fn kitty_conformance_transmit_with_both_id_and_number_is_einval() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=t,f=24,s=1,v=1,I=1,i=3", &rgb_raster(1, 1)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 0);
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let reply = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
+    assert!(
+        reply.contains("EINVAL"),
+        "expected EINVAL for transmit with both i and I, got {:?}",
+        reply
+    );
+}

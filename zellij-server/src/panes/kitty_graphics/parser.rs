@@ -41,6 +41,7 @@ pub enum KittyErrorCode {
     Einval,
     Enoent,
     Ebadf,
+    Enodata,
     Enotsupported,
 }
 
@@ -50,6 +51,7 @@ impl KittyErrorCode {
             KittyErrorCode::Einval => "EINVAL",
             KittyErrorCode::Enoent => "ENOENT",
             KittyErrorCode::Ebadf => "EBADF",
+            KittyErrorCode::Enodata => "ENODATA",
             KittyErrorCode::Enotsupported => "ENOTSUPPORTED",
         }
     }
@@ -501,6 +503,12 @@ pub fn parse_control_data(control: &[u8]) -> Result<KittyCommand, KittyError> {
             },
         }
     }
+    if command.image_id.unwrap_or(0) != 0 && command.image_number.is_some() {
+        return Err(echo.error(
+            KittyErrorCode::Einval,
+            "must not specify both image id and image number",
+        ));
+    }
     Ok(command)
 }
 
@@ -589,12 +597,14 @@ fn run_payload_pipeline(
             if expected > MAX_DECODED_BYTES as u64 {
                 return Err(echo.error(KittyErrorCode::Einval, "image too large"));
             }
-            if data.len() as u64 != expected {
+            if (data.len() as u64) < expected {
                 return Err(echo.error(
-                    KittyErrorCode::Einval,
-                    "payload size does not match dimensions",
+                    KittyErrorCode::Enodata,
+                    "insufficient image data for dimensions",
                 ));
             }
+            let mut data = data;
+            data.truncate(expected as usize);
             DecodedImage {
                 bytes: data,
                 width,

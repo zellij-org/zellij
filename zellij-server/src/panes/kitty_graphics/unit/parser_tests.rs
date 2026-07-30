@@ -138,11 +138,21 @@ fn non_png_payload_with_png_format_is_einval() {
 }
 
 #[test]
-fn raw_payload_with_wrong_byte_count_is_einval() {
+fn raw_payload_with_insufficient_bytes_is_enodata() {
     let mut parser = KittyCommandParser::new();
     let payload: Vec<u8> = (1..=11).collect();
     let err = parse_one(&mut parser, &raw_cmd("a=T,f=24,s=2,v=2", &payload)).unwrap_err();
-    assert_eq!(err.code, KittyErrorCode::Einval);
+    assert_eq!(err.code, KittyErrorCode::Enodata);
+}
+
+#[test]
+fn raw_payload_with_excess_bytes_is_truncated() {
+    let mut parser = KittyCommandParser::new();
+    let payload: Vec<u8> = (1..=20).collect();
+    let command = parse_one(&mut parser, &raw_cmd("a=T,f=24,s=2,v=2", &payload)).unwrap();
+    let image = command.image.unwrap();
+    assert_eq!(image.bytes.len(), 12);
+    assert_eq!(image.bytes, (1..=12).collect::<Vec<u8>>());
 }
 
 #[test]
