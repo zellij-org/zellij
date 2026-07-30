@@ -1,5 +1,6 @@
 use super::super::Grid;
 use crate::panes::grid::SixelImageStore;
+use zellij_utils::consts::SCROLL_BUFFER_SIZE;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::link_handler::LinkHandler;
 use insta::assert_snapshot;
@@ -7313,4 +7314,176 @@ fn kitty_reply_query_when_host_unsupported() {
     assert!(reply.starts_with("\x1b_Gi=31;ENOTSUPPORTED"));
     assert!(reply.ends_with("\x1b\\"));
     assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_conformance_image_put_cursor_positions() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=20,i=1", &rgb_raster(10, 20)),
+    );
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((1, 0))
+    );
+}
+
+#[test]
+fn kitty_conformance_image_put_scaled_cursor() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=40,c=3,i=1", &rgb_raster(20, 40)),
+    );
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((3, 2))
+    );
+    assert_eq!(grid.kitty_placements()[0].dest_cells, (3, 3));
+}
+
+#[test]
+fn kitty_conformance_image_put_full_width_wraps() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=100,v=20,i=1", &rgb_raster(100, 20)),
+    );
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((0, 1))
+    );
+}
+
+#[test]
+fn kitty_conformance_image_put_pixel_offsets_cursor() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=20,X=5,Y=5,i=1", &rgb_raster(10, 20)),
+    );
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((2, 1))
+    );
+    assert_eq!(grid.kitty_placements()[0].dest_cells, (2, 2));
+}
+
+#[test]
+fn kitty_conformance_bottom_row_placement_scrolls() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[5;1H");
+    assert_eq!(grid.lines_above.len(), 0);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=40,i=1", &rgb_raster(10, 40)),
+    );
+    assert_eq!(grid.lines_above.len(), 1);
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((1, 4))
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(
+        grid.kitty_placements()[0].display_rect,
+        PixelRect {
+            x: 0,
+            y: 80,
+            width: 10,
+            height: 40,
+        }
+    );
+}
+
+#[test]
+fn kitty_conformance_bottom_row_placement_c1_does_not_scroll() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[5;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=40,i=1,C=1", &rgb_raster(10, 40)),
+    );
+    assert_eq!(grid.lines_above.len(), 0);
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((0, 4))
+    );
+    assert_eq!(
+        grid.kitty_placements()[0].display_rect,
+        PixelRect {
+            x: 0,
+            y: 80,
+            width: 10,
+            height: 40,
+        }
+    );
+}
+
+#[test]
+fn kitty_conformance_full_screen_index_scroll_reaps_image() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=20,i=1,C=1", &rgb_raster(10, 20)),
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 1);
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
+    for _ in 0..(scroll_buffer_size + grid.height) {
+        grid.add_canonical_line();
+    }
+    let _ = grid.read_changes(0, 0);
+    assert_eq!(grid.kitty_placement_count(), 0);
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_conformance_margin_scroll_leaves_outside_images_untouched() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=20,i=1,C=1", &rgb_raster(10, 20)),
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2;4r");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[4;1H");
+    let outside_before = grid.kitty_placements()[0].display_rect;
+    for _ in 0..3 {
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\n");
+    }
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(grid.kitty_placements()[0].display_rect, outside_before);
+    assert_eq!(grid.kitty_placements()[0].emit_y, 0);
 }

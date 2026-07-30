@@ -68,6 +68,35 @@ fn pane_kitty_image_reaches_client_with_transmit_and_placement() {
 }
 
 #[test]
+fn kitty_image_at_bottom_row_scrolls_and_reaches_client() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    setup_kitty_host(&zellij, &terminal);
+
+    let mut fill = Vec::new();
+    for _ in 0..64 {
+        fill.extend_from_slice(b"\r\n");
+    }
+    terminal.output(&fill);
+    terminal.output(RGB_2X2_A_T);
+
+    let bytes = zellij.wait_until_bytes(
+        "kitty placement at bottom row reaches the client after scrolling",
+        |bytes| contains_bytes(bytes, TRANSMIT_HEADER) && contains_bytes(bytes, PLACEMENT),
+    );
+
+    let placement_position = find_bytes(&bytes, PLACEMENT).unwrap();
+    let before_placement = &bytes[..placement_position];
+    let goto_marker = find_bytes(before_placement, b"\x1b[").is_some();
+    assert!(
+        goto_marker,
+        "placement must be preceded by a cursor goto after scrolling to the bottom row"
+    );
+
+    zellij.quit();
+}
+
+#[test]
 fn clear_screen_deletes_kitty_images_on_host() {
     let mut zellij = start_zellij();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);

@@ -3135,6 +3135,19 @@ impl Grid {
             }
         }
     }
+    fn advance_cursor_after_kitty_placement(&mut self, cols: usize, rows: usize) {
+        let mut down_steps = rows.saturating_sub(1);
+        let target_x = self.cursor.x + cols;
+        if target_x >= self.width {
+            self.cursor.x = 0;
+            down_steps += 1;
+        } else {
+            self.cursor.x = target_x;
+        }
+        for _ in 0..down_steps {
+            self.add_canonical_line();
+        }
+    }
     pub fn handle_kitty_apc(&mut self, raw: &[u8]) -> Option<Result<KittyReplyData, KittyError>> {
         self.kitty_grid.note_command_handled();
         let parsed = self.kitty_parser.parse(raw)?;
@@ -3256,13 +3269,7 @@ impl Grid {
                 {
                     Ok((cols, rows)) => {
                         if !command.suppress_cursor_movement {
-                            self.move_cursor_forward_until_edge(cols as usize);
-                            if rows > 1 {
-                                self.move_cursor_down_until_edge_of_screen(
-                                    rows as usize - 1,
-                                    EMPTY_TERMINAL_CHARACTER,
-                                );
-                            }
+                            self.advance_cursor_after_kitty_placement(cols as usize, rows as usize);
                         }
                         self.render_full_viewport();
                         self.mark_for_rerender();

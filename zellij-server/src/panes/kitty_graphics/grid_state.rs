@@ -252,14 +252,16 @@ impl KittyGrid {
         if source_w == 0 || source_h == 0 {
             return Err(einval(command, "empty source rectangle"));
         }
+        let off_x = std::cmp::min(command.cell_offset_x as usize, cell.width - 1);
+        let off_y = std::cmp::min(command.cell_offset_y as usize, cell.height - 1);
         let ceil_div = |a: usize, b: usize| (a + b - 1) / b;
         let (dst_w, dst_h, cols, rows, is_scaled) =
             match (command.columns as usize, command.rows as usize) {
                 (0, 0) => (
                     source_w,
                     source_h,
-                    ceil_div(source_w, cell.width),
-                    ceil_div(source_h, cell.height),
+                    ceil_div(source_w + off_x, cell.width),
+                    ceil_div(source_h + off_y, cell.height),
                     false,
                 ),
                 (c, 0) => {
@@ -268,7 +270,10 @@ impl KittyGrid {
                         ((dst_w as f64) * (source_h as f64) / (source_w as f64)).round() as usize,
                         1,
                     );
-                    (dst_w, dst_h, c, ceil_div(dst_h, cell.height), true)
+                    let height_px = ((dst_w + off_x) as f64) * (source_h as f64) / (source_w as f64);
+                    let rows =
+                        std::cmp::max((height_px / cell.height as f64).ceil() as usize, 1);
+                    (dst_w, dst_h, c, rows, true)
                 },
                 (0, r) => {
                     let dst_h = r * cell.height;
@@ -276,7 +281,9 @@ impl KittyGrid {
                         ((dst_h as f64) * (source_w as f64) / (source_h as f64)).round() as usize,
                         1,
                     );
-                    (dst_w, dst_h, ceil_div(dst_w, cell.width), r, true)
+                    let width_px = ((dst_h + off_y) as f64) * (source_w as f64) / (source_h as f64);
+                    let cols = std::cmp::max((width_px / cell.width as f64).ceil() as usize, 1);
+                    (dst_w, dst_h, cols, r, true)
                 },
                 (c, r) => (c * cell.width, r * cell.height, c, r, true),
             };
@@ -304,8 +311,6 @@ impl KittyGrid {
                 scaled_bytes,
             );
         }
-        let off_x = std::cmp::min(command.cell_offset_x as usize, cell.width - 1);
-        let off_y = std::cmp::min(command.cell_offset_y as usize, cell.height - 1);
         let display_rect = PixelRect {
             x: cursor_px.0 + off_x,
             y: (cursor_px.1 + off_y) as isize,
