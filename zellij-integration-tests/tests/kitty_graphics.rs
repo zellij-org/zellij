@@ -10,6 +10,40 @@ const TRANSMIT_HEADER: &[u8] = b"\x1b_Ga=t,q=2,f=32,t=d,i=2000000000,s=2,v=2,m=0
 const PLACEMENT: &[u8] = b"\x1b_Ga=p,q=2,i=2000000000,p=1,x=0,y=0,w=2,h=2,X=0,Y=0,z=0,C=1\x1b\\";
 const IMAGE_FREE_DELETE: &[u8] = b"\x1b_Ga=d,q=2,d=I,i=2000000000\x1b\\";
 const RGB_2X2_A_T: &[u8] = b"\x1b_Ga=T,q=2,f=24,s=2,v=2,m=0;////////////////\x1b\\";
+fn rgb_tall_transmit_and_display() -> Vec<u8> {
+    let width = 2usize;
+    let height = 48usize;
+    let raster = vec![0xffu8; width * height * 3];
+    let payload = base64_encode(&raster);
+    let mut out = format!("\x1b_Ga=T,q=2,f=24,s={},v={},C=1,m=0;", width, height).into_bytes();
+    out.extend_from_slice(payload.as_bytes());
+    out.extend_from_slice(b"\x1b\\");
+    out
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[((triple >> 18) & 0x3f) as usize] as char);
+        out.push(TABLE[((triple >> 12) & 0x3f) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[((triple >> 6) & 0x3f) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(triple & 0x3f) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
 
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
@@ -80,7 +114,7 @@ fn kitty_image_at_bottom_row_scrolls_and_reaches_client() {
     terminal.output(&fill);
     terminal.output(RGB_2X2_A_T);
 
-    let bytes = zellij.wait_until_bytes(
+    let bytes = zellij.wait_until_raw_output(
         "kitty placement at bottom row reaches the client after scrolling",
         |bytes| contains_bytes(bytes, TRANSMIT_HEADER) && contains_bytes(bytes, PLACEMENT),
     );
@@ -102,9 +136,10 @@ fn clear_screen_deletes_kitty_images_on_host() {
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     setup_kitty_host(&zellij, &terminal);
 
-    terminal.output(RGB_2X2_A_T);
+    terminal.output(b"\x1b[H");
+    terminal.output(&rgb_tall_transmit_and_display());
     zellij.wait_until_raw_output("kitty placement reaches the client", |bytes| {
-        contains_bytes(bytes, PLACEMENT)
+        contains_bytes(bytes, b"\x1b_Ga=p,q=2,i=2000000000,p=1,")
     });
 
     terminal.output(b"\x1b[2J");

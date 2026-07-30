@@ -6847,6 +6847,31 @@ fn kitty_delete_image_id_range() {
 }
 
 #[test]
+fn kitty_delete_image_id_range_with_omitted_lower_bound() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=r,y=2", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(5, 0)]);
+    let replies: Vec<String> = grid
+        .pending_messages_to_pty
+        .iter()
+        .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
+        .collect();
+    assert!(
+        !replies.iter().any(|reply| reply.contains("EINVAL")),
+        "d=r with omitted lower bound must not emit EINVAL, got {:?}",
+        replies
+    );
+}
+
+#[test]
 fn kitty_retransmit_to_existing_id_replaces_image() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vte::Parser::new();

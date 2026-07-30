@@ -417,18 +417,20 @@ impl KittyGrid {
             },
             _ => None,
         };
-        if matches!(lower, 'p' | 'x') && command.source_x == 0 {
-            return Err(einval(command, "missing coordinate for delete"));
-        }
-        if matches!(lower, 'p' | 'y') && command.source_y == 0 {
-            return Err(einval(command, "missing coordinate for delete"));
-        }
-        if lower == 'q' && (command.source_x == 0 || command.source_y == 0) {
-            return Err(einval(command, "missing coordinate for delete"));
-        }
-        if lower == 'r' && (command.source_x == 0 || command.source_y < command.source_x) {
-            return Err(einval(command, "invalid image id range for delete"));
-        }
+        let column_probe_x = |source_x: u32| -> Option<usize> {
+            if source_x == 0 {
+                None
+            } else {
+                Some((source_x as usize - 1) * cell_w)
+            }
+        };
+        let row_probe_y = |source_y: u32| -> Option<usize> {
+            if source_y == 0 {
+                None
+            } else {
+                Some(la_px + (source_y as usize - 1) * cell_h)
+            }
+        };
         let matches_placement = |placement: &KittyPlacement| -> bool {
             match lower {
                 'a' => placement
@@ -456,45 +458,38 @@ impl KittyGrid {
                         cell_h,
                     ))
                     .is_some(),
-                'p' => placement
-                    .display_rect
-                    .intersecting_rect(&probe_rect(
-                        (command.source_x as usize - 1) * cell_w,
-                        la_px + (command.source_y as usize - 1) * cell_h,
-                        cell_w,
-                        cell_h,
-                    ))
-                    .is_some(),
+                'p' => match (column_probe_x(command.source_x), row_probe_y(command.source_y)) {
+                    (Some(px), Some(py)) => placement
+                        .display_rect
+                        .intersecting_rect(&probe_rect(px, py, cell_w, cell_h))
+                        .is_some(),
+                    _ => false,
+                },
                 'q' => {
                     placement.z_index == command.z_index
-                        && placement
-                            .display_rect
-                            .intersecting_rect(&probe_rect(
-                                (command.source_x as usize - 1) * cell_w,
-                                la_px + (command.source_y as usize - 1) * cell_h,
-                                cell_w,
-                                cell_h,
-                            ))
-                            .is_some()
+                        && match (column_probe_x(command.source_x), row_probe_y(command.source_y))
+                        {
+                            (Some(px), Some(py)) => placement
+                                .display_rect
+                                .intersecting_rect(&probe_rect(px, py, cell_w, cell_h))
+                                .is_some(),
+                            _ => false,
+                        }
                 },
-                'x' => placement
-                    .display_rect
-                    .intersecting_rect(&probe_rect(
-                        (command.source_x as usize - 1) * cell_w,
-                        0,
-                        cell_w,
-                        usize::MAX / 2,
-                    ))
-                    .is_some(),
-                'y' => placement
-                    .display_rect
-                    .intersecting_rect(&probe_rect(
-                        0,
-                        la_px + (command.source_y as usize - 1) * cell_h,
-                        usize::MAX / 2,
-                        cell_h,
-                    ))
-                    .is_some(),
+                'x' => match column_probe_x(command.source_x) {
+                    Some(px) => placement
+                        .display_rect
+                        .intersecting_rect(&probe_rect(px, 0, cell_w, usize::MAX / 2))
+                        .is_some(),
+                    None => false,
+                },
+                'y' => match row_probe_y(command.source_y) {
+                    Some(py) => placement
+                        .display_rect
+                        .intersecting_rect(&probe_rect(0, py, usize::MAX / 2, cell_h))
+                        .is_some(),
+                    None => false,
+                },
                 'z' => placement.z_index == command.z_index,
                 'r' => {
                     placement.image_id >= command.source_x && placement.image_id <= command.source_y
@@ -721,6 +716,30 @@ impl KittyGrid {
             store.free(placement.internal_id);
         }
     }
+    pub fn clear_visible_placements(&mut self, scrollback_size_in_lines: usize) {
+        let cell_size = { *self.character_cell_size.borrow() };
+        let cell_height = match cell_size {
+            Some(cell) => cell.height as isize,
+            None => {
+                self.clear_all_placements();
+                return;
+            },
+        };
+        let scrollback_top = scrollback_size_in_lines as isize * cell_height;
+        let mut store = self.kitty_image_store.borrow_mut();
+        let mut kept = Vec::with_capacity(self.placements.len());
+        for placement in self.placements.drain(..) {
+            let screen_relative_top_row =
+                (placement.display_rect.y - scrollback_top).div_euclid(cell_height);
+            let dest_rows = placement.dest_cells.1 as isize;
+            if screen_relative_top_row + dest_rows > 0 {
+                store.free(placement.internal_id);
+            } else {
+                kept.push(placement);
+            }
+        }
+        self.placements = kept;
+    }
     pub fn image_cell_coordinates_in_viewport(
         &self,
         viewport_height: usize,
@@ -826,8 +845,10 @@ impl KittyGrid {
                         continue;
                     }
 
-                    let image_cell_distance_from_scrollback_top =
-                        image_top_edge as usize / character_cell_size.height;
+                    let image_cell_distance_from_scrollback_top = std::cmp::max(
+                        image_top_edge.div_euclid(character_cell_size.height as isize),
+                        0,
+                    ) as usize;
                     let image_cell_distance_from_changed_rect_top =
                         image_cell_distance_from_scrollback_top
                             .saturating_sub(line_index + scrollback_size_in_lines);
@@ -835,7 +856,7 @@ impl KittyGrid {
                         viewport_y_offset + line_index + image_cell_distance_from_changed_rect_top;
                     let source_px_x = placement.emit_x;
                     let source_px_y = placement.emit_y
-                        + (changed_rect_top_edge as usize).saturating_sub(image_top_edge as usize);
+                        + std::cmp::max(changed_rect_top_edge - image_top_edge, 0) as usize;
                     let source_px_height = std::cmp::min(
                         (std::cmp::min(changed_rect_bottom_edge, image_bottom_edge)
                             - std::cmp::max(changed_rect_top_edge, image_top_edge))

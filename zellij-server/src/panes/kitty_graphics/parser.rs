@@ -498,9 +498,8 @@ pub fn parse_control_data(control: &[u8]) -> Result<KittyCommand, KittyError> {
                     return Err(echo.error(KittyErrorCode::Einval, "invalid value for key 'U'"));
                 },
             },
-            _ => {
-                return Err(echo.error(KittyErrorCode::Enotsupported, "unknown key"));
-            },
+            b"N" | b"P" | b"Q" | b"H" | b"V" => {},
+            _ => {},
         }
     }
     if command.image_id.unwrap_or(0) != 0 && command.image_number.is_some() {

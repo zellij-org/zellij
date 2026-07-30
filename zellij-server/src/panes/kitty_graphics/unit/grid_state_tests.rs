@@ -104,6 +104,40 @@ fn changed_chunks_for_placement_straddling_changed_rect() {
 }
 
 #[test]
+fn clear_visible_placements_keeps_history_resident_images() {
+    let mut grid = test_grid();
+    grid.placements.push(test_placement(0, 40));
+    grid.placements.push(test_placement(400, 40));
+    grid.clear_visible_placements(20);
+    assert_eq!(grid.placement_count(), 1);
+    assert_eq!(grid.placements[0].display_rect.y, 0);
+}
+
+#[test]
+fn clear_all_placements_removes_history_resident_images() {
+    let mut grid = test_grid();
+    grid.placements.push(test_placement(0, 40));
+    grid.placements.push(test_placement(400, 40));
+    grid.clear_all_placements();
+    assert_eq!(grid.placement_count(), 0);
+}
+
+#[test]
+fn changed_chunks_for_placement_with_top_scrolled_above_viewport() {
+    let mut grid = test_grid();
+    grid.placements.push(test_placement(-20, 60));
+    let chunks = grid.viewport_kitty_chunks(3, 0, 4, 0, 0);
+    assert_eq!(chunks.len(), 1);
+    let chunk = &chunks[0];
+    assert_eq!(chunk.cell_x, 0);
+    assert_eq!(chunk.cell_y, 0);
+    assert_eq!(chunk.source_px_x, 0);
+    assert_eq!(chunk.source_px_y, 20);
+    assert_eq!(chunk.source_px_width, 20);
+    assert_eq!(chunk.source_px_height, 40);
+}
+
+#[test]
 fn changed_chunks_shift_cell_coordinates_by_viewport_offsets() {
     let mut grid = test_grid();
     let cell_width = 10usize;
@@ -222,5 +256,26 @@ fn region_scroll_reaps_placement_scrolled_out_of_region() {
     let mut grid = test_grid();
     grid.placements.push(test_placement(20, 20));
     grid.apply_region_scroll(20, 100, 20, 0, 0);
+    assert_eq!(grid.placements.len(), 0);
+}
+
+#[test]
+fn reverse_index_region_scroll_clips_bottom_of_straddler() {
+    let mut grid = test_grid();
+    grid.placements.push(test_placement(40, 40));
+    grid.apply_region_scroll(0, 80, -20, 0, 0);
+    assert_eq!(grid.placements.len(), 1);
+    let placement = &grid.placements[0];
+    assert_eq!(placement.display_rect.y, 60);
+    assert_eq!(placement.display_rect.height, 20);
+    assert_eq!(placement.emit_y, 0);
+    assert_eq!(placement.source_rect.y, 0);
+}
+
+#[test]
+fn reverse_index_region_scroll_reaps_fully_below_margin() {
+    let mut grid = test_grid();
+    grid.placements.push(test_placement(60, 20));
+    grid.apply_region_scroll(0, 80, -20, 0, 0);
     assert_eq!(grid.placements.len(), 0);
 }

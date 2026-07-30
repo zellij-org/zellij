@@ -196,12 +196,24 @@ fn data_offset_and_size_window_file_read() {
 }
 
 #[test]
-fn unknown_key_is_enotsupported_and_carries_echo_fields() {
+fn unknown_key_is_silently_ignored() {
     let mut parser = KittyCommandParser::new();
-    let err = parse_one(&mut parser, b"a=T,i=5,q=1,Z=9,f=24,s=1,v=1;AAAA").unwrap_err();
-    assert_eq!(err.code, KittyErrorCode::Enotsupported);
-    assert_eq!(err.image_id, Some(5));
-    assert_eq!(err.quiet, 1);
+    let command = parse_one(&mut parser, b"a=T,i=5,q=1,Z=9,f=24,s=1,v=1;AAAA").unwrap();
+    assert_eq!(command.image_id, Some(5));
+    assert_eq!(command.quiet, 1);
+    assert_eq!(command.image.unwrap().width, 1);
+}
+
+#[test]
+fn known_but_unsupported_keys_do_not_break_valid_command() {
+    let mut parser = KittyCommandParser::new();
+    let command = parse_one(
+        &mut parser,
+        b"a=T,i=5,N=1,P=2,Q=3,H=4,V=5,f=24,s=1,v=1;AAAA",
+    )
+    .unwrap();
+    assert_eq!(command.image_id, Some(5));
+    assert!(command.image.is_some());
 }
 
 #[test]

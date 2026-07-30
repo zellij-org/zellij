@@ -4212,7 +4212,8 @@ impl Perform for Grid {
                     if let Some(images_to_reap) = self.sixel_grid.clear() {
                         self.sixel_grid.reap_images(images_to_reap);
                     }
-                    self.kitty_grid.clear_all_placements();
+                    self.kitty_grid
+                        .clear_visible_placements(self.lines_above.len());
                 } else if clear_type == 3 {
                     self.clear_lines_above();
                     if let Some(images_to_reap) = self.sixel_grid.clear() {
