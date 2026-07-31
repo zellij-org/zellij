@@ -4,6 +4,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 
+use zellij_server::panes::kitty_graphics::KittyImageStore;
 use zellij_server::panes::terminal_character::AnsiCode;
 use zellij_server::panes::{LinkHandler, TerminalPane};
 use zellij_utils::data::{Palette, Style};
@@ -52,6 +53,10 @@ impl ClientScreen {
         render_bytes(&bytes, size)
     }
 
+    pub fn raw_bytes(&self) -> Vec<u8> {
+        self.inner.received_bytes.lock().unwrap().bytes.clone()
+    }
+
     pub fn wait_until_raw_output(&self, what: &str, predicate: impl Fn(&[u8]) -> bool) -> Vec<u8> {
         let deadline = Instant::now() + crate::default_timeout();
         let mut received_bytes = self.inner.received_bytes.lock().unwrap();
@@ -61,9 +66,12 @@ impl ClientScreen {
             }
             let now = Instant::now();
             if now >= deadline {
+                let size = *self.size.lock().unwrap();
+                let grid_snapshot = render_bytes(&received_bytes.bytes, size);
                 panic!(
-                    "timed out waiting for: {}\n=== (received {} stdout bytes, generation {}) ===\n=== zellij log tail ({}) ===\n{}",
+                    "timed out waiting for: {}\nlast rendered grid:\n{}\n=== (received {} stdout bytes, generation {}) ===\n=== zellij log tail ({}) ===\n{}",
                     what,
+                    grid_snapshot.text,
                     received_bytes.bytes.len(),
                     received_bytes.generation,
                     crate::test_env::log_file_path().display(),
@@ -363,6 +371,7 @@ fn build_terminal_pane(win_size: Size) -> TerminalPane {
         link_handler,
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         initial_pane_title,

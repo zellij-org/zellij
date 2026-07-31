@@ -4,6 +4,7 @@ use zellij_utils::{
     position::Position,
 };
 
+use crate::panes::kitty_graphics::KittyHostSupport;
 use crate::resize_pty;
 use crate::tab::{pane_info_for_pane, Pane};
 use floating_pane_grid::FloatingPaneGrid;
@@ -164,6 +165,17 @@ impl FloatingPanes {
     }
     pub fn pane_ids(&self) -> impl Iterator<Item = &PaneId> {
         self.panes.keys()
+    }
+    pub fn rendered_pane_ids(&self) -> Vec<PaneId> {
+        if self.panes_are_visible() {
+            self.panes.keys().copied().collect()
+        } else {
+            self.panes
+                .iter()
+                .filter(|(_, pane)| pane.position_and_size().is_pinned)
+                .map(|(pane_id, _)| *pane_id)
+                .collect()
+        }
     }
     pub fn add_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
         self.desired_pane_positions
@@ -1695,6 +1707,11 @@ impl FloatingPanes {
     pub fn update_pane_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
         for pane in self.panes.values_mut() {
             pane.update_arrow_fonts(should_support_arrow_fonts);
+        }
+    }
+    pub fn update_pane_kitty_host_support(&mut self, supported: KittyHostSupport) {
+        for pane in self.panes.values_mut() {
+            pane.update_kitty_host_support(supported);
         }
     }
     pub fn update_pane_rounded_corners(&mut self, rounded_corners: bool) {

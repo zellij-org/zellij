@@ -80,7 +80,8 @@ use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
 
 use crate::{
     nested_guest::NestedGuestTracker,
-    output::Output,
+    output::{HostKittyState, Output},
+    panes::kitty_graphics::{KittyHostSupport, KittyImageStore},
     panes::sixel::SixelImageStore,
     panes::PaneId,
     plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction, PluginRenderAsset},
@@ -516,6 +517,10 @@ pub enum ScreenInstruction {
     TerminalBackgroundColor(String),
     TerminalForegroundColor(String),
     TerminalColorRegisters(Vec<(usize, String)>),
+    SetKittyGraphicsSupport {
+        client_id: ClientId,
+        supported: bool,
+    },
     /// A pane's Grid intercepted an app-in-pane whitelisted query; Screen
     /// assigns a token, queues the forward, and dispatches to the client.
     /// `query` carries the classified form so Screen can match on it
@@ -1058,6 +1063,9 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::TerminalForegroundColor
             },
             ScreenInstruction::TerminalColorRegisters(..) => ScreenContext::TerminalColorRegisters,
+            ScreenInstruction::SetKittyGraphicsSupport { .. } => {
+                ScreenContext::SetKittyGraphicsSupport
+            },
             ScreenInstruction::ForwardHostQuery { .. } => ScreenContext::ForwardHostQuery,
             ScreenInstruction::NestedSessionMessageFromPane { .. } => {
                 ScreenContext::NestedSessionMessageFromPane
@@ -1487,6 +1495,9 @@ pub(crate) struct Screen {
     stacked_resize: Rc<RefCell<bool>>,
     stacked_pane_list: Rc<RefCell<bool>>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
+    kitty_image_store: Rc<RefCell<KittyImageStore>>,
+    kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
+    client_kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     connected_clients: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
@@ -1522,6 +1533,7 @@ pub(crate) struct Screen {
     #[cfg_attr(test, allow(dead_code))]
     default_layout_name: Option<String>,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    support_kitty_graphics_protocol: bool,
     default_editor: Option<PathBuf>,
     web_clients_allowed: bool,
     web_sharing: WebSharing,
@@ -1637,6 +1649,7 @@ impl Screen {
         arrow_fonts: bool,
         layout_dir: Option<PathBuf>,
         explicitly_disable_kitty_keyboard_protocol: bool,
+        support_kitty_graphics_protocol: bool,
         stacked_resize: bool,
         stacked_pane_list: bool,
         default_editor: Option<PathBuf>,
@@ -1667,6 +1680,9 @@ impl Screen {
             stacked_resize: Rc::new(RefCell::new(stacked_resize)),
             stacked_pane_list: Rc::new(RefCell::new(stacked_pane_list)),
             sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
+            kitty_image_store: Rc::new(RefCell::new(KittyImageStore::default())),
+            kitty_host_capabilities: Rc::new(RefCell::new(HashMap::new())),
+            client_kitty_host_state: Rc::new(RefCell::new(HashMap::new())),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
             active_tab_ids: BTreeMap::new(),
@@ -1699,6 +1715,7 @@ impl Screen {
             resurrectable_sessions_cache,
             layout_dir,
             explicitly_disable_kitty_keyboard_protocol,
+            support_kitty_graphics_protocol,
             default_editor,
             web_clients_allowed,
             web_sharing,
@@ -2598,6 +2615,36 @@ impl Screen {
                 width: character_cell_size_width,
             };
             *self.character_cell_size.borrow_mut() = Some(character_cell_size);
+        }
+    }
+
+    pub fn update_kitty_graphics_support(&mut self, client_id: ClientId, supported: bool) {
+        let supported = supported && self.support_kitty_graphics_protocol;
+        self.kitty_host_capabilities
+            .borrow_mut()
+            .insert(client_id, supported);
+        self.push_kitty_host_support_to_tabs();
+    }
+
+    fn kitty_host_support_aggregate(&self) -> Option<KittyHostSupport> {
+        if !self.support_kitty_graphics_protocol {
+            return Some(KittyHostSupport::ProtocolDisabled);
+        }
+        let capabilities = self.kitty_host_capabilities.borrow();
+        if capabilities.is_empty() {
+            None
+        } else {
+            Some(KittyHostSupport::from_host_capability(
+                capabilities.values().any(|supported| *supported),
+            ))
+        }
+    }
+
+    fn push_kitty_host_support_to_tabs(&mut self) {
+        if let Some(aggregate) = self.kitty_host_support_aggregate() {
+            for tab in self.tabs.values_mut() {
+                tab.update_kitty_host_support(aggregate);
+            }
         }
     }
 
@@ -3916,6 +3963,9 @@ impl Screen {
                 self.character_cell_size.clone(),
                 self.styled_underlines,
                 self.osc8_hyperlinks,
+                self.kitty_image_store.clone(),
+                self.kitty_host_capabilities.clone(),
+                self.client_kitty_host_state.clone(),
             );
 
             let has_ansi_subscribers = self.pane_render_subscribers.values().any(|s| s.ansi);
@@ -4041,6 +4091,15 @@ impl Screen {
                 );
             }
 
+            for (client_id, tab_index) in &self.active_tab_ids {
+                if self.watcher_clients.contains_key(client_id) {
+                    continue;
+                }
+                if let Some(tab) = self.tabs.get(tab_index) {
+                    output.set_kitty_visible_panes(*client_id, tab.kitty_visible_pane_ids());
+                }
+            }
+
             if non_watcher_output_was_dirty || has_bell {
                 let mut serialized_output = output.serialize().context(err_context)?;
                 self.mobile_render_gate
@@ -4077,6 +4136,9 @@ impl Screen {
                     self.character_cell_size.clone(),
                     self.styled_underlines,
                     self.osc8_hyperlinks,
+                    self.kitty_image_store.clone(),
+                    self.kitty_host_capabilities.clone(),
+                    self.client_kitty_host_state.clone(),
                 );
 
                 let focused_tab_index_of_followed_client_id =
@@ -4384,6 +4446,7 @@ impl Screen {
             self.stacked_resize.clone(),
             self.stacked_pane_list.clone(),
             self.sixel_image_store.clone(),
+            self.kitty_image_store.clone(),
             self.bus
                 .os_input
                 .as_ref()
@@ -4427,6 +4490,9 @@ impl Screen {
         }
         for dimmed_client_id in &self.dimmed_clients {
             tab.set_client_dimmed(*dimmed_client_id, true);
+        }
+        if let Some(aggregate) = self.kitty_host_support_aggregate() {
+            tab.update_kitty_host_support(aggregate);
         }
         self.tabs.insert(tab_id, tab);
         Ok(())
@@ -4615,9 +4681,16 @@ impl Screen {
         };
 
         self.active_tab_ids.insert(client_id, tab_index);
+        self.client_kitty_host_state.borrow_mut().remove(&client_id);
         self.connected_clients
             .borrow_mut()
             .insert(client_id, is_web_client);
+        if is_web_client {
+            self.kitty_host_capabilities
+                .borrow_mut()
+                .insert(client_id, false);
+            self.push_kitty_host_support_to_tabs();
+        }
         self.tab_history.insert(client_id, tab_history);
         self.tabs
             .get_mut(&tab_index)
@@ -4711,6 +4784,15 @@ impl Screen {
             self.tab_history.remove(&client_id);
         }
         self.connected_clients.borrow_mut().remove(&client_id);
+        self.client_kitty_host_state.borrow_mut().remove(&client_id);
+        let removed_kitty_capability = self
+            .kitty_host_capabilities
+            .borrow_mut()
+            .remove(&client_id)
+            .is_some();
+        if removed_kitty_capability {
+            self.push_kitty_host_support_to_tabs();
+        }
         self.client_sizes.remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
         if let Some(prev_tab_id) = previously_active_tab_id {
@@ -7372,6 +7454,9 @@ pub(crate) fn screen_thread_main(
         // explicitly_disable_kitty_keyboard_protocol is false and vice versa
         .unwrap_or(false); // by default, we try to support this if the terminal supports it and
                            // the program running inside a pane requests it
+    let support_kitty_graphics_protocol = config_options
+        .support_kitty_graphics_protocol
+        .unwrap_or(true);
     let stacked_resize = config_options.stacked_resize.unwrap_or(true);
     let stacked_pane_list = config_options.stacked_pane_list.unwrap_or(true);
     let web_clients_allowed = config_options
@@ -7418,6 +7503,7 @@ pub(crate) fn screen_thread_main(
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
+        support_kitty_graphics_protocol,
         stacked_resize,
         stacked_pane_list,
         default_editor,
@@ -9221,6 +9307,12 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::TerminalColorRegisters(color_registers) => {
                 screen.update_terminal_color_registers(color_registers);
+            },
+            ScreenInstruction::SetKittyGraphicsSupport {
+                client_id,
+                supported,
+            } => {
+                screen.update_kitty_graphics_support(client_id, supported);
             },
             ScreenInstruction::ForwardHostQuery { pane_id, query } => {
                 screen.forward_host_query(pane_id, query);

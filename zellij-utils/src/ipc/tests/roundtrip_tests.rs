@@ -352,6 +352,8 @@ fn test_client_messages() {
             }),
         },
     });
+    test_client_roundtrip!(ClientToServerMsg::KittyGraphicsSupport { supported: true });
+    test_client_roundtrip!(ClientToServerMsg::KittyGraphicsSupport { supported: false });
     test_client_roundtrip!(ClientToServerMsg::BackgroundColor {
         color: "red".to_string(),
     });
@@ -475,6 +477,7 @@ fn test_client_messages() {
                 serialization_interval: Some(1),
                 disable_session_metadata: Some(true),
                 support_kitty_keyboard_protocol: Some(true),
+                support_kitty_graphics_protocol: Some(false),
                 web_server: Some(true),
                 web_sharing: Some(WebSharing::On),
                 stacked_resize: Some(true),

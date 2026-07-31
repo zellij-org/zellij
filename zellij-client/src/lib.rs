@@ -928,6 +928,9 @@ pub fn start_client(
         .support_kitty_keyboard_protocol
         .map(|e| !e)
         .unwrap_or(false);
+    let support_kitty_graphics_protocol = config_options
+        .support_kitty_graphics_protocol
+        .unwrap_or(true);
     let should_start_web_server = config_options.web_server.map(|w| w).unwrap_or(false);
     let mut reconnect_to_session = None;
     os_input.unset_raw_mode().unwrap();
@@ -1204,6 +1207,7 @@ pub fn start_client(
                     send_input_instructions,
                     stdin_ansi_parser,
                     explicitly_disable_kitty_keyboard_protocol,
+                    support_kitty_graphics_protocol,
                     Some(resize_sender),
                 )
             }

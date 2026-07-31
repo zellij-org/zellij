@@ -338,6 +338,10 @@ impl InputHandler {
                 self.os_input
                     .send_to_server(ClientToServerMsg::HostTerminalThemeChanged { mode });
             },
+            AnsiStdinInstruction::KittyGraphicsSupport(supported) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::KittyGraphicsSupport { supported });
+            },
         }
     }
     fn handle_nested_session_frame_from_host(&mut self, payload_bytes: Vec<u8>) {

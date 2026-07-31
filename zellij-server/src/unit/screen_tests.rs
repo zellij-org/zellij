@@ -1,4 +1,5 @@
 use super::{screen_thread_main, CopyOptions, Screen, ScreenInstruction};
+use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::PaneId;
 use crate::{
     channels::SenderWithContext, os_input_output::ServerOsApi, route::route_action,
@@ -87,6 +88,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -250,6 +252,15 @@ fn create_new_screen(
     advanced_mouse_actions: bool,
     mouse_hover_effects: bool,
 ) -> Screen {
+    create_new_screen_with_kitty_graphics(size, advanced_mouse_actions, mouse_hover_effects, true)
+}
+
+fn create_new_screen_with_kitty_graphics(
+    size: Size,
+    advanced_mouse_actions: bool,
+    mouse_hover_effects: bool,
+    support_kitty_graphics_protocol: bool,
+) -> Screen {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput::default();
     bus.os_input = Some(Box::new(fake_os_input));
@@ -304,6 +315,7 @@ fn create_new_screen(
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
+        support_kitty_graphics_protocol,
         stacked_resize,
         false,
         None,
@@ -5511,6 +5523,7 @@ fn create_new_screen_with_message_capture(
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_graphics_protocol
         stacked_resize,
         false,
         None,
@@ -8608,6 +8621,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_graphics_protocol
         stacked_resize,
         false,
         None,
@@ -9281,6 +9295,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         None,
         false,
         true,
+        true,
         false,
         None,
         false,
@@ -9554,6 +9569,7 @@ fn new_terminal_pane_for_pause_test(pid: u32) -> TerminalPane {
             height: 16,
         }))),
         Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(HashMap::new())),
         None,
@@ -9808,6 +9824,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         true,  // arrow_fonts
         None,  // layout_dir
         false, // explicitly_disable_kitty_keyboard_protocol
+        true,  // support_kitty_graphics_protocol
         true,  // stacked_resize
         false,
         None,
@@ -11564,4 +11581,91 @@ pub fn nested_guest_bye_stops_liveness_pings() {
         .unwrap()
         .iter()
         .any(|job| matches!(job, BackgroundJob::StopNestedGuestPing(PaneId::Terminal(0)))));
+}
+
+#[test]
+fn kitty_query_replies_ok_when_capable_client_connected() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.update_kitty_graphics_support(1, true);
+    assert_eq!(screen.kitty_host_capabilities.borrow().get(&1), Some(&true));
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let active_pane = active_tab.get_active_pane_mut(1).unwrap();
+    active_pane.handle_pty_bytes(b"\x1b_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\x1b\\".to_vec());
+    assert_eq!(
+        active_pane.drain_messages_to_pty(),
+        vec![b"\x1b_Gi=31;OK\x1b\\".to_vec()]
+    );
+}
+
+#[test]
+fn kitty_query_replies_enotsupported_when_no_capable_client() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.update_kitty_graphics_support(1, false);
+    assert_eq!(
+        screen.kitty_host_capabilities.borrow().get(&1),
+        Some(&false)
+    );
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let active_pane = active_tab.get_active_pane_mut(1).unwrap();
+    active_pane.handle_pty_bytes(b"\x1b_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\x1b\\".to_vec());
+    let replies = active_pane.drain_messages_to_pty();
+    assert_eq!(replies.len(), 1);
+    let reply = String::from_utf8(replies[0].clone()).unwrap();
+    assert!(reply.starts_with("\x1b_Gi=31;ENOTSUPPORTED"));
+    assert!(reply.ends_with("\x1b\\"));
+}
+
+#[test]
+fn kitty_query_is_ignored_when_the_protocol_is_disabled_in_the_config() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen_with_kitty_graphics(size, true, true, false);
+    new_tab(&mut screen, 1, 0);
+    screen.update_kitty_graphics_support(1, true);
+    assert_eq!(
+        screen.kitty_host_capabilities.borrow().get(&1),
+        Some(&false),
+        "a capable host must still be recorded as incapable when the protocol is disabled"
+    );
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let active_pane = active_tab.get_active_pane_mut(1).unwrap();
+    active_pane.handle_pty_bytes(b"\x1b_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\x1b\\".to_vec());
+    assert!(
+        active_pane.drain_messages_to_pty().is_empty(),
+        "a disabled protocol must not reply to queries at all"
+    );
+}
+
+#[test]
+fn kitty_support_recomputed_on_client_detach() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+    screen.update_kitty_graphics_support(1, false);
+    screen.update_kitty_graphics_support(2, true);
+    screen.remove_client(2).expect("TEST");
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let active_pane = active_tab.get_active_pane_mut(1).unwrap();
+    active_pane.handle_pty_bytes(b"\x1b_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\x1b\\".to_vec());
+    let replies = active_pane.drain_messages_to_pty();
+    assert_eq!(replies.len(), 1);
+    let reply = String::from_utf8(replies[0].clone()).unwrap();
+    assert!(reply.starts_with("\x1b_Gi=31;ENOTSUPPORTED"));
+    assert!(reply.ends_with("\x1b\\"));
 }

@@ -2,6 +2,8 @@ mod pane_resizer;
 mod stacked_panes;
 mod tiled_pane_grid;
 
+use crate::panes::kitty_graphics::KittyHostSupport;
+
 #[cfg(test)]
 #[path = "./unit/mock_pane.rs"]
 mod pane_resizer_test_mock;
@@ -555,6 +557,13 @@ impl TiledPanes {
     }
     pub fn pane_ids(&self) -> impl Iterator<Item = &PaneId> {
         self.panes.keys()
+    }
+    pub fn rendered_pane_ids(&self) -> Vec<PaneId> {
+        self.panes
+            .keys()
+            .filter(|pane_id| !self.panes_to_hide.contains(pane_id))
+            .copied()
+            .collect()
     }
     pub fn relayout(&mut self, direction: SplitDirection) {
         let mut pane_grid = TiledPaneGrid::new(
@@ -3096,6 +3105,11 @@ impl TiledPanes {
     pub fn update_pane_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
         for pane in self.panes.values_mut() {
             pane.update_arrow_fonts(should_support_arrow_fonts);
+        }
+    }
+    pub fn update_pane_kitty_host_support(&mut self, supported: KittyHostSupport) {
+        for pane in self.panes.values_mut() {
+            pane.update_kitty_host_support(supported);
         }
     }
     pub fn update_pane_rounded_corners(&mut self, rounded_corners: bool) {

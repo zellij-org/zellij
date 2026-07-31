@@ -1,5 +1,6 @@
 use super::Tab;
 use crate::pane_groups::PaneGroups;
+use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
@@ -191,6 +192,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -281,6 +283,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -377,6 +380,7 @@ fn create_new_tab_with_cell_size(
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,

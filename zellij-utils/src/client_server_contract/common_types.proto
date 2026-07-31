@@ -1211,6 +1211,7 @@ message Options {
   optional bool stacked_pane_list = 52;
   optional NestedSessionHandling nested_session_handling = 53;
   optional bool mouse_scroll_resize = 54;
+  optional bool support_kitty_graphics_protocol = 55;
 }
 
 enum OnForceClose {

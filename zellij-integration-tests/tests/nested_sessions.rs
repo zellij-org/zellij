@@ -1490,3 +1490,23 @@ fn nested_pane_frames_never_render_the_guest_choice_indicator() {
     nested.guest.quit();
     nested.host.quit();
 }
+
+#[test]
+fn a_guest_sessions_kitty_probe_is_answered_by_its_host_pane() {
+    let nested = NestedHarness::start(TERMINAL_SIZE);
+    nested.wait_for_host_to_acknowledge_guest();
+
+    // A guest zellij writes its whole startup query batch in one chunk:
+    // forwarded host queries (pixel size, fg/bg) precede the kitty probe, so
+    // the host pane pauses part-way through that chunk. The probe still has
+    // to be answered once the pane resumes, otherwise the guest concludes the
+    // host cannot render images and every image tool inside it gives up.
+    nested.host_pane.wait_for_stdin(
+        "the guest's kitty probe is answered by the host pane",
+        |stdin_bytes| {
+            stdin_bytes
+                .windows(b"\x1b_Gi=31;".len())
+                .any(|window| window == b"\x1b_Gi=31;")
+        },
+    );
+}

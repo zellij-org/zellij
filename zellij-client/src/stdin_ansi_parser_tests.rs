@@ -1210,6 +1210,139 @@ fn last_resort_force_drain_recovers_a_never_terminated_partial() {
 }
 
 #[test]
+fn kitty_probe_ok_reply_classifies_true() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b_Gi=31;OK\x1b\\");
+    assert!(residue.is_empty(), "probe reply must be fully consumed");
+    assert_eq!(replies.len(), 1);
+    match &replies[0] {
+        HostReply::KittyGraphicsSupport(supported) => assert!(*supported),
+        other => panic!("unexpected reply: {:?}", other),
+    }
+}
+
+#[test]
+fn kitty_probe_error_reply_classifies_false() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b_Gi=31;ENOTSUPPORTED:query failed\x1b\\");
+    assert!(residue.is_empty());
+    assert_eq!(replies.len(), 1);
+    match &replies[0] {
+        HostReply::KittyGraphicsSupport(supported) => assert!(!*supported),
+        other => panic!("unexpected reply: {:?}", other),
+    }
+}
+
+#[test]
+fn kitty_probe_absence_resolves_false_on_barrier() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b[?62;4;52c");
+    assert!(residue.is_empty());
+    assert_eq!(replies.len(), 1);
+    match &replies[0] {
+        HostReply::KittyGraphicsSupport(supported) => assert!(!*supported),
+        other => panic!("unexpected reply: {:?}", other),
+    }
+}
+
+#[test]
+fn kitty_probe_reply_then_barrier_emits_exactly_one_reply() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let mut chunk = Vec::new();
+    chunk.extend_from_slice(b"\x1b_Gi=31;OK\x1b\\");
+    chunk.extend_from_slice(b"\x1b[?62;4;52c");
+    let (replies, residue) = feed_once(&mut parser, &chunk);
+    assert!(residue.is_empty());
+    let kitty_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::KittyGraphicsSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(kitty_replies, vec![true]);
+}
+
+#[test]
+fn kitty_probe_reply_fragmented_across_feeds() {
+    let full = b"\x1b_Gi=31;OK\x1b\\";
+    for split in 1..full.len() {
+        let mut parser = StdinAnsiParser::new();
+        parser.expect_kitty_probe_reply();
+        let r1 = parser.feed(&full[..split]);
+        let r2 = parser.feed(&full[split..]);
+        assert!(
+            r1.residue.is_empty(),
+            "split at {}: chunk 1 residue {:?}",
+            split,
+            r1.residue
+        );
+        assert!(
+            r2.residue.is_empty(),
+            "split at {}: chunk 2 residue {:?}",
+            split,
+            r2.residue
+        );
+        assert_eq!(
+            r1.replies.len() + r2.replies.len(),
+            1,
+            "split at {}: exactly one reply across both chunks",
+            split
+        );
+        let reply = r1.replies.into_iter().chain(r2.replies).next().unwrap();
+        match reply {
+            HostReply::KittyGraphicsSupport(supported) => assert!(supported),
+            other => panic!("split at {}: unexpected reply {:?}", split, other),
+        }
+    }
+}
+
+#[test]
+fn apc_outside_probe_window_is_not_classified() {
+    let mut parser = StdinAnsiParser::new();
+    let out = parser.feed(b"\x1b_Gi=31;OK\x1b\\");
+    assert!(out.replies.is_empty());
+}
+
+#[test]
+fn unsolicited_kitty_graphics_reply_never_becomes_keyboard_input() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let out = parser.feed(b"\x1b_Gi=31;OK\x1b\\");
+    assert_eq!(out.replies.len(), 1);
+
+    let out = parser.feed(b"\x1b_Gi=2000000000;OK\x1b\\");
+    assert!(
+        out.residue.is_empty(),
+        "a host reply to our own image transmission must not be typed into the focused pane, got: {:?}",
+        out.residue
+    );
+    assert!(out.replies.is_empty());
+
+    let mut fragmented = StdinAnsiParser::new();
+    fragmented.expect_kitty_probe_reply();
+    let _ = fragmented.feed(b"\x1b_Gi=31;OK\x1b\\");
+    let first = fragmented.feed(b"\x1b_Gi=2000000");
+    let second = fragmented.feed(b"000;OK\x1b\\");
+    assert!(first.residue.is_empty() && second.residue.is_empty());
+}
+
+#[test]
+fn non_kitty_apc_sequences_are_left_alone() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let out = parser.feed(b"\x1b_Xsomething\x1b\\");
+    assert!(
+        !out.residue.is_empty(),
+        "only kitty graphics APCs may be swallowed"
+    );
+}
+
+#[test]
 fn unsolicited_theme_notification_classifies_without_outstanding_query() {
     let mut p = StdinAnsiParser::new();
     let out = p.feed(b"\x1b[?997;1n");

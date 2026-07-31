@@ -36,6 +36,7 @@ Options {
     serialization_interval: None,
     disable_session_metadata: None,
     support_kitty_keyboard_protocol: None,
+    support_kitty_graphics_protocol: None,
     web_server: None,
     web_sharing: None,
     stacked_resize: None,
