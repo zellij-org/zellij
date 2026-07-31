@@ -1,5 +1,7 @@
 use crate::output::{CharacterChunk, KittyImageChunk, SixelImageChunk};
-use crate::panes::kitty_graphics::{InterceptorResult, KittyApcInterceptor, KittyImageStore};
+use crate::panes::kitty_graphics::{
+    InterceptorResult, KittyApcInterceptor, KittyHostSupport, KittyImageStore,
+};
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::panes::{
@@ -1157,7 +1159,7 @@ impl Pane for TerminalPane {
         self.arrow_fonts = should_support_arrow_fonts;
         self.grid.update_arrow_fonts(should_support_arrow_fonts);
     }
-    fn update_kitty_host_support(&mut self, supported: bool) {
+    fn update_kitty_host_support(&mut self, supported: KittyHostSupport) {
         self.grid.update_kitty_host_support(supported);
     }
     fn update_rounded_corners(&mut self, rounded_corners: bool) {

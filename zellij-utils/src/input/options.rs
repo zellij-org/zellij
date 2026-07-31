@@ -322,6 +322,12 @@ pub struct Options {
     #[serde(default)]
     pub support_kitty_keyboard_protocol: Option<bool>,
 
+    /// Whether to enable support for the Kitty graphics (image) protocol (must also be supported
+    /// by the host terminal), defaults to true if the terminal supports it
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub support_kitty_graphics_protocol: Option<bool>,
+
     /// Whether to make sure a local web server is running when a new Zellij session starts.
     /// This web server will allow creating new sessions and attaching to existing ones that have
     /// opted in to being shared in the browser.
@@ -534,6 +540,9 @@ impl Options {
         let support_kitty_keyboard_protocol = other
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
+        let support_kitty_graphics_protocol = other
+            .support_kitty_graphics_protocol
+            .or(self.support_kitty_graphics_protocol);
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
@@ -600,6 +609,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
+            support_kitty_graphics_protocol,
             web_server,
             web_sharing,
             stacked_resize,
@@ -685,6 +695,9 @@ impl Options {
         let support_kitty_keyboard_protocol = other
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
+        let support_kitty_graphics_protocol = other
+            .support_kitty_graphics_protocol
+            .or(self.support_kitty_graphics_protocol);
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
@@ -751,6 +764,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
+            support_kitty_graphics_protocol,
             web_server,
             web_sharing,
             stacked_resize,

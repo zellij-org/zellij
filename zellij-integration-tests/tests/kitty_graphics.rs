@@ -2,7 +2,8 @@
 
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, keys, split_down_and_wait_for_prompt,
-    split_right_and_wait_for_prompt, start_zellij, FakePtyHandle, TestSession,
+    split_right_and_wait_for_prompt, start_zellij, FakePtyHandle, TestRunner, TestSession,
+    TERMINAL_SIZE,
 };
 
 const KITTY_PROBE_ACK: &[u8] = b"\x1b_Gi=31;OK\x1b\\";
@@ -483,6 +484,36 @@ fn floating_pane_occludes_kitty_image_and_restores_it_without_retransmit() {
     assert!(
         !contains_bytes(after_restore, b"\x1b_Ga=t"),
         "restoring the image must not retransmit its pixels"
+    );
+
+    zellij.quit();
+}
+
+#[test]
+fn disabling_the_protocol_keeps_kitty_bytes_away_from_the_client_and_the_pane() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config("support_kitty_graphics_protocol false")
+        .start();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    terminal.disable_echo();
+
+    terminal.output(b"\x1b_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    terminal.output(RGB_2X2_A_T);
+    terminal.output(b"done");
+
+    zellij.wait_until("the text after the image sequences is rendered", |grid| {
+        grid.contains("done")
+    });
+
+    let bytes = zellij.raw_bytes();
+    assert!(
+        !contains_bytes(&bytes, b"\x1b_G"),
+        "no kitty graphics sequence may reach the client when the protocol is disabled"
+    );
+    assert!(
+        terminal.stdin_bytes().is_empty(),
+        "a disabled protocol must not reply to the application at all, got: {:?}",
+        terminal.stdin_bytes()
     );
 
     zellij.quit();

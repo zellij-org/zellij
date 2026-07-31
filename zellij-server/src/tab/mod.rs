@@ -48,7 +48,7 @@ use crate::{
     output::{CharacterChunk, KittyImageChunk, Output, SixelImageChunk},
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
     panes::grid::namespace_notification_id,
-    panes::kitty_graphics::KittyImageStore,
+    panes::kitty_graphics::{KittyHostSupport, KittyImageStore},
     panes::nested_session_modal::GuestModalShortcuts,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
@@ -241,7 +241,7 @@ pub(crate) struct Tab {
     default_editor: Option<PathBuf>,
     debug: bool,
     arrow_fonts: bool,
-    kitty_host_support: Option<bool>,
+    kitty_host_support: Option<KittyHostSupport>,
     styled_underlines: bool,
     osc8_hyperlinks: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
@@ -735,7 +735,7 @@ pub trait Pane {
     } // only relevant to terminal panes
     fn update_theme(&mut self, _theme: Styling) {}
     fn update_arrow_fonts(&mut self, _should_support_arrow_fonts: bool) {}
-    fn update_kitty_host_support(&mut self, _supported: bool) {}
+    fn update_kitty_host_support(&mut self, _supported: KittyHostSupport) {}
     fn update_rounded_corners(&mut self, _rounded_corners: bool) {}
     fn set_should_be_suppressed(&mut self, _should_be_suppressed: bool) {}
     fn query_should_be_suppressed(&self) -> bool {
@@ -7408,7 +7408,7 @@ impl Tab {
             pane.update_arrow_fonts(should_support_arrow_fonts);
         }
     }
-    pub fn update_kitty_host_support(&mut self, supported: bool) {
+    pub fn update_kitty_host_support(&mut self, supported: KittyHostSupport) {
         self.kitty_host_support = Some(supported);
         self.floating_panes
             .update_pane_kitty_host_support(supported);

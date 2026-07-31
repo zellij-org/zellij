@@ -2036,6 +2036,8 @@ pub struct Options {
     pub nested_session_handling: ::core::option::Option<i32>,
     #[prost(bool, optional, tag="54")]
     pub mouse_scroll_resize: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="55")]
+    pub support_kitty_graphics_protocol: ::core::option::Option<bool>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]

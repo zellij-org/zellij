@@ -81,7 +81,7 @@ use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
 use crate::{
     nested_guest::NestedGuestTracker,
     output::{HostKittyState, Output},
-    panes::kitty_graphics::KittyImageStore,
+    panes::kitty_graphics::{KittyHostSupport, KittyImageStore},
     panes::sixel::SixelImageStore,
     panes::PaneId,
     plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction, PluginRenderAsset},
@@ -1533,6 +1533,7 @@ pub(crate) struct Screen {
     #[cfg_attr(test, allow(dead_code))]
     default_layout_name: Option<String>,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    support_kitty_graphics_protocol: bool,
     default_editor: Option<PathBuf>,
     web_clients_allowed: bool,
     web_sharing: WebSharing,
@@ -1648,6 +1649,7 @@ impl Screen {
         arrow_fonts: bool,
         layout_dir: Option<PathBuf>,
         explicitly_disable_kitty_keyboard_protocol: bool,
+        support_kitty_graphics_protocol: bool,
         stacked_resize: bool,
         stacked_pane_list: bool,
         default_editor: Option<PathBuf>,
@@ -1713,6 +1715,7 @@ impl Screen {
             resurrectable_sessions_cache,
             layout_dir,
             explicitly_disable_kitty_keyboard_protocol,
+            support_kitty_graphics_protocol,
             default_editor,
             web_clients_allowed,
             web_sharing,
@@ -2616,18 +2619,24 @@ impl Screen {
     }
 
     pub fn update_kitty_graphics_support(&mut self, client_id: ClientId, supported: bool) {
+        let supported = supported && self.support_kitty_graphics_protocol;
         self.kitty_host_capabilities
             .borrow_mut()
             .insert(client_id, supported);
         self.push_kitty_host_support_to_tabs();
     }
 
-    fn kitty_host_support_aggregate(&self) -> Option<bool> {
+    fn kitty_host_support_aggregate(&self) -> Option<KittyHostSupport> {
+        if !self.support_kitty_graphics_protocol {
+            return Some(KittyHostSupport::ProtocolDisabled);
+        }
         let capabilities = self.kitty_host_capabilities.borrow();
         if capabilities.is_empty() {
             None
         } else {
-            Some(capabilities.values().any(|supported| *supported))
+            Some(KittyHostSupport::from_host_capability(
+                capabilities.values().any(|supported| *supported),
+            ))
         }
     }
 
@@ -7445,6 +7454,9 @@ pub(crate) fn screen_thread_main(
         // explicitly_disable_kitty_keyboard_protocol is false and vice versa
         .unwrap_or(false); // by default, we try to support this if the terminal supports it and
                            // the program running inside a pane requests it
+    let support_kitty_graphics_protocol = config_options
+        .support_kitty_graphics_protocol
+        .unwrap_or(true);
     let stacked_resize = config_options.stacked_resize.unwrap_or(true);
     let stacked_pane_list = config_options.stacked_pane_list.unwrap_or(true);
     let web_clients_allowed = config_options
@@ -7491,6 +7503,7 @@ pub(crate) fn screen_thread_main(
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
+        support_kitty_graphics_protocol,
         stacked_resize,
         stacked_pane_list,
         default_editor,

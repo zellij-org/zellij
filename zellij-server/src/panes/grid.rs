@@ -1,7 +1,7 @@
 use super::kitty_graphics::{
     format_kitty_error, format_kitty_reply, KittyAction, KittyCommand, KittyCommandParser,
-    KittyError, KittyErrorCode, KittyGrid, KittyImageChunk, KittyImageStore, KittyPlacement,
-    KittyReplyData, KittyRowsBelowTheViewport, KittyVerticalAnchor,
+    KittyError, KittyErrorCode, KittyGrid, KittyHostSupport, KittyImageChunk, KittyImageStore,
+    KittyPlacement, KittyReplyData, KittyRowsBelowTheViewport, KittyVerticalAnchor,
 };
 use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
 use base64::alphabet::STANDARD as BASE64_STANDARD_ALPHABET;
@@ -684,7 +684,7 @@ pub struct Grid {
     sixel_grid: SixelGrid,
     kitty_grid: KittyGrid,
     kitty_parser: KittyCommandParser,
-    kitty_host_support: bool,
+    kitty_host_support: KittyHostSupport,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
     pub lock_renders: bool,
@@ -1071,7 +1071,7 @@ impl Grid {
             sixel_grid,
             kitty_grid,
             kitty_parser: KittyCommandParser::new(),
-            kitty_host_support: true,
+            kitty_host_support: KittyHostSupport::Supported,
             pending_clipboard_update: None,
             pending_osc7_cwd: None,
             pending_desktop_notifications: Vec::new(),
@@ -3307,6 +3307,9 @@ impl Grid {
         }
     }
     pub fn handle_kitty_apc(&mut self, raw: &[u8]) -> Option<Result<KittyReplyData, KittyError>> {
+        if !self.kitty_host_support.protocol_is_enabled() {
+            return None;
+        }
         self.kitty_grid.note_command_handled();
         let parsed = self.kitty_parser.parse(raw)?;
         let (result, was_query) = match parsed {
@@ -3331,7 +3334,7 @@ impl Grid {
     ) -> Result<KittyReplyData, KittyError> {
         match command.action {
             KittyAction::Query => {
-                if self.kitty_host_support {
+                if self.kitty_host_support.host_supports_graphics() {
                     Ok(KittyReplyData::from_command(&command))
                 } else {
                     Err(KittyError {
@@ -3822,7 +3825,7 @@ impl Grid {
     pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
         self.arrow_fonts = should_support_arrow_fonts;
     }
-    pub fn update_kitty_host_support(&mut self, supported: bool) {
+    pub fn update_kitty_host_support(&mut self, supported: KittyHostSupport) {
         self.kitty_host_support = supported;
     }
     pub fn has_selection(&self) -> bool {

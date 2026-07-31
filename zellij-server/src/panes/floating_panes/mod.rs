@@ -4,6 +4,7 @@ use zellij_utils::{
     position::Position,
 };
 
+use crate::panes::kitty_graphics::KittyHostSupport;
 use crate::resize_pty;
 use crate::tab::{pane_info_for_pane, Pane};
 use floating_pane_grid::FloatingPaneGrid;
@@ -1697,7 +1698,7 @@ impl FloatingPanes {
             pane.update_arrow_fonts(should_support_arrow_fonts);
         }
     }
-    pub fn update_pane_kitty_host_support(&mut self, supported: bool) {
+    pub fn update_pane_kitty_host_support(&mut self, supported: KittyHostSupport) {
         for pane in self.panes.values_mut() {
             pane.update_kitty_host_support(supported);
         }

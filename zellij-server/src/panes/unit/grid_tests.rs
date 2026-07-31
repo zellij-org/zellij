@@ -6267,7 +6267,7 @@ fn ui_component_flag_prefixes_parse_order_independently() {
     }
 }
 
-use crate::panes::kitty_graphics::{InterceptorResult, KittyApcInterceptor};
+use crate::panes::kitty_graphics::{InterceptorResult, KittyApcInterceptor, KittyHostSupport};
 use crate::panes::sixel::PixelRect;
 
 const KITTY_PNG_2X2: [u8; 75] = [
@@ -7327,7 +7327,7 @@ fn kitty_reply_query_when_host_unsupported() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vte::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
-    grid.update_kitty_host_support(false);
+    grid.update_kitty_host_support(KittyHostSupport::Unsupported);
     feed_kitty_bytes(
         &mut grid,
         &mut vte_parser,
@@ -7339,6 +7339,60 @@ fn kitty_reply_query_when_host_unsupported() {
     assert!(reply.starts_with("\x1b_Gi=31;ENOTSUPPORTED"));
     assert!(reply.ends_with("\x1b\\"));
     assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_disabled_protocol_answers_queries_with_silence() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    grid.update_kitty_host_support(KittyHostSupport::ProtocolDisabled);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"\x1b_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\x1b\\",
+    );
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "a disabled protocol must not reply to queries at all"
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_disabled_protocol_ignores_transmitted_images() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    grid.update_kitty_host_support(KittyHostSupport::ProtocolDisabled);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[3;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 0);
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+    assert!(grid.pending_messages_to_pty.is_empty());
+}
+
+#[test]
+fn kitty_disabled_protocol_does_not_leak_apc_bytes_into_the_grid() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    grid.update_kitty_host_support(KittyHostSupport::ProtocolDisabled);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"a");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"b");
+    assert_eq!(row_text(&grid.viewport[0]), "ab");
 }
 
 #[test]
