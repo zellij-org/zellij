@@ -5474,7 +5474,8 @@ impl Tab {
         self.get_tiled_panes().map(|(&pid, _)| pid).collect()
     }
     pub fn kitty_visible_pane_ids(&self) -> HashSet<PaneId> {
-        let mut pane_ids: HashSet<PaneId> = self.tiled_panes.pane_ids().copied().collect();
+        let mut pane_ids: HashSet<PaneId> =
+            self.tiled_panes.rendered_pane_ids().into_iter().collect();
         pane_ids.extend(self.floating_panes.rendered_pane_ids());
         pane_ids
     }

@@ -558,6 +558,13 @@ impl TiledPanes {
     pub fn pane_ids(&self) -> impl Iterator<Item = &PaneId> {
         self.panes.keys()
     }
+    pub fn rendered_pane_ids(&self) -> Vec<PaneId> {
+        self.panes
+            .keys()
+            .filter(|pane_id| !self.panes_to_hide.contains(pane_id))
+            .copied()
+            .collect()
+    }
     pub fn relayout(&mut self, direction: SplitDirection) {
         let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,

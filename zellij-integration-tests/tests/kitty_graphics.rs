@@ -633,3 +633,35 @@ fn temp_file_transmission_probe_and_image_reach_the_client() {
     zellij.quit();
 }
 
+
+#[test]
+fn fullscreen_removes_the_images_of_the_panes_it_hides() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    setup_kitty_host(&zellij, &terminal);
+
+    terminal.output(RGB_2X2_A_T);
+    zellij.wait_until_raw_output("the first pane's image reaches the client", |bytes| {
+        contains_bytes(bytes, TRANSMIT_HEADER) && contains_bytes(bytes, PLACEMENT)
+    });
+
+    let _second_terminal = split_right_and_wait_for_prompt(&zellij);
+    let bytes_before_fullscreen = zellij.raw_bytes().len();
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('f'));
+    zellij.wait_until("the focused pane is fullscreen", |grid_snapshot| {
+        grid_snapshot.contains("(FULLSCREEN)")
+    });
+
+    let bytes = zellij.wait_until_raw_output(
+        "the hidden pane's image is deleted from the host",
+        |bytes| contains_bytes(&bytes[bytes_before_fullscreen..], b"\x1b_Ga=d,q=2,d=i,"),
+    );
+    assert!(
+        contains_bytes(&bytes[bytes_before_fullscreen..], b"\x1b_Ga=d,q=2,d=i,"),
+        "a pane hidden by fullscreen must have its placements removed from the host"
+    );
+
+    zellij.quit();
+}
