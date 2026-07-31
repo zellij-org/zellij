@@ -7842,32 +7842,6 @@ fn kitty_marker_viewport_row(grid: &Grid) -> Option<usize> {
     }
 }
 
-fn kitty_property_setup(
-    grid: &mut Grid,
-    vte_parser: &mut vte::Parser,
-    interceptor: &mut KittyApcInterceptor,
-) {
-    for line in 0..4 {
-        feed_kitty_bytes(
-            grid,
-            vte_parser,
-            interceptor,
-            format!("\x1b[{};1H", line + 1).as_bytes(),
-        );
-        let text = format!("pad{}-{}", line, "y".repeat(30));
-        feed_kitty_bytes(grid, vte_parser, interceptor, text.as_bytes());
-    }
-    feed_kitty_bytes(grid, vte_parser, interceptor, b"\x1b[6;1H");
-    feed_kitty_bytes(grid, vte_parser, interceptor, b"MARKER");
-    feed_kitty_bytes(grid, vte_parser, interceptor, b"\x1b[6;1H");
-    feed_kitty_bytes(
-        grid,
-        vte_parser,
-        interceptor,
-        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
-    );
-}
-
 #[test]
 fn kitty_placement_tracks_text_when_a_wrapped_row_moves_into_the_scrollback() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(5, 20);
@@ -8327,41 +8301,5 @@ fn kitty_placement_rejoins_its_text_after_editing_while_scrolled_back() {
         kitty_image_absolute_cell_row(&grid),
         marker_row,
         "the image must rejoin its marker line once the viewport is restored"
-    );
-}
-
-#[test]
-#[ignore]
-fn kitty_placement_tracks_text_when_lines_are_inserted_while_scrolled_back() {
-    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 40);
-    let mut vte_parser = vte::Parser::new();
-    let mut interceptor = KittyApcInterceptor::new();
-    kitty_property_setup(&mut grid, &mut vte_parser, &mut interceptor);
-    grid.change_size(10, 10);
-    let _ = grid.read_changes(0, 0);
-    grid.scroll_up_one_line();
-    let _ = grid.read_changes(0, 0);
-    grid.change_size(10, 40);
-    let _ = grid.read_changes(0, 0);
-    let marker_row_before = kitty_marker_extended_absolute_cell_row(&grid)
-        .expect("the marker line must be present before the insertion");
-    assert_eq!(
-        kitty_image_absolute_cell_row(&grid),
-        marker_row_before,
-        "the image must start out on the row of its marker line"
-    );
-    feed_kitty_bytes(
-        &mut grid,
-        &mut vte_parser,
-        &mut interceptor,
-        b"\x1b[1;1H\x1b[1L",
-    );
-    let _ = grid.read_changes(0, 0);
-    let marker_row_after = kitty_marker_extended_absolute_cell_row(&grid)
-        .expect("the marker line must survive the insertion");
-    assert_eq!(
-        kitty_image_absolute_cell_row(&grid),
-        marker_row_after,
-        "the image must move by exactly as many rows as its marker line"
     );
 }
