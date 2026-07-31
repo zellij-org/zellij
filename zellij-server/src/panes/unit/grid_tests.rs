@@ -6138,3 +6138,52 @@ fn ui_component_flag_prefixes_parse_order_independently() {
         );
     }
 }
+
+#[test]
+fn dump_screen_keeps_spaces_before_a_wrapped_continuation() {
+    // A logical line that wraps mid-line keeps its trailing spaces as content: they sit
+    // before the continuation on the next row, not at the end of the logical line. Trimming
+    // them per-physical-row used to turn "a   b     c" into "a   bc" when dumped.
+    let mut parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        5,
+        10,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    parser.advance(&mut grid, b"a   b     c");
+    assert_eq!(grid.dump_screen(false), "a   b     c");
+}
+
+#[test]
+fn dump_screen_still_trims_padding_at_end_of_a_logical_line() {
+    // The padding trim must stay in place for rows that actually end a logical line,
+    // otherwise every dumped line gets padded out to the pane width.
+    let mut parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        5,
+        10,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    parser.advance(&mut grid, b"hi\r\nthere");
+    assert_eq!(grid.dump_screen(false), "hi\nthere");
+}

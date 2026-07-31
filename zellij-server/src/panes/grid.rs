@@ -392,15 +392,23 @@ macro_rules! dump_screen {
     ($lines:expr) => {{
         let mut is_first = true;
         let mut buf = String::with_capacity($lines.iter().map(|l| l.len()).sum());
+        let mut lines = $lines.iter().peekable();
 
-        for line in &$lines {
+        while let Some(line) = lines.next() {
             if line.is_canonical && !is_first {
                 buf.push_str("\n");
             }
             let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
-            // Replace the spaces at the end of the line. Sometimes, the lines are
-            // collected with spaces until the end of the panel.
-            buf.push_str(&s.trim_end_matches(' '));
+            // A row followed by a wrapped continuation row ends mid-logical-line, so its
+            // trailing spaces are content rather than padding and must be kept. Only the
+            // last row of a logical line gets the padding trimmed. Sometimes, the lines
+            // are collected with spaces until the end of the panel.
+            let wraps_onto_next_row = lines.peek().map_or(false, |next| !next.is_canonical);
+            if wraps_onto_next_row {
+                buf.push_str(&s);
+            } else {
+                buf.push_str(&s.trim_end_matches(' '));
+            }
             is_first = false;
         }
         buf
@@ -413,23 +421,30 @@ macro_rules! dump_screen_with_ansi {
         let mut is_first = true;
         let mut buf = String::new();
         let mut last_styles: Option<RcCharacterStyles> = None;
+        let mut lines = $lines.iter().peekable();
 
-        for line in &$lines {
+        while let Some(line) = lines.next() {
             if line.is_canonical && !is_first {
                 buf.push_str("\n");
                 last_styles = None;
             }
 
-            let last_non_space = line
-                .columns
-                .iter()
-                .rposition(|tc| {
-                    let space = tc.character == ' ';
-                    let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
-                    !space || styled // it's, something drawable
-                })
-                .map(|i| i + 1)
-                .unwrap_or(0);
+            // A row followed by a wrapped continuation row ends mid-logical-line, so its
+            // trailing spaces are content rather than padding and must be kept.
+            let wraps_onto_next_row = lines.peek().map_or(false, |next| !next.is_canonical);
+            let last_non_space = if wraps_onto_next_row {
+                line.columns.len()
+            } else {
+                line.columns
+                    .iter()
+                    .rposition(|tc| {
+                        let space = tc.character == ' ';
+                        let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
+                        !space || styled // it's, something drawable
+                    })
+                    .map(|i| i + 1)
+                    .unwrap_or(0)
+            };
 
             for tc in line.columns.iter().take(last_non_space) {
                 // Only output style codes if style changed
