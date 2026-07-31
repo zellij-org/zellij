@@ -1,5 +1,5 @@
 use super::*;
-use std::io::Write;
+use std::io::{Seek, Write};
 
 const PNG_2X2_RGBA: [u8; 75] = [
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
@@ -309,6 +309,62 @@ fn temp_file_medium_outside_temp_dir_is_not_deleted() {
     .unwrap();
     assert_eq!(command.image.unwrap().bytes, raster);
     assert!(path.exists());
+}
+
+#[test]
+fn file_medium_larger_than_decode_cap_is_einval() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("huge.bin");
+    let file = std::fs::File::create(&path).unwrap();
+    file.set_len(MAX_DECODED_BYTES as u64 + 1).unwrap();
+    drop(file);
+    let mut parser = KittyCommandParser::new();
+    let err = parse_one(
+        &mut parser,
+        &raw_cmd("a=T,f=24,s=2,v=2,t=f", path.to_str().unwrap().as_bytes()),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Einval);
+    assert!(path.exists());
+}
+
+#[test]
+fn file_medium_window_within_oversized_file_reads_only_requested_range() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("huge_windowed.bin");
+    let mut file = std::fs::File::create(&path).unwrap();
+    file.set_len(MAX_DECODED_BYTES as u64 + 1024).unwrap();
+    file.seek(std::io::SeekFrom::Start(64)).unwrap();
+    file.write_all(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+        .unwrap();
+    drop(file);
+    let mut parser = KittyCommandParser::new();
+    let command = parse_one(
+        &mut parser,
+        &raw_cmd(
+            "a=T,t=f,f=24,s=2,v=2,O=64,S=12",
+            path.to_str().unwrap().as_bytes(),
+        ),
+    )
+    .unwrap();
+    assert_eq!(command.image.unwrap().bytes, raster_12_bytes());
+}
+
+#[test]
+fn file_medium_offset_beyond_eof_is_ebadf() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("small.bin");
+    std::fs::write(&path, raster_12_bytes()).unwrap();
+    let mut parser = KittyCommandParser::new();
+    let err = parse_one(
+        &mut parser,
+        &raw_cmd(
+            "a=T,t=f,f=24,s=2,v=2,O=64,S=12",
+            path.to_str().unwrap().as_bytes(),
+        ),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Ebadf);
 }
 
 #[test]

@@ -635,6 +635,7 @@ pub struct Output {
     client_kitty_chunks: HashMap<ClientId, HashMap<PaneId, Vec<KittyImageChunk>>>,
     client_rendered_kitty_panes: HashMap<ClientId, HashSet<PaneId>>,
     client_kitty_visible_panes: HashMap<ClientId, HashSet<PaneId>>,
+    clients_with_cleared_host_display: HashSet<ClientId>,
     link_handler: Option<Rc<RefCell<LinkHandler>>>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     kitty_image_store: Rc<RefCell<KittyImageStore>>,
@@ -740,6 +741,17 @@ impl Output {
                 .or_insert_with(Vec::new);
             entry.push(String::from(vte_instruction));
         }
+    }
+    pub fn mark_host_display_cleared_for_clients(
+        &mut self,
+        client_ids: impl Iterator<Item = ClientId>,
+    ) {
+        for client_id in client_ids {
+            self.clients_with_cleared_host_display.insert(client_id);
+        }
+    }
+    pub fn mark_host_display_cleared_for_client(&mut self, client_id: ClientId) {
+        self.clients_with_cleared_host_display.insert(client_id);
     }
     pub fn add_post_vte_instruction_to_client(
         &mut self,
@@ -871,14 +883,11 @@ impl Output {
             let mut client_serialized_render_instructions = String::new();
 
             // append pre-vte instructions for this client
-            let mut host_display_cleared = false;
+            let host_display_cleared = self.clients_with_cleared_host_display.remove(&client_id);
             if let Some(pre_vte_instructions_for_client) =
                 self.pre_vte_instructions.remove(&client_id)
             {
                 for vte_instruction in pre_vte_instructions_for_client {
-                    if vte_instruction.contains("\u{1b}[2J") {
-                        host_display_cleared = true;
-                    }
                     client_serialized_render_instructions.push_str(&vte_instruction);
                 }
             }

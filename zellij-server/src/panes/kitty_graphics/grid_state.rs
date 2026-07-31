@@ -74,8 +74,17 @@ pub struct KittyGrid {
     placements: Vec<KittyPlacement>,
     next_synthetic_image_id: u32,
     front_drops: u64,
+    merged_rows: u64,
+    split_rows: u64,
     commands_handled: u64,
     previous_cell_size: Option<SizeInPixels>,
+    rows_below_the_viewport: Option<KittyRowsBelowTheViewport>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct KittyRowsBelowTheViewport {
+    pub first_row: usize,
+    pub total_rows: usize,
 }
 
 fn einval(command: &KittyCommand, message: &str) -> KittyError {
@@ -114,8 +123,11 @@ impl KittyGrid {
             placements: Vec::new(),
             next_synthetic_image_id: u32::MAX,
             front_drops: 0,
+            merged_rows: 0,
+            split_rows: 0,
             commands_handled: 0,
             previous_cell_size,
+            rows_below_the_viewport: None,
         }
     }
     pub fn note_command_handled(&mut self) {
@@ -126,6 +138,12 @@ impl KittyGrid {
     }
     pub fn front_drops(&self) -> u64 {
         self.front_drops
+    }
+    pub fn merged_rows(&self) -> u64 {
+        self.merged_rows
+    }
+    pub fn split_rows(&self) -> u64 {
+        self.split_rows
     }
     pub fn placements(&self) -> &[KittyPlacement] {
         &self.placements
@@ -293,9 +311,9 @@ impl KittyGrid {
                         ((dst_w as f64) * (source_h as f64) / (source_w as f64)).round() as usize,
                         1,
                     );
-                    let height_px = ((dst_w + off_x) as f64) * (source_h as f64) / (source_w as f64);
-                    let rows =
-                        std::cmp::max((height_px / cell.height as f64).ceil() as usize, 1);
+                    let height_px =
+                        ((dst_w + off_x) as f64) * (source_h as f64) / (source_w as f64);
+                    let rows = std::cmp::max((height_px / cell.height as f64).ceil() as usize, 1);
                     (dst_w, dst_h, c, rows, true)
                 },
                 (0, r) => {
@@ -482,7 +500,10 @@ impl KittyGrid {
                         cell_h,
                     ))
                     .is_some(),
-                'p' => match (column_probe_x(command.source_x), row_probe_y(command.source_y)) {
+                'p' => match (
+                    column_probe_x(command.source_x),
+                    row_probe_y(command.source_y),
+                ) {
                     (Some(px), Some(py)) => placement
                         .display_rect
                         .intersecting_rect(&probe_rect(px, py, cell_w, cell_h))
@@ -491,8 +512,10 @@ impl KittyGrid {
                 },
                 'q' => {
                     placement.z_index == command.z_index
-                        && match (column_probe_x(command.source_x), row_probe_y(command.source_y))
-                        {
+                        && match (
+                            column_probe_x(command.source_x),
+                            row_probe_y(command.source_y),
+                        ) {
                             (Some(px), Some(py)) => placement
                                 .display_rect
                                 .intersecting_rect(&probe_rect(px, py, cell_w, cell_h))
@@ -579,9 +602,54 @@ impl KittyGrid {
         }
         Ok(())
     }
+    pub fn note_rows_below_the_viewport(&mut self, frame: Option<KittyRowsBelowTheViewport>) {
+        self.rows_below_the_viewport = frame;
+    }
+    pub fn note_rows_below_the_viewport_shifted(&mut self, row_delta: isize) {
+        self.rows_below_the_viewport =
+            self.rows_below_the_viewport
+                .map(|frame| KittyRowsBelowTheViewport {
+                    first_row: std::cmp::max(0, frame.first_row as isize + row_delta) as usize,
+                    total_rows: std::cmp::max(0, frame.total_rows as isize + row_delta) as usize,
+                });
+    }
+    pub fn settle_placements_below_the_viewport(
+        &mut self,
+        frame: Option<KittyRowsBelowTheViewport>,
+    ) -> bool {
+        let previous = std::mem::replace(&mut self.rows_below_the_viewport, frame);
+        let (previous, frame) = match (previous, frame) {
+            (Some(previous), Some(frame)) => (previous, frame),
+            _ => return false,
+        };
+        let row_delta = frame.total_rows as isize - previous.total_rows as isize;
+        if row_delta == 0 || self.placements.is_empty() {
+            return false;
+        }
+        let cell = match *self.character_cell_size.borrow() {
+            Some(cell) => cell,
+            None => return false,
+        };
+        let first_row_px = previous.first_row as isize * cell.height as isize;
+        let delta_px = row_delta * cell.height as isize;
+        let mut settled = false;
+        for placement in self.placements.iter_mut() {
+            if placement.display_rect.y >= first_row_px {
+                placement.display_rect.y += delta_px;
+                settled = true;
+            }
+        }
+        settled
+    }
     pub fn offset_grid_top(&mut self) {
         self.front_drops += 1;
         if let Some(cell) = *self.character_cell_size.borrow() {
+            self.rows_below_the_viewport =
+                self.rows_below_the_viewport
+                    .map(|frame| KittyRowsBelowTheViewport {
+                        first_row: std::cmp::max(0, frame.first_row as isize + -1) as usize,
+                        total_rows: std::cmp::max(0, frame.total_rows as isize + -1) as usize,
+                    });
             let height_to_reduce = cell.height as isize;
             let mut store = self.kitty_image_store.borrow_mut();
             let mut kept = Vec::with_capacity(self.placements.len());
@@ -596,6 +664,86 @@ impl KittyGrid {
             self.placements = kept;
         }
     }
+    pub fn merge_rows_into_line_start(&mut self, line_start_row: usize, merged_row_count: usize) {
+        if merged_row_count == 0 {
+            return;
+        }
+        if let Some(cell) = *self.character_cell_size.borrow() {
+            self.merged_rows += merged_row_count as u64;
+            self.rows_below_the_viewport =
+                self.rows_below_the_viewport
+                    .map(|frame| KittyRowsBelowTheViewport {
+                        first_row: std::cmp::max(
+                            0,
+                            frame.first_row as isize + -(merged_row_count as isize),
+                        ) as usize,
+                        total_rows: std::cmp::max(
+                            0,
+                            frame.total_rows as isize + -(merged_row_count as isize),
+                        ) as usize,
+                    });
+            let line_start_px = line_start_row as isize * cell.height as isize;
+            let merged_px = merged_row_count as isize * cell.height as isize;
+            for placement in self.placements.iter_mut() {
+                if placement.display_rect.y >= line_start_px {
+                    placement.display_rect.y =
+                        std::cmp::max(line_start_px, placement.display_rect.y - merged_px);
+                }
+            }
+        }
+    }
+    pub fn split_line_start_into_rows(&mut self, line_start_row: usize, split_row_count: usize) {
+        if split_row_count == 0 {
+            return;
+        }
+        if let Some(cell) = *self.character_cell_size.borrow() {
+            self.split_rows += split_row_count as u64;
+            self.rows_below_the_viewport =
+                self.rows_below_the_viewport
+                    .map(|frame| KittyRowsBelowTheViewport {
+                        first_row: std::cmp::max(
+                            0,
+                            frame.first_row as isize + split_row_count as isize,
+                        ) as usize,
+                        total_rows: std::cmp::max(
+                            0,
+                            frame.total_rows as isize + split_row_count as isize,
+                        ) as usize,
+                    });
+            let line_start_px = line_start_row as isize * cell.height as isize;
+            let split_px = split_row_count as isize * cell.height as isize;
+            for placement in self.placements.iter_mut() {
+                if placement.display_rect.y >= line_start_px + cell.height as isize {
+                    placement.display_rect.y += split_px;
+                }
+            }
+        }
+    }
+    pub fn has_placement_anchored_to_first_canonical_line(&self) -> bool {
+        self.placements
+            .iter()
+            .any(|placement| placement.vertical_anchor.canonical_line == 0)
+    }
+    pub fn drop_first_canonical_anchor_line(&mut self, first_canonical_row: usize) {
+        let cell_height = match *self.character_cell_size.borrow() {
+            Some(cell) => cell.height as isize,
+            None => return,
+        };
+        let first_line_start_px = first_canonical_row as isize * cell_height;
+        for placement in self.placements.iter_mut() {
+            if placement.vertical_anchor.canonical_line == 0 {
+                placement.vertical_anchor.offset_px_from_line_start =
+                    placement.display_rect.y - first_line_start_px;
+            } else {
+                placement.vertical_anchor.canonical_line -= 1;
+            }
+        }
+    }
+    pub fn insert_canonical_anchor_line_at_front(&mut self) {
+        for placement in self.placements.iter_mut() {
+            placement.vertical_anchor.canonical_line += 1;
+        }
+    }
     pub fn apply_region_scroll(
         &mut self,
         region_top_px: isize,
@@ -603,6 +751,7 @@ impl KittyGrid {
         n_px: isize,
         la_delta_px: isize,
         viewport_top_px: isize,
+        preserve_above_region_top: bool,
     ) {
         let delta_inside = la_delta_px - n_px;
         let delta_outside = la_delta_px;
@@ -623,11 +772,13 @@ impl KittyGrid {
                 placement.display_rect.y += delta_inside;
                 let new_top = placement.display_rect.y;
                 let new_bottom = new_top + placement.display_rect.height as isize;
-                if new_bottom <= shifted_region_top || new_top >= shifted_region_bottom {
+                if new_top >= shifted_region_bottom
+                    || (!preserve_above_region_top && new_bottom <= shifted_region_top)
+                {
                     store.free(placement.internal_id);
                     continue;
                 }
-                if new_top < shifted_region_top {
+                if !preserve_above_region_top && new_top < shifted_region_top {
                     let cut = (shifted_region_top - new_top) as usize;
                     placement.emit_y += cut;
                     placement.display_rect.y = shifted_region_top;
@@ -643,6 +794,11 @@ impl KittyGrid {
                 }
                 kept.push(placement);
             } else if intersects_region {
+                if preserve_above_region_top && top < region_top_px {
+                    placement.display_rect.y += delta_inside;
+                    kept.push(placement);
+                    continue;
+                }
                 placement.display_rect.y += delta_outside;
                 let new_top = placement.display_rect.y;
                 let new_bottom = new_top + placement.display_rect.height as isize;

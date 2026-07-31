@@ -219,3 +219,271 @@ fn opening_new_pane_keeps_existing_pane_image_on_host() {
 
     zellij.quit();
 }
+
+const CELL_WIDTH: usize = 8;
+const CELL_HEIGHT: usize = 21;
+const IMAGE_CELL_X: usize = 20;
+const IMAGE_CELL_Y: usize = 3;
+const IMAGE_CELL_WIDTH: usize = 30;
+const IMAGE_CELL_HEIGHT: usize = 7;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct CellRect {
+    cell_y: usize,
+    cell_x: usize,
+    cell_width: usize,
+    cell_height: usize,
+}
+
+impl CellRect {
+    fn intersects(&self, other: &CellRect) -> bool {
+        self.cell_x < other.cell_x + other.cell_width
+            && other.cell_x < self.cell_x + self.cell_width
+            && self.cell_y < other.cell_y + other.cell_height
+            && other.cell_y < self.cell_y + self.cell_height
+    }
+}
+
+fn scaled_rgb_transmit_and_display(cell_columns: usize, cell_rows: usize) -> Vec<u8> {
+    let raster = vec![0xffu8; 2 * 2 * 3];
+    let mut out = format!(
+        "\x1b_Ga=T,q=2,f=24,s=2,v=2,c={},r={},C=1,m=0;",
+        cell_columns, cell_rows
+    )
+    .into_bytes();
+    out.extend_from_slice(base64_encode(&raster).as_bytes());
+    out.extend_from_slice(b"\x1b\\");
+    out
+}
+
+fn host_placements(bytes: &[u8]) -> Vec<(CellRect, u32)> {
+    let text = String::from_utf8_lossy(bytes).to_string();
+    let marker = "\u{1b}_Ga=p,q=2,i=2000000000,p=";
+    let control_prefix = "\u{1b}_Ga=p,q=2,";
+    let mut placements = vec![];
+    let mut search_start = 0;
+    while let Some(position) = text[search_start..].find(marker) {
+        let start = search_start + position;
+        let end = start
+            + text[start..]
+                .find("\u{1b}\\")
+                .expect("unterminated placement");
+        let mut placement_id = 0u32;
+        let mut source_width = 0usize;
+        let mut source_height = 0usize;
+        for field in text[start + control_prefix.len()..end].split(',') {
+            let mut parts = field.splitn(2, '=');
+            let key = parts.next().unwrap_or("");
+            let value = parts.next().unwrap_or("");
+            match key {
+                "p" => placement_id = value.parse().expect("placement id"),
+                "w" => source_width = value.parse().expect("placement width"),
+                "h" => source_height = value.parse().expect("placement height"),
+                _ => {},
+            }
+        }
+        let goto_end = text[..start].rfind('H').expect("placement goto");
+        let goto_start = text[..goto_end]
+            .rfind("\u{1b}[")
+            .expect("placement goto start");
+        let mut coordinates = text[goto_start + 2..goto_end].split(';');
+        let row: usize = coordinates.next().unwrap().parse().expect("goto row");
+        let column: usize = coordinates.next().unwrap().parse().expect("goto column");
+        placements.push((
+            CellRect {
+                cell_y: row - 1,
+                cell_x: column - 1,
+                cell_width: source_width / CELL_WIDTH,
+                cell_height: source_height / CELL_HEIGHT,
+            },
+            placement_id,
+        ));
+        search_start = end;
+    }
+    placements
+}
+
+fn floating_pane_rect(grid_snapshot: &zellij_integration_tests::GridSnapshot) -> CellRect {
+    let mut top = None;
+    let mut bottom = 0usize;
+    let mut left = 0usize;
+    let mut right = 0usize;
+    for (row, line) in grid_snapshot.lines().iter().enumerate() {
+        let characters: Vec<char> = line.chars().collect();
+        let first = characters
+            .iter()
+            .position(|c| *c == '\u{250c}' || *c == '\u{2502}' || *c == '\u{2514}');
+        let last = characters
+            .iter()
+            .rposition(|c| *c == '\u{2510}' || *c == '\u{2502}' || *c == '\u{2518}');
+        if let (Some(first), Some(last)) = (first, last) {
+            if top.is_none() {
+                top = Some(row);
+                left = first;
+                right = last;
+            }
+            bottom = row;
+        }
+    }
+    let top = top.expect("the floating pane frame must be visible");
+    CellRect {
+        cell_y: top,
+        cell_x: left,
+        cell_width: right - left + 1,
+        cell_height: bottom - top + 1,
+    }
+}
+
+fn uncovered_parts(image: CellRect, cover: CellRect) -> Vec<CellRect> {
+    if !image.intersects(&cover) {
+        return vec![image];
+    }
+    let image_bottom = image.cell_y + image.cell_height;
+    let image_right = image.cell_x + image.cell_width;
+    let cover_bottom = cover.cell_y + cover.cell_height;
+    let cover_right = cover.cell_x + cover.cell_width;
+    let mut parts = vec![];
+    if cover.cell_y > image.cell_y {
+        parts.push(CellRect {
+            cell_y: image.cell_y,
+            cell_x: image.cell_x,
+            cell_width: image.cell_width,
+            cell_height: cover.cell_y - image.cell_y,
+        });
+    }
+    let middle_top = std::cmp::max(image.cell_y, cover.cell_y);
+    let middle_bottom = std::cmp::min(image_bottom, cover_bottom);
+    let middle_height = middle_bottom - middle_top;
+    if cover.cell_x > image.cell_x {
+        parts.push(CellRect {
+            cell_y: middle_top,
+            cell_x: image.cell_x,
+            cell_width: cover.cell_x - image.cell_x,
+            cell_height: middle_height,
+        });
+    }
+    if cover_right < image_right {
+        parts.push(CellRect {
+            cell_y: middle_top,
+            cell_x: cover_right,
+            cell_width: image_right - cover_right,
+            cell_height: middle_height,
+        });
+    }
+    if cover_bottom < image_bottom {
+        parts.push(CellRect {
+            cell_y: cover_bottom,
+            cell_x: image.cell_x,
+            cell_width: image.cell_width,
+            cell_height: image_bottom - cover_bottom,
+        });
+    }
+    parts.sort();
+    parts
+}
+
+#[test]
+fn floating_pane_occludes_kitty_image_and_restores_it_without_retransmit() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    setup_kitty_host(&zellij, &terminal);
+
+    let image_rect = CellRect {
+        cell_y: IMAGE_CELL_Y,
+        cell_x: IMAGE_CELL_X,
+        cell_width: IMAGE_CELL_WIDTH,
+        cell_height: IMAGE_CELL_HEIGHT,
+    };
+    terminal.output(format!("\x1b[{};{}H", IMAGE_CELL_Y, IMAGE_CELL_X + 1).as_bytes());
+    terminal.output(&scaled_rgb_transmit_and_display(
+        IMAGE_CELL_WIDTH,
+        IMAGE_CELL_HEIGHT,
+    ));
+    let bytes = zellij.wait_until_raw_output("the full image placement reaches the host", |bytes| {
+        !host_placements(bytes).is_empty()
+    });
+    assert_eq!(
+        host_placements(&bytes),
+        vec![(image_rect, 1)],
+        "the unoccluded image must be emitted as a single full-size placement"
+    );
+    assert_eq!(
+        bytes
+            .windows(b"\x1b_Ga=t".len())
+            .filter(|window| *window == b"\x1b_Ga=t")
+            .count(),
+        1,
+        "the image pixels must be transmitted exactly once"
+    );
+    let baseline = bytes.len();
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('w'));
+    let floating_terminal = zellij.expect_pty_spawn();
+    floating_terminal.output(b"$ ");
+    zellij.wait_until(
+        "the floating pane covers part of the image",
+        |grid_snapshot| grid_snapshot.contains("Pane #2") && grid_snapshot.contains("\u{250c}"),
+    );
+    let bytes = zellij.wait_until_raw_output("the occluded placements reach the host", |bytes| {
+        host_placements(&bytes[baseline..]).len() >= 2
+    });
+    let float_rect = floating_pane_rect(&zellij.snapshot());
+    assert!(
+        float_rect.intersects(&image_rect),
+        "the floating pane must overlap the image for this test to be meaningful"
+    );
+    let occluded_placements = host_placements(&bytes[baseline..]);
+    for (rect, placement_id) in &occluded_placements {
+        assert!(
+            !rect.intersects(&float_rect),
+            "placement {} at {:?} covers cells inside the floating pane rect {:?}",
+            placement_id,
+            rect,
+            float_rect
+        );
+    }
+    let mut occluded_rects: Vec<CellRect> =
+        occluded_placements.iter().map(|(rect, _)| *rect).collect();
+    occluded_rects.sort();
+    assert_eq!(
+        occluded_rects,
+        uncovered_parts(image_rect, float_rect),
+        "the emitted placements must be exactly the uncovered sub-rectangles of the image"
+    );
+    assert!(
+        !occluded_rects.contains(&image_rect),
+        "the full-image placement must no longer be emitted while the floating pane covers it"
+    );
+    let surplus_placement_ids: Vec<u32> = occluded_placements
+        .iter()
+        .map(|(_, placement_id)| *placement_id)
+        .filter(|placement_id| *placement_id != 1)
+        .collect();
+    assert!(
+        !surplus_placement_ids.is_empty(),
+        "occlusion must emit at least one additional host placement id"
+    );
+    let baseline_after_occlusion = bytes.len();
+
+    zellij.run_cli_action(zellij_utils::cli::CliAction::HideFloatingPanes { tab_id: None });
+    let bytes = zellij.wait_until_raw_output(
+        "the image is restored after the floating pane goes away",
+        |bytes| host_placements(&bytes[baseline_after_occlusion..]).contains(&(image_rect, 1)),
+    );
+    let after_restore = &bytes[baseline_after_occlusion..];
+    for placement_id in surplus_placement_ids {
+        let delete = format!("\x1b_Ga=d,q=2,d=i,i=2000000000,p={}\x1b\\", placement_id);
+        assert!(
+            contains_bytes(after_restore, delete.as_bytes()),
+            "the sub-placement {} must be deleted when the image is no longer occluded",
+            placement_id
+        );
+    }
+    assert!(
+        !contains_bytes(after_restore, b"\x1b_Ga=t"),
+        "restoring the image must not retransmit its pixels"
+    );
+
+    zellij.quit();
+}

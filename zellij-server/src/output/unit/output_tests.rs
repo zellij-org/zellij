@@ -1205,7 +1205,18 @@ fn run_kitty_frame(
     output.serialize().unwrap().remove(&1).unwrap_or_default()
 }
 
-fn run_kitty_frame_with_host_clear(
+fn run_kitty_frame_with_host_clear(parts: &KittyTestParts, chunks: Vec<KittyImageChunk>) -> String {
+    let mut output = create_test_kitty_output(parts);
+    let client_ids: HashSet<ClientId> = create_test_clients(1);
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    output.add_clients(&client_ids, link_handler, None);
+    output.add_pre_vte_instruction_to_client(1, "\u{1b}[m\u{1b}[2J");
+    output.mark_host_display_cleared_for_clients(std::iter::once(1));
+    output.add_kitty_image_chunks_to_client(1, PaneId::Terminal(1), chunks, None);
+    output.serialize().unwrap().remove(&1).unwrap_or_default()
+}
+
+fn run_kitty_frame_with_unmarked_clear_string(
     parts: &KittyTestParts,
     chunks: Vec<KittyImageChunk>,
 ) -> String {
@@ -1314,6 +1325,25 @@ fn kitty_host_display_clear_forces_replacement_next_frame() {
     assert!(
         clear_pos < transmit_pos && transmit_pos < place_pos,
         "after a host clear the order must be 2J, then re-transmit, then re-place"
+    );
+}
+
+#[test]
+fn kitty_clear_string_without_explicit_mark_does_not_invalidate_host_state() {
+    let parts = create_test_kitty_parts();
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let frame_1 = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 0, 0)], None);
+    assert_eq!(frame_1.matches("\u{1b}_Ga=t").count(), 1);
+
+    let frame_2 =
+        run_kitty_frame_with_unmarked_clear_string(&parts, vec![kitty_chunk(internal, 1, 0, 0)]);
+    assert!(
+        frame_2.contains("\u{1b}[2J"),
+        "frame must carry the clear string"
+    );
+    assert!(
+        !frame_2.contains("\u{1b}_G"),
+        "host state invalidation must depend on the explicit flag, not on byte sniffing"
     );
 }
 
@@ -1445,7 +1475,11 @@ fn extract_kitty_commands(output: &str) -> Vec<Vec<u8>> {
     let mut commands = Vec::new();
     let mut index = 0;
     while index < bytes.len() {
-        if bytes[index] == 0x1b && index + 2 < bytes.len() && bytes[index + 1] == b'_' && bytes[index + 2] == b'G' {
+        if bytes[index] == 0x1b
+            && index + 2 < bytes.len()
+            && bytes[index + 1] == b'_'
+            && bytes[index + 2] == b'G'
+        {
             let body_start = index + 3;
             let mut end = body_start;
             while end + 1 < bytes.len() && !(bytes[end] == 0x1b && bytes[end + 1] == b'\\') {

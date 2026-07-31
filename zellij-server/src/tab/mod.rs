@@ -4859,6 +4859,7 @@ impl Tab {
                 connected_clients.iter().copied(),
                 clear_display,
             );
+            output.mark_host_display_cleared_for_clients(connected_clients.iter().copied());
             self.should_clear_display_before_rendering = false;
         }
     }

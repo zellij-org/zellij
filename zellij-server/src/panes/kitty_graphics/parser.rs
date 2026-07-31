@@ -7,7 +7,7 @@ const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
     GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
 );
 
-use std::io::Read;
+use std::io::{Read, Seek};
 use std::path::Path;
 
 pub const MAX_DECODED_BYTES: usize = 104_857_600;
@@ -518,6 +518,36 @@ fn should_delete_temp_file(path: &Path) -> bool {
         || path.starts_with("/dev/shm")
 }
 
+fn read_file_range(
+    path: &Path,
+    file_len: u64,
+    command: &KittyCommand,
+    echo: &EchoFields,
+) -> Result<Vec<u8>, KittyError> {
+    let start = command.data_offset.unwrap_or(0) as u64;
+    if start > file_len {
+        return Err(echo.error(KittyErrorCode::Ebadf, "could not read file"));
+    }
+    let available = file_len - start;
+    let length = match command.data_size {
+        Some(size) if size > 0 => std::cmp::min(size as u64, available),
+        _ => available,
+    };
+    if length > MAX_DECODED_BYTES as u64 {
+        return Err(echo.error(KittyErrorCode::Einval, "image too large"));
+    }
+    let read = |path: &Path| -> std::io::Result<Vec<u8>> {
+        let mut file = std::fs::File::open(path)?;
+        if start > 0 {
+            file.seek(std::io::SeekFrom::Start(start))?;
+        }
+        let mut bytes = Vec::new();
+        file.take(length).read_to_end(&mut bytes)?;
+        Ok(bytes)
+    };
+    read(path).map_err(|_| echo.error(KittyErrorCode::Ebadf, "could not read file"))
+}
+
 fn run_payload_pipeline(
     mut command: KittyCommand,
     payload_b64: &[u8],
@@ -542,23 +572,11 @@ fn run_payload_pipeline(
             if !metadata.is_file() {
                 return Err(echo.error(KittyErrorCode::Ebadf, "could not read file"));
             }
-            let mut bytes = std::fs::read(&path)
-                .map_err(|_| echo.error(KittyErrorCode::Ebadf, "could not read file"))?;
+            let read_result = read_file_range(&path, metadata.len(), &command, &echo);
             if command.medium == KittyMedium::TempFile && should_delete_temp_file(&path) {
                 let _ = std::fs::remove_file(&path);
             }
-            if let Some(offset) = command.data_offset {
-                if offset as usize > bytes.len() {
-                    return Err(echo.error(KittyErrorCode::Ebadf, "could not read file"));
-                }
-                bytes.drain(..offset as usize);
-            }
-            if let Some(size) = command.data_size {
-                if size > 0 && (size as usize) < bytes.len() {
-                    bytes.truncate(size as usize);
-                }
-            }
-            bytes
+            read_result?
         },
     };
     let data = if command.compressed {

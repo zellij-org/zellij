@@ -1,6 +1,5 @@
 use super::super::Grid;
 use crate::panes::grid::SixelImageStore;
-use zellij_utils::consts::SCROLL_BUFFER_SIZE;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::link_handler::LinkHandler;
 use insta::assert_snapshot;
@@ -8,6 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use vte;
+use zellij_utils::consts::SCROLL_BUFFER_SIZE;
 use zellij_utils::{
     data::{Palette, Style},
     pane_size::SizeInPixels,
@@ -7549,7 +7549,12 @@ fn kitty_placement_keeps_screen_row_across_width_reflow() {
     let mut interceptor = KittyApcInterceptor::new();
     for line in 0..5 {
         let text = format!("row{}-{}", line, "x".repeat(30));
-        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, text.as_bytes());
+        feed_kitty_bytes(
+            &mut grid,
+            &mut vte_parser,
+            &mut interceptor,
+            text.as_bytes(),
+        );
         feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\r\n");
     }
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[3;1H");
@@ -7613,7 +7618,12 @@ fn kitty_placement_follows_text_across_width_reflow() {
     let mut interceptor = KittyApcInterceptor::new();
     for line in 0..3 {
         let text = format!("r{}-{}", line, "x".repeat(34));
-        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, text.as_bytes());
+        feed_kitty_bytes(
+            &mut grid,
+            &mut vte_parser,
+            &mut interceptor,
+            text.as_bytes(),
+        );
         feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\r\n");
     }
     let image_canonical_line = 3usize;
@@ -7734,5 +7744,570 @@ fn kitty_placement_in_deleted_range_is_removed() {
         grid.kitty_placement_count(),
         0,
         "an image whose only row is deleted by CSI M must be removed"
+    );
+}
+
+fn kitty_row_starts_the_marker_line(row: &super::super::Row) -> bool {
+    row.is_canonical && row_text(row).starts_with("MARKER")
+}
+
+fn kitty_marker_is_below_the_viewport(grid: &Grid) -> bool {
+    grid.lines_below
+        .iter()
+        .any(kitty_row_starts_the_marker_line)
+}
+
+fn kitty_marker_absolute_cell_row(grid: &Grid) -> Option<isize> {
+    grid.lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .position(kitty_row_starts_the_marker_line)
+        .map(|row| row as isize)
+}
+
+fn kitty_marker_extended_absolute_cell_row(grid: &Grid) -> Option<isize> {
+    grid.lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+        .position(kitty_row_starts_the_marker_line)
+        .map(|row| row as isize)
+}
+
+fn kitty_scrollback_has_merged_wrapped_rows(grid: &Grid) -> bool {
+    grid.lines_above.iter().any(|row| row.width() > grid.width)
+}
+
+fn kitty_marker_viewport_row(grid: &Grid) -> Option<usize> {
+    let marker_row = kitty_marker_absolute_cell_row(grid)?;
+    let viewport_row = marker_row - grid.lines_above.len() as isize;
+    if viewport_row >= 0 && (viewport_row as usize) < grid.viewport.len() {
+        Some(viewport_row as usize)
+    } else {
+        None
+    }
+}
+
+fn kitty_property_setup(
+    grid: &mut Grid,
+    vte_parser: &mut vte::Parser,
+    interceptor: &mut KittyApcInterceptor,
+) {
+    for line in 0..4 {
+        feed_kitty_bytes(
+            grid,
+            vte_parser,
+            interceptor,
+            format!("\x1b[{};1H", line + 1).as_bytes(),
+        );
+        let text = format!("pad{}-{}", line, "y".repeat(30));
+        feed_kitty_bytes(grid, vte_parser, interceptor, text.as_bytes());
+    }
+    feed_kitty_bytes(grid, vte_parser, interceptor, b"\x1b[6;1H");
+    feed_kitty_bytes(grid, vte_parser, interceptor, b"MARKER");
+    feed_kitty_bytes(grid, vte_parser, interceptor, b"\x1b[6;1H");
+    feed_kitty_bytes(
+        grid,
+        vte_parser,
+        interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+}
+
+#[test]
+fn kitty_placement_tracks_text_when_a_wrapped_row_moves_into_the_scrollback() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"AAAAAAAAAAAAAAAAAAAAAAAAA\r\n",
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"MARKER");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[3;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(
+        Some(kitty_image_absolute_cell_row(&grid)),
+        kitty_marker_absolute_cell_row(&grid)
+    );
+    for _ in 0..5 {
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\r\nx");
+    }
+    assert!(kitty_scrollback_has_merged_wrapped_rows(&grid));
+    assert_eq!(
+        Some(kitty_image_absolute_cell_row(&grid)),
+        kitty_marker_absolute_cell_row(&grid),
+        "the image must stay on the row of its marker line after a wrapped row is merged into the scrollback"
+    );
+}
+
+fn kitty_wrapped_scrollback_setup(
+    wrapped_line_width: usize,
+) -> (
+    Grid,
+    Rc<RefCell<KittyImageStore>>,
+    vte::Parser,
+    KittyApcInterceptor,
+) {
+    let (mut grid, kitty_image_store) = new_kitty_grid(5, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    let wrapped_line = format!("{}\r\n", "A".repeat(wrapped_line_width));
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        wrapped_line.as_bytes(),
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"MARKER");
+    let marker_viewport_row = kitty_marker_viewport_row(&grid).expect("marker must be visible");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        format!("\x1b[{};1H", marker_viewport_row + 1).as_bytes(),
+    );
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(
+        Some(kitty_image_absolute_cell_row(&grid)),
+        kitty_marker_absolute_cell_row(&grid),
+        "the image must start on the row of its marker line"
+    );
+    for _ in 0..5 {
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\r\nx");
+    }
+    assert!(
+        kitty_scrollback_has_merged_wrapped_rows(&grid),
+        "the wrapped line must have been merged into a single scrollback row"
+    );
+    (grid, kitty_image_store, vte_parser, interceptor)
+}
+
+#[test]
+fn kitty_placement_tracks_text_when_a_wrapped_row_is_split_out_of_the_scrollback() {
+    let (mut grid, _kitty_image_store, _vte_parser, _interceptor) =
+        kitty_wrapped_scrollback_setup(25);
+    for step in 0..2 {
+        grid.scroll_up_one_line();
+        assert_eq!(
+            grid.kitty_placement_count(),
+            1,
+            "scrolling the scrollback must not free the image (step {})",
+            step
+        );
+        assert_eq!(
+            Some(kitty_image_absolute_cell_row(&grid)),
+            kitty_marker_absolute_cell_row(&grid),
+            "the image must stay on the row of its marker line after scrollback scroll up (step {})",
+            step
+        );
+    }
+    assert!(
+        !grid.viewport[0].is_canonical,
+        "the wrapped scrollback row must have been split back into the viewport"
+    );
+}
+
+#[test]
+fn kitty_placement_tracks_text_when_a_multiply_wrapped_row_is_split_out_of_the_scrollback() {
+    let (mut grid, _kitty_image_store, _vte_parser, _interceptor) =
+        kitty_wrapped_scrollback_setup(45);
+    let mut non_canonical_viewport_rows = 0;
+    for step in 0..4 {
+        grid.scroll_up_one_line();
+        assert_eq!(
+            grid.kitty_placement_count(),
+            1,
+            "scrolling the scrollback must not free the image (step {})",
+            step
+        );
+        assert_eq!(
+            Some(kitty_image_absolute_cell_row(&grid)),
+            kitty_marker_absolute_cell_row(&grid),
+            "the image must stay on the row of its marker line after scrollback scroll up (step {})",
+            step
+        );
+        non_canonical_viewport_rows = grid.viewport.iter().filter(|row| !row.is_canonical).count();
+    }
+    assert!(
+        non_canonical_viewport_rows >= 2,
+        "a canonical line wrapping into three rows must be split into at least two continuation rows in the viewport"
+    );
+}
+
+#[test]
+fn kitty_placement_geometry_survives_a_scrollback_scroll_round_trip() {
+    let (mut grid, _kitty_image_store, _vte_parser, _interceptor) =
+        kitty_wrapped_scrollback_setup(45);
+    let display_rect_before = grid.kitty_placements()[0].display_rect;
+    let anchor_before = grid.kitty_placements()[0].vertical_anchor;
+    let lines_above_before = grid.lines_above.len();
+    let marker_row_before = kitty_marker_absolute_cell_row(&grid);
+    for _ in 0..4 {
+        grid.scroll_up_one_line();
+    }
+    for _ in 0..4 {
+        grid.scroll_down_one_line();
+    }
+    assert_eq!(grid.lines_above.len(), lines_above_before);
+    assert_eq!(
+        kitty_marker_absolute_cell_row(&grid),
+        marker_row_before,
+        "the round trip must restore the marker line row"
+    );
+    assert_eq!(
+        grid.kitty_placements()[0].display_rect,
+        display_rect_before,
+        "the round trip must restore the placement pixel geometry"
+    );
+    assert_eq!(
+        grid.kitty_placements()[0].vertical_anchor,
+        anchor_before,
+        "the round trip must restore the placement anchor"
+    );
+}
+
+fn kitty_marker_canonical_line_index(grid: &Grid) -> Option<usize> {
+    let mut canonical_lines_seen = 0usize;
+    for row in grid.lines_above.iter().chain(grid.viewport.iter()) {
+        if row.is_canonical {
+            canonical_lines_seen += 1;
+        }
+        if row_text(row) == "MARKER" {
+            return Some(canonical_lines_seen.saturating_sub(1));
+        }
+    }
+    None
+}
+
+#[test]
+fn kitty_placement_anchor_survives_scroll_buffer_front_eviction() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
+    for _ in 0..(scroll_buffer_size + grid.height) {
+        grid.add_canonical_line();
+    }
+    assert_eq!(
+        grid.lines_above.len(),
+        scroll_buffer_size,
+        "the scroll buffer must be full for this test to be meaningful"
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"MARKER");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(
+        Some(kitty_image_absolute_cell_row(&grid)),
+        kitty_marker_absolute_cell_row(&grid)
+    );
+    assert_eq!(
+        grid.kitty_placements()[0].vertical_anchor.canonical_line,
+        kitty_marker_canonical_line_index(&grid).expect("marker must exist")
+    );
+    let front_drops_before = grid.kitty_grid.front_drops();
+
+    grid.change_size(5, 20);
+
+    let evicted_lines = grid.kitty_grid.front_drops() - front_drops_before;
+    assert!(
+        evicted_lines >= 5,
+        "shrinking the viewport must evict rows from the front of a full scroll buffer"
+    );
+    assert_eq!(
+        grid.kitty_placement_count(),
+        1,
+        "a placement below the evicted rows must survive the eviction"
+    );
+    let marker_canonical_line =
+        kitty_marker_canonical_line_index(&grid).expect("marker must still exist");
+    assert_eq!(
+        grid.kitty_placements()[0].vertical_anchor.canonical_line,
+        marker_canonical_line,
+        "the placement anchor must still resolve to its marker text line after front eviction"
+    );
+    assert_eq!(
+        Some(kitty_image_absolute_cell_row(&grid)),
+        kitty_marker_absolute_cell_row(&grid),
+        "the image must stay on the row of its marker line across scroll buffer front eviction"
+    );
+}
+
+fn kitty_marker_with_image_on_first_row(
+    rows: usize,
+    columns: usize,
+) -> (
+    Grid,
+    Rc<RefCell<KittyImageStore>>,
+    vte::Parser,
+    KittyApcInterceptor,
+) {
+    let (mut grid, kitty_image_store) = new_kitty_grid(rows, columns);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"MARKER");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(kitty_marker_absolute_cell_row(&grid), Some(0));
+    assert_eq!(kitty_image_absolute_cell_row(&grid), 0);
+    (grid, kitty_image_store, vte_parser, interceptor)
+}
+
+#[test]
+fn kitty_top_anchored_scroll_up_keeps_image_in_scrollback() {
+    let (mut grid, kitty_image_store, mut vte_parser, mut interceptor) =
+        kitty_marker_with_image_on_first_row(5, 20);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[S");
+    assert_eq!(
+        grid.lines_above.len(),
+        1,
+        "a top anchored scroll region moves the top row into the scrollback"
+    );
+    assert_eq!(
+        grid.kitty_placement_count(),
+        1,
+        "an image whose text was preserved into the scrollback must not be freed"
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 1);
+    assert_eq!(kitty_marker_absolute_cell_row(&grid), Some(0));
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        0,
+        "the image must follow its text into the scrollback"
+    );
+    assert_eq!(grid.kitty_placements()[0].display_rect.height, 20);
+    assert_eq!(grid.kitty_placements()[0].emit_y, 0);
+
+    grid.scroll_up_one_line();
+    assert_eq!(grid.lines_above.len(), 0);
+    assert_eq!(kitty_marker_absolute_cell_row(&grid), Some(0));
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        0,
+        "the image must still sit on its marker row when scrolled back into view"
+    );
+}
+
+#[test]
+fn kitty_top_anchored_delete_line_keeps_image_in_scrollback() {
+    let (mut grid, kitty_image_store, mut vte_parser, mut interceptor) =
+        kitty_marker_with_image_on_first_row(5, 20);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1M");
+    assert_eq!(
+        grid.lines_above.len(),
+        1,
+        "a top anchored line deletion moves the deleted row into the scrollback"
+    );
+    assert_eq!(
+        grid.kitty_placement_count(),
+        1,
+        "an image whose text was preserved into the scrollback must not be freed"
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 1);
+    assert_eq!(kitty_marker_absolute_cell_row(&grid), Some(0));
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        0,
+        "the image must follow its text into the scrollback"
+    );
+
+    grid.scroll_up_one_line();
+    assert_eq!(kitty_marker_absolute_cell_row(&grid), Some(0));
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        0,
+        "the image must still sit on its marker row when scrolled back into view"
+    );
+}
+
+#[test]
+fn kitty_non_top_anchored_region_scroll_still_frees_image() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(5, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2;5r");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(kitty_image_absolute_cell_row(&grid), 1);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[S");
+    assert_eq!(
+        grid.lines_above.len(),
+        0,
+        "a region that does not start at the top of the viewport discards its top row"
+    );
+    assert_eq!(
+        grid.kitty_placement_count(),
+        0,
+        "an image scrolled out of a non top anchored region must be freed"
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_alternate_screen_top_anchored_scroll_frees_image() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(5, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[?1049h");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(kitty_image_absolute_cell_row(&grid), 0);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[S");
+    assert_eq!(
+        grid.lines_above.len(),
+        0,
+        "the alternate screen has no scrollback"
+    );
+    assert_eq!(
+        grid.kitty_placement_count(),
+        0,
+        "an image scrolled off the alternate screen must be freed"
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_placement_rejoins_its_text_after_editing_while_scrolled_back() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    for line in 0..20 {
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[10;1H");
+        let text = format!("\r\npad{}", line);
+        feed_kitty_bytes(
+            &mut grid,
+            &mut vte_parser,
+            &mut interceptor,
+            text.as_bytes(),
+        );
+    }
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"\x1b[10;1H\r\nMARKER",
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[10;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    for line in 0..3 {
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[10;1H");
+        let text = format!("\r\ntail{}", line);
+        feed_kitty_bytes(
+            &mut grid,
+            &mut vte_parser,
+            &mut interceptor,
+            text.as_bytes(),
+        );
+    }
+    let _ = grid.read_changes(0, 0);
+    for _ in 0..8 {
+        grid.scroll_up_one_line();
+    }
+    let _ = grid.read_changes(0, 0);
+    assert!(
+        kitty_marker_is_below_the_viewport(&grid),
+        "the marker line must be scrolled below the viewport for this scenario"
+    );
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"\x1b[1;1H\x1b[1M",
+    );
+    let _ = grid.read_changes(0, 0);
+    grid.reset_viewport();
+    let _ = grid.read_changes(0, 0);
+    assert!(
+        !kitty_marker_is_below_the_viewport(&grid),
+        "the marker line must be back inside the buffer after restoring the viewport"
+    );
+    let marker_row = kitty_marker_extended_absolute_cell_row(&grid)
+        .expect("the marker line must survive the edit");
+    assert_eq!(
+        grid.kitty_placement_count(),
+        1,
+        "the image must survive an edit made while scrolled back"
+    );
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        marker_row,
+        "the image must rejoin its marker line once the viewport is restored"
+    );
+}
+
+#[test]
+#[ignore]
+fn kitty_placement_tracks_text_when_lines_are_inserted_while_scrolled_back() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    kitty_property_setup(&mut grid, &mut vte_parser, &mut interceptor);
+    grid.change_size(10, 10);
+    let _ = grid.read_changes(0, 0);
+    grid.scroll_up_one_line();
+    let _ = grid.read_changes(0, 0);
+    grid.change_size(10, 40);
+    let _ = grid.read_changes(0, 0);
+    let marker_row_before = kitty_marker_extended_absolute_cell_row(&grid)
+        .expect("the marker line must be present before the insertion");
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        marker_row_before,
+        "the image must start out on the row of its marker line"
+    );
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"\x1b[1;1H\x1b[1L",
+    );
+    let _ = grid.read_changes(0, 0);
+    let marker_row_after = kitty_marker_extended_absolute_cell_row(&grid)
+        .expect("the marker line must survive the insertion");
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        marker_row_after,
+        "the image must move by exactly as many rows as its marker line"
     );
 }

@@ -214,7 +214,7 @@ fn region_scroll_alt_full_screen_moves_and_clips_at_top() {
     grid.placements.push(test_placement(40, 40));
     grid.placements.push(test_placement(0, 40));
     grid.placements.push(test_placement(180, 20));
-    grid.apply_region_scroll(0, 200, 20, 0, 0);
+    grid.apply_region_scroll(0, 200, 20, 0, 0, false);
     assert_eq!(grid.placements.len(), 3);
     assert_eq!(grid.placements[0].display_rect.y, 20);
     assert_eq!(grid.placements[0].display_rect.height, 40);
@@ -231,7 +231,7 @@ fn region_scroll_top_zero_non_alt_keeps_inside_and_shifts_below() {
     grid.placements.push(test_placement(0, 20));
     grid.placements.push(test_placement(60, 40));
     grid.placements.push(test_placement(160, 20));
-    grid.apply_region_scroll(40, 140, 20, 20, 40);
+    grid.apply_region_scroll(40, 140, 20, 20, 40, false);
     assert_eq!(grid.placements.len(), 3);
     assert_eq!(grid.placements[0].display_rect.y, 0);
     assert_eq!(grid.placements[1].display_rect.y, 60);
@@ -245,7 +245,7 @@ fn region_scroll_inner_region_moves_inside_and_clips_straddler() {
     grid.placements.push(test_placement(40, 20));
     grid.placements.push(test_placement(80, 40));
     grid.placements.push(test_placement(0, 20));
-    grid.apply_region_scroll(20, 100, 20, 0, 0);
+    grid.apply_region_scroll(20, 100, 20, 0, 0, false);
     assert_eq!(grid.placements.len(), 3);
     assert_eq!(grid.placements[0].display_rect.y, 20);
     assert_eq!(grid.placements[0].display_rect.height, 20);
@@ -259,7 +259,7 @@ fn region_scroll_inner_region_moves_inside_and_clips_straddler() {
 fn region_scroll_reaps_placement_scrolled_out_of_region() {
     let mut grid = test_grid();
     grid.placements.push(test_placement(20, 20));
-    grid.apply_region_scroll(20, 100, 20, 0, 0);
+    grid.apply_region_scroll(20, 100, 20, 0, 0, false);
     assert_eq!(grid.placements.len(), 0);
 }
 
@@ -267,7 +267,7 @@ fn region_scroll_reaps_placement_scrolled_out_of_region() {
 fn reverse_index_region_scroll_clips_bottom_of_straddler() {
     let mut grid = test_grid();
     grid.placements.push(test_placement(40, 40));
-    grid.apply_region_scroll(0, 80, -20, 0, 0);
+    grid.apply_region_scroll(0, 80, -20, 0, 0, false);
     assert_eq!(grid.placements.len(), 1);
     let placement = &grid.placements[0];
     assert_eq!(placement.display_rect.y, 60);
@@ -280,6 +280,6 @@ fn reverse_index_region_scroll_clips_bottom_of_straddler() {
 fn reverse_index_region_scroll_reaps_fully_below_margin() {
     let mut grid = test_grid();
     grid.placements.push(test_placement(60, 20));
-    grid.apply_region_scroll(0, 80, -20, 0, 0);
+    grid.apply_region_scroll(0, 80, -20, 0, 0, false);
     assert_eq!(grid.placements.len(), 0);
 }

@@ -1,7 +1,7 @@
 use super::kitty_graphics::{
     format_kitty_error, format_kitty_reply, KittyAction, KittyCommand, KittyCommandParser,
     KittyError, KittyErrorCode, KittyGrid, KittyImageChunk, KittyImageStore, KittyPlacement,
-    KittyReplyData, KittyVerticalAnchor,
+    KittyReplyData, KittyRowsBelowTheViewport, KittyVerticalAnchor,
 };
 use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
 use base64::alphabet::STANDARD as BASE64_STANDARD_ALPHABET;
@@ -232,7 +232,8 @@ fn transfer_rows_from_lines_above_to_viewport(
             match lines_above.pop_back() {
                 Some(next_line) => {
                     let mut top_non_canonical_rows_in_dst = get_top_non_canonical_rows(viewport);
-                    lines_added_to_viewport -= top_non_canonical_rows_in_dst.len() as isize;
+                    let merged_row_count = top_non_canonical_rows_in_dst.len();
+                    lines_added_to_viewport -= merged_row_count as isize;
                     next_lines.push(next_line);
                     next_lines.append(&mut top_non_canonical_rows_in_dst);
                     next_lines =
@@ -240,6 +241,18 @@ fn transfer_rows_from_lines_above_to_viewport(
                     if next_lines.is_empty() {
                         // no more lines at lines_above, the line we popped was probably empty
                         break;
+                    }
+                    let row_count_delta = next_lines.len() as isize - 1 - merged_row_count as isize;
+                    if row_count_delta > 0 {
+                        kitty_grid.split_line_start_into_rows(
+                            lines_above.len(),
+                            row_count_delta as usize,
+                        );
+                    } else if row_count_delta < 0 {
+                        kitty_grid.merge_rows_into_line_start(
+                            lines_above.len(),
+                            row_count_delta.unsigned_abs(),
+                        );
                     }
                 },
                 None => break, // no more rows
@@ -249,6 +262,7 @@ fn transfer_rows_from_lines_above_to_viewport(
         lines_added_to_viewport += 1;
     }
     if !next_lines.is_empty() {
+        kitty_grid.merge_rows_into_line_start(lines_above.len(), next_lines.len() - 1);
         let excess_row = Row::from_rows(next_lines);
         bounded_push(lines_above, sixel_grid, kitty_grid, excess_row);
     }
@@ -275,6 +289,10 @@ fn transfer_rows_from_viewport_to_lines_above(
         if !next_line.is_canonical {
             let mut bottom_canonical_row_and_wraps_in_dst =
                 get_lines_above_bottom_canonical_row_and_wraps(lines_above);
+            kitty_grid.merge_rows_into_line_start(
+                lines_above.len(),
+                bottom_canonical_row_and_wraps_in_dst.len(),
+            );
             next_lines.append(&mut bottom_canonical_row_and_wraps_in_dst);
         }
         next_lines.push(next_line);
@@ -344,6 +362,17 @@ fn bounded_push(
         if let Some(line) = line {
             sixel_grid.offset_grid_top();
             kitty_grid.offset_grid_top();
+            if line.is_canonical {
+                let first_canonical_row =
+                    if kitty_grid.has_placement_anchored_to_first_canonical_line() {
+                        vec.iter()
+                            .position(|row| row.is_canonical)
+                            .unwrap_or(vec.len())
+                    } else {
+                        0
+                    };
+                kitty_grid.drop_first_canonical_anchor_line(first_canonical_row);
+            }
             dropped_line_width = Some(line.width());
         }
     }
@@ -615,6 +644,21 @@ fn position_in_span(
     let after_start = row > start_row || (row == start_row && col >= start_col);
     let before_end = row < end_row || (row == end_row && col < end_col);
     after_start && before_end
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RegionRowsScrolled {
+    IntoScrollback,
+    Discarded,
+    Nothing,
+}
+
+#[derive(Clone, Copy)]
+struct KittyRowSnapshot {
+    lines_above_len: usize,
+    front_drops: u64,
+    merged_rows: u64,
+    split_rows: u64,
 }
 
 #[derive(Clone)]
@@ -1208,7 +1252,12 @@ impl Grid {
     fn kitty_canonical_line_starts(&self) -> Vec<usize> {
         let mut starts = Vec::new();
         let mut wrapped_row = 0usize;
-        for row in self.lines_above.iter().chain(self.viewport.iter()) {
+        for row in self
+            .lines_above
+            .iter()
+            .chain(self.viewport.iter())
+            .chain(self.lines_below.iter())
+        {
             if row.is_canonical {
                 starts.push(wrapped_row);
             }
@@ -1222,7 +1271,8 @@ impl Grid {
         starts: &[usize],
     ) -> KittyVerticalAnchor {
         let wrapped_row = pixel_y.div_euclid(cell_height);
-        let canonical_line = match starts.binary_search(&wrapped_row.max(0).try_into().unwrap_or(0)) {
+        let canonical_line = match starts.binary_search(&wrapped_row.max(0).try_into().unwrap_or(0))
+        {
             Ok(index) => index,
             Err(index) => index.saturating_sub(1),
         };
@@ -1241,7 +1291,24 @@ impl Grid {
             .get(anchor.canonical_line)
             .map(|line_start| *line_start as isize * cell_height + anchor.offset_px_from_line_start)
     }
+    fn kitty_rows_below_the_viewport(&self) -> Option<KittyRowsBelowTheViewport> {
+        if self.lines_below.is_empty() {
+            None
+        } else {
+            let first_row = self.lines_above.len() + self.viewport.len();
+            Some(KittyRowsBelowTheViewport {
+                first_row,
+                total_rows: first_row + self.lines_below.len(),
+            })
+        }
+    }
+    fn kitty_settle_placements_below_the_viewport(&mut self) -> bool {
+        let rows_below_the_viewport = self.kitty_rows_below_the_viewport();
+        self.kitty_grid
+            .settle_placements_below_the_viewport(rows_below_the_viewport)
+    }
     fn kitty_reanchor_all_from_pixels(&mut self) {
+        self.kitty_settle_placements_below_the_viewport();
         if self.kitty_grid.placement_count() == 0 {
             return;
         }
@@ -1259,6 +1326,9 @@ impl Grid {
         }
     }
     fn kitty_reproject_all_from_anchor(&mut self) {
+        let rows_below_the_viewport = self.kitty_rows_below_the_viewport();
+        self.kitty_grid
+            .note_rows_below_the_viewport(rows_below_the_viewport);
         if self.kitty_grid.placement_count() == 0 {
             return;
         }
@@ -1294,6 +1364,7 @@ impl Grid {
                 1,
                 self.width,
             );
+            self.kitty_reanchor_all_from_pixels();
             self.scrollback_buffer_lines = self
                 .scrollback_buffer_lines
                 .saturating_sub(transferred_rows_height);
@@ -1323,12 +1394,15 @@ impl Grid {
             } else {
                 match self.lines_above.pop_back() {
                     Some(mut last_line_above) => {
+                        self.kitty_grid
+                            .merge_rows_into_line_start(self.lines_above.len(), 1);
                         last_line_above.append(&mut line_to_push_up.columns);
                         last_line_above
                     },
                     None => {
                         // in this case, this line was not canonical but its beginning line was
                         // dropped out of scope, so we make it canonical and push it up
+                        self.kitty_grid.insert_canonical_anchor_line_at_front();
                         line_to_push_up.canonical()
                     },
                 }
@@ -1354,6 +1428,7 @@ impl Grid {
                 1,
                 self.width,
             );
+            self.kitty_reanchor_all_from_pixels();
 
             self.selection.move_up(1);
             // Move all search-selections up one line as well
@@ -1670,6 +1745,9 @@ impl Grid {
         if let Some(image_ids_to_reap) = self.sixel_grid.drain_image_ids_to_reap() {
             self.sixel_grid.reap_images(image_ids_to_reap);
         }
+        if self.kitty_settle_placements_below_the_viewport() {
+            self.kitty_reanchor_all_from_pixels();
+        }
         let kitty_image_chunks = self.kitty_grid.viewport_kitty_chunks(
             self.height,
             self.lines_above.len(),
@@ -1908,22 +1986,13 @@ impl Grid {
         self.pad_lines_until(scroll_region_bottom, EMPTY_TERMINAL_CHARACTER);
         for _ in 0..count {
             if self.cursor.y >= scroll_region_top && self.cursor.y <= scroll_region_bottom {
-                if self.viewport.get(scroll_region_bottom).is_some() {
-                    self.viewport.remove(scroll_region_bottom);
-                }
                 let mut pad_character = EMPTY_TERMINAL_CHARACTER;
                 pad_character.styles = self.cursor.pending_styles.clone();
                 let columns = VecDeque::from(vec![pad_character; self.width]);
-                self.viewport
-                    .insert(scroll_region_top, Row::from_columns(columns).canonical());
-                let la_before = self.lines_above.len();
-                let drops_before = self.kitty_grid.front_drops();
-                self.kitty_region_scroll(
+                self.scroll_region_content_down(
                     scroll_region_top,
                     scroll_region_bottom,
-                    -1,
-                    la_before,
-                    drops_before,
+                    Row::from_columns(columns).canonical(),
                 );
             }
         }
@@ -1935,26 +2004,12 @@ impl Grid {
         let mut pad_character = EMPTY_TERMINAL_CHARACTER;
         pad_character.styles = self.cursor.pending_styles.clone();
         for _ in 0..count {
-            let la_before = self.lines_above.len();
-            let drops_before = self.kitty_grid.front_drops();
-            if scroll_region_top == 0
-                && self.alternate_screen_state.is_none()
-                && !self.viewport.is_empty()
-            {
-                self.transfer_rows_to_lines_above(1);
-                self.selection.move_up(1);
-            } else if scroll_region_top < self.viewport.len() {
-                self.viewport.remove(scroll_region_top);
-            }
             let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
-            self.viewport
-                .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
-            self.kitty_region_scroll(
+            self.scroll_region_content_up(
+                scroll_region_top,
                 scroll_region_top,
                 scroll_region_bottom,
-                1,
-                la_before,
-                drops_before,
+                Row::from_columns(columns).canonical(),
             );
         }
         self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
@@ -1973,30 +2028,91 @@ impl Grid {
         }
         self.output_buffer.update_all_lines();
     }
+    fn scroll_region_content_down(&mut self, at: usize, region_bottom: usize, new_row: Row) {
+        let before = self.kitty_row_snapshot();
+        if region_bottom < self.viewport.len() {
+            self.viewport.remove(region_bottom);
+        }
+        self.viewport.insert(at, new_row);
+        self.kitty_region_scroll(at, region_bottom, -1, before, false);
+    }
+    fn scroll_region_content_up(
+        &mut self,
+        at: usize,
+        region_top: usize,
+        region_bottom: usize,
+        new_row: Row,
+    ) -> RegionRowsScrolled {
+        let before = self.kitty_row_snapshot();
+        let outcome = if at == 0
+            && region_top == 0
+            && self.alternate_screen_state.is_none()
+            && !self.viewport.is_empty()
+        {
+            self.transfer_rows_to_lines_above(1);
+            self.selection.move_up(1);
+            RegionRowsScrolled::IntoScrollback
+        } else if at < self.viewport.len() {
+            self.viewport.remove(at);
+            RegionRowsScrolled::Discarded
+        } else {
+            RegionRowsScrolled::Nothing
+        };
+        if self.viewport.len() >= region_bottom {
+            self.viewport.insert(region_bottom, new_row);
+        } else {
+            self.viewport.push_back(new_row);
+        }
+        self.kitty_region_scroll(
+            at,
+            region_bottom,
+            1,
+            before,
+            outcome == RegionRowsScrolled::IntoScrollback,
+        );
+        outcome
+    }
+    fn kitty_row_snapshot(&mut self) -> KittyRowSnapshot {
+        self.kitty_settle_placements_below_the_viewport();
+        KittyRowSnapshot {
+            lines_above_len: self.lines_above.len(),
+            front_drops: self.kitty_grid.front_drops(),
+            merged_rows: self.kitty_grid.merged_rows(),
+            split_rows: self.kitty_grid.split_rows(),
+        }
+    }
     fn kitty_region_scroll(
         &mut self,
         region_top: usize,
         region_bottom: usize,
         n: isize,
-        la_before: usize,
-        drops_before: u64,
+        before: KittyRowSnapshot,
+        preserve_above_region_top: bool,
     ) {
         let cell_size = { *self.character_cell_size.borrow() };
         if let Some(character_cell_size) = cell_size {
             let cell_h = character_cell_size.height as isize;
-            let la_delta = (self.lines_above.len() as isize - la_before as isize)
-                + (self.kitty_grid.front_drops() - drops_before) as isize;
+            let already_shifted_rows = (self.kitty_grid.front_drops() - before.front_drops)
+                as isize
+                + (self.kitty_grid.merged_rows() - before.merged_rows) as isize
+                - (self.kitty_grid.split_rows() - before.split_rows) as isize;
+            let la_delta = (self.lines_above.len() as isize - before.lines_above_len as isize)
+                + already_shifted_rows;
             let la_delta_px = la_delta * cell_h;
-            let region_top_px = ((la_before + region_top) as isize) * cell_h;
-            let region_bottom_px = ((la_before + region_bottom + 1) as isize) * cell_h;
-            let viewport_top_px = (la_before as isize) * cell_h;
+            let viewport_top_row = before.lines_above_len as isize - already_shifted_rows;
+            let region_top_px = (viewport_top_row + region_top as isize) * cell_h;
+            let region_bottom_px = (viewport_top_row + region_bottom as isize + 1) * cell_h;
+            let viewport_top_px = viewport_top_row * cell_h;
             self.kitty_grid.apply_region_scroll(
                 region_top_px,
                 region_bottom_px,
                 n * cell_h,
                 la_delta_px,
                 viewport_top_px,
+                preserve_above_region_top,
             );
+            self.kitty_grid
+                .note_rows_below_the_viewport_shifted(la_delta);
             self.kitty_reanchor_all_from_pixels();
         }
     }
@@ -2005,11 +2121,6 @@ impl Grid {
         if scroll_region_top >= self.viewport.len() {
             return;
         }
-        let la_before = self.lines_above.len();
-        let drops_before = self.kitty_grid.front_drops();
-        let full_screen_non_alt = scroll_region_bottom == self.height.saturating_sub(1)
-            && scroll_region_top == 0
-            && self.alternate_screen_state.is_none();
         if scroll_region_bottom == self.height.saturating_sub(1) && scroll_region_top == 0 {
             if self.alternate_screen_state.is_none() {
                 self.transfer_rows_to_lines_above(1);
@@ -2022,39 +2133,27 @@ impl Grid {
             self.viewport.push_back(new_row);
             self.selection.move_up(1);
         } else {
-            if scroll_region_top == 0
-                && self.alternate_screen_state.is_none()
-                && !self.viewport.is_empty()
-            {
-                self.transfer_rows_to_lines_above(1);
-                if offset_hyperlinks {
-                    self.hyperlink_tracker.offset_cursor_lines(1);
-                }
-                self.selection.move_up(1);
-            } else if scroll_region_top < self.viewport.len() {
-                self.viewport.remove(scroll_region_top);
-                if offset_hyperlinks {
-                    self.hyperlink_tracker.offset_cursor_lines_in_range(
-                        scroll_region_top as isize,
-                        scroll_region_bottom as isize,
-                        1,
-                    );
-                }
-            }
-            if self.viewport.len() >= scroll_region_bottom {
-                self.viewport.insert(scroll_region_bottom, new_row);
-            } else {
-                self.viewport.push_back(new_row);
-            }
-        }
-        if !full_screen_non_alt {
-            self.kitty_region_scroll(
+            let outcome = self.scroll_region_content_up(
+                scroll_region_top,
                 scroll_region_top,
                 scroll_region_bottom,
-                1,
-                la_before,
-                drops_before,
+                new_row,
             );
+            if offset_hyperlinks {
+                match outcome {
+                    RegionRowsScrolled::IntoScrollback => {
+                        self.hyperlink_tracker.offset_cursor_lines(1)
+                    },
+                    RegionRowsScrolled::Discarded => {
+                        self.hyperlink_tracker.offset_cursor_lines_in_range(
+                            scroll_region_top as isize,
+                            scroll_region_bottom as isize,
+                            1,
+                        )
+                    },
+                    RegionRowsScrolled::Nothing => {},
+                }
+            }
         }
         self.output_buffer.update_all_lines();
     }
@@ -2325,20 +2424,10 @@ impl Grid {
             if current_line_index == scroll_region_top {
                 // if we're at the top line, we create a new line and remove the last line that
                 // would otherwise overflow
-                if scroll_region_bottom < self.viewport.len() {
-                    self.viewport.remove(scroll_region_bottom);
-                }
-
-                self.viewport
-                    .insert(current_line_index, Row::new().canonical());
-                let la_before = self.lines_above.len();
-                let drops_before = self.kitty_grid.front_drops();
-                self.kitty_region_scroll(
-                    scroll_region_top,
+                self.scroll_region_content_down(
+                    current_line_index,
                     scroll_region_bottom,
-                    -1,
-                    la_before,
-                    drops_before,
+                    Row::new().canonical(),
                 );
             } else if current_line_index > scroll_region_top
                 && current_line_index <= scroll_region_bottom
@@ -2401,32 +2490,12 @@ impl Grid {
             // so we delete the current line(s) and add an empty line at the end of the scroll
             // region
             for _ in 0..count {
-                let la_before = self.lines_above.len();
-                let drops_before = self.kitty_grid.front_drops();
-                if current_line_index == 0
-                    && scroll_region_top == 0
-                    && self.alternate_screen_state.is_none()
-                    && !self.viewport.is_empty()
-                {
-                    self.transfer_rows_to_lines_above(1);
-                    self.selection.move_up(1);
-                } else if current_line_index < self.viewport.len() {
-                    self.viewport.remove(current_line_index);
-                }
                 let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
-                if self.viewport.len() > scroll_region_bottom {
-                    self.viewport
-                        .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
-                } else {
-                    self.viewport
-                        .push_back(Row::from_columns(columns).canonical());
-                }
-                self.kitty_region_scroll(
+                self.scroll_region_content_up(
                     current_line_index,
+                    scroll_region_top,
                     scroll_region_bottom,
-                    1,
-                    la_before,
-                    drops_before,
+                    Row::from_columns(columns).canonical(),
                 );
             }
             self.output_buffer.update_all_lines(); // TODO: move accurately
@@ -2445,20 +2514,11 @@ impl Grid {
             // so we add an empty line where the cursor currently is, and delete the last line
             // of the scroll region
             for _ in 0..count {
-                let la_before = self.lines_above.len();
-                let drops_before = self.kitty_grid.front_drops();
-                if scroll_region_bottom < self.viewport.len() {
-                    self.viewport.remove(scroll_region_bottom);
-                }
                 let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
-                self.viewport
-                    .insert(current_line_index, Row::from_columns(columns).canonical());
-                self.kitty_region_scroll(
+                self.scroll_region_content_down(
                     current_line_index,
                     scroll_region_bottom,
-                    -1,
-                    la_before,
-                    drops_before,
+                    Row::from_columns(columns).canonical(),
                 );
             }
             self.output_buffer.update_all_lines(); // TODO: move accurately
@@ -3168,6 +3228,7 @@ impl Grid {
         }
     }
     fn transfer_rows_to_lines_above(&mut self, count: usize) {
+        self.kitty_settle_placements_below_the_viewport();
         let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
             &mut self.viewport,
             &mut self.lines_above,
@@ -3176,6 +3237,7 @@ impl Grid {
             count,
             self.width,
         );
+        self.kitty_reanchor_all_from_pixels();
 
         self.scrollback_buffer_lines =
             subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
@@ -3363,8 +3425,11 @@ impl Grid {
                     + std::cmp::min(command.cell_offset_y as usize, cell.height - 1))
                     as isize;
                 let starts = self.kitty_canonical_line_starts();
-                let vertical_anchor =
-                    Self::kitty_anchor_from_pixel_y(placement_top_px, cell.height as isize, &starts);
+                let vertical_anchor = Self::kitty_anchor_from_pixel_y(
+                    placement_top_px,
+                    cell.height as isize,
+                    &starts,
+                );
                 match self.kitty_grid.place(
                     pane_image_id,
                     internal,
