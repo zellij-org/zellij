@@ -82,10 +82,10 @@ fn pane_kitty_image_reaches_client_with_transmit_and_placement() {
 
     terminal.output(RGB_2X2_A_T);
 
-    let bytes = zellij.wait_until_raw_output(
-        "kitty transmit and placement reach the client",
-        |bytes| contains_bytes(bytes, TRANSMIT_HEADER) && contains_bytes(bytes, PLACEMENT),
-    );
+    let bytes = zellij
+        .wait_until_raw_output("kitty transmit and placement reach the client", |bytes| {
+            contains_bytes(bytes, TRANSMIT_HEADER) && contains_bytes(bytes, PLACEMENT)
+        });
 
     let placement_position = find_bytes(&bytes, PLACEMENT).unwrap();
     let before_placement = &bytes[..placement_position];
@@ -145,10 +145,9 @@ fn clear_screen_deletes_kitty_images_on_host() {
     });
 
     terminal.output(b"\x1b[2J");
-    zellij.wait_until_raw_output(
-        "host-side image delete after clear screen",
-        |bytes| contains_bytes(bytes, IMAGE_FREE_DELETE),
-    );
+    zellij.wait_until_raw_output("host-side image delete after clear screen", |bytes| {
+        contains_bytes(bytes, IMAGE_FREE_DELETE)
+    });
 
     zellij.quit();
 }
@@ -401,9 +400,10 @@ fn floating_pane_occludes_kitty_image_and_restores_it_without_retransmit() {
         IMAGE_CELL_WIDTH,
         IMAGE_CELL_HEIGHT,
     ));
-    let bytes = zellij.wait_until_raw_output("the full image placement reaches the host", |bytes| {
-        !host_placements(bytes).is_empty()
-    });
+    let bytes = zellij
+        .wait_until_raw_output("the full image placement reaches the host", |bytes| {
+            !host_placements(bytes).is_empty()
+        });
     assert_eq!(
         host_placements(&bytes),
         vec![(image_rect, 1)],
@@ -632,7 +632,6 @@ fn temp_file_transmission_probe_and_image_reach_the_client() {
 
     zellij.quit();
 }
-
 
 #[test]
 fn fullscreen_removes_the_images_of_the_panes_it_hides() {
