@@ -166,6 +166,17 @@ impl FloatingPanes {
     pub fn pane_ids(&self) -> impl Iterator<Item = &PaneId> {
         self.panes.keys()
     }
+    pub fn rendered_pane_ids(&self) -> Vec<PaneId> {
+        if self.panes_are_visible() {
+            self.panes.keys().copied().collect()
+        } else {
+            self.panes
+                .iter()
+                .filter(|(_, pane)| pane.position_and_size().is_pinned)
+                .map(|(pane_id, _)| *pane_id)
+                .collect()
+        }
+    }
     pub fn add_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
         self.desired_pane_positions
             .insert(pane_id, pane.position_and_size());

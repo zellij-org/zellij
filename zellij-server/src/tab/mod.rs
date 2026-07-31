@@ -5475,9 +5475,7 @@ impl Tab {
     }
     pub fn kitty_visible_pane_ids(&self) -> HashSet<PaneId> {
         let mut pane_ids: HashSet<PaneId> = self.tiled_panes.pane_ids().copied().collect();
-        if self.floating_panes.panes_are_visible() {
-            pane_ids.extend(self.floating_panes.pane_ids().copied());
-        }
+        pane_ids.extend(self.floating_panes.rendered_pane_ids());
         pane_ids
     }
     pub fn get_all_pane_ids(&self) -> Vec<PaneId> {

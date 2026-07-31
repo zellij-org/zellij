@@ -1,7 +1,7 @@
 #![cfg(unix)]
 
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, keys, split_down_and_wait_for_prompt,
+    claim_first_terminal_and_wait_for_prompt, col, keys, split_down_and_wait_for_prompt,
     split_right_and_wait_for_prompt, start_zellij, FakePtyHandle, TestRunner, TestSession,
     TERMINAL_SIZE,
 };
@@ -10,6 +10,7 @@ const KITTY_PROBE_ACK: &[u8] = b"\x1b_Gi=31;OK\x1b\\";
 const TRANSMIT_HEADER: &[u8] = b"\x1b_Ga=t,q=2,f=32,t=d,i=2000000000,s=2,v=2,m=0;";
 const PLACEMENT: &[u8] = b"\x1b_Ga=p,q=2,i=2000000000,p=1,x=0,y=0,w=2,h=2,X=0,Y=0,z=0,C=1\x1b\\";
 const IMAGE_FREE_DELETE: &[u8] = b"\x1b_Ga=d,q=2,d=I,i=2000000000\x1b\\";
+const PLACEMENT_DELETE: &[u8] = b"\x1b_Ga=d,q=2,d=i,i=2000000000,p=1\x1b\\";
 const RGB_2X2_A_T: &[u8] = b"\x1b_Ga=T,q=2,f=24,s=2,v=2,m=0;////////////////\x1b\\";
 fn rgb_tall_transmit_and_display() -> Vec<u8> {
     let width = 2usize;
@@ -514,6 +515,59 @@ fn disabling_the_protocol_keeps_kitty_bytes_away_from_the_client_and_the_pane() 
         terminal.stdin_bytes().is_empty(),
         "a disabled protocol must not reply to the application at all, got: {:?}",
         terminal.stdin_bytes()
+    );
+
+    zellij.quit();
+}
+
+#[test]
+fn pinned_floating_pane_keeps_its_image_when_floating_panes_are_toggled_off() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    setup_kitty_host(&zellij, &terminal);
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('w'));
+    let floating_terminal = zellij.expect_pty_spawn();
+    floating_terminal.disable_echo();
+    floating_terminal.output(b"$ ");
+    zellij.wait_until("floating pane appeared", |grid_snapshot| {
+        grid_snapshot.contains("PIN [ ]")
+    });
+
+    floating_terminal.output(RGB_2X2_A_T);
+    zellij.wait_until_bytes("the floating pane image reaches the client", |bytes| {
+        contains_bytes(bytes, TRANSMIT_HEADER) && contains_bytes(bytes, PLACEMENT)
+    });
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('i'));
+    zellij.wait_until("floating pane became pinned", |grid_snapshot| {
+        grid_snapshot.contains("PIN [+]")
+    });
+
+    let bytes_before_toggle = zellij.raw_bytes().len();
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('w'));
+    zellij.wait_until(
+        "focus settled on the tiled pane while the pinned pane stays up",
+        |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains("PIN [+]")
+                && grid_snapshot.cursor_is_at(col(2).row(1))
+        },
+    );
+
+    let bytes = zellij.raw_bytes();
+    let after_toggle = &bytes[bytes_before_toggle..];
+    assert!(
+        !contains_bytes(after_toggle, PLACEMENT_DELETE),
+        "the image of a pinned floating pane must survive hiding the floating panes"
+    );
+    assert!(
+        !contains_bytes(after_toggle, IMAGE_FREE_DELETE),
+        "the image data of a pinned floating pane must not be freed on the host"
     );
 
     zellij.quit();
