@@ -21,3 +21,6 @@ log = { workspace = true }
 regex = { workspace = true }
 tokio = { workspace = true }
 vte = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

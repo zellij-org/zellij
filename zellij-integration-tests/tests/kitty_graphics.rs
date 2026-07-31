@@ -572,3 +572,63 @@ fn pinned_floating_pane_keeps_its_image_when_floating_panes_are_toggled_off() {
 
     zellij.quit();
 }
+
+#[test]
+fn temp_file_transmission_probe_and_image_reach_the_client() {
+    use std::io::Write as _;
+
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    setup_kitty_host(&zellij, &terminal);
+
+    terminal.output(b"\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[c");
+    terminal.wait_for_stdin("viu remote support probe answered", |stdin_bytes| {
+        contains_bytes(stdin_bytes, KITTY_PROBE_ACK)
+    });
+
+    let mut probe_file = tempfile::Builder::new()
+        .prefix(".tty-graphics-protocol.viuer.")
+        .rand_bytes(1)
+        .tempfile()
+        .unwrap();
+    probe_file.write_all(&[0u8, 0, 0, 0]).unwrap();
+    probe_file.flush().unwrap();
+    let probe_path = probe_file.path().to_str().unwrap().to_string();
+    terminal.output(
+        format!(
+            "\x1b_Gi=31,s=1,v=1,a=q,t=t;{}\x1b\\",
+            base64_encode(probe_path.as_bytes())
+        )
+        .as_bytes(),
+    );
+    terminal.wait_for_stdin("viu local support probe answered", |stdin_bytes| {
+        stdin_bytes
+            .windows(KITTY_PROBE_ACK.len())
+            .filter(|window| *window == KITTY_PROBE_ACK)
+            .count()
+            >= 2
+    });
+
+    let mut image_file = tempfile::Builder::new()
+        .prefix(".tty-graphics-protocol.viuer.")
+        .rand_bytes(1)
+        .tempfile()
+        .unwrap();
+    image_file.write_all(&vec![0xffu8; 2 * 2 * 4]).unwrap();
+    image_file.flush().unwrap();
+    let image_path = image_file.path().to_str().unwrap().to_string();
+    terminal.output(
+        format!(
+            "\x1b_Gf=32,s=2,v=2,c=2,r=1,a=T,t=t;{}\x1b\\\x1b[5n",
+            base64_encode(image_path.as_bytes())
+        )
+        .as_bytes(),
+    );
+
+    zellij.wait_until_bytes("the viu image reaches the client", |bytes| {
+        contains_bytes(bytes, b"\x1b_Ga=t,q=2,f=32,t=d,i=2000000000")
+            && contains_bytes(bytes, b"\x1b_Ga=p,q=2,i=2000000000,p=1,")
+    });
+
+    zellij.quit();
+}

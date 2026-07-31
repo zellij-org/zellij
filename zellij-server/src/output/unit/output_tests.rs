@@ -1284,7 +1284,7 @@ fn kitty_placement_bytes_with_negative_z() {
     chunk.z_index = -1;
     let output = run_kitty_frame(&parts, vec![chunk], None);
     assert!(output.contains("\u{1b}_Ga=t,q=2,f=32,t=d,i=2000000000,s=30,v=40,m=1;"));
-    assert!(output.contains("\u{1b}_Gm=0;"));
+    assert!(output.contains("\u{1b}_Gq=2,m=0;"));
     let placement = "\u{1b}[4;6H\u{1b}[m\u{1b}_Ga=p,q=2,i=2000000000,p=1,x=0,y=0,w=30,h=40,X=0,Y=0,z=-1,C=1\u{1b}\\";
     assert!(output.contains(placement));
     let save_position = output.find("\u{1b}[s").unwrap();

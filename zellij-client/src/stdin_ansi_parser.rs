@@ -521,11 +521,6 @@ impl StdinAnsiParser {
     }
 
     fn extract_kitty_probe_reply(&mut self, bytes: &[u8], replies: &mut Vec<HostReply>) -> Vec<u8> {
-        if self.startup_kitty_probe != StartupKittyProbe::AwaitingReply
-            && self.partial_apc.is_empty()
-        {
-            return bytes.to_vec();
-        }
         let mut working = std::mem::take(&mut self.partial_apc);
         if working.is_empty() && self.partial_osc == [0x1b] && bytes.first() == Some(&b'_') {
             working.append(&mut self.partial_osc);
@@ -536,6 +531,18 @@ impl StdinAnsiParser {
         while i < working.len() {
             let rest = &working[i..];
             if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b'_' {
+                match rest.get(2) {
+                    Some(&b'G') => {},
+                    Some(_) => {
+                        out.push(working[i]);
+                        i += 1;
+                        continue;
+                    },
+                    None => {
+                        self.partial_apc = rest.to_vec();
+                        return out;
+                    },
+                }
                 match apc_status(rest) {
                     SeqStatus::Complete(len) => {
                         let payload = &rest[2..len - 2];

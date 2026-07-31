@@ -1302,10 +1302,44 @@ fn kitty_probe_reply_fragmented_across_feeds() {
 }
 
 #[test]
-fn apc_outside_probe_window_passes_through_untouched() {
+fn apc_outside_probe_window_is_not_classified() {
     let mut parser = StdinAnsiParser::new();
     let out = parser.feed(b"\x1b_Gi=31;OK\x1b\\");
     assert!(out.replies.is_empty());
+}
+
+#[test]
+fn unsolicited_kitty_graphics_reply_never_becomes_keyboard_input() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let out = parser.feed(b"\x1b_Gi=31;OK\x1b\\");
+    assert_eq!(out.replies.len(), 1);
+
+    let out = parser.feed(b"\x1b_Gi=2000000000;OK\x1b\\");
+    assert!(
+        out.residue.is_empty(),
+        "a host reply to our own image transmission must not be typed into the focused pane, got: {:?}",
+        out.residue
+    );
+    assert!(out.replies.is_empty());
+
+    let mut fragmented = StdinAnsiParser::new();
+    fragmented.expect_kitty_probe_reply();
+    let _ = fragmented.feed(b"\x1b_Gi=31;OK\x1b\\");
+    let first = fragmented.feed(b"\x1b_Gi=2000000");
+    let second = fragmented.feed(b"000;OK\x1b\\");
+    assert!(first.residue.is_empty() && second.residue.is_empty());
+}
+
+#[test]
+fn non_kitty_apc_sequences_are_left_alone() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let out = parser.feed(b"\x1b_Xsomething\x1b\\");
+    assert!(
+        !out.residue.is_empty(),
+        "only kitty graphics APCs may be swallowed"
+    );
 }
 
 #[test]

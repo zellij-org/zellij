@@ -444,7 +444,7 @@ fn emit_kitty_transmit(
         } else {
             write!(
                 out,
-                "\u{1b}_Gm={};{}\u{1b}\\",
+                "\u{1b}_Gq=2,m={};{}\u{1b}\\",
                 if part_index == last { 0 } else { 1 },
                 part
             )
