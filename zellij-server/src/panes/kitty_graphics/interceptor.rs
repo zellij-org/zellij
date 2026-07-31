@@ -59,6 +59,11 @@ impl KittyApcInterceptor {
             overflowed: false,
         }
     }
+    pub fn reset(&mut self) {
+        self.state = State::Ground;
+        self.buffer.clear();
+        self.overflowed = false;
+    }
     pub fn advance(&mut self, byte: u8) -> InterceptorResult {
         match self.state {
             State::Ground => match byte {

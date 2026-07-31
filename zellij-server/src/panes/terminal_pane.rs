@@ -235,27 +235,56 @@ impl Pane for TerminalPane {
         }
         let mut forwarded: Vec<u8> = Vec::with_capacity(bytes.len());
         let mut index = 0;
+        let mut capture_started = false;
         while index < bytes.len() {
             let byte = bytes[index];
             index += 1;
             match self.kitty_interceptor.advance(byte) {
-                InterceptorResult::Forward(fwd) => forwarded.extend_from_slice(fwd.as_slice()),
-                InterceptorResult::Swallow => {},
+                InterceptorResult::Forward(fwd) => {
+                    capture_started = false;
+                    forwarded.extend_from_slice(fwd.as_slice());
+                },
+                InterceptorResult::Swallow => {
+                    if !capture_started {
+                        capture_started = true;
+                        // Drain everything before the sequence now, so a pause
+                        // in the middle of this flush can never strand a
+                        // capture that has already left the input buffer.
+                        if !forwarded.is_empty() {
+                            let consumed = self
+                                .vte_parser
+                                .advance_until_terminated(&mut self.grid, &forwarded);
+                            if consumed < forwarded.len() {
+                                self.pending_pty_input.extend(&forwarded[consumed..]);
+                                self.pending_pty_input.extend(&bytes[index - 1..]);
+                                self.kitty_interceptor.reset();
+                                return;
+                            }
+                            forwarded.clear();
+                        }
+                    }
+                },
                 InterceptorResult::Captured(cmd) => {
-                    let consumed = self
-                        .vte_parser
-                        .advance_until_terminated(&mut self.grid, &forwarded);
-                    if consumed < forwarded.len() {
+                    capture_started = false;
+                    if !forwarded.is_empty() {
+                        let consumed = self
+                            .vte_parser
+                            .advance_until_terminated(&mut self.grid, &forwarded);
+                        if consumed < forwarded.len() {
+                            self.pending_pty_input.extend(&forwarded[consumed..]);
+                            self.pending_pty_input.extend(b"\x1b_G");
+                            self.pending_pty_input.extend(&cmd);
+                            self.pending_pty_input.extend(b"\x1b\\");
+                            self.pending_pty_input.extend(&bytes[index..]);
+                            return;
+                        }
+                        forwarded.clear();
+                    }
+                    self.grid.handle_kitty_apc(&cmd);
+                    if !self.grid.pending_forwarded_queries.is_empty() {
                         // Grid produced a forward. Stop feeding; queue the
                         // un-fed remainder so Tab can replay it after the
                         // reply.
-                        self.pending_pty_input.extend(&forwarded[consumed..]);
-                        self.pending_pty_input.extend(&bytes[index..]);
-                        return;
-                    }
-                    forwarded.clear();
-                    self.grid.handle_kitty_apc(&cmd);
-                    if !self.grid.pending_forwarded_queries.is_empty() {
                         self.pending_pty_input.extend(&bytes[index..]);
                         return;
                     }

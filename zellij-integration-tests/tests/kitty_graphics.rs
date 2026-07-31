@@ -536,7 +536,7 @@ fn pinned_floating_pane_keeps_its_image_when_floating_panes_are_toggled_off() {
     });
 
     floating_terminal.output(RGB_2X2_A_T);
-    zellij.wait_until_bytes("the floating pane image reaches the client", |bytes| {
+    zellij.wait_until_raw_output("the floating pane image reaches the client", |bytes| {
         contains_bytes(bytes, TRANSMIT_HEADER) && contains_bytes(bytes, PLACEMENT)
     });
 
@@ -625,10 +625,11 @@ fn temp_file_transmission_probe_and_image_reach_the_client() {
         .as_bytes(),
     );
 
-    zellij.wait_until_bytes("the viu image reaches the client", |bytes| {
+    zellij.wait_until_raw_output("the viu image reaches the client", |bytes| {
         contains_bytes(bytes, b"\x1b_Ga=t,q=2,f=32,t=d,i=2000000000")
             && contains_bytes(bytes, b"\x1b_Ga=p,q=2,i=2000000000,p=1,")
     });
 
     zellij.quit();
 }
+
