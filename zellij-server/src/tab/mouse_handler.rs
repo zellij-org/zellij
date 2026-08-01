@@ -820,11 +820,10 @@ impl MouseHandler {
                 Self::execute_stop_moving_floating_pane(tab, position, client_id)
             },
             MouseAction::ScrollUp { pane_id: _, lines } => {
-                Self::handle_scrollwheel_up(tab, &event.position, lines, client_id)
-                    .with_context(err_context)
+                Self::handle_scrollwheel_up(tab, event, lines, client_id).with_context(err_context)
             },
             MouseAction::ScrollDown { pane_id: _, lines } => {
-                Self::handle_scrollwheel_down(tab, &event.position, lines, client_id)
+                Self::handle_scrollwheel_down(tab, event, lines, client_id)
                     .with_context(err_context)
             },
             MouseAction::ScrollLeft { pane_id, cols } => {
@@ -1629,17 +1628,20 @@ impl MouseHandler {
 
     pub(crate) fn handle_scrollwheel_up(
         tab: &mut Tab,
-        point: &Position,
+        event: &MouseEvent,
         lines: usize,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
+        let point = &event.position;
         let err_context = || {
             format!("failed to handle scrollwheel up at position {point:?} for client {client_id}")
         };
 
         if let Some(pane) = Self::get_pane_at(tab, point, false).with_context(err_context)? {
-            let relative_position = pane.relative_position(point);
-            if let Some(mouse_event) = pane.mouse_scroll_up(&relative_position) {
+            // keep the modifier state, but report the position relative to the pane
+            let mut event_for_pane = *event;
+            event_for_pane.position = pane.relative_position(point);
+            if let Some(mouse_event) = pane.mouse_scroll_up(&event_for_pane) {
                 tab.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
                     .with_context(err_context)?;
             } else if pane.is_alternate_mode_active() {
@@ -1657,10 +1659,11 @@ impl MouseHandler {
 
     pub(crate) fn handle_scrollwheel_down(
         tab: &mut Tab,
-        point: &Position,
+        event: &MouseEvent,
         lines: usize,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
+        let point = &event.position;
         let err_context = || {
             format!(
                 "failed to handle scrollwheel down at position {point:?} for client {client_id}"
@@ -1668,8 +1671,10 @@ impl MouseHandler {
         };
 
         if let Some(pane) = Self::get_pane_at(tab, point, false).with_context(err_context)? {
-            let relative_position = pane.relative_position(point);
-            if let Some(mouse_event) = pane.mouse_scroll_down(&relative_position) {
+            // keep the modifier state, but report the position relative to the pane
+            let mut event_for_pane = *event;
+            event_for_pane.position = pane.relative_position(point);
+            if let Some(mouse_event) = pane.mouse_scroll_down(&event_for_pane) {
                 tab.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
                     .with_context(err_context)?;
             } else if pane.is_alternate_mode_active() {

@@ -10,6 +10,7 @@ use vte;
 use zellij_utils::consts::SCROLL_BUFFER_SIZE;
 use zellij_utils::{
     data::{Palette, Style},
+    input::mouse::MouseEvent,
     pane_size::SizeInPixels,
     position::Position,
 };
@@ -8301,5 +8302,69 @@ fn kitty_placement_rejoins_its_text_after_editing_while_scrolled_back() {
         kitty_image_absolute_cell_row(&grid),
         marker_row,
         "the image must rejoin its marker line once the viewport is restored"
+    );
+}
+
+fn grid_with_sgr_mouse_tracking() -> Grid {
+    let mut parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        10,
+        20,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    // button event tracking (1002) with SGR encoding (1006)
+    parser.advance(&mut grid, b"\x1b[?1002;1006h");
+    grid
+}
+
+#[test]
+fn scroll_signals_forward_modifier_state_to_the_application() {
+    // The modifier bits an application expects on a wheel event, per the SGR mouse
+    // encoding: shift 0x04, alt 0x08, ctrl 0x10, OR-ed onto the wheel button value
+    // (64 for wheel up, 65 for wheel down). These used to be dropped entirely, so an
+    // app running in a pane saw a bare scroll with no modifiers.
+    let grid = grid_with_sgr_mouse_tracking();
+    let position = Position::new(0, 0);
+
+    let mut shift_scroll_up = MouseEvent::new_scroll_up_event(position);
+    shift_scroll_up.shift = true;
+    assert_eq!(
+        grid.mouse_scroll_up_signal(&shift_scroll_up),
+        Some(String::from("\u{1b}[<68;1;1M"))
+    );
+
+    let mut alt_scroll_down = MouseEvent::new_scroll_down_event(position);
+    alt_scroll_down.alt = true;
+    assert_eq!(
+        grid.mouse_scroll_down_signal(&alt_scroll_down),
+        Some(String::from("\u{1b}[<73;1;1M"))
+    );
+}
+
+#[test]
+fn scroll_signals_are_unchanged_without_modifiers() {
+    // Guards the existing encoding: a plain wheel event must still report the bare
+    // button value, so adding the modifier bits doesn't shift every scroll sequence.
+    let grid = grid_with_sgr_mouse_tracking();
+    let position = Position::new(0, 0);
+
+    assert_eq!(
+        grid.mouse_scroll_up_signal(&MouseEvent::new_scroll_up_event(position)),
+        Some(String::from("\u{1b}[<64;1;1M"))
+    );
+    assert_eq!(
+        grid.mouse_scroll_down_signal(&MouseEvent::new_scroll_down_event(position)),
+        Some(String::from("\u{1b}[<65;1;1M"))
     );
 }

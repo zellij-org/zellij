@@ -641,10 +641,10 @@ pub trait Pane {
     fn mouse_middle_click_release(&self, _position: &Position) -> Option<String> {
         None
     }
-    fn mouse_scroll_up(&self, _position: &Position) -> Option<String> {
+    fn mouse_scroll_up(&self, _event: &MouseEvent) -> Option<String> {
         None
     }
-    fn mouse_scroll_down(&self, _position: &Position) -> Option<String> {
+    fn mouse_scroll_down(&self, _event: &MouseEvent) -> Option<String> {
         None
     }
     fn focus_event(&self) -> Option<String> {
@@ -6093,7 +6093,7 @@ impl Tab {
         let synthetic_position = Position::new(0, 0);
         let (mouse_sgr, is_alt) = match self.get_pane_with_id(pane_id) {
             Some(pane) => (
-                pane.mouse_scroll_up(&synthetic_position),
+                pane.mouse_scroll_up(&MouseEvent::new_scroll_up_event(synthetic_position)),
                 pane.is_alternate_mode_active(),
             ),
             None => return Ok(()),
@@ -6132,7 +6132,7 @@ impl Tab {
         let synthetic_position = Position::new(0, 0);
         let (mouse_sgr, is_alt) = match self.get_pane_with_id(pane_id) {
             Some(pane) => (
-                pane.mouse_scroll_down(&synthetic_position),
+                pane.mouse_scroll_down(&MouseEvent::new_scroll_down_event(synthetic_position)),
                 pane.is_alternate_mode_active(),
             ),
             None => return Ok(()),
@@ -6306,7 +6306,12 @@ impl Tab {
         lines: usize,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
-        MouseHandler::handle_scrollwheel_up(self, point, lines, client_id)
+        MouseHandler::handle_scrollwheel_up(
+            self,
+            &MouseEvent::new_scroll_up_event(*point),
+            lines,
+            client_id,
+        )
     }
 
     pub fn handle_scrollwheel_down(
@@ -6315,7 +6320,12 @@ impl Tab {
         lines: usize,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
-        MouseHandler::handle_scrollwheel_down(self, point, lines, client_id)
+        MouseHandler::handle_scrollwheel_down(
+            self,
+            &MouseEvent::new_scroll_down_event(*point),
+            lines,
+            client_id,
+        )
     }
 
     fn get_pane_id_at(
