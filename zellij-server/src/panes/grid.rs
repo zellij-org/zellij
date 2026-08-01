@@ -3732,11 +3732,27 @@ impl Grid {
             },
         }
     }
-    pub fn mouse_scroll_up_signal(&self, position: &Position) -> Option<String> {
+    /// The modifier bits shared by the x10/utf8 and SGR mouse encodings.
+    fn mouse_modifiers_value(event: &MouseEvent) -> u8 {
+        let mut value = 0;
+        if event.shift {
+            value |= 0x04;
+        }
+        if event.alt {
+            value |= 0x08;
+        }
+        if event.ctrl {
+            value |= 0x10;
+        }
+        value
+    }
+    pub fn mouse_scroll_up_signal(&self, event: &MouseEvent) -> Option<String> {
+        let position = &event.position;
+        let modifiers = Self::mouse_modifiers_value(event);
         match (&self.mouse_mode, &self.mouse_tracking) {
             (_, MouseTracking::Off) => None,
             (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
-                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'`'];
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'`' | modifiers];
                 msg.append(&mut utf8_mouse_coordinates(
                     position.column() + 1,
                     position.line() + 1,
@@ -3745,7 +3761,8 @@ impl Grid {
             },
             (MouseMode::Sgr, _) => {
                 let mouse_event = format!(
-                    "\u{1b}[<64;{:?};{:?}M",
+                    "\u{1b}[<{:?};{:?};{:?}M",
+                    64 | modifiers,
                     position.column.0 + 1,
                     position.line.0 + 1
                 );
@@ -3753,11 +3770,13 @@ impl Grid {
             },
         }
     }
-    pub fn mouse_scroll_down_signal(&self, position: &Position) -> Option<String> {
+    pub fn mouse_scroll_down_signal(&self, event: &MouseEvent) -> Option<String> {
+        let position = &event.position;
+        let modifiers = Self::mouse_modifiers_value(event);
         match (&self.mouse_mode, &self.mouse_tracking) {
             (_, MouseTracking::Off) => None,
             (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
-                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'a'];
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'a' | modifiers];
                 msg.append(&mut utf8_mouse_coordinates(
                     position.column() + 1,
                     position.line() + 1,
@@ -3766,7 +3785,8 @@ impl Grid {
             },
             (MouseMode::Sgr, _) => {
                 let mouse_event = format!(
-                    "\u{1b}[<65;{:?};{:?}M",
+                    "\u{1b}[<{:?};{:?};{:?}M",
+                    65 | modifiers,
                     position.column.0 + 1,
                     position.line.0 + 1
                 );

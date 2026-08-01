@@ -990,11 +990,11 @@ impl Pane for TerminalPane {
     fn mouse_middle_click_release(&self, position: &Position) -> Option<String> {
         self.grid.mouse_middle_click_release_signal(position)
     }
-    fn mouse_scroll_up(&self, position: &Position) -> Option<String> {
-        self.grid.mouse_scroll_up_signal(position)
+    fn mouse_scroll_up(&self, event: &MouseEvent) -> Option<String> {
+        self.grid.mouse_scroll_up_signal(event)
     }
-    fn mouse_scroll_down(&self, position: &Position) -> Option<String> {
-        self.grid.mouse_scroll_down_signal(position)
+    fn mouse_scroll_down(&self, event: &MouseEvent) -> Option<String> {
+        self.grid.mouse_scroll_down_signal(event)
     }
     fn focus_event(&self) -> Option<String> {
         self.grid.focus_event()
