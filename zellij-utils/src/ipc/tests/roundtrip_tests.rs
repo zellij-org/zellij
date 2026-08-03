@@ -354,6 +354,8 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::KittyGraphicsSupport { supported: true });
     test_client_roundtrip!(ClientToServerMsg::KittyGraphicsSupport { supported: false });
+    test_client_roundtrip!(ClientToServerMsg::SixelSupport { supported: true });
+    test_client_roundtrip!(ClientToServerMsg::SixelSupport { supported: false });
     test_client_roundtrip!(ClientToServerMsg::BackgroundColor {
         color: "red".to_string(),
     });

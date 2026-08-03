@@ -8303,3 +8303,42 @@ fn kitty_placement_rejoins_its_text_after_editing_while_scrolled_back() {
         "the image must rejoin its marker line once the viewport is restored"
     );
 }
+
+#[test]
+fn primary_device_attributes_advertise_sixel_when_host_supports_it() {
+    let mut grid = create_grid_with_content("");
+    let mut vte_parser = vte::Parser::new();
+    grid.update_sixel_host_support(true);
+    vte_parser.advance(&mut grid, b"\x1b[c");
+    assert_eq!(
+        grid.pending_messages_to_pty,
+        vec![b"\x1b[?62;4;52c".to_vec()]
+    );
+}
+
+#[test]
+fn primary_device_attributes_omit_sixel_when_host_does_not_support_it() {
+    let mut grid = create_grid_with_content("");
+    let mut vte_parser = vte::Parser::new();
+    grid.update_sixel_host_support(false);
+    vte_parser.advance(&mut grid, b"\x1b[c");
+    assert_eq!(grid.pending_messages_to_pty, vec![b"\x1b[?62;52c".to_vec()]);
+}
+
+#[test]
+fn xtsmgraphics_color_registers_report_failure_when_host_does_not_support_sixel() {
+    let mut grid = create_grid_with_content("");
+    let mut vte_parser = vte::Parser::new();
+    grid.update_sixel_host_support(false);
+    vte_parser.advance(&mut grid, b"\x1b[?1;1S");
+    assert_eq!(grid.pending_messages_to_pty, vec![b"\x1b[?1;3;0S".to_vec()]);
+}
+
+#[test]
+fn xtsmgraphics_geometry_reports_failure_when_host_does_not_support_sixel() {
+    let mut grid = create_grid_with_content("");
+    let mut vte_parser = vte::Parser::new();
+    grid.update_sixel_host_support(false);
+    vte_parser.advance(&mut grid, b"\x1b[?2;1S");
+    assert_eq!(grid.pending_messages_to_pty, vec![b"\x1b[?2;3;0S".to_vec()]);
+}

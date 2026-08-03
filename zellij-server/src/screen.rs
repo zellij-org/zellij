@@ -521,6 +521,10 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         supported: bool,
     },
+    SetSixelSupport {
+        client_id: ClientId,
+        supported: bool,
+    },
     /// A pane's Grid intercepted an app-in-pane whitelisted query; Screen
     /// assigns a token, queues the forward, and dispatches to the client.
     /// `query` carries the classified form so Screen can match on it
@@ -1066,6 +1070,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SetKittyGraphicsSupport { .. } => {
                 ScreenContext::SetKittyGraphicsSupport
             },
+            ScreenInstruction::SetSixelSupport { .. } => ScreenContext::SetSixelSupport,
             ScreenInstruction::ForwardHostQuery { .. } => ScreenContext::ForwardHostQuery,
             ScreenInstruction::NestedSessionMessageFromPane { .. } => {
                 ScreenContext::NestedSessionMessageFromPane
@@ -1497,6 +1502,7 @@ pub(crate) struct Screen {
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     kitty_image_store: Rc<RefCell<KittyImageStore>>,
     kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
+    sixel_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     client_kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
@@ -1682,6 +1688,7 @@ impl Screen {
             sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
             kitty_image_store: Rc::new(RefCell::new(KittyImageStore::default())),
             kitty_host_capabilities: Rc::new(RefCell::new(HashMap::new())),
+            sixel_host_capabilities: Rc::new(RefCell::new(HashMap::new())),
             client_kitty_host_state: Rc::new(RefCell::new(HashMap::new())),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
@@ -2644,6 +2651,30 @@ impl Screen {
         if let Some(aggregate) = self.kitty_host_support_aggregate() {
             for tab in self.tabs.values_mut() {
                 tab.update_kitty_host_support(aggregate);
+            }
+        }
+    }
+
+    pub fn update_sixel_support(&mut self, client_id: ClientId, supported: bool) {
+        self.sixel_host_capabilities
+            .borrow_mut()
+            .insert(client_id, supported);
+        self.push_sixel_host_support_to_tabs();
+    }
+
+    fn sixel_host_support_aggregate(&self) -> Option<bool> {
+        let capabilities = self.sixel_host_capabilities.borrow();
+        if capabilities.is_empty() {
+            None
+        } else {
+            Some(capabilities.values().any(|supported| *supported))
+        }
+    }
+
+    fn push_sixel_host_support_to_tabs(&mut self) {
+        if let Some(aggregate) = self.sixel_host_support_aggregate() {
+            for tab in self.tabs.values_mut() {
+                tab.update_sixel_host_support(aggregate);
             }
         }
     }
@@ -3966,6 +3997,7 @@ impl Screen {
                 self.kitty_image_store.clone(),
                 self.kitty_host_capabilities.clone(),
                 self.client_kitty_host_state.clone(),
+                self.sixel_host_capabilities.clone(),
             );
 
             let has_ansi_subscribers = self.pane_render_subscribers.values().any(|s| s.ansi);
@@ -4139,6 +4171,7 @@ impl Screen {
                     self.kitty_image_store.clone(),
                     self.kitty_host_capabilities.clone(),
                     self.client_kitty_host_state.clone(),
+                    self.sixel_host_capabilities.clone(),
                 );
 
                 let focused_tab_index_of_followed_client_id =
@@ -4494,6 +4527,9 @@ impl Screen {
         if let Some(aggregate) = self.kitty_host_support_aggregate() {
             tab.update_kitty_host_support(aggregate);
         }
+        if let Some(aggregate) = self.sixel_host_support_aggregate() {
+            tab.update_sixel_host_support(aggregate);
+        }
         self.tabs.insert(tab_id, tab);
         Ok(())
     }
@@ -4690,6 +4726,10 @@ impl Screen {
                 .borrow_mut()
                 .insert(client_id, false);
             self.push_kitty_host_support_to_tabs();
+            self.sixel_host_capabilities
+                .borrow_mut()
+                .insert(client_id, false);
+            self.push_sixel_host_support_to_tabs();
         }
         self.tab_history.insert(client_id, tab_history);
         self.tabs
@@ -4792,6 +4832,14 @@ impl Screen {
             .is_some();
         if removed_kitty_capability {
             self.push_kitty_host_support_to_tabs();
+        }
+        let removed_sixel_capability = self
+            .sixel_host_capabilities
+            .borrow_mut()
+            .remove(&client_id)
+            .is_some();
+        if removed_sixel_capability {
+            self.push_sixel_host_support_to_tabs();
         }
         self.client_sizes.remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
@@ -9313,6 +9361,12 @@ pub(crate) fn screen_thread_main(
                 supported,
             } => {
                 screen.update_kitty_graphics_support(client_id, supported);
+            },
+            ScreenInstruction::SetSixelSupport {
+                client_id,
+                supported,
+            } => {
+                screen.update_sixel_support(client_id, supported);
             },
             ScreenInstruction::ForwardHostQuery { pane_id, query } => {
                 screen.forward_host_query(pane_id, query);

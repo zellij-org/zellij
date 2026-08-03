@@ -146,9 +146,11 @@ fn forwarding_window_accumulates_and_barrier_closes() {
     chunk.extend_from_slice(b"\x1b]11;rgb:aaaa/bbbb/dddd\x1b\\");
     chunk.extend_from_slice(b"\x1b[?65;1c");
     let out = parser.feed(&chunk);
-    // OSC 11 was classified (double-dispatch).
-    assert_eq!(out.replies.len(), 1);
+    // OSC 11 was classified (double-dispatch), and the barrier itself
+    // advertises the host's sixel capability.
+    assert_eq!(out.replies.len(), 2);
     matches!(out.replies[0], HostReply::BackgroundColor(_));
+    matches!(out.replies[1], HostReply::SixelSupport(false));
     // Barrier closed the window, producing a completed forward.
     let (token, reply_bytes) = out
         .completed_forward
@@ -1241,11 +1243,59 @@ fn kitty_probe_absence_resolves_false_on_barrier() {
     parser.expect_kitty_probe_reply();
     let (replies, residue) = feed_once(&mut parser, b"\x1b[?62;4;52c");
     assert!(residue.is_empty());
-    assert_eq!(replies.len(), 1);
-    match &replies[0] {
-        HostReply::KittyGraphicsSupport(supported) => assert!(!*supported),
-        other => panic!("unexpected reply: {:?}", other),
-    }
+    let kitty_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::KittyGraphicsSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(kitty_replies, vec![false]);
+}
+
+#[test]
+fn primary_da_with_sixel_attribute_classifies_sixel_support_true() {
+    let mut parser = StdinAnsiParser::new();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b[?62;4;52c");
+    assert!(residue.is_empty());
+    let sixel_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::SixelSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sixel_replies, vec![true]);
+}
+
+#[test]
+fn primary_da_without_sixel_attribute_classifies_sixel_support_false() {
+    let mut parser = StdinAnsiParser::new();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b[?62;22c");
+    assert!(residue.is_empty());
+    let sixel_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::SixelSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sixel_replies, vec![false]);
+}
+
+#[test]
+fn primary_da_sixel_attribute_is_not_matched_as_a_substring() {
+    let mut parser = StdinAnsiParser::new();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b[?64;14;21;22c");
+    assert!(residue.is_empty());
+    let sixel_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::SixelSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sixel_replies, vec![false]);
 }
 
 #[test]

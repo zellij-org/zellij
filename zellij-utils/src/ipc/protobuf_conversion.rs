@@ -14,7 +14,7 @@ use crate::{
         LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg, NestedSessionFrameFromHostMsg,
         PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, QueryTerminalSizeMsg,
         RenamedSessionMsg, RenderMsg, ResizeCause as ProtoResizeCause,
-        ServerToClientMsg as ProtoServerToClientMsg, SetSoftKeyboardMsg,
+        ServerToClientMsg as ProtoServerToClientMsg, SetSoftKeyboardMsg, SixelSupportMsg,
         SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
         SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
         TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
@@ -166,6 +166,9 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                 client_to_server_msg::Message::KittyGraphicsSupport(KittyGraphicsSupportMsg {
                     supported,
                 })
+            },
+            ClientToServerMsg::SixelSupport { supported } => {
+                client_to_server_msg::Message::SixelSupport(SixelSupportMsg { supported })
             },
         };
 
@@ -324,6 +327,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
             },
             Some(client_to_server_msg::Message::KittyGraphicsSupport(msg)) => {
                 Ok(ClientToServerMsg::KittyGraphicsSupport {
+                    supported: msg.supported,
+                })
+            },
+            Some(client_to_server_msg::Message::SixelSupport(msg)) => {
+                Ok(ClientToServerMsg::SixelSupport {
                     supported: msg.supported,
                 })
             },

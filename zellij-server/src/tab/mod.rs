@@ -242,6 +242,7 @@ pub(crate) struct Tab {
     debug: bool,
     arrow_fonts: bool,
     kitty_host_support: Option<KittyHostSupport>,
+    sixel_host_support: Option<bool>,
     styled_underlines: bool,
     osc8_hyperlinks: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
@@ -736,6 +737,7 @@ pub trait Pane {
     fn update_theme(&mut self, _theme: Styling) {}
     fn update_arrow_fonts(&mut self, _should_support_arrow_fonts: bool) {}
     fn update_kitty_host_support(&mut self, _supported: KittyHostSupport) {}
+    fn update_sixel_host_support(&mut self, _supported: bool) {}
     fn update_rounded_corners(&mut self, _rounded_corners: bool) {}
     fn set_should_be_suppressed(&mut self, _should_be_suppressed: bool) {}
     fn query_should_be_suppressed(&self) -> bool {
@@ -991,6 +993,7 @@ impl Tab {
             debug,
             arrow_fonts,
             kitty_host_support: None,
+            sixel_host_support: None,
             styled_underlines,
             osc8_hyperlinks,
             explicitly_disable_kitty_keyboard_protocol,
@@ -1766,6 +1769,11 @@ impl Tab {
             self.tiled_panes.update_pane_kitty_host_support(supported);
             self.floating_panes
                 .update_pane_kitty_host_support(supported);
+        }
+        if let Some(supported) = self.sixel_host_support {
+            self.tiled_panes.update_pane_sixel_host_support(supported);
+            self.floating_panes
+                .update_pane_sixel_host_support(supported);
         }
         Ok(())
     }
@@ -3211,6 +3219,9 @@ impl Tab {
                 if let Some(supported) = self.kitty_host_support {
                     new_pane.update_kitty_host_support(supported);
                 }
+                if let Some(supported) = self.sixel_host_support {
+                    new_pane.update_sixel_host_support(supported);
+                }
                 if let Some(borderless) = borderless {
                     new_pane.set_borderless(borderless);
                 }
@@ -3434,6 +3445,9 @@ impl Tab {
                 if let Some(supported) = self.kitty_host_support {
                     new_terminal.update_kitty_host_support(supported);
                 }
+                if let Some(supported) = self.sixel_host_support {
+                    new_terminal.update_sixel_host_support(supported);
+                }
                 if let Some(borderless) = borderless {
                     new_terminal.set_borderless(borderless);
                 }
@@ -3505,6 +3519,9 @@ impl Tab {
                 );
                 if let Some(supported) = self.kitty_host_support {
                     new_terminal.update_kitty_host_support(supported);
+                }
+                if let Some(supported) = self.sixel_host_support {
+                    new_terminal.update_sixel_host_support(supported);
                 }
                 if let Some(borderless) = borderless {
                     new_terminal.set_borderless(borderless);
@@ -3634,6 +3651,9 @@ impl Tab {
             );
             if let Some(supported) = self.kitty_host_support {
                 new_terminal.update_kitty_host_support(supported);
+            }
+            if let Some(supported) = self.sixel_host_support {
+                new_terminal.update_sixel_host_support(supported);
             }
             if let Some(borderless) = borderless {
                 new_terminal.set_borderless(borderless);
@@ -7416,6 +7436,15 @@ impl Tab {
             pane.update_kitty_host_support(supported);
         }
     }
+    pub fn update_sixel_host_support(&mut self, supported: bool) {
+        self.sixel_host_support = Some(supported);
+        self.floating_panes
+            .update_pane_sixel_host_support(supported);
+        self.tiled_panes.update_pane_sixel_host_support(supported);
+        for (_, pane) in self.suppressed_panes.values_mut() {
+            pane.update_sixel_host_support(supported);
+        }
+    }
     pub fn update_default_shell(&mut self, mut default_shell: Option<PathBuf>) {
         if let Some(default_shell) = default_shell.take() {
             self.default_shell = default_shell;
@@ -7690,6 +7719,9 @@ impl Tab {
         );
         if let Some(supported) = self.kitty_host_support {
             new_pane.update_kitty_host_support(supported);
+        }
+        if let Some(supported) = self.sixel_host_support {
+            new_pane.update_sixel_host_support(supported);
         }
         new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
                                                     // constructor so it won't be overrided

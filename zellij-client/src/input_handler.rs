@@ -342,6 +342,10 @@ impl InputHandler {
                 self.os_input
                     .send_to_server(ClientToServerMsg::KittyGraphicsSupport { supported });
             },
+            AnsiStdinInstruction::SixelSupport(supported) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::SixelSupport { supported });
+            },
         }
     }
     fn handle_nested_session_frame_from_host(&mut self, payload_bytes: Vec<u8>) {

@@ -63,6 +63,7 @@ pub enum HostReply {
     /// terminal's color-palette theme mode (CSI 2031).
     HostTerminalThemeChanged(HostTerminalThemeMode),
     KittyGraphicsSupport(bool),
+    SixelSupport(bool),
 }
 
 /// Retained alias for the pre-refactor type name used by other modules in
@@ -155,6 +156,22 @@ impl HostReply {
             return Some(HostReply::HostTerminalThemeChanged(mode));
         }
         None
+    }
+
+    /// Classify a Primary Device Attributes reply (`CSI ? Ps ; Ps ... c`)
+    /// into a Sixel-capability advertisement. Attribute `4` in the reply
+    /// means the host terminal supports Sixel graphics.
+    ///
+    /// Replies that are not a primary-DA form (eg. secondary-DA `CSI > ... c`)
+    /// yield `None` so they do not clobber the host capability state.
+    pub fn sixel_support_from_primary_da(raw: &[u8]) -> Option<HostReply> {
+        lazy_static! {
+            static ref PRIMARY_DA_RE: Regex = Regex::new(r"^\u{1b}\[\?([0-9;]*)c$").unwrap();
+        }
+        let s = std::str::from_utf8(raw).ok()?;
+        let caps = PRIMARY_DA_RE.captures(s)?;
+        let supports_sixel = caps[1].split(';').any(|attribute| attribute == "4");
+        Some(HostReply::SixelSupport(supports_sixel))
     }
 }
 
@@ -418,6 +435,9 @@ impl StdinAnsiParser {
                             if self.startup_kitty_probe == StartupKittyProbe::AwaitingReply {
                                 self.startup_kitty_probe = StartupKittyProbe::Resolved;
                                 out.replies.push(HostReply::KittyGraphicsSupport(false));
+                            }
+                            if let Some(reply) = HostReply::sixel_support_from_primary_da(&raw) {
+                                out.replies.push(reply);
                             }
                             // Primary-DA — the barrier. Close the slot and
                             // emit the completed forwarded reply if active.

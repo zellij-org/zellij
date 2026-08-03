@@ -641,6 +641,7 @@ pub struct Output {
     kitty_image_store: Rc<RefCell<KittyImageStore>>,
     kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
+    sixel_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     floating_panes_stack: Option<FloatingPanesStack>,
     styled_underlines: bool,
@@ -659,6 +660,7 @@ impl Output {
         kitty_image_store: Rc<RefCell<KittyImageStore>>,
         kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
         kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
+        sixel_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     ) -> Self {
         Output {
             sixel_image_store,
@@ -668,9 +670,11 @@ impl Output {
             kitty_image_store,
             kitty_host_capabilities,
             kitty_host_state,
+            sixel_host_capabilities,
             ..Default::default()
         }
     }
+
     pub fn add_clients(
         &mut self,
         client_ids: &HashSet<ClientId>,
@@ -901,6 +905,12 @@ impl Output {
                 .get(&client_id)
                 .copied()
                 .unwrap_or(false);
+            let client_host_is_sixel_capable = self
+                .sixel_host_capabilities
+                .borrow()
+                .get(&client_id)
+                .copied()
+                .unwrap_or(false);
             let mut kitty_image_store;
             let mut kitty_host_state_map;
             let kitty_input = if client_host_is_kitty_capable {
@@ -919,10 +929,15 @@ impl Output {
             };
 
             // append the actual vte
+            let sixel_chunks_for_client = if client_host_is_sixel_capable {
+                self.sixel_chunks.get(&client_id)
+            } else {
+                None
+            };
             client_serialized_render_instructions.push_str(
                 &serialize_chunks(
                     client_character_chunks,
-                    self.sixel_chunks.get(&client_id),
+                    sixel_chunks_for_client,
                     self.link_handler.as_mut(),
                     Some(&mut self.sixel_image_store.borrow_mut()),
                     self.styled_underlines,
@@ -988,10 +1003,21 @@ impl Output {
             }
 
             // append the actual vte with size constraints
+            let client_host_is_sixel_capable = self
+                .sixel_host_capabilities
+                .borrow()
+                .get(&client_id)
+                .copied()
+                .unwrap_or(false);
+            let sixel_chunks_for_client = if client_host_is_sixel_capable {
+                self.sixel_chunks.get(&client_id)
+            } else {
+                None
+            };
             client_serialized_render_instructions.push_str(
                 &serialize_chunks(
                     client_character_chunks,
-                    self.sixel_chunks.get(&client_id),
+                    sixel_chunks_for_client,
                     self.link_handler.as_mut(),
                     Some(&mut self.sixel_image_store.borrow_mut()),
                     self.styled_underlines,

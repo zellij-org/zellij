@@ -1191,6 +1191,9 @@ impl Pane for TerminalPane {
     fn update_kitty_host_support(&mut self, supported: KittyHostSupport) {
         self.grid.update_kitty_host_support(supported);
     }
+    fn update_sixel_host_support(&mut self, supported: bool) {
+        self.grid.update_sixel_host_support(supported);
+    }
     fn update_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;
         self.frame.clear();
