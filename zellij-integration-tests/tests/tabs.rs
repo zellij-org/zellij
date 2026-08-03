@@ -239,7 +239,9 @@ fn break_floating_pane_into_new_tab_resizes_its_pty_exactly_once() {
     });
     // give any (unwanted) additional resize a chance to arrive before we assert
     std::thread::sleep(std::time::Duration::from_millis(300));
-    let resizes_while_breaking = floating_terminal.size_history().split_off(resizes_before_break);
+    let resizes_while_breaking = floating_terminal
+        .size_history()
+        .split_off(resizes_before_break);
     assert_eq!(
         resizes_while_breaking,
         vec![expected_size],
