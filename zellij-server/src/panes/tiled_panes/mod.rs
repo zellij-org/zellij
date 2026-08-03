@@ -540,7 +540,14 @@ impl TiledPanes {
             .values()
             .filter_map(|p| {
                 let geom = p.position_and_size();
-                if !p.selectable() && is_inside_viewport(&self.viewport.borrow(), p) {
+                // a borderless plugin pane is part of the ui (eg. the tab-bar or the status-bar)
+                // and so is offset out of the viewport just like a non-selectable pane - we cannot
+                // rely on selectability alone here, because a plugin only reports it once it has
+                // loaded, and until then we'd be calculating (and sending to the pty) wrong sizes
+                // for the other panes in this tab
+                let is_ui_pane =
+                    !p.selectable() || (p.borderless() && matches!(p.pid(), PaneId::Plugin(_)));
+                if is_ui_pane && is_inside_viewport(&self.viewport.borrow(), p) {
                     Some(geom.into())
                 } else {
                     None

@@ -16,6 +16,7 @@ pub(crate) struct FakePtyState {
     pub output_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
     pub stdin: Vec<u8>,
     pub size: Option<(u16, u16)>,
+    pub size_history: Vec<(u16, u16)>,
     pub quit_cb: Option<QuitCb>,
     pub exited: bool,
     pub echo: bool,
@@ -114,6 +115,7 @@ impl SharedPtys {
                     output_tx: Some(output_tx),
                     stdin: Vec::new(),
                     size: None,
+                    size_history: Vec::new(),
                     quit_cb,
                     exited: false,
                     echo: true,
@@ -169,6 +171,12 @@ impl SharedPtys {
     pub(crate) fn set_size(&self, terminal_id: u32, cols: u16, rows: u16) {
         self.mutate(|fake_pty_registry| {
             if let Some(fake_pty_state) = fake_pty_registry.fake_pty_states.get_mut(&terminal_id) {
+                // like a real pty, setting the same size again is a no-op that will not make the
+                // program inside the terminal react (the kernel only sends a SIGWINCH if the
+                // winsize actually changed)
+                if fake_pty_state.size != Some((cols, rows)) {
+                    fake_pty_state.size_history.push((cols, rows));
+                }
                 fake_pty_state.size = Some((cols, rows));
             }
         });
@@ -402,6 +410,16 @@ impl FakePtyHandle {
                 .fake_pty_states
                 .get(&self.terminal_id)
                 .and_then(|fake_pty_state| fake_pty_state.size)
+        })
+    }
+
+    pub fn size_history(&self) -> Vec<(u16, u16)> {
+        self.shared_ptys.read(|fake_pty_registry| {
+            fake_pty_registry
+                .fake_pty_states
+                .get(&self.terminal_id)
+                .map(|fake_pty_state| fake_pty_state.size_history.clone())
+                .unwrap_or_default()
         })
     }
 

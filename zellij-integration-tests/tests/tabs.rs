@@ -3,7 +3,7 @@
 use insta::assert_snapshot;
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, col, keys, normalized, start_zellij, FakePtyHandle,
-    GridSnapshot, TestSession, PROMPT,
+    GridSnapshot, TestSession, PROMPT, TERMINAL_SIZE,
 };
 
 fn tabs_in_order(grid_snapshot: &GridSnapshot, labels: &[&str]) -> bool {
@@ -205,6 +205,46 @@ fn break_pane_into_new_tab() {
             && grid_snapshot.cursor_is_at(col(2).row(1))
     });
     assert_snapshot!(normalized(&grid_snapshot));
+    zellij.quit();
+}
+
+#[test]
+fn break_floating_pane_into_new_tab_resizes_its_pty_exactly_once() {
+    // a pane that is moved into a new tab used to pass through intermediate sizes before that tab
+    // settled, each of which reached its pty as a SIGWINCH - programs that coalesce SIGWINCHes
+    // arriving in quick succession (vim among them) would then act on an intermediate size and
+    // remain rendered in the wrong size until their next redraw
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('w'));
+    let floating_terminal = zellij.expect_pty_spawn();
+    floating_terminal.output(PROMPT);
+    zellij.wait_until("floating pane spawned", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && grid_snapshot.contains("Pane #2")
+    });
+    let resizes_before_break = floating_terminal.size_history().len();
+
+    zellij.send_stdin(&keys::ctrl('t'));
+    zellij.send_stdin(&keys::key('b'));
+    zellij.wait_until("pane broken into a new tab", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && grid_snapshot.contains("Tab #2")
+    });
+
+    // the pane now takes up the whole tab, with only the tab bar and status bar around it
+    let expected_size = (TERMINAL_SIZE.cols as u16, TERMINAL_SIZE.rows as u16 - 2);
+    floating_terminal.wait_for_size("pane resized to its new tab", move |cols, rows| {
+        (cols, rows) == expected_size
+    });
+    // give any (unwanted) additional resize a chance to arrive before we assert
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let resizes_while_breaking = floating_terminal.size_history().split_off(resizes_before_break);
+    assert_eq!(
+        resizes_while_breaking,
+        vec![expected_size],
+        "the pane's pty should have been resized exactly once, to the size of its new tab"
+    );
     zellij.quit();
 }
 
