@@ -124,8 +124,16 @@ impl ClientConnectionBus {
                 self.get_control_channel_tx();
                 if let Some(control_channel_tx) = self.control_channel_tx.as_ref() {
                     let _ = control_channel_tx.send(message);
+                } else if self.pending_control_messages.len() < 100 {
+                    log::warn!(
+                        "Control channel not yet available, buffering message ({} pending)",
+                        self.pending_control_messages.len() + 1
+                    );
+                    self.pending_control_messages.push(message);
                 } else {
-                    log::error!("Failed to send control message to client");
+                    log::error!(
+                        "Pending control message buffer full (100), dropping message"
+                    );
                 }
             },
         }
@@ -186,6 +194,17 @@ impl ClientConnectionBus {
             .unwrap()
             .get_client_control_tx(&self.web_client_id)
         {
+            // Flush any messages that were buffered while the channel was unavailable
+            if !self.pending_control_messages.is_empty() {
+                let pending = std::mem::take(&mut self.pending_control_messages);
+                log::info!(
+                    "Control channel now available, flushing {} pending messages",
+                    pending.len()
+                );
+                for msg in pending {
+                    let _ = control_channel_tx.send(msg);
+                }
+            }
             self.control_channel_tx = Some(control_channel_tx);
         }
     }
