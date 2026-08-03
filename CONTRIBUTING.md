@@ -47,6 +47,57 @@ You can see a list of all commands (with supported arguments) with `cargo xtask
 
 To run `test`, you will need the package `pkg-config` and a version of `openssl`.
 
+### The cargo target directory
+
+Debug builds embed the plugins from `<repository>/target/wasm32-wasip1/debug`, which is
+resolved at compile time. `.cargo/config.toml` therefore pins `build.target-dir` to
+`target`, so that a `target-dir` configured globally in `~/.cargo/config.toml` does not
+move the plugins out of reach. Removing that pin breaks debug builds for everyone who
+configures a shared target directory.
+
+If you want to share compilation artifacts between projects anyway, symlink the folder
+instead of pointing cargo elsewhere:
+
+```sh
+ln -s /path/to/shared/target /path/to/zellij/target
+```
+
+Setting the `CARGO_TARGET_DIR` environment variable takes precedence over
+`.cargo/config.toml` and will break debug builds for the same reason. Release builds are
+unaffected, since they embed the plugins from `zellij-utils/assets/plugins`.
+
+## Packaging Zellij for a distribution
+
+Builtin plugins (`status-bar`, `tab-bar`, ...) are `.wasm` files that are embedded into
+the Zellij binary at compile time. Pre-built copies live in `zellij-utils/assets/plugins`
+so that `cargo install zellij` works without further tooling. Distributions that forbid
+pre-built binaries in source packages can strip that folder and build the plugins from
+source instead:
+
+```sh
+# 1. build the plugins from source (repeat for every plugin, or use `cargo x build --release`)
+cargo build --release --target wasm32-wasip1 \
+  -p status-bar -p tab-bar -p compact-bar -p strider -p session-manager \
+  -p configuration -p plugin-manager -p about -p share -p multiple-select \
+  -p layout-manager -p link -p mobile
+
+# 2. install the resulting artifacts from <target-dir>/wasm32-wasip1/release/*.wasm
+#    into $PREFIX/share/zellij/plugins/
+
+# 3. build zellij without bundled plugins
+PREFIX=/usr cargo build --release --bin zellij \
+  --no-default-features --features disable_automatic_asset_installation
+```
+
+With the `disable_automatic_asset_installation` feature no plugin is embedded into the
+binary and `zellij setup --dump-plugins` is unavailable. At runtime builtin plugins are
+looked up in the configured plugin directory and then in `$PREFIX/share/zellij/plugins`.
+`zellij setup --check` prints both locations.
+
+`protoc` is required to regenerate the protobuf definitions in `zellij-utils/assets/prost*`
+via `cargo x proto`. The `web_server_capability` and `vendored_curl` features are optional
+and may be dropped with `--no-default-features`.
+
 ## Running the end-to-end tests
 Zellij includes some end-to-end tests which test the whole application as a black-box from the outside.
 These tests work by running a docker container which contains the Zellij binary, connecting to it via ssh, sending some commands and comparing the output received against predefined snapshots.
