@@ -4,10 +4,7 @@ use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, start_zellij, FakePtyHandle, Size, TERMINAL_SIZE,
 };
 
-const ATTACHING_CLIENT_SIZE: Size = Size {
-    cols: 80,
-    rows: 30,
-};
+const ATTACHING_CLIENT_SIZE: Size = Size { cols: 80, rows: 30 };
 
 fn pane_size(terminal: &FakePtyHandle, what: &str) -> (u16, u16) {
     terminal.wait_for_size(what, |_, _| true)
@@ -26,10 +23,10 @@ fn cold_attach_lays_out_at_the_client_reported_size_without_querying_it() {
             && grid_snapshot.cursor.is_some()
     });
 
-    let (attached_cols, attached_rows) =
-        terminal.wait_for_size("pane resized to the attaching client's size", |cols, rows| {
-            (cols, rows) != (initial_cols, initial_rows)
-        });
+    let (attached_cols, attached_rows) = terminal.wait_for_size(
+        "pane resized to the attaching client's size",
+        |cols, rows| (cols, rows) != (initial_cols, initial_rows),
+    );
 
     let chrome_rows = TERMINAL_SIZE.rows as u16 - initial_rows;
     let expected_rows = ATTACHING_CLIENT_SIZE.rows as u16 - chrome_rows;

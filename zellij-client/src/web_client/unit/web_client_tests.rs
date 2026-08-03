@@ -966,7 +966,10 @@ mod web_client_tests {
         let client_id_1 = create_client_session(port, &session_token).await;
         let client_id_2 = create_client_session(port, &session_token).await;
 
-        let control_ws_url_1 = format!("ws://127.0.0.1:{}/ws/control?web_client_id={}", port, client_id_1);
+        let control_ws_url_1 = format!(
+            "ws://127.0.0.1:{}/ws/control?web_client_id={}",
+            port, client_id_1
+        );
         let (control_ws_1, _) = timeout(
             Duration::from_secs(5),
             connect_async_with_cookie(&control_ws_url_1, &session_token),
@@ -977,7 +980,10 @@ mod web_client_tests {
 
         let (mut control_sink_1, _control_stream_1) = control_ws_1.split();
 
-        let control_ws_url_2 = format!("ws://127.0.0.1:{}/ws/control?web_client_id={}", port, client_id_2);
+        let control_ws_url_2 = format!(
+            "ws://127.0.0.1:{}/ws/control?web_client_id={}",
+            port, client_id_2
+        );
         let (control_ws_2, _) = timeout(
             Duration::from_secs(5),
             connect_async_with_cookie(&control_ws_url_2, &session_token),
@@ -987,7 +993,6 @@ mod web_client_tests {
         .expect("Failed to connect client 2 to control WebSocket");
 
         let (mut control_sink_2, _control_stream_2) = control_ws_2.split();
-
 
         let resize_msg_1 = WebClientToWebServerControlMessage {
             web_client_id: client_id_1.clone(),
@@ -1478,7 +1483,10 @@ mod web_client_tests {
         let regular_session_token = login_and_get_session_token(port, &regular_token).await;
         let regular_web_client_id = create_client_session(port, &regular_session_token).await;
 
-        let regular_control_ws_url = format!("ws://127.0.0.1:{}/ws/control?web_client_id={}", port, regular_web_client_id);
+        let regular_control_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/control?web_client_id={}",
+            port, regular_web_client_id
+        );
         let (regular_control_ws, _) = timeout(
             Duration::from_secs(5),
             connect_async_with_cookie(&regular_control_ws_url, &regular_session_token),
@@ -1531,7 +1539,10 @@ mod web_client_tests {
         let readonly_session_token = login_and_get_session_token(port, &readonly_token).await;
         let readonly_web_client_id = create_client_session(port, &readonly_session_token).await;
 
-        let readonly_control_ws_url = format!("ws://127.0.0.1:{}/ws/control?web_client_id={}", port, readonly_web_client_id);
+        let readonly_control_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/control?web_client_id={}",
+            port, readonly_web_client_id
+        );
         let (readonly_control_ws, _) = timeout(
             Duration::from_secs(5),
             connect_async_with_cookie(&readonly_control_ws_url, &readonly_session_token),
@@ -1637,7 +1648,10 @@ mod web_client_tests {
         let session_token = login_and_get_session_token(port, &regular_token).await;
         let web_client_id = create_client_session(port, &session_token).await;
 
-        let control_ws_url = format!("ws://127.0.0.1:{}/ws/control?web_client_id={}", port, web_client_id);
+        let control_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/control?web_client_id={}",
+            port, web_client_id
+        );
         let (control_ws, _) = timeout(
             Duration::from_secs(5),
             connect_async_with_cookie(&control_ws_url, &session_token),
@@ -1930,7 +1944,10 @@ mod web_client_tests {
 
         let (_terminal_sink, mut terminal_stream) = terminal_ws.split();
 
-        let control_ws_url = format!("ws://127.0.0.1:{}/ws/control?web_client_id={}", port, web_client_id);
+        let control_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/control?web_client_id={}",
+            port, web_client_id
+        );
         let (control_ws, _) = timeout(
             Duration::from_secs(5),
             connect_async_with_cookie(&control_ws_url, &session_token),
@@ -2104,7 +2121,10 @@ mod web_client_tests {
 
         let (_terminal_sink, mut terminal_stream) = terminal_ws.split();
 
-        let control_ws_url = format!("ws://127.0.0.1:{}/ws/control?web_client_id={}", port, web_client_id);
+        let control_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/control?web_client_id={}",
+            port, web_client_id
+        );
         let (control_ws, _) = timeout(
             Duration::from_secs(5),
             connect_async_with_cookie(&control_ws_url, &session_token),
@@ -2879,7 +2899,8 @@ mod web_client_tests {
             else {
                 continue;
             };
-            let asset = &line[attribute_start..attribute_start + line[attribute_start..].find('"').unwrap()];
+            let asset = &line
+                [attribute_start..attribute_start + line[attribute_start..].find('"').unwrap()];
             let Some(expected) = integrity.get(asset) else {
                 continue;
             };

@@ -16,11 +16,11 @@ use crate::{
         MobileTabMsg, NestedSessionFrameFromHostMsg, PaneMetadata as ProtoPaneMetadata,
         PaneRenderUpdateMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
         RequestSessionListMsg, ServerToClientMsg as ProtoServerToClientMsg,
-        SetMobileRenderPreferencesMsg,
-        SetSoftKeyboardMsg, SixelSupportMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
-        SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
-        TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
-        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
+        SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg, SixelSupportMsg,
+        SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
+        SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
+        TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
+        UnblockInputThreadMsg, WebServerStartedMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
@@ -969,9 +969,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
         options: crate::client_server_contract::client_server_contract::Options,
     ) -> Result<Self> {
         use crate::client_server_contract::client_server_contract::{
-            Clipboard as ProtoClipboard,
-            NestedSessionHandling as ProtoNestedSessionHandling, OnForceClose as ProtoOnForceClose,
-            WebSharing as ProtoWebSharing,
+            Clipboard as ProtoClipboard, NestedSessionHandling as ProtoNestedSessionHandling,
+            OnForceClose as ProtoOnForceClose, WebSharing as ProtoWebSharing,
         };
 
         Ok(Self {

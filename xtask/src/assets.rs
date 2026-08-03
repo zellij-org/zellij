@@ -99,8 +99,7 @@ fn generate(assets_dir: &Path) -> anyhow::Result<Vec<(String, String)>> {
             bundle.as_bytes().to_vec()
         } else {
             let path = assets_dir.join(asset);
-            std::fs::read(&path)
-                .with_context(|| format!("failed to read '{}'", path.display()))?
+            std::fs::read(&path).with_context(|| format!("failed to read '{}'", path.display()))?
         };
         digests.insert((*asset).to_string(), subresource_integrity(&bytes));
     }

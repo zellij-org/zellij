@@ -13,13 +13,25 @@ pub struct WebClientToWebServerControlMessage {
 pub enum WebClientToWebServerControlMessagePayload {
     TerminalResize(Size),
     TerminalMetrics(TerminalMetricsPayload),
-    SoftKeyboardVisibilityChanged { visible: bool },
-    NestedSessionFrameFromHost { payload_bytes: Vec<u8> },
+    SoftKeyboardVisibilityChanged {
+        visible: bool,
+    },
+    NestedSessionFrameFromHost {
+        payload_bytes: Vec<u8>,
+    },
     RequestSessionList,
-    FocusPane { pane_id: u32, is_plugin: bool },
-    NewPaneInTab { tab_id: usize },
+    FocusPane {
+        pane_id: u32,
+        is_plugin: bool,
+    },
+    NewPaneInTab {
+        tab_id: usize,
+    },
     NewTab,
-    SetMobileRenderPreferences { single_pane: bool, fit: bool },
+    SetMobileRenderPreferences {
+        single_pane: bool,
+        fit: bool,
+    },
     #[serde(other)]
     Unknown,
 }
