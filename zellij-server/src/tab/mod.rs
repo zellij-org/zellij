@@ -7224,7 +7224,15 @@ impl Tab {
             } else {
                 self.tiled_panes.insert_pane(pane_id, pane, client_id);
             }
-            self.tiled_panes.reapply_pane_frames();
+            if !self.is_pending {
+                // if this tab is pending, the geometry of the panes inside it (including the one we
+                // just added) is provisional - the real one will be assigned when the layout is
+                // applied to this tab, and so we do not want to reapply the frames here because
+                // doing so would send this transient size to the pane's pty, causing it to receive
+                // two resizes in quick succession (this one and the real one) - which some
+                // terminal applications (eg. vim) coalesce and thus miss the real one
+                self.tiled_panes.reapply_pane_frames();
+            }
             self.set_should_clear_display_before_rendering();
             if let Some(client_id) = client_id {
                 self.tiled_panes.focus_pane(pane_id, client_id);

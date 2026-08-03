@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -43,6 +43,9 @@ pub struct FakeServerOsApi {
     pub shared_ptys: SharedPtys,
     non_blocking_client_senders: Arc<Mutex<HashMap<ClientId, NonBlockingClientSender>>>,
     fake_filesystem: Arc<Mutex<HashMap<String, String>>>,
+    // mirrors the resize caching of the real ServerOsInputOutput, so that tests see the same
+    // resizes a real pane's pty would
+    cached_resizes: Arc<Mutex<Option<BTreeMap<u32, (u16, u16)>>>>,
 }
 
 impl FakeServerOsApi {
@@ -64,8 +67,24 @@ impl ServerOsApi for FakeServerOsApi {
         _width_in_pixels: Option<u16>,
         _height_in_pixels: Option<u16>,
     ) -> Result<()> {
+        if let Some(cached_resizes) = self.cached_resizes.lock().unwrap().as_mut() {
+            cached_resizes.insert(id, (cols, rows));
+            return Ok(());
+        }
         self.shared_ptys.set_size(id, cols, rows);
         Ok(())
+    }
+    fn cache_resizes(&mut self) {
+        let mut cached_resizes = self.cached_resizes.lock().unwrap();
+        if cached_resizes.is_none() {
+            *cached_resizes = Some(BTreeMap::new());
+        }
+    }
+    fn apply_cached_resizes(&mut self) {
+        let cached_resizes = self.cached_resizes.lock().unwrap().take();
+        for (terminal_id, (cols, rows)) in cached_resizes.unwrap_or_default() {
+            self.shared_ptys.set_size(terminal_id, cols, rows);
+        }
     }
     fn spawn_terminal(
         &self,
