@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use vte;
+use zellij_server::panes::kitty_graphics::KittyImageStore;
 use zellij_server::panes::sixel::SixelImageStore;
 use zellij_server::panes::{LinkHandler, TerminalPane};
 use zellij_utils::data::{Palette, Style};
@@ -174,6 +175,7 @@ fn read_from_channel(
                     Rc::new(RefCell::new(LinkHandler::new())),
                     character_cell_size,
                     sixel_image_store,
+                    Rc::new(RefCell::new(KittyImageStore::default())),
                     Rc::new(RefCell::new(Palette::default())),
                     Rc::new(RefCell::new(HashMap::new())),
                     None,
@@ -206,9 +208,7 @@ fn read_from_channel(
                             should_sleep = true;
                         },
                         Ok(count) => {
-                            for byte in buf.iter().take(count) {
-                                vte_parser.advance(&mut terminal_output.grid, *byte);
-                            }
+                            vte_parser.advance(&mut terminal_output.grid, &buf[..count]);
                             let current_snapshot = take_snapshot(&mut terminal_output);
                             let mut last_snapshot = last_snapshot.lock().unwrap();
                             *cursor_coordinates.lock().unwrap() = terminal_output

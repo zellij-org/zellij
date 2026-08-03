@@ -75,6 +75,8 @@ pub enum BackgroundJob {
     FlashTabBell(usize),     // usize = tab_id
     StopFlashTabBell(usize), // usize = tab_id
     MobileGateTimeout(ClientId),
+    StartNestedGuestPing(PaneId),
+    StopNestedGuestPing(PaneId),
     Exit,
 }
 
@@ -104,6 +106,8 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::FlashTabBell(..) => BackgroundJobContext::FlashTabBell,
             BackgroundJob::StopFlashTabBell(..) => BackgroundJobContext::StopFlashTabBell,
             BackgroundJob::MobileGateTimeout(..) => BackgroundJobContext::MobileGateTimeout,
+            BackgroundJob::StartNestedGuestPing(..) => BackgroundJobContext::StartNestedGuestPing,
+            BackgroundJob::StopNestedGuestPing(..) => BackgroundJobContext::StopNestedGuestPing,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -161,6 +165,7 @@ pub(crate) fn background_jobs_main(
         Arc::new(Mutex::new(HashMap::new()));
     let mut flashing_pane_bells: HashMap<PaneId, Arc<AtomicBool>> = HashMap::new();
     let mut flashing_tab_bells: HashMap<usize, Arc<AtomicBool>> = HashMap::new();
+    let mut nested_guest_pings: HashMap<PaneId, Arc<AtomicBool>> = HashMap::new();
 
     let http_client = HttpClient::builder()
         // TODO: timeout?
@@ -624,6 +629,30 @@ pub(crate) fn background_jobs_main(
                     .senders
                     .send_to_screen(ScreenInstruction::SetTabBellFlash(tab_id, false));
             },
+            BackgroundJob::StartNestedGuestPing(pane_id) => {
+                if !nested_guest_pings.contains_key(&pane_id) {
+                    let is_pinging = Arc::new(AtomicBool::new(true));
+                    nested_guest_pings.insert(pane_id, is_pinging.clone());
+                    runtime.spawn({
+                        let senders = bus.senders.clone();
+                        let flag = is_pinging.clone();
+                        let ping_interval_ms = crate::nested_guest::ping_interval_ms();
+                        async move {
+                            while flag.load(Ordering::SeqCst) {
+                                let _ = senders.send_to_screen(
+                                    ScreenInstruction::NestedGuestPingTick { pane_id },
+                                );
+                                tokio::time::sleep(Duration::from_millis(ping_interval_ms)).await;
+                            }
+                        }
+                    });
+                }
+            },
+            BackgroundJob::StopNestedGuestPing(pane_id) => {
+                if let Some(flag) = nested_guest_pings.remove(&pane_id) {
+                    flag.store(false, Ordering::SeqCst);
+                }
+            },
             BackgroundJob::MobileGateTimeout(client_id) => {
                 runtime.spawn({
                     let senders = bus.senders.clone();
@@ -640,6 +669,9 @@ pub(crate) fn background_jobs_main(
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {
                     loading_plugin.store(false, Ordering::SeqCst);
+                }
+                for nested_guest_ping in nested_guest_pings.values() {
+                    nested_guest_ping.store(false, Ordering::SeqCst);
                 }
 
                 let cache_file_name =

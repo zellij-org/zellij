@@ -1,13 +1,17 @@
-use crate::output::{CharacterChunk, SixelImageChunk};
+use crate::output::{CharacterChunk, KittyImageChunk, SixelImageChunk};
+use crate::panes::kitty_graphics::{
+    InterceptorResult, KittyApcInterceptor, KittyHostSupport, KittyImageStore,
+};
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::panes::{
     grid::Grid,
+    nested_session_modal::GuestModalShortcuts,
     terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::pty::VteBytes;
 use crate::route::NotificationEnd;
-use crate::tab::{AdjustedInput, Pane};
+use crate::tab::{AdjustedInput, GuestChoiceIndicator, Pane};
 use crate::ClientId;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -26,6 +30,7 @@ use zellij_utils::{
     },
     errors::prelude::*,
     input::layout::Run,
+    nested_session::NestedSessionMessage,
     pane_size::PaneGeom,
     pane_size::SizeInPixels,
     position::Position,
@@ -159,6 +164,11 @@ pub struct TerminalPane {
     /// stdin in the same stream position the original query occupied.
     /// Cleared by Tab when the reply (or 500 ms cache-fallback) lands.
     forward_paused: bool,
+    nested_guest: bool,
+    guest_modal: HashMap<ClientId, usize>,
+    guest_choice_indicators: HashMap<ClientId, GuestChoiceIndicator>,
+    guest_session_name: Option<String>,
+    guest_modal_shortcuts: GuestModalShortcuts,
     /// PTY bytes that have not yet been fed to vte. Single source of
     /// truth: `handle_pty_bytes` always appends here, and processing
     /// pops one byte at a time and advances the vte parser. Processing
@@ -166,6 +176,7 @@ pub struct TerminalPane {
     /// remaining bytes in the queue to be drained after the host reply
     /// has been written.
     pending_pty_input: VecDeque<u8>,
+    kitty_interceptor: KittyApcInterceptor,
 }
 
 impl Pane for TerminalPane {
@@ -222,20 +233,78 @@ impl Pane for TerminalPane {
             self.pending_pty_input.extend(bytes);
             return;
         }
-        let mut iter = bytes.into_iter();
-        while let Some(byte) = iter.next() {
-            self.vte_parser.advance(&mut self.grid, byte);
-            if !self.grid.pending_forwarded_queries.is_empty() {
-                // Grid produced a forward. Stop feeding; queue the
-                // un-fed remainder so Tab can replay it after the
-                // reply.
-                self.pending_pty_input.extend(iter);
-                break;
+        let mut forwarded: Vec<u8> = Vec::with_capacity(bytes.len());
+        let mut index = 0;
+        let mut capture_started = false;
+        while index < bytes.len() {
+            let byte = bytes[index];
+            index += 1;
+            match self.kitty_interceptor.advance(byte) {
+                InterceptorResult::Forward(fwd) => {
+                    capture_started = false;
+                    forwarded.extend_from_slice(fwd.as_slice());
+                },
+                InterceptorResult::Swallow => {
+                    if !capture_started {
+                        capture_started = true;
+                        // Drain everything before the sequence now, so a pause
+                        // in the middle of this flush can never strand a
+                        // capture that has already left the input buffer.
+                        if !forwarded.is_empty() {
+                            let consumed = self
+                                .vte_parser
+                                .advance_until_terminated(&mut self.grid, &forwarded);
+                            if consumed < forwarded.len() {
+                                self.pending_pty_input.extend(&forwarded[consumed..]);
+                                self.pending_pty_input.extend(&bytes[index - 1..]);
+                                self.kitty_interceptor.reset();
+                                return;
+                            }
+                            forwarded.clear();
+                        }
+                    }
+                },
+                InterceptorResult::Captured(cmd) => {
+                    capture_started = false;
+                    if !forwarded.is_empty() {
+                        let consumed = self
+                            .vte_parser
+                            .advance_until_terminated(&mut self.grid, &forwarded);
+                        if consumed < forwarded.len() {
+                            self.pending_pty_input.extend(&forwarded[consumed..]);
+                            self.pending_pty_input.extend(b"\x1b_G");
+                            self.pending_pty_input.extend(&cmd);
+                            self.pending_pty_input.extend(b"\x1b\\");
+                            self.pending_pty_input.extend(&bytes[index..]);
+                            return;
+                        }
+                        forwarded.clear();
+                    }
+                    self.grid.handle_kitty_apc(&cmd);
+                    if !self.grid.pending_forwarded_queries.is_empty() {
+                        // Grid produced a forward. Stop feeding; queue the
+                        // un-fed remainder so Tab can replay it after the
+                        // reply.
+                        self.pending_pty_input.extend(&bytes[index..]);
+                        return;
+                    }
+                },
             }
         }
+        let consumed = self
+            .vte_parser
+            .advance_until_terminated(&mut self.grid, &forwarded);
+        if consumed < forwarded.len() {
+            self.pending_pty_input.extend(&forwarded[consumed..]);
+        }
     }
-    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
+    fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
         // (x, y, is_visible)
+        if let Some(client_id) = client_id {
+            if self.guest_modal.contains_key(&client_id) {
+                return None;
+            }
+        }
         if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
             // do not render cursor if there's no room for it
             return None;
@@ -274,7 +343,72 @@ impl Pane for TerminalPane {
             }
         }
 
-        if self.is_held.is_some() {
+        if let Some(selection) = client_id.and_then(|c| self.guest_modal.get(&c).copied()) {
+            let client_id = client_id.expect("guest modal selection requires a client id");
+            let is_up = key_with_modifier
+                .as_ref()
+                .map(|k| {
+                    k.is_key_without_modifier(BareKey::Up)
+                        || k.is_key_without_modifier(BareKey::Char('k'))
+                })
+                .unwrap_or(false)
+                || raw_input_bytes.as_slice() == UP_ARROW;
+            let is_down = key_with_modifier
+                .as_ref()
+                .map(|k| {
+                    k.is_key_without_modifier(BareKey::Down)
+                        || k.is_key_without_modifier(BareKey::Char('j'))
+                })
+                .unwrap_or(false)
+                || raw_input_bytes.as_slice() == DOWN_ARROW;
+            let is_enter = key_with_modifier
+                .as_ref()
+                .map(|k| k.is_key_without_modifier(BareKey::Enter))
+                .unwrap_or(false)
+                || matches!(
+                    raw_input_bytes.as_slice(),
+                    ENTER_CARRIAGE_RETURN | ENTER_NEWLINE
+                );
+            let is_esc = key_with_modifier
+                .as_ref()
+                .map(|k| k.is_key_without_modifier(BareKey::Esc))
+                .unwrap_or(false)
+                || raw_input_bytes.as_slice() == ESC;
+            let digit = key_with_modifier
+                .as_ref()
+                .and_then(|k| match k.bare_key {
+                    BareKey::Char(c @ '1'..='2') if k.key_modifiers.is_empty() => Some(c),
+                    _ => None,
+                })
+                .or_else(|| match raw_input_bytes.as_slice() {
+                    b"1" => Some('1'),
+                    b"2" => Some('2'),
+                    _ => None,
+                });
+            if is_up {
+                self.guest_modal.insert(client_id, (selection + 1) % 2);
+                self.set_should_render(true);
+                Some(AdjustedInput::GuestModalSelectionChanged)
+            } else if is_down {
+                self.guest_modal.insert(client_id, (selection + 1) % 2);
+                self.set_should_render(true);
+                Some(AdjustedInput::GuestModalSelectionChanged)
+            } else if let Some(digit) = digit {
+                match digit {
+                    '1' => Some(AdjustedInput::GuestModalZoom),
+                    _ => Some(AdjustedInput::GuestModalDescend),
+                }
+            } else if is_enter {
+                match selection {
+                    0 => Some(AdjustedInput::GuestModalZoom),
+                    _ => Some(AdjustedInput::GuestModalDescend),
+                }
+            } else if is_esc {
+                Some(AdjustedInput::GuestModalDescend)
+            } else {
+                None
+            }
+        } else if self.is_held.is_some() {
             if key_with_modifier
                 .as_ref()
                 .map(|k| k.is_key_without_modifier(BareKey::Enter))
@@ -354,7 +488,14 @@ impl Pane for TerminalPane {
     fn render(
         &mut self,
         _client_id: Option<ClientId>,
-    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
+    ) -> Result<
+        Option<(
+            Vec<CharacterChunk>,
+            Option<String>,
+            Vec<SixelImageChunk>,
+            Vec<KittyImageChunk>,
+        )>,
+    > {
         if self.should_render() {
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
@@ -614,6 +755,98 @@ impl Pane for TerminalPane {
 
     fn drain_forwarded_queries(&mut self) -> Vec<crate::host_query::HostQuery> {
         self.grid.pending_forwarded_queries.drain(..).collect()
+    }
+
+    fn drain_nested_session_messages(&mut self) -> Vec<NestedSessionMessage> {
+        self.grid
+            .pending_nested_session_messages
+            .drain(..)
+            .collect()
+    }
+
+    fn is_nested_guest(&self) -> bool {
+        self.nested_guest
+    }
+
+    fn set_is_nested_guest(&mut self, is_nested_guest: bool) {
+        self.nested_guest = is_nested_guest;
+    }
+
+    fn set_guest_modal(&mut self, client_ids: &[ClientId]) {
+        for client_id in client_ids {
+            self.guest_modal.insert(*client_id, 0);
+        }
+        self.set_should_render(true);
+    }
+
+    fn clear_guest_modal(&mut self, client_id: ClientId) {
+        if self.guest_modal.remove(&client_id).is_some() {
+            self.render_full_viewport();
+            self.set_should_render(true);
+        }
+    }
+
+    fn clear_all_guest_modals(&mut self) {
+        if !self.guest_modal.is_empty() {
+            self.guest_modal.clear();
+            self.render_full_viewport();
+            self.set_should_render(true);
+        }
+    }
+
+    fn guest_modal_selection(&self, client_id: ClientId) -> Option<usize> {
+        self.guest_modal.get(&client_id).copied()
+    }
+
+    fn has_guest_modal_for_any_client(&self) -> bool {
+        !self.guest_modal.is_empty()
+    }
+
+    fn set_guest_choice_indicator(
+        &mut self,
+        client_id: ClientId,
+        indicator: Option<GuestChoiceIndicator>,
+    ) {
+        let previous = self.guest_choice_indicators.get(&client_id).copied();
+        if previous == indicator {
+            return;
+        }
+        match indicator {
+            Some(indicator) => {
+                self.guest_choice_indicators.insert(client_id, indicator);
+            },
+            None => {
+                self.guest_choice_indicators.remove(&client_id);
+            },
+        }
+        self.set_should_render(true);
+    }
+
+    fn guest_choice_indicator(&self, client_id: ClientId) -> Option<GuestChoiceIndicator> {
+        self.guest_choice_indicators.get(&client_id).copied()
+    }
+
+    fn clear_all_guest_choice_indicators(&mut self) {
+        if !self.guest_choice_indicators.is_empty() {
+            self.guest_choice_indicators.clear();
+            self.set_should_render(true);
+        }
+    }
+
+    fn set_guest_session_name(&mut self, session_name: Option<String>) {
+        self.guest_session_name = session_name;
+    }
+
+    fn guest_session_name(&self) -> Option<String> {
+        self.guest_session_name.clone()
+    }
+
+    fn set_guest_modal_shortcuts(&mut self, shortcuts: GuestModalShortcuts) {
+        self.guest_modal_shortcuts = shortcuts;
+    }
+
+    fn guest_modal_shortcuts(&self) -> GuestModalShortcuts {
+        self.guest_modal_shortcuts.clone()
     }
 
     fn arm_forward_pause(&mut self) {
@@ -955,6 +1188,12 @@ impl Pane for TerminalPane {
         self.arrow_fonts = should_support_arrow_fonts;
         self.grid.update_arrow_fonts(should_support_arrow_fonts);
     }
+    fn update_kitty_host_support(&mut self, supported: KittyHostSupport) {
+        self.grid.update_kitty_host_support(supported);
+    }
+    fn update_sixel_host_support(&mut self, supported: bool) {
+        self.grid.update_sixel_host_support(supported);
+    }
     fn update_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;
         self.frame.clear();
@@ -1096,6 +1335,7 @@ impl TerminalPane {
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
+        kitty_image_store: Rc<RefCell<KittyImageStore>>,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         initial_pane_title: Option<String>,
@@ -1117,6 +1357,7 @@ impl TerminalPane {
             link_handler,
             character_cell_size,
             sixel_image_store,
+            kitty_image_store,
             style.clone(),
             debug,
             arrow_fonts,
@@ -1154,7 +1395,13 @@ impl TerminalPane {
             arrow_fonts,
             notification_end,
             forward_paused: false,
+            nested_guest: false,
+            guest_modal: HashMap::new(),
+            guest_choice_indicators: HashMap::new(),
+            guest_session_name: None,
+            guest_modal_shortcuts: GuestModalShortcuts::default(),
             pending_pty_input: VecDeque::new(),
+            kitty_interceptor: KittyApcInterceptor::new(),
         }
     }
     pub fn get_x(&self) -> usize {

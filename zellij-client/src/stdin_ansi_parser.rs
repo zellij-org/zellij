@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use zellij_utils::{
     data::HostTerminalThemeMode,
     ipc::PixelDimensions,
+    nested_session,
     pane_size::SizeInPixels,
     vendored::termwiz::input::{InputEvent, InputParser},
 };
@@ -61,6 +62,8 @@ pub enum HostReply {
     /// DSR 997 reply / unsolicited notification reporting the host
     /// terminal's color-palette theme mode (CSI 2031).
     HostTerminalThemeChanged(HostTerminalThemeMode),
+    KittyGraphicsSupport(bool),
+    SixelSupport(bool),
 }
 
 /// Retained alias for the pre-refactor type name used by other modules in
@@ -154,6 +157,22 @@ impl HostReply {
         }
         None
     }
+
+    /// Classify a Primary Device Attributes reply (`CSI ? Ps ; Ps ... c`)
+    /// into a Sixel-capability advertisement. Attribute `4` in the reply
+    /// means the host terminal supports Sixel graphics.
+    ///
+    /// Replies that are not a primary-DA form (eg. secondary-DA `CSI > ... c`)
+    /// yield `None` so they do not clobber the host capability state.
+    pub fn sixel_support_from_primary_da(raw: &[u8]) -> Option<HostReply> {
+        lazy_static! {
+            static ref PRIMARY_DA_RE: Regex = Regex::new(r"^\u{1b}\[\?([0-9;]*)c$").unwrap();
+        }
+        let s = std::str::from_utf8(raw).ok()?;
+        let caps = PRIMARY_DA_RE.captures(s)?;
+        let supports_sixel = caps[1].split(';').any(|attribute| attribute == "4");
+        Some(HostReply::SixelSupport(supports_sixel))
+    }
 }
 
 /// The "slot" tracking state for a single forwarded query currently in
@@ -187,6 +206,7 @@ pub struct ParseOutput {
     /// Residue bytes that were not classified as host replies. These are
     /// the bytes the caller should feed to the keyboard parser.
     pub residue: Vec<u8>,
+    pub nested_frames: Vec<Vec<u8>>,
     /// `true` when the parser still holds buffered partial OSC/CSI
     /// bytes that need an idle-flush to release. The caller uses this
     /// to schedule a finalize tick even when the current chunk
@@ -252,6 +272,13 @@ enum SeqStatus {
     Malformed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StartupKittyProbe {
+    NotSent,
+    AwaitingReply,
+    Resolved,
+}
+
 /// Continuous host-reply parser. Lives for the whole client session.
 pub struct StdinAnsiParser {
     inner: InputParser,
@@ -264,7 +291,10 @@ pub struct StdinAnsiParser {
     /// Same for CSI device-control reports.
     partial_csi: Vec<u8>,
     partial_paste: Vec<u8>,
+    nested_frame_extractor: nested_session::NestedFrameExtractor,
     in_bracketed_paste: bool,
+    startup_kitty_probe: StartupKittyProbe,
+    partial_apc: Vec<u8>,
 }
 
 impl std::fmt::Debug for StdinAnsiParser {
@@ -285,8 +315,15 @@ impl StdinAnsiParser {
             partial_osc: Vec::new(),
             partial_csi: Vec::new(),
             partial_paste: Vec::new(),
+            nested_frame_extractor: nested_session::NestedFrameExtractor::new(),
             in_bracketed_paste: false,
+            startup_kitty_probe: StartupKittyProbe::NotSent,
+            partial_apc: Vec::new(),
         }
+    }
+
+    pub fn expect_kitty_probe_reply(&mut self) {
+        self.startup_kitty_probe = StartupKittyProbe::AwaitingReply;
     }
 
     /// Open a forwarding window for `token`. Subsequent reply events that
@@ -349,12 +386,16 @@ impl StdinAnsiParser {
     /// are the bytes the caller should feed to the keyboard parser.
     pub fn feed(&mut self, bytes: &[u8]) -> ParseOutput {
         let mut out = ParseOutput::default();
+        let (bytes, nested_frames) = self.nested_frame_extractor.extract(bytes);
+        let bytes = &bytes[..];
+        out.nested_frames = nested_frames;
+        let sanitized = self.extract_kitty_probe_reply(bytes, &mut out.replies);
         // Collect events first (borrow-splits the InputParser across the
         // callback and the post-processing mutations).
         let mut events = Vec::new();
         let mut residue = Vec::new();
         self.inner.parse(
-            bytes,
+            &sanitized,
             |event| {
                 events.push(event);
             },
@@ -391,6 +432,13 @@ impl StdinAnsiParser {
                 } => {
                     match final_byte {
                         b'c' => {
+                            if self.startup_kitty_probe == StartupKittyProbe::AwaitingReply {
+                                self.startup_kitty_probe = StartupKittyProbe::Resolved;
+                                out.replies.push(HostReply::KittyGraphicsSupport(false));
+                            }
+                            if let Some(reply) = HostReply::sixel_support_from_primary_da(&raw) {
+                                out.replies.push(reply);
+                            }
                             // Primary-DA — the barrier. Close the slot and
                             // emit the completed forwarded reply if active.
                             if let Some(slot) = self.active_forward.take() {
@@ -427,16 +475,25 @@ impl StdinAnsiParser {
         // other bytes pass through unchanged. The walk is stateful so
         // an OSC/CSI sequence split across `feed()` calls is buffered
         // rather than leaking into residue.
-        residue.extend(self.strip_replies(bytes));
+        residue.extend(self.strip_replies(&sanitized));
         out.residue = residue;
         out.has_partial_state = !self.partial_osc.is_empty()
             || !self.partial_csi.is_empty()
-            || !self.partial_paste.is_empty();
+            || !self.partial_paste.is_empty()
+            || !self.nested_frame_extractor.partial_bytes().is_empty()
+            || !self.partial_apc.is_empty();
         out
     }
 
     pub fn pending_partial(&self) -> PendingPartial {
-        if !self.partial_paste.is_empty() {
+        if !self.partial_paste.is_empty() || !self.partial_apc.is_empty() {
+            PendingPartial::ReplyInProgress
+        } else if self.partial_csi.is_empty()
+            && self.partial_osc.is_empty()
+            && self.nested_frame_extractor.partial_bytes() == [0x1b]
+        {
+            PendingPartial::LoneEsc
+        } else if !self.nested_frame_extractor.partial_bytes().is_empty() {
             PendingPartial::ReplyInProgress
         } else if self.partial_csi.is_empty() && self.partial_osc.is_empty() {
             PendingPartial::None
@@ -450,6 +507,13 @@ impl StdinAnsiParser {
     pub fn finalize_lone_esc(&mut self) -> Vec<u8> {
         if self.partial_csi.is_empty()
             && self.partial_paste.is_empty()
+            && self.partial_osc.is_empty()
+            && self.nested_frame_extractor.partial_bytes() == [0x1b]
+        {
+            self.nested_frame_extractor.take_partial()
+        } else if self.partial_csi.is_empty()
+            && self.partial_paste.is_empty()
+            && self.nested_frame_extractor.partial_bytes().is_empty()
             && self.partial_osc == [0x1b]
         {
             std::mem::take(&mut self.partial_osc)
@@ -460,12 +524,79 @@ impl StdinAnsiParser {
 
     pub fn finalize_force(&mut self) -> Vec<u8> {
         self.in_bracketed_paste = false;
+        let mut partial_nested_frame = self.nested_frame_extractor.take_partial();
         let mut out = Vec::with_capacity(
-            self.partial_osc.len() + self.partial_csi.len() + self.partial_paste.len(),
+            self.partial_osc.len()
+                + self.partial_csi.len()
+                + self.partial_paste.len()
+                + partial_nested_frame.len()
+                + self.partial_apc.len(),
         );
         out.append(&mut self.partial_osc);
         out.append(&mut self.partial_csi);
         out.append(&mut self.partial_paste);
+        out.append(&mut partial_nested_frame);
+        out.append(&mut self.partial_apc);
+        out
+    }
+
+    fn extract_kitty_probe_reply(&mut self, bytes: &[u8], replies: &mut Vec<HostReply>) -> Vec<u8> {
+        let mut working = std::mem::take(&mut self.partial_apc);
+        if working.is_empty() && self.partial_osc == [0x1b] && bytes.first() == Some(&b'_') {
+            working.append(&mut self.partial_osc);
+        }
+        working.extend_from_slice(bytes);
+        let mut out = Vec::with_capacity(working.len());
+        let mut i = 0;
+        while i < working.len() {
+            let rest = &working[i..];
+            if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b'_' {
+                match rest.get(2) {
+                    Some(&b'G') => {},
+                    Some(_) => {
+                        out.push(working[i]);
+                        i += 1;
+                        continue;
+                    },
+                    None => {
+                        self.partial_apc = rest.to_vec();
+                        return out;
+                    },
+                }
+                match apc_status(rest) {
+                    SeqStatus::Complete(len) => {
+                        let payload = &rest[2..len - 2];
+                        if self.startup_kitty_probe == StartupKittyProbe::AwaitingReply
+                            && payload.first() == Some(&b'G')
+                            && contains_subslice(payload, b"i=31")
+                        {
+                            replies.push(HostReply::KittyGraphicsSupport(contains_subslice(
+                                payload, b"i=31;OK",
+                            )));
+                            self.startup_kitty_probe = StartupKittyProbe::Resolved;
+                        }
+                        i += len;
+                        continue;
+                    },
+                    SeqStatus::NeedMore => {
+                        let tail = rest.to_vec();
+                        if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
+                            out.extend_from_slice(&tail);
+                        } else {
+                            self.partial_apc = tail;
+                        }
+                        return out;
+                    },
+                    SeqStatus::Malformed => {
+                        out.push(working[i]);
+                        i += 1;
+                        continue;
+                    },
+                }
+            }
+            out.push(working[i]);
+            i += 1;
+        }
         out
     }
 
@@ -620,6 +751,28 @@ fn osc_status(buf: &[u8]) -> SeqStatus {
         }
     }
     SeqStatus::NeedMore
+}
+
+fn apc_status(buf: &[u8]) -> SeqStatus {
+    if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b'_') {
+        return SeqStatus::Malformed;
+    }
+    let mut i = 2;
+    while i < buf.len() {
+        match buf[i] {
+            0x1b => match buf.get(i + 1) {
+                Some(&b'\\') => return SeqStatus::Complete(i + 2),
+                Some(_) => return SeqStatus::Malformed,
+                None => return SeqStatus::NeedMore,
+            },
+            _ => i += 1,
+        }
+    }
+    SeqStatus::NeedMore
+}
+
+fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack.windows(needle.len()).any(|w| w == needle)
 }
 
 /// Walk a whitelisted CSI report starting at the head of `buf`.

@@ -2,7 +2,7 @@ use crate::keyboard_parser::{KittyKeyboardParser, KittyParseOutcome};
 use crate::os_input_output::ClientOsApi;
 #[cfg(windows)]
 use crate::os_input_output_windows::use_vt_path;
-use crate::stdin_ansi_parser::{PendingPartial, StdinAnsiParser};
+use crate::stdin_ansi_parser::{HostReply, PendingPartial, StdinAnsiParser};
 #[cfg(windows)]
 use crate::stdin_handler_windows::enable_vt_input;
 use crate::InputInstruction;
@@ -21,6 +21,7 @@ pub(crate) fn stdin_loop(
     send_input_instructions: SenderWithContext<InputInstruction>,
     stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    support_kitty_graphics_protocol: bool,
     resize_sender: Option<std::sync::mpsc::Sender<()>>,
 ) {
     // On Windows we choose between the VT byte path (termwiz/kitty parsing)
@@ -44,11 +45,24 @@ pub(crate) fn stdin_loop(
         let can_query_terminal = true;
 
         if can_query_terminal {
-            let query_string = build_startup_query_string();
+            let query_string = build_startup_query_string(support_kitty_graphics_protocol);
             let _ = os_input
                 .get_stdout_writer()
                 .write(query_string.as_bytes())
                 .unwrap();
+            if support_kitty_graphics_protocol {
+                stdin_ansi_parser.lock().unwrap().expect_kitty_probe_reply();
+            } else {
+                let _ =
+                    send_input_instructions.send(InputInstruction::AnsiStdinInstructions(vec![
+                        HostReply::KittyGraphicsSupport(false),
+                    ]));
+            }
+        } else {
+            let _ = send_input_instructions.send(InputInstruction::AnsiStdinInstructions(vec![
+                HostReply::KittyGraphicsSupport(false),
+                HostReply::SixelSupport(false),
+            ]));
         }
     }
 
@@ -97,7 +111,7 @@ pub(crate) fn stdin_loop(
         });
     let mut needs_finalization = false;
     let mut reply_in_progress_since: Option<Instant> = None;
-    loop {
+    'stdin: loop {
         match if needs_finalization {
             stdin_rx.recv_timeout(LONE_ESC_FLUSH_INTERVAL)
         } else {
@@ -132,6 +146,10 @@ pub(crate) fn stdin_loop(
                             let _ = send_input_instructions
                                 .send(InputInstruction::DesktopNotificationResponse(payload));
                         }
+                        for payload_bytes in parse_output.nested_frames {
+                            let _ = send_input_instructions
+                                .send(InputInstruction::NestedSessionFrameFromHost(payload_bytes));
+                        }
                         let residue = parse_output.residue;
                         if residue.is_empty() {
                             schedule_finalization(
@@ -153,13 +171,16 @@ pub(crate) fn stdin_loop(
                             // continuation completes the sequence.
                             match kitty_parser.feed(&residue) {
                                 KittyParseOutcome::Complete(key_with_modifier) => {
-                                    send_input_instructions
+                                    if send_input_instructions
                                         .send(InputInstruction::KeyWithModifierEvent(
                                             key_with_modifier,
                                             current_buffer.drain(..).collect(),
                                             true,
                                         ))
-                                        .unwrap();
+                                        .is_err()
+                                    {
+                                        break 'stdin;
+                                    }
                                     schedule_finalization(
                                         &stdin_ansi_parser,
                                         false,
@@ -177,11 +198,11 @@ pub(crate) fn stdin_loop(
                         // Ambiguous events (if any) will be finalized later only if 50ms
                         // passes with no new input
                         let maybe_more = true;
-                        let mut events = vec![];
-                        input_parser.parse(
+                        let mut events: Vec<(InputEvent, usize)> = vec![];
+                        input_parser.parse_with_consumed(
                             &residue,
-                            |input_event: InputEvent| {
-                                events.push(input_event);
+                            |input_event: InputEvent, consumed: usize| {
+                                events.push((input_event, consumed));
                             },
                             maybe_more,
                         );
@@ -190,13 +211,18 @@ pub(crate) fn stdin_loop(
                         // reports — `StdinAnsiParser::feed` strips both
                         // before the keyboard parser sees the bytes.
                         // Every termwiz event is a key/mouse/paste/etc.
-                        for input_event in events.into_iter() {
-                            send_input_instructions
-                                .send(InputInstruction::KeyEvent(
-                                    input_event,
-                                    current_buffer.drain(..).collect(),
-                                ))
-                                .unwrap();
+                        // Each event is forwarded with exactly the bytes
+                        // that produced it, never bytes belonging to other
+                        // events decoded from the same read.
+                        for (input_event, consumed) in events.into_iter() {
+                            let take = consumed.min(current_buffer.len());
+                            let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
+                            if send_input_instructions
+                                .send(InputInstruction::KeyEvent(input_event, raw_bytes))
+                                .is_err()
+                            {
+                                break 'stdin;
+                            }
                         }
 
                         schedule_finalization(
@@ -289,20 +315,19 @@ fn drain_partial_to_keyboard(
         current_buffer.extend_from_slice(&drained);
     }
 
-    let mut events = vec![];
-    input_parser.parse(
+    let mut events: Vec<(InputEvent, usize)> = vec![];
+    input_parser.parse_with_consumed(
         &drained,
-        |input_event: InputEvent| {
-            events.push(input_event);
+        |input_event: InputEvent, consumed: usize| {
+            events.push((input_event, consumed));
         },
         false,
     );
-    for input_event in events {
+    for (input_event, consumed) in events {
+        let take = consumed.min(current_buffer.len());
+        let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
         send_input_instructions
-            .send(InputInstruction::KeyEvent(
-                input_event,
-                current_buffer.drain(..).collect(),
-            ))
+            .send(InputInstruction::KeyEvent(input_event, raw_bytes))
             .unwrap();
     }
 }
@@ -310,30 +335,66 @@ fn drain_partial_to_keyboard(
 /// Build the fire-and-forget host-query batch sent at client startup.
 /// The host's replies refine `Screen`'s cached state asynchronously as
 /// they arrive; the UI does not block on them.
-fn build_startup_query_string() -> String {
+fn build_startup_query_string(support_kitty_graphics_protocol: bool) -> String {
     // <ESC>[14t => get text area size in pixels,
     // <ESC>[16t => get character cell size in pixels
     // <ESC>]11;?<ESC>\ => get background color
     // <ESC>]10;?<ESC>\ => get foreground color
     // <ESC>[?2026$p => get synchronised output mode
-    String::from("\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p")
+    // <ESC>_Ga=q,...<ESC>\ => probe kitty graphics support (omitted when the
+    // protocol is disabled), answered by capable terminals only; the trailing
+    // Primary DA is the barrier that resolves the probe negatively when it
+    // goes unanswered
+    let kitty_graphics_probe = if support_kitty_graphics_protocol {
+        "\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}"
+    } else {
+        ""
+    };
+    format!(
+        "{}\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p{}\u{1b}[c",
+        PIXEL_SIZE_QUERY, kitty_graphics_probe
+    )
 }
+
+pub(crate) const PIXEL_SIZE_QUERY: &str = "\u{1b}[14t\u{1b}[16t";
 
 #[cfg(test)]
 mod tests {
-    use super::build_startup_query_string;
+    use super::{build_startup_query_string, PIXEL_SIZE_QUERY};
+
+    #[test]
+    fn pixel_size_query_probes_text_area_and_character_cell() {
+        assert_eq!(PIXEL_SIZE_QUERY, "\u{1b}[14t\u{1b}[16t");
+    }
 
     #[test]
     fn startup_query_has_no_palette_register_loop() {
-        let query = build_startup_query_string();
+        let query = build_startup_query_string(true);
         assert_eq!(
             query,
-            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p"
+            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}\u{1b}[c"
         );
         assert!(
             !query.contains("\u{1b}]4;"),
             "startup query must not contain OSC 4 palette-register probes: {:?}",
             query
         );
+    }
+
+    #[test]
+    fn startup_query_contains_kitty_probe_before_barrier() {
+        let query = build_startup_query_string(true);
+        assert!(query.contains("\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}"));
+        let probe_pos = query.find("\u{1b}_Ga=q,i=31,").unwrap();
+        let barrier_pos = query.find("\u{1b}[c").unwrap();
+        assert!(probe_pos < barrier_pos);
+    }
+
+    #[test]
+    fn startup_query_omits_kitty_probe_when_the_protocol_is_disabled() {
+        let query = build_startup_query_string(false);
+        assert!(!query.contains("\u{1b}_G"));
+        assert!(query.ends_with("\u{1b}[c"));
+        assert!(query.starts_with("\u{1b}[14t\u{1b}[16t"));
     }
 }

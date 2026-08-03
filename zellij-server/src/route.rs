@@ -611,6 +611,14 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ToggleFocusNoUiFullscreen => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleActiveTerminalNoUiFullscreen(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::TogglePaneFrames => {
             senders
                 .send_to_screen(ScreenInstruction::TogglePaneFrames(Some(
@@ -1579,6 +1587,30 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::FocusHostSession => {
+            senders
+                .send_to_screen(ScreenInstruction::FocusHostSession(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::FocusGuestSession => {
+            senders
+                .send_to_screen(ScreenInstruction::FocusGuestSession(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ToggleHostFullscreen => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleHostFullscreen(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::RenameSession { name } => {
             senders
                 .send_to_screen(ScreenInstruction::RenameSession(
@@ -2003,6 +2035,14 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ToggleFocusNoUiFullscreenByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleNoUiFullscreenWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::TogglePaneEmbedOrFloatingByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::TogglePaneEmbedOrFloatingWithPaneId(
@@ -2274,6 +2314,21 @@ pub(crate) fn route_thread_main(
                             // see the doc comment on `route_action` for why this matters.
                             let dispatch_inputs =
                                 session_data.read().unwrap().as_ref().and_then(|s| {
+                                    let in_passthrough =
+                                        s.key_passthrough_clients.contains_key(&client_id);
+                                    if in_passthrough {
+                                        return Some((
+                                            s.senders.clone(),
+                                            s.default_shell.clone(),
+                                            s.session_configuration
+                                                .get_client_default_input_mode(&client_id),
+                                            vec![Action::Write {
+                                                key_with_modifier: Some(key),
+                                                bytes: raw_bytes,
+                                                is_kitty_keyboard_protocol,
+                                            }],
+                                        ));
+                                    }
                                     let (kb, im, dim) =
                                         s.get_client_keybinds_and_mode(&client_id)?;
                                     let actions: Vec<Action> = kb
@@ -2480,6 +2535,30 @@ pub(crate) fn route_thread_main(
                             send_to_screen_or_retry_queue!(
                                 senders,
                                 ScreenInstruction::TerminalPixelDimensions(pixel_dimensions),
+                                instruction,
+                                retry_queue
+                            )
+                            .with_context(err_context)?;
+                        },
+                        ClientToServerMsg::KittyGraphicsSupport { supported } => {
+                            send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::SetKittyGraphicsSupport {
+                                    client_id,
+                                    supported
+                                },
+                                instruction,
+                                retry_queue
+                            )
+                            .with_context(err_context)?;
+                        },
+                        ClientToServerMsg::SixelSupport { supported } => {
+                            send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::SetSixelSupport {
+                                    client_id,
+                                    supported
+                                },
                                 instruction,
                                 retry_queue
                             )
@@ -2701,6 +2780,67 @@ pub(crate) fn route_thread_main(
                                     Some(client_id),
                                     Event::SoftKeyboardVisibilityChanged(visible),
                                 )]));
+                            }
+                        },
+                        ClientToServerMsg::NestedSessionFrameFromHost { ref payload_bytes } => {
+                            match zellij_utils::nested_session::decode_payload(payload_bytes) {
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::AnnounceAck { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::FocusGained { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::FocusLost) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::ShortcutUpdate { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::FullscreenState { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::AncestryUpdate { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message) => {
+                                    log::debug!(
+                                        "dropping unsupported nested session frame relayed from host: {:?}",
+                                        message
+                                    );
+                                },
+                                None => {
+                                    log::debug!("dropping undecodable nested session frame relayed from host");
+                                },
                             }
                         },
                     }

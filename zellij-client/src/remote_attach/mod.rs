@@ -115,6 +115,12 @@ fn try_to_connect_with_saved_session_token(
     Ok(None)
 }
 
+fn dialoguer_error_to_client_error(error: dialoguer::Error) -> RemoteClientError {
+    match error {
+        dialoguer::Error::IO(error) => RemoteClientError::IoError(error),
+    }
+}
+
 fn authenticate_with_retry(
     runtime: Handle,
     remote_session_url: &str,
@@ -136,7 +142,7 @@ fn authenticate_with_retry(
             None => Password::new()
                 .with_prompt("Enter authentication token")
                 .interact()
-                .map_err(|e| RemoteClientError::IoError(e))?,
+                .map_err(dialoguer_error_to_client_error)?,
         };
 
         let ca_cert_owned = ca_cert.map(|p| p.to_path_buf());
@@ -182,7 +188,7 @@ fn authenticate_with_retry(
                         return Err(RemoteClientError::InvalidAuthToken);
                     },
                     Err(e) => {
-                        return Err(RemoteClientError::IoError(e));
+                        return Err(dialoguer_error_to_client_error(e));
                     },
                 }
             },

@@ -13,7 +13,7 @@ use zellij_utils::{
     position::{Column, Line, Position},
 };
 
-use rand::Rng;
+use rand::RngExt;
 use regex::Regex;
 
 use std::fmt::Write;
@@ -23,7 +23,7 @@ use super::remote_runner::{RemoteRunner, RemoteTerminal, Step};
 
 pub const QUIT: [u8; 1] = [17]; // ctrl-q
 pub const ESC: [u8; 1] = [27];
-pub const ENTER: [u8; 2] = [10, 13]; // '\n\r'
+pub const ENTER: [u8; 1] = [13]; // '\r'
 pub const SPACE: [u8; 1] = [32];
 pub const LOCK_MODE: [u8; 1] = [7]; // ctrl-g
 

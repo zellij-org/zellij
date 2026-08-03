@@ -1,14 +1,14 @@
 //! Handles cli and configuration options
 use crate::cli::Command;
 use crate::data::{InputMode, WebSharing};
-use clap::{ArgEnum, Args};
+use clap::{Args, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use std::net::IpAddr;
 
-#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ArgEnum)]
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ValueEnum)]
 pub enum OnForceClose {
     #[serde(alias = "quit")]
     Quit,
@@ -16,7 +16,7 @@ pub enum OnForceClose {
     Detach,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ArgEnum)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
 pub enum MobileLayoutConfiguration {
     #[serde(alias = "web")]
     Web,
@@ -75,6 +75,37 @@ impl MobileLayoutConfiguration {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
+pub enum NestedSessionHandling {
+    #[serde(alias = "ask")]
+    Ask,
+    #[serde(alias = "fullscreen")]
+    Fullscreen,
+    #[serde(alias = "descend")]
+    Descend,
+    #[serde(alias = "never")]
+    Never,
+}
+
+impl Default for NestedSessionHandling {
+    fn default() -> Self {
+        Self::Ask
+    }
+}
+
+impl FromStr for NestedSessionHandling {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Ask" | "ask" => Ok(Self::Ask),
+            "Fullscreen" | "fullscreen" => Ok(Self::Fullscreen),
+            "Descend" | "descend" => Ok(Self::Descend),
+            "Never" | "never" => Ok(Self::Never),
+            _ => Err(format!("No such nested_session_handling: {}", s)),
+        }
+    }
+}
+
 impl Default for OnForceClose {
     fn default() -> Self {
         Self::Detach
@@ -93,7 +124,7 @@ impl FromStr for OnForceClose {
     }
 }
 
-#[derive(ArgEnum, Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PaneFrameStyle {
     Full,
@@ -168,7 +199,7 @@ pub struct Options {
     #[clap(long, value_parser)]
     pub theme_light: Option<String>,
     /// Set the default mode
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     pub default_mode: Option<InputMode>,
     /// Set the default shell
     #[clap(long, value_parser)]
@@ -196,7 +227,7 @@ pub struct Options {
     #[serde(default)]
     /// Set display of the pane frames (true or false)
     pub pane_frames: Option<bool>,
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     #[serde(default)]
     pub pane_frame_style: Option<PaneFrameStyle>,
     #[clap(long, value_parser)]
@@ -204,7 +235,7 @@ pub struct Options {
     /// Mirror session when multiple users are connected (true or false)
     pub mirror_session: Option<bool>,
     /// Set behaviour on force close (quit or detach)
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     pub on_force_close: Option<OnForceClose>,
     #[clap(long, value_parser)]
     pub scroll_buffer_size: Option<usize>,
@@ -217,9 +248,9 @@ pub struct Options {
     /// OSC52 destination clipboard
     #[clap(
         long,
-        arg_enum,
+        value_enum,
         ignore_case = true,
-        conflicts_with = "copy-command",
+        conflicts_with = "copy_command",
         value_parser
     )]
     #[serde(default)]
@@ -291,6 +322,12 @@ pub struct Options {
     #[serde(default)]
     pub support_kitty_keyboard_protocol: Option<bool>,
 
+    /// Whether to enable support for the Kitty graphics (image) protocol (must also be supported
+    /// by the host terminal), defaults to true if the terminal supports it
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub support_kitty_graphics_protocol: Option<bool>,
+
     /// Whether to make sure a local web server is running when a new Zellij session starts.
     /// This web server will allow creating new sessions and attaching to existing ones that have
     /// opted in to being shared in the browser.
@@ -351,6 +388,12 @@ pub struct Options {
     #[serde(default)]
     pub advanced_mouse_actions: Option<bool>,
 
+    /// Whether Ctrl+ScrollWheel resizes panes
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub mouse_scroll_resize: Option<bool>,
+
     /// Whether to enable mouse hover visual effects (frame highlight and help text)
     /// default is true
     #[clap(long, value_parser)]
@@ -396,7 +439,7 @@ pub struct Options {
     pub client_async_worker_tasks: Option<usize>,
 
     /// When a newly-attaching client should land in the mobile UI plugin (web, always, never)
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     #[serde(default)]
     pub mobile_layout: Option<MobileLayoutConfiguration>,
 
@@ -409,9 +452,15 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub mobile_threshold_rows: Option<u16>,
+
+    /// How to handle a nested Zellij session detected inside a pane
+    /// (ask, fullscreen, descend, never)
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
+    #[serde(default)]
+    pub nested_session_handling: Option<NestedSessionHandling>,
 }
 
-#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
+#[derive(ValueEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
 pub enum Clipboard {
     #[serde(alias = "system")]
     System,
@@ -491,6 +540,9 @@ impl Options {
         let support_kitty_keyboard_protocol = other
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
+        let support_kitty_graphics_protocol = other
+            .support_kitty_graphics_protocol
+            .or(self.support_kitty_graphics_protocol);
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
@@ -498,6 +550,7 @@ impl Options {
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
+        let mouse_scroll_resize = other.mouse_scroll_resize.or(self.mouse_scroll_resize);
         let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = other.focus_follows_mouse.or(self.focus_follows_mouse);
@@ -520,6 +573,9 @@ impl Options {
         let mobile_layout = other.mobile_layout.or(self.mobile_layout);
         let mobile_threshold_cols = other.mobile_threshold_cols.or(self.mobile_threshold_cols);
         let mobile_threshold_rows = other.mobile_threshold_rows.or(self.mobile_threshold_rows);
+        let nested_session_handling = other
+            .nested_session_handling
+            .or(self.nested_session_handling);
 
         Options {
             simplified_ui,
@@ -553,6 +609,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
+            support_kitty_graphics_protocol,
             web_server,
             web_sharing,
             stacked_resize,
@@ -560,6 +617,7 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            mouse_scroll_resize,
             mouse_hover_effects,
             visual_bell,
             focus_follows_mouse,
@@ -574,6 +632,7 @@ impl Options {
             mobile_layout,
             mobile_threshold_cols,
             mobile_threshold_rows,
+            nested_session_handling,
         }
     }
 
@@ -636,6 +695,9 @@ impl Options {
         let support_kitty_keyboard_protocol = other
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
+        let support_kitty_graphics_protocol = other
+            .support_kitty_graphics_protocol
+            .or(self.support_kitty_graphics_protocol);
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
@@ -643,6 +705,7 @@ impl Options {
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
+        let mouse_scroll_resize = other.mouse_scroll_resize.or(self.mouse_scroll_resize);
         let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = merge_bool(other.focus_follows_mouse, self.focus_follows_mouse);
@@ -665,6 +728,9 @@ impl Options {
         let mobile_layout = other.mobile_layout.or(self.mobile_layout);
         let mobile_threshold_cols = other.mobile_threshold_cols.or(self.mobile_threshold_cols);
         let mobile_threshold_rows = other.mobile_threshold_rows.or(self.mobile_threshold_rows);
+        let nested_session_handling = other
+            .nested_session_handling
+            .or(self.nested_session_handling);
 
         Options {
             simplified_ui,
@@ -698,6 +764,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
+            support_kitty_graphics_protocol,
             web_server,
             web_sharing,
             stacked_resize,
@@ -705,6 +772,7 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            mouse_scroll_resize,
             mouse_hover_effects,
             visual_bell,
             focus_follows_mouse,
@@ -719,6 +787,7 @@ impl Options {
             mobile_layout,
             mobile_threshold_cols,
             mobile_threshold_rows,
+            nested_session_handling,
         }
     }
 

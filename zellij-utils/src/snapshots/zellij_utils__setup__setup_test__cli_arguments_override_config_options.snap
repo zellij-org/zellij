@@ -36,6 +36,7 @@ Options {
     serialization_interval: None,
     disable_session_metadata: None,
     support_kitty_keyboard_protocol: None,
+    support_kitty_graphics_protocol: None,
     web_server: None,
     web_sharing: None,
     stacked_resize: None,
@@ -43,6 +44,7 @@ Options {
     show_startup_tips: None,
     show_release_notes: None,
     advanced_mouse_actions: None,
+    mouse_scroll_resize: None,
     mouse_hover_effects: None,
     visual_bell: None,
     focus_follows_mouse: None,
@@ -57,4 +59,5 @@ Options {
     mobile_layout: None,
     mobile_threshold_cols: None,
     mobile_threshold_rows: None,
+    nested_session_handling: None,
 }

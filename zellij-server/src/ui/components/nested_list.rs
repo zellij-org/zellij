@@ -89,6 +89,7 @@ pub fn parse_nested_list_items<'a>(
                 text,
                 opaque,
                 selected,
+                disabled: false,
                 indices,
             };
             Ok::<NestedListItem, String>(NestedListItem {

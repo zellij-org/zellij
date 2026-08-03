@@ -392,7 +392,9 @@ mod web_client_tests {
         };
 
         control_sink
-            .send(Message::Text(serde_json::to_string(&resize_msg).unwrap()))
+            .send(Message::Text(
+                serde_json::to_string(&resize_msg).unwrap().into(),
+            ))
             .await
             .expect("Failed to send resize message");
 
@@ -411,7 +413,7 @@ mod web_client_tests {
         let (mut terminal_sink, _terminal_stream) = terminal_ws.split();
 
         terminal_sink
-            .send(Message::Text("echo hello\n".to_string()))
+            .send(Message::Text("echo hello\n".to_string().into()))
             .await
             .expect("Failed to send terminal input");
 
@@ -809,7 +811,9 @@ mod web_client_tests {
         };
 
         control_sink
-            .send(Message::Text(serde_json::to_string(&resize_msg).unwrap()))
+            .send(Message::Text(
+                serde_json::to_string(&resize_msg).unwrap().into(),
+            ))
             .await
             .expect("Failed to send resize message");
 
@@ -965,12 +969,16 @@ mod web_client_tests {
         };
 
         control_sink_1
-            .send(Message::Text(serde_json::to_string(&resize_msg_1).unwrap()))
+            .send(Message::Text(
+                serde_json::to_string(&resize_msg_1).unwrap().into(),
+            ))
             .await
             .expect("Failed to send resize message for client 1");
 
         control_sink_2
-            .send(Message::Text(serde_json::to_string(&resize_msg_2).unwrap()))
+            .send(Message::Text(
+                serde_json::to_string(&resize_msg_2).unwrap().into(),
+            ))
             .await
             .expect("Failed to send resize message for client 2");
 
@@ -1009,7 +1017,7 @@ mod web_client_tests {
 
         let send_result = control_sink_2
             .send(Message::Text(
-                serde_json::to_string(&resize_msg_2_again).unwrap(),
+                serde_json::to_string(&resize_msg_2_again).unwrap().into(),
             ))
             .await;
 
@@ -1099,7 +1107,7 @@ mod web_client_tests {
         let (mut terminal_sink, mut terminal_stream) = terminal_ws.split();
 
         terminal_sink
-            .send(Message::Text("test input\n".to_string()))
+            .send(Message::Text("test input\n".to_string().into()))
             .await
             .expect("Failed to send terminal input");
 
@@ -1235,7 +1243,7 @@ mod web_client_tests {
         let (mut terminal_sink, mut terminal_stream) = terminal_ws.split();
 
         terminal_sink
-            .send(Message::Text("echo test\n".to_string()))
+            .send(Message::Text("echo test\n".to_string().into()))
             .await
             .expect("Failed to send terminal input");
 
@@ -1893,7 +1901,9 @@ mod web_client_tests {
             }),
         };
         control_sink
-            .send(Message::Text(serde_json::to_string(&resize_msg).unwrap()))
+            .send(Message::Text(
+                serde_json::to_string(&resize_msg).unwrap().into(),
+            ))
             .await
             .expect("Failed to send resize message");
 
@@ -2066,7 +2076,9 @@ mod web_client_tests {
             }),
         };
         control_sink
-            .send(Message::Text(serde_json::to_string(&resize_msg).unwrap()))
+            .send(Message::Text(
+                serde_json::to_string(&resize_msg).unwrap().into(),
+            ))
             .await
             .expect("Failed to send resize message");
 
@@ -2396,7 +2408,9 @@ mod web_client_tests {
         };
 
         control_sink
-            .send(Message::Text(serde_json::to_string(&resize_msg).unwrap()))
+            .send(Message::Text(
+                serde_json::to_string(&resize_msg).unwrap().into(),
+            ))
             .await
             .expect("Failed to send resize message");
 
@@ -2499,7 +2513,9 @@ mod web_client_tests {
         };
 
         control_sink
-            .send(Message::Text(serde_json::to_string(&resize_msg).unwrap()))
+            .send(Message::Text(
+                serde_json::to_string(&resize_msg).unwrap().into(),
+            ))
             .await
             .expect("Failed to send resize message");
 

@@ -8,6 +8,7 @@ use zellij_utils::position::Position;
 use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
 use crate::plugins::PluginInstruction;
+use crate::screen::{GuestModalOutcome, ScreenInstruction};
 use crate::ClientId;
 
 use super::{Pane, Tab};
@@ -230,6 +231,7 @@ struct MouseEventContext {
     pinned_unselectable: Option<PaneId>,
     focus_follows_mouse: bool,
     mouse_click_through: bool,
+    mouse_scroll_resize: bool,
 }
 
 fn edge_and_delta_to_strategies(
@@ -348,9 +350,70 @@ impl MouseHandler {
         event: &MouseEvent,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
+        if let Some(effect) = Self::intercept_guest_modal_mouse_event(tab, event, client_id)? {
+            return Ok(effect);
+        }
         let context = Self::gather_mouse_event_context(tab, event, client_id)?;
         let action = Self::determine_mouse_action(event, &context)?;
         Self::execute_mouse_action(tab, action, event, client_id)
+    }
+
+    fn intercept_guest_modal_mouse_event(
+        tab: &mut Tab,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<Option<MouseEffect>> {
+        let pane_id_at_position = Self::get_pane_at(tab, &event.position, false)?.map(|p| p.pid());
+        let pane_id = match pane_id_at_position {
+            Some(pane_id) => pane_id,
+            None => return Ok(None),
+        };
+        if !tab.pane_has_guest_modal_for_client(pane_id, client_id) {
+            return Ok(None);
+        }
+        let hit_option = if event.event_type == MouseEventType::Release && event.left {
+            let style = tab.style;
+            if let Some(pane) = tab.get_pane_with_id(pane_id) {
+                let relative_position = pane.relative_position(&event.position);
+                let rows = pane.get_content_rows();
+                let columns = pane.get_content_columns();
+                let row = relative_position.line();
+                if row < 0 {
+                    None
+                } else {
+                    let session_name = pane.guest_session_name().unwrap_or_default();
+                    let selection = pane.guest_modal_selection(client_id).unwrap_or(0);
+                    let shortcuts = pane.guest_modal_shortcuts();
+                    crate::panes::nested_session_modal::guest_modal_option_at_content_row(
+                        rows,
+                        columns,
+                        row as usize,
+                        &style,
+                        &session_name,
+                        selection,
+                        &shortcuts,
+                    )
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if let Some(option) = hit_option {
+            let outcome = match option {
+                0 => GuestModalOutcome::Zoom,
+                _ => GuestModalOutcome::Descend,
+            };
+            let _ = tab
+                .senders
+                .send_to_screen(ScreenInstruction::GuestModalChoice {
+                    client_id,
+                    pane_id,
+                    outcome,
+                });
+        }
+        Ok(Some(MouseEffect::state_changed()))
     }
 
     fn gather_mouse_event_context(
@@ -405,6 +468,7 @@ impl MouseHandler {
             pinned_unselectable,
             focus_follows_mouse: tab.focus_follows_mouse,
             mouse_click_through: tab.mouse_click_through,
+            mouse_scroll_resize: tab.mouse_scroll_resize,
         })
     }
 
@@ -1282,6 +1346,9 @@ impl MouseHandler {
         }
 
         if event.wheel_up || event.wheel_down {
+            if event.ctrl && !ctx.mouse_scroll_resize {
+                return Ok(MouseAction::NoAction);
+            }
             if let Some(pane_id) = ctx.pane_id_at_position {
                 if event.ctrl {
                     if event.wheel_up {
@@ -1674,8 +1741,10 @@ impl MouseHandler {
                 .get_active_pane_id(client_id)
                 .ok_or_else(|| anyhow!("Failed to find active pane"))?;
 
+            tab.dissolve_stack_lists_for_classic_mutation();
             Self::resize_tiled_pane_with_stacked_resize(tab, active_pane_id, &strategy)
                 .with_context(err_context)?;
+            tab.tiled_panes.reapply_pane_frames();
             tab.swap_layouts.set_is_tiled_damaged();
         }
 
@@ -1707,8 +1776,10 @@ impl MouseHandler {
                 .get_active_pane_id(client_id)
                 .ok_or_else(|| anyhow!("Failed to find active pane"))?;
 
+            tab.dissolve_stack_lists_for_classic_mutation();
             Self::resize_tiled_pane_with_stacked_resize(tab, active_pane_id, &strategy)
                 .with_context(err_context)?;
+            tab.tiled_panes.reapply_pane_frames();
             tab.swap_layouts.set_is_tiled_damaged();
         }
 
@@ -1757,6 +1828,45 @@ impl MouseHandler {
     ) {
         if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
             pane.set_mouse_selection_support(selection_support);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mouse_event_context(mouse_scroll_resize: bool) -> MouseEventContext {
+        MouseEventContext {
+            pane_id_at_position: Some(PaneId::Terminal(1)),
+            active_pane_id: Some(PaneId::Terminal(1)),
+            floating_visible: false,
+            pane_being_resized: false,
+            selecting_with_mouse: false,
+            pane_being_moved: false,
+            clicked_pane: None,
+            pinned_selectable: None,
+            pinned_unselectable: None,
+            focus_follows_mouse: false,
+            mouse_click_through: false,
+            mouse_scroll_resize,
+        }
+    }
+
+    #[test]
+    fn disabled_ctrl_scroll_does_not_fall_through_to_regular_scrolling() {
+        let context = mouse_event_context(false);
+        let position = Position::new(1, 1);
+        let events = [
+            MouseEvent::new_ctrl_scroll_up_event(position),
+            MouseEvent::new_ctrl_scroll_down_event(position),
+        ];
+
+        for event in events {
+            assert_eq!(
+                MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+                MouseAction::NoAction
+            );
         }
     }
 }

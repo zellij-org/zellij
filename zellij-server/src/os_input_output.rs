@@ -37,27 +37,35 @@ pub use async_trait::async_trait;
 
 /// Check whether a candidate path refers to an executable file, considering
 /// PATHEXT extensions on Windows (e.g. `.exe`, `.cmd`).
+///
+/// On Windows, when the candidate has no extension we try each PATHEXT
+/// variant BEFORE the bare match, mirroring cmd.exe's resolution. Tools like
+/// Composer install both `composer` (a Unix launcher) and `composer.bat`
+/// (the Windows launcher) side by side; returning the bare file would send
+/// a non-PE binary to CreateProcessW and fail with ERROR_BAD_EXE_FORMAT.
 fn find_executable(candidate: &std::path::Path) -> Option<PathBuf> {
-    if candidate.exists() && candidate.is_file() {
-        return Some(candidate.to_path_buf());
-    }
     #[cfg(windows)]
     {
-        if let Some(pathext) = env::var_os("PATHEXT") {
-            let pathext = pathext.to_string_lossy();
-            for ext in pathext.split(';') {
-                let ext = ext.trim();
-                if ext.is_empty() {
-                    continue;
-                }
-                let mut with_ext = candidate.as_os_str().to_os_string();
-                with_ext.push(ext);
-                let with_ext_path = PathBuf::from(with_ext);
-                if with_ext_path.exists() && with_ext_path.is_file() {
-                    return Some(with_ext_path);
+        if candidate.extension().is_none() {
+            if let Some(pathext) = env::var_os("PATHEXT") {
+                let pathext = pathext.to_string_lossy();
+                for ext in pathext.split(';') {
+                    let ext = ext.trim();
+                    if ext.is_empty() {
+                        continue;
+                    }
+                    let mut with_ext = candidate.as_os_str().to_os_string();
+                    with_ext.push(ext);
+                    let with_ext_path = PathBuf::from(with_ext);
+                    if with_ext_path.exists() && with_ext_path.is_file() {
+                        return Some(with_ext_path);
+                    }
                 }
             }
         }
+    }
+    if candidate.exists() && candidate.is_file() {
+        return Some(candidate.to_path_buf());
     }
     None
 }

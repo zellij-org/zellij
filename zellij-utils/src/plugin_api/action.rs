@@ -298,6 +298,12 @@ impl TryFrom<ProtobufAction> for Action {
                     None => Ok(Action::ToggleFocusFullscreen),
                 }
             },
+            Some(ProtobufActionName::ToggleFocusNoUiFullscreen) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleFocusNoUiFullscreen should not have a payload"),
+                    None => Ok(Action::ToggleFocusNoUiFullscreen),
+                }
+            },
             Some(ProtobufActionName::TogglePaneFrames) => match protobuf_action.optional_payload {
                 Some(_) => Err("TogglePaneFrames should not have a payload"),
                 None => Ok(Action::TogglePaneFrames),
@@ -1092,6 +1098,20 @@ impl TryFrom<ProtobufAction> for Action {
                 },
                 _ => Err("Wrong payload for Action::NewInPlacePane"),
             },
+            Some(ProtobufActionName::FocusHostSession) => match protobuf_action.optional_payload {
+                Some(_) => Err("FocusHostSession should not have a payload"),
+                None => Ok(Action::FocusHostSession),
+            },
+            Some(ProtobufActionName::FocusGuestSession) => match protobuf_action.optional_payload {
+                Some(_) => Err("FocusGuestSession should not have a payload"),
+                None => Ok(Action::FocusGuestSession),
+            },
+            Some(ProtobufActionName::ToggleHostFullscreen) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleHostFullscreen should not have a payload"),
+                    None => Ok(Action::ToggleHostFullscreen),
+                }
+            },
             _ => Err("Unknown Action"),
         }
     }
@@ -1148,6 +1168,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::ClearScreenByPaneId { .. }
             | Action::EditScrollbackByPaneId { .. }
             | Action::ToggleFocusFullscreenByPaneId { .. }
+            | Action::ToggleFocusNoUiFullscreenByPaneId { .. }
             | Action::TogglePaneEmbedOrFloatingByPaneId { .. }
             | Action::CloseFocusByPaneId { .. }
             | Action::RenamePaneByPaneId { .. }
@@ -1321,6 +1342,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::ToggleFocusFullscreen => Ok(ProtobufAction {
                 name: ProtobufActionName::ToggleFocusFullscreen as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleFocusNoUiFullscreen => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleFocusNoUiFullscreen as i32,
                 optional_payload: None,
             }),
             Action::TogglePaneFrames => Ok(ProtobufAction {
@@ -1960,6 +1985,18 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
+            Action::FocusHostSession => Ok(ProtobufAction {
+                name: ProtobufActionName::FocusHostSession as i32,
+                optional_payload: None,
+            }),
+            Action::FocusGuestSession => Ok(ProtobufAction {
+                name: ProtobufActionName::FocusGuestSession as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleHostFullscreen => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleHostFullscreen as i32,
+                optional_payload: None,
+            }),
             Action::NoOp
             | Action::Confirm
             | Action::NewInPlacePluginPane {

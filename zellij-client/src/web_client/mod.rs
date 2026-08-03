@@ -265,15 +265,34 @@ pub async fn serve_web_client(
             }
         }));
 
+    if let Err(e) = listener.set_nonblocking(true) {
+        log::error!("Failed to set web server listener to non-blocking: {}", e);
+        return;
+    }
+
     match rustls_config {
         Some(rustls_config) => {
-            let _ = axum_server::from_tcp_rustls(listener, rustls_config)
+            let server = match axum_server::from_tcp_rustls(listener, rustls_config) {
+                Ok(server) => server,
+                Err(e) => {
+                    log::error!("Failed to create TLS web server from listener: {}", e);
+                    return;
+                },
+            };
+            let _ = server
                 .handle(server_handle)
                 .serve(app.into_make_service())
                 .await;
         },
         None => {
-            let _ = axum_server::from_tcp(listener)
+            let server = match axum_server::from_tcp(listener) {
+                Ok(server) => server,
+                Err(e) => {
+                    log::error!("Failed to create web server from listener: {}", e);
+                    return;
+                },
+            };
+            let _ = server
                 .handle(server_handle)
                 .serve(app.into_make_service())
                 .await;

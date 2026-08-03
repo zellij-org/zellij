@@ -18,9 +18,9 @@ use zellij_tile_utils::{palette_match, style};
 use first_line::first_line;
 use one_line_ui::one_line_ui;
 use second_line::{
-    floating_panes_are_visible, fullscreen_panes_to_hide, keybinds,
-    locked_floating_panes_are_visible, locked_fullscreen_panes_to_hide, system_clipboard_error,
-    text_copied_hint,
+    ascended_to_host_session_hint, descended_into_nested_session_hint, floating_panes_are_visible,
+    fullscreen_panes_to_hide, keybinds, locked_floating_panes_are_visible,
+    locked_fullscreen_panes_to_hide, system_clipboard_error, text_copied_hint,
 };
 use tip::utils::get_cached_tip_name;
 
@@ -94,7 +94,33 @@ pub struct SegmentStyle {
 // we need different colors from palette for the default theme
 // plus here we can add new sources in the future, like Theme
 // that can be defined in the config perhaps
-fn color_elements(palette: Styling, different_color_alternates: bool) -> ColoredElements {
+fn color_elements(
+    palette: Styling,
+    different_color_alternates: bool,
+    dimmed: bool,
+) -> ColoredElements {
+    if dimmed {
+        let background = palette.text_unselected.background;
+        let foreground = palette.text_unselected.base;
+        let ribbon_background = palette.ribbon_unselected.background;
+        let italic_on_ribbon = style!(palette.ribbon_unselected.base, ribbon_background).italic();
+        let dim_segment = SegmentStyle {
+            prefix_separator: style!(background, ribbon_background),
+            char_left_separator: italic_on_ribbon,
+            char_shortcut: italic_on_ribbon,
+            char_right_separator: italic_on_ribbon,
+            styled_text: italic_on_ribbon,
+            suffix_separator: style!(ribbon_background, background),
+        };
+        return ColoredElements {
+            selected: dim_segment,
+            unselected: dim_segment,
+            unselected_alternate: dim_segment,
+            disabled: dim_segment,
+            superkey_prefix: style!(foreground, background).italic(),
+            superkey_suffix_separator: style!(background, background),
+        };
+    }
     let background = palette.text_unselected.background;
     let foreground = palette.text_unselected.base;
     let alternate_background_color = if different_color_alternates {
@@ -344,6 +370,8 @@ impl ZellijPlugin for State {
         let active_tab = self.tabs.iter().find(|t| t.active);
         let first_line = first_line(&self.mode_info, active_tab, cols, separator);
         let second_line = self.second_line(cols);
+        let show_nested_session_hint = self.mode_info.session_dimmed.unwrap_or(false)
+            || self.mode_info.session_ascended.unwrap_or(false);
 
         // [48;5;238m is white background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line
@@ -352,7 +380,9 @@ impl ZellijPlugin for State {
                 if rows > 1 {
                     println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
                 } else {
-                    if self.mode_info.mode == InputMode::Normal {
+                    if show_nested_session_hint {
+                        print!("\u{1b}[m{}\u{1b}[0K", second_line);
+                    } else if self.mode_info.mode == InputMode::Normal {
                         print!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
                     } else {
                         print!("\u{1b}[m{}\u{1b}[0K", second_line);
@@ -363,7 +393,9 @@ impl ZellijPlugin for State {
                 if rows > 1 {
                     println!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
                 } else {
-                    if self.mode_info.mode == InputMode::Normal {
+                    if show_nested_session_hint {
+                        print!("\u{1b}[m{}\u{1b}[0K", second_line);
+                    } else if self.mode_info.mode == InputMode::Normal {
                         print!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
                     } else {
                         print!("\u{1b}[m{}\u{1b}[0K", second_line);
@@ -382,6 +414,12 @@ impl State {
     fn second_line(&self, cols: usize) -> LinePart {
         let active_tab = self.tabs.iter().find(|t| t.active);
 
+        if self.mode_info.session_dimmed.unwrap_or(false) {
+            return descended_into_nested_session_hint(&self.mode_info, cols);
+        }
+        if self.mode_info.session_ascended.unwrap_or(false) {
+            return ascended_to_host_session_hint(&self.mode_info, cols);
+        }
         if let Some(copy_destination) = self.text_copy_destination {
             text_copied_hint(copy_destination)
         } else if self.display_system_clipboard_failure {

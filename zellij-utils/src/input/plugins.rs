@@ -10,6 +10,7 @@ use url::Url;
 use super::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation};
 #[cfg(not(target_family = "wasm"))]
 use crate::consts::ASSET_MAP;
+use crate::consts::BUILTIN_PLUGIN_NAMES;
 pub use crate::data::PluginTag;
 use crate::errors::prelude::*;
 
@@ -57,20 +58,7 @@ impl PluginConfig {
             }),
             RunPluginLocation::Zellij(tag) => {
                 let tag = tag.to_string();
-                if tag == "status-bar"
-                    || tag == "tab-bar"
-                    || tag == "compact-bar"
-                    || tag == "strider"
-                    || tag == "session-manager"
-                    || tag == "configuration"
-                    || tag == "plugin-manager"
-                    || tag == "about"
-                    || tag == "share"
-                    || tag == "multiple-select"
-                    || tag == "layout-manager"
-                    || tag == "link"
-                    || tag == "mobile"
-                {
+                if BUILTIN_PLUGIN_NAMES.contains(&tag.as_str()) {
                     Some(PluginConfig {
                         path: PathBuf::from(&tag),
                         _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
@@ -99,13 +87,16 @@ impl PluginConfig {
     /// binary-internal asset map. Otherwise:
     ///
     /// Attempts to first resolve the plugin path as an absolute path, then adds a ".wasm"
-    /// extension to the path and resolves that, finally we use the plugin directory joined with
-    /// the path with an appended ".wasm" extension. So if our path is "tab-bar" and the given
-    /// plugin dir is "/home/bob/.zellij/plugins" the lookup chain will be this:
+    /// extension to the path and resolves that, then the plugin directory joined with the path
+    /// with an appended ".wasm" extension, and finally the system data directory joined with
+    /// "plugins" and the same file name. So if our path is "tab-bar" and the given plugin dir is
+    /// "/home/bob/.local/share/zellij/plugins" the lookup chain will be this:
     ///
     /// ```bash
-    ///   /tab-bar
-    ///   /tab-bar.wasm
+    ///   tab-bar
+    ///   tab-bar.wasm
+    ///   /home/bob/.local/share/zellij/plugins/tab-bar.wasm
+    ///   /usr/share/zellij/plugins/tab-bar.wasm
     /// ```
     ///
     pub fn resolve_wasm_bytes(&self, plugin_dir: &Path) -> Result<Vec<u8>> {
@@ -113,14 +104,21 @@ impl PluginConfig {
             |err: std::io::Error, path: &PathBuf| format!("{}: '{}'", err, path.display());
 
         // Locations we check for valid plugins
-        let paths_arr = [
-            &self.path,
-            &self.path.with_extension("wasm"),
-            &plugin_dir.join(&self.path).with_extension("wasm"),
+        #[allow(unused_mut)]
+        let mut paths: Vec<PathBuf> = vec![
+            self.path.clone(),
+            self.path.with_extension("wasm"),
+            plugin_dir.join(&self.path).with_extension("wasm"),
         ];
+        #[cfg(not(target_family = "wasm"))]
+        paths.push(
+            crate::home::system_data_dir()
+                .join("plugins")
+                .join(&self.path)
+                .with_extension("wasm"),
+        );
         // Throw out dupes, because it's confusing to read that zellij checked the same plugin
         // location multiple times. Do NOT sort the vector here, because it will break the lookup!
-        let mut paths = paths_arr.to_vec();
         paths.dedup();
 
         // This looks weird and usually we would handle errors like this differently, but in this
@@ -134,11 +132,11 @@ impl PluginConfig {
             // from memory, don't bother with the disk.
             #[cfg(not(target_family = "wasm"))]
             if !cfg!(feature = "disable_automatic_asset_installation") && self.is_builtin() {
-                let asset_path = PathBuf::from("plugins").join(path);
+                let asset_path = PathBuf::from("plugins").join(&path);
                 if let Some(bytes) = ASSET_MAP.get(&asset_path) {
                     log::debug!("Loaded plugin '{}' from internal assets", path.display());
 
-                    if plugin_dir.join(path).with_extension("wasm").exists() {
+                    if plugin_dir.join(&path).with_extension("wasm").exists() {
                         log::info!(
                             "Plugin '{}' exists in the 'PLUGIN DIR' at '{}' but is being ignored",
                             path.display(),
@@ -168,9 +166,7 @@ impl PluginConfig {
             // Layout requested a builtin plugin that wasn't found
             let plugin_path = self.path.with_extension("wasm");
 
-            if cfg!(feature = "disable_automatic_asset_installation")
-                && ASSET_MAP.contains_key(&PathBuf::from("plugins").join(&plugin_path))
-            {
+            if cfg!(feature = "disable_automatic_asset_installation") && self.is_builtin_name() {
                 return Err(ZellijError::BuiltinPluginMissing {
                     plugin_path,
                     plugin_dir: plugin_dir.to_owned(),
@@ -191,6 +187,14 @@ impl PluginConfig {
 
     pub fn is_builtin(&self) -> bool {
         matches!(self.location, RunPluginLocation::Zellij(_))
+    }
+
+    pub fn is_builtin_name(&self) -> bool {
+        self.path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .map(|name| BUILTIN_PLUGIN_NAMES.contains(&name))
+            .unwrap_or(false)
     }
 }
 

@@ -26,6 +26,9 @@ message ClientToServerMsg {
     ForwardedReplyFromHostMsg forwarded_reply_from_host = 19;
     HostTerminalThemeChangedMsg host_terminal_theme_changed = 20;
     SoftKeyboardVisibilityChangedMsg soft_keyboard_visibility_changed = 21;
+    NestedSessionFrameFromHostMsg nested_session_frame_from_host = 22;
+    KittyGraphicsSupportMsg kitty_graphics_support = 23;
+    SixelSupportMsg sixel_support = 24;
   }
 }
 
@@ -136,4 +139,16 @@ enum HostTerminalThemeIndication {
 
 message SoftKeyboardVisibilityChangedMsg {
   bool visible = 1;
+}
+
+message NestedSessionFrameFromHostMsg {
+  bytes payload_bytes = 1;
+}
+
+message KittyGraphicsSupportMsg {
+  bool supported = 1;
+}
+
+message SixelSupportMsg {
+  bool supported = 1;
 }

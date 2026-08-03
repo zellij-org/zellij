@@ -2,10 +2,11 @@ use crate::output::CharacterChunk;
 use crate::panes::{
     AnsiCode, CharacterStyles, RcCharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
+use crate::tab::GuestChoiceIndicator;
 use crate::ui::boundaries::boundary_type;
 use crate::ui::hint_text::{
-    exit_code_segments, hover_segments, rerun_segments, HintExitStatus, HintLevel, HintSegment,
-    HintTier,
+    exit_code_segments, hover_segments, rerun_segments, resize_segments, HintExitStatus, HintLevel,
+    HintSegment, HintTier,
 };
 use crate::ClientId;
 use zellij_utils::data::{client_id_to_colors, PaletteColor, Style};
@@ -95,6 +96,9 @@ pub struct FrameParams {
     pub frame_geom_override: Option<PaneGeom>,
     pub stack_list_entry: Option<StackListEntry>,
     pub blank_title: bool,
+    pub mouse_scroll_resize: bool,
+    pub dimmed: bool,
+    pub guest_choice_indicator: Option<GuestChoiceIndicator>,
 }
 
 #[derive(Default, PartialEq)]
@@ -124,6 +128,9 @@ pub struct PaneFrame {
     omit_title: bool,
     stack_list_entry: Option<StackListEntry>,
     color_override: Option<PaletteColor>,
+    mouse_scroll_resize: bool,
+    dimmed: bool,
+    guest_choice_indicator: Option<GuestChoiceIndicator>,
 }
 
 impl PaneFrame {
@@ -159,6 +166,9 @@ impl PaneFrame {
             omit_title: frame_params.omit_title,
             stack_list_entry: frame_params.stack_list_entry,
             color_override: None,
+            mouse_scroll_resize: frame_params.mouse_scroll_resize,
+            dimmed: frame_params.dimmed,
+            guest_choice_indicator: frame_params.guest_choice_indicator,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -207,6 +217,12 @@ impl PaneFrame {
         }
     }
     fn render_title_right_side(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        self.render_title_right_side_inner(max_length)
+    }
+    fn render_title_right_side_inner(
         &self,
         max_length: usize,
     ) -> Option<(Vec<TerminalCharacter>, usize)> {
@@ -841,9 +857,9 @@ impl PaneFrame {
         let side_budget = width.saturating_sub(title_length) / 2;
         let focus = self.bracketed_focus_indicator(side_budget);
         let focus_length = focus.as_ref().map(|(_, length)| *length).unwrap_or(0);
-        let scroll =
-            self.bracketed_scroll_indicator(width.saturating_sub(focus_length + title_length));
-        Ok(self.compose_bracketed_title(focus, title, scroll))
+        let right_budget = width.saturating_sub(focus_length + title_length);
+        let right = self.bracketed_scroll_indicator(right_budget);
+        Ok(self.compose_bracketed_title(focus, title, right))
     }
     fn bracketed_title_part(&self, content: &str) -> (Vec<TerminalCharacter>, usize) {
         let text = format!(" [ {} ] ", content);
@@ -1123,51 +1139,31 @@ impl PaneFrame {
     }
 
     fn help_text_version_full(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
-        let text = if self.is_floating {
-            " Ctrl <MouseScroll> or Ctrl <drag borders> to resize "
-        } else {
-            " Ctrl <MouseScroll> or <drag borders> to resize "
-        };
-        let len = text.chars().count();
-        if len <= max_length {
-            Some((foreground_color(text, self.color), len))
-        } else {
-            None
-        }
+        self.help_text_version(max_length, HintTier::Full)
     }
 
     fn help_text_version_medium(
         &self,
         max_length: usize,
     ) -> Option<(Vec<TerminalCharacter>, usize)> {
-        let text = if self.is_floating {
-            " <Ctrl MouseScroll/drag borders> resize "
-        } else {
-            " <Ctrl MouseScroll>/<drag borders> resize "
-        };
-        let len = text.chars().count();
-        if len <= max_length {
-            Some((foreground_color(text, self.color), len))
-        } else {
-            None
-        }
+        self.help_text_version(max_length, HintTier::Medium)
     }
 
     fn help_text_version_short(
         &self,
         max_length: usize,
     ) -> Option<(Vec<TerminalCharacter>, usize)> {
-        let text = if self.is_floating {
-            " <Ctrl MouseScroll/drag borders> "
-        } else {
-            " <Ctrl MouseScroll>/<drag borders> "
-        };
-        let len = text.chars().count();
-        if len <= max_length {
-            Some((foreground_color(text, self.color), len))
-        } else {
-            None
-        }
+        self.help_text_version(max_length, HintTier::Minimal)
+    }
+
+    fn help_text_version(
+        &self,
+        max_length: usize,
+        tier: HintTier,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let segments = resize_segments(self.is_floating, self.mouse_scroll_resize, tier);
+        let (characters, length) = self.render_hint_segments(&segments);
+        (length <= max_length).then_some((characters, length))
     }
 
     fn render_held_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
@@ -1442,5 +1438,108 @@ impl PaneFrame {
         ret.append(&mut foreground_color(&padding, self.color));
         ret.append(&mut right_boundary);
         ret
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zellij_utils::data::Style;
+    use zellij_utils::pane_size::{Offset, Viewport};
+
+    fn pane_frame_with(mouse_scroll_resize: bool, is_floating: bool, cols: usize) -> PaneFrame {
+        PaneFrame::new(
+            Viewport {
+                x: 0,
+                y: 0,
+                cols,
+                rows: 10,
+            },
+            (0, 0),
+            String::new(),
+            FrameParams {
+                focused_client: None,
+                is_main_client: true,
+                other_focused_clients: vec![],
+                style: Style::default(),
+                color: None,
+                other_cursors_exist_in_session: false,
+                pane_is_stacked_over: false,
+                pane_is_stacked_under: false,
+                pane_is_stacked: false,
+                should_draw_pane_frames: true,
+                pane_is_floating: is_floating,
+                content_offset: Offset::default(),
+                mouse_is_hovering_over_pane: false,
+                pane_is_selectable: true,
+                show_help_text: true,
+                highlight_tooltip: None,
+                omit_title: false,
+                frame_geom_override: None,
+                stack_list_entry: None,
+                blank_title: false,
+                mouse_scroll_resize,
+                dimmed: false,
+                guest_choice_indicator: None,
+            },
+        )
+    }
+
+    fn characters_to_string(chars: &[TerminalCharacter]) -> String {
+        chars.iter().map(|c| c.character).collect()
+    }
+
+    #[test]
+    fn help_text_full_includes_ctrl_scroll_when_enabled_for_tiled_pane() {
+        let frame = pane_frame_with(true, false, 80);
+        let (chars, _) = frame.help_text_version_full(80).unwrap();
+        let text = characters_to_string(&chars);
+        assert!(text.contains("Ctrl <MouseScroll>"));
+        assert!(text.contains("<drag borders>"));
+    }
+
+    #[test]
+    fn help_text_full_omits_ctrl_scroll_when_disabled_for_tiled_pane() {
+        let frame = pane_frame_with(false, false, 80);
+        let (chars, _) = frame.help_text_version_full(80).unwrap();
+        let text = characters_to_string(&chars);
+        assert!(!text.contains("MouseScroll"));
+        assert!(text.contains("<drag borders> to resize"));
+    }
+
+    #[test]
+    fn help_text_full_includes_ctrl_scroll_when_enabled_for_floating_pane() {
+        let frame = pane_frame_with(true, true, 80);
+        let (chars, _) = frame.help_text_version_full(80).unwrap();
+        let text = characters_to_string(&chars);
+        assert!(text.contains("Ctrl <MouseScroll>"));
+        assert!(text.contains("Ctrl <drag borders>"));
+    }
+
+    #[test]
+    fn help_text_full_omits_ctrl_scroll_when_disabled_for_floating_pane() {
+        let frame = pane_frame_with(false, true, 80);
+        let (chars, _) = frame.help_text_version_full(80).unwrap();
+        let text = characters_to_string(&chars);
+        assert!(!text.contains("MouseScroll"));
+        assert!(text.contains("Ctrl <drag borders> to resize"));
+    }
+
+    #[test]
+    fn help_text_medium_omits_ctrl_scroll_when_disabled() {
+        let frame = pane_frame_with(false, false, 40);
+        let (chars, _) = frame.help_text_version_medium(40).unwrap();
+        let text = characters_to_string(&chars);
+        assert!(!text.contains("MouseScroll"));
+        assert!(text.contains("<drag borders> resize"));
+    }
+
+    #[test]
+    fn help_text_short_omits_ctrl_scroll_when_disabled() {
+        let frame = pane_frame_with(false, false, 20);
+        let (chars, _) = frame.help_text_version_short(20).unwrap();
+        let text = characters_to_string(&chars);
+        assert!(!text.contains("MouseScroll"));
+        assert!(text.contains("<drag borders>"));
     }
 }

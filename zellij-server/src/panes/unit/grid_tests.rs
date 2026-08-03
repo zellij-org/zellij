@@ -1,11 +1,13 @@
 use super::super::Grid;
 use crate::panes::grid::SixelImageStore;
+use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::link_handler::LinkHandler;
 use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use vte;
+use zellij_utils::consts::SCROLL_BUFFER_SIZE;
 use zellij_utils::{
     data::{Palette, Style},
     pane_size::SizeInPixels,
@@ -42,6 +44,7 @@ fn vttest1_0() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -51,9 +54,7 @@ fn vttest1_0() {
     );
     let fixture_name = "vttest1-0";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -75,6 +76,7 @@ fn vttest1_1() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -84,9 +86,7 @@ fn vttest1_1() {
     );
     let fixture_name = "vttest1-1";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -108,6 +108,7 @@ fn vttest1_2() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -117,9 +118,7 @@ fn vttest1_2() {
     );
     let fixture_name = "vttest1-2";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -141,6 +140,7 @@ fn vttest1_3() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -150,9 +150,7 @@ fn vttest1_3() {
     );
     let fixture_name = "vttest1-3";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -174,6 +172,7 @@ fn vttest1_4() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -183,9 +182,7 @@ fn vttest1_4() {
     );
     let fixture_name = "vttest1-4";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -207,6 +204,7 @@ fn vttest1_5() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -216,9 +214,7 @@ fn vttest1_5() {
     );
     let fixture_name = "vttest1-5";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -240,6 +236,7 @@ fn vttest2_0() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -249,9 +246,7 @@ fn vttest2_0() {
     );
     let fixture_name = "vttest2-0";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -273,6 +268,7 @@ fn vttest2_1() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -282,9 +278,7 @@ fn vttest2_1() {
     );
     let fixture_name = "vttest2-1";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -306,6 +300,7 @@ fn vttest2_2() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -315,9 +310,7 @@ fn vttest2_2() {
     );
     let fixture_name = "vttest2-2";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -339,6 +332,7 @@ fn vttest2_3() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -348,9 +342,7 @@ fn vttest2_3() {
     );
     let fixture_name = "vttest2-3";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -372,6 +364,7 @@ fn vttest2_4() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -381,9 +374,7 @@ fn vttest2_4() {
     );
     let fixture_name = "vttest2-4";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -405,6 +396,7 @@ fn vttest2_5() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -414,9 +406,7 @@ fn vttest2_5() {
     );
     let fixture_name = "vttest2-5";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -438,6 +428,7 @@ fn vttest2_6() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -447,9 +438,7 @@ fn vttest2_6() {
     );
     let fixture_name = "vttest2-6";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -471,6 +460,7 @@ fn vttest2_7() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -480,9 +470,7 @@ fn vttest2_7() {
     );
     let fixture_name = "vttest2-7";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -504,6 +492,7 @@ fn vttest2_8() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -513,9 +502,7 @@ fn vttest2_8() {
     );
     let fixture_name = "vttest2-8";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -537,6 +524,7 @@ fn vttest2_9() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -546,9 +534,7 @@ fn vttest2_9() {
     );
     let fixture_name = "vttest2-9";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -570,6 +556,7 @@ fn vttest2_10() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -579,9 +566,7 @@ fn vttest2_10() {
     );
     let fixture_name = "vttest2-10";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -603,6 +588,7 @@ fn vttest2_11() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -612,9 +598,7 @@ fn vttest2_11() {
     );
     let fixture_name = "vttest2-11";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -636,6 +620,7 @@ fn vttest2_12() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -645,9 +630,7 @@ fn vttest2_12() {
     );
     let fixture_name = "vttest2-12";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -669,6 +652,7 @@ fn vttest2_13() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -678,9 +662,7 @@ fn vttest2_13() {
     );
     let fixture_name = "vttest2-13";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -702,6 +684,7 @@ fn vttest2_14() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -711,9 +694,7 @@ fn vttest2_14() {
     );
     let fixture_name = "vttest2-14";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -735,6 +716,7 @@ fn vttest3_0() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -744,9 +726,7 @@ fn vttest3_0() {
     );
     let fixture_name = "vttest3-0";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -768,6 +748,7 @@ fn vttest8_0() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -777,9 +758,7 @@ fn vttest8_0() {
     );
     let fixture_name = "vttest8-0";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -801,6 +780,7 @@ fn vttest8_1() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -810,9 +790,7 @@ fn vttest8_1() {
     );
     let fixture_name = "vttest8-1";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -834,6 +812,7 @@ fn vttest8_2() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -843,9 +822,7 @@ fn vttest8_2() {
     );
     let fixture_name = "vttest8-2";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -867,6 +844,7 @@ fn vttest8_3() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -876,9 +854,7 @@ fn vttest8_3() {
     );
     let fixture_name = "vttest8-3";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -900,6 +876,7 @@ fn vttest8_4() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -909,9 +886,7 @@ fn vttest8_4() {
     );
     let fixture_name = "vttest8-4";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -933,6 +908,7 @@ fn vttest8_5() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -942,9 +918,7 @@ fn vttest8_5() {
     );
     let fixture_name = "vttest8-5";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -966,6 +940,7 @@ fn csi_b() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -975,9 +950,7 @@ fn csi_b() {
     );
     let fixture_name = "csi-b";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -999,6 +972,7 @@ fn csi_capital_i() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1008,9 +982,7 @@ fn csi_capital_i() {
     );
     let fixture_name = "csi-capital-i";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1032,6 +1004,7 @@ fn csi_capital_z() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1041,9 +1014,7 @@ fn csi_capital_z() {
     );
     let fixture_name = "csi-capital-z";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1065,6 +1036,7 @@ fn terminal_reports() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1074,9 +1046,7 @@ fn terminal_reports() {
     );
     let fixture_name = "terminal_reports";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid.pending_messages_to_pty));
 }
 
@@ -1098,6 +1068,7 @@ fn wide_characters() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1107,9 +1078,7 @@ fn wide_characters() {
     );
     let fixture_name = "wide_characters";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1131,6 +1100,7 @@ fn wide_characters_line_wrap() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1140,9 +1110,7 @@ fn wide_characters_line_wrap() {
     );
     let fixture_name = "wide_characters_line_wrap";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1164,6 +1132,7 @@ fn insert_character_in_line_with_wide_character() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1173,9 +1142,7 @@ fn insert_character_in_line_with_wide_character() {
     );
     let fixture_name = "wide_characters_middle_line_insert";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1197,6 +1164,7 @@ fn delete_char_in_middle_of_line_with_widechar() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1206,9 +1174,7 @@ fn delete_char_in_middle_of_line_with_widechar() {
     );
     let fixture_name = "wide-chars-delete-middle";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1230,6 +1196,7 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1239,9 +1206,7 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
     );
     let fixture_name = "wide-chars-delete-middle-after-multi";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1263,6 +1228,7 @@ fn fish_wide_characters_override_clock() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1272,9 +1238,7 @@ fn fish_wide_characters_override_clock() {
     );
     let fixture_name = "fish_wide_characters_override_clock";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1296,6 +1260,7 @@ fn bash_delete_wide_characters() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1305,9 +1270,7 @@ fn bash_delete_wide_characters() {
     );
     let fixture_name = "bash_delete_wide_characters";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1329,6 +1292,7 @@ fn delete_wide_characters_before_cursor() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1338,9 +1302,7 @@ fn delete_wide_characters_before_cursor() {
     );
     let fixture_name = "delete_wide_characters_before_cursor";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1362,6 +1324,7 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1371,9 +1334,7 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
     );
     let fixture_name = "delete_wide_characters_before_cursor_when_cursor_is_on_wide_character";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1395,6 +1356,7 @@ fn delete_wide_character_under_cursor() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1404,9 +1366,7 @@ fn delete_wide_character_under_cursor() {
     );
     let fixture_name = "delete_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1428,6 +1388,7 @@ fn replace_wide_character_under_cursor() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1437,9 +1398,7 @@ fn replace_wide_character_under_cursor() {
     );
     let fixture_name = "replace_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1461,6 +1420,7 @@ fn wrap_wide_characters() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1470,9 +1430,7 @@ fn wrap_wide_characters() {
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1494,6 +1452,7 @@ fn wrap_wide_characters_on_size_change() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1503,9 +1462,7 @@ fn wrap_wide_characters_on_size_change() {
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid.change_size(21, 90);
     assert_snapshot!(format!("{:?}", grid));
 }
@@ -1528,6 +1485,7 @@ fn unwrap_wide_characters_on_size_change() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1537,9 +1495,7 @@ fn unwrap_wide_characters_on_size_change() {
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid.change_size(21, 90);
     grid.change_size(21, 93);
     assert_snapshot!(format!("{:?}", grid));
@@ -1563,6 +1519,7 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1572,9 +1529,7 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
     );
     let fixture_name = "wide_characters_line_middle";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1596,6 +1551,7 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1605,9 +1561,7 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
     );
     let fixture_name = "wide_characters_line_end";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1629,6 +1583,7 @@ fn copy_selected_text_from_viewport() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1638,9 +1593,7 @@ fn copy_selected_text_from_viewport() {
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
 
     grid.start_selection(&Position::new(23, 6));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
@@ -1670,6 +1623,7 @@ fn copy_wrapped_selected_text_from_viewport() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1679,9 +1633,7 @@ fn copy_wrapped_selected_text_from_viewport() {
     );
     let fixture_name = "grid_copy_wrapped";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
 
     grid.start_selection(&Position::new(5, 0));
     grid.end_selection(&Position::new(8, 42));
@@ -1710,6 +1662,7 @@ fn copy_selected_text_from_lines_above() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1719,9 +1672,7 @@ fn copy_selected_text_from_lines_above() {
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
 
     grid.start_selection(&Position::new(-2, 10));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
@@ -1751,6 +1702,7 @@ fn copy_selected_text_from_lines_below() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1760,9 +1712,7 @@ fn copy_selected_text_from_lines_below() {
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
 
     grid.move_viewport_up(40);
 
@@ -1800,6 +1750,7 @@ fn run_bandwhich_from_fish_shell() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1809,9 +1760,7 @@ fn run_bandwhich_from_fish_shell() {
     );
     let fixture_name = "fish_and_bandwhich";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1833,6 +1782,7 @@ fn fish_tab_completion_options() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1842,9 +1792,7 @@ fn fish_tab_completion_options() {
     );
     let fixture_name = "fish_tab_completion_options";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1872,6 +1820,7 @@ pub fn fish_select_tab_completion_options() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1881,9 +1830,7 @@ pub fn fish_select_tab_completion_options() {
     );
     let fixture_name = "fish_select_tab_completion_options";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1915,6 +1862,7 @@ pub fn vim_scroll_region_down() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1924,9 +1872,7 @@ pub fn vim_scroll_region_down() {
     );
     let fixture_name = "vim_scroll_region_down";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1955,6 +1901,7 @@ pub fn vim_ctrl_d() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1964,9 +1911,7 @@ pub fn vim_ctrl_d() {
     );
     let fixture_name = "vim_ctrl_d";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1994,6 +1939,7 @@ pub fn vim_ctrl_u() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2003,9 +1949,7 @@ pub fn vim_ctrl_u() {
     );
     let fixture_name = "vim_ctrl_u";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2027,6 +1971,7 @@ pub fn htop() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2036,9 +1981,7 @@ pub fn htop() {
     );
     let fixture_name = "htop";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2060,6 +2003,7 @@ pub fn htop_scrolling() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2069,9 +2013,7 @@ pub fn htop_scrolling() {
     );
     let fixture_name = "htop_scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2093,6 +2035,7 @@ pub fn htop_right_scrolling() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2102,9 +2045,7 @@ pub fn htop_right_scrolling() {
     );
     let fixture_name = "htop_right_scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2136,6 +2077,7 @@ pub fn vim_overwrite() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2145,9 +2087,7 @@ pub fn vim_overwrite() {
     );
     let fixture_name = "vim_overwrite";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2171,6 +2111,7 @@ pub fn clear_scroll_region() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2180,9 +2121,7 @@ pub fn clear_scroll_region() {
     );
     let fixture_name = "clear_scroll_region";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2204,6 +2143,7 @@ pub fn display_tab_characters_properly() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2213,9 +2153,7 @@ pub fn display_tab_characters_properly() {
     );
     let fixture_name = "tab_characters";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2237,6 +2175,7 @@ pub fn neovim_insert_mode() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2246,9 +2185,7 @@ pub fn neovim_insert_mode() {
     );
     let fixture_name = "nvim_insert";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2270,6 +2207,7 @@ pub fn bash_cursor_linewrap() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2279,9 +2217,7 @@ pub fn bash_cursor_linewrap() {
     );
     let fixture_name = "bash_cursor_linewrap";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2305,6 +2241,7 @@ pub fn fish_paste_multiline() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2314,9 +2251,7 @@ pub fn fish_paste_multiline() {
     );
     let fixture_name = "fish_paste_multiline";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2338,6 +2273,7 @@ pub fn git_log() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2347,9 +2283,7 @@ pub fn git_log() {
     );
     let fixture_name = "git_log";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2373,6 +2307,7 @@ pub fn git_diff_scrollup() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2382,9 +2317,7 @@ pub fn git_diff_scrollup() {
     );
     let fixture_name = "git_diff_scrollup";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2406,6 +2339,7 @@ pub fn emacs_longbuf() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2415,9 +2349,7 @@ pub fn emacs_longbuf() {
     );
     let fixture_name = "emacs_longbuf_tutorial";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2439,6 +2371,7 @@ pub fn top_and_quit() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2448,9 +2381,7 @@ pub fn top_and_quit() {
     );
     let fixture_name = "top_and_quit";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2479,6 +2410,7 @@ pub fn exa_plus_omf_theme() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2488,9 +2420,7 @@ pub fn exa_plus_omf_theme() {
     );
     let fixture_name = "exa_plus_omf_theme";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2512,6 +2442,7 @@ pub fn scroll_up() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2521,9 +2452,7 @@ pub fn scroll_up() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid.scroll_up_one_line();
     assert_snapshot!(format!("{:?}", grid));
 }
@@ -2546,6 +2475,7 @@ pub fn scroll_down() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2555,9 +2485,7 @@ pub fn scroll_down() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid.scroll_up_one_line();
     grid.scroll_down_one_line();
     assert_snapshot!(format!("{:?}", grid));
@@ -2581,6 +2509,7 @@ pub fn scroll_up_with_line_wraps() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2590,9 +2519,7 @@ pub fn scroll_up_with_line_wraps() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid.scroll_up_one_line();
     assert_snapshot!(format!("{:?}", grid));
 }
@@ -2615,6 +2542,7 @@ pub fn scroll_down_with_line_wraps() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2624,9 +2552,7 @@ pub fn scroll_down_with_line_wraps() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid.scroll_up_one_line();
     grid.scroll_down_one_line();
     assert_snapshot!(format!("{:?}", grid));
@@ -2650,6 +2576,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2659,9 +2586,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     for _ in 0..10 {
         grid.scroll_up_one_line();
     }
@@ -2690,6 +2615,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2699,9 +2625,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     for _ in 0..10 {
         grid.scroll_up_one_line();
     }
@@ -2730,6 +2654,7 @@ fn saved_cursor_across_resize() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2738,9 +2663,7 @@ fn saved_cursor_across_resize() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut parse = |s, grid: &mut Grid| {
-        for b in Vec::from(s) {
-            vte_parser.advance(&mut *grid, b)
-        }
+        vte_parser.advance(&mut *grid, &Vec::from(s));
     };
     let content = "
 \rLine 1 >fill to 20_<
@@ -2779,6 +2702,7 @@ fn saved_cursor_across_resize_longline() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2787,9 +2711,7 @@ fn saved_cursor_across_resize_longline() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut parse = |s, grid: &mut Grid| {
-        for b in Vec::from(s) {
-            vte_parser.advance(&mut *grid, b)
-        }
+        vte_parser.advance(&mut *grid, &Vec::from(s));
     };
     let content = "
 \rLine 1 >fill \u{1b}[sto 20_<";
@@ -2821,6 +2743,7 @@ fn saved_cursor_across_resize_rewrap() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2829,9 +2752,7 @@ fn saved_cursor_across_resize_rewrap() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut parse = |s, grid: &mut Grid| {
-        for b in Vec::from(s) {
-            vte_parser.advance(&mut *grid, b)
-        }
+        vte_parser.advance(&mut *grid, &Vec::from(s));
     };
     let content = "
 \r12345678123456781234567\u{1b}[s812345678"; // 4*8 chars
@@ -2863,6 +2784,7 @@ pub fn move_cursor_below_scroll_region() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2872,9 +2794,7 @@ pub fn move_cursor_below_scroll_region() {
     );
     let fixture_name = "move_cursor_below_scroll_region";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2896,6 +2816,7 @@ pub fn insert_wide_characters_in_existing_line() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2905,9 +2826,7 @@ pub fn insert_wide_characters_in_existing_line() {
     );
     let fixture_name = "chinese_characters_line_middle";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2935,6 +2854,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2944,9 +2864,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
     );
     let fixture_name = "scroll_region_full_screen";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid.scroll_up_one_line();
     grid.scroll_up_one_line();
     grid.scroll_up_one_line();
@@ -2971,6 +2889,7 @@ pub fn ring_bell() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -2980,9 +2899,7 @@ pub fn ring_bell() {
     );
     let fixture_name = "ring_bell";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert!(grid.ring_bell);
 }
 
@@ -3004,6 +2921,7 @@ pub fn alternate_screen_change_size() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3013,9 +2931,7 @@ pub fn alternate_screen_change_size() {
     );
     let fixture_name = "alternate_screen_change_size";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     // no scrollback in alternate screen
     assert_eq!(grid.scrollback_position_and_length(), (0, 0));
     grid.change_size(10, 10);
@@ -3041,6 +2957,7 @@ pub fn fzf_fullscreen() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3050,9 +2967,7 @@ pub fn fzf_fullscreen() {
     );
     let fixture_name = "fzf_fullscreen";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3078,6 +2993,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3087,9 +3003,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
     );
     let fixture_name = "replace_multiple_wide_characters";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3115,6 +3029,7 @@ pub fn replace_non_wide_characters_with_wide_characters() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3124,9 +3039,7 @@ pub fn replace_non_wide_characters_with_wide_characters() {
     );
     let fixture_name = "replace_non_wide_characters_with_wide_characters";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3148,6 +3061,7 @@ pub fn scroll_down_ansi() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3157,9 +3071,7 @@ pub fn scroll_down_ansi() {
     );
     let fixture_name = "scroll_down";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3181,6 +3093,7 @@ pub fn ansi_capital_t() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3189,9 +3102,7 @@ pub fn ansi_capital_t() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "foo\u{1b}[14Tbar".as_bytes();
-    for byte in content {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3213,6 +3124,7 @@ pub fn ansi_capital_s() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3221,9 +3133,7 @@ pub fn ansi_capital_s() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nfoo\u{1b}[14Sbar".as_bytes();
-    for byte in content {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3248,6 +3158,7 @@ fn terminal_pixel_size_reports() {
             width: 8,
         }))),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         osc8_hyperlinks,
         debug,
@@ -3257,9 +3168,7 @@ fn terminal_pixel_size_reports() {
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     // CSI 14t and CSI 16t are forwarded to the host; Zellij no longer
     // synthesises local replies from character_cell_size for these.
     assert!(grid.pending_messages_to_pty.is_empty());
@@ -3291,6 +3200,7 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)), // in an unsupported terminal, we don't have this info
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3300,9 +3210,7 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     // Forwarding is independent of character_cell_size availability —
     // the host terminal is authoritative for these queries regardless
     // of what Zellij knows locally.
@@ -3335,6 +3243,7 @@ pub fn ansi_csi_at_sign() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3343,9 +3252,7 @@ pub fn ansi_csi_at_sign() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "foo\u{1b}[2D\u{1b}[2@".as_bytes();
-    for byte in content {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3371,6 +3278,7 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store.clone(),
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3379,9 +3287,7 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
-    for byte in pane_content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &pane_content);
     for _ in 0..10_051 {
         // scrollbuffer limit + viewport height
         grid.add_canonical_line();
@@ -3416,6 +3322,7 @@ pub fn sixel_images_are_reaped_when_resetting() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store.clone(),
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3424,9 +3331,7 @@ pub fn sixel_images_are_reaped_when_resetting() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
-    for byte in pane_content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &pane_content);
     grid.reset_terminal_state();
     let _ = grid.read_changes(0, 0); // we do this because this is where the images are reaped
     assert_eq!(
@@ -3458,6 +3363,7 @@ pub fn sixel_image_in_alternate_buffer() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store.clone(),
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3467,20 +3373,14 @@ pub fn sixel_image_in_alternate_buffer() {
     );
 
     let move_to_alternate_screen = "\u{1b}[?1049h";
-    for byte in move_to_alternate_screen.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, move_to_alternate_screen.as_bytes());
 
     let pane_content = read_fixture("sixel-image-500px.six");
-    for byte in pane_content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &pane_content);
     assert_snapshot!(format!("{:?}", grid)); // should include the image
                                              //
     let move_away_from_alternate_screen = "\u{1b}[?1049l";
-    for byte in move_away_from_alternate_screen.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, move_away_from_alternate_screen.as_bytes());
     assert_snapshot!(format!("{:?}", grid)); // should note include the image
     assert_eq!(
         sixel_image_store.borrow().image_count(),
@@ -3511,6 +3411,7 @@ pub fn sixel_with_image_scrolling_decsdm() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3521,45 +3422,33 @@ pub fn sixel_with_image_scrolling_decsdm() {
 
     // enter DECSDM
     let move_to_decsdm = "\u{1b}[?80h";
-    for byte in move_to_decsdm.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, move_to_decsdm.as_bytes());
 
     // write some text
     let mut text_to_fill_pane = String::new();
     for i in 0..10 {
         writeln!(&mut text_to_fill_pane, "\rline {}", i + 1).unwrap();
     }
-    for byte in text_to_fill_pane.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, text_to_fill_pane.as_bytes());
 
     // render a sixel image (will appear on the top left and partially cover the text)
     let pane_content = read_fixture("sixel-image-100px.six");
-    for byte in pane_content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &pane_content);
     // image should be on the top left corner of the grid
     assert_snapshot!(format!("{:?}", grid));
 
     // leave DECSDM
     let move_away_from_decsdm = "\u{1b}[?80l";
-    for byte in move_away_from_decsdm.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, move_away_from_decsdm.as_bytes());
 
     // Go down to the beginning of the next line
     let mut go_down_once = String::new();
     writeln!(&mut go_down_once, "\n\r").unwrap();
-    for byte in go_down_once.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, go_down_once.as_bytes());
 
     // render another sixel image, should appear under the cursor
     let pane_content = read_fixture("sixel-image-100px.six");
-    for byte in pane_content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &pane_content);
 
     // image should appear in cursor position
     assert_snapshot!(format!("{:?}", grid));
@@ -3583,6 +3472,7 @@ pub fn osc_4_background_query() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3591,9 +3481,7 @@ pub fn osc_4_background_query() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}]10;?\u{1b}\\";
-    for byte in content.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, content.as_bytes());
     // Post-refactor: OSC 10;? is forwarded to the host, not answered
     // from Zellij's cached palette. pending_messages_to_pty must stay
     // empty.
@@ -3624,6 +3512,7 @@ pub fn osc_4_foreground_query() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3632,9 +3521,7 @@ pub fn osc_4_foreground_query() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}]11;?\u{1b}\\";
-    for byte in content.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, content.as_bytes());
     assert!(grid.pending_messages_to_pty.is_empty());
     let forwarded_string: String = grid
         .pending_forwarded_queries
@@ -3664,6 +3551,7 @@ pub fn osc_4_color_query() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3672,9 +3560,7 @@ pub fn osc_4_color_query() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}]4;222;?\u{1b}\\";
-    for byte in content.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, content.as_bytes());
     // OSC 4;N;? is forwarded to the host for the real palette value.
     assert!(grid.pending_messages_to_pty.is_empty());
     let forwarded_string: String = grid
@@ -3703,6 +3589,7 @@ pub fn xtsmgraphics_color_register_count() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3711,9 +3598,7 @@ pub fn xtsmgraphics_color_register_count() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}[?1;1;S\u{1b}\\";
-    for byte in content.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, content.as_bytes());
     let message_string = grid
         .pending_messages_to_pty
         .iter()
@@ -3747,6 +3632,7 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3755,9 +3641,7 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}[?2;1;S\u{1b}\\";
-    for byte in content.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, content.as_bytes());
     let message_string = grid
         .pending_messages_to_pty
         .iter()
@@ -3791,6 +3675,7 @@ pub fn cursor_hide_persists_through_alternate_screen() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3800,36 +3685,28 @@ pub fn cursor_hide_persists_through_alternate_screen() {
     );
 
     let hide_cursor = "\u{1b}[?25l";
-    for byte in hide_cursor.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, hide_cursor.as_bytes());
     assert!(
         matches!(grid.cursor_coordinates(), Some((_, _, false))),
         "Cursor hidden properly"
     );
 
     let move_to_alternate_screen = "\u{1b}[?1049h";
-    for byte in move_to_alternate_screen.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, move_to_alternate_screen.as_bytes());
     assert!(
         matches!(grid.cursor_coordinates(), Some((_, _, false))),
         "Cursor still hidden in alternate screen"
     );
 
     let show_cursor = "\u{1b}[?25h";
-    for byte in show_cursor.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, show_cursor.as_bytes());
     assert!(
         matches!(grid.cursor_coordinates(), Some((_, _, true))),
         "Cursor shown"
     );
 
     let move_away_from_alternate_screen = "\u{1b}[?1049l";
-    for byte in move_away_from_alternate_screen.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, move_away_from_alternate_screen.as_bytes());
     assert!(
         matches!(grid.cursor_coordinates(), Some((_, _, true))),
         "Cursor still shown away from alternate screen"
@@ -3854,6 +3731,7 @@ fn table_ui_component() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3863,9 +3741,7 @@ fn table_ui_component() {
     );
     let fixture_name = "table-ui-component";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3887,6 +3763,7 @@ fn table_ui_component_with_coordinates() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3896,9 +3773,7 @@ fn table_ui_component_with_coordinates() {
     );
     let fixture_name = "table-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3920,6 +3795,7 @@ fn ribbon_ui_component() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3929,9 +3805,7 @@ fn ribbon_ui_component() {
     );
     let fixture_name = "ribbon-ui-component";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3953,6 +3827,7 @@ fn ribbon_ui_component_with_coordinates() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3962,9 +3837,7 @@ fn ribbon_ui_component_with_coordinates() {
     );
     let fixture_name = "ribbon-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3986,6 +3859,7 @@ fn nested_list_ui_component() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -3995,9 +3869,7 @@ fn nested_list_ui_component() {
     );
     let fixture_name = "nested-list-ui-component";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -4019,6 +3891,7 @@ fn nested_list_ui_component_with_coordinates() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -4028,9 +3901,7 @@ fn nested_list_ui_component_with_coordinates() {
     );
     let fixture_name = "nested-list-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -4052,6 +3923,7 @@ fn text_ui_component() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -4061,9 +3933,7 @@ fn text_ui_component() {
     );
     let fixture_name = "text-ui-component";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -4085,6 +3955,7 @@ fn text_ui_component_with_coordinates() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -4094,9 +3965,7 @@ fn text_ui_component_with_coordinates() {
     );
     let fixture_name = "text-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
-    for byte in content {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -4126,6 +3995,7 @@ fn cannot_escape_scroll_region() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -4134,9 +4004,7 @@ fn cannot_escape_scroll_region() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}[1;42r\u{1b}[42;1HHi there!".as_bytes();
-    for byte in content {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -4160,6 +4028,7 @@ fn preserve_background_color_on_resize() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -4169,9 +4038,7 @@ fn preserve_background_color_on_resize() {
     );
 
     let mut parse = |s, grid: &mut Grid| {
-        for b in Vec::from(s) {
-            vte_parser.advance(&mut *grid, b)
-        }
+        vte_parser.advance(&mut *grid, &Vec::from(s));
     };
 
     // Write text with red background that extends to end of line
@@ -4243,6 +4110,7 @@ fn create_grid_with_content(content: &str) -> Grid {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         false,
         true,
@@ -4250,10 +4118,35 @@ fn create_grid_with_content(content: &str) -> Grid {
         true,
         false,
     );
-    for byte in content.as_bytes() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, content.as_bytes());
     grid
+}
+
+#[test]
+fn cursor_forward_over_unwritten_line_positions_character() {
+    use crate::panes::terminal_character::AnsiCode;
+
+    let content = "\u{1b}[1BABC \u{1b}[1B\r\u{1b}[3C\u{1b}[42mDEF\u{1b}[0m";
+    let grid = create_grid_with_content(content);
+
+    let row = &grid.viewport[2];
+
+    assert_eq!(row.columns[0].character, ' ');
+    assert_eq!(row.columns[1].character, ' ');
+    assert_eq!(row.columns[2].character, ' ');
+    assert_eq!(row.columns[3].character, 'D');
+    assert_eq!(row.columns[4].character, 'E');
+    assert_eq!(row.columns[5].character, 'F');
+
+    let has_background = |c: &crate::panes::terminal_character::TerminalCharacter| {
+        !matches!(c.styles.background, Some(AnsiCode::Reset) | None)
+    };
+    assert!(!has_background(&row.columns[0]));
+    assert!(!has_background(&row.columns[1]));
+    assert!(!has_background(&row.columns[2]));
+    assert!(has_background(&row.columns[3]));
+    assert!(has_background(&row.columns[4]));
+    assert!(has_background(&row.columns[5]));
 }
 
 #[test]
@@ -4389,6 +4282,7 @@ fn osc_11_set_and_query_pane_default_bg() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         false,
         true,
@@ -4399,9 +4293,7 @@ fn osc_11_set_and_query_pane_default_bg() {
 
     // Set background via OSC 11
     let set_bg = b"\x1b]11;#001a3a\x07";
-    for byte in set_bg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, set_bg);
 
     assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
@@ -4412,9 +4304,7 @@ fn osc_11_set_and_query_pane_default_bg() {
     // `rgb:RRRR/GGGG/BBBB` form with each 8-bit channel widened by
     // repetition (0x00 → 0x0000, 0x1a → 0x1a1a, 0x3a → 0x3a3a).
     let query_bg = b"\x1b]11;?\x07";
-    for byte in query_bg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, query_bg);
 
     assert!(
         grid.pending_forwarded_queries.is_empty(),
@@ -4440,6 +4330,7 @@ fn osc_10_set_and_query_pane_default_fg() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         false,
         true,
@@ -4450,9 +4341,7 @@ fn osc_10_set_and_query_pane_default_fg() {
 
     // Set foreground via OSC 10
     let set_fg = b"\x1b]10;#00e000\x07";
-    for byte in set_fg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, set_fg);
 
     assert_eq!(grid.pane_default_fg, Some((0, 224, 0)));
 
@@ -4460,9 +4349,7 @@ fn osc_10_set_and_query_pane_default_fg() {
     // so the query is answered locally (see OSC 11 equivalent test for
     // the short-circuit rationale).
     let query_fg = b"\x1b]10;?\x07";
-    for byte in query_fg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, query_fg);
 
     assert!(
         grid.pending_forwarded_queries.is_empty(),
@@ -4488,6 +4375,7 @@ fn osc_110_111_reset_pane_default_colors() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         false,
         true,
@@ -4498,30 +4386,22 @@ fn osc_110_111_reset_pane_default_colors() {
 
     // Set both fg and bg
     let set_fg = b"\x1b]10;#00e000\x07";
-    for byte in set_fg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, set_fg);
     let set_bg = b"\x1b]11;#001a3a\x07";
-    for byte in set_bg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, set_bg);
 
     assert_eq!(grid.pane_default_fg, Some((0, 224, 0)));
     assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
     // Reset foreground via OSC 110
     let reset_fg = b"\x1b]110\x07";
-    for byte in reset_fg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, reset_fg);
     assert_eq!(grid.pane_default_fg, None);
     assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
     // Reset background via OSC 111
     let reset_bg = b"\x1b]111\x07";
-    for byte in reset_bg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, reset_bg);
     assert_eq!(grid.pane_default_fg, None);
     assert_eq!(grid.pane_default_bg, None);
 }
@@ -4541,6 +4421,7 @@ fn osc_11_set_bg_produces_ansi_in_render_output() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         false,
         true,
@@ -4551,9 +4432,7 @@ fn osc_11_set_bg_produces_ansi_in_render_output() {
 
     // Set background via OSC 11
     let set_bg = b"\x1b]11;#001a3a\x07";
-    for byte in set_bg.iter() {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, set_bg);
 
     assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
@@ -4562,7 +4441,7 @@ fn osc_11_set_bg_produces_ansi_in_render_output() {
     let render_result = grid.render(0, 0, &style).unwrap();
     assert!(render_result.is_some(), "Expected render output");
 
-    let (chunks, _, _) = render_result.unwrap();
+    let (chunks, _, _, _) = render_result.unwrap();
     assert!(!chunks.is_empty(), "Expected at least one character chunk");
 
     // All chunks should carry the pane default bg
@@ -4807,6 +4686,7 @@ fn plugin_highlight_at_wrapped_line() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         false,
         true,
@@ -4817,9 +4697,7 @@ fn plugin_highlight_at_wrapped_line() {
     // Feed a long string that wraps: "abcdefghij" fills row 0, "klmnopqrst" fills row 1
     let content = "abcdefghijklmnopqrst";
     let mut vte_parser = vte::Parser::new();
-    for &byte in content.as_bytes() {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, content.as_bytes());
 
     // Set a highlight for "jklm" which spans the wrap boundary
     let highlights = vec![create_highlight(
@@ -4966,6 +4844,7 @@ fn create_grid_with_scrollback() -> Grid {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         false,
         true,
@@ -4976,9 +4855,7 @@ fn create_grid_with_scrollback() -> Grid {
     let mut parser = vte::Parser::new();
     for i in 0..25 {
         let line = format!("scrollback line {}\r\n", i);
-        for byte in line.as_bytes() {
-            parser.advance(&mut grid, *byte);
-        }
+        parser.advance(&mut grid, line.as_bytes());
     }
     grid
 }
@@ -5058,6 +4935,7 @@ fn create_grid_with_colored_scrollback() -> Grid {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         false,
         true,
@@ -5068,9 +4946,7 @@ fn create_grid_with_colored_scrollback() -> Grid {
     let mut parser = vte::Parser::new();
     for i in 0..25 {
         let line = format!("\x1b[31mred line {}\x1b[0m\r\n", i);
-        for byte in line.as_bytes() {
-            parser.advance(&mut grid, *byte);
-        }
+        parser.advance(&mut grid, line.as_bytes());
     }
     grid
 }
@@ -5413,6 +5289,7 @@ fn create_grid_with_size_and_raw(rows: usize, cols: usize, content: &[u8]) -> Gr
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         false,
         true,
@@ -5420,17 +5297,13 @@ fn create_grid_with_size_and_raw(rows: usize, cols: usize, content: &[u8]) -> Gr
         true,
         false,
     );
-    for byte in content {
-        vte_parser.advance(&mut grid, *byte);
-    }
+    vte_parser.advance(&mut grid, &content);
     grid
 }
 
 fn feed_bytes(grid: &mut Grid, bytes: &[u8]) {
     let mut vte_parser = vte::Parser::new();
-    for byte in bytes {
-        vte_parser.advance(grid, *byte);
-    }
+    vte_parser.advance(grid, bytes);
 }
 
 // All tests below use a 10-row, 40-col grid with scroll region 1;8
@@ -5612,6 +5485,166 @@ fn partial_scroll_region_all_three_mechanisms_transfer_in_order() {
 }
 
 #[test]
+fn wrap_at_bottom_of_partial_scroll_region_transfers_to_scrollback() {
+    // A long line that soft-wraps while the cursor is on the scroll region's
+    // bottom row must scroll the region, exactly like a newline there would
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    content.extend_from_slice(b"\r\n");
+    content.extend_from_slice(&[b'I'; 90]); // 90 cols on a 40-col grid: wraps twice
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    // the newline scrolls AAA off, the two wraps scroll BBB and CCC off
+    assert_eq!(scrollback_texts(&grid), vec!["AAA", "BBB", "CCC"]);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[0], "DDD");
+    assert_eq!(vp[4], "HHH");
+    assert_eq!(vp[5], "I".repeat(40));
+    assert_eq!(vp[6], "I".repeat(40));
+    assert_eq!(vp[7], "I".repeat(10));
+    assert_eq!(vp.len(), 8, "rows below the region must be untouched");
+    // the continuation rows are wrapped rows, so resize re-wraps them correctly
+    assert!(grid.viewport[5].is_canonical);
+    assert!(!grid.viewport[6].is_canonical);
+    assert!(!grid.viewport[7].is_canonical);
+}
+
+#[test]
+fn wrap_at_bottom_of_partial_scroll_region_keeps_cursor_inside_region() {
+    // Before the fix, the cursor would escape below the region's bottom margin
+    // on wrap, and no subsequent line could ever scroll into scrollback again
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    content.extend_from_slice(b"\r\n");
+    content.extend_from_slice(&[b'I'; 90]);
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    // region is rows 0-7; after two wraps the cursor must still be on row 7
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((10, 7))
+    );
+}
+
+#[test]
+fn wrap_at_bottom_of_nonzero_top_scroll_region_does_not_transfer() {
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(b"AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\r\nFFF");
+    // Scroll region rows 3-6 (1-based), so top is row 2, not 0
+    content.extend_from_slice(b"\x1b[3;6r");
+    content.extend_from_slice(b"\x1b[6;1H");
+    content.extend_from_slice(&[b'X'; 50]); // wraps once at the region's bottom
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    // regions not anchored at the top do not preserve scrolled-off lines
+    assert_eq!(grid.lines_above.len(), 0);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[0], "AAA", "rows above the region must be untouched");
+    assert_eq!(vp[1], "BBB", "rows above the region must be untouched");
+    assert_eq!(vp[2], "DDD", "the region's top row (CCC) is discarded");
+    assert_eq!(vp[4], "X".repeat(40));
+    assert_eq!(vp[5], "X".repeat(10));
+}
+
+#[test]
+fn wrap_at_bottom_of_partial_scroll_region_does_not_transfer_on_alternate_screen() {
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(b"\x1b[?1049h");
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    content.extend_from_slice(b"\r\n");
+    content.extend_from_slice(&[b'I'; 90]);
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    assert_eq!(grid.lines_above.len(), 0);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[5], "I".repeat(40));
+    assert_eq!(vp[6], "I".repeat(40));
+    assert_eq!(vp[7], "I".repeat(10));
+}
+
+#[test]
+fn wrap_at_bottom_of_explicit_full_screen_scroll_region_keeps_wrap_flag() {
+    // CSI 1;10r on a 10-row grid covers the whole screen; wrap behavior must
+    // be identical to having no region set at all (scroll + wrapped row)
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(b"\x1b[1;10r");
+    for i in 1..=10u8 {
+        if i > 1 {
+            content.extend_from_slice(b"\r\n");
+        }
+        content.extend_from_slice(b"EARLY-");
+        content.push(b'0' + i / 10);
+        content.push(b'0' + i % 10);
+    }
+    content.extend_from_slice(b"\r\n");
+    content.extend_from_slice(&[b'I'; 90]); // wraps twice on a 40-col grid
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    // the newline and the two wraps each scrolled one line into scrollback
+    assert_eq!(
+        scrollback_texts(&grid),
+        vec!["EARLY-01", "EARLY-02", "EARLY-03"]
+    );
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[6], "EARLY-10");
+    assert_eq!(vp[7], "I".repeat(40));
+    assert_eq!(vp[8], "I".repeat(40));
+    assert_eq!(vp[9], "I".repeat(10));
+    assert!(grid.viewport[7].is_canonical);
+    assert!(
+        !grid.viewport[8].is_canonical,
+        "continuation must stay a wrapped row"
+    );
+    assert!(
+        !grid.viewport[9].is_canonical,
+        "continuation must stay a wrapped row"
+    );
+}
+
+#[test]
+fn wrap_at_bottom_of_nonzero_top_scroll_region_keeps_hyperlink_tracking() {
+    // A plain-text URL that wraps at the bottom of a region not anchored at
+    // the top: the auto-linkifier's tracked positions must follow the rows
+    // as the region scrolls, or the URL loses its clickable anchors
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(b"AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\r\nFFF");
+    content.extend_from_slice(b"\x1b[3;6r\x1b[6;1H");
+    content.extend_from_slice(b"https://example.com/");
+    content.extend_from_slice(&[b'a'; 30]); // 50 chars: wraps at the region bottom
+    content.extend_from_slice(b" ");
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    let start_anchors_per_row: Vec<usize> = grid
+        .viewport
+        .iter()
+        .map(|row| {
+            row.columns
+                .iter()
+                .filter(|c| {
+                    matches!(
+                        c.styles.link_anchor,
+                        Some(crate::panes::terminal_character::LinkAnchor::Start(_))
+                    )
+                })
+                .count()
+        })
+        .collect();
+
+    // rows 0-3: AAA, BBB, DDD, EEE (CCC scrolled off and discarded) - no anchors;
+    // row 4 holds the URL's first 40 columns, row 5 the wrapped remainder
+    assert_eq!(start_anchors_per_row, vec![0, 0, 0, 0, 40, 10]);
+}
+
+#[test]
 fn scroll_region_newline_sets_bg_color_on_new_row() {
     // Set bg color, set scroll region 1-5, fill 5 lines, then newline to scroll
     let content = b"\x1b[48;2;26;26;26m\x1b[1;5r\
@@ -5632,7 +5665,7 @@ fn scroll_region_newline_bg_color_used_for_trailing_padding() {
     let content = b"\x1b[48;2;26;26;26m\x1b[1;5rAAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\r\nhi";
     let mut grid = create_grid_with_size_and_raw(10, 40, content);
     // read_changes returns character chunks with padding applied
-    let (chunks, _) = grid.read_changes(0, 0);
+    let (chunks, _, _) = grid.read_changes(0, 0);
     // Find the chunk for row 4 (the scroll-created row with "hi")
     let row_4_chunk = chunks.iter().find(|c| c.y == 4).expect("row 4 chunk");
     // The trailing padding character (last column) should have the row's bg_color
@@ -5716,6 +5749,7 @@ fn new_grid_for_forwarding_test() -> Grid {
             height: 16,
         }))),
         Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         false,
         true,
@@ -5732,9 +5766,7 @@ fn csi_14t_forwards_to_host_not_local() {
     // the terminal's real window pixel dimensions.
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b[14t" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[14t");
     assert!(
         grid.pending_messages_to_pty.is_empty(),
         "local reply path must not fire for 14t"
@@ -5751,9 +5783,7 @@ fn csi_14t_forwards_to_host_not_local() {
 fn csi_16t_forwards_to_host_not_local() {
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b[16t" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[16t");
     assert!(grid.pending_messages_to_pty.is_empty());
     assert_eq!(grid.pending_forwarded_queries.len(), 1);
     assert_eq!(
@@ -5768,9 +5798,7 @@ fn csi_18t_still_answered_locally() {
     // authoritative for this, do NOT forward.
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b[18t" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[18t");
     assert_eq!(grid.pending_messages_to_pty.len(), 1);
     assert!(grid.pending_forwarded_queries.is_empty());
 }
@@ -5781,9 +5809,7 @@ fn osc_11_set_stays_local() {
     // to track it for its own rendering.
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b]11;rgb:ffff/ffff/ffff\x07" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b]11;rgb:ffff/ffff/ffff\x07");
     assert!(grid.pending_messages_to_pty.is_empty());
     assert!(
         grid.pending_forwarded_queries.is_empty(),
@@ -5799,9 +5825,7 @@ fn osc_11_query_without_override_forwards_to_host() {
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
     assert!(grid.pane_default_bg.is_none());
-    for byte in b"\x1b]11;?\x07" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b]11;?\x07");
     assert!(
         grid.pending_messages_to_pty.is_empty(),
         "no override → no local reply"
@@ -5818,9 +5842,7 @@ fn osc_10_query_without_override_forwards_to_host() {
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
     assert!(grid.pane_default_fg.is_none());
-    for byte in b"\x1b]10;?\x07" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b]10;?\x07");
     assert!(grid.pending_messages_to_pty.is_empty());
     assert_eq!(grid.pending_forwarded_queries.len(), 1);
     assert!(matches!(
@@ -5840,12 +5862,8 @@ fn set_pane_default_colors_short_circuits_osc_queries() {
     let mut grid = new_grid_for_forwarding_test();
     grid.set_pane_default_colors(Some("#ff8040".to_string()), Some("#102030".to_string()));
 
-    for byte in b"\x1b]10;?\x07" {
-        parser.advance(&mut grid, *byte);
-    }
-    for byte in b"\x1b]11;?\x07" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b]10;?\x07");
+    parser.advance(&mut grid, b"\x1b]11;?\x07");
 
     assert!(
         grid.pending_forwarded_queries.is_empty(),
@@ -5865,15 +5883,11 @@ fn osc_11_override_short_circuits_only_the_overridden_channel() {
     // populated, an OSC 10 query (fg) still goes to the host.
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b]11;rgb:1010/2020/3030\x07" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b]11;rgb:1010/2020/3030\x07");
     assert!(grid.pane_default_bg.is_some());
     assert!(grid.pane_default_fg.is_none());
 
-    for byte in b"\x1b]10;?\x07" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b]10;?\x07");
     assert!(
         grid.pending_messages_to_pty.is_empty(),
         "fg has no override → must forward"
@@ -5889,9 +5903,7 @@ fn csi_2026_dollar_p_stays_local() {
     // own frames, so individual panes are treated as "not enabled").
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b[?2026$p" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[?2026$p");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "CSI ?2026$p is emulated locally, must not forward"
@@ -5910,9 +5922,7 @@ fn csi_2031_dollar_p_when_disabled_replies_reset() {
     // is reset, so the DECRPM reply must report value=2.
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b[?2031$p" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[?2031$p");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "CSI ?2031$p is answered locally, must not forward"
@@ -5930,9 +5940,7 @@ fn csi_2031_dollar_p_when_enabled_replies_set() {
     // pane, a DECRQM probe must report value=1 (set).
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b[?2031h\x1b[?2031$p" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[?2031h\x1b[?2031$p");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "CSI ?2031$p is answered locally, must not forward"
@@ -5954,9 +5962,7 @@ fn csi_22t_and_23t_stay_local() {
     let mut grid = new_grid_for_forwarding_test();
     grid.set_title("hello".to_string());
 
-    for byte in b"\x1b[22;0t" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[22;0t");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "22t is a stack op, not a query"
@@ -5968,9 +5974,7 @@ fn csi_22t_and_23t_stay_local() {
 
     // The push actually landed on Zellij's per-pane stack: restore it.
     grid.set_title("different".to_string());
-    for byte in b"\x1b[23;0t" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[23;0t");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "23t is a stack op, not a query"
@@ -5992,9 +5996,7 @@ fn osc_4_set_stays_local() {
     // the query form (`OSC 4;N;?`) ever forwards to the host.
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b]4;5;rgb:ffff/0000/0000\x07" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b]4;5;rgb:ffff/0000/0000\x07");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "OSC 4 set must not forward"
@@ -6017,16 +6019,12 @@ fn decset_2031_enables_color_palette_notification() {
         !grid.color_palette_notification_enabled,
         "default state must be disabled"
     );
-    for byte in b"\x1b[?2031h" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[?2031h");
     assert!(
         grid.color_palette_notification_enabled,
         "DECSET 2031 must enable the flag"
     );
-    for byte in b"\x1b[?2031l" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[?2031l");
     assert!(
         !grid.color_palette_notification_enabled,
         "DECRST 2031 must disable the flag"
@@ -6069,9 +6067,7 @@ fn csi_996n_pushes_color_palette_mode_query_to_forwarded_queries() {
     use crate::host_query::HostQuery;
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    for byte in b"\x1b[?996n" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[?996n");
     assert_eq!(
         grid.pending_forwarded_queries,
         vec![HostQuery::ColorPaletteMode],
@@ -6089,9 +6085,7 @@ fn csi_5n_status_query_still_handled_locally() {
     let mut grid = new_grid_for_forwarding_test();
     // Plain DSR 5 (no `?` intermediate) is not the new theme query and
     // must continue to receive its `\e[0n` "all good" reply locally.
-    for byte in b"\x1b[5n" {
-        parser.advance(&mut grid, *byte);
-    }
+    parser.advance(&mut grid, b"\x1b[5n");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "DSR 5 is not a forwarded query"
@@ -6101,4 +6095,2250 @@ fn csi_5n_status_query_still_handled_locally() {
         vec![b"\x1b[0n".to_vec()],
         "DSR 5 must still produce its local 'all good' reply"
     );
+}
+
+fn new_grid_for_nested_frames() -> Grid {
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    Grid::new(
+        41,
+        110,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    )
+}
+
+fn nested_announce_message() -> zellij_utils::nested_session::NestedSessionMessage {
+    zellij_utils::nested_session::NestedSessionMessage::Announce {
+        session_name: "guest-session".to_owned(),
+        capabilities: vec![zellij_utils::nested_session::NestedSessionCapability::NestedControl],
+    }
+}
+
+#[test]
+fn nested_session_frame_is_staged_for_dispatch() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = new_grid_for_nested_frames();
+    let message = nested_announce_message();
+    vte_parser.advance(
+        &mut grid,
+        &zellij_utils::nested_session::encode_frame(&message),
+    );
+    assert_eq!(grid.pending_nested_session_messages, vec![message]);
+}
+
+#[test]
+fn nested_session_frame_split_across_feeds_is_staged() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = new_grid_for_nested_frames();
+    let message = nested_announce_message();
+    let frame = zellij_utils::nested_session::encode_frame(&message);
+    let (first_half, second_half) = frame.split_at(frame.len() / 2);
+    vte_parser.advance(&mut grid, first_half);
+    assert!(grid.pending_nested_session_messages.is_empty());
+    vte_parser.advance(&mut grid, second_half);
+    assert_eq!(grid.pending_nested_session_messages, vec![message]);
+}
+
+#[test]
+fn dcs_with_wrong_magic_param_is_not_staged() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = new_grid_for_nested_frames();
+    vte_parser.advance(&mut grid, b"\x1bP26662nAAAA\x1b\\");
+    assert!(grid.pending_nested_session_messages.is_empty());
+}
+
+#[test]
+fn dcs_with_intermediates_is_not_staged() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = new_grid_for_nested_frames();
+    vte_parser.advance(&mut grid, b"\x1bP26661$nAAAA\x1b\\");
+    assert!(grid.pending_nested_session_messages.is_empty());
+}
+
+#[test]
+fn dcs_n_without_params_is_not_staged() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = new_grid_for_nested_frames();
+    vte_parser.advance(&mut grid, b"\x1bPnAAAA\x1b\\");
+    assert!(grid.pending_nested_session_messages.is_empty());
+}
+
+#[test]
+fn nested_session_frame_with_garbage_payload_is_dropped() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = new_grid_for_nested_frames();
+    vte_parser.advance(&mut grid, b"\x1bP26661n!!!not-base64!!!\x1b\\");
+    assert!(grid.pending_nested_session_messages.is_empty());
+}
+
+fn serialize_text_bytes(text: &str) -> String {
+    text.as_bytes()
+        .iter()
+        .map(|byte| byte.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn render_ui_component(component_name: &str, serialized_params: &str) -> Grid {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = new_grid_for_nested_frames();
+    let dcs = format!("\u{1b}Pz{};{}\u{1b}\\", component_name, serialized_params);
+    vte_parser.advance(&mut grid, dcs.as_bytes());
+    grid
+}
+
+fn styled_cells_of(
+    grid: &Grid,
+    needle: char,
+) -> Vec<crate::panes::terminal_character::CharacterStyles> {
+    let mut styles = vec![];
+    for line in grid.as_character_lines() {
+        for terminal_character in line {
+            if terminal_character.character == needle {
+                styles.push(*terminal_character.styles);
+            }
+        }
+    }
+    styles
+}
+
+#[test]
+fn disabled_ribbon_renders_italic_non_bold_unselected() {
+    use crate::panes::terminal_character::AnsiCode;
+    let grid = render_ui_component("ribbon", &format!("d{}", serialize_text_bytes("RES")));
+    let letter_styles = styled_cells_of(&grid, 'R');
+    assert!(!letter_styles.is_empty());
+    for style in letter_styles {
+        assert_eq!(style.italic, Some(AnsiCode::On));
+        assert_ne!(style.bold, Some(AnsiCode::On));
+    }
+}
+
+#[test]
+fn disabled_text_with_opaque_flag_keeps_a_background() {
+    use crate::panes::terminal_character::AnsiCode;
+    let grid = render_ui_component("text", &format!("zd{}", serialize_text_bytes("RES")));
+    let letter_styles = styled_cells_of(&grid, 'R');
+    assert!(!letter_styles.is_empty());
+    for style in letter_styles {
+        assert_eq!(style.italic, Some(AnsiCode::On));
+        assert_ne!(style.bold, Some(AnsiCode::On));
+        assert!(style.background.is_some());
+    }
+}
+
+#[test]
+fn disabled_text_renders_italic_non_bold() {
+    use crate::panes::terminal_character::AnsiCode;
+    let grid = render_ui_component("text", &format!("d{}", serialize_text_bytes("RES")));
+    let letter_styles = styled_cells_of(&grid, 'R');
+    assert!(!letter_styles.is_empty());
+    for style in letter_styles {
+        assert_eq!(style.italic, Some(AnsiCode::On));
+        assert_ne!(style.bold, Some(AnsiCode::On));
+    }
+}
+
+#[test]
+fn ui_component_flag_prefixes_parse_order_independently() {
+    let baseline = render_ui_component("text", &format!("xzd{}", serialize_text_bytes("RES")));
+    let baseline_styles = styled_cells_of(&baseline, 'R');
+    for prefix in ["xdz", "zxd", "zdx", "dxz", "dzx"] {
+        let grid = render_ui_component(
+            "text",
+            &format!("{}{}", prefix, serialize_text_bytes("RES")),
+        );
+        assert_eq!(
+            styled_cells_of(&grid, 'R'),
+            baseline_styles,
+            "prefix {prefix} should parse the same flags as xzd"
+        );
+    }
+}
+
+use crate::panes::kitty_graphics::{InterceptorResult, KittyApcInterceptor, KittyHostSupport};
+use crate::panes::sixel::PixelRect;
+
+const KITTY_PNG_2X2: [u8; 75] = [
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x08, 0x06, 0x00, 0x00, 0x00, 0x72, 0xb6, 0x0d,
+    0x24, 0x00, 0x00, 0x00, 0x12, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0x63, 0xf8, 0xcf, 0xc0, 0xf0,
+    0x1f, 0x0c, 0x81, 0x34, 0x18, 0x00, 0x00, 0x49, 0xc8, 0x09, 0xf7, 0x03, 0xd9, 0x64, 0xf1, 0x00,
+    0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+];
+
+fn new_kitty_grid(rows: usize, columns: usize) -> (Grid, Rc<RefCell<KittyImageStore>>) {
+    let kitty_image_store = Rc::new(RefCell::new(KittyImageStore::default()));
+    let grid = Grid::new(
+        rows,
+        columns,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(Some(SizeInPixels {
+            width: 10,
+            height: 20,
+        }))),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        kitty_image_store.clone(),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    (grid, kitty_image_store)
+}
+
+fn feed_kitty_bytes(
+    grid: &mut Grid,
+    vte_parser: &mut vte::Parser,
+    interceptor: &mut KittyApcInterceptor,
+    bytes: &[u8],
+) {
+    for byte in bytes {
+        match interceptor.advance(*byte) {
+            InterceptorResult::Forward(fwd) => {
+                vte_parser.advance(grid, fwd.as_slice());
+            },
+            InterceptorResult::Swallow => {},
+            InterceptorResult::Captured(cmd) => {
+                grid.handle_kitty_apc(&cmd);
+            },
+        }
+    }
+}
+
+fn kitty_apc(control: &str, payload: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(b"\x1b_G");
+    out.extend_from_slice(control.as_bytes());
+    if !payload.is_empty() {
+        out.push(b';');
+        out.extend_from_slice(base64::encode(payload).as_bytes());
+    }
+    out.extend_from_slice(b"\x1b\\");
+    out
+}
+
+fn rgb_raster(width: usize, height: usize) -> Vec<u8> {
+    (0..width * height * 3).map(|i| (i % 251) as u8).collect()
+}
+
+fn rgba_raster(width: usize, height: usize) -> Vec<u8> {
+    (0..width * height * 4).map(|i| (i % 251) as u8).collect()
+}
+
+fn kitty_placement_id_set(grid: &Grid) -> Vec<(u32, u32)> {
+    let mut ids: Vec<(u32, u32)> = grid
+        .kitty_placements()
+        .iter()
+        .map(|placement| (placement.image_id, placement.placement_id))
+        .collect();
+    ids.sort();
+    ids
+}
+
+fn build_three_kitty_placements(
+    grid: &mut Grid,
+    vte_parser: &mut vte::Parser,
+    interceptor: &mut KittyApcInterceptor,
+) {
+    feed_kitty_bytes(
+        grid,
+        vte_parser,
+        interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=40,i=1,C=1", &rgb_raster(20, 40)),
+    );
+    feed_kitty_bytes(grid, vte_parser, interceptor, b"\x1b[6;11H");
+    feed_kitty_bytes(
+        grid,
+        vte_parser,
+        interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=40,i=2,z=1,C=1", &rgb_raster(20, 40)),
+    );
+    feed_kitty_bytes(grid, vte_parser, interceptor, b"\x1b[11;21H");
+    feed_kitty_bytes(
+        grid,
+        vte_parser,
+        interceptor,
+        &kitty_apc("a=T,f=32,s=10,v=20,i=5,z=-1,C=1", &rgba_raster(10, 20)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 3);
+}
+
+#[test]
+fn kitty_transmit_and_display_raw_rgb() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=40,i=1", &rgb_raster(20, 40)),
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 1);
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(
+        grid.kitty_placements()[0].display_rect,
+        PixelRect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 40,
+        }
+    );
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn kitty_transmit_and_display_png() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=100,i=1", &KITTY_PNG_2X2),
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 1);
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(
+        grid.kitty_placements()[0].display_rect,
+        PixelRect {
+            x: 0,
+            y: 0,
+            width: 2,
+            height: 2,
+        }
+    );
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn kitty_cursor_advances_after_display() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=40,i=1", &rgb_raster(20, 40)),
+    );
+    let (cursor_x, cursor_y, _) = grid.cursor_coordinates().unwrap();
+    assert_eq!((cursor_x, cursor_y), (2, 1));
+}
+
+#[test]
+fn kitty_cursor_unmoved_with_c1() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=40,i=1,C=1", &rgb_raster(20, 40)),
+    );
+    let (cursor_x, cursor_y, _) = grid.cursor_coordinates().unwrap();
+    assert_eq!((cursor_x, cursor_y), (0, 0));
+}
+
+#[test]
+fn kitty_placement_survives_text_overwrite_and_erase() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=40,i=1,C=1", &rgb_raster(20, 40)),
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"XXXX");
+    assert_eq!(grid.kitty_placement_count(), 1);
+    for erase_sequence in [
+        &b"\x1b[K"[..],
+        &b"\x1b[1K"[..],
+        &b"\x1b[0J"[..],
+        &b"\x1b[1J"[..],
+    ] {
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, erase_sequence);
+        assert_eq!(grid.kitty_placement_count(), 1);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn kitty_replace_same_ids_moves_placement() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=40,i=1,p=1,C=1", &rgb_raster(20, 40)),
+    );
+    assert_snapshot!(format!("{:?}", grid));
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[10;5H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=p,i=1,p=1,C=1", b""),
+    );
+    assert_snapshot!(format!("{:?}", grid));
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(
+        grid.kitty_placements()[0].display_rect,
+        PixelRect {
+            x: 40,
+            y: 180,
+            width: 20,
+            height: 40,
+        }
+    );
+}
+
+#[test]
+fn kitty_delete_all_visible() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=A", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![]);
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 0);
+}
+
+#[test]
+fn kitty_delete_by_image_id() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=i,i=2", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=40,i=2,p=1,C=1", &rgb_raster(20, 40)),
+    );
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=p,i=2,p=2,C=1", b""),
+    );
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=i,i=2,p=1", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(2, 2)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 3200);
+
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=I,i=2", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
+    assert_eq!(kitty_image_store.borrow().image_count(), 2);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+}
+
+#[test]
+fn kitty_delete_by_image_number() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=20,I=7,C=1", &rgb_raster(10, 20)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 4);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 8000);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=n,I=7", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0), (5, 0)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 8000);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=N,I=7", b""),
+    );
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_image_store.borrow().image_count(), 3);
+}
+
+#[test]
+fn kitty_delete_cursor_intersecting() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=c", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=C", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0)]);
+    assert_eq!(kitty_image_store.borrow().image_count(), 2);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 6400);
+}
+
+#[test]
+fn kitty_delete_cell_intersecting() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=p,x=11,y=6", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=P,x=11,y=6", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+}
+
+#[test]
+fn kitty_delete_cell_with_z() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=q,x=11,y=6,z=5", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0), (5, 0)]);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=q,x=11,y=6,z=1", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=Q,x=11,y=6,z=1", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+}
+
+#[test]
+fn kitty_delete_column() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=x,x=1", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(2, 0), (5, 0)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=X,x=1", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(2, 0), (5, 0)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+}
+
+#[test]
+fn kitty_delete_row() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=y,y=6", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=Y,y=6", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+}
+
+#[test]
+fn kitty_delete_by_z_index() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=z,z=-1", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=Z,z=-1", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 6400);
+}
+
+#[test]
+fn kitty_delete_image_id_range() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=r,x=1,y=2", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(5, 0)]);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=R,x=1,y=2", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(5, 0)]);
+    assert_eq!(kitty_image_store.borrow().image_count(), 1);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 800);
+}
+
+#[test]
+fn kitty_delete_image_id_range_with_omitted_lower_bound() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=d,d=r,y=2", b""),
+    );
+    assert_eq!(kitty_placement_id_set(&grid), vec![(5, 0)]);
+    let replies: Vec<String> = grid
+        .pending_messages_to_pty
+        .iter()
+        .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
+        .collect();
+    assert!(
+        !replies.iter().any(|reply| reply.contains("EINVAL")),
+        "d=r with omitted lower bound must not emit EINVAL, got {:?}",
+        replies
+    );
+}
+
+#[test]
+fn kitty_retransmit_to_existing_id_replaces_image() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=32,s=4,v=4,i=1,C=1", &rgba_raster(4, 4)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 64);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=t,f=32,s=2,v=2,i=1", &rgba_raster(2, 2)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 0);
+    assert_eq!(kitty_image_store.borrow().image_count(), 1);
+    assert_eq!(kitty_image_store.borrow().total_bytes(), 16);
+}
+
+#[test]
+fn kitty_c_r_scaling_produces_exact_cell_rect_and_variant() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=10,c=3,r=2,i=1", &rgb_raster(10, 10)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    let placement = &grid.kitty_placements()[0];
+    assert_eq!(placement.dest_cells, (3, 2));
+    assert_eq!(
+        placement.display_rect,
+        PixelRect {
+            x: 0,
+            y: 0,
+            width: 30,
+            height: 40,
+        }
+    );
+    let internal_id = placement.internal_id;
+    assert_eq!(
+        kitty_image_store
+            .borrow()
+            .scaled_variant(internal_id, (3, 2))
+            .unwrap()
+            .len(),
+        30 * 40 * 4
+    );
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn kitty_aspect_fit_single_axis() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=10,c=4,i=1", &rgb_raster(10, 10)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    let placement = &grid.kitty_placements()[0];
+    assert_eq!(placement.dest_cells, (4, 2));
+    assert_eq!(
+        placement.display_rect,
+        PixelRect {
+            x: 0,
+            y: 0,
+            width: 40,
+            height: 40,
+        }
+    );
+}
+
+#[test]
+fn kitty_yazi_kgpold_stream_roundtrip() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    let raster = rgb_raster(2, 2);
+    let full_b64 = base64::encode(&raster);
+    let (b64_chunk_one, b64_chunk_two) = full_b64.split_at(8);
+    let mut stream = Vec::new();
+    stream.extend_from_slice(
+        format!(
+            "\x1b_Gq=2,a=T,z=-1,C=1,f=24,s=2,v=2,m=1;{}\x1b\\",
+            b64_chunk_one
+        )
+        .as_bytes(),
+    );
+    stream.extend_from_slice(format!("\x1b_Gm=0;{}\x1b\\", b64_chunk_two).as_bytes());
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, &stream);
+    assert_eq!(grid.kitty_placement_count(), 1);
+    let placement = &grid.kitty_placements()[0];
+    assert_eq!(placement.z_index, -1);
+    assert_eq!(placement.image_id, 0);
+    let (cursor_x, cursor_y, _) = grid.cursor_coordinates().unwrap();
+    assert_eq!((cursor_x, cursor_y), (0, 0));
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"\x1b_Gq=2,a=d,d=A\x1b\\",
+    );
+    assert_eq!(grid.kitty_placement_count(), 0);
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_csi_2j_clears_placements() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=40,i=1,C=1", &rgb_raster(20, 40)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2J");
+    assert_eq!(grid.kitty_placement_count(), 0);
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_ris_clears_placements_and_store() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=40,i=1,C=1", &rgb_raster(20, 40)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1bc");
+    assert_eq!(grid.kitty_placement_count(), 0);
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_image_in_alternate_buffer() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=40,i=1,C=1", &rgb_raster(20, 40)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[?1049h");
+    assert_eq!(grid.kitty_placement_count(), 0);
+    assert_snapshot!(format!("{:?}", grid));
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=32,s=10,v=20,i=2,C=1", &rgba_raster(10, 20)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(kitty_image_store.borrow().image_count(), 2);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[?1049l");
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_snapshot!(format!("{:?}", grid));
+    assert_eq!(
+        kitty_image_store.borrow().image_count(),
+        1,
+        "alternate screen image was freed when leaving the alternate screen"
+    );
+}
+
+#[test]
+fn kitty_placements_are_reaped_when_scrolled_off() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=40,i=1,C=1", &rgb_raster(20, 40)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    for _ in 0..10_040 {
+        grid.add_canonical_line();
+    }
+    assert_eq!(grid.kitty_placement_count(), 0);
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_scroll_region_moves_inside_placement_and_clips_straddler() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2;5r");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[3;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=20,i=1,C=1", &rgb_raster(10, 20)),
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[5;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=40,i=2,C=1", &rgb_raster(10, 40)),
+    );
+    assert_eq!(
+        grid.kitty_placements()[0].display_rect,
+        PixelRect {
+            x: 0,
+            y: 40,
+            width: 10,
+            height: 20,
+        }
+    );
+    assert_eq!(
+        grid.kitty_placements()[1].display_rect,
+        PixelRect {
+            x: 0,
+            y: 80,
+            width: 10,
+            height: 40,
+        }
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\n");
+    assert_eq!(grid.kitty_placement_count(), 2);
+    let placement_a = &grid.kitty_placements()[0];
+    assert_eq!(
+        placement_a.display_rect,
+        PixelRect {
+            x: 0,
+            y: 20,
+            width: 10,
+            height: 20,
+        }
+    );
+    assert_eq!(placement_a.emit_y, 0);
+    let placement_b = &grid.kitty_placements()[1];
+    assert_eq!(
+        placement_b.display_rect,
+        PixelRect {
+            x: 0,
+            y: 100,
+            width: 10,
+            height: 20,
+        }
+    );
+    assert_eq!(placement_b.emit_y, 20);
+    assert_eq!(placement_b.emit_x, 0);
+}
+
+#[test]
+fn kitty_reply_query_probe_exact_bytes() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"\x1b_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\x1b\\",
+    );
+    assert_eq!(
+        grid.pending_messages_to_pty,
+        vec![b"\x1b_Gi=31;OK\x1b\\".to_vec()]
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+    assert_eq!(grid.kitty_placement_count(), 0);
+}
+
+#[test]
+fn kitty_reply_display_unknown_id_enoent() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=p,i=10", &[]),
+    );
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let reply = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
+    assert!(reply.starts_with("\x1b_Gi=10;ENOENT"));
+    assert!(reply.ends_with("\x1b\\"));
+}
+
+#[test]
+fn kitty_reply_quiet_one_suppresses_ok_not_errors() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=2,v=2,i=1,q=1,C=1", &rgb_raster(2, 2)),
+    );
+    assert!(grid.pending_messages_to_pty.is_empty());
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=p,i=99,q=1", &[]),
+    );
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let reply = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
+    assert!(reply.contains("i=99;ENOENT"));
+}
+
+#[test]
+fn kitty_reply_quiet_two_suppresses_everything() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=2,v=2,i=1,q=2,C=1", &rgb_raster(2, 2)),
+    );
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=p,i=99,q=2", &[]),
+    );
+    assert!(grid.pending_messages_to_pty.is_empty());
+}
+
+#[test]
+fn kitty_reply_transmit_with_image_number_echoes_assigned_id() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=t,I=5,f=24,s=2,v=2", &rgb_raster(2, 2)),
+    );
+    assert_eq!(
+        grid.pending_messages_to_pty,
+        vec![format!("\u{1b}_Gi={},I=5;OK\u{1b}\\", u32::MAX).into_bytes()]
+    );
+    assert_eq!(grid.kitty_placement_count(), 0);
+    assert_eq!(kitty_image_store.borrow().image_count(), 1);
+}
+
+#[test]
+fn kitty_reply_anonymous_transmit_and_display_is_silent() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=2,v=2,C=1", &rgb_raster(2, 2)),
+    );
+    assert!(grid.pending_messages_to_pty.is_empty());
+    assert_eq!(grid.kitty_placement_count(), 1);
+}
+
+#[test]
+fn kitty_reply_malformed_control_einval_without_ids() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"\x1b_Gnot-a-kv\x1b\\",
+    );
+    assert_eq!(
+        grid.pending_messages_to_pty,
+        vec![b"\x1b_G;EINVAL:malformed control data\x1b\\".to_vec()]
+    );
+}
+
+#[test]
+fn kitty_reply_icat_detection_sequence() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("icat-detect.bin");
+    std::fs::write(&path, [1u8, 2, 3]).unwrap();
+    let path_bytes = path.to_str().unwrap().as_bytes();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"\x1b_Gt=d,a=q,i=1,s=1,v=1,f=24,S=3;MTIz\x1b\\",
+    );
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        format!(
+            "\x1b_Gt=t,a=q,i=2,s=1,v=1,f=24,S={};{}\x1b\\",
+            path_bytes.len(),
+            base64::encode(path_bytes)
+        )
+        .as_bytes(),
+    );
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        format!(
+            "\x1b_Gt=s,a=q,i=3,s=1,v=1,f=24,S=3;{}\x1b\\",
+            base64::encode(b"/some-shm")
+        )
+        .as_bytes(),
+    );
+    assert_eq!(grid.pending_messages_to_pty.len(), 3);
+    assert_eq!(
+        grid.pending_messages_to_pty[0],
+        b"\x1b_Gi=1;OK\x1b\\".to_vec()
+    );
+    assert_eq!(
+        grid.pending_messages_to_pty[1],
+        b"\x1b_Gi=2;OK\x1b\\".to_vec()
+    );
+    let third = String::from_utf8(grid.pending_messages_to_pty[2].clone()).unwrap();
+    assert!(third.starts_with("\x1b_Gi=3;ENOTSUPPORTED"));
+    assert!(third.ends_with("\x1b\\"));
+    assert!(path.starts_with(std::env::temp_dir()));
+    assert!(!path.exists());
+}
+
+#[test]
+fn kitty_reply_query_when_host_unsupported() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    grid.update_kitty_host_support(KittyHostSupport::Unsupported);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"\x1b_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\x1b\\",
+    );
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let reply = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
+    assert!(reply.starts_with("\x1b_Gi=31;ENOTSUPPORTED"));
+    assert!(reply.ends_with("\x1b\\"));
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_disabled_protocol_answers_queries_with_silence() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    grid.update_kitty_host_support(KittyHostSupport::ProtocolDisabled);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"\x1b_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\x1b\\",
+    );
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "a disabled protocol must not reply to queries at all"
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_disabled_protocol_ignores_transmitted_images() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    grid.update_kitty_host_support(KittyHostSupport::ProtocolDisabled);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[3;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 0);
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+    assert!(grid.pending_messages_to_pty.is_empty());
+}
+
+#[test]
+fn kitty_disabled_protocol_does_not_leak_apc_bytes_into_the_grid() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    grid.update_kitty_host_support(KittyHostSupport::ProtocolDisabled);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"a");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"b");
+    assert_eq!(row_text(&grid.viewport[0]), "ab");
+}
+
+#[test]
+fn kitty_conformance_image_put_cursor_positions() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=20,i=1", &rgb_raster(10, 20)),
+    );
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((1, 0))
+    );
+}
+
+#[test]
+fn kitty_conformance_image_put_scaled_cursor() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=40,c=3,i=1", &rgb_raster(20, 40)),
+    );
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((3, 2))
+    );
+    assert_eq!(grid.kitty_placements()[0].dest_cells, (3, 3));
+}
+
+#[test]
+fn kitty_conformance_image_put_full_width_wraps() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=100,v=20,i=1", &rgb_raster(100, 20)),
+    );
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((0, 1))
+    );
+}
+
+#[test]
+fn kitty_conformance_image_put_pixel_offsets_cursor() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=20,X=5,Y=5,i=1", &rgb_raster(10, 20)),
+    );
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((2, 1))
+    );
+    assert_eq!(grid.kitty_placements()[0].dest_cells, (2, 2));
+}
+
+#[test]
+fn kitty_conformance_bottom_row_placement_scrolls() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[5;1H");
+    assert_eq!(grid.lines_above.len(), 0);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=40,i=1", &rgb_raster(10, 40)),
+    );
+    assert_eq!(grid.lines_above.len(), 1);
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((1, 4))
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(
+        grid.kitty_placements()[0].display_rect,
+        PixelRect {
+            x: 0,
+            y: 80,
+            width: 10,
+            height: 40,
+        }
+    );
+}
+
+#[test]
+fn kitty_conformance_bottom_row_placement_c1_does_not_scroll() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[5;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=40,i=1,C=1", &rgb_raster(10, 40)),
+    );
+    assert_eq!(grid.lines_above.len(), 0);
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((0, 4))
+    );
+    assert_eq!(
+        grid.kitty_placements()[0].display_rect,
+        PixelRect {
+            x: 0,
+            y: 80,
+            width: 10,
+            height: 40,
+        }
+    );
+}
+
+#[test]
+fn kitty_conformance_full_screen_index_scroll_reaps_image() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=20,i=1,C=1", &rgb_raster(10, 20)),
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 1);
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
+    for _ in 0..(scroll_buffer_size + grid.height) {
+        grid.add_canonical_line();
+    }
+    let _ = grid.read_changes(0, 0);
+    assert_eq!(grid.kitty_placement_count(), 0);
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_conformance_margin_scroll_leaves_outside_images_untouched() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=10,v=20,i=1,C=1", &rgb_raster(10, 20)),
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2;4r");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[4;1H");
+    let outside_before = grid.kitty_placements()[0].display_rect;
+    for _ in 0..3 {
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\n");
+    }
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(grid.kitty_placements()[0].display_rect, outside_before);
+    assert_eq!(grid.kitty_placements()[0].emit_y, 0);
+}
+
+#[test]
+fn kitty_conformance_transmit_with_both_id_and_number_is_einval() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(5, 10);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=t,f=24,s=1,v=1,I=1,i=3", &rgb_raster(1, 1)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 0);
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let reply = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
+    assert!(
+        reply.contains("EINVAL"),
+        "expected EINVAL for transmit with both i and I, got {:?}",
+        reply
+    );
+}
+
+fn kitty_image_px_below_canonical_line(grid: &Grid, canonical_index: usize) -> isize {
+    let placement = &grid.kitty_placements()[0];
+    let cell_height = 20isize;
+    let line_start = buffer_cell_row_of_canonical_line(grid, canonical_index);
+    placement.display_rect.y - line_start * cell_height
+}
+
+#[test]
+fn kitty_placement_keeps_screen_row_across_width_reflow() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(6, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    for line in 0..5 {
+        let text = format!("row{}-{}", line, "x".repeat(30));
+        feed_kitty_bytes(
+            &mut grid,
+            &mut vte_parser,
+            &mut interceptor,
+            text.as_bytes(),
+        );
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\r\n");
+    }
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[3;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    let anchor_canonical_line = grid.kitty_placements()[0].vertical_anchor.canonical_line;
+    let px_below_before = kitty_image_px_below_canonical_line(&grid, anchor_canonical_line);
+    let lines_above_before = grid.lines_above.len();
+
+    grid.change_size(6, 10);
+    assert_ne!(
+        grid.lines_above.len(),
+        lines_above_before,
+        "width reflow must change the scrollback row count for this test to be meaningful"
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(
+        kitty_image_px_below_canonical_line(&grid, anchor_canonical_line),
+        px_below_before,
+        "image must keep the same pixel offset below its anchor canonical line (track the text) across a narrowing width reflow"
+    );
+
+    grid.change_size(6, 40);
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(
+        kitty_image_px_below_canonical_line(&grid, anchor_canonical_line),
+        px_below_before,
+        "image must keep the same pixel offset below its anchor canonical line (track the text) across a widening width reflow"
+    );
+}
+
+fn kitty_image_absolute_cell_row(grid: &Grid) -> isize {
+    let placement = &grid.kitty_placements()[0];
+    let cell_height = 20isize;
+    placement.display_rect.y.div_euclid(cell_height)
+}
+
+fn buffer_cell_row_of_canonical_line(grid: &Grid, canonical_index: usize) -> isize {
+    let mut canonical_seen = 0usize;
+    let mut wrapped_row = 0isize;
+    for row in grid.lines_above.iter().chain(grid.viewport.iter()) {
+        if row.is_canonical {
+            if canonical_seen == canonical_index {
+                return wrapped_row;
+            }
+            canonical_seen += 1;
+        }
+        wrapped_row += 1;
+    }
+    -1
+}
+
+#[test]
+fn kitty_placement_follows_text_across_width_reflow() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    for line in 0..3 {
+        let text = format!("r{}-{}", line, "x".repeat(34));
+        feed_kitty_bytes(
+            &mut grid,
+            &mut vte_parser,
+            &mut interceptor,
+            text.as_bytes(),
+        );
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\r\n");
+    }
+    let image_canonical_line = 3usize;
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[7;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+
+    let image_row_before = kitty_image_absolute_cell_row(&grid);
+    let text_row_before = buffer_cell_row_of_canonical_line(&grid, image_canonical_line);
+    assert_eq!(
+        image_row_before, text_row_before,
+        "image top must sit on the buffer cell row of its canonical line before reflow"
+    );
+
+    grid.change_size(10, 10);
+    assert_eq!(grid.kitty_placement_count(), 1);
+    let image_row_narrow = kitty_image_absolute_cell_row(&grid);
+    let text_row_narrow = buffer_cell_row_of_canonical_line(&grid, image_canonical_line);
+    assert_eq!(
+        image_row_narrow, text_row_narrow,
+        "image must track its canonical text line after narrowing reflow (lines above rewrap into more rows)"
+    );
+    assert!(
+        text_row_narrow > text_row_before,
+        "narrowing must push the image's canonical line further down the buffer for the test to be meaningful"
+    );
+
+    grid.change_size(10, 40);
+    assert_eq!(grid.kitty_placement_count(), 1);
+    let image_row_wide = kitty_image_absolute_cell_row(&grid);
+    let text_row_wide = buffer_cell_row_of_canonical_line(&grid, image_canonical_line);
+    assert_eq!(
+        image_row_wide, text_row_wide,
+        "image must track its canonical text line after widening reflow (lines above rewrap into fewer rows)"
+    );
+    assert!(
+        text_row_wide < text_row_narrow,
+        "widening must pull the image's canonical line back up for the test to be meaningful"
+    );
+}
+
+#[test]
+fn kitty_placement_moves_with_csi_insert_lines() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[6;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    let row_before = kitty_image_absolute_cell_row(&grid);
+    assert_eq!(row_before, 5);
+
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[3;1H");
+    let inserted = 2usize;
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2L");
+
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        row_before + inserted as isize,
+        "image below the insertion point must shift down by the inserted line count"
+    );
+}
+
+#[test]
+fn kitty_placement_moves_with_csi_delete_lines() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[6;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    let row_before = kitty_image_absolute_cell_row(&grid);
+    assert_eq!(row_before, 5);
+
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[3;1H");
+    let deleted = 2usize;
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2M");
+
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        row_before - deleted as isize,
+        "image below the deletion point must shift up by the deleted line count"
+    );
+}
+
+#[test]
+fn kitty_placement_in_deleted_range_is_removed() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[4;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(kitty_image_absolute_cell_row(&grid), 3);
+
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[4;1H");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1M");
+
+    assert_eq!(
+        grid.kitty_placement_count(),
+        0,
+        "an image whose only row is deleted by CSI M must be removed"
+    );
+}
+
+fn kitty_row_starts_the_marker_line(row: &super::super::Row) -> bool {
+    row.is_canonical && row_text(row).starts_with("MARKER")
+}
+
+fn kitty_marker_is_below_the_viewport(grid: &Grid) -> bool {
+    grid.lines_below
+        .iter()
+        .any(kitty_row_starts_the_marker_line)
+}
+
+fn kitty_marker_absolute_cell_row(grid: &Grid) -> Option<isize> {
+    grid.lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .position(kitty_row_starts_the_marker_line)
+        .map(|row| row as isize)
+}
+
+fn kitty_marker_extended_absolute_cell_row(grid: &Grid) -> Option<isize> {
+    grid.lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+        .position(kitty_row_starts_the_marker_line)
+        .map(|row| row as isize)
+}
+
+fn kitty_scrollback_has_merged_wrapped_rows(grid: &Grid) -> bool {
+    grid.lines_above.iter().any(|row| row.width() > grid.width)
+}
+
+fn kitty_marker_viewport_row(grid: &Grid) -> Option<usize> {
+    let marker_row = kitty_marker_absolute_cell_row(grid)?;
+    let viewport_row = marker_row - grid.lines_above.len() as isize;
+    if viewport_row >= 0 && (viewport_row as usize) < grid.viewport.len() {
+        Some(viewport_row as usize)
+    } else {
+        None
+    }
+}
+
+#[test]
+fn kitty_placement_tracks_text_when_a_wrapped_row_moves_into_the_scrollback() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(5, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"AAAAAAAAAAAAAAAAAAAAAAAAA\r\n",
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"MARKER");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[3;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(
+        Some(kitty_image_absolute_cell_row(&grid)),
+        kitty_marker_absolute_cell_row(&grid)
+    );
+    for _ in 0..5 {
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\r\nx");
+    }
+    assert!(kitty_scrollback_has_merged_wrapped_rows(&grid));
+    assert_eq!(
+        Some(kitty_image_absolute_cell_row(&grid)),
+        kitty_marker_absolute_cell_row(&grid),
+        "the image must stay on the row of its marker line after a wrapped row is merged into the scrollback"
+    );
+}
+
+fn kitty_wrapped_scrollback_setup(
+    wrapped_line_width: usize,
+) -> (
+    Grid,
+    Rc<RefCell<KittyImageStore>>,
+    vte::Parser,
+    KittyApcInterceptor,
+) {
+    let (mut grid, kitty_image_store) = new_kitty_grid(5, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    let wrapped_line = format!("{}\r\n", "A".repeat(wrapped_line_width));
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        wrapped_line.as_bytes(),
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"MARKER");
+    let marker_viewport_row = kitty_marker_viewport_row(&grid).expect("marker must be visible");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        format!("\x1b[{};1H", marker_viewport_row + 1).as_bytes(),
+    );
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(
+        Some(kitty_image_absolute_cell_row(&grid)),
+        kitty_marker_absolute_cell_row(&grid),
+        "the image must start on the row of its marker line"
+    );
+    for _ in 0..5 {
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\r\nx");
+    }
+    assert!(
+        kitty_scrollback_has_merged_wrapped_rows(&grid),
+        "the wrapped line must have been merged into a single scrollback row"
+    );
+    (grid, kitty_image_store, vte_parser, interceptor)
+}
+
+#[test]
+fn kitty_placement_tracks_text_when_a_wrapped_row_is_split_out_of_the_scrollback() {
+    let (mut grid, _kitty_image_store, _vte_parser, _interceptor) =
+        kitty_wrapped_scrollback_setup(25);
+    for step in 0..2 {
+        grid.scroll_up_one_line();
+        assert_eq!(
+            grid.kitty_placement_count(),
+            1,
+            "scrolling the scrollback must not free the image (step {})",
+            step
+        );
+        assert_eq!(
+            Some(kitty_image_absolute_cell_row(&grid)),
+            kitty_marker_absolute_cell_row(&grid),
+            "the image must stay on the row of its marker line after scrollback scroll up (step {})",
+            step
+        );
+    }
+    assert!(
+        !grid.viewport[0].is_canonical,
+        "the wrapped scrollback row must have been split back into the viewport"
+    );
+}
+
+#[test]
+fn kitty_placement_tracks_text_when_a_multiply_wrapped_row_is_split_out_of_the_scrollback() {
+    let (mut grid, _kitty_image_store, _vte_parser, _interceptor) =
+        kitty_wrapped_scrollback_setup(45);
+    let mut non_canonical_viewport_rows = 0;
+    for step in 0..4 {
+        grid.scroll_up_one_line();
+        assert_eq!(
+            grid.kitty_placement_count(),
+            1,
+            "scrolling the scrollback must not free the image (step {})",
+            step
+        );
+        assert_eq!(
+            Some(kitty_image_absolute_cell_row(&grid)),
+            kitty_marker_absolute_cell_row(&grid),
+            "the image must stay on the row of its marker line after scrollback scroll up (step {})",
+            step
+        );
+        non_canonical_viewport_rows = grid.viewport.iter().filter(|row| !row.is_canonical).count();
+    }
+    assert!(
+        non_canonical_viewport_rows >= 2,
+        "a canonical line wrapping into three rows must be split into at least two continuation rows in the viewport"
+    );
+}
+
+#[test]
+fn kitty_placement_geometry_survives_a_scrollback_scroll_round_trip() {
+    let (mut grid, _kitty_image_store, _vte_parser, _interceptor) =
+        kitty_wrapped_scrollback_setup(45);
+    let display_rect_before = grid.kitty_placements()[0].display_rect;
+    let anchor_before = grid.kitty_placements()[0].vertical_anchor;
+    let lines_above_before = grid.lines_above.len();
+    let marker_row_before = kitty_marker_absolute_cell_row(&grid);
+    for _ in 0..4 {
+        grid.scroll_up_one_line();
+    }
+    for _ in 0..4 {
+        grid.scroll_down_one_line();
+    }
+    assert_eq!(grid.lines_above.len(), lines_above_before);
+    assert_eq!(
+        kitty_marker_absolute_cell_row(&grid),
+        marker_row_before,
+        "the round trip must restore the marker line row"
+    );
+    assert_eq!(
+        grid.kitty_placements()[0].display_rect,
+        display_rect_before,
+        "the round trip must restore the placement pixel geometry"
+    );
+    assert_eq!(
+        grid.kitty_placements()[0].vertical_anchor,
+        anchor_before,
+        "the round trip must restore the placement anchor"
+    );
+}
+
+fn kitty_marker_canonical_line_index(grid: &Grid) -> Option<usize> {
+    let mut canonical_lines_seen = 0usize;
+    for row in grid.lines_above.iter().chain(grid.viewport.iter()) {
+        if row.is_canonical {
+            canonical_lines_seen += 1;
+        }
+        if row_text(row) == "MARKER" {
+            return Some(canonical_lines_seen.saturating_sub(1));
+        }
+    }
+    None
+}
+
+#[test]
+fn kitty_placement_anchor_survives_scroll_buffer_front_eviction() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
+    for _ in 0..(scroll_buffer_size + grid.height) {
+        grid.add_canonical_line();
+    }
+    assert_eq!(
+        grid.lines_above.len(),
+        scroll_buffer_size,
+        "the scroll buffer must be full for this test to be meaningful"
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"MARKER");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(
+        Some(kitty_image_absolute_cell_row(&grid)),
+        kitty_marker_absolute_cell_row(&grid)
+    );
+    assert_eq!(
+        grid.kitty_placements()[0].vertical_anchor.canonical_line,
+        kitty_marker_canonical_line_index(&grid).expect("marker must exist")
+    );
+    let front_drops_before = grid.kitty_grid.front_drops();
+
+    grid.change_size(5, 20);
+
+    let evicted_lines = grid.kitty_grid.front_drops() - front_drops_before;
+    assert!(
+        evicted_lines >= 5,
+        "shrinking the viewport must evict rows from the front of a full scroll buffer"
+    );
+    assert_eq!(
+        grid.kitty_placement_count(),
+        1,
+        "a placement below the evicted rows must survive the eviction"
+    );
+    let marker_canonical_line =
+        kitty_marker_canonical_line_index(&grid).expect("marker must still exist");
+    assert_eq!(
+        grid.kitty_placements()[0].vertical_anchor.canonical_line,
+        marker_canonical_line,
+        "the placement anchor must still resolve to its marker text line after front eviction"
+    );
+    assert_eq!(
+        Some(kitty_image_absolute_cell_row(&grid)),
+        kitty_marker_absolute_cell_row(&grid),
+        "the image must stay on the row of its marker line across scroll buffer front eviction"
+    );
+}
+
+fn kitty_marker_with_image_on_first_row(
+    rows: usize,
+    columns: usize,
+) -> (
+    Grid,
+    Rc<RefCell<KittyImageStore>>,
+    vte::Parser,
+    KittyApcInterceptor,
+) {
+    let (mut grid, kitty_image_store) = new_kitty_grid(rows, columns);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"MARKER");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    assert_eq!(kitty_marker_absolute_cell_row(&grid), Some(0));
+    assert_eq!(kitty_image_absolute_cell_row(&grid), 0);
+    (grid, kitty_image_store, vte_parser, interceptor)
+}
+
+#[test]
+fn kitty_top_anchored_scroll_up_keeps_image_in_scrollback() {
+    let (mut grid, kitty_image_store, mut vte_parser, mut interceptor) =
+        kitty_marker_with_image_on_first_row(5, 20);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[S");
+    assert_eq!(
+        grid.lines_above.len(),
+        1,
+        "a top anchored scroll region moves the top row into the scrollback"
+    );
+    assert_eq!(
+        grid.kitty_placement_count(),
+        1,
+        "an image whose text was preserved into the scrollback must not be freed"
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 1);
+    assert_eq!(kitty_marker_absolute_cell_row(&grid), Some(0));
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        0,
+        "the image must follow its text into the scrollback"
+    );
+    assert_eq!(grid.kitty_placements()[0].display_rect.height, 20);
+    assert_eq!(grid.kitty_placements()[0].emit_y, 0);
+
+    grid.scroll_up_one_line();
+    assert_eq!(grid.lines_above.len(), 0);
+    assert_eq!(kitty_marker_absolute_cell_row(&grid), Some(0));
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        0,
+        "the image must still sit on its marker row when scrolled back into view"
+    );
+}
+
+#[test]
+fn kitty_top_anchored_delete_line_keeps_image_in_scrollback() {
+    let (mut grid, kitty_image_store, mut vte_parser, mut interceptor) =
+        kitty_marker_with_image_on_first_row(5, 20);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1M");
+    assert_eq!(
+        grid.lines_above.len(),
+        1,
+        "a top anchored line deletion moves the deleted row into the scrollback"
+    );
+    assert_eq!(
+        grid.kitty_placement_count(),
+        1,
+        "an image whose text was preserved into the scrollback must not be freed"
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 1);
+    assert_eq!(kitty_marker_absolute_cell_row(&grid), Some(0));
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        0,
+        "the image must follow its text into the scrollback"
+    );
+
+    grid.scroll_up_one_line();
+    assert_eq!(kitty_marker_absolute_cell_row(&grid), Some(0));
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        0,
+        "the image must still sit on its marker row when scrolled back into view"
+    );
+}
+
+#[test]
+fn kitty_non_top_anchored_region_scroll_still_frees_image() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(5, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2;5r");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(kitty_image_absolute_cell_row(&grid), 1);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[S");
+    assert_eq!(
+        grid.lines_above.len(),
+        0,
+        "a region that does not start at the top of the viewport discards its top row"
+    );
+    assert_eq!(
+        grid.kitty_placement_count(),
+        0,
+        "an image scrolled out of a non top anchored region must be freed"
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_alternate_screen_top_anchored_scroll_frees_image() {
+    let (mut grid, kitty_image_store) = new_kitty_grid(5, 20);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[?1049h");
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    assert_eq!(kitty_image_absolute_cell_row(&grid), 0);
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[S");
+    assert_eq!(
+        grid.lines_above.len(),
+        0,
+        "the alternate screen has no scrollback"
+    );
+    assert_eq!(
+        grid.kitty_placement_count(),
+        0,
+        "an image scrolled off the alternate screen must be freed"
+    );
+    assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn kitty_placement_rejoins_its_text_after_editing_while_scrolled_back() {
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    for line in 0..20 {
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[10;1H");
+        let text = format!("\r\npad{}", line);
+        feed_kitty_bytes(
+            &mut grid,
+            &mut vte_parser,
+            &mut interceptor,
+            text.as_bytes(),
+        );
+    }
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"\x1b[10;1H\r\nMARKER",
+    );
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[10;1H");
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=20,v=20,i=1,C=1", &rgb_raster(20, 20)),
+    );
+    for line in 0..3 {
+        feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[10;1H");
+        let text = format!("\r\ntail{}", line);
+        feed_kitty_bytes(
+            &mut grid,
+            &mut vte_parser,
+            &mut interceptor,
+            text.as_bytes(),
+        );
+    }
+    let _ = grid.read_changes(0, 0);
+    for _ in 0..8 {
+        grid.scroll_up_one_line();
+    }
+    let _ = grid.read_changes(0, 0);
+    assert!(
+        kitty_marker_is_below_the_viewport(&grid),
+        "the marker line must be scrolled below the viewport for this scenario"
+    );
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"\x1b[1;1H\x1b[1M",
+    );
+    let _ = grid.read_changes(0, 0);
+    grid.reset_viewport();
+    let _ = grid.read_changes(0, 0);
+    assert!(
+        !kitty_marker_is_below_the_viewport(&grid),
+        "the marker line must be back inside the buffer after restoring the viewport"
+    );
+    let marker_row = kitty_marker_extended_absolute_cell_row(&grid)
+        .expect("the marker line must survive the edit");
+    assert_eq!(
+        grid.kitty_placement_count(),
+        1,
+        "the image must survive an edit made while scrolled back"
+    );
+    assert_eq!(
+        kitty_image_absolute_cell_row(&grid),
+        marker_row,
+        "the image must rejoin its marker line once the viewport is restored"
+    );
+}
+
+#[test]
+fn primary_device_attributes_advertise_sixel_when_host_supports_it() {
+    let mut grid = create_grid_with_content("");
+    let mut vte_parser = vte::Parser::new();
+    grid.update_sixel_host_support(true);
+    vte_parser.advance(&mut grid, b"\x1b[c");
+    assert_eq!(
+        grid.pending_messages_to_pty,
+        vec![b"\x1b[?62;4;52c".to_vec()]
+    );
+}
+
+#[test]
+fn primary_device_attributes_omit_sixel_when_host_does_not_support_it() {
+    let mut grid = create_grid_with_content("");
+    let mut vte_parser = vte::Parser::new();
+    grid.update_sixel_host_support(false);
+    vte_parser.advance(&mut grid, b"\x1b[c");
+    assert_eq!(grid.pending_messages_to_pty, vec![b"\x1b[?62;52c".to_vec()]);
+}
+
+#[test]
+fn xtsmgraphics_color_registers_report_failure_when_host_does_not_support_sixel() {
+    let mut grid = create_grid_with_content("");
+    let mut vte_parser = vte::Parser::new();
+    grid.update_sixel_host_support(false);
+    vte_parser.advance(&mut grid, b"\x1b[?1;1S");
+    assert_eq!(grid.pending_messages_to_pty, vec![b"\x1b[?1;3;0S".to_vec()]);
+}
+
+#[test]
+fn xtsmgraphics_geometry_reports_failure_when_host_does_not_support_sixel() {
+    let mut grid = create_grid_with_content("");
+    let mut vte_parser = vte::Parser::new();
+    grid.update_sixel_host_support(false);
+    vte_parser.advance(&mut grid, b"\x1b[?2;1S");
+    assert_eq!(grid.pending_messages_to_pty, vec![b"\x1b[?2;3;0S".to_vec()]);
 }

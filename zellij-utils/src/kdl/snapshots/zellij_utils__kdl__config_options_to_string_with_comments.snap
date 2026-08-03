@@ -203,6 +203,12 @@ disable_session_metadata true
 // Default: true (if the host terminal supports it)
 // 
 support_kitty_keyboard_protocol false
+ 
+// Enable or disable support for the Kitty Graphics Protocol, used to display images (the host terminal must also support it)
+// (Requires restart)
+// Default: true (if the host terminal supports it)
+// 
+// support_kitty_graphics_protocol false
 // Whether to make sure a local web server is running when a new Zellij session starts.
 // This web server will allow creating new sessions and attaching to existing ones that have
 // opted in to being shared in the browser.
@@ -274,6 +280,10 @@ web_sharing "disabled"
 // default is true
 // advanced_mouse_actions false
  
+// Whether Ctrl+ScrollWheel resizes panes
+// default is true
+// mouse_scroll_resize false
+ 
 // Whether to enable mouse hover visual effects (frame highlight and help text)
 // default is true
 // mouse_hover_effects false
@@ -329,3 +339,12 @@ mobile_threshold_cols 72
 // Row breakpoint for mobile_layout (web/always). 0 = always match.
 // Default: 30
 mobile_threshold_rows 0
+ 
+// How to handle a nested Zellij session detected inside a pane.
+// Options:
+//   - "ask" (Default — prompt with a modal)
+//   - "fullscreen" (always zoom into the nested session)
+//   - "descend" (always control the nested session on focus)
+//   - "never" (never prompt or descend; do it manually)
+// 
+// nested_session_handling "ask"

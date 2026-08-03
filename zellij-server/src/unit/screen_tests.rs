@@ -1,4 +1,5 @@
 use super::{screen_thread_main, CopyOptions, Screen, ScreenInstruction};
+use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::PaneId;
 use crate::{
     channels::SenderWithContext, os_input_output::ServerOsApi, route::route_action,
@@ -18,7 +19,7 @@ use zellij_utils::input::layout::{
     RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, TiledPaneLayout,
 };
 use zellij_utils::input::mouse::MouseEvent;
-use zellij_utils::input::options::{Options, PaneFrameStyle};
+use zellij_utils::input::options::{NestedSessionHandling, Options, PaneFrameStyle};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
@@ -57,9 +58,7 @@ fn take_snapshot_and_cursor_coordinates(
     grid: &mut Grid,
 ) -> (Option<(usize, usize)>, String) {
     let mut vte_parser = vte::Parser::new();
-    for &byte in ansi_instructions.as_bytes() {
-        vte_parser.advance(grid, byte);
-    }
+    vte_parser.advance(grid, ansi_instructions.as_bytes());
     let coords = grid
         .cursor_coordinates()
         .and_then(|(x, y, visible)| if visible { Some((x, y)) } else { None });
@@ -89,6 +88,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -252,6 +252,15 @@ fn create_new_screen(
     advanced_mouse_actions: bool,
     mouse_hover_effects: bool,
 ) -> Screen {
+    create_new_screen_with_kitty_graphics(size, advanced_mouse_actions, mouse_hover_effects, true)
+}
+
+fn create_new_screen_with_kitty_graphics(
+    size: Size,
+    advanced_mouse_actions: bool,
+    mouse_hover_effects: bool,
+    support_kitty_graphics_protocol: bool,
+) -> Screen {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput::default();
     bus.os_input = Some(Box::new(fake_os_input));
@@ -284,6 +293,7 @@ fn create_new_screen(
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
     let visual_bell = true;
+    let mouse_scroll_resize = true;
     let screen = Screen::new(
         bus,
         &client_attributes,
@@ -305,18 +315,21 @@ fn create_new_screen(
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
+        support_kitty_graphics_protocol,
         stacked_resize,
         false,
         None,
         false,
         web_sharing,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         mouse_hover_effects,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        NestedSessionHandling::default(),
     );
     screen
 }
@@ -327,6 +340,7 @@ struct MockScreen {
     pub pty_writer_receiver: Option<Receiver<(PtyWriteInstruction, ErrorContext)>>,
     #[allow(dead_code)]
     pub background_jobs_receiver: Option<Receiver<(BackgroundJob, ErrorContext)>>,
+    pub received_background_jobs: Arc<Mutex<Vec<BackgroundJob>>>,
     pub screen_receiver: Option<Receiver<(ScreenInstruction, ErrorContext)>>,
     pub server_receiver: Option<Receiver<(ServerInstruction, ErrorContext)>>,
     pub plugin_receiver: Option<Receiver<(PluginInstruction, ErrorContext)>>,
@@ -637,6 +651,7 @@ impl MockScreen {
             current_input_modes: self.session_metadata.current_input_modes.clone(),
             web_sharing: WebSharing::Off,
             config_file_path: self.session_metadata.config_file_path.clone(),
+            key_passthrough_clients: self.session_metadata.key_passthrough_clients.clone(),
         }
     }
 }
@@ -690,6 +705,7 @@ impl MockScreen {
             current_input_modes: HashMap::new(),
             web_sharing: WebSharing::Off,
             config_file_path: None,
+            key_passthrough_clients: Default::default(),
         };
 
         let os_input = FakeInputOutput::default();
@@ -699,14 +715,17 @@ impl MockScreen {
         config.options.stacked_pane_list = Some(false);
         let main_client_id = 1;
 
+        let received_background_jobs = Arc::new(Mutex::new(vec![]));
         std::thread::Builder::new()
             .name("background_jobs_thread".to_string())
             .spawn({
                 let to_screen = to_screen.clone();
+                let received_background_jobs = received_background_jobs.clone();
                 move || loop {
                     let (event, _err_ctx) = background_jobs_receiver
                         .recv()
                         .expect("failed to receive event on channel");
+                    received_background_jobs.lock().unwrap().push(event.clone());
                     match event {
                         BackgroundJob::RenderToClients => {
                             let _ = to_screen.send(ScreenInstruction::RenderToClients);
@@ -724,6 +743,7 @@ impl MockScreen {
             pty_receiver: Some(pty_receiver),
             pty_writer_receiver: Some(pty_writer_receiver),
             background_jobs_receiver: None,
+            received_background_jobs,
             screen_receiver: Some(screen_receiver),
             server_receiver: Some(server_receiver),
             plugin_receiver: Some(plugin_receiver),
@@ -2033,6 +2053,72 @@ fn mouse_focus_clears_bell_on_focused_pane() {
     assert!(
         !active_tab.tab_has_pending_bell,
         "Tab bell should be cleared after the last pane bell is cleared"
+    );
+}
+
+#[test]
+fn nested_guest_fullscreen_moves_from_one_pane_to_another() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+
+    new_tab(&mut screen, 1, 0);
+    let pane_one = PaneId::Terminal(1);
+    let pane_two = PaneId::Terminal(2);
+    {
+        let active_tab = screen.get_active_tab_mut(client_id).unwrap();
+        active_tab
+            .horizontal_split(pane_two, None, client_id, None, None)
+            .unwrap();
+    }
+
+    screen.apply_nested_guest_fullscreen(pane_one, true);
+    {
+        let active_tab = screen.get_active_tab(client_id).unwrap();
+        assert_eq!(
+            active_tab.fullscreen_pane_id(),
+            Some(pane_one),
+            "the first guest pane is fullscreen"
+        );
+        assert!(active_tab.fullscreen_covers_ui());
+    }
+    assert_eq!(
+        screen.nested_fullscreen_panes,
+        [pane_one].into_iter().collect(),
+        "only the first guest pane is tracked as fullscreen"
+    );
+
+    screen.apply_nested_guest_fullscreen(pane_two, true);
+    {
+        let active_tab = screen.get_active_tab(client_id).unwrap();
+        assert_eq!(
+            active_tab.fullscreen_pane_id(),
+            Some(pane_two),
+            "fullscreen moved to the second guest pane"
+        );
+        assert!(active_tab.fullscreen_covers_ui());
+    }
+    assert_eq!(
+        screen.nested_fullscreen_panes,
+        [pane_two].into_iter().collect(),
+        "the first guest pane is no longer tracked as fullscreen, only the second is"
+    );
+
+    screen.apply_nested_guest_fullscreen(pane_two, false);
+    {
+        let active_tab = screen.get_active_tab(client_id).unwrap();
+        assert_eq!(
+            active_tab.fullscreen_pane_id(),
+            None,
+            "unsetting fullscreen restores the tiled layout"
+        );
+    }
+    assert!(
+        screen.nested_fullscreen_panes.is_empty(),
+        "no guest panes are tracked as fullscreen after unsetting"
     );
 }
 
@@ -5437,6 +5523,7 @@ fn create_new_screen_with_message_capture(
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_graphics_protocol
         stacked_resize,
         false,
         None,
@@ -5444,11 +5531,13 @@ fn create_new_screen_with_message_capture(
         web_sharing,
         true,
         true,
+        true,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        NestedSessionHandling::default(),
     );
     (screen, messages)
 }
@@ -8457,6 +8546,19 @@ impl ForwardCapture {
         }
         out
     }
+
+    /// Drain every pending `ServerInstruction::KeyPassthroughChanged`,
+    /// returning the `notify_guest` flag for each. Other variants are
+    /// dropped.
+    fn drain_key_passthrough_notify_flags(&self) -> Vec<bool> {
+        let mut out = Vec::new();
+        while let Ok((instr, _ctx)) = self.server_rx.try_recv() {
+            if let ServerInstruction::KeyPassthroughChanged(_, _, _, _, _, notify_guest) = instr {
+                out.push(notify_guest);
+            }
+        }
+        out
+    }
 }
 
 fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture) {
@@ -8519,6 +8621,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_graphics_protocol
         stacked_resize,
         false,
         None,
@@ -8526,11 +8629,13 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         web_sharing,
         true,
         true,
+        true,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        NestedSessionHandling::default(),
     );
     (
         screen,
@@ -8673,6 +8778,92 @@ fn handle_reply_dispatches_next_queued_forward() {
             .get(&second_token)
             .map(|e| e.pane_id),
         Some(second_pane)
+    );
+}
+
+#[test]
+fn clear_nested_guest_does_not_notify_guest_focus_lost_on_teardown() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane_id = PaneId::Terminal(7);
+    let client_id = 1;
+    screen
+        .nested_guest_choices
+        .insert((client_id, pane_id), super::NestedGuestChoice::Descend);
+
+    screen.clear_nested_guest(pane_id);
+
+    let notify_flags = capture.drain_key_passthrough_notify_flags();
+    assert_eq!(
+        notify_flags,
+        vec![false],
+        "teardown clear must emit KeyPassthroughChanged with notify_guest=false so no FocusLost \
+         frame is written to the exiting guest pane"
+    );
+}
+
+#[test]
+fn remove_client_notifies_guest_focus_lost_on_live_ascend() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane_id = PaneId::Terminal(7);
+    let client_id = 1;
+    screen
+        .nested_guest_choices
+        .insert((client_id, pane_id), super::NestedGuestChoice::Descend);
+
+    screen.remove_client(client_id).expect("remove_client ok");
+
+    let notify_flags = capture.drain_key_passthrough_notify_flags();
+    assert_eq!(
+        notify_flags,
+        vec![true],
+        "a live client leaving a still-alive guest must emit notify_guest=true so the guest is \
+         told it lost focus"
+    );
+}
+
+#[test]
+fn suspend_nested_guest_preserves_choices_for_later_revival() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_forward_capture(size);
+    let pane_id = PaneId::Terminal(7);
+    let client_id = 1;
+    screen
+        .nested_guest_choices
+        .insert((client_id, pane_id), super::NestedGuestChoice::Descend);
+    screen
+        .nested_guest_tracker
+        .on_announce(pane_id, std::time::Instant::now());
+
+    screen.suspend_nested_guest(pane_id);
+
+    assert!(
+        screen
+            .nested_guest_choices
+            .contains_key(&(client_id, pane_id)),
+        "suspend must preserve the client's descend choice so a re-announcing guest can be revived \
+         into the exact prior state"
+    );
+}
+
+#[test]
+fn clear_nested_guest_discards_choices_unlike_suspend() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_forward_capture(size);
+    let pane_id = PaneId::Terminal(7);
+    let client_id = 1;
+    screen
+        .nested_guest_choices
+        .insert((client_id, pane_id), super::NestedGuestChoice::Descend);
+
+    screen.clear_nested_guest(pane_id);
+
+    assert!(
+        !screen
+            .nested_guest_choices
+            .contains_key(&(client_id, pane_id)),
+        "a full teardown (Bye/ClosePane) must discard choices, distinguishing it from suspend"
     );
 }
 
@@ -9104,6 +9295,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         None,
         false,
         true,
+        true,
         false,
         None,
         false,
@@ -9111,10 +9303,12 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         true,
         true,
         true,
+        true,
         false,
         false,
         web_server_ip,
         web_server_port,
+        NestedSessionHandling::default(),
     );
     (
         screen,
@@ -9238,7 +9432,7 @@ fn color_palette_mode_query_short_circuits_to_light_reply() {
 }
 
 #[test]
-fn color_palette_mode_query_stays_silent_when_host_mode_unknown() {
+fn color_palette_mode_query_falls_back_to_own_dark_theme_when_host_mode_unknown() {
     use crate::host_query::HostQuery;
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
@@ -9246,14 +9440,60 @@ fn color_palette_mode_query_stays_silent_when_host_mode_unknown() {
         screen.host_terminal_theme_mode.is_none(),
         "precondition: no host mode learned yet"
     );
+    screen.style.colors.text_unselected.background =
+        zellij_utils::data::PaletteColor::Rgb((0, 0, 0));
 
-    let _ = screen.forward_host_query(PaneId::Terminal(1), HostQuery::ColorPaletteMode);
+    let token = screen.forward_host_query(PaneId::Terminal(1), HostQuery::ColorPaletteMode);
 
+    assert_eq!(
+        token, 0,
+        "ColorPaletteMode must return the sentinel token; no real forward was queued"
+    );
     assert!(
-        capture.drain_pty_writes().is_empty(),
-        "Contour spec defines only ;1 (dark) and ;2 (light); when Zellij has \
-         not learned the host's mode it must stay silent rather than fabricate \
-         a non-conformant reply (e.g. ;0)"
+        capture.drain_forward_queries().is_empty(),
+        "must NOT forward to host — Zellij answers from its own effective theme"
+    );
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1, "exactly one pty reply expected");
+    assert_eq!(writes[0], (b"\x1b[?997;1n".to_vec(), 1));
+}
+
+#[test]
+fn color_palette_mode_query_falls_back_to_own_light_theme_when_host_mode_unknown() {
+    use crate::host_query::HostQuery;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    assert!(
+        screen.host_terminal_theme_mode.is_none(),
+        "precondition: no host mode learned yet"
+    );
+    screen.style.colors.text_unselected.background =
+        zellij_utils::data::PaletteColor::Rgb((255, 255, 255));
+
+    let _ = screen.forward_host_query(PaneId::Terminal(7), HostQuery::ColorPaletteMode);
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0], (b"\x1b[?997;2n".to_vec(), 7));
+}
+
+#[test]
+fn color_palette_mode_query_prefers_known_host_mode_over_own_theme() {
+    use crate::host_query::HostQuery;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.host_terminal_theme_mode = Some(zellij_utils::data::HostTerminalThemeMode::Light);
+    screen.style.colors.text_unselected.background =
+        zellij_utils::data::PaletteColor::Rgb((0, 0, 0));
+
+    let _ = screen.forward_host_query(PaneId::Terminal(9), HostQuery::ColorPaletteMode);
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0],
+        (b"\x1b[?997;2n".to_vec(), 9),
+        "the host's announced mode must win over the local theme fallback"
     );
 }
 
@@ -9329,6 +9569,7 @@ fn new_terminal_pane_for_pause_test(pid: u32) -> TerminalPane {
             height: 16,
         }))),
         Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(HashMap::new())),
         None,
@@ -9583,18 +9824,21 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         true,  // arrow_fonts
         None,  // layout_dir
         false, // explicitly_disable_kitty_keyboard_protocol
+        true,  // support_kitty_graphics_protocol
         true,  // stacked_resize
         false,
         None,
         false,
         WebSharing::Off,
         true,  // advanced_mouse_actions
+        true,  // mouse_scroll_resize
         true,  // mouse_hover_effects
         true,  // visual_bell
         false, // focus_follows_mouse
         false, // mouse_click_through
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         8080,
+        NestedSessionHandling::default(),
     )
 }
 
@@ -11163,5 +11407,327 @@ fn exiting_mobile_releases_the_plugin_render() {
         sent.iter()
             .any(|i| matches!(i, PluginInstruction::ReleaseMobileRender(c) if *c == client)),
         "exiting mobile must release the plugin render; sent={sent:?}",
+    );
+}
+
+fn decode_nested_frame(bytes: &[u8]) -> Option<zellij_utils::nested_session::NestedSessionMessage> {
+    use zellij_utils::nested_session::{
+        decode_base64, decode_payload, NESTED_FRAME_HEADER, NESTED_FRAME_TERMINATOR,
+    };
+    let encoded_payload = bytes
+        .strip_prefix(NESTED_FRAME_HEADER)?
+        .strip_suffix(NESTED_FRAME_TERMINATOR)?;
+    decode_payload(&decode_base64(encoded_payload)?)
+}
+
+fn guest_announce_message() -> zellij_utils::nested_session::NestedSessionMessage {
+    zellij_utils::nested_session::NestedSessionMessage::Announce {
+        session_name: "guest-session".to_owned(),
+        capabilities: vec![zellij_utils::nested_session::NestedSessionCapability::NestedControl],
+    }
+}
+
+#[test]
+pub fn nested_guest_announce_gets_announce_ack_with_ancestry() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
+    let received_background_jobs = mock_screen.received_background_jobs.clone();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_writer_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyWriteInstruction::Exit,
+        pty_writer_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::NestedSessionMessageFromPane {
+            pane_id: PaneId::Terminal(0),
+            message: guest_announce_message(),
+        });
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
+    let announce_ack = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|instruction| match instruction {
+            PtyWriteInstruction::Write(bytes, 0, None) => decode_nested_frame(bytes),
+            _ => None,
+        })
+        .expect("an announce_ack frame written to the guest pane");
+    assert_eq!(
+        announce_ack,
+        zellij_utils::nested_session::NestedSessionMessage::AnnounceAck {
+            ancestry: vec!["zellij-test".to_owned()],
+            capabilities: vec![
+                zellij_utils::nested_session::NestedSessionCapability::NestedControl
+            ],
+            descend_keys: vec![],
+        }
+    );
+    assert!(received_background_jobs
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|job| matches!(
+            job,
+            BackgroundJob::StartNestedGuestPing(PaneId::Terminal(0))
+        )));
+}
+
+#[test]
+pub fn nested_guest_announce_in_never_mode_still_completes_handshake() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.config.options.nested_session_handling = Some(NestedSessionHandling::Never);
+    let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
+    let received_background_jobs = mock_screen.received_background_jobs.clone();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_writer_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyWriteInstruction::Exit,
+        pty_writer_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::NestedSessionMessageFromPane {
+            pane_id: PaneId::Terminal(0),
+            message: guest_announce_message(),
+        });
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
+    let announce_ack = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|instruction| match instruction {
+            PtyWriteInstruction::Write(bytes, 0, None) => decode_nested_frame(bytes),
+            _ => None,
+        })
+        .expect("an announce_ack frame written to the guest pane even in never mode");
+    assert!(matches!(
+        announce_ack,
+        zellij_utils::nested_session::NestedSessionMessage::AnnounceAck { .. }
+    ));
+    assert!(received_background_jobs
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|job| matches!(
+            job,
+            BackgroundJob::StartNestedGuestPing(PaneId::Terminal(0))
+        )));
+}
+
+#[test]
+pub fn nested_guest_bye_stops_liveness_pings() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
+    let received_background_jobs = mock_screen.received_background_jobs.clone();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_writer_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyWriteInstruction::Exit,
+        pty_writer_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::NestedSessionMessageFromPane {
+            pane_id: PaneId::Terminal(0),
+            message: guest_announce_message(),
+        });
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::NestedSessionMessageFromPane {
+            pane_id: PaneId::Terminal(0),
+            message: zellij_utils::nested_session::NestedSessionMessage::Bye,
+        });
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::NestedGuestPingTick {
+            pane_id: PaneId::Terminal(0),
+        });
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
+    let ping_frames_written = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|instruction| match instruction {
+            PtyWriteInstruction::Write(bytes, 0, None) => matches!(
+                decode_nested_frame(bytes),
+                Some(zellij_utils::nested_session::NestedSessionMessage::Ping)
+            ),
+            _ => false,
+        })
+        .count();
+    assert_eq!(ping_frames_written, 0);
+    assert!(received_background_jobs
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|job| matches!(job, BackgroundJob::StopNestedGuestPing(PaneId::Terminal(0)))));
+}
+
+#[test]
+fn kitty_query_replies_ok_when_capable_client_connected() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.update_kitty_graphics_support(1, true);
+    assert_eq!(screen.kitty_host_capabilities.borrow().get(&1), Some(&true));
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let active_pane = active_tab.get_active_pane_mut(1).unwrap();
+    active_pane.handle_pty_bytes(b"\x1b_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\x1b\\".to_vec());
+    assert_eq!(
+        active_pane.drain_messages_to_pty(),
+        vec![b"\x1b_Gi=31;OK\x1b\\".to_vec()]
+    );
+}
+
+#[test]
+fn kitty_query_replies_enotsupported_when_no_capable_client() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.update_kitty_graphics_support(1, false);
+    assert_eq!(
+        screen.kitty_host_capabilities.borrow().get(&1),
+        Some(&false)
+    );
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let active_pane = active_tab.get_active_pane_mut(1).unwrap();
+    active_pane.handle_pty_bytes(b"\x1b_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\x1b\\".to_vec());
+    let replies = active_pane.drain_messages_to_pty();
+    assert_eq!(replies.len(), 1);
+    let reply = String::from_utf8(replies[0].clone()).unwrap();
+    assert!(reply.starts_with("\x1b_Gi=31;ENOTSUPPORTED"));
+    assert!(reply.ends_with("\x1b\\"));
+}
+
+#[test]
+fn kitty_query_is_ignored_when_the_protocol_is_disabled_in_the_config() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen_with_kitty_graphics(size, true, true, false);
+    new_tab(&mut screen, 1, 0);
+    screen.update_kitty_graphics_support(1, true);
+    assert_eq!(
+        screen.kitty_host_capabilities.borrow().get(&1),
+        Some(&false),
+        "a capable host must still be recorded as incapable when the protocol is disabled"
+    );
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let active_pane = active_tab.get_active_pane_mut(1).unwrap();
+    active_pane.handle_pty_bytes(b"\x1b_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\x1b\\".to_vec());
+    assert!(
+        active_pane.drain_messages_to_pty().is_empty(),
+        "a disabled protocol must not reply to queries at all"
+    );
+}
+
+#[test]
+fn kitty_support_recomputed_on_client_detach() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+    screen.update_kitty_graphics_support(1, false);
+    screen.update_kitty_graphics_support(2, true);
+    screen.remove_client(2).expect("TEST");
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let active_pane = active_tab.get_active_pane_mut(1).unwrap();
+    active_pane.handle_pty_bytes(b"\x1b_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\x1b\\".to_vec());
+    let replies = active_pane.drain_messages_to_pty();
+    assert_eq!(replies.len(), 1);
+    let reply = String::from_utf8(replies[0].clone()).unwrap();
+    assert!(reply.starts_with("\x1b_Gi=31;ENOTSUPPORTED"));
+    assert!(reply.ends_with("\x1b\\"));
+}
+
+#[test]
+fn primary_da_advertises_sixel_when_capable_client_connected() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.update_sixel_support(1, true);
+    assert_eq!(screen.sixel_host_capabilities.borrow().get(&1), Some(&true));
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let active_pane = active_tab.get_active_pane_mut(1).unwrap();
+    active_pane.handle_pty_bytes(b"\x1b[c".to_vec());
+    assert_eq!(
+        active_pane.drain_messages_to_pty(),
+        vec![b"\x1b[?62;4;52c".to_vec()]
+    );
+}
+
+#[test]
+fn primary_da_omits_sixel_when_no_capable_client() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.update_sixel_support(1, false);
+    assert_eq!(
+        screen.sixel_host_capabilities.borrow().get(&1),
+        Some(&false)
+    );
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let active_pane = active_tab.get_active_pane_mut(1).unwrap();
+    active_pane.handle_pty_bytes(b"\x1b[c".to_vec());
+    assert_eq!(
+        active_pane.drain_messages_to_pty(),
+        vec![b"\x1b[?62;52c".to_vec()]
+    );
+}
+
+#[test]
+fn sixel_support_recomputed_on_client_detach() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+    screen.update_sixel_support(1, false);
+    screen.update_sixel_support(2, true);
+    screen.remove_client(2).expect("TEST");
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let active_pane = active_tab.get_active_pane_mut(1).unwrap();
+    active_pane.handle_pty_bytes(b"\x1b[c".to_vec());
+    assert_eq!(
+        active_pane.drain_messages_to_pty(),
+        vec![b"\x1b[?62;52c".to_vec()]
     );
 }

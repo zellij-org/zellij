@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use rand::prelude::{IteratorRandom, SliceRandom};
+use rand::prelude::{IndexedRandom, IteratorRandom};
 
 use zellij_tile::prelude::get_zellij_version;
 
@@ -15,7 +15,7 @@ macro_rules! get_name_and_caching {
         return name;
     }};
     ($cache:expr, $from:expr) => {{
-        let name = $from.choose(&mut rand::thread_rng()).unwrap().to_string();
+        let name = $from.choose(&mut rand::rng()).unwrap().to_string();
         $cache.caching(name.clone()).unwrap();
         return name;
     }};
@@ -30,10 +30,7 @@ macro_rules! populate_cache {
 }
 
 pub fn get_random_tip_name() -> String {
-    TIPS.keys()
-        .choose(&mut rand::thread_rng())
-        .unwrap()
-        .to_string()
+    TIPS.keys().choose(&mut rand::rng()).unwrap().to_string()
 }
 
 pub fn get_cached_tip_name() -> String {

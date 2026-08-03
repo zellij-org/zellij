@@ -1,4 +1,7 @@
-use super::{is_too_wide, parse_indices, parse_opaque, parse_selected, Coordinates};
+use super::{
+    is_too_wide, parse_disabled, parse_indices, parse_opaque, parse_selected, Coordinates,
+};
+use crate::panes::terminal_character::RESET_STYLES;
 use crate::panes::{terminal_character::CharacterStyles, AnsiCode};
 use zellij_utils::{
     data::{PaletteColor, Style, StyleDeclaration},
@@ -9,6 +12,32 @@ use unicode_width::UnicodeWidthChar;
 use zellij_utils::errors::prelude::*;
 
 pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordinates>) -> Vec<u8> {
+    if content.disabled {
+        let declaration = style.colors.text_unselected;
+        let mut base_text_style = RESET_STYLES
+            .foreground(Some(declaration.base.into()))
+            .italic(Some(AnsiCode::On));
+        if content.opaque || content.selected {
+            base_text_style = base_text_style.background(Some(declaration.background.into()));
+        }
+        let disabled_content = content.into_disabled();
+        let (text, _text_width) = stringify_text(
+            &disabled_content,
+            None,
+            &component_coordinates,
+            &declaration,
+            &style.colors,
+            base_text_style,
+        );
+        return match component_coordinates {
+            Some(component_coordinates) => {
+                format!("{}{}{}", component_coordinates, base_text_style, text)
+                    .as_bytes()
+                    .to_vec()
+            },
+            None => format!("{}{}", base_text_style, text).as_bytes().to_vec(),
+        };
+    }
     let declaration = if content.selected {
         style.colors.text_selected
     } else {
@@ -138,12 +167,14 @@ pub fn parse_text_params<'a>(params_iter: impl Iterator<Item = &'a mut String>) 
         .flat_map(|mut stringified| {
             let selected = parse_selected(&mut stringified);
             let opaque = parse_opaque(&mut stringified);
+            let disabled = parse_disabled(&mut stringified);
             let indices = parse_indices(&mut stringified);
             let text = parse_text(&mut stringified).map_err(|e| e.to_string())?;
             Ok::<Text, String>(Text {
                 text,
                 opaque,
                 selected,
+                disabled,
                 indices,
             })
         })
@@ -155,10 +186,19 @@ pub struct Text {
     pub text: String,
     pub selected: bool,
     pub opaque: bool,
+    pub disabled: bool,
     pub indices: Vec<Vec<usize>>,
 }
 
 impl Text {
+    pub fn into_disabled(mut self) -> Self {
+        self.selected = false;
+        self.opaque = false;
+        self.disabled = true;
+        self.indices = vec![];
+        self
+    }
+
     pub fn pad_text(&mut self, max_column_width: usize) {
         for _ in ansi_len(&self.text)..max_column_width {
             self.text.push(' ');
