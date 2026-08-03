@@ -182,6 +182,9 @@ pub enum ClientToServerMsg {
     KittyGraphicsSupport {
         supported: bool,
     },
+    SixelSupport {
+        supported: bool,
+    },
 }
 
 // Types of messages sent from the server to the client

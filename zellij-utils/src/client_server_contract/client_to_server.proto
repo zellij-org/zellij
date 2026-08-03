@@ -28,6 +28,7 @@ message ClientToServerMsg {
     SoftKeyboardVisibilityChangedMsg soft_keyboard_visibility_changed = 21;
     NestedSessionFrameFromHostMsg nested_session_frame_from_host = 22;
     KittyGraphicsSupportMsg kitty_graphics_support = 23;
+    SixelSupportMsg sixel_support = 24;
   }
 }
 
@@ -145,5 +146,9 @@ message NestedSessionFrameFromHostMsg {
 }
 
 message KittyGraphicsSupportMsg {
+  bool supported = 1;
+}
+
+message SixelSupportMsg {
   bool supported = 1;
 }

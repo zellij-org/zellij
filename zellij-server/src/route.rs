@@ -2552,6 +2552,18 @@ pub(crate) fn route_thread_main(
                             )
                             .with_context(err_context)?;
                         },
+                        ClientToServerMsg::SixelSupport { supported } => {
+                            send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::SetSixelSupport {
+                                    client_id,
+                                    supported
+                                },
+                                instruction,
+                                retry_queue
+                            )
+                            .with_context(err_context)?;
+                        },
                         ClientToServerMsg::BackgroundColor {
                             color: ref background_color_instruction,
                         } => {

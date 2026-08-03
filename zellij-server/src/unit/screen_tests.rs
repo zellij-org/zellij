@@ -11669,3 +11669,65 @@ fn kitty_support_recomputed_on_client_detach() {
     assert!(reply.starts_with("\x1b_Gi=31;ENOTSUPPORTED"));
     assert!(reply.ends_with("\x1b\\"));
 }
+
+#[test]
+fn primary_da_advertises_sixel_when_capable_client_connected() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.update_sixel_support(1, true);
+    assert_eq!(screen.sixel_host_capabilities.borrow().get(&1), Some(&true));
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let active_pane = active_tab.get_active_pane_mut(1).unwrap();
+    active_pane.handle_pty_bytes(b"\x1b[c".to_vec());
+    assert_eq!(
+        active_pane.drain_messages_to_pty(),
+        vec![b"\x1b[?62;4;52c".to_vec()]
+    );
+}
+
+#[test]
+fn primary_da_omits_sixel_when_no_capable_client() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.update_sixel_support(1, false);
+    assert_eq!(
+        screen.sixel_host_capabilities.borrow().get(&1),
+        Some(&false)
+    );
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let active_pane = active_tab.get_active_pane_mut(1).unwrap();
+    active_pane.handle_pty_bytes(b"\x1b[c".to_vec());
+    assert_eq!(
+        active_pane.drain_messages_to_pty(),
+        vec![b"\x1b[?62;52c".to_vec()]
+    );
+}
+
+#[test]
+fn sixel_support_recomputed_on_client_detach() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+    screen.update_sixel_support(1, false);
+    screen.update_sixel_support(2, true);
+    screen.remove_client(2).expect("TEST");
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let active_pane = active_tab.get_active_pane_mut(1).unwrap();
+    active_pane.handle_pty_bytes(b"\x1b[c".to_vec());
+    assert_eq!(
+        active_pane.drain_messages_to_pty(),
+        vec![b"\x1b[?62;52c".to_vec()]
+    );
+}

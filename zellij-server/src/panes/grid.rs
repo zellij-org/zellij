@@ -685,6 +685,7 @@ pub struct Grid {
     kitty_grid: KittyGrid,
     kitty_parser: KittyCommandParser,
     kitty_host_support: KittyHostSupport,
+    sixel_host_support: bool,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
     pub lock_renders: bool,
@@ -1072,6 +1073,7 @@ impl Grid {
             kitty_grid,
             kitty_parser: KittyCommandParser::new(),
             kitty_host_support: KittyHostSupport::Supported,
+            sixel_host_support: true,
             pending_clipboard_update: None,
             pending_osc7_cwd: None,
             pending_desktop_notifications: Vec::new(),
@@ -3828,6 +3830,9 @@ impl Grid {
     pub fn update_kitty_host_support(&mut self, supported: KittyHostSupport) {
         self.kitty_host_support = supported;
     }
+    pub fn update_sixel_host_support(&mut self, supported: bool) {
+        self.sixel_host_support = supported;
+    }
     pub fn has_selection(&self) -> bool {
         !self.selection.is_empty()
     }
@@ -4734,13 +4739,23 @@ impl Perform for Grid {
                     match query_type {
                         Some(&[1]) => {
                             // number of color registers
-                            let response = "\u{1b}[?1;0;65536S";
+                            let response = if self.sixel_host_support {
+                                "\u{1b}[?1;0;65536S"
+                            } else {
+                                "\u{1b}[?1;3;0S"
+                            };
                             self.pending_messages_to_pty
                                 .push(response.as_bytes().to_vec());
                         },
                         Some(&[2]) => {
                             // Sixel graphics geometry in pixels
-                            if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+                            if !self.sixel_host_support {
+                                let response = "\u{1b}[?2;3;0S";
+                                self.pending_messages_to_pty
+                                    .push(response.as_bytes().to_vec());
+                            } else if let Some(character_cell_size) =
+                                *self.character_cell_size.borrow()
+                            {
                                 let sixel_area_geometry = format!(
                                     "\u{1b}[?2;0;{};{}S",
                                     character_cell_size.width * self.width,
@@ -4863,8 +4878,13 @@ impl Perform for Grid {
             // https://vt100.net/docs/vt510-rm/DA1.html
             match intermediates.get(0) {
                 None | Some(0) => {
-                    // primary device attributes - VT220 with sixel and OSC 52 clipboard
-                    let terminal_capabilities = "\u{1b}[?62;4;52c";
+                    // primary device attributes - VT220 with OSC 52 clipboard, advertising
+                    // sixel (attribute 4) only if the attached terminal supports it
+                    let terminal_capabilities = if self.sixel_host_support {
+                        "\u{1b}[?62;4;52c"
+                    } else {
+                        "\u{1b}[?62;52c"
+                    };
                     self.pending_messages_to_pty
                         .push(terminal_capabilities.as_bytes().to_vec());
                 },

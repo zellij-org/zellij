@@ -3861,6 +3861,8 @@ fn move_floating_pane_with_sixel_image() {
         width: 8,
         height: 21,
     })));
+    let sixel_host_capabilities = Rc::new(RefCell::new(HashMap::new()));
+    sixel_host_capabilities.borrow_mut().insert(client_id, true);
     let mut output = Output::new(
         sixel_image_store.clone(),
         character_cell_size,
@@ -3869,6 +3871,7 @@ fn move_floating_pane_with_sixel_image() {
         Rc::new(RefCell::new(KittyImageStore::default())),
         Rc::new(RefCell::new(HashMap::new())),
         Rc::new(RefCell::new(HashMap::new())),
+        sixel_host_capabilities,
     );
 
     tab.toggle_floating_panes(Some(client_id), None, None)
@@ -3928,6 +3931,8 @@ fn floating_pane_above_sixel_image() {
         width: 8,
         height: 21,
     })));
+    let sixel_host_capabilities = Rc::new(RefCell::new(HashMap::new()));
+    sixel_host_capabilities.borrow_mut().insert(client_id, true);
     let mut output = Output::new(
         sixel_image_store.clone(),
         character_cell_size,
@@ -3936,6 +3941,7 @@ fn floating_pane_above_sixel_image() {
         Rc::new(RefCell::new(KittyImageStore::default())),
         Rc::new(RefCell::new(HashMap::new())),
         Rc::new(RefCell::new(HashMap::new())),
+        sixel_host_capabilities,
     );
 
     tab.toggle_floating_panes(Some(client_id), None, None)

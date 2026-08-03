@@ -32,6 +32,7 @@ fn create_test_output() -> Output {
         Rc::new(RefCell::new(KittyImageStore::default())),
         Rc::new(RefCell::new(HashMap::new())),
         Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(HashMap::new())),
     )
 }
 
@@ -1150,6 +1151,7 @@ fn create_test_kitty_output(parts: &KittyTestParts) -> Output {
         parts.0.clone(),
         parts.1.clone(),
         parts.2.clone(),
+        Rc::new(RefCell::new(HashMap::new())),
     )
 }
 

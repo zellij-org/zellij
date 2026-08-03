@@ -1714,6 +1714,11 @@ impl FloatingPanes {
             pane.update_kitty_host_support(supported);
         }
     }
+    pub fn update_pane_sixel_host_support(&mut self, supported: bool) {
+        for pane in self.panes.values_mut() {
+            pane.update_sixel_host_support(supported);
+        }
+    }
     pub fn update_pane_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;
         for pane in self.panes.values_mut() {

@@ -61,6 +61,7 @@ pub(crate) fn stdin_loop(
         } else {
             let _ = send_input_instructions.send(InputInstruction::AnsiStdinInstructions(vec![
                 HostReply::KittyGraphicsSupport(false),
+                HostReply::SixelSupport(false),
             ]));
         }
     }
