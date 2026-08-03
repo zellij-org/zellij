@@ -126,6 +126,8 @@ pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
             "disable_automatic_asset_installation web_server_capability"
         };
 
+        build::ensure_plugin_assets(sh).with_context(|| err_context(&flags))?;
+
         crate::cargo()
             .and_then(|cargo| {
                 cmd!(sh, "{cargo} run")

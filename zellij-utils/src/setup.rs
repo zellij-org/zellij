@@ -402,6 +402,15 @@ impl Setup {
         }
 
         if let Some(maybe_path) = &self.dump_plugins {
+            if cfg!(feature = "disable_automatic_asset_installation") {
+                return Err(anyhow!(
+                    "This zellij was built without bundled plugins (feature \
+                     'disable_automatic_asset_installation'). Builtin plugins are provided by the \
+                     distributor of this build and must be placed in the plugin directory, \
+                     visible in the output of `zellij setup --check`."
+                ))
+                .context("failed to dump plugins");
+            }
             let data_dir = &opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
             let dir = match maybe_path {
                 Some(path) => path,
@@ -492,6 +501,18 @@ impl Setup {
             writeln!(
                 &mut message,
                 " Create a custom layout if you require this behavior."
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                &mut message,
+                " This zellij was built without bundled plugins."
+            )
+            .unwrap();
+            writeln!(
+                &mut message,
+                " Builtin plugins are loaded from the 'PLUGIN DIR' above, or from '{}'.",
+                system_data_dir.join("plugins").display()
             )
             .unwrap();
         }

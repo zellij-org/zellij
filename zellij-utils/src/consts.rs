@@ -116,6 +116,22 @@ pub const FEATURES: &[&str] = &[
     "disable_automatic_asset_installation",
 ];
 
+pub const BUILTIN_PLUGIN_NAMES: &[&str] = &[
+    "compact-bar",
+    "status-bar",
+    "tab-bar",
+    "strider",
+    "session-manager",
+    "configuration",
+    "plugin-manager",
+    "about",
+    "share",
+    "multiple-select",
+    "layout-manager",
+    "link",
+    "mobile",
+];
+
 #[cfg(not(target_family = "wasm"))]
 pub use not_wasm::*;
 
@@ -133,6 +149,10 @@ mod not_wasm {
     //   `plugins_from_target` feature IS NOT set
     // - `zellij-utils/../target/wasm32-wasip1/debug`: When building in debug mode AND the
     //   `plugins_from_target` feature IS set
+    //
+    // When the `disable_automatic_asset_installation` feature is set, no plugins are embedded at
+    // all and `ASSET_MAP` is empty. Builtin plugins must then be provided in the plugin directory.
+    #[cfg(not(feature = "disable_automatic_asset_installation"))]
     macro_rules! add_plugin {
         ($assets:expr, $plugin:literal) => {
             $assets.insert(
@@ -158,22 +178,53 @@ mod not_wasm {
     lazy_static! {
         // Zellij asset map
         pub static ref ASSET_MAP: HashMap<PathBuf, Vec<u8>> = {
-            let mut assets = std::collections::HashMap::new();
-            add_plugin!(assets, "compact-bar.wasm");
-            add_plugin!(assets, "status-bar.wasm");
-            add_plugin!(assets, "tab-bar.wasm");
-            add_plugin!(assets, "strider.wasm");
-            add_plugin!(assets, "session-manager.wasm");
-            add_plugin!(assets, "configuration.wasm");
-            add_plugin!(assets, "plugin-manager.wasm");
-            add_plugin!(assets, "about.wasm");
-            add_plugin!(assets, "share.wasm");
-            add_plugin!(assets, "multiple-select.wasm");
-            add_plugin!(assets, "layout-manager.wasm");
-            add_plugin!(assets, "link.wasm");
-            add_plugin!(assets, "mobile.wasm");
+            #[allow(unused_mut)]
+            let mut assets: HashMap<PathBuf, Vec<u8>> = std::collections::HashMap::new();
+            #[cfg(not(feature = "disable_automatic_asset_installation"))]
+            {
+                add_plugin!(assets, "compact-bar.wasm");
+                add_plugin!(assets, "status-bar.wasm");
+                add_plugin!(assets, "tab-bar.wasm");
+                add_plugin!(assets, "strider.wasm");
+                add_plugin!(assets, "session-manager.wasm");
+                add_plugin!(assets, "configuration.wasm");
+                add_plugin!(assets, "plugin-manager.wasm");
+                add_plugin!(assets, "about.wasm");
+                add_plugin!(assets, "share.wasm");
+                add_plugin!(assets, "multiple-select.wasm");
+                add_plugin!(assets, "layout-manager.wasm");
+                add_plugin!(assets, "link.wasm");
+                add_plugin!(assets, "mobile.wasm");
+            }
             assets
         };
+    }
+
+    #[cfg(all(test, not(feature = "disable_automatic_asset_installation")))]
+    mod asset_map_test {
+        use super::ASSET_MAP;
+        use crate::consts::BUILTIN_PLUGIN_NAMES;
+        use std::path::PathBuf;
+
+        #[test]
+        fn asset_map_matches_builtin_plugin_names() {
+            let mut embedded: Vec<String> = ASSET_MAP
+                .keys()
+                .filter_map(|path| {
+                    path.file_stem()
+                        .map(|stem| stem.to_string_lossy().to_string())
+                })
+                .collect();
+            let mut expected: Vec<String> =
+                BUILTIN_PLUGIN_NAMES.iter().map(|s| s.to_string()).collect();
+            embedded.sort();
+            expected.sort();
+            assert_eq!(embedded, expected);
+            for name in BUILTIN_PLUGIN_NAMES {
+                assert!(ASSET_MAP
+                    .contains_key(&PathBuf::from("plugins").join(format!("{}.wasm", name))));
+            }
+        }
     }
 }
 

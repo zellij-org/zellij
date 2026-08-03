@@ -703,9 +703,10 @@ If you're a developer:
     plugin directory.
 
 Possible fix for your problem:
-    Run `zellij setup --dump-plugins`, and optionally point it to your
-    'DATA DIR', visible in e.g. the output of `zellij setup --check`. Without
-    further arguments, it will use the default 'DATA DIR'.
+    Place the builtin plugin '.wasm' files in the plugin directory shown above,
+    or in the 'plugins' folder of the system data directory. Both are visible in
+    the output of `zellij setup --check`. This build carries no bundled plugins,
+    so `zellij setup --dump-plugins` cannot provide them.
 "
     )]
     BuiltinPluginMissing {
