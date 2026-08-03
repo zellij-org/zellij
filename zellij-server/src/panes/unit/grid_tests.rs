@@ -2126,6 +2126,63 @@ pub fn clear_scroll_region() {
 }
 
 #[test]
+fn erase_display_preserves_scroll_region() {
+    let mut grid = create_grid_with_content("\u{1b}[1;19r");
+    assert_eq!(grid.scroll_region, (0, 18));
+
+    // ED 2 clears the display without changing the DECSTBM scroll region.
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, "\u{1b}[2J".as_bytes());
+
+    assert_eq!(grid.scroll_region, (0, 18));
+}
+
+#[test]
+fn alternate_screen_restores_main_screen_scroll_region() {
+    let mut grid = create_grid_with_content("\u{1b}[1;19r");
+    let mut vte_parser = vte::Parser::new();
+
+    assert_eq!(grid.scroll_region, (0, 18));
+
+    vte_parser.advance(&mut grid, b"\x1b[?1049h");
+    vte_parser.advance(&mut grid, b"\x1b[?1049l");
+
+    assert_eq!(grid.scroll_region, (0, 18));
+}
+
+#[test]
+fn alternate_screen_restores_scroll_region_after_shrinking() {
+    let mut grid = create_grid_with_content("\u{1b}[1;19r");
+    let mut vte_parser = vte::Parser::new();
+
+    assert_eq!(grid.scroll_region, (0, 18));
+
+    vte_parser.advance(&mut grid, b"\x1b[?1049h");
+
+    grid.change_size(10, 20);
+
+    vte_parser.advance(&mut grid, b"\x1b[?1049l");
+
+    assert_eq!(grid.scroll_region, (0, 8));
+}
+
+#[test]
+fn alternate_screen_restores_scroll_region_after_growing() {
+    let mut grid = create_grid_with_content("\u{1b}[1;19r");
+    let mut vte_parser = vte::Parser::new();
+
+    assert_eq!(grid.scroll_region, (0, 18));
+
+    vte_parser.advance(&mut grid, b"\x1b[?1049h");
+
+    grid.change_size(30, 20);
+
+    vte_parser.advance(&mut grid, b"\x1b[?1049l");
+
+    assert_eq!(grid.scroll_region, (0, 28));
+}
+
+#[test]
 pub fn display_tab_characters_properly() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
