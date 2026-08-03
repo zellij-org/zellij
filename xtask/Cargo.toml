@@ -8,6 +8,7 @@ edition.workspace = true
 anyhow = { workspace = true }
 serde_json = { workspace = true }
 prost-build = { version = "0.12.6", default-features = false }
+sha2 = { workspace = true }
 toml = { version = "1.1.2", default-features = false, features = ["parse", "serde", "std"] }
 which = "8"
 xflags = { version = "0.3.2", default-features = false }

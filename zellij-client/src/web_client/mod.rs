@@ -216,6 +216,7 @@ pub async fn serve_web_client(
         session_manager,
         client_os_api_factory,
         is_https,
+        pending_welcome_sessions: Arc::new(Mutex::new(std::collections::VecDeque::new())),
     };
 
     tokio::spawn({

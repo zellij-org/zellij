@@ -2270,7 +2270,7 @@ pub(crate) fn route_thread_main(
                                     should_break = true;
                                 }
                             },
-                            ClientToServerMsg::TerminalResize { new_size, .. } => {
+                            ClientToServerMsg::TerminalResize { new_size } => {
                                 // For watchers: send size to Screen for rendering adjustments, but
                                 // this does not affect the screen size
                                 send_to_screen_or_retry_queue!(
@@ -2449,7 +2449,7 @@ pub(crate) fn route_thread_main(
                                 }
                             }
                         },
-                        ClientToServerMsg::TerminalResize { new_size, .. } => {
+                        ClientToServerMsg::TerminalResize { new_size } => {
                             // Check if this is a watcher or regular client
                             if is_watcher {
                                 // For watchers: send size to Screen for tracking, don't affect screen size

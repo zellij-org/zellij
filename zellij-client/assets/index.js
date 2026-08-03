@@ -1,6 +1,6 @@
 import { initConnectionHandlers } from './connection.js';
-import { initAuthentication } from './auth.js';
-import { initTerminal } from './terminal.js';
+import { fetchSession } from './auth.js';
+import { initTerminal, settleFontSize } from './terminal.js';
 import { setupInputHandlers } from './input.js';
 import { initWebSockets } from './websockets.js';
 import { initMobileUi } from './mobile-ui.js';
@@ -8,26 +8,24 @@ import { initMobileUi } from './mobile-ui.js';
 document.addEventListener("DOMContentLoaded", async (event) => {
     initConnectionHandlers();
 
-    const webClientId = await initAuthentication();
+    const boot = await fetchSession(location.pathname.split("/").pop());
 
-    const { term, fitAddon } = initTerminal();
-    const sessionName = location.pathname.split("/").pop();
+    if (!location.pathname.endsWith(`/${boot.session_name}`)) {
+        history.replaceState(null, "", boot.session_name);
+    }
 
-    let sendAnsiKey = (ansiKey) => {};
-
-    setupInputHandlers(term, fitAddon, sendAnsiKey);
+    const { term, fitAddon } = initTerminal(boot.config);
+    settleFontSize(term, fitAddon, boot.config);
 
     let websockets = null;
     initMobileUi({
         term,
         fitAddon,
-        getSendAnsiKey: () => (websockets ? websockets.sendAnsiKey : sendAnsiKey),
+        getSendAnsiKey: () => (websockets ? websockets.sendAnsiKey : () => {}),
     });
 
-    document.title = sessionName;
-    websockets = initWebSockets(webClientId, sessionName, term, fitAddon, sendAnsiKey);
+    document.title = boot.session_name;
+    websockets = initWebSockets(boot, term, fitAddon);
 
-    sendAnsiKey = websockets.sendAnsiKey;
-
-    setupInputHandlers(term, fitAddon, sendAnsiKey);
+    setupInputHandlers(term, fitAddon, websockets.sendAnsiKey);
 });

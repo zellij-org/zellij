@@ -275,6 +275,10 @@ impl TestClient {
         self.fake_client_handle.client_screen.raw_bytes()
     }
 
+    pub fn received_server_messages(&self) -> Vec<String> {
+        self.fake_client_handle.received_server_messages()
+    }
+
     pub fn quit(mut self) {
         self.send_stdin(&keys::ctrl('q'));
         self.join();
@@ -399,6 +403,10 @@ impl TestSession {
 
     pub fn raw_bytes(&self) -> Vec<u8> {
         self.main_client.raw_bytes()
+    }
+
+    pub fn received_server_messages(&self) -> Vec<String> {
+        self.main_client.received_server_messages()
     }
 
     pub fn wait_for_app_load(&self) -> GridSnapshot {

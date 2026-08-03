@@ -1,6 +1,6 @@
 //! Tasks related to zellij CI
 use crate::{
-    build,
+    assets, build,
     flags::{self, BuildRelease, CiCmd, Cross, E2e},
     metadata,
 };
@@ -145,6 +145,8 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
 /// `cargo build --release` without cross-compilation.
 fn build_release(sh: &Shell, no_web: bool) -> anyhow::Result<()> {
     let err_context = "failed to perform native release build";
+
+    assets::assets(sh, flags::Assets { check: true }).context(err_context)?;
 
     // Build plugins and generate protobufs
     build::build(

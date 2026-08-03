@@ -28,6 +28,7 @@ mod mock_server {
         pub valid_auth_tokens: Arc<Mutex<HashMap<String, ()>>>,
         pub session_tokens: Arc<Mutex<HashMap<String, String>>>, // token -> web_client_id
         pub endpoints_called: Arc<Mutex<Vec<String>>>,
+        pub query_strings: Arc<Mutex<HashMap<String, String>>>,
     }
 
     impl MockRemoteServerState {
@@ -36,7 +37,19 @@ mod mock_server {
                 valid_auth_tokens: Arc::new(Mutex::new(HashMap::new())),
                 session_tokens: Arc::new(Mutex::new(HashMap::new())),
                 endpoints_called: Arc::new(Mutex::new(Vec::new())),
+                query_strings: Arc::new(Mutex::new(HashMap::new())),
             }
+        }
+
+        fn record_query(&self, endpoint: &str, query: Option<&str>) {
+            self.query_strings
+                .lock()
+                .unwrap()
+                .insert(endpoint.to_string(), query.unwrap_or("").to_string());
+        }
+
+        pub fn get_query_string(&self, endpoint: &str) -> Option<String> {
+            self.query_strings.lock().unwrap().get(endpoint).cloned()
         }
 
         pub fn add_valid_token(&self, token: &str) {
@@ -103,9 +116,11 @@ mod mock_server {
 
     pub async fn handle_session(
         State(state): State<MockRemoteServerState>,
+        uri: axum::http::Uri,
         jar: CookieJar,
     ) -> Result<Json<serde_json::Value>, StatusCode> {
         state.record_endpoint("/session");
+        state.record_query("/session", uri.query());
 
         let session_token = jar
             .get("session_token")
@@ -120,16 +135,26 @@ mod mock_server {
         drop(session_tokens);
 
         Ok(Json(json!({
-            "web_client_id": web_client_id
+            "web_client_id": web_client_id,
+            "is_read_only": false,
+            "session_name": "session-name",
+            "config": {
+                "font": "Monospace",
+                "theme": {},
+                "cursor_blink": false,
+                "mac_option_is_meta": false
+            }
         })))
     }
 
     pub async fn handle_ws_terminal(
         ws: axum::extract::ws::WebSocketUpgrade,
         State(state): State<MockRemoteServerState>,
+        uri: axum::http::Uri,
         jar: CookieJar,
     ) -> Result<Response, StatusCode> {
         state.record_endpoint("/ws/terminal");
+        state.record_query("/ws/terminal", uri.query());
 
         // Validate session token
         let session_token = jar
@@ -160,9 +185,11 @@ mod mock_server {
     pub async fn handle_ws_control(
         ws: axum::extract::ws::WebSocketUpgrade,
         State(state): State<MockRemoteServerState>,
+        uri: axum::http::Uri,
         jar: CookieJar,
     ) -> Result<Response, StatusCode> {
         state.record_endpoint("/ws/control");
+        state.record_query("/ws/control", uri.query());
 
         // Validate session token
         let session_token = jar
@@ -475,6 +502,34 @@ mod tests {
         assert!(
             endpoints.contains(&"/ws/control".to_string()),
             "Should establish control WebSocket"
+        );
+
+        let session_query = server_state
+            .get_query_string("/session")
+            .expect("session endpoint query recorded");
+        assert_eq!(
+            session_query, "session=session-name",
+            "session endpoint must carry the requested session name"
+        );
+
+        let terminal_query = server_state
+            .get_query_string("/ws/terminal")
+            .expect("terminal socket query recorded");
+        assert!(
+            terminal_query.contains("web_client_id=")
+                && terminal_query.contains("rows=")
+                && terminal_query.contains("cols="),
+            "terminal socket must carry the local terminal size, got: {}",
+            terminal_query
+        );
+
+        let control_query = server_state
+            .get_query_string("/ws/control")
+            .expect("control socket query recorded");
+        assert!(
+            control_query.contains("web_client_id="),
+            "control socket must carry the web_client_id, got: {}",
+            control_query
         );
 
         server_handle.abort();

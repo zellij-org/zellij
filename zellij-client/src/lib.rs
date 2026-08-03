@@ -156,7 +156,7 @@ use zellij_utils::{
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{cli_assets::CliAssets, config::Config, options::Options},
-    ipc::{ClientToServerMsg, ExitReason, ResizeCause, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
     nested_session,
     pane_size::Size,
     vendored::termwiz::input::InputEvent,
@@ -756,7 +756,7 @@ pub async fn run_remote_client_terminal_loop(
                                 // no-op
                             }
                             Err(e) => {
-                                log::error!("Failed to deserialize control message: {}", e);
+                                log::debug!("Ignoring unrecognized control message: {}", e);
                             }
                         }
 
@@ -1268,7 +1268,6 @@ pub fn start_client(
                         move || {
                             os_api.send_to_server(ClientToServerMsg::TerminalResize {
                                 new_size: os_api.get_terminal_size(),
-                                cause: ResizeCause::Viewport,
                             });
                             #[cfg(not(windows))]
                             let _ = os_api
@@ -1414,7 +1413,6 @@ pub fn start_client(
             ClientInstruction::QueryTerminalSize => {
                 os_input.send_to_server(ClientToServerMsg::TerminalResize {
                     new_size: os_input.get_terminal_size(),
-                    cause: ResizeCause::Viewport,
                 });
             },
             ClientInstruction::StartWebServer => {

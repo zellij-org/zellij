@@ -15,8 +15,8 @@ use crate::{
         MobilePaneMsg, MobileRenderPrefsMsg, MobileSessionMsg, MobileSizeMsg, MobileStateMsg,
         MobileTabMsg, NestedSessionFrameFromHostMsg, PaneMetadata as ProtoPaneMetadata,
         PaneRenderUpdateMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
-        RequestSessionListMsg, ResizeCause as ProtoResizeCause,
-        ServerToClientMsg as ProtoServerToClientMsg, SetMobileRenderPreferencesMsg,
+        RequestSessionListMsg, ServerToClientMsg as ProtoServerToClientMsg,
+        SetMobileRenderPreferencesMsg,
         SetSoftKeyboardMsg, SixelSupportMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
         SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
         TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
@@ -27,7 +27,7 @@ use crate::{
     ipc::{
         ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
         MobileRenderPrefsPayload, MobileSessionPayload, MobileSizePayload, MobileStatePayload,
-        MobileTabPayload, PaneReference, PixelDimensions, ResizeCause, ServerToClientMsg,
+        MobileTabPayload, PaneReference, PixelDimensions, ServerToClientMsg,
     },
 };
 use std::collections::BTreeMap;
@@ -58,11 +58,9 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     color_registers: color_registers.into_iter().map(|cr| cr.into()).collect(),
                 })
             },
-            ClientToServerMsg::TerminalResize { new_size, cause } => {
-                let cause_proto: ProtoResizeCause = cause.into();
+            ClientToServerMsg::TerminalResize { new_size } => {
                 client_to_server_msg::Message::TerminalResize(TerminalResizeMsg {
                     new_size: Some(new_size.into()),
-                    cause: cause_proto as i32,
                 })
             },
             ClientToServerMsg::FirstClientConnected {
@@ -228,15 +226,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 })
             },
             Some(client_to_server_msg::Message::TerminalResize(resize)) => {
-                let cause = ProtoResizeCause::from_i32(resize.cause)
-                    .unwrap_or(ProtoResizeCause::Viewport)
-                    .into();
                 Ok(ClientToServerMsg::TerminalResize {
                     new_size: resize
                         .new_size
                         .ok_or_else(|| anyhow!("Missing new_size"))?
                         .try_into()?,
-                    cause,
                 })
             },
             Some(client_to_server_msg::Message::FirstClientConnected(first_client)) => {
@@ -3364,26 +3358,6 @@ impl TryFrom<ProtoExitReason> for ExitReason {
             ProtoExitReason::Error => Ok(ExitReason::Error("Protobuf error".to_string())),
             ProtoExitReason::CustomExitStatus => Ok(ExitReason::CustomExitStatus(0)),
             ProtoExitReason::Unspecified => Err(anyhow!("Unspecified exit reason")),
-        }
-    }
-}
-
-impl From<ResizeCause> for ProtoResizeCause {
-    fn from(cause: ResizeCause) -> Self {
-        match cause {
-            ResizeCause::Viewport => ProtoResizeCause::Viewport,
-            ResizeCause::RenderingPreference => ProtoResizeCause::RenderingPreference,
-            ResizeCause::SizeSettled => ProtoResizeCause::SizeSettled,
-        }
-    }
-}
-
-impl From<ProtoResizeCause> for ResizeCause {
-    fn from(cause: ProtoResizeCause) -> Self {
-        match cause {
-            ProtoResizeCause::Viewport => ResizeCause::Viewport,
-            ProtoResizeCause::RenderingPreference => ResizeCause::RenderingPreference,
-            ProtoResizeCause::SizeSettled => ResizeCause::SizeSettled,
         }
     }
 }

@@ -3094,8 +3094,6 @@ pub struct ColorRegistersMsg {
 pub struct TerminalResizeMsg {
     #[prost(message, optional, tag="1")]
     pub new_size: ::core::option::Option<Size>,
-    #[prost(enumeration="ResizeCause", tag="2")]
-    pub cause: i32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3240,35 +3238,6 @@ pub struct SetMobileRenderPreferencesMsg {
     pub single_pane: bool,
     #[prost(bool, tag="2")]
     pub fit: bool,
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum ResizeCause {
-    Viewport = 0,
-    RenderingPreference = 1,
-    SizeSettled = 2,
-}
-impl ResizeCause {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            ResizeCause::Viewport => "RESIZE_CAUSE_VIEWPORT",
-            ResizeCause::RenderingPreference => "RESIZE_CAUSE_RENDERING_PREFERENCE",
-            ResizeCause::SizeSettled => "RESIZE_CAUSE_SIZE_SETTLED",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "RESIZE_CAUSE_VIEWPORT" => Some(Self::Viewport),
-            "RESIZE_CAUSE_RENDERING_PREFERENCE" => Some(Self::RenderingPreference),
-            "RESIZE_CAUSE_SIZE_SETTLED" => Some(Self::SizeSettled),
-            _ => None,
-        }
-    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

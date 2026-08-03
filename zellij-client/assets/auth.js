@@ -29,96 +29,73 @@ async function waitForSecurityToken() {
 }
 
 /**
- * Get client ID from server after authentication
+ * Perform the login exchange with the server
  * @param {string} token - Authentication token
  * @param {boolean} rememberMe - Remember login preference
- * @param {boolean} hasAuthenticationCookie - Whether auth cookie exists
- * @returns {Promise<string|null>} Client ID or null on failure
+ * @returns {Promise<boolean>} true when the login succeeded
  */
-export async function getClientId(token, rememberMe, hasAuthenticationCookie) {
+async function login(token, rememberMe) {
     const baseUrl = getBaseUrl();
-
-    if (!hasAuthenticationCookie) {
-        let login_res = await fetch(`${baseUrl}/command/login`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                auth_token: token,
-                remember_me: rememberMe ? true : false,
-            }),
-            credentials: "include",
-        });
-
-        if (login_res.status === 401) {
-            await showErrorModal(
-                "Error",
-                "Unauthorized or revoked login token."
-            );
-            return null;
-        } else if (!login_res.ok) {
-            await showErrorModal(
-                "Error",
-                `Error ${login_res.status} connecting to server.`
-            );
-            return null;
-        }
-    }
-
-    let data = await fetch(`${baseUrl}/session`, {
+    let login_res = await fetch(`${baseUrl}/command/login`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+            auth_token: token,
+            remember_me: rememberMe ? true : false,
+        }),
+        credentials: "include",
     });
 
-    if (data.status === 401) {
+    if (login_res.status === 401) {
         await showErrorModal("Error", "Unauthorized or revoked login token.");
-        return null;
-    } else if (!data.ok) {
+        return false;
+    } else if (!login_res.ok) {
         await showErrorModal(
             "Error",
-            `Error ${data.status} connecting to server.`
+            `Error ${login_res.status} connecting to server.`
         );
-        return null;
-    } else {
-        let body = await data.json();
-        return body.web_client_id;
+        return false;
     }
+    return true;
 }
 
 /**
- * Initialize authentication flow and return client ID
- * @returns {Promise<string>} Client ID
+ * Request a session from the server, authenticating first if required.
+ * @param {string} sessionFromPath - Session name taken from the URL path
+ * @returns {Promise<Object>} The full session bootstrap payload
  */
-export async function initAuthentication() {
-    let token = null;
-    let remember = null;
-    let hasAuthenticationCookie = document.body.dataset.authenticated === "true";
+export async function fetchSession(sessionFromPath) {
+    const baseUrl = getBaseUrl();
+    const query = sessionFromPath
+        ? `?session=${encodeURIComponent(sessionFromPath)}`
+        : "";
 
-    if (!hasAuthenticationCookie) {
-        const tokenResult = await waitForSecurityToken();
-        token = tokenResult.token;
-        remember = tokenResult.remember;
-    }
+    while (true) {
+        const response = await fetch(`${baseUrl}/session${query}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            credentials: "include",
+        });
 
-    let webClientId;
-
-    while (!webClientId) {
-        webClientId = await getClientId(
-            token,
-            remember,
-            hasAuthenticationCookie
-        );
-        if (!webClientId) {
-            hasAuthenticationCookie = false;
-            const tokenResult = await waitForSecurityToken();
-            token = tokenResult.token;
-            remember = tokenResult.remember;
+        if (response.ok) {
+            return await response.json();
         }
-    }
 
-    return webClientId;
+        if (response.status === 401) {
+            const { token, remember } = await waitForSecurityToken();
+            await login(token, remember);
+            continue;
+        }
+
+        await showErrorModal(
+            "Error",
+            `Error ${response.status} connecting to server.`
+        );
+        const { token, remember } = await waitForSecurityToken();
+        await login(token, remember);
+    }
 }

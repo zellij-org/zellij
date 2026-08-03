@@ -81,14 +81,6 @@ pub struct ColorRegister {
     pub color: String,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ResizeCause {
-    #[default]
-    Viewport,
-    RenderingPreference,
-    SizeSettled,
-}
-
 impl PixelDimensions {
     pub fn merge(&mut self, other: PixelDimensions) {
         if let Some(text_area_size) = other.text_area_size {
@@ -182,8 +174,6 @@ pub enum ClientToServerMsg {
     },
     TerminalResize {
         new_size: Size,
-        #[serde(default)]
-        cause: ResizeCause,
     },
     FirstClientConnected {
         cli_assets: CliAssets,

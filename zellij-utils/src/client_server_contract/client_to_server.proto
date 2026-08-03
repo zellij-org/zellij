@@ -56,13 +56,6 @@ message ColorRegistersMsg {
 
 message TerminalResizeMsg {
   Size new_size = 1;
-  ResizeCause cause = 2;
-}
-
-enum ResizeCause {
-  RESIZE_CAUSE_VIEWPORT = 0;
-  RESIZE_CAUSE_RENDERING_PREFERENCE = 1;
-  RESIZE_CAUSE_SIZE_SETTLED = 2;
 }
 
 message FirstClientConnectedMsg {

@@ -1,11 +1,13 @@
 use axum::extract::ws::Message;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 
 use crate::os_input_output::ClientOsApi;
+use crate::web_client::control_message::SetConfigPayload;
 use crate::web_client::session_management::spawn_new_session;
 use std::path::PathBuf;
 use zellij_utils::{
@@ -170,6 +172,34 @@ impl ClientConnectionBus {
     }
 }
 
+pub const MAX_PENDING_WELCOME_SESSIONS: usize = 256;
+pub const PENDING_WELCOME_SESSION_TTL: Duration = Duration::from_secs(300);
+
+pub type PendingWelcomeSessions = Arc<Mutex<VecDeque<(String, Instant)>>>;
+
+pub fn record_pending_welcome_session(pending: &PendingWelcomeSessions, session_name: &str) {
+    let mut pending = pending.lock().unwrap();
+    let now = Instant::now();
+    pending.retain(|(_, created_at)| now.duration_since(*created_at) < PENDING_WELCOME_SESSION_TTL);
+    while pending.len() >= MAX_PENDING_WELCOME_SESSIONS {
+        pending.pop_front();
+    }
+    pending.push_back((session_name.to_owned(), now));
+}
+
+pub fn take_pending_welcome_session(pending: &PendingWelcomeSessions, session_name: &str) -> bool {
+    let mut pending = pending.lock().unwrap();
+    let now = Instant::now();
+    pending.retain(|(_, created_at)| now.duration_since(*created_at) < PENDING_WELCOME_SESSION_TTL);
+    match pending.iter().position(|(name, _)| name == session_name) {
+        Some(index) => {
+            pending.remove(index);
+            true
+        },
+        None => false,
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub connection_table: Arc<Mutex<ConnectionTable>>,
@@ -179,16 +209,33 @@ pub struct AppState {
     pub session_manager: Arc<dyn SessionManager>,
     pub client_os_api_factory: Arc<dyn ClientOsApiFactory>,
     pub is_https: bool,
+    pub pending_welcome_sessions: PendingWelcomeSessions,
 }
 
 #[derive(Serialize)]
 pub struct CreateClientIdResponse {
     pub web_client_id: String,
     pub is_read_only: bool,
+    pub session_name: String,
+    pub config: SetConfigPayload,
+}
+
+#[derive(Deserialize)]
+pub struct SessionQuery {
+    pub session: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct TerminalParams {
+    pub web_client_id: String,
+    pub rows: Option<u16>,
+    pub cols: Option<u16>,
+    pub cell_width: Option<u16>,
+    pub cell_height: Option<u16>,
+}
+
+#[derive(Deserialize)]
+pub struct ControlParams {
     pub web_client_id: String,
 }
 

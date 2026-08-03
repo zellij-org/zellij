@@ -9118,22 +9118,6 @@ pub(crate) fn screen_thread_main(
                 }
 
                 screen.render(None)?;
-                // we do this here in order to recover from a race condition on app start
-                // that sometimes causes Zellij to think the terminal window is a different size
-                // than it actually is - here, we query the client for its terminal size after
-                // we've finished the setup and handle it as we handle a normal resize,
-                // while this can affect other instances of a layout being applied, the query is
-                // very short and cheap and shouldn't cause any trouble
-                if let Some(os_input) = &mut screen.bus.os_input {
-                    for (client_id, _is_web_client) in screen.connected_clients.borrow().iter() {
-                        log::info!(
-                            "ApplyLayout: sending QueryTerminalSize to client {}",
-                            client_id
-                        );
-                        let _ = os_input
-                            .send_to_client(*client_id, ServerToClientMsg::QueryTerminalSize);
-                    }
-                }
             },
             ScreenInstruction::GoToTab(
                 tab_index,
@@ -9467,20 +9451,6 @@ pub(crate) fn screen_thread_main(
                     screen.bus.senders.send_to_screen(event).non_fatal();
                 }
                 screen.log_and_report_session_state()?;
-
-                if is_web_client {
-                    // we do this because
-                    // we need to query the client for its size, and we must do it only after we've
-                    // added it to our state.
-                    //
-                    // we have to do this specifically for web clients because the browser (as opposed
-                    // to a traditional terminal) can only figure out its dimensions after we sent it relevant
-                    // state (eg. font, which is controlled by our config and it needs to determine cell size)
-                    if let Some(os_input) = &mut screen.bus.os_input {
-                        let _ = os_input
-                            .send_to_client(client_id, ServerToClientMsg::QueryTerminalSize);
-                    }
-                }
 
                 screen.render(None)?;
             },

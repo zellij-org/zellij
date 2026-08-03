@@ -208,8 +208,15 @@ async fn remote_attach(
 ) -> Result<(websockets::WebSocketConnections, Option<String>), RemoteClientError> {
     let server_base_url = extract_server_url(server_url)?;
     let session_name = extract_session_name(server_url)?;
-    let (web_client_id, http_client, session_token) =
-        auth::authenticate(&server_base_url, auth_token, remember_me, ca_cert, insecure).await?;
+    let (web_client_id, http_client, session_token) = auth::authenticate(
+        &server_base_url,
+        auth_token,
+        remember_me,
+        &session_name,
+        ca_cert,
+        insecure,
+    )
+    .await?;
     let connections = websockets::establish_websocket_connections(
         &web_client_id,
         &http_client,
@@ -231,8 +238,14 @@ async fn remote_attach_with_session_token(
 ) -> Result<websockets::WebSocketConnections, RemoteClientError> {
     let server_base_url = extract_server_url(server_url)?;
     let session_name = extract_session_name(server_url)?;
-    let (web_client_id, http_client) =
-        auth::validate_session_token(&server_base_url, session_token, ca_cert, insecure).await?;
+    let (web_client_id, http_client) = auth::validate_session_token(
+        &server_base_url,
+        session_token,
+        &session_name,
+        ca_cert,
+        insecure,
+    )
+    .await?;
     let connections = websockets::establish_websocket_connections(
         &web_client_id,
         &http_client,

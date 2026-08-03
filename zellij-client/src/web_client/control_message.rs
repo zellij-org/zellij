@@ -12,8 +12,6 @@ pub struct WebClientToWebServerControlMessage {
 #[serde(tag = "type")]
 pub enum WebClientToWebServerControlMessagePayload {
     TerminalResize(Size),
-    TerminalResizeRendering(Size),
-    TerminalSizeSettled(Size),
     TerminalMetrics(TerminalMetricsPayload),
     SoftKeyboardVisibilityChanged { visible: bool },
     NestedSessionFrameFromHost { payload_bytes: Vec<u8> },
@@ -22,6 +20,8 @@ pub enum WebClientToWebServerControlMessagePayload {
     NewPaneInTab { tab_id: usize },
     NewTab,
     SetMobileRenderPreferences { single_pane: bool, fit: bool },
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
