@@ -10578,7 +10578,7 @@ fn fit_disabled_excludes_web_client_from_min_size() {
 }
 
 #[test]
-fn fit_disabled_pins_lone_mobile_tab_to_desktop_reference_size() {
+fn fit_disabled_ignores_client_on_another_tab() {
     let initial_size = Size {
         cols: 200,
         rows: 60,
@@ -10606,11 +10606,8 @@ fn fit_disabled_pins_lone_mobile_tab_to_desktop_reference_size() {
 
     assert_eq!(
         screen.tabs.get(&0).unwrap().size,
-        Size {
-            cols: 160,
-            rows: 50,
-        },
-        "Lone fit-disabled mobile tab is pinned to the desktop reference size, not its own small size"
+        Size { cols: 40, rows: 10 },
+        "A client on another tab is not a reference: fit is forced on and the mobile size drives layout"
     );
 }
 
@@ -10622,7 +10619,6 @@ fn fit_disabled_tab_repins_on_desktop_resize() {
     };
     let mut screen = create_non_mirrored_screen(initial_size);
     new_tab(&mut screen, 1, 0);
-    new_tab(&mut screen, 2, 1);
     screen
         .add_client(2, /* is_web_client */ false)
         .expect("TEST");
@@ -10635,7 +10631,7 @@ fn fit_disabled_tab_repins_on_desktop_resize() {
         },
     );
     screen.switch_active_tab(0, None, true, 1).expect("TEST");
-    screen.switch_active_tab(1, None, true, 2).expect("TEST");
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
 
     screen
         .set_mobile_render_preferences(1, /* single_pane */ false, /* fit */ false)
@@ -10646,10 +10642,10 @@ fn fit_disabled_tab_repins_on_desktop_resize() {
             cols: 160,
             rows: 50,
         },
-        "Pre-condition: mobile tab pinned to the initial desktop reference size"
+        "Pre-condition: shared tab pinned to the initial desktop reference size"
     );
 
-    // Desktop client resizes; the fit-disabled mobile tab (a different tab) must re-pin.
+    // Desktop client resizes; the fit-disabled tab must re-pin to its new size.
     screen.set_client_size(
         2,
         Size {
@@ -10665,7 +10661,57 @@ fn fit_disabled_tab_repins_on_desktop_resize() {
             cols: 120,
             rows: 40,
         },
-        "Mobile tab re-pins to the new desktop reference size after a desktop resize"
+        "Tab re-pins to the new desktop reference size after a desktop resize"
+    );
+}
+
+#[test]
+fn fit_disabled_reverts_when_reference_client_switches_tab() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+
+    screen
+        .set_mobile_render_preferences(1, /* single_pane */ false, /* fit */ false)
+        .expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "Pre-condition: tab is shared, so fit-disabled is honored"
+    );
+
+    // The reference client leaves the tab without disconnecting.
+    screen.switch_active_tab(1, None, true, 2).expect("TEST");
+    screen.log_and_report_session_state().expect("TEST");
+
+    assert!(
+        screen.mobile_web_prefs.get(&1).map(|prefs| prefs.fit) == Some(true),
+        "Fit reverts once no client shares the tab, without any disconnect"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 40, rows: 10 },
+        "The tab shrinks to the mobile size once nobody else is viewing it"
     );
 }
 
@@ -10813,7 +10859,43 @@ fn focus_pane_by_id_is_per_client_and_does_not_steal_global_focus() {
 }
 
 #[test]
-fn single_pane_reasserts_fullscreen_after_desktop_unfullscreen() {
+fn mobile_state_reports_single_pane_off_before_any_preference_is_sent() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen
+        .add_client(2, /* is_web_client */ true)
+        .expect("TEST");
+
+    screen.log_and_report_session_state().expect("TEST");
+
+    let msgs = messages.lock().unwrap();
+    let payload = msgs
+        .get(&2)
+        .expect("TEST")
+        .iter()
+        .find_map(|msg| match msg {
+            ServerToClientMsg::MobileState { payload } => Some(payload.clone()),
+            _ => None,
+        })
+        .expect("A web client receives a MobileState push");
+
+    assert!(
+        !payload.render_prefs.single_pane,
+        "A client that never sent preferences has nothing fullscreened, so single-pane must be reported off"
+    );
+    assert!(
+        payload.render_prefs.fit,
+        "Such a client participates in the tab min-size rule, so fit is reported on"
+    );
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Nothing is fullscreened for a client that never sent preferences"
+    );
+}
+
+#[test]
+fn single_pane_demotes_after_desktop_unfullscreen() {
     let initial_size = Size { cols: 80, rows: 20 };
     let mut screen = create_new_screen(initial_size, true, true);
     new_tab(&mut screen, 1, 0);
@@ -10842,8 +10924,134 @@ fn single_pane_reasserts_fullscreen_after_desktop_unfullscreen() {
     screen.log_and_report_session_state().expect("TEST");
 
     assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Single-pane yields to the un-fullscreen instead of re-asserting it"
+    );
+    assert_eq!(
+        screen
+            .mobile_web_prefs
+            .get(&client)
+            .map(|prefs| prefs.single_pane),
+        Some(false),
+        "The client is demoted out of single-pane mode and reports it"
+    );
+    assert_eq!(
+        screen
+            .mobile_web_prefs
+            .get(&client)
+            .and_then(|prefs| prefs.fullscreened_pane),
+        None,
+        "The tracked fullscreen pane is cleared on demotion"
+    );
+}
+
+#[test]
+fn single_pane_demotion_disables_fit_when_tab_is_shared() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+
+    screen
+        .set_mobile_render_preferences(1, /* single_pane */ true, /* fit */ true)
+        .expect("TEST");
+
+    // Simulate a desktop-initiated un-fullscreen on the shared tab.
+    let fullscreen_pane_id = screen.tabs.get(&0).unwrap().fullscreen_pane_id().unwrap();
+    screen
+        .tabs
+        .get_mut(&0)
+        .unwrap()
+        .toggle_pane_fullscreen(fullscreen_pane_id);
+    screen.log_and_report_session_state().expect("TEST");
+
+    assert_eq!(
+        screen.mobile_web_prefs.get(&1).map(|prefs| prefs.fit),
+        Some(false),
+        "Demotion also disables fit so the shared tab is not shrunk to the mobile size"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "The shared tab keeps the desktop size after the demotion"
+    );
+}
+
+#[test]
+fn single_pane_demotes_when_desktop_opens_a_pane() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    let mobile_client = 1;
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+
+    screen
+        .set_mobile_render_preferences(
+            mobile_client,
+            /* single_pane */ true,
+            /* fit */ true,
+        )
+        .expect("TEST");
+    assert!(
         screen.tabs.get(&0).unwrap().is_fullscreen_active(),
-        "Single-pane re-asserts fullscreen against tab-global truth on the next report"
+        "Pre-condition: single-pane fullscreen active"
+    );
+
+    // The desktop client opens a pane in the shared tab, which drops fullscreen.
+    screen
+        .get_active_tab_mut(2)
+        .unwrap()
+        .new_pane(
+            PaneId::Terminal(3),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(2),
+            None,
+        )
+        .expect("TEST");
+    screen.log_and_report_session_state().expect("TEST");
+
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "The pane the desktop client opened stays visible"
+    );
+    assert_eq!(
+        screen
+            .mobile_web_prefs
+            .get(&mobile_client)
+            .map(|prefs| prefs.single_pane),
+        Some(false),
+        "The mobile client is demoted rather than hiding the new pane"
     );
 }
 

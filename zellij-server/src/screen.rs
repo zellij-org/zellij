@@ -2302,18 +2302,35 @@ impl Screen {
         Ok(())
     }
 
+    // Only clients viewing the same tab are relevant: fullscreen and tab sizing are per-tab, so a
+    // client on another tab is neither disturbed by nor a useful size reference for this one.
+    fn shares_tab_with(&self, client_id: ClientId, other_id: ClientId) -> bool {
+        if other_id == client_id {
+            return false;
+        }
+        match (
+            self.active_tab_ids.get(&client_id),
+            self.active_tab_ids.get(&other_id),
+        ) {
+            (Some(tab_id), Some(other_tab_id)) => tab_id == other_tab_id,
+            _ => false,
+        }
+    }
+
     fn reference_size_for_client(&self, client_id: ClientId) -> Option<Size> {
         let connected = self.connected_clients.borrow();
         connected
             .keys()
-            .filter(|other_id| **other_id != client_id)
+            .filter(|other_id| self.shares_tab_with(client_id, **other_id))
             .filter_map(|other_id| self.client_sizes.get(other_id).copied())
             .max_by_key(|size| size.rows * size.cols)
     }
 
     fn has_reference_client(&self, client_id: ClientId) -> bool {
         let connected = self.connected_clients.borrow();
-        connected.keys().any(|other_id| *other_id != client_id)
+        connected
+            .keys()
+            .any(|other_id| self.shares_tab_with(client_id, *other_id))
     }
 
     fn tab_id_containing_pane(&self, pane_id: PaneId) -> Option<usize> {
@@ -2406,7 +2423,7 @@ impl Screen {
         Ok(())
     }
 
-    fn revert_fit_disabled_on_desktop_disconnect(&mut self) -> Result<()> {
+    fn revert_fit_disabled_without_reference_client(&mut self) -> Result<()> {
         let reverted: Vec<ClientId> = self
             .mobile_web_prefs
             .iter()
@@ -2461,17 +2478,21 @@ impl Screen {
             .get(&client_id)
             .and_then(|prefs| prefs.fullscreened_pane);
 
-        // Tab-global fullscreen is the source of truth: re-assert single-pane
-        // against the actual tab state rather than the tracked belief, so a
-        // desktop-initiated un-fullscreen (or a stale/closed tracked pane) is
-        // corrected rather than ignored.
+        // Tab-global fullscreen is the source of truth. When the tracked pane is still the focused
+        // one but the tab is no longer fullscreen on it, another actor deliberately left
+        // fullscreen, so single-pane yields rather than fighting for it. A changed focus target
+        // (own tap, own new pane, closed pane) is instead re-asserted against the new pane.
         let target_tab_fullscreen_ok = self
             .tab_id_containing_pane(target)
             .and_then(|tab_id| self.tabs.get(&tab_id))
             .map(|tab| tab.is_fullscreen_active() && tab.fullscreen_pane_id() == Some(target))
             .unwrap_or(false);
 
-        if previous == Some(target) && target_tab_fullscreen_ok {
+        if previous == Some(target) {
+            if target_tab_fullscreen_ok {
+                return;
+            }
+            self.demote_single_pane(client_id);
             return;
         }
         if let Some(previous_pane) = previous {
@@ -2482,6 +2503,29 @@ impl Screen {
         self.ensure_pane_fullscreen(target);
         if let Some(prefs) = self.mobile_web_prefs.get_mut(&client_id) {
             prefs.fullscreened_pane = Some(target);
+        }
+    }
+
+    // Leaves the tab as the other client left it and drops the client's single-pane preference.
+    // Fit is disabled alongside it when the tab is shared, otherwise the tab would immediately be
+    // shrunk to this client's size by the min-size rule - trading one intrusion for another.
+    fn demote_single_pane(&mut self, client_id: ClientId) {
+        let disable_fit = self.has_reference_client(client_id);
+        let mut fit_changed = false;
+        if let Some(prefs) = self.mobile_web_prefs.get_mut(&client_id) {
+            prefs.single_pane = false;
+            prefs.fullscreened_pane = None;
+            if disable_fit && prefs.fit {
+                prefs.fit = false;
+                fit_changed = true;
+            }
+        }
+        if fit_changed {
+            if let Some(&tab_id) = self.active_tab_ids.get(&client_id) {
+                if let Err(e) = self.recompute_tab_size(tab_id) {
+                    log::error!("Failed to recompute tab size after single-pane demotion: {e:?}");
+                }
+            }
         }
     }
 
@@ -4657,7 +4701,7 @@ impl Screen {
         }
         self.client_sizes.remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
-        self.revert_fit_disabled_on_desktop_disconnect()
+        self.revert_fit_disabled_without_reference_client()
             .with_context(err_context)?;
         if let Some(prev_tab_id) = previously_active_tab_id {
             self.recompute_tab_size(prev_tab_id)
@@ -4911,6 +4955,8 @@ impl Screen {
         let err_context = || format!("Failed to log and report session state");
 
         self.update_active_pane_ids();
+        self.revert_fit_disabled_without_reference_client()
+            .with_context(err_context)?;
         self.reconcile_all_single_pane_focus();
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
@@ -5121,8 +5167,12 @@ impl Screen {
                 .ok()
                 .map(|tab| tab.is_fullscreen_active())
                 .unwrap_or(false);
+            // Defaults must describe what the server has actually applied: a client that never
+            // sent preferences has nothing fullscreened, and participates in the tab min-size
+            // rule. Reporting an unapplied `single_pane` desynchronises the browser, which then
+            // asserts the stale value on its next unrelated preference change.
             let render_prefs = zellij_utils::ipc::MobileRenderPrefsPayload {
-                single_pane: prefs.map(|p| p.single_pane).unwrap_or(true),
+                single_pane: prefs.map(|p| p.single_pane).unwrap_or(false),
                 fit: prefs.map(|p| p.fit).unwrap_or(true),
                 active_pane_is_fullscreen,
             };

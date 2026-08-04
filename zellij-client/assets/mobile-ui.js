@@ -16,7 +16,8 @@ const COLORS = {
 
 const state = {
     active: false,
-    renderMode: "single-pane",
+    renderMode: "full",
+    initialPrefsSent: false,
     fitEnabled: true,
     activeOverlay: "none",
     armed: { ctrl: false, alt: false },
@@ -90,16 +91,37 @@ function evaluateActivation() {
         state.kbdVisible = false;
         stopActivityTimer();
     }
+    if (next) {
+        sendInitialRenderPrefs();
+    }
     render();
     updateKeyboardOffset();
     reconcileSize();
+}
+
+// The mobile UI opens in single-pane mode. The server cannot decide this on its own: every
+// browser is a web client, but only this UI knows whether it activated, so the intent is sent
+// from here once the control channel exists.
+function sendInitialRenderPrefs() {
+    if (state.initialPrefsSent || !state.active || !window.__zjSendControl) {
+        return false;
+    }
+    state.initialPrefsSent = true;
+    state.renderMode = "single-pane";
+    state.fitEnabled = true;
+    sendRenderPrefs();
+    return true;
 }
 
 function setData(data) {
     const prevDesktop = state.data.desktop_size;
     state.data = data;
     state.dataReceivedAt = Date.now();
-    reconcileRenderPrefs(data.render_prefs);
+    // A payload that predates the initial intent describes the state before it was applied, so
+    // reconciling against it would flip the UI out of single-pane for a frame.
+    if (!sendInitialRenderPrefs()) {
+        reconcileRenderPrefs(data.render_prefs);
+    }
     if (!state.fitEnabled && desktopSizeChanged(prevDesktop, data.desktop_size)) {
         window.dispatchEvent(new Event("zellij:rendering-resize"));
     }
@@ -550,6 +572,8 @@ function switchToDesktop() {
     });
     setActivationPreference("off");
     state.active = false;
+    state.initialPrefsSent = false;
+    state.renderMode = "full";
     document.body.classList.remove("zj-mobile-active");
     render();
     reconcileSize();
@@ -720,9 +744,7 @@ function reconcileSize() {
         requestAnimationFrame(syncPan);
         return;
     }
-    const topVisible =
-        state.renderMode === "single-pane" &&
-        els.topbar.style.display !== "none";
+    const topVisible = els.topbar.style.display !== "none";
     const topH = topVisible ? els.topbar.offsetHeight : 0;
     const modVisible = els.modbar.classList.contains("zj-visible");
     const modH = modVisible ? els.modbar.offsetHeight : 0;
@@ -736,8 +758,9 @@ function render() {
     if (!els) {
         return;
     }
-    const singlePane = state.renderMode === "single-pane";
-    els.topbar.style.display = singlePane ? "flex" : "none";
+    // The topbar hosts the only entry point to the menu, so it stays visible in every render
+    // mode - hiding it in full render leaves the user with no way back.
+    els.topbar.style.display = "flex";
 
     els.sessionBtn.textContent = state.data.session_name || "session";
     els.paneBtn.textContent = activePaneLabel();
@@ -770,19 +793,22 @@ function activePaneLabel() {
     return active.pane_id != null ? `#${active.pane_id}` : "\u2014";
 }
 
+function checkbox(on) {
+    return on ? "[x]" : "[ ]";
+}
+
 function renderMenu() {
     if (!els.menu.classList.contains("zj-open")) {
         return;
     }
     const renderToggle = els.menu.querySelector('[data-role="render-toggle"]');
-    renderToggle.textContent =
+    renderToggle.textContent = `${checkbox(
         state.renderMode === "single-pane"
-            ? "Render mode: Single pane"
-            : "Render mode: Full render";
+    )} Single pane`;
 
     const fitToggle = els.menu.querySelector('[data-role="fit-toggle"]');
     const canFit = state.data.desktop_client_connected;
-    fitToggle.textContent = `Fit: ${state.fitEnabled ? "Enabled" : "Disabled"}`;
+    fitToggle.textContent = `${checkbox(state.fitEnabled)} Fit to my screen`;
     fitToggle.classList.toggle("zj-disabled", !canFit);
 }
 
@@ -1087,7 +1113,7 @@ function emptyMobileState() {
         panes: [],
         sessions: [],
         render_prefs: {
-            single_pane: true,
+            single_pane: false,
             fit: true,
             active_pane_is_fullscreen: false,
         },
