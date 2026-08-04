@@ -29,7 +29,6 @@ use std::sync::{
     Arc, Mutex,
 };
 use std::time::{Duration, Instant};
-use zellij_utils::consts::is_ipc_socket;
 
 use crate::panes::PaneId;
 use crate::plugins::{PluginId, PluginInstruction};
@@ -742,8 +741,11 @@ pub fn scan_session_list(
     sock_dir: &Path,
     session_info_cache_dir: &Path,
 ) -> (BTreeMap<String, SessionInfo>, BTreeMap<String, Duration>) {
-    let mut session_infos_on_machine =
-        read_other_live_session_states(current_session_name, sock_dir, session_info_cache_dir);
+    let mut session_infos_on_machine = zellij_utils::sessions::read_live_session_states(
+        current_session_name,
+        sock_dir,
+        session_info_cache_dir,
+    );
     for (name, info) in session_infos_on_machine.iter_mut() {
         if name == current_session_name {
             info.populate_plugin_list(current_session_plugin_list.clone());
@@ -767,48 +769,6 @@ pub fn scan_session_list_default_dirs(
         &*ZELLIJ_SOCK_DIR,
         &*ZELLIJ_SESSION_INFO_CACHE_DIR,
     )
-}
-
-fn read_other_live_session_states(
-    current_session_name: &str,
-    sock_dir: &Path,
-    session_info_cache_dir: &Path,
-) -> BTreeMap<String, SessionInfo> {
-    let mut other_session_names: Vec<(String, Duration)> = vec![];
-    let mut session_infos_on_machine = BTreeMap::new();
-    // we do this so that the session infos will be actual and we're
-    // reasonably sure their session is running
-    if let Ok(files) = fs::read_dir(sock_dir) {
-        files.for_each(|file| {
-            if let Ok(file) = file {
-                if let Ok(file_name) = file.file_name().into_string() {
-                    if is_ipc_socket(&file.file_type().unwrap()) {
-                        let creation_time = std::fs::metadata(&file.path())
-                            .ok()
-                            .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
-                            .and_then(|d| d.elapsed().ok())
-                            .unwrap_or_default();
-                        other_session_names.push((file_name, creation_time));
-                    }
-                }
-            }
-        });
-    }
-
-    for (session_name, creation_time) in other_session_names {
-        let session_cache_file_name = session_info_cache_dir
-            .join(&session_name)
-            .join("session-metadata.kdl");
-        if let Ok(raw_session_info) = fs::read_to_string(&session_cache_file_name) {
-            if let Ok(mut session_info) =
-                SessionInfo::from_string(&raw_session_info, &current_session_name)
-            {
-                session_info.creation_time = creation_time;
-                session_infos_on_machine.insert(session_name, session_info);
-            }
-        }
-    }
-    session_infos_on_machine
 }
 
 fn find_resurrectable_sessions(

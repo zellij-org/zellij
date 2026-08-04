@@ -15,9 +15,10 @@ use crate::os_input_output::ClientOsApi;
 use crate::web_client::control_message::{
     WebClientToWebServerControlMessage, WebClientToWebServerControlMessagePayload,
 };
+use crate::web_client::types::{SessionListResponse, WebSessionInfo};
 use crate::web_client::ClientOsApiFactory;
 use zellij_utils::{
-    data::Palette,
+    data::{LayoutInfo, Palette},
     errors::ErrorContext,
     ipc::{ClientToServerMsg, ServerToClientMsg},
     pane_size::Size,
@@ -2967,6 +2968,265 @@ mod web_client_tests {
             "manifest body must be identical regardless of base_url config"
         );
     }
+
+    async fn spawn_test_server_with_session_manager(
+        session_manager: Arc<MockSessionManager>,
+    ) -> (u16, tokio::task::JoinHandle<()>) {
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                Config::default(),
+                Options::default(),
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(session_manager),
+                Some(client_os_api_factory),
+                addr.ip(),
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        (port, server_handle)
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_session_list_requires_authentication() {
+        let _ = delete_db();
+
+        let (port, server_handle) =
+            spawn_test_server_with_session_manager(Arc::new(MockSessionManager::new())).await;
+
+        let url = format!("http://127.0.0.1:{}/session-list", port);
+        let response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || isahc::get(&url)),
+        )
+        .await
+        .expect("Request timed out")
+        .expect("Spawn blocking failed")
+        .expect("Request failed");
+
+        assert_eq!(
+            response.status(),
+            401,
+            "the session list must not be readable without authentication"
+        );
+
+        server_handle.abort();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_session_list_returns_live_sessions_without_attaching() {
+        let _ = delete_db();
+
+        let (regular_token, _) = create_token(Some("regular".to_string()), false).unwrap();
+
+        let session_manager = Arc::new(MockSessionManager::with_listed_sessions(vec![
+            WebSessionInfo {
+                name: "zebra".to_owned(),
+                web_clients_allowed: false,
+                tab_count: 1,
+                pane_count: 2,
+                connected_clients: 0,
+                creation_secs_ago: 120,
+            },
+            WebSessionInfo {
+                name: "alpha".to_owned(),
+                web_clients_allowed: true,
+                tab_count: 3,
+                pane_count: 7,
+                connected_clients: 1,
+                creation_secs_ago: 5,
+            },
+        ]));
+        let session_manager_for_verification = session_manager.clone();
+        let (port, server_handle) = spawn_test_server_with_session_manager(session_manager).await;
+
+        let session_token = login_and_get_session_token(port, &regular_token).await;
+
+        let url = format!("http://127.0.0.1:{}/session-list", port);
+        let mut response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || {
+                isahc::Request::get(&url)
+                    .header("Cookie", format!("session_token={}", session_token))
+                    .body(())
+                    .unwrap()
+                    .send()
+            }),
+        )
+        .await
+        .expect("Request timed out")
+        .expect("Spawn blocking failed")
+        .expect("Request failed");
+
+        assert!(response.status().is_success());
+
+        let body: SessionListResponse =
+            serde_json::from_str(&response.text().expect("Failed to read body"))
+                .expect("Failed to parse the session list response");
+
+        assert_eq!(
+            body.sessions
+                .iter()
+                .map(|s| s.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["alpha", "zebra"],
+            "sessions must be reported sorted by name"
+        );
+        assert_eq!(body.sessions[0].tab_count, 3);
+        assert_eq!(body.sessions[0].pane_count, 7);
+        assert_eq!(body.sessions[0].connected_clients, 1);
+        assert_eq!(body.sessions[0].creation_secs_ago, 5);
+        assert!(!body.sessions[1].web_clients_allowed);
+
+        assert!(
+            session_manager_for_verification
+                .sessions_created
+                .lock()
+                .unwrap()
+                .is_empty(),
+            "listing sessions must not create or attach to any session"
+        );
+        assert!(
+            session_manager_for_verification
+                .first_messages_sent
+                .lock()
+                .unwrap()
+                .is_empty(),
+            "listing sessions must not send any message to a zellij server"
+        );
+
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    async fn create_client_session_with_query(
+        port: u16,
+        session_token: &str,
+        query: &str,
+    ) -> (String, String) {
+        let session_url = format!("http://127.0.0.1:{}/session{}", port, query);
+        let mut client_response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking({
+                let session_token = session_token.to_string();
+                move || {
+                    isahc::Request::post(&session_url)
+                        .header("Cookie", format!("session_token={}", session_token))
+                        .header("Content-Type", "application/json")
+                        .body("{}")
+                        .unwrap()
+                        .send()
+                }
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+
+        assert!(client_response.status().is_success());
+
+        let client_data: serde_json::Value =
+            serde_json::from_str(&client_response.text().unwrap()).unwrap();
+        (
+            client_data["web_client_id"].as_str().unwrap().to_string(),
+            client_data["session_name"].as_str().unwrap().to_string(),
+        )
+    }
+
+    async fn layout_of_first_message_for_query(query: &str) -> Option<LayoutInfo> {
+        let (regular_token, _) = create_token(Some("regular".to_string()), false).unwrap();
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let session_manager_for_verification = session_manager.clone();
+        let (port, server_handle) = spawn_test_server_with_session_manager(session_manager).await;
+
+        let session_token = login_and_get_session_token(port, &regular_token).await;
+        let (web_client_id, session_name) =
+            create_client_session_with_query(port, &session_token, query).await;
+
+        let terminal_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/terminal/{}?web_client_id={}",
+            port, session_name, web_client_id
+        );
+        let (terminal_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&terminal_ws_url, &session_token),
+        )
+        .await
+        .expect("Terminal WebSocket connection timed out")
+        .expect("Failed to connect to terminal WebSocket");
+
+        let (mut terminal_sink, _terminal_stream) = terminal_ws.split();
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let layout = {
+            let all_messages = session_manager_for_verification
+                .first_messages_sent
+                .lock()
+                .unwrap();
+            let (_, msg) = all_messages.first().expect("Should have a first message");
+            match msg {
+                ClientToServerMsg::FirstClientConnected { cli_assets, .. } => {
+                    cli_assets.layout.clone()
+                },
+                other => panic!("Expected FirstClientConnected, got {:?}", other),
+            }
+        };
+
+        let _ = terminal_sink.close().await;
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        layout
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_unnamed_session_defaults_to_the_welcome_layout() {
+        let _ = delete_db();
+
+        let layout = layout_of_first_message_for_query("").await;
+
+        assert_eq!(
+            layout,
+            Some(LayoutInfo::BuiltIn("welcome".to_owned())),
+            "an unnamed session must boot the welcome screen by default"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_unnamed_session_with_welcome_false_skips_the_welcome_layout() {
+        let _ = delete_db();
+
+        let layout = layout_of_first_message_for_query("?welcome=false").await;
+
+        assert_ne!(
+            layout,
+            Some(LayoutInfo::BuiltIn("welcome".to_owned())),
+            "welcome=false must not record a pending welcome session"
+        );
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -2976,6 +3236,7 @@ pub struct MockSessionManager {
     pub sessions_created: Arc<Mutex<HashSet<String>>>,
     pub first_messages_sent: Arc<Mutex<Vec<(String, ClientToServerMsg)>>>,
     pub all_sessions_exist: bool,
+    pub listed_sessions: Vec<WebSessionInfo>,
 }
 
 impl MockSessionManager {
@@ -2986,6 +3247,7 @@ impl MockSessionManager {
             sessions_created: Arc::new(Mutex::new(HashSet::new())),
             first_messages_sent: Arc::new(Mutex::new(Vec::new())),
             all_sessions_exist: false,
+            listed_sessions: Vec::new(),
         }
     }
 
@@ -2996,6 +3258,14 @@ impl MockSessionManager {
             sessions_created: Arc::new(Mutex::new(HashSet::new())),
             first_messages_sent: Arc::new(Mutex::new(Vec::new())),
             all_sessions_exist: true,
+            listed_sessions: Vec::new(),
+        }
+    }
+
+    pub fn with_listed_sessions(listed_sessions: Vec<WebSessionInfo>) -> Self {
+        Self {
+            listed_sessions,
+            ..Self::new()
         }
     }
 
@@ -3026,6 +3296,10 @@ impl SessionManager for MockSessionManager {
                 .copied()
                 .unwrap_or(false))
         }
+    }
+
+    fn list_sessions(&self) -> Vec<WebSessionInfo> {
+        self.listed_sessions.clone()
     }
 
     fn get_resurrection_layout(&self, session_name: &str) -> Option<Layout> {

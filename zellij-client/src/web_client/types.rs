@@ -32,6 +32,7 @@ impl ClientOsApiFactory for RealClientOsApiFactory {
 
 pub trait SessionManager: Send + Sync + std::fmt::Debug {
     fn session_exists(&self, session_name: &str) -> Result<bool, Box<dyn std::error::Error>>;
+    fn list_sessions(&self) -> Vec<WebSessionInfo>;
     fn get_resurrection_layout(
         &self,
         session_name: &str,
@@ -53,6 +54,20 @@ impl SessionManager for RealSessionManager {
     fn session_exists(&self, session_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
         zellij_utils::sessions::session_exists(session_name)
             .map_err(|e| format!("Session check failed: {:?}", e).into())
+    }
+
+    fn list_sessions(&self) -> Vec<WebSessionInfo> {
+        zellij_utils::sessions::read_live_session_states_default_dirs("")
+            .into_values()
+            .map(|info| WebSessionInfo {
+                name: info.name,
+                web_clients_allowed: info.web_clients_allowed,
+                tab_count: info.tabs.len(),
+                pane_count: info.panes.panes.values().map(|panes| panes.len()).sum(),
+                connected_clients: info.connected_clients,
+                creation_secs_ago: info.creation_time.as_secs(),
+            })
+            .collect()
     }
 
     fn get_resurrection_layout(
@@ -223,6 +238,22 @@ pub struct CreateClientIdResponse {
 #[derive(Deserialize)]
 pub struct SessionQuery {
     pub session: Option<String>,
+    pub welcome: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct WebSessionInfo {
+    pub name: String,
+    pub web_clients_allowed: bool,
+    pub tab_count: usize,
+    pub pane_count: usize,
+    pub connected_clients: usize,
+    pub creation_secs_ago: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SessionListResponse {
+    pub sessions: Vec<WebSessionInfo>,
 }
 
 #[derive(Deserialize)]

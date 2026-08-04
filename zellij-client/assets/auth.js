@@ -62,40 +62,69 @@ async function login(token, rememberMe) {
 }
 
 /**
- * Request a session from the server, authenticating first if required.
- * @param {string} sessionFromPath - Session name taken from the URL path
- * @returns {Promise<Object>} The full session bootstrap payload
+ * Perform a request, authenticating and retrying for as long as it is rejected.
+ * @param {string} url - Absolute URL to request
+ * @param {Object} options - fetch options, merged over the credentialed defaults
+ * @returns {Promise<Response>} The successful response
  */
-export async function fetchSession(sessionFromPath) {
-    const baseUrl = getBaseUrl();
-    const query = sessionFromPath
-        ? `?session=${encodeURIComponent(sessionFromPath)}`
-        : "";
-
+export async function authorizedFetch(url, options = {}) {
     while (true) {
-        const response = await fetch(`${baseUrl}/session${query}`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
+        const response = await fetch(url, {
             credentials: "include",
+            ...options,
         });
 
         if (response.ok) {
-            return await response.json();
+            return response;
         }
 
-        if (response.status === 401) {
-            const { token, remember } = await waitForSecurityToken();
-            await login(token, remember);
-            continue;
+        if (response.status !== 401) {
+            await showErrorModal(
+                "Error",
+                `Error ${response.status} connecting to server.`
+            );
         }
 
-        await showErrorModal(
-            "Error",
-            `Error ${response.status} connecting to server.`
-        );
         const { token, remember } = await waitForSecurityToken();
         await login(token, remember);
     }
+}
+
+/**
+ * Request a session from the server, authenticating first if required.
+ * @param {string} sessionFromPath - Session name taken from the URL path
+ * @param {Object} options - `{ welcome: boolean }`, welcome defaulting to true
+ * @returns {Promise<Object>} The full session bootstrap payload
+ */
+export async function fetchSession(sessionFromPath, options = {}) {
+    const baseUrl = getBaseUrl();
+    const params = new URLSearchParams();
+    if (sessionFromPath) {
+        params.set("session", sessionFromPath);
+    }
+    if (options.welcome === false) {
+        params.set("welcome", "false");
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+
+    const response = await authorizedFetch(`${baseUrl}/session${query}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+    });
+    return await response.json();
+}
+
+/**
+ * Fetch the list of live sessions without attaching to any of them.
+ * @returns {Promise<Array<Object>>} The session descriptors
+ */
+export async function fetchSessionList() {
+    const baseUrl = getBaseUrl();
+    const response = await authorizedFetch(`${baseUrl}/session-list`, {
+        method: "GET",
+    });
+    const payload = await response.json();
+    return payload.sessions || [];
 }

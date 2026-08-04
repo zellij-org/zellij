@@ -2,7 +2,7 @@ use crate::web_client::authentication::{IsReadOnly, SessionTokenHash};
 use crate::web_client::control_message::SetConfigPayload;
 use crate::web_client::types::{
     record_pending_welcome_session, AppState, CreateClientIdResponse, LoginRequest, LoginResponse,
-    SessionQuery,
+    SessionListResponse, SessionQuery,
 };
 use crate::web_client::utils::get_mime_type;
 use axum::{
@@ -116,7 +116,9 @@ pub async fn create_new_client(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json("Failed to generate unique session name".to_string()),
             ))?;
-            record_pending_welcome_session(&state.pending_welcome_sessions, &generated);
+            if params.welcome.unwrap_or(true) {
+                record_pending_welcome_session(&state.pending_welcome_sessions, &generated);
+            }
             generated
         },
     };
@@ -142,6 +144,12 @@ pub async fn create_new_client(
         session_name,
         config,
     }))
+}
+
+pub async fn list_sessions_handler(State(state): State<AppState>) -> Json<SessionListResponse> {
+    let mut sessions = state.session_manager.list_sessions();
+    sessions.sort_by(|a, b| a.name.cmp(&b.name));
+    Json(SessionListResponse { sessions })
 }
 
 pub async fn get_static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResponse {

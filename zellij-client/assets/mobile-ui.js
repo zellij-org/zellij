@@ -16,6 +16,7 @@ const COLORS = {
 
 const state = {
     active: false,
+    standalone: false,
     renderMode: "full",
     initialPrefsSent: false,
     fitEnabled: true,
@@ -29,12 +30,15 @@ const state = {
 let ctx = null;
 let els = null;
 let activityTimer = null;
+let initialized = false;
+let standalone = null;
 
 export function initMobileUi(context) {
     ctx = context;
-    if (document.querySelector("#zj-mobile-root")) {
+    if (initialized) {
         return;
     }
+    initialized = true;
     injectStyles();
     buildDom();
     installKeyMergeHook();
@@ -76,6 +80,76 @@ function shouldActivate() {
     if (preference === "on") return true;
     if (preference === "off") return false;
     return isMobileViewport();
+}
+
+// A mobile client landing on the root URL gets the session menu instead of a session: the
+// welcome screen is a poor first screen on a phone, and booting one just to switch away from it
+// leaves an abandoned session behind.
+export function shouldUseStandaloneMenu() {
+    return shouldActivate();
+}
+
+const STANDALONE_REFRESH_MS = 3000;
+
+/**
+ * Take over the page with the session switcher before any session exists.
+ * @param {Object} options - `{ fetchSessions }` returning a promise of session descriptors
+ * @returns {Promise<Object>} resolves once the user asks for a new unnamed session
+ */
+export function showStandaloneSessionMenu({ fetchSessions }) {
+    injectStyles();
+    buildDom();
+    state.standalone = true;
+    state.data = emptyMobileState();
+    state.data.is_welcome_screen = true;
+    state.dataReceivedAt = Date.now();
+    document.body.classList.add("zj-mobile-standalone");
+    installResizeReconcileHooks();
+    updateStandaloneViewportVars();
+
+    return new Promise((resolve) => {
+        standalone = { resolve, fetchSessions, refreshTimer: null };
+        openOverlay("sessions");
+        refreshStandaloneSessions();
+        standalone.refreshTimer = setInterval(
+            refreshStandaloneSessions,
+            STANDALONE_REFRESH_MS
+        );
+    });
+}
+
+async function refreshStandaloneSessions() {
+    if (!standalone) {
+        return;
+    }
+    try {
+        const sessions = await standalone.fetchSessions();
+        if (!standalone) {
+            return;
+        }
+        state.data.sessions = sessions;
+        state.data.now_secs = Math.floor(Date.now() / 1000);
+        state.dataReceivedAt = Date.now();
+        render();
+    } catch (_) {}
+}
+
+function finishStandalone(outcome) {
+    if (!standalone) {
+        return;
+    }
+    const { resolve, refreshTimer } = standalone;
+    standalone = null;
+    if (refreshTimer) {
+        clearInterval(refreshTimer);
+    }
+    state.standalone = false;
+    state.activeOverlay = "none";
+    state.data = emptyMobileState();
+    stopActivityTimer();
+    document.body.classList.remove("zj-mobile-standalone");
+    render();
+    resolve(outcome);
 }
 
 function evaluateActivation() {
@@ -192,6 +266,18 @@ function injectStyles() {
     }
     body.zj-mobile-active .zj-mobile-return { display: none !important; }
 
+    body.zj-mobile-standalone #zj-mobile-root { display: block; }
+    body.zj-mobile-standalone .zj-mobile-topbar,
+    body.zj-mobile-standalone .zj-mobile-modbar,
+    body.zj-mobile-standalone .zj-mobile-menu,
+    body.zj-mobile-standalone .zj-mobile-return { display: none !important; }
+    body.zj-mobile-standalone #terminal { visibility: hidden; }
+
+    .zj-mobile-empty {
+      color: ${COLORS.textDim}; font-size: 14px;
+      padding: 24px 4px; text-align: center;
+    }
+
     .zj-mobile-topbar {
       position: fixed; top: 0; left: 0; right: 0;
       display: flex; align-items: stretch;
@@ -257,12 +343,15 @@ function injectStyles() {
     }
 
     .zj-mobile-overlay {
-      position: fixed; inset: 0; z-index: 700;
+      position: fixed; top: 0; left: 0; right: 0; z-index: 700;
+      height: var(--dynamic-vh, 100vh);
+      max-height: var(--dynamic-vh, 100vh);
       background: ${COLORS.dark}; color: ${COLORS.text};
-      display: none; flex-direction: column;
+      display: none; flex-direction: column; overflow: hidden;
     }
     .zj-mobile-overlay.zj-open { display: flex; }
     .zj-mobile-overlay-header {
+      flex: 0 0 auto;
       display: flex; align-items: center; gap: 8px;
       padding: 10px 12px; border-bottom: 1px solid ${COLORS.light};
     }
@@ -274,13 +363,37 @@ function injectStyles() {
     .zj-mobile-overlay-header .zj-title {
       color: ${COLORS.blue}; font-size: 16px; font-weight: 600;
     }
-    .zj-mobile-overlay input.zj-search, .zj-mobile-overlay input.zj-name {
-      margin: 10px 12px; padding: 12px; box-sizing: border-box;
-      width: calc(100% - 24px);
-      background: ${COLORS.medium}; color: ${COLORS.text};
-      border: 1px solid ${COLORS.light}; font-family: inherit; font-size: 15px;
+    .zj-mobile-search-row {
+      flex: 0 0 auto;
+      display: flex; align-items: baseline; gap: 8px;
+      margin: 10px 12px 0 12px;
+      border-bottom: 1px solid ${COLORS.light};
     }
-    .zj-mobile-cards { flex: 1 1 auto; overflow-y: auto; padding: 0 12px; }
+    .zj-mobile-search-row .zj-search-label {
+      flex: 0 0 auto;
+      color: ${COLORS.blue}; font-size: 15px; font-weight: 600;
+    }
+    .zj-mobile-overlay input.zj-search, .zj-mobile-overlay input.zj-name {
+      flex: 1 1 auto; min-width: 0;
+      margin: 0; padding: 10px 0; box-sizing: border-box;
+      background: transparent; color: ${COLORS.text};
+      border: 0; font-family: inherit; font-size: 15px;
+    }
+    .zj-mobile-overlay input.zj-search:focus,
+    .zj-mobile-overlay input.zj-name:focus { outline: none; }
+    .zj-mobile-hint {
+      flex: 0 0 auto;
+      color: ${COLORS.textDim}; font-size: 13px;
+      margin: 8px 12px 0 12px;
+    }
+    /* min-height:0 is what lets this shrink below its content in the flex column;
+       without it the card list pushes the footer past the bottom of the screen. */
+    .zj-mobile-cards {
+      flex: 1 1 auto; min-height: 0;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain; touch-action: pan-y;
+      padding: 0 12px;
+    }
     .zj-mobile-card {
       background: ${COLORS.medium};
       border: 1px solid ${COLORS.light};
@@ -290,15 +403,21 @@ function injectStyles() {
     .zj-mobile-card .zj-card-title .zj-match { color: ${COLORS.yellow}; }
     .zj-mobile-card .zj-card-meta { color: ${COLORS.textDim}; font-size: 13px; margin-top: 4px; }
     .zj-mobile-footer {
+      flex: 0 0 auto;
       display: flex; gap: 8px; padding: 10px 12px;
+      padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
       border-top: 1px solid ${COLORS.light};
+      background: ${COLORS.dark};
     }
     .zj-mobile-footer button {
       flex: 1 1 0; background: transparent;
       border: 1px solid ${COLORS.green}; color: ${COLORS.green};
       font-family: inherit; font-size: 14px; min-height: 44px; cursor: pointer;
     }
-    .zj-mobile-prompt-buttons { display: flex; gap: 8px; padding: 10px 12px; }
+    .zj-mobile-prompt-buttons {
+      flex: 0 0 auto; display: flex; gap: 8px; padding: 10px 12px;
+      padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    }
     .zj-mobile-prompt-buttons button {
       flex: 1 1 0; font-family: inherit; font-size: 14px; min-height: 44px;
       background: transparent; cursor: pointer;
@@ -310,6 +429,9 @@ function injectStyles() {
 }
 
 function buildDom() {
+    if (els) {
+        return;
+    }
     const root = document.createElement("div");
     root.id = "zj-mobile-root";
     root.className = "zj-mobile-chrome";
@@ -462,11 +584,18 @@ function buildSwitcherOverlay(kind) {
     title.className = "zj-title";
     header.append(back, title);
 
+    const label = kind === "panes" ? "Pane:" : "Session:";
+    const searchRow = document.createElement("div");
+    searchRow.className = "zj-mobile-search-row";
+    const searchLabel = document.createElement("div");
+    searchLabel.className = "zj-search-label";
+    searchLabel.textContent = label;
     const search = document.createElement("input");
     search.className = "zj-search";
     search.type = "text";
-    search.placeholder = kind === "panes" ? "Pane:" : "Session:";
+    search.setAttribute("aria-label", label);
     search.addEventListener("input", () => renderCards(kind));
+    searchRow.append(searchLabel, search);
 
     const cards = document.createElement("div");
     cards.className = "zj-mobile-cards";
@@ -474,7 +603,7 @@ function buildSwitcherOverlay(kind) {
     const footer = document.createElement("div");
     footer.className = "zj-mobile-footer";
 
-    overlay.append(header, search, cards, footer);
+    overlay.append(header, searchRow, cards, footer);
     overlay._parts = { back, title, search, cards, footer };
     return overlay;
 }
@@ -491,10 +620,20 @@ function buildNewSessionOverlay() {
     title.textContent = "New Session";
     header.append(title);
 
+    const nameRow = document.createElement("div");
+    nameRow.className = "zj-mobile-search-row";
+    const nameLabel = document.createElement("div");
+    nameLabel.className = "zj-search-label";
+    nameLabel.textContent = "Name:";
     const name = document.createElement("input");
     name.className = "zj-name";
     name.type = "text";
-    name.placeholder = "Name:";
+    name.setAttribute("aria-label", "Name");
+    nameRow.append(nameLabel, name);
+
+    const hint = document.createElement("div");
+    hint.className = "zj-mobile-hint";
+    hint.textContent = "Leave empty for a randomly generated name";
 
     const buttons = document.createElement("div");
     buttons.className = "zj-mobile-prompt-buttons";
@@ -510,7 +649,7 @@ function buildNewSessionOverlay() {
     });
     buttons.append(cancel, accept);
 
-    overlay.append(header, name, buttons);
+    overlay.append(header, nameRow, hint, buttons);
     overlay._parts = { name };
     return overlay;
 }
@@ -534,7 +673,11 @@ function openOverlay(kind) {
         stopActivityTimer();
     }
     if (kind === "sessions") {
-        requestSessionList();
+        if (standalone) {
+            refreshStandaloneSessions();
+        } else {
+            requestSessionList();
+        }
     }
 }
 
@@ -686,8 +829,15 @@ function installSoftKeyboardBinding() {
     });
 }
 
+let resizeHooksInstalled = false;
+
 function installResizeReconcileHooks() {
+    if (resizeHooksInstalled) {
+        return;
+    }
+    resizeHooksInstalled = true;
     const onViewportChange = () => {
+        updateStandaloneViewportVars();
         updateKeyboardOffset();
         reconcileSize();
     };
@@ -696,6 +846,20 @@ function installResizeReconcileHooks() {
         window.visualViewport.addEventListener("resize", onViewportChange);
         window.visualViewport.addEventListener("scroll", onViewportChange);
     }
+}
+
+// The standalone menu runs before the websocket resize handler exists, so nothing else keeps
+// `--dynamic-vh` in step with the visible viewport (URL bar, soft keyboard) while it is up.
+function updateStandaloneViewportVars() {
+    if (!state.standalone) {
+        return;
+    }
+    const root = document.documentElement;
+    const vv = window.visualViewport;
+    const height = vv ? vv.height : window.innerHeight;
+    const width = vv ? vv.width : window.innerWidth;
+    root.style.setProperty("--dynamic-vh", `${height}px`);
+    root.style.setProperty("--dynamic-vw", `${width}px`);
 }
 
 function updateKeyboardOffset() {
@@ -896,6 +1060,16 @@ function renderCards(kind) {
     for (const { item, indices } of matched) {
         parts.cards.appendChild(renderCard(kind, item, indices));
     }
+    if (!matched.length) {
+        const empty = document.createElement("div");
+        empty.className = "zj-mobile-empty";
+        empty.textContent = query
+            ? "No matches"
+            : kind === "sessions"
+              ? "No other sessions"
+              : "No panes";
+        parts.cards.appendChild(empty);
+    }
 }
 
 function paneCardData() {
@@ -1093,6 +1267,12 @@ function stopActivityTimer() {
 }
 
 function navigateToSession(name) {
+    // Navigating the standalone menu to the base URL would land back on the menu, so the
+    // unnamed case hands control back to the caller to boot a session in place instead.
+    if (standalone && !name) {
+        finishStandalone({ createUnnamedSession: true });
+        return;
+    }
     const baseUrl = getBaseUrl();
     if (name) {
         window.location.href = `${baseUrl}/${encodeURIComponent(name)}`;
