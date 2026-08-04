@@ -1323,6 +1323,71 @@ pub fn regular_fullscreen_switches_to_no_ui_fullscreen() {
 }
 
 #[test]
+pub fn no_ui_fullscreen_downgrades_to_regular_fullscreen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    for i in 2..5 {
+        let new_pane_id = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    }
+    let viewport = *tab.viewport.borrow();
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        tab.is_fullscreen_active() && tab.fullscreen_covers_ui(),
+        "NoUi fullscreen is active"
+    );
+
+    tab.toggle_active_pane_fullscreen(1);
+
+    assert!(
+        tab.is_fullscreen_active(),
+        "Fullscreen stays active after the downgrade"
+    );
+    assert!(
+        !tab.fullscreen_covers_ui(),
+        "The downgrade restores the UI rows"
+    );
+    assert_eq!(
+        tab.fullscreen_pane_id(),
+        Some(PaneId::Terminal(4)),
+        "The same pane remains fullscreen"
+    );
+    let active_pane = tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap();
+    assert_eq!(active_pane.x(), viewport.x, "Pane x matches the viewport");
+    assert_eq!(active_pane.y(), viewport.y, "Pane y matches the viewport");
+    assert_eq!(
+        active_pane.cols(),
+        viewport.cols,
+        "Pane cols match the viewport cols"
+    );
+    assert_eq!(
+        active_pane.rows(),
+        viewport.rows,
+        "Pane rows match the viewport rows"
+    );
+
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(
+        !tab.is_fullscreen_active(),
+        "The next regular toggle leaves fullscreen entirely"
+    );
+}
+
+#[test]
 pub fn resize_whole_tab_while_no_ui_fullscreen_preserves_no_ui() {
     let initial_size = Size {
         cols: 121,
@@ -1526,6 +1591,51 @@ pub fn regular_floating_fullscreen_switches_to_no_ui() {
     assert!(
         !tab.is_fullscreen_active(),
         "Fullscreen toggled off entirely"
+    );
+}
+
+#[test]
+pub fn floating_no_ui_fullscreen_downgrades_to_regular_fullscreen() {
+    let mut tab = create_tab_with_two_floating_panes();
+    let viewport = *tab.viewport.borrow();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(1)
+        .expect("a floating pane is focused");
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        tab.is_fullscreen_active() && tab.fullscreen_covers_ui(),
+        "Floating no-ui fullscreen is active"
+    );
+
+    tab.toggle_active_pane_fullscreen(1);
+
+    assert!(
+        tab.is_fullscreen_active(),
+        "Fullscreen stays active after the downgrade"
+    );
+    assert!(
+        !tab.fullscreen_covers_ui(),
+        "The downgrade restores the UI rows"
+    );
+    let geom = floating_pane_geom(&tab, active_pane_id);
+    assert_eq!(geom.x, viewport.x, "Pane x matches the viewport");
+    assert_eq!(geom.y, viewport.y, "Pane y matches the viewport");
+    assert_eq!(
+        geom.cols.as_usize(),
+        viewport.cols,
+        "Pane cols match the viewport cols"
+    );
+    assert_eq!(
+        geom.rows.as_usize(),
+        viewport.rows,
+        "Pane rows match the viewport rows"
+    );
+
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(
+        !tab.is_fullscreen_active(),
+        "The next regular toggle leaves fullscreen entirely"
     );
 }
 

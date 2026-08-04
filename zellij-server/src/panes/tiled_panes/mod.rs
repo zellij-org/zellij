@@ -2818,7 +2818,11 @@ impl TiledPanes {
 
     pub fn toggle_pane_fullscreen(&mut self, pane_id: PaneId) {
         if self.fullscreen_is_active.is_some() {
+            let was_no_ui = *self.fullscreen_covers_ui.borrow();
             self.unset_fullscreen();
+            if was_no_ui {
+                self.set_fullscreen(pane_id, false);
+            }
         } else {
             self.set_fullscreen(pane_id, false);
         }

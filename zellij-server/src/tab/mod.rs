@@ -3412,7 +3412,7 @@ impl Tab {
         self.close_down_to_max_terminals()
             .with_context(err_context)?;
         if self.tiled_panes.fullscreen_is_active() {
-            self.toggle_active_pane_fullscreen(client_id);
+            self.unset_fullscreen();
         }
         self.dissolve_stack_lists_for_classic_mutation();
         if self.tiled_panes.can_split_pane_horizontally(client_id) {
@@ -3487,7 +3487,7 @@ impl Tab {
         self.close_down_to_max_terminals()
             .with_context(err_context)?;
         if self.tiled_panes.fullscreen_is_active() {
-            self.toggle_active_pane_fullscreen(client_id);
+            self.unset_fullscreen();
         }
         self.dissolve_stack_lists_for_classic_mutation();
         if self.tiled_panes.can_split_pane_vertically(client_id) {
@@ -4654,6 +4654,19 @@ impl Tab {
         } else {
             log::error!("No tiled pane with id: {:?} found", pane_id);
         }
+    }
+    pub fn unset_fullscreen(&mut self) {
+        if self.floating_panes.fullscreen_is_active() {
+            self.floating_panes.unset_fullscreen();
+            self.set_force_render();
+            self.set_should_clear_display_before_rendering();
+            return;
+        }
+        if self.floating_panes.panes_are_visible() {
+            return;
+        }
+        self.dissolve_stack_lists_for_classic_mutation();
+        self.tiled_panes.unset_fullscreen();
     }
     pub fn is_fullscreen_active(&self) -> bool {
         self.tiled_panes.fullscreen_is_active() || self.floating_panes.fullscreen_is_active()

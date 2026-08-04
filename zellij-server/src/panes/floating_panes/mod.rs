@@ -1278,7 +1278,11 @@ impl FloatingPanes {
     }
     pub fn toggle_pane_fullscreen(&mut self, pane_id: PaneId) {
         if self.fullscreen_pane_id.is_some() {
+            let was_no_ui = self.floating_fullscreen_covers_ui;
             self.unset_fullscreen();
+            if was_no_ui {
+                self.set_fullscreen(pane_id, false);
+            }
         } else {
             self.set_fullscreen(pane_id, false);
         }

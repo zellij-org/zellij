@@ -2340,7 +2340,7 @@ impl Screen {
             .map(|tab| tab.id)
     }
 
-    fn ensure_pane_fullscreen(&mut self, pane_id: PaneId) {
+    fn ensure_pane_no_ui_fullscreen(&mut self, pane_id: PaneId) {
         let Some(tab_id) = self.tab_id_containing_pane(pane_id) else {
             return;
         };
@@ -2349,14 +2349,18 @@ impl Screen {
         };
         if tab.is_fullscreen_active() {
             if tab.fullscreen_pane_id() == Some(pane_id) {
+                if tab.fullscreen_covers_ui() {
+                    return;
+                }
+                tab.toggle_pane_no_ui_fullscreen(pane_id);
                 return;
             }
-            tab.toggle_pane_fullscreen(pane_id);
+            tab.unset_fullscreen();
         }
-        tab.toggle_pane_fullscreen(pane_id);
+        tab.toggle_pane_no_ui_fullscreen(pane_id);
     }
 
-    fn unset_pane_fullscreen(&mut self, pane_id: PaneId) {
+    fn unset_pane_no_ui_fullscreen(&mut self, pane_id: PaneId) {
         let Some(tab_id) = self.tab_id_containing_pane(pane_id) else {
             return;
         };
@@ -2364,7 +2368,7 @@ impl Screen {
             return;
         };
         if tab.is_fullscreen_active() && tab.fullscreen_pane_id() == Some(pane_id) {
-            tab.toggle_pane_fullscreen(pane_id);
+            tab.unset_fullscreen();
         }
     }
 
@@ -2396,14 +2400,14 @@ impl Screen {
             if let Some(pane_id) = target {
                 if previous_fullscreen != Some(pane_id) {
                     if let Some(previous_pane) = previous_fullscreen {
-                        self.unset_pane_fullscreen(previous_pane);
+                        self.unset_pane_no_ui_fullscreen(previous_pane);
                     }
-                    self.ensure_pane_fullscreen(pane_id);
                 }
+                self.ensure_pane_no_ui_fullscreen(pane_id);
                 fullscreened_pane = Some(pane_id);
             }
         } else if let Some(previous_pane) = previous_fullscreen {
-            self.unset_pane_fullscreen(previous_pane);
+            self.unset_pane_no_ui_fullscreen(previous_pane);
             fullscreened_pane = None;
         }
 
@@ -2485,7 +2489,11 @@ impl Screen {
         let target_tab_fullscreen_ok = self
             .tab_id_containing_pane(target)
             .and_then(|tab_id| self.tabs.get(&tab_id))
-            .map(|tab| tab.is_fullscreen_active() && tab.fullscreen_pane_id() == Some(target))
+            .map(|tab| {
+                tab.is_fullscreen_active()
+                    && tab.fullscreen_pane_id() == Some(target)
+                    && tab.fullscreen_covers_ui()
+            })
             .unwrap_or(false);
 
         if previous == Some(target) {
@@ -2497,10 +2505,10 @@ impl Screen {
         }
         if let Some(previous_pane) = previous {
             if previous_pane != target {
-                self.unset_pane_fullscreen(previous_pane);
+                self.unset_pane_no_ui_fullscreen(previous_pane);
             }
         }
-        self.ensure_pane_fullscreen(target);
+        self.ensure_pane_no_ui_fullscreen(target);
         if let Some(prefs) = self.mobile_web_prefs.get_mut(&client_id) {
             prefs.fullscreened_pane = Some(target);
         }
@@ -4662,7 +4670,7 @@ impl Screen {
 
         if let Some(prefs) = self.mobile_web_prefs.remove(&client_id) {
             if let Some(pane_id) = prefs.fullscreened_pane {
-                self.unset_pane_fullscreen(pane_id);
+                self.unset_pane_no_ui_fullscreen(pane_id);
             }
         }
 

@@ -10805,6 +10805,10 @@ fn single_pane_fullscreens_active_pane_and_reverts() {
         screen.tabs.get(&0).unwrap().is_fullscreen_active(),
         "Single-pane fullscreens the active pane"
     );
+    assert!(
+        screen.tabs.get(&0).unwrap().fullscreen_covers_ui(),
+        "Single-pane hides the tab bar and status bar"
+    );
 
     screen
         .set_mobile_render_preferences(client, /* single_pane */ false, /* fit */ true)
@@ -10911,11 +10915,7 @@ fn single_pane_demotes_after_desktop_unfullscreen() {
     );
 
     // Simulate a desktop-initiated un-fullscreen on the same tab.
-    screen
-        .tabs
-        .get_mut(&0)
-        .unwrap()
-        .toggle_pane_fullscreen(PaneId::Terminal(2));
+    screen.tabs.get_mut(&0).unwrap().unset_fullscreen();
     assert!(
         !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
         "Fullscreen cleared by the simulated desktop action"
@@ -10973,12 +10973,7 @@ fn single_pane_demotion_disables_fit_when_tab_is_shared() {
         .expect("TEST");
 
     // Simulate a desktop-initiated un-fullscreen on the shared tab.
-    let fullscreen_pane_id = screen.tabs.get(&0).unwrap().fullscreen_pane_id().unwrap();
-    screen
-        .tabs
-        .get_mut(&0)
-        .unwrap()
-        .toggle_pane_fullscreen(fullscreen_pane_id);
+    screen.tabs.get_mut(&0).unwrap().unset_fullscreen();
     screen.log_and_report_session_state().expect("TEST");
 
     assert_eq!(
@@ -11083,5 +11078,48 @@ fn single_pane_follows_focus_to_newly_added_pane() {
         screen.tabs.get(&0).unwrap().fullscreen_pane_id(),
         Some(PaneId::Terminal(3)),
         "The fullscreen follows focus to the newly added pane"
+    );
+    assert!(
+        screen.tabs.get(&0).unwrap().fullscreen_covers_ui(),
+        "The followed fullscreen still hides the tab bar and status bar"
+    );
+}
+
+#[test]
+fn single_pane_demotes_after_desktop_downgrades_to_regular_fullscreen() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    let client = 1;
+
+    screen
+        .set_mobile_render_preferences(client, /* single_pane */ true, /* fit */ true)
+        .expect("TEST");
+    let fullscreen_pane_id = screen.tabs.get(&0).unwrap().fullscreen_pane_id().unwrap();
+
+    // A desktop client toggles regular fullscreen, downgrading the no-ui fullscreen.
+    screen
+        .tabs
+        .get_mut(&0)
+        .unwrap()
+        .toggle_pane_fullscreen(fullscreen_pane_id);
+    screen.log_and_report_session_state().expect("TEST");
+
+    assert!(
+        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "The regular fullscreen the desktop client asked for is kept"
+    );
+    assert!(
+        !screen.tabs.get(&0).unwrap().fullscreen_covers_ui(),
+        "Single-pane does not re-assert the no-ui fullscreen"
+    );
+    assert_eq!(
+        screen
+            .mobile_web_prefs
+            .get(&client)
+            .map(|prefs| prefs.single_pane),
+        Some(false),
+        "The client is demoted out of single-pane mode"
     );
 }
