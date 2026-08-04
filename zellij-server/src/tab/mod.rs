@@ -229,6 +229,7 @@ pub(crate) struct Tab {
     copy_on_select: bool,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
+    last_copied_text: Rc<RefCell<Option<String>>>,
     pids_waiting_resize: HashSet<u32>, // u32 is the terminal_id
     cursor_positions_and_shape: HashMap<ClientId, (usize, usize, String)>, // (x_position,
     // y_position,
@@ -471,6 +472,10 @@ pub trait Pane {
     fn drain_forwarded_queries(&mut self) -> Vec<crate::host_query::HostQuery> {
         // Only terminal panes forward whitelisted queries to the host;
         // plugin panes have no such concept.
+        vec![]
+    }
+    fn drain_clipboard_queries(&mut self) -> Vec<crate::host_query::ClipboardQuery> {
+        // Only terminal panes can ask for the clipboard via OSC 52.
         vec![]
     }
     fn drain_nested_session_messages(&mut self) -> Vec<NestedSessionMessage> {
@@ -855,6 +860,7 @@ impl Tab {
         copy_options: CopyOptions,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
+        last_copied_text: Rc<RefCell<Option<String>>>,
         swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>),
         default_shell: PathBuf,
         debug: bool,
@@ -984,6 +990,7 @@ impl Tab {
             copy_on_select: copy_options.copy_on_select,
             terminal_emulator_colors,
             terminal_emulator_color_codes,
+            last_copied_text,
             pids_waiting_resize: HashSet::new(),
             cursor_positions_and_shape: HashMap::new(),
             is_pending: true, // will be switched to false once the layout is applied
@@ -4222,6 +4229,7 @@ impl Tab {
             }
             let nested_session_messages = terminal_output.drain_nested_session_messages();
             let clipboard_update = terminal_output.drain_clipboard_update();
+            let clipboard_queries = terminal_output.drain_clipboard_queries();
             let desktop_notifications = terminal_output.drain_desktop_notifications();
             let osc7_cwd = terminal_output.drain_osc7_cwd();
             for message in messages_to_pty {
@@ -4248,10 +4256,19 @@ impl Tab {
                 self.write_selection_to_clipboard(&string)
                     .with_context(err_context)?;
             }
+
+            // allow for an immediate yank and paste
+            for query in clipboard_queries {
+                let reply = query.reply_bytes(self.last_copied_text.borrow().as_deref());
+                self.write_to_pane_id_without_preprocessing(reply, PaneId::Terminal(pid))
+                    .with_context(err_context)?;
+            }
+
             if !desktop_notifications.is_empty() {
                 self.forward_desktop_notifications(desktop_notifications, pid)
                     .with_context(err_context)?;
             }
+
             if let Some(path) = osc7_cwd {
                 let _ = self
                     .senders
@@ -6456,6 +6473,8 @@ impl Tab {
 
     fn write_selection_to_clipboard(&self, selection: &str) -> Result<()> {
         let err_context = || format!("failed to write selection to clipboard: '{}'", selection);
+
+        self.last_copied_text.replace(Some(selection.to_owned()));
 
         let mut output = Output::default();
         let connected_clients: HashSet<ClientId> =

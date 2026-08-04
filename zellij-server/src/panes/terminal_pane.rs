@@ -757,6 +757,10 @@ impl Pane for TerminalPane {
         self.grid.pending_forwarded_queries.drain(..).collect()
     }
 
+    fn drain_clipboard_queries(&mut self) -> Vec<crate::host_query::ClipboardQuery> {
+        self.grid.pending_clipboard_queries.drain(..).collect()
+    }
+
     fn drain_nested_session_messages(&mut self) -> Vec<NestedSessionMessage> {
         self.grid
             .pending_nested_session_messages

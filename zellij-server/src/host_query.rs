@@ -11,6 +11,8 @@
 //! terminal), [`HostQuery::to_query_bytes`] re-derives them from the
 //! enum.
 
+use base64::engine::{general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+
 /// The two OSC string terminators in common use. Apps that phrase
 /// their query with one expect the reply to mirror it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +37,34 @@ impl OscTerminator {
             OscTerminator::St => b"\x1b\\",
             OscTerminator::Bel => b"\x07",
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClipboardQuery {
+    pub destination: char,
+    pub terminator: OscTerminator,
+}
+
+impl ClipboardQuery {
+    /// unknown destinations are ack'd as `c`.
+    pub fn new(destination: u8, bell_terminated: bool) -> Self {
+        ClipboardQuery {
+            destination: match destination {
+                b'c' | b'p' | b's' => destination as char,
+                _ => 'c',
+            },
+            terminator: OscTerminator::from_bell_terminated(bell_terminated),
+        }
+    }
+
+    pub fn reply_bytes(&self, content: Option<&str>) -> Vec<u8> {
+        let encoded = content
+            .map(|content| BASE64_STANDARD.encode(content))
+            .unwrap_or_default();
+        let mut v = format!("\x1b]52;{};{}", self.destination, encoded).into_bytes();
+        v.extend_from_slice(self.terminator.as_bytes());
+        v
     }
 }
 
@@ -164,6 +194,44 @@ mod tests {
             .to_query_bytes(),
             b"\x1b]4;255;?\x1b\\",
         );
+    }
+
+    #[test]
+    fn clipboard_query_reply_encodes_content_and_mirrors_terminator() {
+        let query = ClipboardQuery {
+            destination: 'c',
+            terminator: OscTerminator::St,
+        };
+        assert_eq!(
+            query.reply_bytes(Some("hello")),
+            b"\x1b]52;c;aGVsbG8=\x1b\\"
+        );
+
+        let query = ClipboardQuery {
+            destination: 'p',
+            terminator: OscTerminator::Bel,
+        };
+        assert_eq!(query.reply_bytes(Some("hello")), b"\x1b]52;p;aGVsbG8=\x07");
+    }
+
+    #[test]
+    fn clipboard_query_normalizes_unknown_destinations_to_c() {
+        assert_eq!(ClipboardQuery::new(b'p', false).destination, 'p');
+        assert_eq!(ClipboardQuery::new(b'q', false).destination, 'c');
+        assert_eq!(
+            ClipboardQuery::new(b'c', true).terminator,
+            OscTerminator::Bel
+        );
+    }
+
+    #[test]
+    fn clipboard_query_reply_is_empty_payload_when_nothing_was_copied() {
+        let query = ClipboardQuery {
+            destination: 'c',
+            terminator: OscTerminator::Bel,
+        };
+
+        assert_eq!(query.reply_bytes(None), b"\x1b]52;c;\x07");
     }
 
     #[test]
