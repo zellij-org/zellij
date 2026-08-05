@@ -354,9 +354,10 @@ fn closing_a_tab_resizes_the_tab_it_returns_to() {
         rows: TERMINAL_SIZE.rows + 6,
     };
     zellij.resize(larger_size);
-    zellij.wait_until("second tab re-rendered at the larger size", move |snapshot| {
-        snapshot.contains("twotwo") && snapshot.row_count() == larger_size.rows
-    });
+    zellij.wait_until(
+        "second tab re-rendered at the larger size",
+        move |snapshot| snapshot.contains("twotwo") && snapshot.row_count() == larger_size.rows,
+    );
 
     zellij.send_stdin(&keys::ctrl('t'));
     zellij.send_stdin(&keys::key('x'));

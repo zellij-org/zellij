@@ -4103,10 +4103,7 @@ impl Screen {
 
                         // Serialize this watcher's output with size constraints (cropping and padding handled inside)
                         let mut serialized_output = watcher_specific_output
-                            .serialize_with_size(
-                                Some(watcher_state.size()),
-                                followed_content_size,
-                            )
+                            .serialize_with_size(Some(watcher_state.size()), followed_content_size)
                             .context(err_context)?;
 
                         // Get the output for the followed client and map it to this watcher

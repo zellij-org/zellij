@@ -1593,7 +1593,13 @@ fn character_cell_size_is_derived_from_the_reporting_client_size() {
     let size = Size { cols: 80, rows: 20 };
     let mut screen = create_new_screen(size, true, true);
     let client_id = 2;
-    screen.set_client_size(client_id, Size { cols: 100, rows: 50 });
+    screen.set_client_size(
+        client_id,
+        Size {
+            cols: 100,
+            rows: 50,
+        },
+    );
 
     screen.update_pixel_dimensions(
         client_id,

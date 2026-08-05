@@ -156,9 +156,12 @@ fn watcher_larger_than_the_followed_content_is_padded_to_its_own_size() {
         rows: TERMINAL_SIZE.rows - 4,
     };
     zellij.resize(followed_size);
-    zellij.wait_until("followed client re-rendered at its new size", move |snapshot| {
-        snapshot.contains("WATCHER_PADDING") && snapshot.row_count() == followed_size.rows
-    });
+    zellij.wait_until(
+        "followed client re-rendered at its new size",
+        move |snapshot| {
+            snapshot.contains("WATCHER_PADDING") && snapshot.row_count() == followed_size.rows
+        },
+    );
 
     let watcher = zellij.attach_watcher(Size {
         cols: TERMINAL_SIZE.cols + 20,
@@ -169,7 +172,8 @@ fn watcher_larger_than_the_followed_content_is_padded_to_its_own_size() {
     });
 
     let clear_below_content = format!("\u{1b}[{};1H\u{1b}[m\u{1b}[J", followed_size.rows + 1);
-    let clear_to_end_of_content_line = format!("\u{1b}[1;{}H\u{1b}[m\u{1b}[K", followed_size.cols + 1);
+    let clear_to_end_of_content_line =
+        format!("\u{1b}[1;{}H\u{1b}[m\u{1b}[K", followed_size.cols + 1);
     watcher.wait_until_raw_output("watcher output padded to its own size", move |bytes| {
         let output = String::from_utf8_lossy(bytes);
         output.contains(&clear_below_content) && output.contains(&clear_to_end_of_content_line)
