@@ -46,6 +46,54 @@ use zellij_utils::{
 
 pub(crate) use zellij_utils::sessions::list_sessions;
 
+/// Run the WebSocket remote-control API server in the foreground.
+pub(crate) fn start_api_server(opts: zellij_utils::cli::ApiServerCli) {
+    // Every session this server creates is a fork of this process (see
+    // `zellij_server::spawn_server`), so whatever environment this process
+    // has at startup is what every pane's shell inherits. Launched
+    // interactively, `TERM` comes along for free; launched as a daemon
+    // (systemd, cron, ssh without a tty) there is no controlling terminal
+    // to inherit it from, and it ends up completely unset. That is not
+    // cosmetic: with `TERM` empty, the shell has no terminfo entry to
+    // consult, and terminal-aware line editors (zsh's ZLE, syntax
+    // highlighting redraws, etc.) can emit output that assumes capabilities
+    // or cursor state it never actually confirmed. Default it the way
+    // tmux/screen do for their own panes, so a session started this way
+    // behaves the same as one started from an interactive shell.
+    if std::env::var("TERM").map(|t| t.is_empty()).unwrap_or(true) {
+        std::env::set_var("TERM", "xterm-256color");
+    }
+
+    let ip: IpAddr = match opts.bind.parse() {
+        Ok(ip) => ip,
+        Err(e) => {
+            eprintln!("Invalid --bind address '{}': {}", opts.bind, e);
+            process::exit(1);
+        },
+    };
+    let addr = std::net::SocketAddr::new(ip, opts.port);
+
+    if opts.token.is_none() {
+        eprintln!(
+            "WARNING: starting without a token. Anyone who can reach {} can drive your sessions.",
+            addr
+        );
+        eprintln!("         Pass --token <secret> (or set ZELLIJ_API_TOKEN) to require one.");
+    }
+
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            eprintln!("Could not start the async runtime: {}", e);
+            process::exit(1);
+        },
+    };
+    if let Err(e) = runtime.block_on(zellij_api::server::serve(addr, opts.token)) {
+        eprintln!("API server stopped: {}", e);
+        process::exit(1);
+    }
+}
+
 pub(crate) fn kill_all_sessions(yes: bool) {
     match get_sessions() {
         Ok(sessions) if sessions.is_empty() => {

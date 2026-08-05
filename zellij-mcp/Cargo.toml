@@ -1,0 +1,36 @@
+[package]
+name = "zellij-mcp"
+version.workspace = true
+edition.workspace = true
+description = "MCP server exposing the Zellij remote-control WebSocket API as tools"
+license.workspace = true
+
+[dependencies]
+rmcp = { version = "3.1", default-features = false, features = [
+  "server",
+  "macros",
+  "schemars",
+  "transport-streamable-http-server",
+] }
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "signal", "macros"] }
+tokio-tungstenite = "0.28"
+futures-util = "0.3"
+axum = { version = "0.8" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = "1"
+anyhow = { workspace = true }
+log = { workspace = true }
+uuid = { workspace = true }
+clap = { workspace = true }
+
+[[bin]]
+name = "zellij-mcp"
+path = "src/main.rs"
+
+[dev-dependencies]
+rmcp = { version = "3.1", default-features = false, features = [
+  "client",
+  "transport-streamable-http-client-reqwest",
+] }
+tempfile = "3"
