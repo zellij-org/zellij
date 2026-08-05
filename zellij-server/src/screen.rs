@@ -4581,7 +4581,19 @@ impl Screen {
             tab_history = first_tab_history.clone();
         }
 
-        let tab_index = if let Some((_first_client, first_active_tab_index)) =
+        let is_watcher = self.watcher_clients.contains_key(&client_id);
+        let attach_to_first_tab_on_tiled_surface = is_web_client && !is_watcher;
+        let first_tab_index = self
+            .tabs
+            .iter()
+            .min_by_key(|(_tab_index, tab)| tab.position)
+            .map(|(tab_index, _tab)| *tab_index);
+
+        let tab_index = if let Some(first_tab_index) =
+            first_tab_index.filter(|_| attach_to_first_tab_on_tiled_surface)
+        {
+            first_tab_index
+        } else if let Some((_first_client, first_active_tab_index)) =
             self.active_tab_ids.iter().next()
         {
             *first_active_tab_index
@@ -4611,11 +4623,15 @@ impl Screen {
             self.push_sixel_host_support_to_tabs();
         }
         self.tab_history.insert(client_id, tab_history);
-        self.tabs
+        let tab = self
+            .tabs
             .get_mut(&tab_index)
-            .with_context(|| err_context(tab_index))?
-            .add_client(client_id, None)
             .with_context(|| err_context(tab_index))?;
+        tab.add_client(client_id, None)
+            .with_context(|| err_context(tab_index))?;
+        if attach_to_first_tab_on_tiled_surface && tab.are_floating_panes_visible() {
+            tab.hide_floating_panes();
+        }
         self.recompute_tab_size(tab_index)
             .with_context(|| err_context(tab_index))?;
         if !self.nested_ancestry.is_empty() || !self.host_descend_keys.is_empty() {
