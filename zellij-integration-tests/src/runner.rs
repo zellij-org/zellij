@@ -415,8 +415,7 @@ impl TestSession {
         self.main_client.wait_until("app to load", |grid_snapshot| {
             (grid_snapshot.status_bar_appears() || grid_snapshot.contains("Descend:"))
                 && grid_snapshot.tab_bar_appears()
-                && (grid_snapshot.cursor.is_some()
-                    || grid_snapshot.contains(GUEST_MODAL_TITLE))
+                && (grid_snapshot.cursor.is_some() || grid_snapshot.contains(GUEST_MODAL_TITLE))
         })
     }
 
