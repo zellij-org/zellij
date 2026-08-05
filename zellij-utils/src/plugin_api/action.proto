@@ -247,6 +247,7 @@ message Action {
     HideFloatingPanesPayload hide_floating_panes_payload = 59;
     AreFloatingPanesVisiblePayload are_floating_panes_visible_payload = 60;
     SetPaneFrameStylePayload set_pane_frame_style_payload = 61;
+    EditScrollbackPayload edit_scrollback_payload = 62;
   }
 }
 
@@ -395,6 +396,10 @@ message DumpScreenPayload {
   optional PaneId pane_id = 3;
   bool dump_to_stdout = 4;
   bool ansi = 5;
+}
+
+message EditScrollbackPayload {
+  bool ansi = 1;
 }
 
 enum ActionName {
