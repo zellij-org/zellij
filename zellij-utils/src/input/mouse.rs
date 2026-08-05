@@ -16,9 +16,7 @@ pub struct MouseEvent {
     pub middle: bool,
     pub wheel_up: bool,
     pub wheel_down: bool,
-    #[serde(default)]
     pub wheel_left: bool,
-    #[serde(default)]
     pub wheel_right: bool,
 
     // Keyboard modifier flags can be encoded with events too.  They
@@ -370,6 +368,40 @@ impl MouseEvent {
         };
         event
     }
+    pub fn new_scroll_left_event(position: Position) -> Self {
+        let event = MouseEvent {
+            event_type: MouseEventType::Press,
+            left: false,
+            right: false,
+            middle: false,
+            wheel_up: false,
+            wheel_down: false,
+            wheel_left: true,
+            wheel_right: false,
+            shift: false,
+            alt: false,
+            ctrl: false,
+            position,
+        };
+        event
+    }
+    pub fn new_scroll_right_event(position: Position) -> Self {
+        let event = MouseEvent {
+            event_type: MouseEventType::Press,
+            left: false,
+            right: false,
+            middle: false,
+            wheel_up: false,
+            wheel_down: false,
+            wheel_left: false,
+            wheel_right: true,
+            shift: false,
+            alt: false,
+            ctrl: false,
+            position,
+        };
+        event
+    }
     pub fn new_ctrl_scroll_up_event(position: Position) -> Self {
         let event = MouseEvent {
             event_type: MouseEventType::Press,
@@ -403,38 +435,6 @@ impl MouseEvent {
             position,
         };
         event
-    }
-    pub fn new_scroll_left_event(position: Position) -> Self {
-        MouseEvent {
-            event_type: MouseEventType::Press,
-            left: false,
-            right: false,
-            middle: false,
-            wheel_up: false,
-            wheel_down: false,
-            wheel_left: true,
-            wheel_right: false,
-            shift: false,
-            alt: false,
-            ctrl: false,
-            position,
-        }
-    }
-    pub fn new_scroll_right_event(position: Position) -> Self {
-        MouseEvent {
-            event_type: MouseEventType::Press,
-            left: false,
-            right: false,
-            middle: false,
-            wheel_up: false,
-            wheel_down: false,
-            wheel_left: false,
-            wheel_right: true,
-            shift: false,
-            alt: false,
-            ctrl: false,
-            position,
-        }
     }
 }
 

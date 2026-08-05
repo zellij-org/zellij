@@ -890,7 +890,9 @@ impl Pane for PluginPane {
                     && !event.right
                     && !event.middle
                     && !event.wheel_up
-                    && !event.wheel_down =>
+                    && !event.wheel_down
+                    && !event.wheel_left
+                    && !event.wheel_right =>
             {
                 let _ = self
                     .send_plugin_instructions
