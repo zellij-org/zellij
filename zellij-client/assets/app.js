@@ -1588,19 +1588,35 @@ function setupInputHandlers(term, fitAddon, sendFunction) {
     });
 }
 
-const COLORS = {
-    green: "#A3BD8D",
-    greenDark: "#7A9B6A",
-    blue: "#7E9FBE",
-    blueDark: "#5A7EA0",
-    yellow: "#EACB8B",
-    red: "#BE616B",
-    dark: "#000000",
-    medium: "#1C1C1C",
-    light: "#3A3A3A",
-    text: "#FFFFFF",
-    textDim: "#CCCCCC",
+const DARK_PALETTE = {
+    "--zj-green": "#A3BD8D",
+    "--zj-blue": "#7E9FBE",
+    "--zj-yellow": "#EACB8B",
+    "--zj-red": "#BE616B",
+    "--zj-bg": "#000000",
+    "--zj-surface": "#1C1C1C",
+    "--zj-border": "#3A3A3A",
+    "--zj-text": "#FFFFFF",
+    "--zj-text-dim": "#CCCCCC",
 };
+
+const LIGHT_PALETTE = {
+    "--zj-green": "#4F6B41",
+    "--zj-blue": "#3E6183",
+    "--zj-yellow": "#8A6A17",
+    "--zj-red": "#A0323E",
+    "--zj-bg": "#FFFFFF",
+    "--zj-surface": "#F0F0F0",
+    "--zj-border": "#CCCCCC",
+    "--zj-text": "#000000",
+    "--zj-text-dim": "#666666",
+};
+
+function paletteDeclarations(palette) {
+    return Object.entries(palette)
+        .map(([name, value]) => `${name}: ${value};`)
+        .join("\n      ");
+}
 
 const state = {
     active: false,
@@ -1628,7 +1644,9 @@ function initMobileUi(context) {
     }
     initialized = true;
     injectStyles();
+    applyThemePreference();
     buildDom();
+    installMenuDismissHook();
     installKeyMergeHook();
     installSoftKeyboardBinding();
     installResizeReconcileHooks();
@@ -1661,6 +1679,54 @@ function setActivationPreference(value) {
     try {
         localStorage.setItem(ACTIVATION_PREFERENCE_KEY, value);
     } catch (_) {}
+}
+
+const THEME_PREFERENCE_KEY = "zellij:mobile-theme";
+
+
+function themePreference() {
+    try {
+        const stored = localStorage.getItem(THEME_PREFERENCE_KEY);
+        if (stored === "light") return "light";
+        if (stored === "dark") return "dark";
+        return "auto";
+    } catch (_) {
+        return "auto";
+    }
+}
+
+function setThemePreference(value) {
+    try {
+        localStorage.setItem(THEME_PREFERENCE_KEY, value);
+    } catch (_) {}
+}
+
+function applyThemePreference() {
+    const preference = themePreference();
+    if (preference === "auto") {
+        document.documentElement.removeAttribute("data-zj-theme");
+    } else {
+        document.documentElement.setAttribute("data-zj-theme", preference);
+    }
+}
+
+function effectiveTheme() {
+    const preference = themePreference();
+    if (preference !== "auto") {
+        return preference;
+    }
+    try {
+        return window.matchMedia("(prefers-color-scheme: light)").matches
+            ? "light"
+            : "dark";
+    } catch (_) {
+        return "dark";
+    }
+}
+
+function toggleThemePreference() {
+    setThemePreference(effectiveTheme() === "light" ? "dark" : "light");
+    applyThemePreference();
 }
 
 function shouldActivate() {
@@ -1824,6 +1890,18 @@ function injectStyles() {
     const style = document.createElement("style");
     style.id = "zj-mobile-styles";
     style.textContent = `
+    :root {
+      ${paletteDeclarations(DARK_PALETTE)}
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not([data-zj-theme="dark"]) {
+        ${paletteDeclarations(LIGHT_PALETTE)}
+      }
+    }
+    :root[data-zj-theme="light"] {
+      ${paletteDeclarations(LIGHT_PALETTE)}
+    }
+
     #zj-mobile-root {
       font-family: 'JetBrains Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
       display: none;
@@ -1844,10 +1922,10 @@ function injectStyles() {
       position: fixed; right: 12px; bottom: 12px;
       z-index: 700;
       min-height: 44px; padding: 0 16px;
-      border: 1px solid ${COLORS.green};
+      border: 1px solid var(--zj-green);
       border-radius: 22px;
-      background: ${COLORS.medium};
-      color: ${COLORS.text};
+      background: var(--zj-surface);
+      color: var(--zj-text);
       font-family: 'JetBrains Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
       font-size: 14px;
       cursor: pointer;
@@ -1862,7 +1940,7 @@ function injectStyles() {
     body.zj-mobile-standalone #terminal { visibility: hidden; }
 
     .zj-mobile-empty {
-      color: ${COLORS.textDim}; font-size: 14px;
+      color: var(--zj-text-dim); font-size: 14px;
       padding: 24px 4px; text-align: center;
     }
 
@@ -1870,9 +1948,9 @@ function injectStyles() {
       position: fixed; top: 0; left: 0; right: 0;
       display: flex; align-items: stretch;
       height: 44px; z-index: 500;
-      background: ${COLORS.dark};
-      border-bottom: 1px solid ${COLORS.green};
-      color: ${COLORS.text};
+      background: var(--zj-bg);
+      border-bottom: 1px solid var(--zj-green);
+      color: var(--zj-text);
     }
     .zj-mobile-topbar button {
       background: transparent; border: 0; color: inherit;
@@ -1882,10 +1960,10 @@ function injectStyles() {
       min-height: 44px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .zj-mobile-topbar .zj-session { color: ${COLORS.blue}; }
-    .zj-mobile-topbar .zj-pane { color: ${COLORS.green}; flex: 1 1 auto; min-width: 0; }
+    .zj-mobile-topbar .zj-session { color: var(--zj-blue); }
+    .zj-mobile-topbar .zj-pane { color: var(--zj-green); flex: 1 1 auto; min-width: 0; }
     .zj-mobile-topbar .zj-hamburger {
-      color: ${COLORS.yellow}; font-size: 20px;
+      color: var(--zj-yellow); font-size: 20px;
       flex: 0 0 auto; min-width: 44px; justify-content: center;
     }
 
@@ -1893,85 +1971,85 @@ function injectStyles() {
       position: fixed; left: 0; right: 0;
       bottom: var(--zj-kbd-offset, 0px);
       display: none; z-index: 500;
-      background: ${COLORS.medium};
-      border-top: 1px solid ${COLORS.green};
+      background: var(--zj-surface);
+      border-top: 1px solid var(--zj-green);
     }
     body.zj-mobile-active .zj-mobile-modbar.zj-visible { display: flex; }
     .zj-mobile-modbar button {
       flex: 1 1 0; min-width: 0;
       background: transparent; border: 0;
-      border-right: 1px solid ${COLORS.light};
-      color: ${COLORS.text}; font-family: inherit; font-size: 15px;
+      border-right: 1px solid var(--zj-border);
+      color: var(--zj-text); font-family: inherit; font-size: 15px;
       min-height: 48px; cursor: pointer;
     }
     .zj-mobile-modbar button:last-child { border-right: 0; }
     .zj-mobile-modbar button.zj-armed {
-      background: ${COLORS.green}; color: ${COLORS.dark}; font-weight: 600;
+      background: var(--zj-green); color: var(--zj-bg); font-weight: 600;
     }
 
     .zj-mobile-menu {
       position: fixed; top: 44px; right: 0; z-index: 600;
       min-width: 220px; max-width: 90vw;
-      background: ${COLORS.dark};
-      border: 1px solid ${COLORS.green};
+      background: var(--zj-bg);
+      border: 1px solid var(--zj-green);
       display: none; flex-direction: column;
     }
     .zj-mobile-menu.zj-open { display: flex; }
     .zj-mobile-menu button {
-      background: transparent; border: 0; color: ${COLORS.text};
+      background: transparent; border: 0; color: var(--zj-text);
       font-family: inherit; font-size: 14px; text-align: left;
       padding: 14px 16px; min-height: 48px; cursor: pointer;
     }
-    .zj-mobile-menu button:hover { background: ${COLORS.medium}; }
+    .zj-mobile-menu button:hover { background: var(--zj-surface); }
     .zj-mobile-menu button.zj-disabled {
-      color: ${COLORS.textDim}; opacity: 0.5; cursor: default;
+      color: var(--zj-text-dim); opacity: 0.5; cursor: default;
     }
     .zj-mobile-menu .zj-sep {
-      height: 1px; background: ${COLORS.light}; margin: 4px 0;
+      height: 1px; background: var(--zj-border); margin: 4px 0;
     }
 
     .zj-mobile-overlay {
       position: fixed; top: 0; left: 0; right: 0; z-index: 700;
       height: var(--dynamic-vh, 100vh);
       max-height: var(--dynamic-vh, 100vh);
-      background: ${COLORS.dark}; color: ${COLORS.text};
+      background: var(--zj-bg); color: var(--zj-text);
       display: none; flex-direction: column; overflow: hidden;
     }
     .zj-mobile-overlay.zj-open { display: flex; }
     .zj-mobile-overlay-header {
       flex: 0 0 auto;
       display: flex; align-items: center; gap: 8px;
-      padding: 10px 12px; border-bottom: 1px solid ${COLORS.light};
+      padding: 10px 12px; border-bottom: 1px solid var(--zj-border);
     }
     .zj-mobile-overlay-header .zj-back {
-      background: transparent; border: 1px solid ${COLORS.light};
-      color: ${COLORS.text}; font-family: inherit; font-size: 14px;
+      background: transparent; border: 1px solid var(--zj-border);
+      color: var(--zj-text); font-family: inherit; font-size: 14px;
       padding: 8px 12px; min-height: 40px; cursor: pointer;
     }
     .zj-mobile-overlay-header .zj-title {
-      color: ${COLORS.blue}; font-size: 16px; font-weight: 600;
+      color: var(--zj-blue); font-size: 16px; font-weight: 600;
     }
     .zj-mobile-search-row {
       flex: 0 0 auto;
       display: flex; align-items: baseline; gap: 8px;
       margin: 10px 12px 0 12px;
-      border-bottom: 1px solid ${COLORS.light};
+      border-bottom: 1px solid var(--zj-border);
     }
     .zj-mobile-search-row .zj-search-label {
       flex: 0 0 auto;
-      color: ${COLORS.blue}; font-size: 15px; font-weight: 600;
+      color: var(--zj-blue); font-size: 15px; font-weight: 600;
     }
     .zj-mobile-overlay input.zj-search, .zj-mobile-overlay input.zj-name {
       flex: 1 1 auto; min-width: 0;
       margin: 0; padding: 10px 0; box-sizing: border-box;
-      background: transparent; color: ${COLORS.text};
+      background: transparent; color: var(--zj-text);
       border: 0; font-family: inherit; font-size: 15px;
     }
     .zj-mobile-overlay input.zj-search:focus,
     .zj-mobile-overlay input.zj-name:focus { outline: none; }
     .zj-mobile-hint {
       flex: 0 0 auto;
-      color: ${COLORS.textDim}; font-size: 13px;
+      color: var(--zj-text-dim); font-size: 13px;
       margin: 8px 12px 0 12px;
     }
     /* min-height:0 is what lets this shrink below its content in the flex column;
@@ -1983,23 +2061,23 @@ function injectStyles() {
       padding: 0 12px;
     }
     .zj-mobile-card {
-      background: ${COLORS.medium};
-      border: 1px solid ${COLORS.light};
+      background: var(--zj-surface);
+      border: 1px solid var(--zj-border);
       padding: 12px; margin-bottom: 8px; cursor: pointer;
     }
-    .zj-mobile-card .zj-card-title { color: ${COLORS.green}; font-size: 15px; }
-    .zj-mobile-card .zj-card-title .zj-match { color: ${COLORS.yellow}; }
-    .zj-mobile-card .zj-card-meta { color: ${COLORS.textDim}; font-size: 13px; margin-top: 4px; }
+    .zj-mobile-card .zj-card-title { color: var(--zj-green); font-size: 15px; }
+    .zj-mobile-card .zj-card-title .zj-match { color: var(--zj-yellow); }
+    .zj-mobile-card .zj-card-meta { color: var(--zj-text-dim); font-size: 13px; margin-top: 4px; }
     .zj-mobile-footer {
       flex: 0 0 auto;
       display: flex; gap: 8px; padding: 10px 12px;
       padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-      border-top: 1px solid ${COLORS.light};
-      background: ${COLORS.dark};
+      border-top: 1px solid var(--zj-border);
+      background: var(--zj-bg);
     }
     .zj-mobile-footer button {
       flex: 1 1 0; background: transparent;
-      border: 1px solid ${COLORS.green}; color: ${COLORS.green};
+      border: 1px solid var(--zj-green); color: var(--zj-green);
       font-family: inherit; font-size: 14px; min-height: 44px; cursor: pointer;
     }
     .zj-mobile-prompt-buttons {
@@ -2010,8 +2088,8 @@ function injectStyles() {
       flex: 1 1 0; font-family: inherit; font-size: 14px; min-height: 44px;
       background: transparent; cursor: pointer;
     }
-    .zj-mobile-prompt-buttons .zj-cancel { border: 1px solid ${COLORS.red}; color: ${COLORS.red}; }
-    .zj-mobile-prompt-buttons .zj-accept { border: 1px solid ${COLORS.green}; color: ${COLORS.green}; }
+    .zj-mobile-prompt-buttons .zj-cancel { border: 1px solid var(--zj-red); color: var(--zj-red); }
+    .zj-mobile-prompt-buttons .zj-accept { border: 1px solid var(--zj-green); color: var(--zj-green); }
     `;
     document.head.appendChild(style);
 }
@@ -2106,6 +2184,13 @@ function buildMenu() {
         reconcileSize();
     });
 
+    const themeToggle = document.createElement("button");
+    themeToggle.dataset.role = "theme-toggle";
+    themeToggle.addEventListener("click", () => {
+        toggleThemePreference();
+        renderMenu();
+    });
+
     const changePane = document.createElement("button");
     changePane.textContent = "Change Pane";
     changePane.addEventListener("click", () => openOverlay("panes"));
@@ -2124,6 +2209,7 @@ function buildMenu() {
     menu.append(
         renderToggle,
         fitToggle,
+        themeToggle,
         changePane,
         changeSession,
         sep,
@@ -2249,6 +2335,29 @@ function toggleMenu() {
 
 function closeMenu() {
     els.menu.classList.remove("zj-open");
+}
+
+// Capture phase: the terminal and its xterm handlers stop propagation of pointer events,
+// so a bubbling listener would never see taps landing on a pane.
+function installMenuDismissHook() {
+    document.addEventListener(
+        "pointerdown",
+        (ev) => {
+            if (!els || !els.menu.classList.contains("zj-open")) {
+                return;
+            }
+            const target = ev.target;
+            if (!(target instanceof Node)) {
+                closeMenu();
+                return;
+            }
+            if (els.menu.contains(target) || els.hamburgerBtn.contains(target)) {
+                return;
+            }
+            closeMenu();
+        },
+        true
+    );
 }
 
 function openOverlay(kind) {
@@ -2562,6 +2671,11 @@ function renderMenu() {
     const canFit = state.data.desktop_client_connected;
     fitToggle.textContent = `${checkbox(state.fitEnabled)} Fit to my screen`;
     fitToggle.classList.toggle("zj-disabled", !canFit);
+
+    const themeToggle = els.menu.querySelector('[data-role="theme-toggle"]');
+    themeToggle.textContent = `${checkbox(
+        effectiveTheme() === "light"
+    )} Light mode`;
 }
 
 function renderModifierBar() {
