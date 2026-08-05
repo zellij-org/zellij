@@ -3,7 +3,7 @@
 use insta::assert_snapshot;
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, col, keys, normalized, start_zellij, FakePtyHandle,
-    GridSnapshot, TestSession, PROMPT, TERMINAL_SIZE,
+    GridSnapshot, Size, TestSession, PROMPT, TERMINAL_SIZE,
 };
 
 fn tabs_in_order(grid_snapshot: &GridSnapshot, labels: &[&str]) -> bool {
@@ -339,6 +339,49 @@ fn close_tab() {
         },
     );
     assert_snapshot!(normalized(&grid_snapshot));
+    zellij.quit();
+}
+
+#[test]
+fn closing_a_tab_resizes_the_tab_it_returns_to() {
+    let mut zellij = start_zellij();
+    let first_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    label_first_tab_pane(&zellij, &first_terminal, "oneone");
+    open_marked_tab(&zellij, "Tab #2", "twotwo");
+
+    let larger_size = Size {
+        cols: TERMINAL_SIZE.cols + 20,
+        rows: TERMINAL_SIZE.rows + 6,
+    };
+    zellij.resize(larger_size);
+    zellij.wait_until("second tab re-rendered at the larger size", move |snapshot| {
+        snapshot.contains("twotwo") && snapshot.row_count() == larger_size.rows
+    });
+
+    zellij.send_stdin(&keys::ctrl('t'));
+    zellij.send_stdin(&keys::key('x'));
+
+    let expected_size = (larger_size.cols as u16, larger_size.rows as u16 - 2);
+    first_terminal.wait_for_size(
+        "first tab resized to the enlarged window once it is focused again",
+        move |cols, rows| (cols, rows) == expected_size,
+    );
+    let grid_snapshot = zellij.wait_until(
+        "first tab repainted over the closed tab's ui",
+        |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains("Tab #1")
+                && !grid_snapshot.contains("Tab #2")
+                && grid_snapshot.contains("oneone")
+                && !grid_snapshot.contains("twotwo")
+        },
+    );
+    assert_eq!(
+        grid_snapshot.row_count(),
+        larger_size.rows,
+        "the restored tab must cover the whole enlarged display:\n{}",
+        grid_snapshot
+    );
     zellij.quit();
 }
 

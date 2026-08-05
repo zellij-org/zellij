@@ -357,6 +357,11 @@ fn create_new_screen_with_kitty_graphics(
         web_server_port,
         NestedSessionHandling::default(),
     );
+    seed_first_client_size(screen, size)
+}
+
+fn seed_first_client_size(mut screen: Screen, size: Size) -> Screen {
+    screen.set_client_size(1, size);
     screen
 }
 
@@ -740,6 +745,8 @@ impl MockScreen {
         config.options.pane_frame_style = Some(PaneFrameStyle::Full);
         config.options.stacked_pane_list = Some(false);
         let main_client_id = 1;
+
+        let _ = to_screen.send(ScreenInstruction::RecomputeTabSize(main_client_id, size));
 
         let received_background_jobs = Arc::new(Mutex::new(vec![]));
         std::thread::Builder::new()
@@ -1502,26 +1509,35 @@ fn update_screen_pixel_dimensions() {
     };
     let mut screen = create_new_screen(size, true, true);
     let initial_pixel_dimensions = screen.pixel_dimensions;
-    screen.update_pixel_dimensions(PixelDimensions {
-        character_cell_size: Some(SizeInPixels {
-            height: 10,
-            width: 5,
-        }),
-        text_area_size: None,
-    });
+    screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: Some(SizeInPixels {
+                height: 10,
+                width: 5,
+            }),
+            text_area_size: None,
+        },
+    );
     let pixel_dimensions_after_first_update = screen.pixel_dimensions;
-    screen.update_pixel_dimensions(PixelDimensions {
-        character_cell_size: None,
-        text_area_size: Some(SizeInPixels {
-            height: 100,
-            width: 50,
-        }),
-    });
+    screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: Some(SizeInPixels {
+                height: 100,
+                width: 50,
+            }),
+        },
+    );
     let pixel_dimensions_after_second_update = screen.pixel_dimensions;
-    screen.update_pixel_dimensions(PixelDimensions {
-        character_cell_size: None,
-        text_area_size: None,
-    });
+    screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: None,
+        },
+    );
     let pixel_dimensions_after_third_update = screen.pixel_dimensions;
     assert_eq!(
         initial_pixel_dimensions,
@@ -1569,6 +1585,57 @@ fn update_screen_pixel_dimensions() {
             }),
         },
         "empty update does not delete existing data",
+    );
+}
+
+#[test]
+fn character_cell_size_is_derived_from_the_reporting_client_size() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(size, true, true);
+    let client_id = 2;
+    screen.set_client_size(client_id, Size { cols: 100, rows: 50 });
+
+    screen.update_pixel_dimensions(
+        client_id,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: Some(SizeInPixels {
+                height: 1050,
+                width: 900,
+            }),
+        },
+    );
+
+    assert_eq!(
+        *screen.character_cell_size.borrow(),
+        Some(SizeInPixels {
+            height: 21,
+            width: 9
+        }),
+        "The reported text area is divided by the grid size of the client that reported it"
+    );
+}
+
+#[test]
+fn character_cell_size_is_not_derived_for_a_client_of_unknown_size() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(size, true, true);
+
+    screen.update_pixel_dimensions(
+        2,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: Some(SizeInPixels {
+                height: 1050,
+                width: 900,
+            }),
+        },
+    );
+
+    assert_eq!(
+        *screen.character_cell_size.borrow(),
+        None,
+        "Without the reporting client's grid size the pixel report cannot be interpreted"
     );
 }
 
@@ -5619,7 +5686,7 @@ fn create_new_screen_with_message_capture(
         web_server_port,
         NestedSessionHandling::default(),
     );
-    (screen, messages)
+    (seed_first_client_size(screen, size), messages)
 }
 
 #[test]
@@ -8718,7 +8785,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         NestedSessionHandling::default(),
     );
     (
-        screen,
+        seed_first_client_size(screen, size),
         ForwardCapture {
             server_rx,
             pty_writer_rx,
@@ -9197,16 +9264,19 @@ fn empty_reply_falls_back_to_cached_pixel_dimensions() {
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
     let pane = PaneId::Terminal(1);
-    screen.update_pixel_dimensions(PixelDimensions {
-        character_cell_size: Some(SizeInPixels {
-            height: 19,
-            width: 9,
-        }),
-        text_area_size: Some(SizeInPixels {
-            height: 608,
-            width: 931,
-        }),
-    });
+    screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: Some(SizeInPixels {
+                height: 19,
+                width: 9,
+            }),
+            text_area_size: Some(SizeInPixels {
+                height: 608,
+                width: 931,
+            }),
+        },
+    );
 
     // CSI 14t — text-area pixels.
     let token = screen.forward_host_query(pane, HostQuery::TextAreaPixelSize);
@@ -9391,7 +9461,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         NestedSessionHandling::default(),
     );
     (
-        screen,
+        seed_first_client_size(screen, size),
         ThemeCapture {
             plugin_rx,
             pty_writer_rx,
@@ -9883,7 +9953,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
     };
     let mut mode_info = ModeInfo::default();
     mode_info.session_name = Some("zellij-test".into());
-    Screen::new(
+    let screen = Screen::new(
         bus,
         &client_attributes,
         None, // max_panes
@@ -9919,7 +9989,59 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         8080,
         NestedSessionHandling::default(),
-    )
+    );
+    seed_first_client_size(screen, size)
+}
+
+#[test]
+fn new_tabs_are_created_at_the_size_of_the_client_creating_them() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    let client_size = Size { cols: 80, rows: 24 };
+    screen.set_client_size(1, client_size);
+
+    new_tab(&mut screen, 1, 0);
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        client_size,
+        "A tab is created at the size of the client creating it"
+    );
+}
+
+#[test]
+fn applying_a_layout_to_an_existing_tab_keeps_its_viewer_derived_size() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    let client_size = Size { cols: 80, rows: 24 };
+    screen.set_client_size(1, client_size);
+    new_tab(&mut screen, 1, 0);
+
+    screen
+        .apply_layout(
+            TiledPaneLayout::default(),
+            vec![],
+            vec![(2, None)],
+            vec![],
+            HashMap::new(),
+            0,
+            true,
+            (1, false),
+            None,
+        )
+        .expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        client_size,
+        "Applying a layout to an existing tab does not resize it away from its viewers"
+    );
 }
 
 #[test]
@@ -10214,6 +10336,56 @@ fn detaching_client_grows_vacated_tab_back() {
             rows: 50,
         },
         "Tab grows back to fit the remaining viewer after the smaller one detaches"
+    );
+}
+
+#[test]
+fn closing_a_tab_resizes_the_tab_it_returns_to() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_new_screen(initial_size, true, true);
+    let client_id = 1;
+    let small_size = Size { cols: 80, rows: 24 };
+    let large_size = Size {
+        cols: 160,
+        rows: 50,
+    };
+
+    screen.set_client_size(client_id, small_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        small_size,
+        "Pre-condition: both tabs sized to the small client viewport"
+    );
+
+    screen.set_client_size(client_id, large_size);
+    screen.recompute_tab_size(1).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        large_size,
+        "Pre-condition: the active tab follows the client resize"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        small_size,
+        "Pre-condition: the background tab keeps its stale size until it is activated"
+    );
+
+    screen.close_tab_by_id(1).expect("TEST");
+
+    assert_eq!(
+        screen.get_active_tab(client_id).unwrap().position,
+        0,
+        "Focus returns to the previous tab"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        large_size,
+        "The tab we return to adopts the current client size"
     );
 }
 
