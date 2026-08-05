@@ -11125,6 +11125,130 @@ fn single_pane_demotes_after_desktop_downgrades_to_regular_fullscreen() {
 }
 
 #[test]
+fn single_pane_survives_the_mobile_client_opening_its_own_pane_in_a_shared_tab() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    let mobile_client = 1;
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+
+    screen
+        .set_mobile_render_preferences(
+            mobile_client,
+            /* single_pane */ true,
+            /* fit */ true,
+        )
+        .expect("TEST");
+    assert!(
+        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Pre-condition: single-pane fullscreen active"
+    );
+
+    // The mobile client opens a pane of its own, which takes its focus.
+    screen
+        .get_active_tab_mut(mobile_client)
+        .unwrap()
+        .new_pane(
+            PaneId::Terminal(3),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(mobile_client),
+            None,
+        )
+        .expect("TEST");
+    screen.log_and_report_session_state().expect("TEST");
+
+    assert_eq!(
+        screen
+            .mobile_web_prefs
+            .get(&mobile_client)
+            .map(|prefs| prefs.single_pane),
+        Some(true),
+        "A pane the mobile client opened itself does not demote it out of single-pane mode"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().fullscreen_pane_id(),
+        Some(PaneId::Terminal(3)),
+        "The fullscreen follows the mobile client to the pane it just opened"
+    );
+    assert!(
+        screen.tabs.get(&0).unwrap().fullscreen_covers_ui(),
+        "The followed fullscreen still hides the tab bar and status bar"
+    );
+    assert_eq!(
+        screen
+            .mobile_web_prefs
+            .get(&mobile_client)
+            .map(|prefs| prefs.fit),
+        Some(true),
+        "Fit is untouched because there was no demotion"
+    );
+}
+
+#[test]
+fn single_pane_follows_the_mobile_client_into_a_new_tab() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    let mobile_client = 1;
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+
+    screen
+        .set_mobile_render_preferences(
+            mobile_client,
+            /* single_pane */ true,
+            /* fit */ true,
+        )
+        .expect("TEST");
+    assert!(
+        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Pre-condition: single-pane fullscreen active"
+    );
+
+    new_tab(&mut screen, 2, 1);
+
+    assert_eq!(
+        screen
+            .mobile_web_prefs
+            .get(&mobile_client)
+            .map(|prefs| prefs.single_pane),
+        Some(true),
+        "Opening a tab keeps the mobile client in single-pane mode"
+    );
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "The tab the mobile client left is restored for the desktop client"
+    );
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().fullscreen_pane_id(),
+        Some(PaneId::Terminal(2)),
+        "The pane of the new tab is fullscreened for the mobile client"
+    );
+    assert!(
+        screen.tabs.get(&1).unwrap().fullscreen_covers_ui(),
+        "The new tab's fullscreen still hides the tab bar and status bar"
+    );
+}
+
+#[test]
 fn attaching_web_client_lands_on_the_first_tab() {
     let size = Size {
         cols: 121,

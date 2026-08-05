@@ -87,75 +87,8 @@ async fn handle_ws_control(socket: WebSocket, params: ControlParams, state: AppS
             log::error!("Unknown web_client_id: {}", deserialized_msg.web_client_id);
             return;
         };
-        let client_msg = match deserialized_msg.payload {
-            WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
-                ClientToServerMsg::TerminalResize { new_size: size }
-            },
-            WebClientToWebServerControlMessagePayload::TerminalMetrics(metrics) => {
-                terminal_metrics_to_ipc(metrics)
-            },
-            WebClientToWebServerControlMessagePayload::SoftKeyboardVisibilityChanged {
-                visible,
-            } => ClientToServerMsg::SoftKeyboardVisibilityChanged { visible },
-            WebClientToWebServerControlMessagePayload::NestedSessionFrameFromHost {
-                payload_bytes,
-            } => ClientToServerMsg::NestedSessionFrameFromHost { payload_bytes },
-            WebClientToWebServerControlMessagePayload::RequestSessionList => {
-                ClientToServerMsg::RequestSessionList
-            },
-            WebClientToWebServerControlMessagePayload::FocusPane { pane_id, is_plugin } => {
-                let pane_id = if is_plugin {
-                    PaneId::Plugin(pane_id)
-                } else {
-                    PaneId::Terminal(pane_id)
-                };
-                ClientToServerMsg::Action {
-                    action: Action::FocusPaneByPaneId { pane_id },
-                    terminal_id: None,
-                    client_id: None,
-                    is_cli_client: false,
-                }
-            },
-            WebClientToWebServerControlMessagePayload::NewPaneInTab { tab_id } => {
-                ClientToServerMsg::Action {
-                    action: Action::NewTiledPane {
-                        direction: None,
-                        command: None,
-                        pane_name: None,
-                        near_current_pane: false,
-                        no_focus: false,
-                        borderless: None,
-                        tab_id: Some(tab_id),
-                    },
-                    terminal_id: None,
-                    client_id: None,
-                    is_cli_client: false,
-                }
-            },
-            WebClientToWebServerControlMessagePayload::NewTab => ClientToServerMsg::Action {
-                action: Action::NewTab {
-                    tiled_layout: None,
-                    floating_layouts: vec![],
-                    swap_tiled_layouts: None,
-                    swap_floating_layouts: None,
-                    tab_name: None,
-                    should_change_focus_to_new_tab: true,
-                    cwd: None,
-                    initial_panes: None,
-                    first_pane_unblock_condition: None,
-                },
-                terminal_id: None,
-                client_id: None,
-                is_cli_client: false,
-            },
-            WebClientToWebServerControlMessagePayload::SetMobileRenderPreferences {
-                single_pane,
-                fit,
-            } => ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit },
-            WebClientToWebServerControlMessagePayload::Unknown => {
-                log::warn!("Ignoring unknown control message type from web client");
-                return;
-            },
+        let Some(client_msg) = control_payload_to_server_msg(deserialized_msg.payload) else {
+            return;
         };
 
         let _ = client_connection.send_to_server(client_msg);
@@ -393,6 +326,82 @@ async fn handle_ws_terminal(
     os_input.send_to_server(ClientToServerMsg::ClientExited);
 }
 
+fn control_payload_to_server_msg(
+    payload: WebClientToWebServerControlMessagePayload,
+) -> Option<ClientToServerMsg> {
+    let client_msg = match payload {
+        WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
+            ClientToServerMsg::TerminalResize { new_size: size }
+        },
+        WebClientToWebServerControlMessagePayload::TerminalMetrics(metrics) => {
+            terminal_metrics_to_ipc(metrics)
+        },
+        WebClientToWebServerControlMessagePayload::SoftKeyboardVisibilityChanged { visible } => {
+            ClientToServerMsg::SoftKeyboardVisibilityChanged { visible }
+        },
+        WebClientToWebServerControlMessagePayload::NestedSessionFrameFromHost { payload_bytes } => {
+            ClientToServerMsg::NestedSessionFrameFromHost { payload_bytes }
+        },
+        WebClientToWebServerControlMessagePayload::RequestSessionList => {
+            ClientToServerMsg::RequestSessionList
+        },
+        WebClientToWebServerControlMessagePayload::FocusPane { pane_id, is_plugin } => {
+            let pane_id = if is_plugin {
+                PaneId::Plugin(pane_id)
+            } else {
+                PaneId::Terminal(pane_id)
+            };
+            ClientToServerMsg::Action {
+                action: Action::FocusPaneByPaneId { pane_id },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            }
+        },
+        WebClientToWebServerControlMessagePayload::NewPaneInTab { .. } => {
+            ClientToServerMsg::Action {
+                action: Action::NewTiledPane {
+                    direction: None,
+                    command: None,
+                    pane_name: None,
+                    near_current_pane: false,
+                    no_focus: false,
+                    borderless: None,
+                    tab_id: None,
+                },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            }
+        },
+        WebClientToWebServerControlMessagePayload::NewTab => ClientToServerMsg::Action {
+            action: Action::NewTab {
+                tiled_layout: None,
+                floating_layouts: vec![],
+                swap_tiled_layouts: None,
+                swap_floating_layouts: None,
+                tab_name: None,
+                should_change_focus_to_new_tab: true,
+                cwd: None,
+                initial_panes: None,
+                first_pane_unblock_condition: None,
+            },
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        },
+        WebClientToWebServerControlMessagePayload::SetMobileRenderPreferences {
+            single_pane,
+            fit,
+        } => ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit },
+        WebClientToWebServerControlMessagePayload::Unknown => {
+            log::warn!("Ignoring unknown control message type from web client");
+            return None;
+        },
+    };
+    Some(client_msg)
+}
+
 fn terminal_metrics_to_ipc(metrics: TerminalMetricsPayload) -> ClientToServerMsg {
     ClientToServerMsg::TerminalPixelDimensions {
         pixel_dimensions: PixelDimensions {
@@ -565,5 +574,38 @@ mod tests {
             },
             other => panic!("expected SetMobileRenderPreferences, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn new_pane_in_tab_is_routed_to_the_requesting_client() {
+        let client_msg = control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::NewPaneInTab { tab_id: 2 },
+        )
+        .expect("message dropped");
+        match client_msg {
+            ClientToServerMsg::Action {
+                action:
+                    Action::NewTiledPane {
+                        tab_id, no_focus, ..
+                    },
+                ..
+            } => {
+                assert_eq!(
+                    tab_id, None,
+                    "The pane is opened in the client's own tab so that it is focused for it, \
+                     keeping single-pane mode attached to the new pane"
+                );
+                assert!(!no_focus, "The new pane takes focus");
+            },
+            other => panic!("expected a NewTiledPane action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn unknown_control_message_is_dropped() {
+        assert!(
+            control_payload_to_server_msg(WebClientToWebServerControlMessagePayload::Unknown)
+                .is_none()
+        );
     }
 }
