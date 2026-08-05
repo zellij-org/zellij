@@ -2822,6 +2822,7 @@ impl CommandToRun {
 
 #[derive(Debug, Default, Clone)]
 pub struct MessageToPlugin {
+    pub client_local: bool,
     pub plugin_url: Option<String>,
     pub destination_plugin_id: Option<u32>,
     pub plugin_config: BTreeMap<String, String>,
@@ -2887,10 +2888,16 @@ impl std::fmt::Display for PaneId {
 impl MessageToPlugin {
     pub fn new(message_name: impl Into<String>) -> Self {
         MessageToPlugin {
+            client_local: false,
             message_name: message_name.into(),
             ..Default::default()
         }
     }
+    pub fn client_local(mut self) -> Self {
+        self.client_local = true;
+        self
+    }
+
     pub fn with_plugin_url(mut self, url: impl Into<String>) -> Self {
         self.plugin_url = Some(url.into());
         self

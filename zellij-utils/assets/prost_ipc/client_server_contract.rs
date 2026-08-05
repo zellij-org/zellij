@@ -1281,6 +1281,8 @@ pub struct KeybindPipeAction {
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="12")]
     pub pane_title: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="13")]
+    pub client_local: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
