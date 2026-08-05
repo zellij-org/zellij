@@ -29,10 +29,11 @@ fn cold_attach_lays_out_at_the_client_reported_size_without_querying_it() {
     );
 
     let chrome_rows = TERMINAL_SIZE.rows as u16 - initial_rows;
-    let expected_rows = ATTACHING_CLIENT_SIZE.rows as u16 - chrome_rows;
+    let expected_cols = ATTACHING_CLIENT_SIZE.cols.min(TERMINAL_SIZE.cols) as u16;
+    let expected_rows = ATTACHING_CLIENT_SIZE.rows.min(TERMINAL_SIZE.rows) as u16 - chrome_rows;
 
     assert_eq!(
-        attached_cols, ATTACHING_CLIENT_SIZE.cols as u16,
+        attached_cols, expected_cols,
         "layout must be applied at the size the attaching client reported"
     );
     assert_eq!(

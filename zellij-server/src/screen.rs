@@ -512,9 +512,8 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         completion_tx: Option<NotificationEnd>,
     },
-    TerminalResize(Size),
     RecomputeTabSize(ClientId, Size),
-    TerminalPixelDimensions(PixelDimensions),
+    TerminalPixelDimensions(ClientId, PixelDimensions),
     TerminalBackgroundColor(String),
     TerminalForegroundColor(String),
     TerminalColorRegisters(Vec<(usize, String)>),
@@ -1041,7 +1040,6 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::CloseTabWithId(..) => ScreenContext::CloseTabWithId,
             ScreenInstruction::RenameTabWithId(..) => ScreenContext::RenameTabWithId,
             ScreenInstruction::BreakPanesToTabWithId { .. } => ScreenContext::BreakPanesToTabWithId,
-            ScreenInstruction::TerminalResize(..) => ScreenContext::TerminalResize,
             ScreenInstruction::RecomputeTabSize(..) => ScreenContext::RecomputeTabSize,
             ScreenInstruction::TerminalPixelDimensions(..) => {
                 ScreenContext::TerminalPixelDimensions
@@ -1468,8 +1466,6 @@ pub(crate) struct Screen {
     /// A map between this [`Screen`]'s tabs and their ID/key.
     tabs: BTreeMap<usize, Tab>,
     last_single_pane_tab_names: HashMap<usize, Option<String>>,
-    /// The full size of this [`Screen`].
-    size: Size,
     pixel_dimensions: PixelDimensions,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
@@ -1655,7 +1651,6 @@ impl Screen {
         Screen {
             bus,
             max_panes,
-            size: client_attributes.size,
             pixel_dimensions: Default::default(),
             character_cell_size: Rc::new(RefCell::new(None)),
             stacked_resize: Rc::new(RefCell::new(stacked_resize)),
@@ -2185,6 +2180,9 @@ impl Screen {
                     t.position -= 1;
                 }
             }
+            for tab_id in visible_tab_indices {
+                self.recompute_tab_size(tab_id).with_context(err_context)?;
+            }
             self.log_and_report_session_state()
                 .with_context(err_context)?;
             self.render(None).with_context(err_context)
@@ -2214,26 +2212,27 @@ impl Screen {
         }
     }
 
-    pub fn resize_to_screen(&mut self, new_screen_size: Size) -> Result<()> {
-        let err_context = || format!("failed to resize to screen size: {new_screen_size:#?}");
-
-        if self.size != new_screen_size {
-            self.size = new_screen_size;
-            for tab in self.tabs.values_mut() {
-                tab.resize_whole_tab(new_screen_size)
-                    .with_context(err_context)?;
-                tab.set_force_render();
-            }
-            self.log_and_report_session_state()
-                .with_context(err_context)?;
-            self.render(None).with_context(err_context)
-        } else {
-            Ok(())
-        }
-    }
-
     pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
         self.client_sizes.insert(client_id, size);
+    }
+
+    fn size_for_client(&self, client_id: Option<ClientId>) -> Size {
+        client_id
+            .and_then(|client_id| self.client_sizes.get(&client_id).copied())
+            .or_else(|| {
+                self.get_first_client_id()
+                    .and_then(|client_id| self.client_sizes.get(&client_id).copied())
+            })
+            .or_else(|| self.client_sizes.values().next().copied())
+            .unwrap_or_default()
+    }
+
+    fn size_of_tab_of_client(&self, client_id: ClientId) -> Size {
+        self.active_tab_ids
+            .get(&client_id)
+            .and_then(|tab_id| self.tabs.get(tab_id))
+            .map(|tab| tab.size)
+            .unwrap_or_else(|| self.size_for_client(Some(client_id)))
     }
 
     pub fn recompute_tab_size(&mut self, tab_id: usize) -> Result<()> {
@@ -2537,16 +2536,24 @@ impl Screen {
         }
     }
 
-    pub fn update_pixel_dimensions(&mut self, pixel_dimensions: PixelDimensions) {
+    pub fn update_pixel_dimensions(
+        &mut self,
+        client_id: ClientId,
+        pixel_dimensions: PixelDimensions,
+    ) {
         self.pixel_dimensions.merge(pixel_dimensions);
         if let Some(character_cell_size) = self.pixel_dimensions.character_cell_size {
             *self.character_cell_size.borrow_mut() = Some(character_cell_size);
         } else if let Some(text_area_size) = self.pixel_dimensions.text_area_size {
-            let character_cell_size_height = text_area_size.height / self.size.rows;
-            let character_cell_size_width = text_area_size.width / self.size.cols;
+            let Some(client_size) = self.client_sizes.get(&client_id).copied() else {
+                return;
+            };
+            if client_size.rows == 0 || client_size.cols == 0 {
+                return;
+            }
             let character_cell_size = SizeInPixels {
-                height: character_cell_size_height,
-                width: character_cell_size_width,
+                height: text_area_size.height / client_size.rows,
+                width: text_area_size.width / client_size.cols,
             };
             *self.character_cell_size.borrow_mut() = Some(character_cell_size);
         }
@@ -4057,6 +4064,10 @@ impl Screen {
 
                 let focused_tab_index_of_followed_client_id =
                     *self.active_tab_ids.get(&followed_client_id).unwrap_or(&0);
+                let followed_content_size = self
+                    .tabs
+                    .get(&focused_tab_index_of_followed_client_id)
+                    .map(|tab| tab.size);
 
                 if let Some(tab) = self
                     .tabs
@@ -4092,7 +4103,7 @@ impl Screen {
 
                         // Serialize this watcher's output with size constraints (cropping and padding handled inside)
                         let mut serialized_output = watcher_specific_output
-                            .serialize_with_size(Some(watcher_state.size()), Some(self.size))
+                            .serialize_with_size(Some(watcher_state.size()), followed_content_size)
                             .context(err_context)?;
 
                         // Get the output for the followed client and map it to this watcher
@@ -4350,11 +4361,12 @@ impl Screen {
         let tab_name = tab_name.unwrap_or_else(|| String::new());
 
         let position = self.tabs.len();
+        let tab_size = self.size_for_client(client_id);
         let mut tab = Tab::new(
             tab_id,
             position,
             tab_name,
-            self.size,
+            tab_size,
             self.character_cell_size.clone(),
             self.stacked_resize.clone(),
             self.stacked_pane_list.clone(),
@@ -4540,7 +4552,8 @@ impl Screen {
                     tab.visible(true)?;
                     tab.add_multiple_clients(drained_clients)?;
                 }
-                tab.resize_whole_tab(self.size).with_context(err_context)?;
+                let tab_size = tab.size;
+                tab.resize_whole_tab(tab_size).with_context(err_context)?;
                 tab.set_force_render();
                 Ok(())
             })
@@ -6018,16 +6031,13 @@ impl Screen {
         if let Some(new_tab_name) = new_tab_name {
             tab.name = new_tab_name.clone();
         }
+        let tab_size = tab.size;
         for mut pane in extracted_panes {
             let run_instruction = pane.invoked_with().clone();
             let pane_id = pane.pid();
             let without_relayout = true;
 
-            // we reset the pane geom here to screen size so that we won't have trouble adding it
-            // temporarily to the new tab (eg. if it was stacked or had a fixed size), the size
-            // will be adjusted before the next render, further down the pipeline, when we apply
-            // the layout to this new tab
-            let new_geom = PaneGeom::from(&self.size);
+            let new_geom = PaneGeom::from(&tab_size);
             pane.set_geom(new_geom);
 
             // here we pass None instead of the ClientId, because we do not want this pane to be
@@ -6161,8 +6171,8 @@ impl Screen {
             // nothing to do here...
             return Ok(());
         }
-        let screen_size = self.size;
         if let Some(new_active_tab) = self.get_indexed_tab_mut(tab_index) {
+            let tab_size = new_active_tab.size;
             for (pane_was_floating, mut pane) in extracted_panes {
                 let pane_id = pane.pid();
                 if pane_was_floating {
@@ -6185,11 +6195,7 @@ impl Screen {
                     // here we pass None instead of the ClientId, because we do not want this pane to be
                     // necessarily focused
 
-                    // we reset the pane geom here to screen size so that we won't have trouble adding it
-                    // temporarily to the new tab (eg. if it was stacked or had a fixed size), the size
-                    // will be adjusted before the next render, further down the pipeline, when we apply
-                    // the layout to this new tab
-                    let new_geom = PaneGeom::from(&screen_size);
+                    let new_geom = PaneGeom::from(&tab_size);
                     pane.set_geom(new_geom);
 
                     new_active_tab.add_tiled_pane(pane, pane_id, false, None)?;
@@ -6995,16 +7001,18 @@ impl Screen {
             .remove(client_id);
     }
     fn toggle_pane_id_in_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
+        let surface_size = self.size_of_tab_of_client(*client_id);
         {
             let mut pane_groups = self.current_pane_group.borrow_mut();
-            pane_groups.toggle_pane_id_in_group(pane_id, self.size, client_id);
+            pane_groups.toggle_pane_id_in_group(pane_id, surface_size, client_id);
         }
         self.retain_only_existing_panes_in_pane_groups();
     }
     fn add_pane_id_to_group(&mut self, pane_id: PaneId, client_id: &ClientId) {
+        let surface_size = self.size_of_tab_of_client(*client_id);
         {
             let mut pane_groups = self.current_pane_group.borrow_mut();
-            pane_groups.add_pane_id_to_group(pane_id, self.size, client_id);
+            pane_groups.add_pane_id_to_group(pane_id, surface_size, client_id);
         }
         self.retain_only_existing_panes_in_pane_groups();
     }
@@ -7089,13 +7097,14 @@ impl Screen {
         for_all_clients: bool,
         client_id: ClientId,
     ) {
+        let surface_size = self.size_of_tab_of_client(client_id);
         if for_all_clients {
             {
                 let mut current_pane_group = self.current_pane_group.borrow_mut();
                 current_pane_group.group_and_ungroup_panes_for_all_clients(
                     pane_ids_to_group,
                     pane_ids_to_ungroup,
-                    self.size,
+                    surface_size,
                 );
             }
         } else {
@@ -7104,7 +7113,7 @@ impl Screen {
                 current_pane_group.group_and_ungroup_panes(
                     pane_ids_to_group,
                     pane_ids_to_ungroup,
-                    self.size,
+                    surface_size,
                     &client_id,
                 );
             }
@@ -9332,13 +9341,11 @@ pub(crate) fn screen_thread_main(
                         .push(ScreenInstruction::MoveTabRight(client_id, completion_tx));
                 }
             },
-            ScreenInstruction::TerminalResize(new_size) => {
-                screen.resize_to_screen(new_size)?;
-                screen.log_and_report_session_state()?; // update tabs so that the ui indication will be send to the plugins
-                screen.render(None)?;
-            },
             ScreenInstruction::RecomputeTabSize(client_id, new_size) => {
                 screen.set_client_size(client_id, new_size);
+                if screen.tabs.is_empty() {
+                    continue;
+                }
                 let active_tab_id = screen.active_tab_ids.get(&client_id).copied();
                 if let Some(tab_id) = active_tab_id {
                     screen.recompute_tab_size(tab_id)?;
@@ -9351,8 +9358,8 @@ pub(crate) fn screen_thread_main(
                     screen.render(None)?;
                 }
             },
-            ScreenInstruction::TerminalPixelDimensions(pixel_dimensions) => {
-                screen.update_pixel_dimensions(pixel_dimensions);
+            ScreenInstruction::TerminalPixelDimensions(client_id, pixel_dimensions) => {
+                screen.update_pixel_dimensions(client_id, pixel_dimensions);
             },
             ScreenInstruction::TerminalBackgroundColor(background_color_instruction) => {
                 screen.update_terminal_background_color(background_color_instruction);
