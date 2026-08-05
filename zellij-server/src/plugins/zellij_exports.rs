@@ -1609,7 +1609,7 @@ fn open_file_near_plugin(
     let _ = env.senders.send_to_pty(pty_instr);
 
     // Wait for completion
-    let result = wait_for_action_completion(completion_rx, "open_file_near_plugin", false);
+    let result = wait_for_action_completion(completion_rx, "open_file_near_plugin", false, false);
     let pane_id: OpenFileNearPluginResponse = result.affected_pane_id.map(|p| p.into());
 
     // Write response to plugin
@@ -1652,7 +1652,12 @@ fn open_file_floating_near_plugin(
     let _ = env.senders.send_to_pty(pty_instr);
 
     // Wait for completion
-    let result = wait_for_action_completion(completion_rx, "open_file_floating_near_plugin", false);
+    let result = wait_for_action_completion(
+        completion_rx,
+        "open_file_floating_near_plugin",
+        false,
+        false,
+    );
     let pane_id: OpenFileFloatingNearPluginResponse = result.affected_pane_id.map(|p| p.into());
 
     // Write response to plugin
@@ -1692,7 +1697,8 @@ fn open_file_in_place_of_plugin(
     let _ = env.senders.send_to_pty(pty_instr);
 
     // Wait for completion
-    let result = wait_for_action_completion(completion_rx, "open_file_in_place_of_plugin", false);
+    let result =
+        wait_for_action_completion(completion_rx, "open_file_in_place_of_plugin", false, false);
     let pane_id: OpenFileInPlaceOfPluginResponse = result.affected_pane_id.map(|p| p.into());
 
     // Write response to plugin
@@ -1766,7 +1772,8 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
     ));
 
     // Wait for completion
-    let result = wait_for_action_completion(completion_rx, "open_terminal_near_plugin", false);
+    let result =
+        wait_for_action_completion(completion_rx, "open_terminal_near_plugin", false, false);
     let pane_id: OpenTerminalNearPluginResponse = result.affected_pane_id.map(|p| p.into());
 
     // Write response to plugin
@@ -1845,8 +1852,12 @@ fn open_terminal_floating_near_plugin(
     ));
 
     // Wait for completion
-    let result =
-        wait_for_action_completion(completion_rx, "open_terminal_floating_near_plugin", false);
+    let result = wait_for_action_completion(
+        completion_rx,
+        "open_terminal_floating_near_plugin",
+        false,
+        false,
+    );
     let pane_id: OpenTerminalFloatingNearPluginResponse = result.affected_pane_id.map(|p| p.into());
 
     // Write response to plugin
@@ -1922,8 +1933,12 @@ fn open_terminal_in_place_of_plugin(
         ));
 
     // Wait for completion
-    let result =
-        wait_for_action_completion(completion_rx, "open_terminal_in_place_of_plugin", false);
+    let result = wait_for_action_completion(
+        completion_rx,
+        "open_terminal_in_place_of_plugin",
+        false,
+        false,
+    );
     let pane_id: OpenTerminalInPlaceOfPluginResponse = result.affected_pane_id.map(|p| p.into());
 
     // Write response to plugin
@@ -1978,8 +1993,12 @@ fn open_command_pane_in_place_of_plugin(
         ));
 
     // Wait for completion
-    let result =
-        wait_for_action_completion(completion_rx, "open_command_pane_in_place_of_plugin", false);
+    let result = wait_for_action_completion(
+        completion_rx,
+        "open_command_pane_in_place_of_plugin",
+        false,
+        false,
+    );
     let pane_id: OpenCommandPaneInPlaceOfPluginResponse = result.affected_pane_id.map(|p| p.into());
 
     // Write response to plugin
@@ -2020,6 +2039,7 @@ fn open_terminal_pane_in_place_of_pane_id(
     let result = wait_for_action_completion(
         completion_rx,
         "open_terminal_pane_in_place_of_pane_id",
+        false,
         false,
     );
     let pane_id: OpenTerminalPaneInPlaceOfPaneIdResponse =
@@ -2079,6 +2099,7 @@ fn open_command_pane_in_place_of_pane_id(
         completion_rx,
         "open_command_pane_in_place_of_pane_id",
         false,
+        false,
     );
     let pane_id: OpenCommandPaneInPlaceOfPaneIdResponse = result.affected_pane_id.map(|p| p.into());
 
@@ -2117,8 +2138,12 @@ fn open_edit_pane_in_place_of_pane_id(
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
-    let result =
-        wait_for_action_completion(completion_rx, "open_edit_pane_in_place_of_pane_id", false);
+    let result = wait_for_action_completion(
+        completion_rx,
+        "open_edit_pane_in_place_of_pane_id",
+        false,
+        false,
+    );
     let pane_id: OpenEditPaneInPlaceOfPaneIdResponse = result.affected_pane_id.map(|p| p.into());
 
     let response = ProtobufOpenEditPaneInPlaceOfPaneIdResponse::from(pane_id);
@@ -2226,7 +2251,8 @@ fn open_command_pane_near_plugin(
     ));
 
     // Wait for completion
-    let result = wait_for_action_completion(completion_rx, "open_command_pane_near_plugin", false);
+    let result =
+        wait_for_action_completion(completion_rx, "open_command_pane_near_plugin", false, false);
     let pane_id: OpenCommandPaneNearPluginResponse = result.affected_pane_id.map(|p| p.into());
 
     // Write response to plugin
@@ -2337,6 +2363,7 @@ fn open_command_pane_floating_near_plugin(
         completion_rx,
         "open_command_pane_floating_near_plugin",
         false,
+        false,
     );
     let pane_id: OpenCommandPaneFloatingNearPluginResponse =
         result.affected_pane_id.map(|p| p.into());
@@ -2446,7 +2473,8 @@ fn open_command_pane_background(
     ));
 
     // Wait for completion
-    let result = wait_for_action_completion(completion_rx, "open_command_pane_background", false);
+    let result =
+        wait_for_action_completion(completion_rx, "open_command_pane_background", false, false);
     let pane_id: OpenCommandPaneBackgroundResponse = result.affected_pane_id.map(|p| p.into());
 
     // Write response to plugin
@@ -2995,7 +3023,7 @@ fn switch_session(
             ))
             .with_context(err_context)?;
         let wait_forever = false;
-        let _ = wait_for_action_completion(completion_rx, "switch_session", wait_forever);
+        let _ = wait_for_action_completion(completion_rx, "switch_session", wait_forever, false);
     }
     Ok(())
 }
@@ -3627,7 +3655,8 @@ fn save_session(env: &PluginEnv) {
         }
     } else {
         let wait_forever = false;
-        let _result = wait_for_action_completion(completion_rx, "save_session", wait_forever);
+        let _result =
+            wait_for_action_completion(completion_rx, "save_session", wait_forever, false);
         ProtobufSaveSessionResponse {
             result: Some(SaveSessionResult::Success(true)),
         }
@@ -3651,7 +3680,7 @@ fn show_floating_panes(env: &PluginEnv, tab_id: Option<usize>) {
             result: Some(ShowResult::Error(format!("{}", e))),
         }
     } else {
-        let result = wait_for_action_completion(completion_rx, "show_floating_panes", false);
+        let result = wait_for_action_completion(completion_rx, "show_floating_panes", false, false);
         match result.exit_status {
             Some(0) => ProtobufShowFloatingPanesResponse {
                 result: Some(ShowResult::Success(true)),
@@ -3682,7 +3711,7 @@ fn hide_floating_panes(env: &PluginEnv, tab_id: Option<usize>) {
             result: Some(HideResult::Error(format!("{}", e))),
         }
     } else {
-        let result = wait_for_action_completion(completion_rx, "hide_floating_panes", false);
+        let result = wait_for_action_completion(completion_rx, "hide_floating_panes", false, false);
         match result.exit_status {
             Some(0) => ProtobufHideFloatingPanesResponse {
                 result: Some(HideResult::Success(true)),
@@ -4205,7 +4234,7 @@ fn write_to_pane_id(env: &PluginEnv, bytes: Vec<u8>, pane_id: PaneId) {
     ));
     if send_result.is_ok() {
         let wait_forever = false;
-        let _ = wait_for_action_completion(completion_rx, "write_to_pane_id", wait_forever);
+        let _ = wait_for_action_completion(completion_rx, "write_to_pane_id", wait_forever, false);
     }
 }
 
@@ -4219,7 +4248,12 @@ fn write_chars_to_pane_id(env: &PluginEnv, chars: String, pane_id: PaneId) {
     ));
     if send_result.is_ok() {
         let wait_forever = false;
-        let _ = wait_for_action_completion(completion_rx, "write_chars_to_pane_id", wait_forever);
+        let _ = wait_for_action_completion(
+            completion_rx,
+            "write_chars_to_pane_id",
+            wait_forever,
+            false,
+        );
     }
 }
 
@@ -4870,7 +4904,7 @@ fn break_panes_to_new_tab(
         });
 
     let tab_id: BreakPanesToNewTabResponse = if result.is_ok() {
-        wait_for_action_completion(rx, "break_panes_to_new_tab", false).affected_tab_id
+        wait_for_action_completion(rx, "break_panes_to_new_tab", false, false).affected_tab_id
     } else {
         None
     };
@@ -4900,7 +4934,8 @@ fn break_panes_to_tab_with_index(
         });
 
     let tab_id: BreakPanesToTabWithIndexResponse = if result.is_ok() {
-        wait_for_action_completion(rx, "break_panes_to_tab_with_index", false).affected_tab_id
+        wait_for_action_completion(rx, "break_panes_to_tab_with_index", false, false)
+            .affected_tab_id
     } else {
         None
     };
@@ -4979,7 +5014,7 @@ fn break_panes_to_tab_with_id(
         });
 
     let result_tab_id: BreakPanesToTabWithIdResponse = if result.is_ok() {
-        wait_for_action_completion(rx, "break_panes_to_tab_with_id", false).affected_tab_id
+        wait_for_action_completion(rx, "break_panes_to_tab_with_id", false, false).affected_tab_id
     } else {
         None
     };
@@ -5317,7 +5352,12 @@ fn replace_pane_with_existing_pane(
             suppress_replaced_pane,
             Some(NotificationEnd::new(completion_tx)),
         ));
-    let _ = wait_for_action_completion(completion_rx, "replace_pane_with_existing_pane", false);
+    let _ = wait_for_action_completion(
+        completion_rx,
+        "replace_pane_with_existing_pane",
+        false,
+        false,
+    );
 }
 
 fn override_layout(
