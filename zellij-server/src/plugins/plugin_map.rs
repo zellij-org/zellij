@@ -27,35 +27,45 @@ use zellij_utils::{data::PermissionType, errors::prelude::*};
 // so when adding/removing from the map - everything is halted, that's life
 // but when cloning the internal RunningPlugin and Subscriptions atomics, we can call methods on
 // them without blocking other instances
+pub type PluginKey = (PluginId, ClientId);
+pub type PluginAssets = (
+    Arc<Mutex<RunningPlugin>>,
+    Arc<Mutex<Subscriptions>>,
+    HashMap<String, UnboundedSender<MessageToWorker>>,
+);
+pub type RemovedPluginAssets = HashMap<PluginKey, PluginAssets>;
+
 #[derive(Default)]
 pub struct PluginMap {
-    plugin_assets: HashMap<
-        (PluginId, ClientId),
-        (
-            Arc<Mutex<RunningPlugin>>,
-            Arc<Mutex<Subscriptions>>,
-            HashMap<String, UnboundedSender<MessageToWorker>>,
-        ),
-    >,
+    plugin_assets: HashMap<PluginKey, PluginAssets>,
 }
 
 impl PluginMap {
-    pub fn remove_plugins(
-        &mut self,
-        pid: PluginId,
-    ) -> HashMap<
-        (PluginId, ClientId),
-        (
-            Arc<Mutex<RunningPlugin>>,
-            Arc<Mutex<Subscriptions>>,
-            HashMap<String, UnboundedSender<MessageToWorker>>,
-        ),
-    > {
+    pub fn remove_plugins(&mut self, pid: PluginId) -> RemovedPluginAssets {
         let mut removed = HashMap::new();
-        let ids_in_plugin_map: Vec<(PluginId, ClientId)> =
-            self.plugin_assets.keys().copied().collect();
+        let ids_in_plugin_map: Vec<PluginKey> = self.plugin_assets.keys().copied().collect();
         for (plugin_id, client_id) in ids_in_plugin_map {
             if pid == plugin_id {
+                if let Some(plugin_asset) = self.plugin_assets.remove(&(plugin_id, client_id)) {
+                    removed.insert((plugin_id, client_id), plugin_asset);
+                }
+            }
+        }
+        removed
+    }
+    pub fn remove_disconnected_plugin_clients(
+        &mut self,
+        plugin_id_to_prune: PluginId,
+        keep_client_id: ClientId,
+        connected_clients: &[ClientId],
+    ) -> RemovedPluginAssets {
+        let mut removed = HashMap::new();
+        let ids_in_plugin_map: Vec<PluginKey> = self.plugin_assets.keys().copied().collect();
+        for (plugin_id, client_id) in ids_in_plugin_map {
+            if plugin_id == plugin_id_to_prune
+                && client_id != keep_client_id
+                && !connected_clients.contains(&client_id)
+            {
                 if let Some(plugin_asset) = self.plugin_assets.remove(&(plugin_id, client_id)) {
                     removed.insert((plugin_id, client_id), plugin_asset);
                 }

@@ -4,7 +4,9 @@ use crate::plugins::pipes::{
     apply_pipe_message_to_plugin, pipes_to_block_or_unblock, PendingPipes, PipeStateChange,
 };
 use crate::plugins::plugin_loader::PluginLoader;
-use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions};
+use crate::plugins::plugin_map::{
+    AtomicEvent, PluginEnv, PluginMap, RemovedPluginAssets, RunningPlugin, Subscriptions,
+};
 
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
@@ -580,6 +582,78 @@ impl WasmBridge {
 
         Ok(())
     }
+    pub fn prune_disconnected_plugin_instances(
+        &mut self,
+        plugin_id_to_prune: PluginId,
+        keep_client_id: ClientId,
+    ) -> Result<()> {
+        let connected_clients = self.connected_clients.lock().unwrap().clone();
+        let plugins_to_cleanup = {
+            let mut plugin_map = self.plugin_map.lock().unwrap();
+            plugin_map.remove_disconnected_plugin_clients(
+                plugin_id_to_prune,
+                keep_client_id,
+                &connected_clients,
+            )
+        };
+
+        self.cleanup_disconnected_plugin_instances(plugins_to_cleanup)
+    }
+
+    fn cleanup_disconnected_plugin_instances(
+        &mut self,
+        plugins_to_cleanup: RemovedPluginAssets,
+    ) -> Result<()> {
+        for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in plugins_to_cleanup
+        {
+            if running_plugin.lock().unwrap().intercepting_key_presses() {
+                let _ = self
+                    .senders
+                    .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(client_id));
+            }
+
+            for (_worker_name, worker_sender) in workers {
+                drop(worker_sender.send(MessageToWorker::Exit));
+            }
+
+            self.plugin_executor.execute_for_plugin(
+                plugin_id,
+                move |_senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
+                    let cache_dir = running_plugin
+                        .lock()
+                        .unwrap()
+                        .store
+                        .data()
+                        .plugin_own_data_dir
+                        .clone();
+                    if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
+                        log::error!("Failed to remove cache dir for plugin: {:?}", e);
+                    }
+
+                    drop(running_plugin);
+                    drop(subscriptions);
+                },
+            );
+
+            let mut pipes_to_unblock = self
+                .pending_pipes
+                .unload_plugin_client(&plugin_id, &client_id);
+            for pipe_name in pipes_to_unblock.drain(..) {
+                let _ = self
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
+                    .context("failed to unblock input pipe");
+            }
+        }
+
+        self.cached_plugin_map.clear();
+        let plugin_list = self.plugin_map.lock().unwrap().list_plugins();
+        let _ = self
+            .senders
+            .send_to_background_jobs(BackgroundJob::ReportPluginList(plugin_list));
+        Ok(())
+    }
+
     pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
         let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id).map(|r| r.clone()) else {
             log::error!("Failed to find plugin with id: {}", plugin_id);
@@ -764,6 +838,12 @@ impl WasmBridge {
                                 plugin_ids: vec![plugin_id],
                                 done_receiving_permissions: false,
                             });
+                            let _ = senders.send_to_plugin(
+                                PluginInstruction::PruneDisconnectedPluginInstances {
+                                    plugin_id,
+                                    keep_client_id: client_id,
+                                },
+                            );
                         },
                         Err(e) => {
                             log::error!("Failed to load plugin for new client: {}", e);
