@@ -19,6 +19,8 @@ use crate::fake_pty::FakePtyHandle;
 use crate::fake_server_os_api::FakeServerOsApi;
 use crate::{keys, test_env};
 
+const GUEST_MODAL_TITLE: &str = "Nested Zellij session detected";
+
 pub struct TestRunner {
     size: Size,
     extra_config_kdl: String,
@@ -413,7 +415,8 @@ impl TestSession {
         self.main_client.wait_until("app to load", |grid_snapshot| {
             (grid_snapshot.status_bar_appears() || grid_snapshot.contains("Descend:"))
                 && grid_snapshot.tab_bar_appears()
-                && grid_snapshot.cursor.is_some()
+                && (grid_snapshot.cursor.is_some()
+                    || grid_snapshot.contains(GUEST_MODAL_TITLE))
         })
     }
 

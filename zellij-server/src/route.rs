@@ -2837,22 +2837,34 @@ pub(crate) fn route_thread_main(
                     }
                     Ok(should_break)
                 };
-                let mut repeat_retries = VecDeque::new();
-                while let Some(instruction_to_retry) = retry_queue.pop_front() {
-                    log::warn!("Server ready, retrying sending instruction.");
-                    thread::sleep(Duration::from_millis(5));
+                // the parked instructions and the one just received form a single
+                // FIFO sequence: the server can become ready in the middle of the
+                // retry pass below, and handing it the fresh instruction while
+                // older ones are still parked would deliver them out of order (a
+                // stale nested AnnounceAck landing after the AncestryUpdate that
+                // supersedes it, for instance). Once one instruction has to be
+                // parked, every instruction behind it is parked too.
+                let retried_count = retry_queue.len();
+                let mut pending_instructions = std::mem::take(&mut retry_queue);
+                pending_instructions.push_back(instruction);
+                let mut deferred_instructions = VecDeque::new();
+                for (index, pending_instruction) in pending_instructions.into_iter().enumerate() {
+                    if !deferred_instructions.is_empty() {
+                        deferred_instructions.push_back(pending_instruction);
+                        continue;
+                    }
+                    if index < retried_count {
+                        log::warn!("Server ready, retrying sending instruction.");
+                        thread::sleep(Duration::from_millis(5));
+                    }
                     let should_break =
-                        handle_instruction(instruction_to_retry, Some(&mut repeat_retries))?;
+                        handle_instruction(pending_instruction, Some(&mut deferred_instructions))?;
                     if should_break {
                         break 'route_loop;
                     }
                 }
                 // retry on loop around
-                retry_queue.append(&mut repeat_retries);
-                let should_break = handle_instruction(instruction, Some(&mut retry_queue))?;
-                if should_break {
-                    break 'route_loop;
-                }
+                retry_queue = deferred_instructions;
             },
             None => {
                 consecutive_unknown_messages_received += 1;

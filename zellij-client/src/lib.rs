@@ -1438,7 +1438,31 @@ pub fn start_client(
             ClientInstruction::ForwardQueryToHost { token, query_bytes } => {
                 // 1. Open a forwarding window on the parser so any reply
                 //    events that arrive before the barrier are captured.
-                stdin_ansi_parser.lock().unwrap().open_forward(token);
+                //    A slot may still be open here: the server's backstop
+                //    timeout can give up on the previous token and dispatch
+                //    this one before this client's per-slot timer got to
+                //    run. Hand that slot over instead of clobbering it.
+                let stale_forward = {
+                    let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
+                    let stale_forward = stdin_ansi_parser.take_active_forward();
+                    stdin_ansi_parser.open_forward(token);
+                    stale_forward
+                };
+                if let Some((stale_token, stale_reply_bytes)) = stale_forward {
+                    log::warn!(
+                        "forward slot for token {} was still open when token {} was dispatched \
+                         ({} accumulated bytes); closing it out",
+                        stale_token,
+                        token,
+                        stale_reply_bytes.len(),
+                    );
+                    let _ = send_input_instructions.send(
+                        InputInstruction::ForwardedReplyFromHostComplete {
+                            token: stale_token,
+                            reply_bytes: stale_reply_bytes,
+                        },
+                    );
+                }
                 // 2. Spawn a per-forward timer on the dedicated async
                 //    runtime. When the deadline fires, the task closes
                 //    the slot (if it's still open for this token) and
