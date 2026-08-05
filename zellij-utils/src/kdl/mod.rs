@@ -86,7 +86,6 @@ macro_rules! parse_kdl_action_arguments {
                 "Confirm" => Ok(Action::Confirm),
                 "Deny" => Ok(Action::Deny),
                 "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
-                "ToggleMobileMode" => Ok(Action::ToggleMobileMode),
                 "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
                 "NextSwapLayout" => Ok(Action::NextSwapLayout),
                 "Clear" => Ok(Action::ClearScreen),
@@ -1269,7 +1268,6 @@ impl Action {
                 Some(node)
             },
             Action::ToggleMouseMode => Some(KdlNode::new("ToggleMouseMode")),
-            Action::ToggleMobileMode => Some(KdlNode::new("ToggleMobileMode")),
             Action::PreviousSwapLayout => Some(KdlNode::new("PreviousSwapLayout")),
             Action::NextSwapLayout => Some(KdlNode::new("NextSwapLayout")),
             Action::BreakPane => Some(KdlNode::new("BreakPane")),
@@ -1631,9 +1629,6 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "ToggleMouseMode" => {
-                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
-            },
-            "ToggleMobileMode" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "Detach" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
@@ -2918,39 +2913,6 @@ impl Options {
         let mouse_click_through =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_click_through")
                 .map(|(v, _)| v);
-        let mobile_layout =
-            match kdl_property_first_arg_as_string_or_error!(kdl_options, "mobile_layout") {
-                Some((value, entry)) => {
-                    use crate::input::options::MobileLayoutConfiguration;
-                    match value.parse::<MobileLayoutConfiguration>() {
-                        Ok(v) => Some(v),
-                        Err(e) => return Err(kdl_parsing_error!(e, entry)),
-                    }
-                },
-                None => None,
-            };
-        let mobile_threshold_cols =
-            match kdl_property_first_arg_as_i64_or_error!(kdl_options, "mobile_threshold_cols") {
-                Some((value, _)) if value >= 0 => Some(value as u16),
-                Some((value, entry)) => {
-                    return Err(kdl_parsing_error!(
-                        format!("mobile_threshold_cols must be >= 0, found '{}'", value),
-                        entry
-                    ));
-                },
-                None => None,
-            };
-        let mobile_threshold_rows =
-            match kdl_property_first_arg_as_i64_or_error!(kdl_options, "mobile_threshold_rows") {
-                Some((value, _)) if value >= 0 => Some(value as u16),
-                Some((value, entry)) => {
-                    return Err(kdl_parsing_error!(
-                        format!("mobile_threshold_rows must be >= 0, found '{}'", value),
-                        entry
-                    ));
-                },
-                None => None,
-            };
         let nested_session_handling = match kdl_property_first_arg_as_string_or_error!(
             kdl_options,
             "nested_session_handling"
@@ -3017,9 +2979,6 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
-            mobile_layout,
-            mobile_threshold_cols,
-            mobile_threshold_rows,
             nested_session_handling,
         })
     }
@@ -4485,94 +4444,6 @@ impl Options {
             None
         }
     }
-    fn mobile_layout_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        use crate::input::options::MobileLayoutConfiguration;
-        let comment_text = format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
-            " ",
-            "// When attached clients land in the mobile UI plugin.",
-            "// Options:",
-            "//   - \"web\" (Default — web clients only, gated on mobile_threshold_cols/rows)",
-            "//   - \"always\" (any client, gated on mobile_threshold_cols/rows)",
-            "//   - \"never\"",
-            "// ",
-        );
-        let create_node = |value: MobileLayoutConfiguration| -> KdlNode {
-            let mut node = KdlNode::new("mobile_layout");
-            let s = match value {
-                MobileLayoutConfiguration::Web => "web",
-                MobileLayoutConfiguration::Always => "always",
-                MobileLayoutConfiguration::Never => "never",
-            };
-            node.push(KdlValue::String(s.to_string()));
-            node
-        };
-        if let Some(value) = self.mobile_layout {
-            let mut node = create_node(value);
-            if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
-            }
-            Some(node)
-        } else if add_comments {
-            let mut node = create_node(MobileLayoutConfiguration::Web);
-            node.set_leading(format!("{}\n// ", comment_text));
-            Some(node)
-        } else {
-            None
-        }
-    }
-    fn mobile_threshold_cols_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!(
-            "{}\n{}\n{}",
-            " ",
-            "// Column breakpoint for mobile_layout (web/always). 0 = always match.",
-            "// Default: 60",
-        );
-        let create_node = |value: u16| -> KdlNode {
-            let mut node = KdlNode::new("mobile_threshold_cols");
-            node.push(KdlValue::Base10(value as i64));
-            node
-        };
-        if let Some(value) = self.mobile_threshold_cols {
-            let mut node = create_node(value);
-            if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
-            }
-            Some(node)
-        } else if add_comments {
-            let mut node = create_node(60);
-            node.set_leading(format!("{}\n// ", comment_text));
-            Some(node)
-        } else {
-            None
-        }
-    }
-    fn mobile_threshold_rows_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!(
-            "{}\n{}\n{}",
-            " ",
-            "// Row breakpoint for mobile_layout (web/always). 0 = always match.",
-            "// Default: 30",
-        );
-        let create_node = |value: u16| -> KdlNode {
-            let mut node = KdlNode::new("mobile_threshold_rows");
-            node.push(KdlValue::Base10(value as i64));
-            node
-        };
-        if let Some(value) = self.mobile_threshold_rows {
-            let mut node = create_node(value);
-            if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
-            }
-            Some(node)
-        } else if add_comments {
-            let mut node = create_node(30);
-            node.set_leading(format!("{}\n// ", comment_text));
-            Some(node)
-        } else {
-            None
-        }
-    }
     fn nested_session_handling_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         use crate::input::options::NestedSessionHandling;
         let comment_text = format!(
@@ -4802,15 +4673,6 @@ impl Options {
         if let Some(client_async_worker_tasks) = self.client_async_worker_tasks_to_kdl(add_comments)
         {
             nodes.push(client_async_worker_tasks);
-        }
-        if let Some(mobile_layout) = self.mobile_layout_to_kdl(add_comments) {
-            nodes.push(mobile_layout);
-        }
-        if let Some(mobile_threshold_cols) = self.mobile_threshold_cols_to_kdl(add_comments) {
-            nodes.push(mobile_threshold_cols);
-        }
-        if let Some(mobile_threshold_rows) = self.mobile_threshold_rows_to_kdl(add_comments) {
-            nodes.push(mobile_threshold_rows);
         }
         if let Some(nested_session_handling) = self.nested_session_handling_to_kdl(add_comments) {
             nodes.push(nested_session_handling);
@@ -7582,9 +7444,6 @@ fn config_options_to_string() {
         support_kitty_keyboard_protocol false
         web_server true
         web_sharing "disabled"
-        mobile_layout "always"
-        mobile_threshold_cols 72
-        mobile_threshold_rows 0
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();
@@ -7632,9 +7491,6 @@ fn config_options_to_string_with_comments() {
         support_kitty_keyboard_protocol false
         web_server true
         web_sharing "disabled"
-        mobile_layout "always"
-        mobile_threshold_cols 72
-        mobile_threshold_rows 0
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();
@@ -7669,36 +7525,6 @@ fn config_options_to_string_without_options() {
 }
 
 #[test]
-fn mobile_layout_kdl_round_trip_for_every_variant() {
-    use crate::input::options::MobileLayoutConfiguration;
-    let cases = [
-        ("web", MobileLayoutConfiguration::Web, (60, 30)),
-        ("always", MobileLayoutConfiguration::Always, (0, 0)),
-        ("never", MobileLayoutConfiguration::Never, (40, 0)),
-    ];
-    for (value, expected, (cols, rows)) in cases {
-        let fake_config = format!(
-            r##"
-                mobile_layout "{value}"
-                mobile_threshold_cols {cols}
-                mobile_threshold_rows {rows}
-            "##
-        );
-        let document: KdlDocument = fake_config.parse().unwrap();
-        let parsed = Options::from_kdl(&document).unwrap();
-        assert_eq!(parsed.mobile_layout, Some(expected), "case: {value}");
-        assert_eq!(parsed.mobile_threshold_cols, Some(cols), "case: {value}");
-        assert_eq!(parsed.mobile_threshold_rows, Some(rows), "case: {value}");
-
-        let mut serialized = Options::to_kdl(&parsed, false);
-        let mut fake_document = KdlDocument::new();
-        fake_document.nodes_mut().append(&mut serialized);
-        let reparsed =
-            Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
-        assert_eq!(parsed, reparsed, "round-trip mismatch for {value}");
-    }
-}
-
 #[test]
 fn nested_session_handling_kdl_round_trip_for_every_variant() {
     use crate::input::options::NestedSessionHandling;

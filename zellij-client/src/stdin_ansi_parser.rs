@@ -332,11 +332,13 @@ impl StdinAnsiParser {
     /// classified `HostReply` events.
     ///
     /// The server serializes forwarded queries globally (`forward_in_flight`
-    /// on `Screen`), so in a well-behaved session this is only ever called
-    /// when the slot is empty. The guards below catch a misbehaving server
-    /// or a race that reached through: debug builds panic so bugs surface
-    /// during testing, release builds log and clobber the previous slot
-    /// (whose accumulated bytes would otherwise silently leak).
+    /// on `Screen`), but its own backstop timeout can release that slot and
+    /// dispatch the next query before this client's per-slot timer has run,
+    /// so callers hand a still-open slot over with `take_active_forward`
+    /// first. The guards below catch a caller that skipped that handover:
+    /// debug builds panic so bugs surface during testing, release builds
+    /// log and clobber the previous slot (whose accumulated bytes would
+    /// otherwise silently leak).
     pub fn open_forward(&mut self, token: u32) {
         debug_assert!(
             self.active_forward.is_none(),
@@ -369,6 +371,16 @@ impl StdinAnsiParser {
             },
             _ => None,
         }
+    }
+
+    /// Close whatever forwarding window is currently open, whichever token
+    /// it belongs to, and return its token together with the bytes it
+    /// accumulated. Used to hand a slot the server has already given up on
+    /// over to the forward that replaced it, instead of clobbering it.
+    pub fn take_active_forward(&mut self) -> Option<(u32, Vec<u8>)> {
+        self.active_forward
+            .take()
+            .map(|slot| (slot.token, slot.reply_bytes))
     }
 
     /// Currently-open slot's token, if any. Test-only inspector;

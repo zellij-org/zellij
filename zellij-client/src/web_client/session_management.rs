@@ -13,12 +13,12 @@ use zellij_utils::{
 
 pub fn build_initial_connection(
     session_name: Option<String>,
+    is_welcome_session: bool,
     config: &Config,
 ) -> Result<Option<ConnectToSession>, &'static str> {
-    let should_start_with_welcome_screen = session_name.is_none();
     let default_layout_from_config =
         LayoutInfo::from_config(&config.options.layout_dir, &config.options.default_layout);
-    if should_start_with_welcome_screen {
+    if is_welcome_session {
         let Some(initial_session_name) = session_name.clone().or_else(generate_unique_session_name)
         else {
             return Err("Failed to generate unique session name, bailing.");

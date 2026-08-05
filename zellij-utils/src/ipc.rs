@@ -81,14 +81,6 @@ pub struct ColorRegister {
     pub color: String,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ResizeCause {
-    #[default]
-    Viewport,
-    RenderingPreference,
-    SizeSettled,
-}
-
 impl PixelDimensions {
     pub fn merge(&mut self, other: PixelDimensions) {
         if let Some(text_area_size) = other.text_area_size {
@@ -98,6 +90,67 @@ impl PixelDimensions {
             self.character_cell_size = Some(character_cell_size);
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileSizePayload {
+    pub cols: usize,
+    pub rows: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileActivePanePayload {
+    pub pane_id: u32,
+    pub is_plugin: bool,
+    pub tab_position: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileTabPayload {
+    pub position: usize,
+    pub name: String,
+    pub active: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobilePanePayload {
+    pub tab_position: usize,
+    pub pane_id: u32,
+    pub is_plugin: bool,
+    pub title: String,
+    pub is_floating: bool,
+    pub last_activity_secs_ago: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileSessionPayload {
+    pub name: String,
+    pub web_clients_allowed: bool,
+    pub tab_count: usize,
+    pub pane_count: usize,
+    pub connected_clients: usize,
+    pub creation_secs_ago: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileRenderPrefsPayload {
+    pub single_pane: bool,
+    pub fit: bool,
+    pub active_pane_is_fullscreen: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileStatePayload {
+    pub session_name: String,
+    pub now_secs: u64,
+    pub is_welcome_screen: bool,
+    pub desktop_client_connected: bool,
+    pub desktop_size: Option<MobileSizePayload>,
+    pub active_pane: Option<MobileActivePanePayload>,
+    pub tabs: Vec<MobileTabPayload>,
+    pub panes: Vec<MobilePanePayload>,
+    pub sessions: Vec<MobileSessionPayload>,
+    pub render_prefs: MobileRenderPrefsPayload,
 }
 
 // Types of messages sent from the client to the server
@@ -121,8 +174,6 @@ pub enum ClientToServerMsg {
     },
     TerminalResize {
         new_size: Size,
-        #[serde(default)]
-        cause: ResizeCause,
     },
     FirstClientConnected {
         cli_assets: CliAssets,
@@ -185,6 +236,11 @@ pub enum ClientToServerMsg {
     SixelSupport {
         supported: bool,
     },
+    RequestSessionList,
+    SetMobileRenderPreferences {
+        single_pane: bool,
+        fit: bool,
+    },
 }
 
 // Types of messages sent from the server to the client
@@ -238,6 +294,9 @@ pub enum ServerToClientMsg {
     },
     EmitNestedSessionFrame {
         payload_bytes: Vec<u8>,
+    },
+    MobileState {
+        payload: MobileStatePayload,
     },
 }
 

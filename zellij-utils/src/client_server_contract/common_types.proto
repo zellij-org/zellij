@@ -135,6 +135,7 @@ enum AnsiCode {
 }
 
 message Action {
+  reserved 140;
   oneof action_type {
     QuitAction quit = 1;
     WriteAction write = 2;
@@ -277,7 +278,6 @@ message Action {
     SetDarkThemeAction set_dark_theme = 137;
     SetLightThemeAction set_light_theme = 138;
     ToggleThemeAction toggle_theme = 139;
-    ToggleMobileModeAction toggle_mobile_mode = 140;
     FocusLastPaneAction focus_last_pane = 141;
     SetPaneFrameStyleAction set_pane_frame_style = 142;
     ToggleFocusNoUiFullscreenAction toggle_focus_no_ui_fullscreen = 143;
@@ -348,7 +348,6 @@ message CopyAction {}
 message ConfirmAction {}
 message DenyAction {}
 message ToggleMouseModeAction {}
-message ToggleMobileModeAction {}
 message PreviousSwapLayoutAction {}
 message NextSwapLayoutAction {}
 message TabLayoutInfo {
@@ -1204,9 +1203,7 @@ message Options {
   optional bool mouse_click_through = 45;
   optional string theme_dark = 46;
   optional string theme_light = 47;
-  optional MobileLayout mobile_layout = 48;
-  optional uint32 mobile_threshold_cols = 49;
-  optional uint32 mobile_threshold_rows = 50;
+  reserved 48, 49, 50;
   optional string pane_frame_style = 51;
   optional bool stacked_pane_list = 52;
   optional NestedSessionHandling nested_session_handling = 53;
@@ -1239,13 +1236,6 @@ enum WebSharing {
   WEB_SHARING_DISABLED = 3;
 }
 
-enum MobileLayout {
-  MOBILE_LAYOUT_UNSPECIFIED = 0;
-  MOBILE_LAYOUT_WEB = 1;
-  MOBILE_LAYOUT_ALWAYS = 2;
-  MOBILE_LAYOUT_NEVER = 3;
-}
-
 enum NestedSessionHandling {
   NESTED_SESSION_HANDLING_UNSPECIFIED = 0;
   NESTED_SESSION_HANDLING_ASK = 1;
@@ -1253,6 +1243,7 @@ enum NestedSessionHandling {
   NESTED_SESSION_HANDLING_DESCEND = 3;
   NESTED_SESSION_HANDLING_NEVER = 4;
 }
+
 
 // Pane-targeting action messages
 message ScrollUpByPaneIdAction { PaneId pane_id = 1; }

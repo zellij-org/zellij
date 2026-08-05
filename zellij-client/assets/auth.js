@@ -29,96 +29,102 @@ async function waitForSecurityToken() {
 }
 
 /**
- * Get client ID from server after authentication
+ * Perform the login exchange with the server
  * @param {string} token - Authentication token
  * @param {boolean} rememberMe - Remember login preference
- * @param {boolean} hasAuthenticationCookie - Whether auth cookie exists
- * @returns {Promise<string|null>} Client ID or null on failure
+ * @returns {Promise<boolean>} true when the login succeeded
  */
-export async function getClientId(token, rememberMe, hasAuthenticationCookie) {
+async function login(token, rememberMe) {
     const baseUrl = getBaseUrl();
-
-    if (!hasAuthenticationCookie) {
-        let login_res = await fetch(`${baseUrl}/command/login`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                auth_token: token,
-                remember_me: rememberMe ? true : false,
-            }),
-            credentials: "include",
-        });
-
-        if (login_res.status === 401) {
-            await showErrorModal(
-                "Error",
-                "Unauthorized or revoked login token."
-            );
-            return null;
-        } else if (!login_res.ok) {
-            await showErrorModal(
-                "Error",
-                `Error ${login_res.status} connecting to server.`
-            );
-            return null;
-        }
-    }
-
-    let data = await fetch(`${baseUrl}/session`, {
+    let login_res = await fetch(`${baseUrl}/command/login`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+            auth_token: token,
+            remember_me: rememberMe ? true : false,
+        }),
+        credentials: "include",
     });
 
-    if (data.status === 401) {
+    if (login_res.status === 401) {
         await showErrorModal("Error", "Unauthorized or revoked login token.");
-        return null;
-    } else if (!data.ok) {
+        return false;
+    } else if (!login_res.ok) {
         await showErrorModal(
             "Error",
-            `Error ${data.status} connecting to server.`
+            `Error ${login_res.status} connecting to server.`
         );
-        return null;
-    } else {
-        let body = await data.json();
-        return body.web_client_id;
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Perform a request, authenticating and retrying for as long as it is rejected.
+ * @param {string} url - Absolute URL to request
+ * @param {Object} options - fetch options, merged over the credentialed defaults
+ * @returns {Promise<Response>} The successful response
+ */
+export async function authorizedFetch(url, options = {}) {
+    while (true) {
+        const response = await fetch(url, {
+            credentials: "include",
+            ...options,
+        });
+
+        if (response.ok) {
+            return response;
+        }
+
+        if (response.status !== 401) {
+            await showErrorModal(
+                "Error",
+                `Error ${response.status} connecting to server.`
+            );
+        }
+
+        const { token, remember } = await waitForSecurityToken();
+        await login(token, remember);
     }
 }
 
 /**
- * Initialize authentication flow and return client ID
- * @returns {Promise<string>} Client ID
+ * Request a session from the server, authenticating first if required.
+ * @param {string} sessionFromPath - Session name taken from the URL path
+ * @param {Object} options - `{ welcome: boolean }`, welcome defaulting to true
+ * @returns {Promise<Object>} The full session bootstrap payload
  */
-export async function initAuthentication() {
-    let token = null;
-    let remember = null;
-    let hasAuthenticationCookie = document.body.dataset.authenticated === "true";
-
-    if (!hasAuthenticationCookie) {
-        const tokenResult = await waitForSecurityToken();
-        token = tokenResult.token;
-        remember = tokenResult.remember;
+export async function fetchSession(sessionFromPath, options = {}) {
+    const baseUrl = getBaseUrl();
+    const params = new URLSearchParams();
+    if (sessionFromPath) {
+        params.set("session", sessionFromPath);
     }
-
-    let webClientId;
-
-    while (!webClientId) {
-        webClientId = await getClientId(
-            token,
-            remember,
-            hasAuthenticationCookie
-        );
-        if (!webClientId) {
-            hasAuthenticationCookie = false;
-            const tokenResult = await waitForSecurityToken();
-            token = tokenResult.token;
-            remember = tokenResult.remember;
-        }
+    if (options.welcome === false) {
+        params.set("welcome", "false");
     }
+    const query = params.toString() ? `?${params.toString()}` : "";
 
-    return webClientId;
+    const response = await authorizedFetch(`${baseUrl}/session${query}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+    });
+    return await response.json();
+}
+
+/**
+ * Fetch the list of live sessions without attaching to any of them.
+ * @returns {Promise<Array<Object>>} The session descriptors
+ */
+export async function fetchSessionList() {
+    const baseUrl = getBaseUrl();
+    const response = await authorizedFetch(`${baseUrl}/session-list`, {
+        method: "GET",
+    });
+    const payload = await response.json();
+    return payload.sessions || [];
 }

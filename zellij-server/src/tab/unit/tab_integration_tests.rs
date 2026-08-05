@@ -283,7 +283,6 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -381,7 +380,6 @@ fn create_new_tab_with_stacked_pane_list(
         false,
         web_server_ip,
         web_server_port,
-        0,
     );
     let (base_layout, new_terminal_ids) =
         base_layout_and_ids.unwrap_or_else(|| (TiledPaneLayout::default(), vec![(1, None)]));
@@ -475,7 +473,6 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -586,7 +583,6 @@ fn create_new_tab_with_swap_layouts(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     let (
         base_layout,
@@ -694,7 +690,6 @@ fn create_new_tab_with_os_api(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -788,7 +783,6 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     let pane_ids = tab_layout
         .extract_run_instructions()
@@ -896,7 +890,6 @@ fn create_new_tab_with_mock_pty_writer(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -995,7 +988,6 @@ fn create_new_tab_with_sixel_support(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -13373,7 +13365,6 @@ fn create_new_tab_with_plugin_receiver(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -15161,7 +15152,6 @@ fn create_new_tab_with_server_receiver(
         false, // mouse_click_through
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         8080,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),

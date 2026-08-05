@@ -141,9 +141,6 @@ Config {
         enforce_https_for_localhost: None,
         post_command_discovery_hook: None,
         client_async_worker_tasks: None,
-        mobile_layout: None,
-        mobile_threshold_cols: None,
-        mobile_threshold_rows: None,
         nested_session_handling: None,
     },
     themes: {},
@@ -198,18 +195,6 @@ Config {
                 initial_cwd: Some(
                     "/",
                 ),
-            },
-            "mobile": RunPlugin {
-                _allow_exec_host_cmd: false,
-                location: Zellij(
-                    PluginTag(
-                        "mobile",
-                    ),
-                ),
-                configuration: PluginUserConfiguration(
-                    {},
-                ),
-                initial_cwd: None,
             },
             "plugin-manager": RunPlugin {
                 _allow_exec_host_cmd: false,

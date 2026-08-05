@@ -1,5 +1,5 @@
 use crate::ipc::{
-    ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ResizeCause, ServerToClientMsg,
+    ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg,
 };
 use crate::pane_size::Size;
 use interprocess::local_socket::{prelude::*, ListenerOptions};
@@ -217,7 +217,6 @@ fn multiple_messages_in_sequence() {
                         rows: 50,
                         cols: 120,
                     },
-                    cause: ResizeCause::Viewport,
                 })
                 .expect("send 2 failed");
             sender
@@ -235,10 +234,9 @@ fn multiple_messages_in_sequence() {
 
     let (msg2, _) = receiver.recv_client_msg().expect("missing message 2");
     match msg2 {
-        ClientToServerMsg::TerminalResize { new_size, cause } => {
+        ClientToServerMsg::TerminalResize { new_size } => {
             assert_eq!(new_size.rows, 50);
             assert_eq!(new_size.cols, 120);
-            assert_eq!(cause, ResizeCause::Viewport);
         },
         other => panic!("expected TerminalResize, got: {:?}", other),
     }

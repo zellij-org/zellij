@@ -41,6 +41,12 @@ xflags::xflags! {
 
         cmd proto {}
 
+        /// Bundle the web client frontend assets
+        cmd assets {
+            /// Verify the checked-in assets are up to date instead of writing them
+            optional --check
+        }
+
         /// Publish zellij and all the sub-crates
         cmd publish {
             /// Perform a dry-run (don't push/publish anything)
@@ -143,6 +149,7 @@ pub enum XtaskCmd {
     Deprecated(Deprecated),
     Ci(Ci),
     Proto(Proto),
+    Assets(Assets),
     Publish(Publish),
     Make(Make),
     Install(Install),
@@ -192,6 +199,11 @@ pub struct BuildRelease {
 
 #[derive(Debug)]
 pub struct Proto;
+
+#[derive(Debug)]
+pub struct Assets {
+    pub check: bool,
+}
 
 #[derive(Debug)]
 pub struct Publish {

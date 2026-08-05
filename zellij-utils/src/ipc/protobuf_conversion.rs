@@ -11,10 +11,12 @@ use crate::{
         ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, KittyGraphicsSupportMsg,
-        LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg, NestedSessionFrameFromHostMsg,
-        PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, QueryTerminalSizeMsg,
-        RenamedSessionMsg, RenderMsg, ResizeCause as ProtoResizeCause,
-        ServerToClientMsg as ProtoServerToClientMsg, SetSoftKeyboardMsg, SixelSupportMsg,
+        LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg, MobileActivePaneMsg,
+        MobilePaneMsg, MobileRenderPrefsMsg, MobileSessionMsg, MobileSizeMsg, MobileStateMsg,
+        MobileTabMsg, NestedSessionFrameFromHostMsg, PaneMetadata as ProtoPaneMetadata,
+        PaneRenderUpdateMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
+        RequestSessionListMsg, ServerToClientMsg as ProtoServerToClientMsg,
+        SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg, SixelSupportMsg,
         SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
         SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
         TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
@@ -23,8 +25,9 @@ use crate::{
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
     ipc::{
-        ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ResizeCause,
-        ServerToClientMsg,
+        ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
+        MobileRenderPrefsPayload, MobileSessionPayload, MobileSizePayload, MobileStatePayload,
+        MobileTabPayload, PaneReference, PixelDimensions, ServerToClientMsg,
     },
 };
 use std::collections::BTreeMap;
@@ -55,11 +58,9 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     color_registers: color_registers.into_iter().map(|cr| cr.into()).collect(),
                 })
             },
-            ClientToServerMsg::TerminalResize { new_size, cause } => {
-                let cause_proto: ProtoResizeCause = cause.into();
+            ClientToServerMsg::TerminalResize { new_size } => {
                 client_to_server_msg::Message::TerminalResize(TerminalResizeMsg {
                     new_size: Some(new_size.into()),
-                    cause: cause_proto as i32,
                 })
             },
             ClientToServerMsg::FirstClientConnected {
@@ -170,6 +171,14 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             ClientToServerMsg::SixelSupport { supported } => {
                 client_to_server_msg::Message::SixelSupport(SixelSupportMsg { supported })
             },
+            ClientToServerMsg::RequestSessionList => {
+                client_to_server_msg::Message::RequestSessionList(RequestSessionListMsg {})
+            },
+            ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit } => {
+                client_to_server_msg::Message::SetMobileRenderPreferences(
+                    SetMobileRenderPreferencesMsg { single_pane, fit },
+                )
+            },
         };
 
         ProtoClientToServerMsg {
@@ -217,15 +226,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 })
             },
             Some(client_to_server_msg::Message::TerminalResize(resize)) => {
-                let cause = ProtoResizeCause::from_i32(resize.cause)
-                    .unwrap_or(ProtoResizeCause::Viewport)
-                    .into();
                 Ok(ClientToServerMsg::TerminalResize {
                     new_size: resize
                         .new_size
                         .ok_or_else(|| anyhow!("Missing new_size"))?
                         .try_into()?,
-                    cause,
                 })
             },
             Some(client_to_server_msg::Message::FirstClientConnected(first_client)) => {
@@ -335,6 +340,15 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     supported: msg.supported,
                 })
             },
+            Some(client_to_server_msg::Message::RequestSessionList(_)) => {
+                Ok(ClientToServerMsg::RequestSessionList)
+            },
+            Some(client_to_server_msg::Message::SetMobileRenderPreferences(msg)) => {
+                Ok(ClientToServerMsg::SetMobileRenderPreferences {
+                    single_pane: msg.single_pane,
+                    fit: msg.fit,
+                })
+            },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
     }
@@ -428,11 +442,133 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
                     payload_bytes,
                 })
             },
+            ServerToClientMsg::MobileState { payload } => {
+                server_to_client_msg::Message::MobileState(mobile_state_payload_to_proto(payload))
+            },
         };
 
         ProtoServerToClientMsg {
             message: Some(message),
         }
+    }
+}
+
+fn mobile_state_payload_to_proto(payload: MobileStatePayload) -> MobileStateMsg {
+    MobileStateMsg {
+        session_name: payload.session_name,
+        now_secs: payload.now_secs,
+        is_welcome_screen: payload.is_welcome_screen,
+        desktop_client_connected: payload.desktop_client_connected,
+        desktop_size: payload.desktop_size.map(|s| MobileSizeMsg {
+            cols: s.cols as u32,
+            rows: s.rows as u32,
+        }),
+        active_pane: payload.active_pane.map(|p| MobileActivePaneMsg {
+            pane_id: p.pane_id,
+            is_plugin: p.is_plugin,
+            tab_position: p.tab_position as u32,
+        }),
+        tabs: payload
+            .tabs
+            .into_iter()
+            .map(|t| MobileTabMsg {
+                position: t.position as u32,
+                name: t.name,
+                active: t.active,
+            })
+            .collect(),
+        panes: payload
+            .panes
+            .into_iter()
+            .map(|p| MobilePaneMsg {
+                tab_position: p.tab_position as u32,
+                pane_id: p.pane_id,
+                is_plugin: p.is_plugin,
+                title: p.title,
+                is_floating: p.is_floating,
+                last_activity_secs_ago: p.last_activity_secs_ago,
+            })
+            .collect(),
+        sessions: payload
+            .sessions
+            .into_iter()
+            .map(|s| MobileSessionMsg {
+                name: s.name,
+                web_clients_allowed: s.web_clients_allowed,
+                tab_count: s.tab_count as u32,
+                pane_count: s.pane_count as u32,
+                connected_clients: s.connected_clients as u32,
+                creation_secs_ago: s.creation_secs_ago,
+            })
+            .collect(),
+        render_prefs: Some(MobileRenderPrefsMsg {
+            single_pane: payload.render_prefs.single_pane,
+            fit: payload.render_prefs.fit,
+            active_pane_is_fullscreen: payload.render_prefs.active_pane_is_fullscreen,
+        }),
+    }
+}
+
+fn mobile_state_payload_from_proto(msg: MobileStateMsg) -> MobileStatePayload {
+    MobileStatePayload {
+        session_name: msg.session_name,
+        now_secs: msg.now_secs,
+        is_welcome_screen: msg.is_welcome_screen,
+        desktop_client_connected: msg.desktop_client_connected,
+        desktop_size: msg.desktop_size.map(|s| MobileSizePayload {
+            cols: s.cols as usize,
+            rows: s.rows as usize,
+        }),
+        active_pane: msg.active_pane.map(|p| MobileActivePanePayload {
+            pane_id: p.pane_id,
+            is_plugin: p.is_plugin,
+            tab_position: p.tab_position as usize,
+        }),
+        tabs: msg
+            .tabs
+            .into_iter()
+            .map(|t| MobileTabPayload {
+                position: t.position as usize,
+                name: t.name,
+                active: t.active,
+            })
+            .collect(),
+        panes: msg
+            .panes
+            .into_iter()
+            .map(|p| MobilePanePayload {
+                tab_position: p.tab_position as usize,
+                pane_id: p.pane_id,
+                is_plugin: p.is_plugin,
+                title: p.title,
+                is_floating: p.is_floating,
+                last_activity_secs_ago: p.last_activity_secs_ago,
+            })
+            .collect(),
+        sessions: msg
+            .sessions
+            .into_iter()
+            .map(|s| MobileSessionPayload {
+                name: s.name,
+                web_clients_allowed: s.web_clients_allowed,
+                tab_count: s.tab_count as usize,
+                pane_count: s.pane_count as usize,
+                connected_clients: s.connected_clients as usize,
+                creation_secs_ago: s.creation_secs_ago,
+            })
+            .collect(),
+        render_prefs: msg
+            .render_prefs
+            .map(|p| MobileRenderPrefsPayload {
+                single_pane: p.single_pane,
+                fit: p.fit,
+                active_pane_is_fullscreen: p.active_pane_is_fullscreen,
+            })
+            .unwrap_or(MobileRenderPrefsPayload {
+                single_pane: true,
+                fit: true,
+                active_pane_is_fullscreen: false,
+            }),
     }
 }
 
@@ -546,6 +682,11 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             Some(server_to_client_msg::Message::EmitNestedSessionFrame(msg)) => {
                 Ok(ServerToClientMsg::EmitNestedSessionFrame {
                     payload_bytes: msg.payload_bytes,
+                })
+            },
+            Some(server_to_client_msg::Message::MobileState(msg)) => {
+                Ok(ServerToClientMsg::MobileState {
+                    payload: mobile_state_payload_from_proto(msg),
                 })
             },
             None => Err(anyhow!("Empty ServerToClientMsg message")),
@@ -799,17 +940,6 @@ impl From<crate::input::options::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
-            mobile_layout: options.mobile_layout.map(|m| {
-                use crate::client_server_contract::client_server_contract::MobileLayout as ProtoMobileLayout;
-                use crate::input::options::MobileLayoutConfiguration;
-                match m {
-                    MobileLayoutConfiguration::Web => ProtoMobileLayout::Web as i32,
-                    MobileLayoutConfiguration::Always => ProtoMobileLayout::Always as i32,
-                    MobileLayoutConfiguration::Never => ProtoMobileLayout::Never as i32,
-                }
-            }),
-            mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u32),
-            mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u32),
             pane_frame_style: options.pane_frame_style.map(|s| match s {
                 crate::input::options::PaneFrameStyle::Full => "full".to_owned(),
                 crate::input::options::PaneFrameStyle::Titles => "titles".to_owned(),
@@ -839,9 +969,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
         options: crate::client_server_contract::client_server_contract::Options,
     ) -> Result<Self> {
         use crate::client_server_contract::client_server_contract::{
-            Clipboard as ProtoClipboard, MobileLayout as ProtoMobileLayout,
-            NestedSessionHandling as ProtoNestedSessionHandling, OnForceClose as ProtoOnForceClose,
-            WebSharing as ProtoWebSharing,
+            Clipboard as ProtoClipboard, NestedSessionHandling as ProtoNestedSessionHandling,
+            OnForceClose as ProtoOnForceClose, WebSharing as ProtoWebSharing,
         };
 
         Ok(Self {
@@ -934,23 +1063,6 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
-            mobile_layout: options
-                .mobile_layout
-                .map(|m| match ProtoMobileLayout::from_i32(m) {
-                    Some(ProtoMobileLayout::Web) => {
-                        Ok(crate::input::options::MobileLayoutConfiguration::Web)
-                    },
-                    Some(ProtoMobileLayout::Always) => {
-                        Ok(crate::input::options::MobileLayoutConfiguration::Always)
-                    },
-                    Some(ProtoMobileLayout::Never) => {
-                        Ok(crate::input::options::MobileLayoutConfiguration::Never)
-                    },
-                    _ => Err(anyhow!("Invalid MobileLayout value: {}", m)),
-                })
-                .transpose()?,
-            mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u16),
-            mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u16),
             nested_session_handling: options
                 .nested_session_handling
                 .map(|n| match ProtoNestedSessionHandling::from_i32(n) {
@@ -1607,9 +1719,6 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ToggleMouseMode => {
                 ActionType::ToggleMouseMode(ToggleMouseModeAction {})
             },
-            crate::input::actions::Action::ToggleMobileMode => ActionType::ToggleMobileMode(
-                crate::client_server_contract::client_server_contract::ToggleMobileModeAction {},
-            ),
             crate::input::actions::Action::PreviousSwapLayout => {
                 ActionType::PreviousSwapLayout(PreviousSwapLayoutAction {})
             },
@@ -2505,7 +2614,6 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::ToggleMouseMode(_) => Ok(crate::input::actions::Action::ToggleMouseMode),
-            ActionType::ToggleMobileMode(_) => Ok(crate::input::actions::Action::ToggleMobileMode),
             ActionType::PreviousSwapLayout(_) => {
                 Ok(crate::input::actions::Action::PreviousSwapLayout)
             },
@@ -3249,26 +3357,6 @@ impl TryFrom<ProtoExitReason> for ExitReason {
             ProtoExitReason::Error => Ok(ExitReason::Error("Protobuf error".to_string())),
             ProtoExitReason::CustomExitStatus => Ok(ExitReason::CustomExitStatus(0)),
             ProtoExitReason::Unspecified => Err(anyhow!("Unspecified exit reason")),
-        }
-    }
-}
-
-impl From<ResizeCause> for ProtoResizeCause {
-    fn from(cause: ResizeCause) -> Self {
-        match cause {
-            ResizeCause::Viewport => ProtoResizeCause::Viewport,
-            ResizeCause::RenderingPreference => ProtoResizeCause::RenderingPreference,
-            ResizeCause::SizeSettled => ProtoResizeCause::SizeSettled,
-        }
-    }
-}
-
-impl From<ProtoResizeCause> for ResizeCause {
-    fn from(cause: ProtoResizeCause) -> Self {
-        match cause {
-            ProtoResizeCause::Viewport => ResizeCause::Viewport,
-            ProtoResizeCause::RenderingPreference => ResizeCause::RenderingPreference,
-            ProtoResizeCause::SizeSettled => ResizeCause::SizeSettled,
         }
     }
 }
