@@ -435,6 +435,10 @@ pub enum ScreenInstruction {
     HalfPageScrollUp(ClientId, Option<NotificationEnd>),
     HalfPageScrollDown(ClientId, Option<NotificationEnd>),
     ClearScroll(ClientId),
+    /// Same as `ClearScroll`, but for a specific pane rather than whichever
+    /// pane a client_id's focus resolves to — used by pane-id-addressed
+    /// writes, which already know exactly which pane they're targeting.
+    ClearScrollForPaneId(PaneId),
     CloseFocusedPane(ClientId, Option<NotificationEnd>),
     ToggleActiveTerminalFullscreen(ClientId, Option<NotificationEnd>),
     ToggleActiveTerminalNoUiFullscreen(ClientId, Option<NotificationEnd>),
@@ -1010,6 +1014,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::HalfPageScrollUp(..) => ScreenContext::HalfPageScrollUp,
             ScreenInstruction::HalfPageScrollDown(..) => ScreenContext::HalfPageScrollDown,
             ScreenInstruction::ClearScroll(..) => ScreenContext::ClearScroll,
+            ScreenInstruction::ClearScrollForPaneId(..) => ScreenContext::ClearScrollForPaneId,
             ScreenInstruction::CloseFocusedPane(..) => ScreenContext::CloseFocusedPane,
             ScreenInstruction::ToggleActiveTerminalFullscreen(..) => {
                 ScreenContext::ToggleActiveTerminalFullscreen
@@ -8824,6 +8829,16 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab
                         .clear_active_terminal_scroll(client_id), ?
                 );
+                screen.render(None)?;
+            },
+            ScreenInstruction::ClearScrollForPaneId(pane_id) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.clear_scroll_for_pane_id(pane_id)?;
+                        break;
+                    }
+                }
                 screen.render(None)?;
             },
             ScreenInstruction::CloseFocusedPane(client_id, completion_tx) => {

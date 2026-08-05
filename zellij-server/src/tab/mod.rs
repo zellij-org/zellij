@@ -6299,6 +6299,30 @@ impl Tab {
         }
         Ok(())
     }
+    /// Same as `clear_active_terminal_scroll`, but for a specific pane
+    /// rather than whichever pane a client_id's focus happens to resolve
+    /// to. Used by pane-id-addressed writes (`WriteToPaneId`), which
+    /// already know exactly which pane they're targeting and have no
+    /// business going through client-focus resolution to find it.
+    pub fn clear_scroll_for_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
+        let err_context = || format!("failed to clear scroll in pane {pane_id:?}");
+
+        let active_pane = self
+            .floating_panes
+            .get_mut(&pane_id)
+            .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
+            .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1));
+        if let Some(active_pane) = active_pane {
+            active_pane.clear_scroll();
+            if !active_pane.is_scrolled() {
+                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
+                    self.process_pending_vte_events(raw_fd)
+                        .with_context(err_context)?;
+                }
+            }
+        }
+        Ok(())
+    }
 
     pub fn handle_scrollwheel_up(
         &mut self,

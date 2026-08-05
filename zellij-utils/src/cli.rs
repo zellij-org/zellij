@@ -154,6 +154,26 @@ pub enum Command {
         "zellij [--session <OTHER SESSION NAME>] subscribe [OPTIONS] --pane-id..."
     ))]
     Subscribe(SubscribeCli),
+
+    /// Start the WebSocket remote-control API server
+    #[clap(name = "api-server")]
+    ApiServer(ApiServerCli),
+}
+
+#[derive(Debug, Parser, Clone, Serialize, Deserialize)]
+pub struct ApiServerCli {
+    /// Address to bind the API server to
+    #[clap(long, default_value = "127.0.0.1")]
+    pub bind: String,
+
+    /// Port to listen on
+    #[clap(short, long, default_value = "8787")]
+    pub port: u16,
+
+    /// Require this token as a `?token=` query parameter on connect.
+    /// Without it the API is open to anyone who can reach the port.
+    #[clap(long, env = "ZELLIJ_API_TOKEN")]
+    pub token: Option<String>,
 }
 
 #[derive(Debug, Parser, Clone, Serialize, Deserialize)]

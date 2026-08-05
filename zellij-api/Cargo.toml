@@ -1,0 +1,31 @@
+[package]
+name = "zellij-api"
+version.workspace = true
+edition.workspace = true
+description = "WebSocket remote-control API for Zellij sessions"
+license.workspace = true
+
+[dependencies]
+zellij-utils = { workspace = true }
+zellij-client = { path = "../zellij-client/", version = "0.45.0" }
+
+anyhow = { workspace = true }
+axum = { version = "0.8.4", features = ["ws"] }
+futures = "0.3.30"
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+similar = { version = "2", default-features = false, features = ["text"] }
+tokio = { workspace = true }
+uuid = { workspace = true }
+
+[features]
+# Mirrors the root package: isahc pulls in curl -> openssl-sys, and without
+# this the build needs a system libssl. See zellij-utils/Cargo.toml.
+default = ["vendored_curl"]
+vendored_curl = ["zellij-utils/vendored_curl"]
+
+[dev-dependencies]
+tempfile = "3"
+tokio-tungstenite = "0.28"
+futures-util = "0.3"
