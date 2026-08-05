@@ -8342,3 +8342,31 @@ fn xtsmgraphics_geometry_reports_failure_when_host_does_not_support_sixel() {
     vte_parser.advance(&mut grid, b"\x1b[?2;1S");
     assert_eq!(grid.pending_messages_to_pty, vec![b"\x1b[?2;3;0S".to_vec()]);
 }
+
+#[test]
+fn ech_over_wide_character_preserves_background_on_padding_cell() {
+    use crate::panes::terminal_character::NamedColor;
+    // Use a wide character to exercise replacement of a wide cell.
+    assert_eq!(crate::panes::TerminalCharacter::new('Ａ').width(), 2);
+
+    let content = "\x1b[44mＡ\x1b[1;1H\x1b[1X".as_bytes();
+    let grid = create_grid_with_size_and_raw(2, 4, content);
+
+    let lines = grid.as_character_lines();
+
+    assert_eq!(lines[0][0].character, ' ');
+    assert_eq!(lines[0][1].character, ' ');
+
+    assert_eq!(
+        lines[0][0].styles.background,
+        Some(crate::panes::terminal_character::AnsiCode::NamedColor(
+            NamedColor::Blue
+        ))
+    );
+    assert_eq!(
+        lines[0][1].styles.background,
+        Some(crate::panes::terminal_character::AnsiCode::NamedColor(
+            NamedColor::Blue
+        ))
+    );
+}
