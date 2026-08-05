@@ -423,15 +423,21 @@ mod tests {
 
     #[test]
     fn replies_omit_the_unused_half() {
-        let ok = serde_json::to_value(Reply::ok(Some("1".into()), serde_json::json!({"a": 1})))
-            .unwrap();
+        let ok =
+            serde_json::to_value(Reply::ok(Some("1".into()), serde_json::json!({"a": 1}))).unwrap();
         assert_eq!(ok["ok"], true);
-        assert!(ok.get("error").is_none(), "successful reply carries no error");
+        assert!(
+            ok.get("error").is_none(),
+            "successful reply carries no error"
+        );
 
         let err = serde_json::to_value(Reply::err(Some("1".into()), "boom")).unwrap();
         assert_eq!(err["ok"], false);
         assert_eq!(err["error"], "boom");
-        assert!(err.get("result").is_none(), "failed reply carries no result");
+        assert!(
+            err.get("result").is_none(),
+            "failed reply carries no result"
+        );
     }
 
     #[test]

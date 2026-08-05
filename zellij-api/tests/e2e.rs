@@ -194,7 +194,8 @@ impl Client {
             .map(|e| match e["event"].as_str() {
                 Some("screen.diff") => format!(
                     "screen.diff pane={} seq={}\n{}",
-                    e["pane_id"], e["seq"],
+                    e["pane_id"],
+                    e["seq"],
                     e["unified"].as_str().unwrap_or("")
                 ),
                 _ => e.to_string(),
@@ -260,7 +261,10 @@ async fn drives_a_real_session_over_the_websocket() {
         .await;
     assert_eq!(bad_layout["ok"], json!(false));
     assert!(
-        bad_layout["error"].as_str().unwrap().contains("no layout file"),
+        bad_layout["error"]
+            .as_str()
+            .unwrap()
+            .contains("no layout file"),
         "unhelpful error: {}",
         bad_layout["error"]
     );
@@ -327,7 +331,9 @@ async fn drives_a_real_session_over_the_websocket() {
         ("tab.rename", json!({"name": "x"})),
     ] {
         let mut body = json!({"cmd": cmd, "session": session, "tab_id": bogus_tab});
-        body.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        body.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
         let result = client.call_raw(body).await;
         assert_eq!(
             result["ok"],
@@ -371,7 +377,10 @@ async fn drives_a_real_session_over_the_websocket() {
         .await;
     assert_eq!(subscribed["following_new_panes"], json!(true));
     let followed = subscribed["panes"].as_array().unwrap().clone();
-    assert!(!followed.is_empty(), "should be following at least one pane");
+    assert!(
+        !followed.is_empty(),
+        "should be following at least one pane"
+    );
 
     // Every subscribed pane sends a baseline first.
     client
@@ -712,7 +721,9 @@ async fn manages_panes_and_accepts_mouse_input() {
 
     // A malformed mouse event must be refused rather than silently ignored.
     let bad = client
-        .call_raw(json!({"cmd": "input.mouse", "session": session, "kind": "wiggle", "x": 0, "y": 0}))
+        .call_raw(
+            json!({"cmd": "input.mouse", "session": session, "kind": "wiggle", "x": 0, "y": 0}),
+        )
         .await;
     assert_eq!(bad["ok"], json!(false), "unknown mouse kind must fail");
 
@@ -726,7 +737,11 @@ async fn manages_panes_and_accepts_mouse_input() {
             "cmd": "screen.subscribe", "session": session, "pane_ids": ["terminal_4242"],
         }))
         .await;
-    assert_eq!(bad["ok"], json!(false), "subscribing to a missing pane must fail");
+    assert_eq!(
+        bad["ok"],
+        json!(false),
+        "subscribing to a missing pane must fail"
+    );
     assert!(
         bad["error"].as_str().unwrap().contains("no pane"),
         "unhelpful error: {}",
@@ -775,7 +790,12 @@ async fn manages_panes_and_accepts_mouse_input() {
     ] {
         let cmd = body["cmd"].as_str().unwrap().to_string();
         let result = client.call_raw(body).await;
-        assert_eq!(result["ok"], json!(false), "{} on a missing pane must fail", cmd);
+        assert_eq!(
+            result["ok"],
+            json!(false),
+            "{} on a missing pane must fail",
+            cmd
+        );
         assert!(
             result["error"].as_str().unwrap().contains("no pane"),
             "{}: unhelpful error: {}",
@@ -904,7 +924,10 @@ async fn pane_create_rejects_args_without_a_command() {
             "cmd": "pane.create", "session": session, "args": ["--flag"],
         }))
         .await;
-    assert_eq!(reply["ok"], false, "args without command should be rejected");
+    assert_eq!(
+        reply["ok"], false,
+        "args without command should be rejected"
+    );
     assert!(
         reply["error"].as_str().unwrap_or_default().contains("args"),
         "expected an error mentioning `args`, got: {}",
@@ -964,7 +987,10 @@ async fn screen_history_rejects_a_pane_that_does_not_exist() {
         "screen.history on a nonexistent pane should fail, not report empty history"
     );
     assert!(
-        reply["error"].as_str().unwrap_or_default().contains("has no pane"),
+        reply["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("has no pane"),
         "expected a specific 'has no pane' error, got: {}",
         reply["error"]
     );
@@ -1105,7 +1131,11 @@ async fn drives_a_plugin_pane() {
             "pane_id": "plugin_9999", "text": "x",
         }))
         .await;
-    assert_eq!(stale["ok"], json!(false), "writing to a missing pane must fail");
+    assert_eq!(
+        stale["ok"],
+        json!(false),
+        "writing to a missing pane must fail"
+    );
     assert!(
         stale["error"].as_str().unwrap().contains("no pane"),
         "unhelpful error: {}",
@@ -1179,7 +1209,8 @@ async fn concurrent_callers_share_one_attached_client() {
         .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with("CLIENT_ID"))
         .count();
     assert_eq!(
-        rows, 1,
+        rows,
+        1,
         "the API should hold exactly one attached client, found {}:\n{}",
         rows,
         String::from_utf8_lossy(&listing.stdout)
@@ -1532,7 +1563,9 @@ async fn focus_and_size_follow_a_real_client_that_attaches_alongside_the_api() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|p| p["is_plugin"] == json!(false) && p["id"].as_u64() != Some(second_pane_num as u64))
+        .find(|p| {
+            p["is_plugin"] == json!(false) && p["id"].as_u64() != Some(second_pane_num as u64)
+        })
         .expect("the session's original pane should still exist")["id"]
         .as_u64()
         .unwrap();
@@ -1646,7 +1679,11 @@ async fn typing_with_no_other_client_attached_does_not_duplicate_characters() {
             "cmd": "input.text", "session": session, "pane_id": "terminal_0", "text": "Z",
         }))
         .await;
-    assert_eq!(reply["bytes"], json!(1), "writing 'Z' should report 1 byte written");
+    assert_eq!(
+        reply["bytes"],
+        json!(1),
+        "writing 'Z' should report 1 byte written"
+    );
 
     tokio::time::sleep(Duration::from_millis(1000)).await;
     client
@@ -1738,7 +1775,11 @@ async fn typing_without_a_term_environment_variable_does_not_duplicate_character
             "cmd": "input.text", "session": session, "pane_id": "terminal_0", "text": "Z",
         }))
         .await;
-    assert_eq!(reply["bytes"], json!(1), "writing 'Z' should report 1 byte written");
+    assert_eq!(
+        reply["bytes"],
+        json!(1),
+        "writing 'Z' should report 1 byte written"
+    );
 
     tokio::time::sleep(Duration::from_millis(1000)).await;
     client
@@ -1790,7 +1831,10 @@ async fn rejects_connections_without_the_token() {
     // Wait for it to come up.
     let health = format!("http://127.0.0.1:{}/health", port);
     for _ in 0..50 {
-        if tokio::net::TcpStream::connect(("127.0.0.1", port)).await.is_ok() {
+        if tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .is_ok()
+        {
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -1805,7 +1849,9 @@ async fn rejects_connections_without_the_token() {
 
     let wrong_token = format!("ws://127.0.0.1:{}/api?token=nope", port);
     assert!(
-        tokio_tungstenite::connect_async(&wrong_token).await.is_err(),
+        tokio_tungstenite::connect_async(&wrong_token)
+            .await
+            .is_err(),
         "connecting with the wrong token must be refused"
     );
 }

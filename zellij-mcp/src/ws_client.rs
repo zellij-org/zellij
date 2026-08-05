@@ -33,13 +33,11 @@ impl ApiClient {
         let id = uuid::Uuid::new_v4().to_string();
         command["id"] = json!(id);
 
-        let (mut socket, _) = tokio::time::timeout(
-            CALL_TIMEOUT,
-            tokio_tungstenite::connect_async(&self.url),
-        )
-        .await
-        .map_err(|_| "timed out connecting to the zellij remote API".to_string())?
-        .map_err(|e| format!("could not connect to the zellij remote API: {e}"))?;
+        let (mut socket, _) =
+            tokio::time::timeout(CALL_TIMEOUT, tokio_tungstenite::connect_async(&self.url))
+                .await
+                .map_err(|_| "timed out connecting to the zellij remote API".to_string())?
+                .map_err(|e| format!("could not connect to the zellij remote API: {e}"))?;
 
         socket
             .send(Message::Text(command.to_string().into()))
@@ -96,9 +94,6 @@ mod tests {
     #[test]
     fn an_existing_query_string_is_extended_not_overwritten() {
         let client = ApiClient::new("ws://127.0.0.1:8787/api?debug=1", "s3cret");
-        assert_eq!(
-            client.url,
-            "ws://127.0.0.1:8787/api?debug=1&token=s3cret"
-        );
+        assert_eq!(client.url, "ws://127.0.0.1:8787/api?debug=1&token=s3cret");
     }
 }

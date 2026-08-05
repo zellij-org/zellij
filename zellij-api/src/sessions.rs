@@ -280,8 +280,7 @@ fn wait_until_started(os_input: &dyn ClientOsApi) -> Result<(), String> {
 /// would be told the session was created — with no hint that the layout it
 /// asked for was never applied.
 fn layout_info_from(layout: &str) -> Result<LayoutInfo, String> {
-    let looks_like_a_path =
-        layout.contains(std::path::MAIN_SEPARATOR) || layout.ends_with(".kdl");
+    let looks_like_a_path = layout.contains(std::path::MAIN_SEPARATOR) || layout.ends_with(".kdl");
     if looks_like_a_path {
         if !std::path::Path::new(layout).exists() {
             return Err(format!("no layout file at '{}'", layout));

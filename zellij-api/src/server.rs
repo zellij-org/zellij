@@ -157,7 +157,10 @@ async fn handle_connection(socket: WebSocket, state: ApiState) {
             Message::Binary(bytes) => match String::from_utf8(bytes.to_vec()) {
                 Ok(text) => text,
                 Err(_) => {
-                    send_json(&out_tx, &Reply::err(None, "binary frames must be UTF-8 JSON"));
+                    send_json(
+                        &out_tx,
+                        &Reply::err(None, "binary frames must be UTF-8 JSON"),
+                    );
                     continue;
                 },
             },
@@ -587,10 +590,7 @@ async fn dispatch(
             let pane = resolve_pane(&link, pane_id).await?;
             let pane_id = pane.to_string();
             let (version, lines) = link.snapshot(&pane_id).ok_or_else(|| {
-                format!(
-                    "no canvas for pane '{}' — subscribe to it first",
-                    pane_id
-                )
+                format!("no canvas for pane '{}' — subscribe to it first", pane_id)
             })?;
             Ok(json!({ "pane_id": pane_id, "version": version, "lines": lines }))
         },
@@ -643,10 +643,7 @@ async fn dispatch(
 }
 
 /// Pump one session's events into this connection's outbound channel.
-fn forward_events(
-    link: Arc<SessionLink>,
-    out: mpsc::UnboundedSender<String>,
-) -> JoinHandle<()> {
+fn forward_events(link: Arc<SessionLink>, out: mpsc::UnboundedSender<String>) -> JoinHandle<()> {
     let mut events = link.events();
     tokio::spawn(async move {
         loop {
@@ -846,7 +843,10 @@ mod tests {
     #[test]
     fn directions_are_optional_but_validated() {
         assert_eq!(parse_direction(None).unwrap(), None);
-        assert_eq!(parse_direction(Some("left")).unwrap(), Some(Direction::Left));
+        assert_eq!(
+            parse_direction(Some("left")).unwrap(),
+            Some(Direction::Left)
+        );
         assert!(parse_direction(Some("sideways")).is_err());
     }
 

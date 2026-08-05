@@ -11,10 +11,9 @@
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CallToolResult, ContentBlock, Implementation, ProtocolVersion, ServerCapabilities,
-    ServerInfo,
+    CallToolResult, ContentBlock, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
 };
-use rmcp::{ErrorData as McpError, ServerHandler, schemars, tool, tool_handler, tool_router};
+use rmcp::{schemars, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler};
 use serde_json::{json, Value};
 
 use crate::ws_client::ApiClient;
@@ -248,7 +247,8 @@ impl ZellijTools {
         &self,
         Parameters(p): Parameters<SessionNameParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.run(json!({"cmd": "session.kill", "name": p.session})).await
+        self.run(json!({"cmd": "session.kill", "name": p.session}))
+            .await
     }
 
     #[tool(description = "Rename a session.")]
@@ -307,7 +307,9 @@ impl ZellijTools {
                 if is_plugin || suppressed {
                     continue;
                 }
-                let Some(id) = pane["id"].as_u64() else { continue };
+                let Some(id) = pane["id"].as_u64() else {
+                    continue;
+                };
                 let pane_id = format!("terminal_{id}");
                 let command = json!({
                     "cmd": "screen.snapshot", "session": p.session, "pane_id": pane_id,
@@ -351,7 +353,8 @@ impl ZellijTools {
         &self,
         Parameters(p): Parameters<SessionParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.run(json!({"cmd": "tab.list", "session": p.session})).await
+        self.run(json!({"cmd": "tab.list", "session": p.session}))
+            .await
     }
 
     #[tool(description = "Create a new tab in a session.")]
@@ -403,7 +406,8 @@ impl ZellijTools {
         &self,
         Parameters(p): Parameters<SessionParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.run(json!({"cmd": "pane.list", "session": p.session})).await
+        self.run(json!({"cmd": "pane.list", "session": p.session}))
+            .await
     }
 
     #[tool(

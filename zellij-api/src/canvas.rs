@@ -38,7 +38,11 @@ pub struct HistoryEntry {
 #[derive(Debug, Clone)]
 pub enum CanvasUpdate {
     /// A new baseline was established; there is no diff to report.
-    Reset { seq: u64, ts: u64, lines: Vec<String> },
+    Reset {
+        seq: u64,
+        ts: u64,
+        lines: Vec<String>,
+    },
     /// The canvas changed.
     Changed { ts: u64, diff: CanvasDiff },
     /// Nothing visible changed.
@@ -158,7 +162,12 @@ impl CanvasStore {
     ///
     /// `since` returns only entries newer than that version; `limit` keeps the
     /// most recent N of whatever remains.
-    pub fn history(&self, pane_id: &str, since: Option<u64>, limit: Option<usize>) -> Vec<HistoryEntry> {
+    pub fn history(
+        &self,
+        pane_id: &str,
+        since: Option<u64>,
+        limit: Option<usize>,
+    ) -> Vec<HistoryEntry> {
         let Some(canvas) = self.panes.get(pane_id) else {
             return Vec::new();
         };
@@ -288,7 +297,10 @@ mod tests {
             store.apply("p", lines(&[&format!("v{}", i)]), false);
         }
         let last_two = store.history("p", None, Some(2));
-        assert_eq!(last_two.iter().map(|e| e.seq).collect::<Vec<_>>(), vec![4, 5]);
+        assert_eq!(
+            last_two.iter().map(|e| e.seq).collect::<Vec<_>>(),
+            vec![4, 5]
+        );
     }
 
     #[test]
@@ -323,7 +335,10 @@ mod tests {
             before,
             "a re-baseline must not fabricate a history entry"
         );
-        assert_eq!(store.snapshot("p").unwrap().1, lines(&["totally different"]));
+        assert_eq!(
+            store.snapshot("p").unwrap().1,
+            lines(&["totally different"])
+        );
     }
 
     #[test]

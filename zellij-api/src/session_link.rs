@@ -11,8 +11,8 @@
 //!   replies.
 
 use std::collections::HashSet;
-use std::str::FromStr;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
@@ -82,7 +82,9 @@ pub struct SessionLink {
 
 impl std::fmt::Debug for SessionLink {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SessionLink").field("name", &self.name).finish()
+        f.debug_struct("SessionLink")
+            .field("name", &self.name)
+            .finish()
     }
 }
 
@@ -116,7 +118,12 @@ pub fn session_exists_settled(session_name: &str) -> Result<bool, String> {
         match zellij_utils::sessions::session_exists(session_name) {
             Ok(true) => return Ok(true),
             Ok(false) => continue,
-            Err(e) => return Err(format!("could not check session '{}': {:?}", session_name, e)),
+            Err(e) => {
+                return Err(format!(
+                    "could not check session '{}': {:?}",
+                    session_name, e
+                ))
+            },
         }
     }
     Ok(false)
@@ -171,7 +178,10 @@ fn list_client_ids(session_name: &str) -> Result<HashSet<ClientId>, String> {
     });
     let lines = read_action_reply(&*os_input, ReplyShape::Text)?;
     os_input.send_to_server(ClientToServerMsg::ClientExited);
-    Ok(parse_client_table(&lines).into_iter().map(|(id, _)| id).collect())
+    Ok(parse_client_table(&lines)
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect())
 }
 
 /// Learn the focus client's own id by elimination: after attaching, exactly
@@ -515,7 +525,11 @@ impl SessionLink {
             "session '{}' has no tab {} (known tab ids: {})",
             self.name,
             tab_id,
-            if known.is_empty() { "none".to_string() } else { known.join(", ") }
+            if known.is_empty() {
+                "none".to_string()
+            } else {
+                known.join(", ")
+            }
         ))
     }
 
@@ -620,9 +634,7 @@ impl SessionLink {
         let panes = self.list_panes().await?;
         let in_tab: Vec<_> = panes
             .iter()
-            .filter(|p| {
-                p.tab_id == tab_id && !p.pane_info.is_plugin && !p.pane_info.is_suppressed
-            })
+            .filter(|p| p.tab_id == tab_id && !p.pane_info.is_plugin && !p.pane_info.is_suppressed)
             .collect();
         in_tab
             .iter()
@@ -789,7 +801,8 @@ impl SessionLink {
     pub fn shutdown(&self) {
         self.alive.store(false, Ordering::Relaxed);
         let _ = self.requests.send(LinkRequest::Shutdown);
-        self.observer.send_to_server(ClientToServerMsg::ClientExited);
+        self.observer
+            .send_to_server(ClientToServerMsg::ClientExited);
         self.focus.send_to_server(ClientToServerMsg::ClientExited);
     }
 }
@@ -905,11 +918,10 @@ fn read_action_reply(os_input: &dyn ClientOsApi, shape: ReplyShape) -> ActionRep
                     // Skip leftovers from an earlier action. Every query
                     // answers with a JSON array or object, so a bare scalar —
                     // `NewTab` logging a tab id of `1`, say — is not it.
-                    let is_query_result = serde_json::from_str::<serde_json::Value>(
-                        &lines.join("\n"),
-                    )
-                    .map(|value| value.is_array() || value.is_object())
-                    .unwrap_or(false);
+                    let is_query_result =
+                        serde_json::from_str::<serde_json::Value>(&lines.join("\n"))
+                            .map(|value| value.is_array() || value.is_object())
+                            .unwrap_or(false);
                     if is_query_result {
                         return Ok(lines);
                     }

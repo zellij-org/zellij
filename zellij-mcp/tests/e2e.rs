@@ -106,10 +106,9 @@ async fn start_stack() -> Option<(
     // Give both servers a moment to bind their ports.
     tokio::time::sleep(Duration::from_millis(800)).await;
 
-    let config = StreamableHttpClientTransportConfig::with_uri(format!(
-        "http://127.0.0.1:{MCP_PORT}/mcp"
-    ))
-    .auth_header(MCP_TOKEN);
+    let config =
+        StreamableHttpClientTransportConfig::with_uri(format!("http://127.0.0.1:{MCP_PORT}/mcp"))
+            .auth_header(MCP_TOKEN);
     let transport = StreamableHttpClientTransport::from_config(config);
     let client_info = ClientInfo::new(
         ClientCapabilities::default(),
@@ -130,10 +129,7 @@ async fn lists_every_tool() {
         return;
     };
 
-    let tools = client
-        .list_all_tools()
-        .await
-        .expect("could not list tools");
+    let tools = client.list_all_tools().await.expect("could not list tools");
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
 
     for expected in [
@@ -186,10 +182,7 @@ async fn every_tool_names_its_session_parameter_consistently() {
         return;
     };
 
-    let tools = client
-        .list_all_tools()
-        .await
-        .expect("could not list tools");
+    let tools = client.list_all_tools().await.expect("could not list tools");
 
     for tool in &tools {
         if tool.name == "create_session" || tool.name == "list_sessions" {
@@ -279,17 +272,20 @@ async fn drives_a_real_session_end_to_end() {
     // --- create_session -----------------------------------------------------
     let created = client
         .call_tool(
-            CallToolRequestParams::new("create_session")
-                .with_arguments(
-                    serde_json::json!({"name": session, "rows": 24, "cols": 80})
-                        .as_object()
-                        .cloned()
-                        .unwrap(),
-                ),
+            CallToolRequestParams::new("create_session").with_arguments(
+                serde_json::json!({"name": session, "rows": 24, "cols": 80})
+                    .as_object()
+                    .cloned()
+                    .unwrap(),
+            ),
         )
         .await
         .expect("create_session failed");
-    assert_ne!(created.is_error, Some(true), "create_session reported an error: {created:?}");
+    assert_ne!(
+        created.is_error,
+        Some(true),
+        "create_session reported an error: {created:?}"
+    );
 
     // --- attach_session: the composite "get oriented" tool ------------------
     let attached = client
@@ -303,16 +299,24 @@ async fn drives_a_real_session_end_to_end() {
         )
         .await
         .expect("attach_session failed");
-    assert_ne!(attached.is_error, Some(true), "attach_session reported an error: {attached:?}");
+    assert_ne!(
+        attached.is_error,
+        Some(true),
+        "attach_session reported an error: {attached:?}"
+    );
     let attached_text = tool_result_text(&attached);
     let attached_json: serde_json::Value =
         serde_json::from_str(&attached_text).expect("attach_session did not return JSON");
     assert!(
-        attached_json["tabs"].as_array().is_some_and(|t| !t.is_empty()),
+        attached_json["tabs"]
+            .as_array()
+            .is_some_and(|t| !t.is_empty()),
         "attach_session should report at least one tab: {attached_json}"
     );
     assert!(
-        attached_json["screens"].as_array().is_some_and(|s| !s.is_empty()),
+        attached_json["screens"]
+            .as_array()
+            .is_some_and(|s| !s.is_empty()),
         "attach_session should include at least one screen: {attached_json}"
     );
 
@@ -329,7 +333,11 @@ async fn drives_a_real_session_end_to_end() {
         )
         .await
         .expect("send_text failed");
-    assert_ne!(typed.is_error, Some(true), "send_text reported an error: {typed:?}");
+    assert_ne!(
+        typed.is_error,
+        Some(true),
+        "send_text reported an error: {typed:?}"
+    );
 
     // Poll for the shell to echo and run the command — a fixed sleep here was
     // flaky under load (render lands asynchronously after the write
@@ -348,7 +356,11 @@ async fn drives_a_real_session_end_to_end() {
             )
             .await
             .expect("read_screen failed");
-        assert_ne!(screen.is_error, Some(true), "read_screen reported an error: {screen:?}");
+        assert_ne!(
+            screen.is_error,
+            Some(true),
+            "read_screen reported an error: {screen:?}"
+        );
         screen_text = tool_result_text(&screen);
         if screen_text.contains(marker) {
             break;
@@ -363,12 +375,19 @@ async fn drives_a_real_session_end_to_end() {
     let killed = client
         .call_tool(
             CallToolRequestParams::new("kill_session").with_arguments(
-                serde_json::json!({"session": session}).as_object().cloned().unwrap(),
+                serde_json::json!({"session": session})
+                    .as_object()
+                    .cloned()
+                    .unwrap(),
             ),
         )
         .await
         .expect("kill_session failed");
-    assert_ne!(killed.is_error, Some(true), "kill_session reported an error: {killed:?}");
+    assert_ne!(
+        killed.is_error,
+        Some(true),
+        "kill_session reported an error: {killed:?}"
+    );
 
     client.cancel().await.ok();
 }
@@ -403,12 +422,19 @@ async fn read_screen_and_screen_history_default_to_the_focused_pane() {
         )
         .await
         .expect("create_session failed");
-    assert_ne!(created.is_error, Some(true), "create_session failed: {created:?}");
+    assert_ne!(
+        created.is_error,
+        Some(true),
+        "create_session failed: {created:?}"
+    );
 
     let read_without_pane_id = client
         .call_tool(
             CallToolRequestParams::new("read_screen").with_arguments(
-                serde_json::json!({"session": session}).as_object().cloned().unwrap(),
+                serde_json::json!({"session": session})
+                    .as_object()
+                    .cloned()
+                    .unwrap(),
             ),
         )
         .await
@@ -423,7 +449,10 @@ async fn read_screen_and_screen_history_default_to_the_focused_pane() {
     let history_without_pane_id = client
         .call_tool(
             CallToolRequestParams::new("screen_history").with_arguments(
-                serde_json::json!({"session": session}).as_object().cloned().unwrap(),
+                serde_json::json!({"session": session})
+                    .as_object()
+                    .cloned()
+                    .unwrap(),
             ),
         )
         .await
@@ -438,7 +467,10 @@ async fn read_screen_and_screen_history_default_to_the_focused_pane() {
     client
         .call_tool(
             CallToolRequestParams::new("kill_session").with_arguments(
-                serde_json::json!({"session": session}).as_object().cloned().unwrap(),
+                serde_json::json!({"session": session})
+                    .as_object()
+                    .cloned()
+                    .unwrap(),
             ),
         )
         .await
@@ -488,10 +520,9 @@ async fn rejects_the_wrong_token() {
     );
     tokio::time::sleep(Duration::from_millis(800)).await;
 
-    let config = StreamableHttpClientTransportConfig::with_uri(format!(
-        "http://127.0.0.1:{port}/mcp"
-    ))
-    .auth_header("not-the-right-token");
+    let config =
+        StreamableHttpClientTransportConfig::with_uri(format!("http://127.0.0.1:{port}/mcp"))
+            .auth_header("not-the-right-token");
     let transport = StreamableHttpClientTransport::from_config(config);
     let client_info = ClientInfo::new(
         ClientCapabilities::default(),
