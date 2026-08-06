@@ -5,6 +5,7 @@
     * [MacOS](#macos)
     * [Fedora Linux](#fedora-linux)
     * [Void Linux](#void-linux)
+    * [FreeBSD](#freebsd)
 
 ## Packages
 
@@ -50,4 +51,10 @@ sudo port install zellij
 
 ```
 sudo xbps-install zellij
+```
+
+### FreeBSD
+
+```
+sudo pkg install zellij
 ```
