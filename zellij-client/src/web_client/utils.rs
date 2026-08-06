@@ -64,7 +64,9 @@ pub fn terminal_init_messages() -> Vec<&'static str> {
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let enter_alternate_screen = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
-    let enter_kitty_keyboard_mode = "\u{1b}[>1u";
+    // Flag 17 = DISAMBIGUATE_ESCAPE_CODES (1) | REPORT_ASSOCIATED_TEXT (16);
+    // see the matching constant in zellij-client/src/lib.rs for rationale.
+    let enter_kitty_keyboard_mode = "\u{1b}[>17u";
     let enable_mouse_mode = "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1015h\u{1b}[?1006h";
     vec![
         clear_client_terminal_attributes,
