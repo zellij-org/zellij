@@ -2280,6 +2280,7 @@ fn group_panes_following_focus() {
                     true,
                     NewPanePlacement::Tiled {
                         direction: None,
+                        split_size: None,
                         borderless: None,
                     },
                     Some(client_id),
@@ -2341,6 +2342,7 @@ fn break_group_with_mouse() {
                     true,
                     NewPanePlacement::Tiled {
                         direction: None,
+                        split_size: None,
                         borderless: None,
                     },
                     Some(client_id),
