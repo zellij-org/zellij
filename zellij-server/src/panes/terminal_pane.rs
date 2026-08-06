@@ -1116,6 +1116,13 @@ impl Pane for TerminalPane {
     fn set_title(&mut self, title: String) {
         self.pane_title = title;
     }
+    fn take_title_changed(&mut self) -> bool {
+        let changed = std::mem::replace(&mut self.grid.title_changed, false);
+        // A user-set pane name (via rename) overrides the OSC title in `current_title()`, so an
+        // OSC change under a custom name doesn't alter what plugins see — don't report it. The
+        // grid flag is still consumed above so it can't accumulate.
+        changed && self.pane_name.is_empty()
+    }
     fn current_title(&self) -> String {
         if self.pane_name.is_empty() {
             self.grid

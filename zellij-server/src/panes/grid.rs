@@ -702,6 +702,10 @@ pub struct Grid {
     pub pending_messages_to_pty: Vec<Vec<u8>>,
     pub selection: Selection,
     pub title: Option<String>,
+    /// Set to `true` whenever `title` changes to a *different* value (via OSC 0/2 or a
+    /// title-stack pop). Consumed by the pane (see `Pane::take_title_changed`) so the screen
+    /// thread can push a fresh `SessionUpdate`/`PaneUpdate` to plugins on the next render tick.
+    pub title_changed: bool,
     pub is_scrolled: bool,
     pub link_handler: Rc<RefCell<LinkHandler>>,
     pub ring_bell: bool,
@@ -1058,6 +1062,7 @@ impl Grid {
             selection: Default::default(),
             title_stack: vec![],
             title: None,
+            title_changed: false,
             changed_colors: None,
             is_scrolled: false,
             link_handler,
@@ -3214,7 +3219,12 @@ impl Grid {
         }
     }
     fn set_title(&mut self, title: String) {
-        self.title = Some(title);
+        // Only flag a change when the value actually differs: apps commonly re-assert an
+        // identical title every frame, and we must not turn that into a plugin-update storm.
+        if self.title.as_deref() != Some(title.as_str()) {
+            self.title = Some(title);
+            self.title_changed = true;
+        }
     }
     fn push_current_title_to_stack(&mut self) {
         if self.title_stack.len() > MAX_TITLE_STACK_SIZE {
@@ -3226,6 +3236,9 @@ impl Grid {
     }
     fn pop_title_from_stack(&mut self) {
         if let Some(popped_title) = self.title_stack.pop() {
+            if self.title.as_deref() != Some(popped_title.as_str()) {
+                self.title_changed = true;
+            }
             self.title = Some(popped_title);
         }
     }

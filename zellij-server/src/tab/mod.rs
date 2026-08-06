@@ -703,6 +703,12 @@ pub trait Pane {
     fn frame_color_override(&self) -> Option<PaletteColor>;
     fn invoked_with(&self) -> &Option<Run>;
     fn set_title(&mut self, title: String);
+    /// Returns whether this pane's plugin-visible title changed (via OSC 0/2) since the last
+    /// call, clearing the internal flag. Used to trigger a debounced `SessionUpdate`/`PaneUpdate`
+    /// to plugins on the render tick. Only terminal panes track this; defaults to `false`.
+    fn take_title_changed(&mut self) -> bool {
+        false
+    }
     fn update_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
     fn start_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
     fn progress_animation_offset(&mut self) {} // only relevant for plugins
@@ -4044,6 +4050,22 @@ impl Tab {
         {
             pane.set_guest_modal_shortcuts(shortcuts);
         }
+    }
+    /// Consume (and clear) the "title changed" flag for the given terminal pane. Returns whether
+    /// its plugin-visible title changed since the last check. Looks the pane up across the same
+    /// collections as `handle_pty_bytes`.
+    pub fn take_pane_title_changed(&mut self, pid: u32) -> bool {
+        self.tiled_panes
+            .get_pane_mut(PaneId::Terminal(pid))
+            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Terminal(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
+                    .map(|s_p| &mut s_p.1)
+            })
+            .map(|pane| pane.take_title_changed())
+            .unwrap_or(false)
     }
     pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
         if self.is_pending {

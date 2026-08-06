@@ -1526,6 +1526,10 @@ pub(crate) struct Screen {
     // is brought online
     web_server_ip: IpAddr,
     web_server_port: u16,
+    /// Set when a pane's OSC title changed; drained on the next (already-debounced) render tick to
+    /// push a fresh `SessionUpdate`/`PaneUpdate` to plugins. See `ScreenInstruction::PtyBytes` /
+    /// `RenderToClients`.
+    pending_session_state_report: bool,
     render_blocker: RenderBlocker,
     watcher_clients: HashMap<ClientId, WatcherState>,
     followed_client_id: Option<ClientId>,
@@ -1706,6 +1710,7 @@ impl Screen {
             mouse_click_through,
             web_server_ip,
             web_server_port,
+            pending_session_state_report: false,
             render_blocker: RenderBlocker::new(100),
             watcher_clients: HashMap::new(),
             followed_client_id: None,
@@ -7636,11 +7641,13 @@ pub(crate) fn screen_thread_main(
                     .insert(PaneId::Terminal(pid), Instant::now());
                 let all_tabs = screen.get_tabs_mut();
                 let mut vte_bytes = Some(vte_bytes);
+                let mut title_changed = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_terminal_pid(pid) {
                         if let Some(bytes) = vte_bytes.take() {
                             tab.handle_pty_bytes(pid, bytes)
                                 .context("failed to process pty bytes")?;
+                            title_changed = tab.take_pane_title_changed(pid);
                         }
                         break;
                     }
@@ -7650,6 +7657,12 @@ pub(crate) fn screen_thread_main(
                         .entry(PaneId::Terminal(pid))
                         .or_default()
                         .push(ScreenInstruction::PtyBytes(pid, vte_bytes));
+                }
+                // The OSC-title path only mutates in-memory grid state, so plugins would never
+                // otherwise learn of the change. Defer the (heavier) session-state report to the
+                // debounced render tick below, coalescing bursts into at most one update per tick.
+                if title_changed {
+                    screen.pending_session_state_report = true;
                 }
                 let _ = screen
                     .bus
@@ -7685,6 +7698,13 @@ pub(crate) fn screen_thread_main(
                     screen.render_to_clients()?;
                 } else {
                     screen.render(None)?;
+                }
+                // This tick is already debounced (see BackgroundJob::RenderToClients), so it's the
+                // natural place to flush a pending OSC-title change to plugins without adding a
+                // separate timer or emitting on every frame.
+                if screen.pending_session_state_report {
+                    screen.pending_session_state_report = false;
+                    screen.log_and_report_session_state()?;
                 }
             },
             ScreenInstruction::NewPane(
