@@ -129,9 +129,6 @@ impl ServerOsApi for FakeServerOsApi {
             Err(anyhow!("no fake pty for terminal id {terminal_id}"))
         }
     }
-    fn tcdrain(&self, _terminal_id: u32) -> Result<()> {
-        Ok(())
-    }
     fn kill(&self, pid: u32) -> Result<()> {
         self.shared_ptys
             .exit_terminal(pid.saturating_sub(FAKE_PID_BASE), None);

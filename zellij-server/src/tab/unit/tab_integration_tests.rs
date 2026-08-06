@@ -47,7 +47,6 @@ use zellij_utils::{
 #[derive(Clone, Default)]
 struct FakeInputOutput {
     file_dumps: Arc<Mutex<HashMap<String, String>>>,
-    pub tty_stdin_bytes: Arc<Mutex<BTreeMap<u32, Vec<u8>>>>,
 }
 
 impl ServerOsApi for FakeInputOutput {
@@ -70,17 +69,8 @@ impl ServerOsApi for FakeInputOutput {
     ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
-    fn write_to_tty_stdin(&self, id: u32, buf: &[u8]) -> Result<usize> {
-        self.tty_stdin_bytes
-            .lock()
-            .unwrap()
-            .entry(id)
-            .or_insert_with(|| vec![])
-            .extend_from_slice(buf);
+    fn write_to_tty_stdin(&self, _id: u32, buf: &[u8]) -> Result<usize> {
         Ok(buf.len())
-    }
-    fn tcdrain(&self, _id: u32) -> Result<()> {
-        unimplemented!()
     }
     fn kill(&self, _pid: u32) -> Result<()> {
         unimplemented!()
@@ -613,102 +603,6 @@ fn create_new_tab_with_swap_layouts(
     tab
 }
 
-fn create_new_tab_with_os_api(
-    size: Size,
-    default_mode: ModeInfo,
-    os_api: &Box<FakeInputOutput>,
-) -> Tab {
-    set_session_name("test".into());
-    let index = 0;
-    let position = 0;
-    let name = String::new();
-    let os_api = os_api.clone();
-    let senders = ThreadSenders::default().silently_fail_on_send();
-    let max_panes = None;
-    let mode_info = default_mode;
-    let style = Style::default();
-    let draw_pane_frames = PaneFrameStyle::Full;
-    let auto_layout = true;
-    let client_id = 1;
-    let session_is_mirrored = true;
-    let mut connected_clients = HashMap::new();
-    connected_clients.insert(client_id, false);
-    let connected_clients = Rc::new(RefCell::new(connected_clients));
-    let character_cell_info = Rc::new(RefCell::new(None));
-    let stacked_resize = Rc::new(RefCell::new(true));
-    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
-    let copy_options = CopyOptions::default();
-    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
-    let current_group = Rc::new(RefCell::new(PaneGroups::new(ThreadSenders::default())));
-    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
-    let debug = false;
-    let arrow_fonts = true;
-    let styled_underlines = true;
-    let osc8_hyperlinks = true;
-    let explicitly_disable_kitty_keyboard_protocol = false;
-    let advanced_mouse_actions = true;
-    let mouse_scroll_resize = true;
-    let web_sharing = WebSharing::Off;
-    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
-    let web_server_port = 8080;
-    let mut tab = Tab::new(
-        index,
-        position,
-        name,
-        size,
-        character_cell_info,
-        stacked_resize,
-        Rc::new(RefCell::new(false)),
-        sixel_image_store,
-        Rc::new(RefCell::new(KittyImageStore::default())),
-        os_api,
-        senders,
-        max_panes,
-        style,
-        mode_info,
-        draw_pane_frames,
-        auto_layout,
-        connected_clients,
-        session_is_mirrored,
-        Some(client_id),
-        copy_options,
-        terminal_emulator_colors,
-        terminal_emulator_color_codes,
-        (vec![], vec![]), // swap layouts
-        PathBuf::from("my_default_shell"),
-        debug,
-        arrow_fonts,
-        styled_underlines,
-        osc8_hyperlinks,
-        explicitly_disable_kitty_keyboard_protocol,
-        None,
-        false,
-        web_sharing,
-        current_group,
-        currently_marking_pane_group,
-        advanced_mouse_actions,
-        mouse_scroll_resize,
-        true, // mouse_hover_effects
-        true,
-        false, // focus_follows_mouse
-        false, // mouse_click_through
-        web_server_ip,
-        web_server_port,
-    );
-    tab.apply_layout(
-        TiledPaneLayout::default(),
-        vec![],
-        vec![(1, None)],
-        vec![],
-        HashMap::new(),
-        client_id,
-        None,
-    )
-    .unwrap();
-    tab
-}
-
 fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) -> Tab {
     set_session_name("test".into());
     let index = 0;
@@ -812,6 +706,21 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     )
     .unwrap();
     tab
+}
+
+fn drain_tty_stdin_bytes(
+    pty_writer_receiver: &Receiver<(PtyWriteInstruction, ErrorContext)>,
+) -> BTreeMap<u32, Vec<u8>> {
+    let mut tty_stdin_bytes: BTreeMap<u32, Vec<u8>> = BTreeMap::new();
+    while let Ok((instruction, _)) = pty_writer_receiver.try_recv() {
+        if let PtyWriteInstruction::Write(bytes, terminal_id, _) = instruction {
+            tty_stdin_bytes
+                .entry(terminal_id)
+                .or_default()
+                .extend(bytes);
+        }
+    }
+    tty_stdin_bytes
 }
 
 fn create_new_tab_with_mock_pty_writer(
@@ -5162,12 +5071,10 @@ fn move_pane_focus_sends_tty_csi_event() {
         rows: 20,
     };
     let client_id = 1;
-    let tty_stdin_bytes = Arc::new(Mutex::new(BTreeMap::new()));
-    let os_api = Box::new(FakeInputOutput {
-        tty_stdin_bytes: tty_stdin_bytes.clone(),
-        ..Default::default()
-    });
-    let mut tab = create_new_tab_with_os_api(size, ModeInfo::default(), &os_api);
+    let (pty_writer_sender, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let pty_writer_sender = SenderWithContext::new(pty_writer_sender);
+    let mut tab = create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), pty_writer_sender);
     let new_pane_id_1 = PaneId::Terminal(2);
     tab.new_pane(
         new_pane_id_1,
@@ -5193,7 +5100,8 @@ fn move_pane_focus_sends_tty_csi_event() {
     )
     .unwrap();
     tab.move_focus_left(client_id).unwrap();
-    assert_snapshot!(format!("{:?}", *tty_stdin_bytes.lock().unwrap()));
+    let tty_stdin_bytes = drain_tty_stdin_bytes(&pty_writer_receiver);
+    assert_snapshot!(format!("{:?}", tty_stdin_bytes));
 }
 
 #[test]
@@ -5203,12 +5111,10 @@ fn move_floating_pane_focus_sends_tty_csi_event() {
         rows: 20,
     };
     let client_id = 1;
-    let tty_stdin_bytes = Arc::new(Mutex::new(BTreeMap::new()));
-    let os_api = Box::new(FakeInputOutput {
-        tty_stdin_bytes: tty_stdin_bytes.clone(),
-        ..Default::default()
-    });
-    let mut tab = create_new_tab_with_os_api(size, ModeInfo::default(), &os_api);
+    let (pty_writer_sender, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let pty_writer_sender = SenderWithContext::new(pty_writer_sender);
+    let mut tab = create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), pty_writer_sender);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
 
@@ -5255,7 +5161,8 @@ fn move_floating_pane_focus_sends_tty_csi_event() {
     )
     .unwrap();
     tab.move_focus_left(client_id).unwrap();
-    assert_snapshot!(format!("{:?}", *tty_stdin_bytes.lock().unwrap()));
+    let tty_stdin_bytes = drain_tty_stdin_bytes(&pty_writer_receiver);
+    assert_snapshot!(format!("{:?}", tty_stdin_bytes));
 }
 
 #[test]
@@ -5265,12 +5172,10 @@ fn toggle_floating_panes_on_sends_tty_csi_event() {
         rows: 20,
     };
     let client_id = 1;
-    let tty_stdin_bytes = Arc::new(Mutex::new(BTreeMap::new()));
-    let os_api = Box::new(FakeInputOutput {
-        tty_stdin_bytes: tty_stdin_bytes.clone(),
-        ..Default::default()
-    });
-    let mut tab = create_new_tab_with_os_api(size, ModeInfo::default(), &os_api);
+    let (pty_writer_sender, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let pty_writer_sender = SenderWithContext::new(pty_writer_sender);
+    let mut tab = create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), pty_writer_sender);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
 
@@ -5320,7 +5225,8 @@ fn toggle_floating_panes_on_sends_tty_csi_event() {
     .unwrap();
     tab.toggle_floating_panes(Some(client_id), None, None)
         .unwrap();
-    assert_snapshot!(format!("{:?}", *tty_stdin_bytes.lock().unwrap()));
+    let tty_stdin_bytes = drain_tty_stdin_bytes(&pty_writer_receiver);
+    assert_snapshot!(format!("{:?}", tty_stdin_bytes));
 }
 
 #[test]
@@ -5330,12 +5236,10 @@ fn toggle_floating_panes_off_sends_tty_csi_event() {
         rows: 20,
     };
     let client_id = 1;
-    let tty_stdin_bytes = Arc::new(Mutex::new(BTreeMap::new()));
-    let os_api = Box::new(FakeInputOutput {
-        tty_stdin_bytes: tty_stdin_bytes.clone(),
-        ..Default::default()
-    });
-    let mut tab = create_new_tab_with_os_api(size, ModeInfo::default(), &os_api);
+    let (pty_writer_sender, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let pty_writer_sender = SenderWithContext::new(pty_writer_sender);
+    let mut tab = create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), pty_writer_sender);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
 
@@ -5383,7 +5287,8 @@ fn toggle_floating_panes_off_sends_tty_csi_event() {
     .unwrap();
     tab.toggle_floating_panes(Some(client_id), None, None)
         .unwrap();
-    assert_snapshot!(format!("{:?}", *tty_stdin_bytes.lock().unwrap()));
+    let tty_stdin_bytes = drain_tty_stdin_bytes(&pty_writer_receiver);
+    assert_snapshot!(format!("{:?}", tty_stdin_bytes));
 }
 
 #[test]
@@ -16171,17 +16076,15 @@ fn host_focus_events_only_reach_panes_that_asked_for_them() {
         cols: 121,
         rows: 20,
     };
-    let tty_stdin_bytes = Arc::new(Mutex::new(BTreeMap::new()));
-    let os_api = Box::new(FakeInputOutput {
-        tty_stdin_bytes: tty_stdin_bytes.clone(),
-        ..Default::default()
-    });
-    let mut tab = create_new_tab_with_os_api(size, ModeInfo::default(), &os_api);
+    let (pty_writer_sender, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let pty_writer_sender = SenderWithContext::new(pty_writer_sender);
+    let mut tab = create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), pty_writer_sender);
     let pane_id = PaneId::Terminal(1);
 
     tab.send_host_focus_event_to_pane(pane_id, false);
     assert!(
-        tty_stdin_bytes.lock().unwrap().is_empty(),
+        drain_tty_stdin_bytes(&pty_writer_receiver).is_empty(),
         "a pane that did not subscribe to focus events receives nothing"
     );
 
@@ -16190,9 +16093,7 @@ fn host_focus_events_only_reach_panes_that_asked_for_them() {
     tab.send_host_focus_event_to_pane(pane_id, false);
     tab.send_host_focus_event_to_pane(pane_id, true);
 
-    let written = tty_stdin_bytes
-        .lock()
-        .unwrap()
+    let written = drain_tty_stdin_bytes(&pty_writer_receiver)
         .get(&1)
         .map(|bytes| String::from_utf8_lossy(bytes).to_string());
     assert_eq!(written, Some("\u{1b}[O\u{1b}[I".to_owned()));

@@ -77,7 +77,6 @@ impl FloatingPanes {
         session_is_mirrored: bool,
         default_mode_info: ModeInfo,
         style: Style,
-        os_input: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
     ) -> Self {
         FloatingPanes {
@@ -94,7 +93,7 @@ impl FloatingPanes {
             desired_pane_positions: HashMap::new(),
             z_indices: vec![],
             show_panes: false,
-            active_panes: ActivePanes::new(&os_input),
+            active_panes: ActivePanes::new(senders.clone()),
             pane_being_moved_with_mouse: None,
             senders,
             window_title: None,
