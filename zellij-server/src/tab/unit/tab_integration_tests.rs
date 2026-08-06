@@ -14,10 +14,10 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use zellij_utils::channels::Receiver;
-use zellij_utils::data::Direction;
 use zellij_utils::data::Resize;
 use zellij_utils::data::ResizeStrategy;
 use zellij_utils::data::WebSharing;
+use zellij_utils::data::{Direction, Event, Mouse};
 use zellij_utils::envs::set_session_name;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::layout::{
@@ -13380,6 +13380,91 @@ fn create_new_tab_with_plugin_receiver(
 }
 
 #[test]
+fn right_click_on_plugin_pane_is_delivered_to_plugin() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, mock_plugin_receiver) =
+        create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+    let plugin_pane_id = PaneId::Plugin(2);
+
+    tab.new_pane(
+        plugin_pane_id,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    let click_position = {
+        let plugin_pane = tab.get_pane_with_id(plugin_pane_id).unwrap();
+        Position::new(
+            plugin_pane.get_content_y() as i32 + 2,
+            (plugin_pane.get_content_x() + 4) as u16,
+        )
+    };
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_press_event(click_position),
+        client_id,
+    )
+    .unwrap();
+
+    let mut found_right_click = false;
+    while let Ok((instruction, _ctx)) = mock_plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            if updates
+                == vec![(
+                    Some(2),
+                    Some(client_id),
+                    Event::Mouse(Mouse::RightClick(2, 4)),
+                )]
+            {
+                found_right_click = true;
+                break;
+            }
+        }
+    }
+    assert!(
+        found_right_click,
+        "Expected right-click event to be sent to plugin pane"
+    );
+
+    let frame_click_position = {
+        let plugin_pane = tab.get_pane_with_id(plugin_pane_id).unwrap();
+        Position::new(
+            plugin_pane.get_content_y() as i32 - 1,
+            (plugin_pane.get_content_x() + 4) as u16,
+        )
+    };
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_press_event(frame_click_position),
+        client_id,
+    )
+    .unwrap();
+
+    let mut found_frame_right_click = false;
+    while let Ok((instruction, _ctx)) = mock_plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            found_frame_right_click |= updates.iter().any(|(_, _, event)| {
+                matches!(event, Event::Mouse(Mouse::RightClick(line, _)) if *line < 0)
+            });
+        }
+    }
+    assert!(
+        !found_frame_right_click,
+        "Expected right-click on the pane frame not to be sent to the plugin"
+    );
+}
+
+#[test]
 fn click_on_plugin_highlight_sends_highlight_clicked() {
     let size = Size {
         cols: 121,
@@ -15638,5 +15723,55 @@ fn hidden_cursor_still_emits_cup_for_host_terminal_positioning() {
     assert!(
         !client_output.contains("\u{1b}[?25h"),
         "Show-cursor sequence must not be present when app has hidden the cursor"
+    );
+}
+
+#[test]
+fn right_click_on_floating_pane_frame_does_not_start_moving_it() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let floating_pane_id = PaneId::Terminal(2);
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        floating_pane_id,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    let (x_before, y_before) = {
+        let pane = tab.get_pane_with_id(floating_pane_id).unwrap();
+        (pane.get_content_x(), pane.get_content_y())
+    };
+    let frame_position = Position::new(y_before as i32 - 1, (x_before + 4) as u16);
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_press_event(frame_position),
+        client_id,
+    )
+    .unwrap();
+    // Had the right press wrongly entered the moving state, this left-button
+    // motion/release pair would drag the pane to a new position.
+    let drag_target = Position::new(y_before as i32 + 5, (x_before + 20) as u16);
+    tab.handle_mouse_event(&MouseEvent::new_left_motion_event(drag_target), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(drag_target), client_id)
+        .unwrap();
+    let (x_after, y_after) = {
+        let pane = tab.get_pane_with_id(floating_pane_id).unwrap();
+        (pane.get_content_x(), pane.get_content_y())
+    };
+    assert_eq!(
+        (x_before, y_before),
+        (x_after, y_after),
+        "a right press on a floating pane's frame must not start moving it"
     );
 }
