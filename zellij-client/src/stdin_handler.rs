@@ -224,6 +224,7 @@ pub(crate) fn stdin_loop(
                                 break 'stdin;
                             }
                         }
+                        realign_current_buffer(&mut current_buffer, &input_parser);
 
                         schedule_finalization(
                             &stdin_ansi_parser,
@@ -329,6 +330,18 @@ fn drain_partial_to_keyboard(
         send_input_instructions
             .send(InputInstruction::KeyEvent(input_event, raw_bytes))
             .unwrap();
+    }
+    realign_current_buffer(current_buffer, input_parser);
+}
+
+/// Trim `current_buffer` to the parser's own buffered length so it can
+/// never drift from the parser's internal state: a trailing incomplete
+/// sequence is held by the parser (and mirrored here) until the next
+/// read completes it, while bytes already decoded into events are dropped.
+fn realign_current_buffer(current_buffer: &mut Vec<u8>, input_parser: &InputParser) {
+    let buffered = input_parser.buffered_len();
+    if current_buffer.len() > buffered {
+        current_buffer.truncate(buffered);
     }
 }
 
