@@ -749,6 +749,8 @@ pub struct Grid {
     /// Pane-scoped override for the default background colour. Same
     /// invariant as `pane_default_fg`.
     pub pane_default_bg: Option<(u8, u8, u8)>,
+    pub osc_default_fg: Option<(u8, u8, u8)>,
+    pub osc_default_bg: Option<(u8, u8, u8)>,
     pub plugin_highlights: HashMap<u32, Vec<(String, CompiledHighlight)>>,
     // key: plugin_id (u32), inner vec: (pattern, compiled) pairs
     pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
@@ -772,8 +774,12 @@ impl Grid {
     }
     pub fn get_pane_default_color_strings(&self) -> (Option<String>, Option<String>) {
         (
-            self.pane_default_fg.map(rgb_to_hex_string),
-            self.pane_default_bg.map(rgb_to_hex_string),
+            self.pane_default_fg
+                .or(self.osc_default_fg)
+                .map(rgb_to_hex_string),
+            self.pane_default_bg
+                .or(self.osc_default_bg)
+                .map(rgb_to_hex_string),
         )
     }
 }
@@ -1093,6 +1099,8 @@ impl Grid {
             hyperlink_tracker: HyperlinkTracker::new(),
             pane_default_fg: None,
             pane_default_bg: None,
+            osc_default_fg: None,
+            osc_default_bg: None,
             plugin_highlights: HashMap::new(),
             hover_position: None,
             cached_hover_tooltip: None,
@@ -2612,6 +2620,8 @@ impl Grid {
         self.set_scroll_region_to_viewport_size();
         self.pane_default_fg = None;
         self.pane_default_bg = None;
+        self.osc_default_fg = None;
+        self.osc_default_bg = None;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }
@@ -4159,8 +4169,8 @@ impl Perform for Grid {
                                 // is actually rendering for them, not
                                 // the host terminal's background.
                                 let local_override = match dynamic_code {
-                                    10 => self.pane_default_fg,
-                                    11 => self.pane_default_bg,
+                                    10 => self.pane_default_fg.or(self.osc_default_fg),
+                                    11 => self.pane_default_bg.or(self.osc_default_bg),
                                     _ => None,
                                 };
                                 if let Some(rgb) = local_override {
@@ -4200,7 +4210,7 @@ impl Perform for Grid {
                                     self.pending_forwarded_queries.push(query);
                                 }
                             } else {
-                                // Set: parse color and store as pane
+                                // Set: parse color and store as OSC
                                 // default. Only literal RGB is stored;
                                 // palette-indexed / named variants (or
                                 // a parse failure) are silently dropped
@@ -4208,9 +4218,9 @@ impl Perform for Grid {
                                 // narrow.
                                 if let Some(rgb) = xparse_color(param).and_then(rgb_of_ansi_code) {
                                     if dynamic_code == 10 {
-                                        self.pane_default_fg = Some(rgb);
+                                        self.osc_default_fg = Some(rgb);
                                     } else if dynamic_code == 11 {
-                                        self.pane_default_bg = Some(rgb);
+                                        self.osc_default_bg = Some(rgb);
                                     }
                                     self.output_buffer.update_all_lines();
                                 }
@@ -4298,12 +4308,14 @@ impl Perform for Grid {
             // Reset foreground color.
             b"110" => {
                 self.pane_default_fg = None;
+                self.osc_default_fg = None;
                 self.output_buffer.update_all_lines();
             },
 
             // Reset background color.
             b"111" => {
                 self.pane_default_bg = None;
+                self.osc_default_bg = None;
                 self.output_buffer.update_all_lines();
             },
 
