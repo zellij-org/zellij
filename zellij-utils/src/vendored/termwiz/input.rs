@@ -1891,6 +1891,14 @@ impl InputParser {
         );
     }
 
+    /// Number of bytes still held unprocessed in the parser's internal
+    /// buffer. A caller that mirrors this ring separately (e.g. to forward
+    /// raw bytes alongside decoded events) can reconcile its own buffer to
+    /// exactly the same length so the two never drift apart.
+    pub fn buffered_len(&self) -> usize {
+        self.buf.len()
+    }
+
     pub fn parse_as_vec(&mut self, bytes: &[u8], maybe_more: bool) -> Vec<InputEvent> {
         let mut result = Vec::new();
         self.parse(bytes, |event| result.push(event), maybe_more);
