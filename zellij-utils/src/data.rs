@@ -2336,6 +2336,9 @@ pub struct PaneInfo {
     /// A "held" pane is a paused pane that is waiting for user input (eg. a command pane that
     /// exited and is waiting to be re-run or closed)
     pub is_held: bool,
+    /// Whether this pane has an active (pending) bell notification - set when the pane receives a
+    /// terminal bell while not focused, and cleared when the pane is focused
+    pub has_bell_notification: bool,
     pub pane_x: usize,
     pub pane_content_x: usize,
     pub pane_y: usize,

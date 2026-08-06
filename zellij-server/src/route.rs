@@ -1732,11 +1732,16 @@ pub(crate) fn route_action(
             show_geometry,
             show_all,
             output_json,
+            filter_bell,
         } => {
             let maybe_panes =
                 request_panes_from_screen(&senders, show_all).with_context(err_context)?;
 
             if let Some(mut pane_entries) = maybe_panes {
+                if filter_bell {
+                    pane_entries.retain(|entry| entry.pane_info.has_bell_notification);
+                }
+
                 if show_command || show_all || output_json {
                     enrich_panes_with_pty_data(&mut pane_entries, &senders)
                         .with_context(err_context)?;
@@ -3095,6 +3100,7 @@ fn build_table_header(
         header.push("FOCUSED");
         header.push("FLOATING");
         header.push("EXITED");
+        header.push("BELL");
     }
 
     if show_geometry {
@@ -3135,6 +3141,7 @@ fn build_table_row(
         row.push(entry.pane_info.is_focused.to_string());
         row.push(entry.pane_info.is_floating.to_string());
         row.push(entry.pane_info.exited.to_string());
+        row.push(entry.pane_info.has_bell_notification.to_string());
     }
 
     if show_geometry {

@@ -64,6 +64,7 @@ panes {
         cursor_coordinates_in_pane 0 0
         terminal_command "foo"
         is_selectable true
+        has_bell_notification true
         tab_position 0
     }
     pane {
@@ -87,6 +88,7 @@ panes {
         cursor_coordinates_in_pane 0 0
         plugin_url "i_am_a_fake_plugin"
         is_selectable true
+        has_bell_notification false
         tab_position 0
     }
 }

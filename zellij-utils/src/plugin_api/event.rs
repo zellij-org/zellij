@@ -1821,6 +1821,7 @@ impl TryFrom<ProtobufPaneInfo> for PaneInfo {
                 .collect(),
             default_fg: protobuf_pane_info.default_fg,
             default_bg: protobuf_pane_info.default_bg,
+            has_bell_notification: protobuf_pane_info.has_bell_notification,
         })
     }
 }
@@ -1866,6 +1867,7 @@ impl TryFrom<PaneInfo> for ProtobufPaneInfo {
                 .collect(),
             default_fg: pane_info.default_fg,
             default_bg: pane_info.default_bg,
+            has_bell_notification: pane_info.has_bell_notification,
         })
     }
 }
@@ -2959,6 +2961,7 @@ fn serialize_session_update_event_with_non_default_values() {
             index_in_pane_group: index_in_pane_group_1,
             default_fg: None,
             default_bg: None,
+            has_bell_notification: true,
         },
         PaneInfo {
             id: 1,
@@ -2986,6 +2989,7 @@ fn serialize_session_update_event_with_non_default_values() {
             index_in_pane_group: index_in_pane_group_2,
             default_fg: None,
             default_bg: None,
+            has_bell_notification: false,
         },
     ];
     panes.insert(0, panes_list);

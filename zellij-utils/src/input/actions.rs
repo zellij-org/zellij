@@ -550,6 +550,8 @@ pub enum Action {
         show_geometry: bool,
         show_all: bool,
         output_json: bool,
+        /// Only include panes that currently have a pending bell notification
+        filter_bell: bool,
     },
     ListTabs {
         show_state: bool,
@@ -1962,6 +1964,7 @@ impl Action {
                 geometry,
                 all,
                 json,
+                bell,
             } => Ok(vec![Action::ListPanes {
                 show_tab: tab,
                 show_command: command,
@@ -1969,6 +1972,7 @@ impl Action {
                 show_geometry: geometry,
                 show_all: all,
                 output_json: json,
+                filter_bell: bell,
             }]),
             CliAction::ListTabs {
                 state,
