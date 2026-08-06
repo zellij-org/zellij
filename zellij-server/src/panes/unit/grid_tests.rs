@@ -1,4 +1,5 @@
 use super::super::Grid;
+use crate::host_query::{ClipboardQuery, OscTerminator};
 use crate::panes::grid::SixelImageStore;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::link_handler::LinkHandler;
@@ -3492,6 +3493,103 @@ pub fn osc_4_background_query() {
         .map(|q| String::from_utf8(q.to_query_bytes()).unwrap())
         .collect();
     assert_eq!(forwarded_string, "\u{1b}]10;?\u{1b}\\");
+}
+
+#[test]
+pub fn osc_52_clipboard_query_is_queued_for_local_reply() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let osc8_hyperlinks = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+
+    let mut grid = Grid::new(
+        51,
+        97,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+    );
+
+    // st-terminated query for the system clipboard
+    let content = "\u{1b}]52;c;?\u{1b}\\";
+    vte_parser.advance(&mut grid, content.as_bytes());
+
+    // bel-terminated query for selection
+    let content = "\u{1b}]52;p;?\u{07}";
+    vte_parser.advance(&mut grid, content.as_bytes());
+
+    // unknown responder
+    let content = "\u{1b}]52;q;?\u{07}";
+    vte_parser.advance(&mut grid, content.as_bytes());
+
+    assert!(grid.pending_forwarded_queries.is_empty());
+    assert!(grid.pending_messages_to_pty.is_empty());
+    assert!(grid.pending_clipboard_update.is_none());
+    assert_eq!(
+        grid.pending_clipboard_queries,
+        vec![
+            ClipboardQuery {
+                destination: 'c',
+                terminator: OscTerminator::St,
+            },
+            ClipboardQuery {
+                destination: 'p',
+                terminator: OscTerminator::Bel,
+            },
+            ClipboardQuery {
+                destination: 'c',
+                terminator: OscTerminator::Bel,
+            },
+        ],
+    );
+}
+
+#[test]
+pub fn osc_52_clipboard_write_is_not_treated_as_a_query() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let osc8_hyperlinks = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+
+    let mut grid = Grid::new(
+        51,
+        97,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+    );
+
+    let content = "\u{1b}]52;c;aGVsbG8=\u{07}"; // "hello"
+    vte_parser.advance(&mut grid, content.as_bytes());
+
+    assert!(grid.pending_clipboard_queries.is_empty());
+    assert_eq!(grid.pending_clipboard_update, Some("hello".to_owned()));
 }
 
 #[test]

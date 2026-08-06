@@ -1477,6 +1477,8 @@ pub(crate) struct Screen {
     client_kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
+    /// for osc52 clipboard queries
+    last_copied_text: Rc<RefCell<Option<String>>>,
     connected_clients: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_ids: BTreeMap<ClientId, usize>,
@@ -1669,6 +1671,7 @@ impl Screen {
             last_single_pane_tab_names: HashMap::new(),
             terminal_emulator_colors: Rc::new(RefCell::new(Palette::default())),
             terminal_emulator_color_codes: Rc::new(RefCell::new(HashMap::new())),
+            last_copied_text: Rc::new(RefCell::new(None)),
             tab_history: BTreeMap::new(),
             pane_history: BTreeMap::new(),
             mode_info: BTreeMap::new(),
@@ -4389,6 +4392,7 @@ impl Screen {
             self.copy_options.clone(),
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
+            self.last_copied_text.clone(),
             swap_layouts,
             self.default_shell.clone(),
             self.debug,
