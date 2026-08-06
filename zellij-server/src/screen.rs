@@ -8070,6 +8070,7 @@ pub(crate) fn screen_thread_main(
                         screen.report_key_passthrough_state(client_id, old, new);
                     }
                     screen.render(None)?;
+                    screen.log_and_report_session_state()?;
                 }
             },
             ScreenInstruction::FocusPreviousPane(client_id, mut _completion_tx) => {
