@@ -160,24 +160,24 @@ impl SixelGrid {
                     image_pixel_size.1,
                 );
 
-                // here we remove images which this image covers completely to save on system
-                // resources - TODO: also do this with partial covers, eg. if several images
-                // together cover one image
+                let mut images_to_reap = vec![];
+                let mut images_to_cut_out = vec![];
                 for (image_id, pixel_rect) in &self.sixel_image_locations {
                     if let Some(intersecting_rect) =
                         pixel_rect.intersecting_rect(&image_size_and_coordinates)
                     {
-                        if intersecting_rect.x == pixel_rect.x
-                            && intersecting_rect.y == pixel_rect.y
-                            && intersecting_rect.height == pixel_rect.height
-                            && intersecting_rect.width == pixel_rect.width
-                        {
-                            self.image_ids_to_reap.push(*image_id);
+                        if rect_covers_image(&intersecting_rect, pixel_rect) {
+                            images_to_reap.push(*image_id);
+                        } else {
+                            images_to_cut_out.push((*image_id, intersecting_rect));
                         }
                     }
                 }
-                for image_id in &self.image_ids_to_reap {
-                    self.sixel_image_locations.remove(image_id);
+                for image_id in images_to_reap {
+                    self.queue_image_to_reap(image_id);
+                }
+                for (image_id, rect_in_image_to_cut_out) in images_to_cut_out {
+                    self.remove_pixels_from_image(image_id, rect_in_image_to_cut_out);
                 }
 
                 self.sixel_image_locations
@@ -262,7 +262,13 @@ impl SixelGrid {
         }
     }
     pub fn next_image_id(&self) -> usize {
-        self.sixel_image_store.borrow().sixel_images.keys().len()
+        self.sixel_image_store
+            .borrow()
+            .sixel_images
+            .keys()
+            .max()
+            .map(|id| *id + 1)
+            .unwrap_or(0)
     }
     pub fn new_sixel_image(&mut self, sixel_image_id: usize, sixel_image: SixelImage) {
         self.sixel_image_store
@@ -270,20 +276,32 @@ impl SixelGrid {
             .sixel_images
             .insert(sixel_image_id, (sixel_image, HashMap::new()));
     }
+    fn queue_image_to_reap(&mut self, image_id: usize) {
+        self.sixel_image_locations.remove(&image_id);
+        if !self.image_ids_to_reap.contains(&image_id) {
+            self.image_ids_to_reap.push(image_id);
+        }
+    }
     pub fn remove_pixels_from_image(&mut self, image_id: usize, pixel_rect: PixelRect) {
-        if let Some((sixel_image, sixel_image_cache)) = self
-            .sixel_image_store
-            .borrow_mut()
-            .sixel_images
-            .get_mut(&image_id)
-        {
-            sixel_image.cut_out(
-                pixel_rect.x,
-                pixel_rect.y as usize,
-                pixel_rect.width,
-                pixel_rect.height,
-            );
-            sixel_image_cache.clear(); // TODO: more intelligent cache clearing
+        let should_reap_image = {
+            self.sixel_image_store
+                .borrow_mut()
+                .sixel_images
+                .get_mut(&image_id)
+                .map(|(sixel_image, sixel_image_cache)| {
+                    sixel_image.cut_out(
+                        pixel_rect.x,
+                        pixel_rect.y as usize,
+                        pixel_rect.width,
+                        pixel_rect.height,
+                    );
+                    sixel_image_cache.clear(); // TODO: more intelligent cache clearing
+                    !sixel_image.pixels.iter().flatten().any(|pixel| pixel.on)
+                })
+                .unwrap_or(false)
+        };
+        if should_reap_image {
+            self.queue_image_to_reap(image_id);
         }
     }
     pub fn reap_images(&mut self, ids_to_reap: Vec<usize>) {
@@ -424,6 +442,13 @@ impl SixelGrid {
     }
 }
 
+fn rect_covers_image(intersecting_rect: &PixelRect, image_rect: &PixelRect) -> bool {
+    intersecting_rect.x == 0
+        && intersecting_rect.y == 0
+        && intersecting_rect.height == image_rect.height
+        && intersecting_rect.width == image_rect.width
+}
+
 type SixelImageCache = HashMap<PixelRect, String>;
 #[derive(Debug, Clone, Default)]
 pub struct SixelImageStore {
@@ -462,5 +487,74 @@ impl SixelImageStore {
     }
     pub fn image_count(&self) -> usize {
         self.sixel_images.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_sixel_image() -> SixelImage {
+        SixelImage::new("\u{1b}Pq#1;2;100;100;0#1~~~~\u{1b}\\".as_bytes()).unwrap()
+    }
+
+    fn grid_with_sample_image() -> SixelGrid {
+        let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+            width: 2,
+            height: 3,
+        })));
+        let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+        let mut grid = SixelGrid::new(character_cell_size, sixel_image_store);
+        let sixel_image = sample_sixel_image();
+        let (height, width) = sixel_image.pixel_size();
+
+        grid.sixel_image_locations
+            .insert(0, PixelRect::new(0, 0, height, width));
+        grid.new_sixel_image(0, sixel_image);
+        grid
+    }
+
+    #[test]
+    fn detects_full_image_cover_with_non_zero_image_origin() {
+        let image_rect = PixelRect::new(80, 42, 20, 30);
+        let covering_rect = PixelRect::new(80, 42, 20, 30);
+
+        let intersecting_rect = image_rect.intersecting_rect(&covering_rect).unwrap();
+
+        assert!(rect_covers_image(&intersecting_rect, &image_rect));
+    }
+
+    #[test]
+    fn detects_partial_image_cover_with_non_zero_image_origin() {
+        let image_rect = PixelRect::new(80, 42, 20, 30);
+        let covering_rect = PixelRect::new(90, 52, 10, 10);
+
+        let intersecting_rect = image_rect.intersecting_rect(&covering_rect).unwrap();
+
+        assert!(!rect_covers_image(&intersecting_rect, &image_rect));
+    }
+
+    #[test]
+    fn keeps_partially_erased_image_in_store() {
+        let mut grid = grid_with_sample_image();
+
+        grid.remove_pixels_from_image(0, PixelRect::new(0, 0, 3, 2));
+
+        assert!(grid.sixel_image_locations.contains_key(&0));
+        assert!(grid.drain_image_ids_to_reap().is_none());
+        assert_eq!(grid.sixel_image_store.borrow().image_count(), 1);
+    }
+
+    #[test]
+    fn reaps_fully_erased_image() {
+        let mut grid = grid_with_sample_image();
+
+        grid.remove_pixels_from_image(0, PixelRect::new(0, 0, 6, 4));
+
+        assert!(!grid.sixel_image_locations.contains_key(&0));
+        let image_ids_to_reap = grid.drain_image_ids_to_reap().unwrap();
+        assert_eq!(image_ids_to_reap, vec![0]);
+        grid.reap_images(image_ids_to_reap);
+        assert_eq!(grid.sixel_image_store.borrow().image_count(), 0);
     }
 }
