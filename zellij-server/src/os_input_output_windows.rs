@@ -4,18 +4,19 @@ use crate::panes::PaneId;
 use std::{
     collections::BTreeMap,
     ffi::OsStr,
-    io,
+    io, mem,
     os::windows::ffi::OsStrExt,
     os::windows::io::{FromRawHandle, IntoRawHandle, OwnedHandle},
     sync::{
         atomic::{AtomicU32, AtomicU64, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
     },
 };
 
 use tokio::io::AsyncReadExt;
 use tokio::net::windows::named_pipe::NamedPipeServer;
 
+use windows_sys::core::HRESULT;
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, S_OK};
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FlushFileBuffers, WriteFile, FILE_FLAG_OVERLAPPED, OPEN_EXISTING,
@@ -24,6 +25,7 @@ use windows_sys::Win32::System::Console::{
     ClosePseudoConsole, CreatePseudoConsole, GenerateConsoleCtrlEvent, ResizePseudoConsole, COORD,
     CTRL_C_EVENT, HPCON,
 };
+use windows_sys::Win32::System::LibraryLoader::{GetModuleFileNameW, GetProcAddress, LoadLibraryW};
 use windows_sys::Win32::System::Pipes::{CreateNamedPipeW, CreatePipe};
 use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
@@ -49,6 +51,121 @@ const GENERIC_WRITE: u32 = 0x40000000;
 /// the previous pipe handle).
 static PIPE_SEQ: AtomicU64 = AtomicU64::new(0);
 
+// --- ConPTY API loader ---------------------------------------------------
+//
+// The pseudoconsole implementation baked into `kernel32.dll` predates a
+// lot of the terminal-emulation work Microsoft has done in the console
+// host code that lives in `microsoft/terminal`. That newer implementation
+// forwards VT queries from the child to the consumer (so apps inside a
+// pane can, for example, ask the host for its fg/bg via OSC 10/11 and
+// actually get an answer), supports more VT sequences, and carries years
+// of accumulated bug fixes.
+//
+// Microsoft doesn't distribute this newer pseudoconsole standalone.
+// Windows Terminal uses a statically-linked copy internally and ships
+// nothing external for other apps to load. The redistributable form
+// (`conpty.dll` + `OpenConsole.exe`) appears bundled inside some other
+// installers — WezTerm and Visual Studio's terminal component both ship
+// it — but not by any official Microsoft channel.
+//
+// Alacritty runtime-loads it when it's on the DLL search path and falls
+// back to the system pseudoconsole otherwise. We do the same. Which
+// backend was picked (and, if applicable, the resolved full path of the
+// DLL) is logged once at startup so users can tell what they're getting.
+
+type CreatePseudoConsoleFn =
+    unsafe extern "system" fn(COORD, HANDLE, HANDLE, u32, *mut HPCON) -> HRESULT;
+type ResizePseudoConsoleFn = unsafe extern "system" fn(HPCON, COORD) -> HRESULT;
+type ClosePseudoConsoleFn = unsafe extern "system" fn(HPCON);
+
+struct ConptyApi {
+    create: CreatePseudoConsoleFn,
+    resize: ResizePseudoConsoleFn,
+    close: ClosePseudoConsoleFn,
+}
+
+// The function pointers are plain fn pointers and thread-safe.
+unsafe impl Sync for ConptyApi {}
+unsafe impl Send for ConptyApi {}
+
+impl ConptyApi {
+    fn load() -> Self {
+        if let Some(api) = Self::try_load_conpty_dll() {
+            return api;
+        }
+        log::info!(
+            "Windows pseudoconsole: using the system default from kernel32.dll. \
+             Loading OpenConsole's conpty.dll would enable additional \
+             terminal features (VT query forwarding, wider VT sequence \
+             coverage, etc.). Microsoft does not distribute it standalone; \
+             it can be obtained by installing something that bundles it \
+             (e.g. WezTerm, Visual Studio's terminal component) and letting \
+             it stay on PATH, or by dropping the DLL next to zellij.exe."
+        );
+        Self {
+            create: CreatePseudoConsole,
+            resize: ResizePseudoConsole,
+            close: ClosePseudoConsole,
+        }
+    }
+
+    fn try_load_conpty_dll() -> Option<Self> {
+        unsafe {
+            let name: Vec<u16> = OsStr::new("conpty.dll")
+                .encode_wide()
+                .chain(Some(0))
+                .collect();
+            let hmod = LoadLibraryW(name.as_ptr());
+            if hmod.is_null() {
+                return None;
+            }
+            let create = GetProcAddress(hmod, b"CreatePseudoConsole\0".as_ptr())?;
+            let resize = GetProcAddress(hmod, b"ResizePseudoConsole\0".as_ptr())?;
+            let close = GetProcAddress(hmod, b"ClosePseudoConsole\0".as_ptr())?;
+            let path = module_path(hmod).unwrap_or_else(|| "conpty.dll".to_string());
+            log::info!(
+                "Windows pseudoconsole: loaded OpenConsole's conpty.dll from {}. \
+                 Child processes will use its terminal emulation \
+                 (VT query forwarding, wider VT sequence coverage, etc.) \
+                 rather than the system default in kernel32.dll.",
+                path
+            );
+            Some(Self {
+                create: mem::transmute::<_, CreatePseudoConsoleFn>(create),
+                resize: mem::transmute::<_, ResizePseudoConsoleFn>(resize),
+                close: mem::transmute::<_, ClosePseudoConsoleFn>(close),
+            })
+        }
+    }
+}
+
+/// Resolve the full on-disk path of a loaded module for logging.
+/// Returns None on API failure.
+unsafe fn module_path(hmod: *mut core::ffi::c_void) -> Option<String> {
+    let mut buf = vec![0u16; 260]; // start at MAX_PATH; grow if needed
+    loop {
+        let len = GetModuleFileNameW(hmod, buf.as_mut_ptr(), buf.len() as u32);
+        if len == 0 {
+            return None;
+        }
+        // If len == buf.len(), Win32 truncated and did not null-terminate.
+        // Grow and retry (with a sanity cap to avoid runaway allocation).
+        if (len as usize) < buf.len() {
+            buf.truncate(len as usize);
+            return Some(String::from_utf16_lossy(&buf));
+        }
+        if buf.len() >= 32_768 {
+            return None;
+        }
+        buf.resize(buf.len() * 2, 0);
+    }
+}
+
+fn conpty_api() -> &'static ConptyApi {
+    static API: OnceLock<ConptyApi> = OnceLock::new();
+    API.get_or_init(ConptyApi::load)
+}
+
 /// Per-terminal ConPTY state.
 struct ConPtyTerminal {
     hpcon: HPCON,
@@ -66,7 +183,7 @@ impl Drop for ConPtyTerminal {
             // Close the pseudo console first — it may write a final VT frame
             // to the output pipe. The async reader task (if still alive) will
             // drain it. Then close the remaining handle.
-            ClosePseudoConsole(self.hpcon);
+            (conpty_api().close)(self.hpcon);
             CloseHandle(self.input_write_handle);
         }
     }
@@ -269,7 +386,7 @@ fn create_conpty(
         Y: rows as i16,
     };
     let mut hpcon: HPCON = 0;
-    let hr = unsafe { CreatePseudoConsole(size, input_read, output_write, 0, &mut hpcon) };
+    let hr = unsafe { (conpty_api().create)(size, input_read, output_write, 0, &mut hpcon) };
     if hr != S_OK {
         Err(io::Error::from_raw_os_error(hr))
     } else {
@@ -455,7 +572,7 @@ impl WindowsPtyBackend {
                 Ok(r) => r,
                 Err(e) => {
                     unsafe {
-                        ClosePseudoConsole(hpcon);
+                        (conpty_api().close)(hpcon);
                         CloseHandle(input_write);
                         CloseHandle(output_read);
                     }
@@ -555,7 +672,7 @@ impl WindowsPtyBackend {
                         X: cols as i16,
                         Y: rows as i16,
                     };
-                    let hr = unsafe { ResizePseudoConsole(term.hpcon, size) };
+                    let hr = unsafe { (conpty_api().resize)(term.hpcon, size) };
                     if hr != S_OK {
                         Err::<(), _>(anyhow!("ResizePseudoConsole failed: HRESULT 0x{:08x}", hr))
                             .with_context(err_context)
