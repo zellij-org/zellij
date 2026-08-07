@@ -264,6 +264,14 @@ impl InputHandler {
                             raw_bytes,
                         });
                 },
+                Ok((InputInstruction::TerminalFocusGained, _error_context)) => {
+                    self.os_input
+                        .send_to_server(ClientToServerMsg::TerminalFocusGained);
+                },
+                Ok((InputInstruction::TerminalFocusLost, _error_context)) => {
+                    self.os_input
+                        .send_to_server(ClientToServerMsg::TerminalFocusLost);
+                },
                 Ok((
                     InputInstruction::ForwardedReplyFromHostComplete { token, reply_bytes },
                     _error_context,

@@ -19,8 +19,8 @@ use crate::{
         SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg, SixelSupportMsg,
         SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
         SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
-        TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
-        UnblockInputThreadMsg, WebServerStartedMsg,
+        TerminalFocusGainedMsg, TerminalFocusLostMsg, TerminalPixelDimensionsMsg,
+        TerminalResizeMsg, UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
@@ -178,6 +178,12 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                 client_to_server_msg::Message::SetMobileRenderPreferences(
                     SetMobileRenderPreferencesMsg { single_pane, fit },
                 )
+            },
+            ClientToServerMsg::TerminalFocusGained => {
+                client_to_server_msg::Message::TerminalFocusGained(TerminalFocusGainedMsg {})
+            },
+            ClientToServerMsg::TerminalFocusLost => {
+                client_to_server_msg::Message::TerminalFocusLost(TerminalFocusLostMsg {})
             },
         };
 
@@ -348,6 +354,12 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     single_pane: msg.single_pane,
                     fit: msg.fit,
                 })
+            },
+            Some(client_to_server_msg::Message::TerminalFocusGained(_)) => {
+                Ok(ClientToServerMsg::TerminalFocusGained)
+            },
+            Some(client_to_server_msg::Message::TerminalFocusLost(_)) => {
+                Ok(ClientToServerMsg::TerminalFocusLost)
             },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }

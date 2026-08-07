@@ -2,7 +2,7 @@ use crate::keyboard_parser::{KittyKeyboardParser, KittyParseOutcome};
 use crate::os_input_output::ClientOsApi;
 #[cfg(windows)]
 use crate::os_input_output_windows::use_vt_path;
-use crate::stdin_ansi_parser::{HostReply, PendingPartial, StdinAnsiParser};
+use crate::stdin_ansi_parser::{HostReply, PendingPartial, StdinAnsiParser, TerminalFocusEvent};
 #[cfg(windows)]
 use crate::stdin_handler_windows::enable_vt_input;
 use crate::InputInstruction;
@@ -149,6 +149,13 @@ pub(crate) fn stdin_loop(
                         for payload_bytes in parse_output.nested_frames {
                             let _ = send_input_instructions
                                 .send(InputInstruction::NestedSessionFrameFromHost(payload_bytes));
+                        }
+                        for focus_event in parse_output.focus_events {
+                            let instruction = match focus_event {
+                                TerminalFocusEvent::Gained => InputInstruction::TerminalFocusGained,
+                                TerminalFocusEvent::Lost => InputInstruction::TerminalFocusLost,
+                            };
+                            let _ = send_input_instructions.send(instruction);
                         }
                         let residue = parse_output.residue;
                         if residue.is_empty() {

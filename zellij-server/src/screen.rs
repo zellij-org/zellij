@@ -361,6 +361,8 @@ pub enum ScreenInstruction {
         tab_id: Option<usize>,
         completion: Option<NotificationEnd>,
     },
+    TerminalFocusGained(ClientId),
+    TerminalFocusLost(ClientId),
     WriteCharacter(
         Option<KeyWithModifier>,
         Vec<u8>,
@@ -945,6 +947,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::AreFloatingPanesVisible { .. } => {
                 ScreenContext::AreFloatingPanesVisible
             },
+            ScreenInstruction::TerminalFocusGained(..) => ScreenContext::WriteCharacter,
+            ScreenInstruction::TerminalFocusLost(..) => ScreenContext::WriteCharacter,
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
             ScreenInstruction::Resize(.., strategy, _) => match strategy {
                 ResizeStrategy {
@@ -7931,6 +7935,22 @@ pub(crate) fn screen_thread_main(
                 completion,
             } => {
                 screen.are_floating_panes_visible_in_tab(client_id, tab_id, completion)?;
+            },
+            ScreenInstruction::TerminalFocusGained(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab
+                        .send_focus_event_to_active_pane(client_id)
+                );
+            },
+            ScreenInstruction::TerminalFocusLost(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab
+                        .send_unfocus_event_to_active_pane(client_id)
+                );
             },
             ScreenInstruction::WriteCharacter(
                 key_with_modifier,

@@ -31,6 +31,8 @@ message ClientToServerMsg {
     SixelSupportMsg sixel_support = 24;
     RequestSessionListMsg request_session_list = 25;
     SetMobileRenderPreferencesMsg set_mobile_render_preferences = 26;
+    TerminalFocusGainedMsg terminal_focus_gained = 27;
+    TerminalFocusLostMsg terminal_focus_lost = 28;
   }
 }
 
@@ -89,6 +91,14 @@ message KeyMsg {
 }
 
 message ClientExitedMsg {
+  // Empty message
+}
+
+message TerminalFocusGainedMsg {
+  // Empty message
+}
+
+message TerminalFocusLostMsg {
   // Empty message
 }
 

@@ -2374,6 +2374,20 @@ pub(crate) fn route_thread_main(
                                 }
                             }
                         },
+                        ClientToServerMsg::TerminalFocusGained => {
+                            if let Some(senders) = senders {
+                                senders
+                                    .send_to_screen(ScreenInstruction::TerminalFocusGained(client_id))
+                                    .with_context(err_context)?;
+                            }
+                        },
+                        ClientToServerMsg::TerminalFocusLost => {
+                            if let Some(senders) = senders {
+                                senders
+                                    .send_to_screen(ScreenInstruction::TerminalFocusLost(client_id))
+                                    .with_context(err_context)?;
+                            }
+                        },
                         ClientToServerMsg::Action {
                             action,
                             terminal_id: maybe_pane_id,

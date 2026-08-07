@@ -66,6 +66,12 @@ pub enum HostReply {
     SixelSupport(bool),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalFocusEvent {
+    Gained,
+    Lost,
+}
+
 /// Retained alias for the pre-refactor type name used by other modules in
 /// the client. New code should prefer `HostReply`; the alias keeps the
 /// existing `InputInstruction::AnsiStdinInstructions(Vec<...>)` plumbing
@@ -203,6 +209,8 @@ pub struct ParseOutput {
     /// in the keyboard-parser path, because the residue scrubber
     /// strips all OSC bytes before the keyboard parser sees them.
     pub desktop_notifications: Vec<Vec<u8>>,
+    /// Terminal focus events found outside bracketed paste payloads.
+    pub focus_events: Vec<TerminalFocusEvent>,
     /// Residue bytes that were not classified as host replies. These are
     /// the bytes the caller should feed to the keyboard parser.
     pub residue: Vec<u8>,
@@ -405,7 +413,6 @@ impl StdinAnsiParser {
         // Collect events first (borrow-splits the InputParser across the
         // callback and the post-processing mutations).
         let mut events = Vec::new();
-        let mut residue = Vec::new();
         self.inner.parse(
             &sanitized,
             |event| {
@@ -487,8 +494,9 @@ impl StdinAnsiParser {
         // other bytes pass through unchanged. The walk is stateful so
         // an OSC/CSI sequence split across `feed()` calls is buffered
         // rather than leaking into residue.
-        residue.extend(self.strip_replies(&sanitized));
+        let (residue, focus_events) = self.strip_replies(&sanitized);
         out.residue = residue;
+        out.focus_events = focus_events;
         out.has_partial_state = !self.partial_osc.is_empty()
             || !self.partial_csi.is_empty()
             || !self.partial_paste.is_empty()
@@ -614,15 +622,14 @@ impl StdinAnsiParser {
 
     /// Walk `bytes` (with any pending partial buffer prepended) and drop
     /// any OSC/whitelisted-CSI sequences, returning the remaining bytes
-    /// verbatim (keyboard residue). This is a byte-level scrubber — it
-    /// does not produce events, only bytes.
+    /// verbatim (keyboard residue) and any focus events found along the way.
     ///
     /// If the chunk ends mid-sequence, the unterminated tail is held in
     /// `self.partial_osc` or `self.partial_csi` and prepended to the
     /// next call's input — so the corresponding bytes never reach
     /// residue (and never appear as spurious keypresses) while waiting
     /// for the rest of the sequence.
-    fn strip_replies(&mut self, bytes: &[u8]) -> Vec<u8> {
+    fn strip_replies(&mut self, bytes: &[u8]) -> (Vec<u8>, Vec<TerminalFocusEvent>) {
         // Prepend any pending partial. At most one of (partial_osc,
         // partial_csi) is non-empty at any time — the previous walk
         // either completed all sequences or stopped at exactly one
@@ -639,6 +646,7 @@ impl StdinAnsiParser {
         working.extend_from_slice(bytes);
 
         let mut out = Vec::with_capacity(working.len());
+        let mut focus_events = Vec::new();
         let mut i = 0;
         while i < working.len() {
             let rest = &working[i..];
@@ -658,7 +666,7 @@ impl StdinAnsiParser {
                             } else {
                                 self.partial_paste = tail;
                             }
-                            return out;
+                            return (out, focus_events);
                         },
                         MarkerMatch::No => {},
                     }
@@ -693,7 +701,7 @@ impl StdinAnsiParser {
                         } else {
                             self.partial_osc = tail;
                         }
-                        return out;
+                        return (out, focus_events);
                     },
                     SeqStatus::Malformed => {
                         out.push(working[i]);
@@ -705,20 +713,23 @@ impl StdinAnsiParser {
             // Whitelisted CSI report: ESC [ <params>* <intermediates>* <final>
             if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b'[' {
                 match csi_status(rest) {
-                    SeqStatus::Complete(len) => {
+                    CsiStatus::Complete { len, focus_event } => {
+                        if let Some(focus_event) = focus_event {
+                            focus_events.push(focus_event);
+                        }
                         i += len;
                         continue;
                     },
-                    SeqStatus::NeedMore => {
+                    CsiStatus::NeedMore => {
                         let tail = rest.to_vec();
                         if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
                             out.extend_from_slice(&tail);
                         } else {
                             self.partial_csi = tail;
                         }
-                        return out;
+                        return (out, focus_events);
                     },
-                    SeqStatus::Malformed => {
+                    CsiStatus::Malformed => {
                         out.push(working[i]);
                         i += 1;
                         continue;
@@ -731,13 +742,23 @@ impl StdinAnsiParser {
             // walker re-routes based on the actual second byte.
             if rest.len() == 1 && rest[0] == 0x1b {
                 self.partial_osc = vec![0x1b];
-                return out;
+                return (out, focus_events);
             }
             out.push(working[i]);
             i += 1;
         }
-        out
+        (out, focus_events)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CsiStatus {
+    Complete {
+        len: usize,
+        focus_event: Option<TerminalFocusEvent>,
+    },
+    NeedMore,
+    Malformed,
 }
 
 /// Walk an OSC sequence starting at the head of `buf`. Returns whether
@@ -787,10 +808,10 @@ fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
     haystack.windows(needle.len()).any(|w| w == needle)
 }
 
-/// Walk a whitelisted CSI report starting at the head of `buf`.
-fn csi_status(buf: &[u8]) -> SeqStatus {
+/// Walk a whitelisted CSI sequence starting at the head of `buf`.
+fn csi_status(buf: &[u8]) -> CsiStatus {
     if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b'[') {
-        return SeqStatus::Malformed;
+        return CsiStatus::Malformed;
     }
     let mut i = 2;
     let max = 256;
@@ -798,18 +819,35 @@ fn csi_status(buf: &[u8]) -> SeqStatus {
         let b = buf[i];
         match b {
             0x30..=0x3F | 0x20..=0x2F => i += 1,
-            b't' | b'y' | b'c' | b'n' => return SeqStatus::Complete(i + 1),
-            0x40..=0x7E => return SeqStatus::Malformed, // non-whitelisted final
-            _ => return SeqStatus::Malformed,
+            b'I' if i == 2 => {
+                return CsiStatus::Complete {
+                    len: i + 1,
+                    focus_event: Some(TerminalFocusEvent::Gained),
+                }
+            },
+            b'O' if i == 2 => {
+                return CsiStatus::Complete {
+                    len: i + 1,
+                    focus_event: Some(TerminalFocusEvent::Lost),
+                }
+            },
+            b't' | b'y' | b'c' | b'n' => {
+                return CsiStatus::Complete {
+                    len: i + 1,
+                    focus_event: None,
+                }
+            },
+            0x40..=0x7E => return CsiStatus::Malformed, // non-whitelisted final
+            _ => return CsiStatus::Malformed,
         }
     }
     if i >= max {
         // CSI ran past the cap without terminating — treat as malformed
         // so the leading byte falls through to residue and parsing
         // resumes from the next position.
-        SeqStatus::Malformed
+        CsiStatus::Malformed
     } else {
-        SeqStatus::NeedMore
+        CsiStatus::NeedMore
     }
 }
 

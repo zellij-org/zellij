@@ -3718,6 +3718,32 @@ impl Tab {
             self.get_active_pane_mut(client_id)
         }
     }
+    pub fn send_focus_event_to_active_pane(&self, client_id: ClientId) {
+        if let Some(PaneId::Terminal(terminal_id)) = self.get_active_pane_id(client_id) {
+            if let Some(focus_event) = self
+                .get_active_pane(client_id)
+                .and_then(|p| p.focus_event())
+            {
+                let _ = self
+                    .os_api
+                    .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
+            }
+        }
+    }
+
+    pub fn send_unfocus_event_to_active_pane(&self, client_id: ClientId) {
+        if let Some(PaneId::Terminal(terminal_id)) = self.get_active_pane_id(client_id) {
+            if let Some(unfocus_event) = self
+                .get_active_pane(client_id)
+                .and_then(|p| p.unfocus_event())
+            {
+                let _ = self
+                    .os_api
+                    .write_to_tty_stdin(terminal_id, unfocus_event.as_bytes());
+            }
+        }
+    }
+
     pub fn get_active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.get_active_pane_id(client_id)

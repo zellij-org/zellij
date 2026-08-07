@@ -2997,7 +2997,7 @@ impl NestedSessionHandling {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -3057,6 +3057,10 @@ pub mod client_to_server_msg {
         RequestSessionList(super::RequestSessionListMsg),
         #[prost(message, tag="26")]
         SetMobileRenderPreferences(super::SetMobileRenderPreferencesMsg),
+        #[prost(message, tag="27")]
+        TerminalFocusGained(super::TerminalFocusGainedMsg),
+        #[prost(message, tag="28")]
+        TerminalFocusLost(super::TerminalFocusLostMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3149,6 +3153,16 @@ pub struct KeyMsg {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientExitedMsg {
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TerminalFocusGainedMsg {
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TerminalFocusLostMsg {
 }
 /// Empty message
 #[allow(clippy::derive_partial_eq_without_eq)]

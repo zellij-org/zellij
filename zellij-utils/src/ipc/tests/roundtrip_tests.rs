@@ -3708,6 +3708,8 @@ fn test_client_messages() {
         token: u32::MAX,
         reply_bytes: (0u8..=255u8).collect(),
     });
+    test_client_roundtrip!(ClientToServerMsg::TerminalFocusGained);
+    test_client_roundtrip!(ClientToServerMsg::TerminalFocusLost);
     // Guard against protobuf string-vs-bytes encoding regressions: a
     // payload mixing NULs, ESC, and CSI framing must round-trip
     // byte-for-byte or the pane will receive corrupt terminal data.
