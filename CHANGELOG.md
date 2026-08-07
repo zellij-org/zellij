@@ -34,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: implement support for the kitty graphics protocol to display images in the terminal (https://github.com/zellij-org/zellij/pull/5428)
 * fix: only advertise Sixel support if the attached terminal also supports it (https://github.com/zellij-org/zellij/pull/5432)
 * fix: properly unbundle plugin wasm executables when stripping them (to assist distro packagers) (https://github.com/zellij-org/zellij/pull/5433)
+* fix(windows): use OpenConsole's `conpty.dll` for pseudoconsole when available, falling back to the system default in `kernel32.dll`. Enables VT query forwarding (e.g. OSC 10/11 fg/bg color queries) and wider VT sequence coverage for apps running inside a pane. Matches Alacritty/WezTerm behavior. (https://github.com/zellij-org/zellij/pull/5452)
 
 ## [0.44.3] - 2026-05-13
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)
