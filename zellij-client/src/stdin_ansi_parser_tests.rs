@@ -1,6 +1,8 @@
 //! Unit tests for the continuous host-reply parser.
 
-use super::{schedule_forward_timeout, HostReply, PendingPartial, StdinAnsiParser};
+use super::{
+    schedule_forward_timeout, HostReply, PendingPartial, StdinAnsiParser, TerminalFocusEvent,
+};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -102,6 +104,28 @@ fn keyboard_residue_passes_through_unchanged() {
     let (replies, residue) = feed_once(&mut parser, b"\x1b[A");
     assert!(replies.is_empty());
     assert_eq!(residue, b"\x1b[A");
+}
+
+#[test]
+fn extracts_focus_events_outside_bracketed_paste() {
+    let mut parser = StdinAnsiParser::new();
+    let out = parser.feed(b"before\x1b[Ibetween\x1b[Oafter");
+
+    assert_eq!(out.residue, b"beforebetweenafter");
+    assert_eq!(
+        out.focus_events,
+        vec![TerminalFocusEvent::Gained, TerminalFocusEvent::Lost]
+    );
+}
+
+#[test]
+fn preserves_focus_sequences_inside_bracketed_paste() {
+    let mut parser = StdinAnsiParser::new();
+    let pasted = b"\x1b[200~before\x1b[Ibetween\x1b[Oafter\x1b[201~";
+    let out = parser.feed(pasted);
+
+    assert_eq!(out.residue, pasted);
+    assert!(out.focus_events.is_empty());
 }
 
 #[test]
@@ -990,20 +1014,20 @@ fn fragmented_sgr_mouse_is_retained_then_passed_through() {
 }
 
 #[test]
-fn focus_event_is_residue_not_reply() {
+fn focus_event_is_extracted_not_reply() {
     let mut whole = StdinAnsiParser::new();
     let out = whole.feed(b"\x1b[I");
-    assert_eq!(out.residue, b"\x1b[I");
+    assert!(out.residue.is_empty());
     assert!(out.replies.is_empty());
+    assert_eq!(out.focus_events, vec![TerminalFocusEvent::Gained]);
 
     let mut split = StdinAnsiParser::new();
     let r1 = split.feed(b"\x1b[");
     assert!(r1.residue.is_empty());
     let r2 = split.feed(b"I");
-    let mut combined = r1.residue.clone();
-    combined.extend_from_slice(&r2.residue);
-    assert_eq!(combined, b"\x1b[I");
+    assert!(r2.residue.is_empty());
     assert!(r2.replies.is_empty());
+    assert_eq!(r2.focus_events, vec![TerminalFocusEvent::Gained]);
 }
 
 #[test]

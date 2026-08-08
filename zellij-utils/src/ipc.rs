@@ -201,6 +201,8 @@ pub enum ClientToServerMsg {
         is_kitty_keyboard_protocol: bool,
     },
     ClientExited,
+    TerminalFocusGained,
+    TerminalFocusLost,
     KillSession,
     ConnStatus,
     WebServerStarted {

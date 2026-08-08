@@ -53,6 +53,8 @@ const RESET_STYLE: &str = "\u{1b}[m";
 const SHOW_CURSOR: &str = "\u{1b}[?25h";
 const ENTER_KITTY_KEYBOARD_MODE: &str = "\u{1b}[>1u";
 const EXIT_KITTY_KEYBOARD_MODE: &str = "\u{1b}[<1u";
+const ENABLE_FOCUS_REPORTING: &str = "\u{1b}[?1004h";
+const DISABLE_FOCUS_REPORTING: &str = "\u{1b}[?1004l";
 const CLEAR_CLIENT_TERMINAL_ATTRIBUTES: &str = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
 /// Subscribe to host color-palette theme notifications (CSI 2031). Hosts
 /// that support it begin emitting unsolicited DSR 997 reports on theme
@@ -368,8 +370,9 @@ fn exit_after_startup_error(teardown: Option<TerminalTeardown>, message: String)
                 ""
             };
             let rendered = format!(
-                "{}{}{}{}{}\r\n{}\n",
+                "{}{}{}{}{}{}\r\n{}\n",
                 kitty_exit,
+                DISABLE_FOCUS_REPORTING,
                 DISABLE_HOST_THEME_NOTIFY,
                 EXIT_ALTERNATE_SCREEN,
                 RESET_STYLE,
@@ -523,6 +526,8 @@ pub(crate) enum InputInstruction {
     MouseEvent(zellij_utils::input::mouse::MouseEvent),
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
     DesktopNotificationResponse(Vec<u8>),
+    TerminalFocusGained,
+    TerminalFocusLost,
     /// The continuous host-reply parser closed a forwarding window (barrier
     /// reply seen or timeout fired). Payload is the accumulated raw bytes
     /// to ship to the server.
@@ -824,6 +829,7 @@ pub fn start_remote_client(
     stdout
         .write_all(ENTER_KITTY_KEYBOARD_MODE.as_bytes())
         .unwrap();
+    stdout.write_all(ENABLE_FOCUS_REPORTING.as_bytes()).unwrap();
     stdout
         .write_all(ENABLE_HOST_THEME_NOTIFY.as_bytes())
         .unwrap();
@@ -953,6 +959,7 @@ pub fn start_client(
                 .write_all(ENTER_KITTY_KEYBOARD_MODE.as_bytes())
                 .unwrap();
         }
+        stdout.write_all(ENABLE_FOCUS_REPORTING.as_bytes()).unwrap();
         // Subscribe to host CSI 2031 theme notifications and query the
         // current mode. Sent right after CLEAR_CLIENT_TERMINAL_ATTRIBUTES
         // so there's no window in which the host is unsubscribed.
@@ -1676,8 +1683,9 @@ fn terminal_teardown_message(message: &str, rows: usize, include_kitty_exit: boo
         ""
     };
     format!(
-        "{}{}{}{}{}{}{}\n",
+        "{}{}{}{}{}{}{}{}\n",
         kitty_exit,
+        DISABLE_FOCUS_REPORTING,
         DISABLE_HOST_THEME_NOTIFY,
         EXIT_ALTERNATE_SCREEN,
         RESET_STYLE,
