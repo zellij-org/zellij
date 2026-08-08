@@ -60,6 +60,7 @@ const ENABLE_BRACKETED_PASTE: &str = "\u{1b}[?2004h";
 const ENABLE_FOCUS_REPORTING: &str = "\u{1b}[?1004h";
 const DISABLE_FOCUS_REPORTING: &str = "\u{1b}[?1004l";
 const RESET_STYLE: &str = "\u{1b}[m";
+const RESET_CURSOR_COLOR: &str = "\u{1b}]112\u{1b}\\";
 const SHOW_CURSOR: &str = "\u{1b}[?25h";
 const ENTER_KITTY_KEYBOARD_MODE: &str = "\u{1b}[>1u";
 const EXIT_KITTY_KEYBOARD_MODE: &str = "\u{1b}[<1u";
@@ -438,10 +439,11 @@ fn exit_after_startup_error(teardown: Option<TerminalTeardown>, message: String)
                 ""
             };
             let rendered = format!(
-                "{}{}{}{}{}{}\r\n{}\n",
+                "{}{}{}{}{}{}{}\r\n{}\n",
                 kitty_exit,
                 DISABLE_HOST_THEME_NOTIFY,
                 DISABLE_FOCUS_REPORTING,
+                RESET_CURSOR_COLOR,
                 EXIT_ALTERNATE_SCREEN,
                 RESET_STYLE,
                 SHOW_CURSOR,
@@ -1818,11 +1820,12 @@ fn terminal_teardown_message(
         ""
     };
     format!(
-        "{}{}{}{}{}{}{}{}{}\n",
+        "{}{}{}{}{}{}{}{}{}{}\n",
         kitty_exit,
         DISABLE_HOST_THEME_NOTIFY,
         DISABLE_FOCUS_REPORTING,
         grapheme_cluster_exit,
+        RESET_CURSOR_COLOR,
         EXIT_ALTERNATE_SCREEN,
         RESET_STYLE,
         SHOW_CURSOR,
