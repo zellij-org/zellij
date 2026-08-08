@@ -749,6 +749,11 @@ pub struct Grid {
     /// Pane-scoped override for the default background colour. Same
     /// invariant as `pane_default_fg`.
     pub pane_default_bg: Option<(u8, u8, u8)>,
+    /// Pane-scoped override for the host terminal cursor colour. Stored
+    /// as literal RGB so the render path can safely serialize it as OSC 12
+    /// whenever this pane is focused. `None` means "reset to the host
+    /// terminal's configured cursor colour" via OSC 112.
+    pub pane_cursor_color: Option<(u8, u8, u8)>,
     pub plugin_highlights: HashMap<u32, Vec<(String, CompiledHighlight)>>,
     // key: plugin_id (u32), inner vec: (pattern, compiled) pairs
     pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
@@ -775,6 +780,13 @@ impl Grid {
             self.pane_default_fg.map(rgb_to_hex_string),
             self.pane_default_bg.map(rgb_to_hex_string),
         )
+    }
+
+    pub fn cursor_color_osc(&self) -> String {
+        match self.pane_cursor_color {
+            Some(rgb) => format!("\u{1b}]12;{}\u{1b}\\", rgb_to_hex_string(rgb)),
+            None => "\u{1b}]112\u{1b}\\".to_string(),
+        }
     }
 }
 
@@ -1093,6 +1105,7 @@ impl Grid {
             hyperlink_tracker: HyperlinkTracker::new(),
             pane_default_fg: None,
             pane_default_bg: None,
+            pane_cursor_color: None,
             plugin_highlights: HashMap::new(),
             hover_position: None,
             cached_hover_tooltip: None,
@@ -2612,6 +2625,7 @@ impl Grid {
         self.set_scroll_region_to_viewport_size();
         self.pane_default_fg = None;
         self.pane_default_bg = None;
+        self.pane_cursor_color = None;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }
@@ -4222,7 +4236,31 @@ impl Perform for Grid {
             },
 
             b"12" => {
-                // get/set cursor color currently unimplemented
+                if params.len() >= 2 {
+                    for param in &params[1..] {
+                        if param == b"?" {
+                            if let Some(rgb) = self.pane_cursor_color {
+                                let reply = format!(
+                                    "\u{1b}]12;{}{}",
+                                    osc_color_reply_body(rgb),
+                                    terminator
+                                );
+                                self.pending_messages_to_pty.push(reply.as_bytes().to_vec());
+                            } else {
+                                let term =
+                                    crate::host_query::OscTerminator::from_bell_terminated(
+                                        bell_terminated,
+                                    );
+                                self.pending_forwarded_queries
+                                    .push(crate::host_query::HostQuery::CursorColor {
+                                        terminator: term,
+                                    });
+                            }
+                        } else if let Some(rgb) = xparse_color(param).and_then(rgb_of_ansi_code) {
+                            self.pane_cursor_color = Some(rgb);
+                        }
+                    }
+                }
             },
 
             // Set cursor style.
@@ -4309,7 +4347,7 @@ impl Perform for Grid {
 
             // Reset text cursor color.
             b"112" => {
-                // TBD - reset text cursor color - currently unimplemented
+                self.pane_cursor_color = None;
             },
 
             b"99" => {
