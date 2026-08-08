@@ -230,9 +230,10 @@ pub(crate) struct Tab {
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     pids_waiting_resize: HashSet<u32>, // u32 is the terminal_id
-    cursor_positions_and_shape: HashMap<ClientId, (usize, usize, String)>, // (x_position,
+    cursor_positions_and_shape: HashMap<ClientId, (usize, usize, String, String)>, // (x_position,
     // y_position,
-    // cursor_shape_csi)
+    // cursor_shape_csi,
+    // cursor_color_osc)
     is_pending: bool, // a pending tab is one that is still being loaded or otherwise waiting
     pending_instructions: Vec<BufferedTabInstruction>, // instructions that came while the tab was
     // pending and need to be re-applied
@@ -373,6 +374,9 @@ pub trait Pane {
     }
     fn cursor_shape_csi(&self) -> String {
         "\u{1b}[0 q".to_string() // default to non blinking block
+    }
+    fn cursor_color_osc(&self) -> String {
+        "\u{1b}]112\u{1b}\\".to_string() // reset to host terminal default cursor colour
     }
     fn contains(&self, position: &Position) -> bool {
         match self.geom_override() {
@@ -4918,20 +4922,24 @@ impl Tab {
                         // which means the cursor can be jumping around and we definitely do not
                         // want to render it
                     } else if not_occluded && is_cursor_visible {
-                        let desired_cursor_shape = self
-                            .get_active_pane(client_id)
+                        let active_pane = self.get_active_pane(client_id);
+                        let desired_cursor_shape = active_pane
                             .map(|ap| ap.cursor_shape_csi())
                             .unwrap_or_default();
-                        let cursor_changed_position_or_shape = self
+                        let desired_cursor_color = active_pane
+                            .map(|ap| ap.cursor_color_osc())
+                            .unwrap_or_else(|| "\u{1b}]112\u{1b}\\".to_string());
+                        let cursor_changed_position_or_shape_or_color = self
                             .cursor_positions_and_shape
                             .get(&client_id)
-                            .map(|(previous_x, previous_y, previous_shape)| {
+                            .map(|(previous_x, previous_y, previous_shape, previous_color)| {
                                 previous_x != &cursor_position_x
                                     || previous_y != &cursor_position_y
                                     || previous_shape != &desired_cursor_shape
+                                    || previous_color != &desired_cursor_color
                             })
                             .unwrap_or(true);
-                        if output.is_dirty() || cursor_changed_position_or_shape {
+                        if output.is_dirty() || cursor_changed_position_or_shape_or_color {
                             let show_cursor = "\u{1b}[?25h";
                             let goto_cursor_position = &format!(
                                 "\u{1b}[{};{}H\u{1b}[m{}",
@@ -4939,6 +4947,10 @@ impl Tab {
                                 cursor_position_x + 1,
                                 desired_cursor_shape
                             ); // goto row/col
+                            output.add_post_vte_instruction_to_client(
+                                client_id,
+                                &desired_cursor_color,
+                            );
                             output.add_post_vte_instruction_to_client(client_id, show_cursor);
                             output.add_post_vte_instruction_to_client(
                                 client_id,
@@ -4946,7 +4958,12 @@ impl Tab {
                             );
                             self.cursor_positions_and_shape.insert(
                                 client_id,
-                                (cursor_position_x, cursor_position_y, desired_cursor_shape),
+                                (
+                                    cursor_position_x,
+                                    cursor_position_y,
+                                    desired_cursor_shape,
+                                    desired_cursor_color,
+                                ),
                             );
                         }
                     } else if not_occluded {

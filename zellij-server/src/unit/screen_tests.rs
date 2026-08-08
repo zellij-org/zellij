@@ -8872,6 +8872,11 @@ fn fg_query_bel() -> HostQuery {
         terminator: OscTerminator::Bel,
     }
 }
+fn cursor_query() -> HostQuery {
+    HostQuery::CursorColor {
+        terminator: OscTerminator::St,
+    }
+}
 fn palette_query(index: u8) -> HostQuery {
     HostQuery::PaletteRegister {
         index,
@@ -8908,6 +8913,20 @@ fn forward_host_query_when_idle_dispatches_immediately() {
         (token, query.to_query_bytes()),
         "wire bytes must be derived from the HostQuery"
     );
+}
+
+#[test]
+fn forward_cursor_color_query_uses_osc_12() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane_id = PaneId::Terminal(42);
+    let query = cursor_query();
+
+    let token = screen.forward_host_query(pane_id, query.clone());
+    assert_eq!(screen.forward_in_flight_token, Some(token));
+
+    let forwards = capture.drain_forward_queries();
+    assert_eq!(forwards, vec![(token, b"\x1b]12;?\x1b\\".to_vec())]);
 }
 
 #[test]
