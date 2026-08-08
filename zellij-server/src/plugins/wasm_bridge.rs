@@ -586,16 +586,15 @@ impl WasmBridge {
             return Ok(());
         };
 
-        let (rows, columns) = self.size_of_plugin_id(plugin_id).unwrap_or((0, 0));
-        self.cached_events_for_pending_plugins
-            .insert(plugin_id, vec![]);
-        self.cached_resizes_for_pending_plugins
-            .insert(plugin_id, (rows, columns));
-
-        let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
-        self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
-        self.loading_plugins.insert((plugin_id, run_plugin.clone()));
-
+        // Everything that can refuse the reload is checked before any pending
+        // state is installed. These checks used to run after the plugin had
+        // already been put into `cached_events_for_pending_plugins`,
+        // `cached_resizes_for_pending_plugins` and `loading_plugins`, and the
+        // loading animation started; each of the refusals below returns Ok(())
+        // and cleaned none of it up. The plugin id then stayed pending forever:
+        // events cached against it were never delivered or dropped, the pipe
+        // messages held with them pinned their file descriptors, and the caller
+        // saw a success it never got.
         let plugin_executor = self.plugin_executor.clone();
 
         let Some(first_client_id) = self.get_first_client_id() else {
@@ -618,6 +617,18 @@ impl WasmBridge {
             rows: size.0,
             cols: size.1,
         };
+
+        // Past every refusal: the reload is going to happen, so the pending
+        // state is safe to install.
+        let (rows, columns) = self.size_of_plugin_id(plugin_id).unwrap_or((0, 0));
+        self.cached_events_for_pending_plugins
+            .insert(plugin_id, vec![]);
+        self.cached_resizes_for_pending_plugins
+            .insert(plugin_id, (rows, columns));
+
+        let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
+        self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
+        self.loading_plugins.insert((plugin_id, run_plugin.clone()));
 
         let cwd = self.cwd_of_plugin_id(plugin_id);
 
