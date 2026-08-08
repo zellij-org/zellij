@@ -749,6 +749,9 @@ impl Pane for TerminalPane {
     fn cursor_shape_csi(&self) -> String {
         self.grid.cursor_shape().get_csi_str().to_string()
     }
+    fn cursor_color_osc(&self) -> String {
+        self.grid.cursor_color_osc()
+    }
     fn drain_messages_to_pty(&mut self) -> Vec<Vec<u8>> {
         self.grid.pending_messages_to_pty.drain(..).collect()
     }
