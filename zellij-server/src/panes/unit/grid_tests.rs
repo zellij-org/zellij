@@ -4122,6 +4122,225 @@ fn create_grid_with_content(content: &str) -> Grid {
     grid
 }
 
+fn select_with_click_count(grid: &mut Grid, position: Position, click_count: usize) -> String {
+    for _ in 0..click_count {
+        grid.start_selection(&position);
+    }
+    grid.end_selection(&position);
+    grid.get_selected_text().unwrap()
+}
+
+fn viewport_position_of(grid: &Grid, needle: &str) -> Position {
+    grid.viewport
+        .iter()
+        .enumerate()
+        .find_map(|(line, row)| {
+            let text: String = row.columns.iter().map(|c| c.character).collect();
+            text.find(needle)
+                .map(|column| Position::new(line as i32, column as u16))
+        })
+        .unwrap_or_else(|| panic!("{needle:?} not found in viewport"))
+}
+
+#[test]
+fn osc133_a_b_c_d_selects_command_and_output_without_prompt() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07echo hi\x1b]133;C\x07\r\nhi\x1b]133;D;0\x07 suffix",
+    );
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(1, 0), 3),
+        "echo hi\nhi"
+    );
+}
+
+#[test]
+fn osc133_p_i_aliases_select_command_and_output_without_prompt() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;P\x07> \x1b]133;I\x07pwd\x1b]133;C\x07\r\n/tmp\x1b]133;D\x07",
+    );
+
+    let position = viewport_position_of(&grid, "/tmp");
+    assert_eq!(select_with_click_count(&mut grid, position, 3), "pwd\n/tmp");
+}
+
+#[test]
+fn osc133_input_marker_survives_ghostty_prompt_clear() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A;cl=line\x07$ \x1b]133;B\x07\x1b[Kecho hi\r\n\x1b]133;C\x07hi\r\n\x1b]133;D;0\x07\r\x1b[J\x1b]133;A;cl=line\x07$ \x1b]133;B\x07\x1b[Knext",
+    );
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(1, 0), 3),
+        "echo hi\nhi"
+    );
+}
+
+#[test]
+fn osc133_triple_click_outside_output_keeps_logical_line_selection() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07echo hi\x1b]133;C\x07 output\x1b]133;D\x07",
+    );
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(0, 0), 3),
+        "$ echo hi output"
+    );
+}
+
+#[test]
+fn osc133_double_click_keeps_word_selection() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07echo\x1b]133;C\x07 result word\x1b]133;D\x07",
+    );
+
+    let position = viewport_position_of(&grid, "word");
+    assert_eq!(select_with_click_count(&mut grid, position, 2), "word");
+}
+
+#[test]
+fn osc133_wrapped_command_and_output_are_selected_together() {
+    let mut grid = create_grid_with_size_and_raw(
+        4,
+        8,
+        b"\x1b]133;A\x07$ \x1b]133;B\x07longcmd\x1b]133;C\x07-output\x1b]133;D\x07",
+    );
+
+    let position = viewport_position_of(&grid, "output");
+    assert_eq!(
+        select_with_click_count(&mut grid, position, 3),
+        "longcmd-output"
+    );
+}
+
+#[test]
+fn osc133_incomplete_command_selects_available_output() {
+    let mut grid =
+        create_grid_with_content("\x1b]133;A\x07$ \x1b]133;B\x07sleep\x1b]133;C\x07\r\npartial");
+
+    let position = viewport_position_of(&grid, "partial");
+    assert_eq!(
+        select_with_click_count(&mut grid, position, 3),
+        "sleep\npartial"
+    );
+}
+
+#[test]
+fn osc133_missing_input_starts_selection_at_output_boundary() {
+    let mut grid =
+        create_grid_with_content("\x1b]133;A\x07$ hidden\x1b]133;C\x07visible\x1b]133;D\x07");
+
+    let position = viewport_position_of(&grid, "visible");
+    assert_eq!(select_with_click_count(&mut grid, position, 3), "visible");
+}
+
+#[test]
+fn osc133_missing_end_stops_at_later_prompt() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07one\x1b]133;C\x07:1\x1b]133;A\x07$ \x1b]133;B\x07two\x1b]133;C\x07:2",
+    );
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(0, 5), 3),
+        "one:1"
+    );
+}
+
+#[test]
+fn osc133_multiple_commands_on_one_row_remain_distinct() {
+    let content = "\x1b]133;A\x07$ \x1b]133;B\x07one\x1b]133;C\x07:1\x1b]133;D\x07\x1b]133;P\x07$ \x1b]133;I\x07two\x1b]133;C\x07:2\x1b]133;D\x07";
+    let mut first = create_grid_with_content(content);
+    let mut second = create_grid_with_content(content);
+
+    assert_eq!(
+        select_with_click_count(&mut first, Position::new(0, 5), 3),
+        "one:1"
+    );
+    assert_eq!(
+        select_with_click_count(&mut second, Position::new(0, 12), 3),
+        "two:2"
+    );
+}
+
+#[test]
+fn osc133_markers_survive_scrollback() {
+    let mut grid = create_grid_with_size_and_raw(
+        3,
+        20,
+        b"\x1b]133;A\x07$ \x1b]133;B\x07cmd\x1b]133;C\x07\r\nRESULT\x1b]133;D\x07\r\ntail1\r\ntail2\r\ntail3\r\ntail4",
+    );
+    for _ in 0..3 {
+        grid.scroll_up_one_line();
+    }
+
+    let position = viewport_position_of(&grid, "RESULT");
+    assert_eq!(
+        select_with_click_count(&mut grid, position, 3),
+        "cmd\nRESULT"
+    );
+}
+
+#[test]
+fn osc133_markers_survive_resize_reflow() {
+    let mut grid = create_grid_with_size_and_raw(
+        5,
+        20,
+        b"\x1b]133;A\x07$ \x1b]133;B\x07echo hi\x1b]133;C\x07RESULT\x1b]133;D\x07",
+    );
+    grid.change_size(5, 6);
+
+    let position = viewport_position_of(&grid, "RES");
+    assert_eq!(
+        select_with_click_count(&mut grid, position, 3),
+        "echo hiRESULT"
+    );
+}
+
+#[test]
+fn osc133_cleared_markers_fall_back_to_logical_line_selection() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07cmd\x1b]133;C\x07old\r\x1b[2Kunmarked",
+    );
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(0, 6), 3),
+        "unmarked"
+    );
+}
+
+#[test]
+fn osc133_truncated_markers_fall_back_to_logical_line_selection() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07cmd\x1b]133;C\x07old\r\x1b[2C\x1b[Jplain",
+    );
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(0, 3), 3),
+        "$ plain"
+    );
+}
+
+#[test]
+fn osc133_overwritten_markers_fall_back_to_logical_line_selection() {
+    let mut grid =
+        create_grid_with_content("\x1b]133;A\x07$ \x1b]133;B\x07cmd\x1b]133;C\x07old\runmarked");
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(0, 6), 3),
+        "unmarked"
+    );
+}
+
+#[test]
+fn osc133_unknown_subcommand_is_ignored() {
+    let mut grid = create_grid_with_content("plain\x1b]133;Z\x07 text");
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(0, 7), 3),
+        "plain text"
+    );
+}
+
 #[test]
 fn cursor_forward_over_unwritten_line_positions_character() {
     use crate::panes::terminal_character::AnsiCode;

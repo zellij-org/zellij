@@ -791,7 +791,7 @@ impl MouseHandler {
                     tab.selecting_with_mouse_in_pane = Some(pane_id);
                 }
                 if leave_clipboard_message {
-                    Ok(MouseEffect::leave_clipboard_message())
+                    Ok(MouseEffect::state_changed_and_leave_clipboard_message())
                 } else {
                     Ok(MouseEffect::default())
                 }
