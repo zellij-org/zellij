@@ -52,7 +52,9 @@ use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::{shortcut_for_action, Keybinds};
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
-use zellij_utils::input::options::{Clipboard, NestedSessionHandling, PaneFrameStyle};
+use zellij_utils::input::options::{
+    Clipboard, NestedSessionHandling, PaneFrameStyle, DEFAULT_WORD_SEPARATORS,
+};
 use zellij_utils::ipc::{
     ExitReason, MobileActivePanePayload, MobilePanePayload, MobileSessionPayload,
     MobileSizePayload, MobileStatePayload, MobileTabPayload, ServerToClientMsg,
@@ -785,6 +787,8 @@ pub enum ScreenInstruction {
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
+        osc133_command_selection: bool,
+        word_separators: String,
         nested_session_handling: NestedSessionHandling,
     },
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
@@ -1516,6 +1520,8 @@ pub(crate) struct Screen {
     web_sharing: WebSharing,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
+    osc133_command_selection: bool,
+    word_separators: String,
     mouse_scroll_resize: bool,
     mouse_hover_effects: bool,
     visual_bell: bool,
@@ -1633,6 +1639,8 @@ impl Screen {
         web_clients_allowed: bool,
         web_sharing: WebSharing,
         advanced_mouse_actions: bool,
+        osc133_command_selection: bool,
+        word_separators: String,
         mouse_scroll_resize: bool,
         mouse_hover_effects: bool,
         visual_bell: bool,
@@ -1699,6 +1707,8 @@ impl Screen {
             current_pane_group: Rc::new(RefCell::new(current_pane_group)),
             currently_marking_pane_group: Rc::new(RefCell::new(HashMap::new())),
             advanced_mouse_actions,
+            osc133_command_selection,
+            word_separators,
             mouse_scroll_resize,
             mouse_hover_effects,
             visual_bell,
@@ -4421,6 +4431,7 @@ impl Screen {
         if let Some(aggregate) = self.sixel_host_support_aggregate() {
             tab.update_sixel_host_support(aggregate);
         }
+        tab.update_selection_options(self.osc133_command_selection, self.word_separators.clone());
         self.tabs.insert(tab_id, tab);
         Ok(())
     }
@@ -6360,6 +6371,8 @@ impl Screen {
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
+        osc133_command_selection: bool,
+        word_separators: String,
         nested_session_handling: NestedSessionHandling,
         client_id: ClientId,
     ) -> Result<()> {
@@ -6387,6 +6400,8 @@ impl Screen {
         self.visual_bell = visual_bell;
         self.focus_follows_mouse = focus_follows_mouse;
         self.mouse_click_through = mouse_click_through;
+        self.osc133_command_selection = osc133_command_selection;
+        self.word_separators = word_separators;
         self.nested_session_handling = nested_session_handling;
         self.default_mode_info
             .update_arrow_fonts(should_support_arrow_fonts);
@@ -6415,6 +6430,7 @@ impl Screen {
             tab.update_mouse_hover_effects(mouse_hover_effects);
             tab.update_focus_follows_mouse(focus_follows_mouse);
             tab.update_mouse_click_through(mouse_click_through);
+            tab.update_selection_options(osc133_command_selection, self.word_separators.clone());
             tab.sync_stacked_pane_list_mode();
         }
 
@@ -7553,6 +7569,11 @@ pub(crate) fn screen_thread_main(
         .unwrap_or(false);
     let web_sharing = config_options.web_sharing.unwrap_or_else(Default::default);
     let advanced_mouse_actions = config_options.advanced_mouse_actions.unwrap_or(true);
+    let osc133_command_selection = config_options.osc133_command_selection.unwrap_or(true);
+    let word_separators = config_options
+        .word_separators
+        .clone()
+        .unwrap_or_else(|| DEFAULT_WORD_SEPARATORS.to_owned());
     let mouse_scroll_resize = config_options.mouse_scroll_resize.unwrap_or(true);
     let mouse_hover_effects = config_options.mouse_hover_effects.unwrap_or(true);
     let visual_bell = config_options.visual_bell.unwrap_or(true);
@@ -7598,6 +7619,8 @@ pub(crate) fn screen_thread_main(
         web_clients_allowed,
         web_sharing,
         advanced_mouse_actions,
+        osc133_command_selection,
+        word_separators,
         mouse_scroll_resize,
         mouse_hover_effects,
         visual_bell,
@@ -10863,6 +10886,8 @@ pub(crate) fn screen_thread_main(
                 visual_bell,
                 focus_follows_mouse,
                 mouse_click_through,
+                osc133_command_selection,
+                word_separators,
                 nested_session_handling,
             } => {
                 screen.host_theme_dark_styling = host_theme_dark;
@@ -10890,6 +10915,8 @@ pub(crate) fn screen_thread_main(
                         visual_bell,
                         focus_follows_mouse,
                         mouse_click_through,
+                        osc133_command_selection,
+                        word_separators,
                         nested_session_handling,
                         client_id,
                     )

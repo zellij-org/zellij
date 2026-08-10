@@ -134,6 +134,8 @@ Config {
         visual_bell: None,
         focus_follows_mouse: None,
         mouse_click_through: None,
+        osc133_command_selection: None,
+        word_separators: None,
         web_server_ip: None,
         web_server_port: None,
         web_server_cert: None,

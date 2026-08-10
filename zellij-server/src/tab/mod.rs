@@ -23,6 +23,7 @@ use zellij_utils::data::{
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::MouseEvent;
+use zellij_utils::input::options::DEFAULT_WORD_SEPARATORS;
 use zellij_utils::position::Position;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
@@ -261,6 +262,8 @@ pub(crate) struct Tab {
     mouse_hover_effects: bool,
     focus_follows_mouse: bool,
     mouse_click_through: bool,
+    osc133_command_selection: bool,
+    word_separators: String,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
     // the below are the configured values - the ones that will be set if and when the web server
@@ -734,6 +737,7 @@ pub trait Pane {
         None
     } // only relevant to terminal panes
     fn update_theme(&mut self, _theme: Styling) {}
+    fn set_selection_options(&mut self, _osc133_command_selection: bool, _word_separators: &str) {}
     fn update_arrow_fonts(&mut self, _should_support_arrow_fonts: bool) {}
     fn update_kitty_host_support(&mut self, _supported: KittyHostSupport) {}
     fn update_sixel_host_support(&mut self, _supported: bool) {}
@@ -1011,6 +1015,8 @@ impl Tab {
             mouse_hover_effects,
             focus_follows_mouse,
             mouse_click_through,
+            osc133_command_selection: true,
+            word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
             connected_clients_in_app,
             web_server_ip,
             web_server_port,
@@ -7478,6 +7484,14 @@ impl Tab {
     }
     pub fn update_mouse_click_through(&mut self, mouse_click_through: bool) {
         self.mouse_click_through = mouse_click_through;
+    }
+    pub fn update_selection_options(
+        &mut self,
+        osc133_command_selection: bool,
+        word_separators: String,
+    ) {
+        self.osc133_command_selection = osc133_command_selection;
+        self.word_separators = word_separators;
     }
     pub fn clear_mouse_hover_state(&mut self) {
         self.mouse_hover_pane_id.clear();

@@ -496,6 +496,8 @@ fn test_client_messages() {
                 visual_bell: Some(true),
                 focus_follows_mouse: Some(false),
                 mouse_click_through: Some(false),
+                osc133_command_selection: Some(false),
+                word_separators: Some("[]{}<>():".to_owned()),
                 nested_session_handling: Some(NestedSessionHandling::Fullscreen),
             }),
             layout: None,

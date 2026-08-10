@@ -30,6 +30,7 @@ use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{Palette, PaletteColor, Styling},
     input::mouse::{MouseEvent, MouseEventType},
+    input::options::DEFAULT_WORD_SEPARATORS,
     nested_session::{self, NestedSessionMessage},
     pane_size::SizeInPixels,
     position::Position,
@@ -754,6 +755,8 @@ pub struct Grid {
     pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
     pub cached_hover_tooltip: Option<String>,
     osc133_markers_seen: bool,
+    osc133_command_selection: bool,
+    word_separators: String,
 }
 
 impl Grid {
@@ -1098,6 +1101,14 @@ impl Grid {
             hover_position: None,
             cached_hover_tooltip: None,
             osc133_markers_seen: false,
+            osc133_command_selection: true,
+            word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
+        }
+    }
+    pub fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
+        self.osc133_command_selection = osc133_command_selection;
+        if self.word_separators != word_separators {
+            self.word_separators = word_separators.to_owned();
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -3128,8 +3139,8 @@ impl Grid {
     }
     pub fn word_around_position(&self, position: &Position) -> Option<(Position, Position)> {
         let position_row = self.viewport.get(position.line.0 as usize)?;
-        let (index_start, index_end) =
-            position_row.word_indices_around_character_index(position.column.0)?;
+        let (index_start, index_end) = position_row
+            .word_indices_around_character_index(position.column.0, &self.word_separators)?;
 
         let mut position_start = Position::new(position.line.0 as i32, index_start as u16);
         let mut position_end = Position::new(position.line.0 as i32, index_end as u16);
@@ -3140,7 +3151,8 @@ impl Grid {
                 .viewport
                 .get(position_start.line.0.saturating_sub(1) as usize)
             {
-                let new_start_index = position_row_above.word_start_index_of_last_character();
+                let new_start_index =
+                    position_row_above.word_start_index_of_last_character(&self.word_separators);
                 position_start = Position::new(
                     position_start.line.0.saturating_sub(1) as i32,
                     new_start_index as u16,
@@ -3157,7 +3169,8 @@ impl Grid {
                 if position_row_below.is_canonical {
                     break;
                 }
-                let new_end_index = position_row_below.word_end_index_of_first_character();
+                let new_end_index =
+                    position_row_below.word_end_index_of_first_character(&self.word_separators);
                 position_end = Position::new(position_end.line.0 as i32 + 1, new_end_index as u16);
                 column_count_in_row = position_row_below.columns.len();
             } else {
@@ -3227,7 +3240,7 @@ impl Grid {
     }
 
     fn osc133_command_around_position(&self, position: &Position) -> Option<(Position, Position)> {
-        if !self.osc133_markers_seen {
+        if !self.osc133_command_selection || !self.osc133_markers_seen {
             return None;
         }
         let first_line = -(self.lines_above.len() as isize);
@@ -3281,10 +3294,7 @@ impl Grid {
                 break 'forward;
             }
         }
-        let selection_end = selection_end.or_else(|| {
-            self.row_at(last_line)
-                .map(|row| marker_position(last_line, row.width()))
-        })?;
+        let selection_end = selection_end?;
 
         Some((selection_start, selection_end))
     }
@@ -5662,10 +5672,14 @@ impl Row {
     pub fn last_index_in_line(&self) -> usize {
         self.columns.len()
     }
-    pub fn word_indices_around_character_index(&self, index: usize) -> Option<(usize, usize)> {
+    pub fn word_indices_around_character_index(
+        &self,
+        index: usize,
+        word_separators: &str,
+    ) -> Option<(usize, usize)> {
         let absolute_character_index = self.absolute_character_index(index);
         let character_at_index = self.columns.get(absolute_character_index)?;
-        if is_selection_boundary_character(character_at_index.character) {
+        if is_selection_boundary_character(character_at_index.character, word_separators) {
             return Some((index, index + 1));
         }
         let mut end_position = self
@@ -5674,7 +5688,7 @@ impl Row {
             .enumerate()
             .skip(absolute_character_index)
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.character, word_separators) {
                     Some(i + self.excess_width_until(i))
                 } else {
                     None
@@ -5688,7 +5702,7 @@ impl Row {
             .take(absolute_character_index)
             .rev()
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.character, word_separators) {
                     Some(i + 1 + self.excess_width_until(i))
                 } else {
                     None
@@ -5701,13 +5715,13 @@ impl Row {
         }
         Some((start_position, end_position))
     }
-    pub fn word_start_index_of_last_character(&self) -> usize {
+    pub fn word_start_index_of_last_character(&self, word_separators: &str) -> usize {
         self.columns
             .iter()
             .enumerate()
             .rev()
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.character, word_separators) {
                     Some(self.absolute_character_index(i + 1))
                 } else {
                     None
@@ -5715,12 +5729,12 @@ impl Row {
             })
             .unwrap_or(0)
     }
-    pub fn word_end_index_of_first_character(&self) -> usize {
+    pub fn word_end_index_of_first_character(&self, word_separators: &str) -> usize {
         self.columns
             .iter()
             .enumerate()
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.character, word_separators) {
                     Some(self.absolute_character_index(i))
                 } else {
                     None
@@ -5730,16 +5744,8 @@ impl Row {
     }
 }
 
-fn is_selection_boundary_character(character: char) -> bool {
-    character.is_ascii_whitespace()
-        || character == '['
-        || character == ']'
-        || character == '{'
-        || character == '}'
-        || character == '<'
-        || character == '>'
-        || character == '('
-        || character == ')'
+fn is_selection_boundary_character(character: char, word_separators: &str) -> bool {
+    character.is_ascii_whitespace() || word_separators.contains(character)
 }
 
 #[cfg(test)]

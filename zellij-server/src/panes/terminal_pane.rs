@@ -883,6 +883,11 @@ impl Pane for TerminalPane {
         self.grid.pending_osc7_cwd.take()
     }
 
+    fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
+        self.grid
+            .set_selection_options(osc133_command_selection, word_separators);
+    }
+
     fn start_selection(&mut self, start: &Position, _client_id: ClientId) {
         self.grid.start_selection(start);
         self.set_should_render(true);

@@ -10,6 +10,7 @@ use vte;
 use zellij_utils::consts::SCROLL_BUFFER_SIZE;
 use zellij_utils::{
     data::{Palette, Style},
+    input::options::DEFAULT_WORD_SEPARATORS,
     pane_size::SizeInPixels,
     position::Position,
 };
@@ -4214,11 +4215,23 @@ fn osc133_wrapped_command_and_output_are_selected_together() {
 }
 
 #[test]
-fn osc133_incomplete_command_selects_available_output() {
+fn osc133_running_command_without_end_boundary_falls_back_to_logical_line_selection() {
     let mut grid =
         create_grid_with_content("\x1b]133;A\x07$ \x1b]133;B\x07sleep\x1b]133;C\x07\r\npartial");
 
     let position = viewport_position_of(&grid, "partial");
+    assert_eq!(select_with_click_count(&mut grid, position, 3), "partial");
+}
+
+#[test]
+fn osc133_command_becomes_selectable_once_its_end_boundary_arrives() {
+    let mut grid =
+        create_grid_with_content("\x1b]133;A\x07$ \x1b]133;B\x07sleep\x1b]133;C\x07\r\npartial");
+    let position = viewport_position_of(&grid, "partial");
+
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]133;D;0\x07");
+
     assert_eq!(
         select_with_click_count(&mut grid, position, 3),
         "sleep\npartial"
@@ -4339,6 +4352,69 @@ fn osc133_unknown_subcommand_is_ignored() {
         select_with_click_count(&mut grid, Position::new(0, 7), 3),
         "plain text"
     );
+}
+
+#[test]
+fn osc133_command_selection_disabled_falls_back_to_logical_line_selection() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07echo hi\x1b]133;C\x07\r\nhi\x1b]133;D;0\x07",
+    );
+    grid.set_selection_options(false, DEFAULT_WORD_SEPARATORS);
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(1, 0), 3),
+        "hi"
+    );
+}
+
+#[test]
+fn osc133_command_selection_can_be_re_enabled_for_existing_markers() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07echo hi\x1b]133;C\x07\r\nhi\x1b]133;D;0\x07",
+    );
+    grid.set_selection_options(false, DEFAULT_WORD_SEPARATORS);
+    grid.set_selection_options(true, DEFAULT_WORD_SEPARATORS);
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(1, 0), 3),
+        "echo hi\nhi"
+    );
+}
+
+#[test]
+fn configured_word_separators_split_double_click_selection() {
+    let mut grid = create_grid_with_content("foo:bar baz");
+    grid.set_selection_options(true, ":");
+
+    let position = viewport_position_of(&grid, "bar");
+    assert_eq!(select_with_click_count(&mut grid, position, 2), "bar");
+}
+
+#[test]
+fn characters_absent_from_word_separators_do_not_split_double_click_selection() {
+    let mut grid = create_grid_with_content("foo:bar baz");
+    grid.set_selection_options(true, DEFAULT_WORD_SEPARATORS);
+
+    let position = viewport_position_of(&grid, "bar");
+    assert_eq!(select_with_click_count(&mut grid, position, 2), "foo:bar");
+}
+
+#[test]
+fn word_separators_not_configured_as_separators_are_part_of_the_word() {
+    let mut grid = create_grid_with_content("foo(bar) baz");
+    grid.set_selection_options(true, "");
+
+    let position = viewport_position_of(&grid, "bar");
+    assert_eq!(select_with_click_count(&mut grid, position, 2), "foo(bar)");
+}
+
+#[test]
+fn default_word_separators_keep_bracket_boundaries() {
+    let mut grid = create_grid_with_content("foo(bar) baz");
+    grid.set_selection_options(true, DEFAULT_WORD_SEPARATORS);
+
+    let position = viewport_position_of(&grid, "bar");
+    assert_eq!(select_with_click_count(&mut grid, position, 2), "bar");
 }
 
 #[test]
