@@ -240,8 +240,8 @@ fn keystrokes_sharing_a_read_with_mouse_motion_reach_the_pane_clean() {
     zellij.send_stdin(b"a\x1b[<35;30;10M\x1b[<35;31;10M\x1b[<35;32;10Mb");
     zellij.send_stdin(&keys::key('c'));
 
-    let stdin_bytes =
-        terminal.wait_for_stdin("all three keystrokes reached the pane", |stdin_bytes| {
+    let stdin_bytes = terminal
+        .wait_for_stdin("all three keystrokes reached the pane", |stdin_bytes| {
             stdin_bytes.windows(3).any(|window| window == b"abc")
         });
     assert!(
