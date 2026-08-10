@@ -2139,6 +2139,49 @@ mod test {
     }
 
     #[test]
+    fn paste_start_alone_is_consumed_silently_and_not_buffered() {
+        let mut p = InputParser::new();
+        let mut events: Vec<(InputEvent, usize)> = Vec::new();
+        p.parse_with_consumed(b"\x1b[200~", |ev, n| events.push((ev, n)), MAYBE_MORE);
+        assert!(
+            events.is_empty(),
+            "a lone paste-start marker must produce no events, got {:?}",
+            events
+        );
+        assert_eq!(
+            p.buffered_len(),
+            0,
+            "the paste-start bytes are consumed out of the parser buffer without any event reporting them"
+        );
+    }
+
+    #[test]
+    fn paste_start_with_partial_payload_buffers_only_the_payload() {
+        let mut p = InputParser::new();
+        let mut events: Vec<(InputEvent, usize)> = Vec::new();
+        p.parse_with_consumed(b"\x1b[200~hel", |ev, n| events.push((ev, n)), MAYBE_MORE);
+        assert!(events.is_empty(), "got {:?}", events);
+        assert_eq!(
+            p.buffered_len(),
+            3,
+            "only the pending paste payload remains buffered; the 6 marker bytes were consumed silently"
+        );
+    }
+
+    #[test]
+    fn parked_esc_before_partial_utf8_is_consumed_out_of_the_buffer() {
+        let mut p = InputParser::new();
+        let mut events: Vec<(InputEvent, usize)> = Vec::new();
+        p.parse_with_consumed(b"\x1b\xc3", |ev, n| events.push((ev, n)), MAYBE_MORE);
+        assert!(events.is_empty(), "got {:?}", events);
+        assert_eq!(
+            p.buffered_len(),
+            1,
+            "the parked ESC is held in parser state, not in the buffer; only the partial UTF-8 byte remains"
+        );
+    }
+
+    #[test]
     fn newline_then_carriage_return_are_two_enter_events_with_their_own_bytes() {
         // In the legacy encoding a terminal sends `\r` for the Enter key and
         // `\n` for a control-j style newline; the keymap decodes both to
