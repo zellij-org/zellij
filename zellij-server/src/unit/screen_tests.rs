@@ -19,7 +19,9 @@ use zellij_utils::input::layout::{
     RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, TiledPaneLayout,
 };
 use zellij_utils::input::mouse::MouseEvent;
-use zellij_utils::input::options::{NestedSessionHandling, Options, PaneFrameStyle};
+use zellij_utils::input::options::{
+    NestedSessionHandling, Options, PaneFrameStyle, DEFAULT_WORD_SEPARATORS,
+};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
@@ -348,6 +350,8 @@ fn create_new_screen_with_kitty_graphics(
         false,
         web_sharing,
         advanced_mouse_actions,
+        true,
+        DEFAULT_WORD_SEPARATORS.to_owned(),
         mouse_scroll_resize,
         mouse_hover_effects,
         visual_bell,
@@ -5684,6 +5688,8 @@ fn create_new_screen_with_message_capture(
         web_sharing,
         true,
         true,
+        DEFAULT_WORD_SEPARATORS.to_owned(),
+        true,
         true,
         visual_bell,
         false, // focus_follows_mouse
@@ -8782,6 +8788,8 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         web_sharing,
         true,
         true,
+        DEFAULT_WORD_SEPARATORS.to_owned(),
+        true,
         true,
         visual_bell,
         false, // focus_follows_mouse
@@ -9458,6 +9466,8 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         web_sharing,
         true,
         true,
+        DEFAULT_WORD_SEPARATORS.to_owned(),
+        true,
         true,
         true,
         false,
@@ -9986,7 +9996,9 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         None,
         false,
         WebSharing::Off,
-        true,  // advanced_mouse_actions
+        true, // advanced_mouse_actions
+        true,
+        DEFAULT_WORD_SEPARATORS.to_owned(),
         true,  // mouse_scroll_resize
         true,  // mouse_hover_effects
         true,  // visual_bell

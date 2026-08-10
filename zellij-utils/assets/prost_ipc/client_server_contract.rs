@@ -2026,6 +2026,10 @@ pub struct Options {
     pub mouse_scroll_resize: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="55")]
     pub support_kitty_graphics_protocol: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="56")]
+    pub osc133_command_selection: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="57")]
+    pub word_separators: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]

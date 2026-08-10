@@ -777,12 +777,15 @@ impl MouseHandler {
                 Ok(MouseEffect::state_changed())
             },
             MouseAction::StartSelection { pane_id, position } => {
+                let osc133_command_selection = tab.osc133_command_selection;
+                let word_separators = tab.word_separators.clone();
                 let pane = tab
                     .get_pane_with_id_mut(pane_id)
                     .ok_or_else(|| anyhow!("Failed to find pane {pane_id:?}"))?;
                 let relative_position = pane.relative_position(&position);
 
                 let mut leave_clipboard_message = false;
+                pane.set_selection_options(osc133_command_selection, &word_separators);
                 pane.start_selection(&relative_position, client_id);
                 if pane.get_selected_text(client_id).is_some() {
                     leave_clipboard_message = true;
@@ -791,7 +794,7 @@ impl MouseHandler {
                     tab.selecting_with_mouse_in_pane = Some(pane_id);
                 }
                 if leave_clipboard_message {
-                    Ok(MouseEffect::leave_clipboard_message())
+                    Ok(MouseEffect::state_changed_and_leave_clipboard_message())
                 } else {
                     Ok(MouseEffect::default())
                 }
@@ -911,8 +914,11 @@ impl MouseHandler {
 
         Self::focus_pane_at(tab, &position, client_id).with_context(err_context)?;
 
+        let osc133_command_selection = tab.osc133_command_selection;
+        let word_separators = tab.word_separators.clone();
         if let Some(pane_at_position) = Self::unselectable_pane_at_position(tab, &position) {
             let relative_position = pane_at_position.relative_position(&position);
+            pane_at_position.set_selection_options(osc133_command_selection, &word_separators);
             pane_at_position.start_selection(&relative_position, client_id);
         }
 
@@ -952,8 +958,11 @@ impl MouseHandler {
         clear_hover_for_client(tab, client_id);
         Self::focus_pane_at(tab, &position, client_id).with_context(err_context)?;
 
+        let osc133_command_selection = tab.osc133_command_selection;
+        let word_separators = tab.word_separators.clone();
         if let Some(pane_at_position) = Self::unselectable_pane_at_position(tab, &position) {
             let relative_position = pane_at_position.relative_position(&position);
+            pane_at_position.set_selection_options(osc133_command_selection, &word_separators);
             pane_at_position.start_selection(&relative_position, client_id);
             return Ok(MouseEffect::state_changed());
         }
@@ -983,6 +992,7 @@ impl MouseHandler {
         } else {
             if let Some(pane) = tab.get_pane_with_id_mut(active_pane_id) {
                 let relative_position = pane.relative_position(&position);
+                pane.set_selection_options(osc133_command_selection, &word_separators);
                 pane.start_selection(&relative_position, client_id);
                 if pane.supports_mouse_selection() {
                     tab.selecting_with_mouse_in_pane = Some(active_pane_id);

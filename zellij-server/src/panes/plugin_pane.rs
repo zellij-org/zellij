@@ -633,6 +633,11 @@ impl Pane for PluginPane {
     fn clear_scroll(&mut self) {
         // noop
     }
+    fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
+        for grid in self.grids.values_mut() {
+            grid.set_selection_options(osc133_command_selection, word_separators);
+        }
+    }
     fn start_selection(&mut self, start: &Position, client_id: ClientId) {
         if self.supports_mouse_selection {
             if let Some(grid) = self.grids.get_mut(&client_id) {

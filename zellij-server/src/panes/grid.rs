@@ -30,6 +30,7 @@ use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{Palette, PaletteColor, Styling},
     input::mouse::{MouseEvent, MouseEventType},
+    input::options::DEFAULT_WORD_SEPARATORS,
     nested_session::{self, NestedSessionMessage},
     pane_size::SizeInPixels,
     position::Position,
@@ -753,6 +754,9 @@ pub struct Grid {
     // key: plugin_id (u32), inner vec: (pattern, compiled) pairs
     pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
     pub cached_hover_tooltip: Option<String>,
+    osc133_markers_seen: bool,
+    osc133_command_selection: bool,
+    word_separators: String,
 }
 
 impl Grid {
@@ -1096,6 +1100,15 @@ impl Grid {
             plugin_highlights: HashMap::new(),
             hover_position: None,
             cached_hover_tooltip: None,
+            osc133_markers_seen: false,
+            osc133_command_selection: true,
+            word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
+        }
+    }
+    pub fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
+        self.osc133_command_selection = osc133_command_selection;
+        if self.word_separators != word_separators {
+            self.word_separators = word_separators.to_owned();
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1398,7 +1411,7 @@ impl Grid {
                     Some(mut last_line_above) => {
                         self.kitty_grid
                             .merge_rows_into_line_start(self.lines_above.len(), 1);
-                        last_line_above.append(&mut line_to_push_up.columns);
+                        last_line_above.append(&mut line_to_push_up);
                         last_line_above
                     },
                     None => {
@@ -1492,7 +1505,7 @@ impl Grid {
                     && !self.lines_above.is_empty()
                 {
                     let mut first_line_above = self.lines_above.pop_back().unwrap();
-                    first_line_above.append(&mut row.columns);
+                    first_line_above.append(&mut row);
                     viewport_canonical_lines.push(first_line_above);
                     cursor_canonical_line_index += 1;
                 } else if row.is_canonical {
@@ -1500,7 +1513,7 @@ impl Grid {
                 } else {
                     match viewport_canonical_lines.last_mut() {
                         Some(last_line) => {
-                            last_line.append(&mut row.columns);
+                            last_line.append(&mut row);
                         },
                         None => {
                             // the state is corrupted somehow
@@ -2320,7 +2333,7 @@ impl Grid {
     }
     pub fn clear_cursor_line(&mut self) {
         if let Some(viewport_line) = self.viewport.get_mut(self.cursor.y) {
-            viewport_line.truncate(0);
+            viewport_line.replace_columns(VecDeque::new());
             self.output_buffer.update_line(self.cursor.y);
         }
     }
@@ -2612,6 +2625,7 @@ impl Grid {
         self.set_scroll_region_to_viewport_size();
         self.pane_default_fg = None;
         self.pane_default_bg = None;
+        self.osc133_markers_seen = false;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }
@@ -2964,18 +2978,17 @@ impl Grid {
             self.mark_for_rerender();
             return;
         } else if self.click.is_triple_click() {
-            let Some((start_position, end_position)) = self.canonical_line_around_position(&start)
+            let Some((start_position, end_position)) = self
+                .osc133_command_around_position(start)
+                .or_else(|| self.canonical_line_around_position(start))
             else {
                 // no-op
                 return;
             };
             self.selection
                 .set_start_and_end_positions(start_position, end_position);
-            for i in std::cmp::min(start_position.line.0, end_position.line.0)
-                ..=std::cmp::max(start_position.line.0, end_position.line.0)
-            {
-                self.output_buffer.update_line(i as usize);
-            }
+            let current_selection = self.selection;
+            self.update_selected_lines(&old_selection, &current_selection);
             self.mark_for_rerender();
             return;
         }
@@ -3067,7 +3080,7 @@ impl Grid {
                 Row::from_columns(VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]));
 
             // get the row from lines_above, viewport, or lines below depending on index
-            let row = if l < 0 && self.lines_above.len() > l.abs() as usize {
+            let row = if l < 0 && self.lines_above.len() >= l.abs() as usize {
                 let offset_from_end = l.abs();
                 &self.lines_above[self
                     .lines_above
@@ -3126,8 +3139,8 @@ impl Grid {
     }
     pub fn word_around_position(&self, position: &Position) -> Option<(Position, Position)> {
         let position_row = self.viewport.get(position.line.0 as usize)?;
-        let (index_start, index_end) =
-            position_row.word_indices_around_character_index(position.column.0)?;
+        let (index_start, index_end) = position_row
+            .word_indices_around_character_index(position.column.0, &self.word_separators)?;
 
         let mut position_start = Position::new(position.line.0 as i32, index_start as u16);
         let mut position_end = Position::new(position.line.0 as i32, index_end as u16);
@@ -3138,7 +3151,8 @@ impl Grid {
                 .viewport
                 .get(position_start.line.0.saturating_sub(1) as usize)
             {
-                let new_start_index = position_row_above.word_start_index_of_last_character();
+                let new_start_index =
+                    position_row_above.word_start_index_of_last_character(&self.word_separators);
                 position_start = Position::new(
                     position_start.line.0.saturating_sub(1) as i32,
                     new_start_index as u16,
@@ -3155,7 +3169,8 @@ impl Grid {
                 if position_row_below.is_canonical {
                     break;
                 }
-                let new_end_index = position_row_below.word_end_index_of_first_character();
+                let new_end_index =
+                    position_row_below.word_end_index_of_first_character(&self.word_separators);
                 position_end = Position::new(position_end.line.0 as i32 + 1, new_end_index as u16);
                 column_count_in_row = position_row_below.columns.len();
             } else {
@@ -3206,6 +3221,82 @@ impl Grid {
             }
         }
         Some((position_start, position_end))
+    }
+
+    fn row_at(&self, line: isize) -> Option<&Row> {
+        if line < 0 {
+            let offset_from_end = line.unsigned_abs();
+            if self.lines_above.len() >= offset_from_end {
+                self.lines_above
+                    .get(self.lines_above.len() - offset_from_end)
+            } else {
+                None
+            }
+        } else if (line as usize) < self.viewport.len() {
+            self.viewport.get(line as usize)
+        } else {
+            self.lines_below.get((line as usize) - self.viewport.len())
+        }
+    }
+
+    fn osc133_command_around_position(&self, position: &Position) -> Option<(Position, Position)> {
+        if !self.osc133_command_selection || !self.osc133_markers_seen {
+            return None;
+        }
+        let first_line = -(self.lines_above.len() as isize);
+        let last_line = (self.viewport.len() + self.lines_below.len()) as isize - 1;
+        let clicked_line = position.line.0 as isize;
+        let clicked_column = position.column.0 as usize;
+        let marker_position = |line: isize, column: usize| {
+            Position::new(line as i32, column.min(u16::MAX as usize) as u16)
+        };
+
+        let mut latest_output = None;
+        let mut selection_start = None;
+        'backward: for line in (first_line..=clicked_line.min(last_line)).rev() {
+            let Some(row) = self.row_at(line) else {
+                continue;
+            };
+            for marker in row.osc133_markers.iter().rev() {
+                if line == clicked_line && marker.column > clicked_column {
+                    continue;
+                }
+                match marker.kind {
+                    Osc133MarkerKind::Output => {
+                        if latest_output.is_none() {
+                            latest_output = Some(marker_position(line, marker.column));
+                        }
+                    },
+                    Osc133MarkerKind::Input => {
+                        latest_output?;
+                        selection_start = Some(marker_position(line, marker.column));
+                        break 'backward;
+                    },
+                    Osc133MarkerKind::Prompt | Osc133MarkerKind::End => {
+                        latest_output?;
+                        break 'backward;
+                    },
+                }
+            }
+        }
+        let selection_start = selection_start.or(latest_output)?;
+
+        let mut selection_end = None;
+        'forward: for line in clicked_line.max(first_line)..=last_line {
+            let Some(row) = self.row_at(line) else {
+                continue;
+            };
+            for marker in row.osc133_markers.iter() {
+                if line == clicked_line && marker.column <= clicked_column {
+                    continue;
+                }
+                selection_end = Some(marker_position(line, marker.column));
+                break 'forward;
+            }
+        }
+        let selection_end = selection_end?;
+
+        Some((selection_start, selection_end))
     }
 
     fn update_selected_lines(&mut self, old_selection: &Selection, new_selection: &Selection) {
@@ -4225,6 +4316,20 @@ impl Perform for Grid {
                 // get/set cursor color currently unimplemented
             },
 
+            b"133" => {
+                let marker = params.get(1).and_then(|subcommand| match *subcommand {
+                    b"A" | b"P" => Some(Osc133MarkerKind::Prompt),
+                    b"B" | b"I" => Some(Osc133MarkerKind::Input),
+                    b"C" => Some(Osc133MarkerKind::Output),
+                    b"D" => Some(Osc133MarkerKind::End),
+                    _ => None,
+                });
+                if let (Some(marker), Some(row)) = (marker, self.viewport.get_mut(self.cursor.y)) {
+                    row.add_osc133_marker(self.cursor.x, marker);
+                    self.osc133_markers_seen = true;
+                }
+            },
+
             // Set cursor style.
             b"50" => {
                 if params.len() >= 2
@@ -5145,6 +5250,21 @@ pub struct Row {
     pub is_canonical: bool,
     width: Option<usize>,
     pub bg_color: Option<AnsiCode>,
+    osc133_markers: Vec<Osc133Marker>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Osc133MarkerKind {
+    Prompt,
+    Input,
+    Output,
+    End,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Osc133Marker {
+    column: usize,
+    kind: Osc133MarkerKind,
 }
 
 impl Debug for Row {
@@ -5163,6 +5283,7 @@ impl Row {
             is_canonical: false,
             width: None,
             bg_color: None,
+            osc133_markers: vec![],
         }
     }
     pub fn from_columns(columns: VecDeque<TerminalCharacter>) -> Self {
@@ -5171,6 +5292,7 @@ impl Row {
             is_canonical: false,
             width: None,
             bg_color: None,
+            osc133_markers: vec![],
         }
     }
     pub fn from_rows(mut rows: Vec<Row>) -> Self {
@@ -5179,7 +5301,7 @@ impl Row {
         } else {
             let mut first_row = rows.remove(0);
             for row in &mut rows {
-                first_row.append(&mut row.columns);
+                first_row.append(row);
             }
             first_row
         }
@@ -5293,6 +5415,15 @@ impl Row {
                 let (absolute_x_index, position_inside_character) =
                     self.absolute_character_index_and_position_in_char(x);
                 let character_width = terminal_character.width();
+                let overwrite_start = x.saturating_sub(position_inside_character);
+                let overwrite_end =
+                    overwrite_start + character_width.max(self.columns[absolute_x_index].width());
+                let replacing_blank = self.columns[absolute_x_index].character == ' ';
+                self.osc133_markers.retain(|marker| {
+                    marker.column < overwrite_start
+                        || marker.column >= overwrite_end
+                        || (replacing_blank && marker.column == overwrite_start)
+                });
                 let replaced_character =
                     std::mem::replace(&mut self.columns[absolute_x_index], terminal_character);
                 match character_width.cmp(&replaced_character.width()) {
@@ -5331,6 +5462,12 @@ impl Row {
         }
     }
     pub fn insert_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
+        let character_width = terminal_character.width();
+        for marker in &mut self.osc133_markers {
+            if marker.column > x {
+                marker.column += character_width;
+            }
+        }
         let insert_position = self.absolute_character_index(x);
         match self.columns.len().cmp(&insert_position) {
             Ordering::Equal => self.columns.push_back(terminal_character),
@@ -5349,6 +5486,9 @@ impl Row {
         let absolute_x_index = self.absolute_character_index(x);
         if let Some(character) = self.columns.get_mut(absolute_x_index) {
             let terminal_character_width = terminal_character.width();
+            let overwrite_end = x + character.width().max(terminal_character_width);
+            self.osc133_markers
+                .retain(|marker| marker.column < x || marker.column >= overwrite_end);
             let character = std::mem::replace(character, terminal_character);
             let excess_width = character.width().saturating_sub(terminal_character_width);
             for _ in 0..excess_width {
@@ -5360,6 +5500,7 @@ impl Row {
     }
     pub fn replace_columns(&mut self, columns: VecDeque<TerminalCharacter>) {
         self.columns = columns;
+        self.osc133_markers.clear();
         self.width = None;
     }
     pub fn push(&mut self, terminal_character: TerminalCharacter) {
@@ -5372,6 +5513,7 @@ impl Row {
         if truncate_position < self.columns.len() {
             self.columns.truncate(truncate_position);
         }
+        self.osc133_markers.retain(|marker| marker.column <= x);
         self.width = None;
     }
     pub fn position_accounting_for_widechars(&self, x: usize) -> usize {
@@ -5392,6 +5534,7 @@ impl Row {
         to: usize,
         terminal_character: TerminalCharacter,
     ) {
+        self.osc133_markers.retain(|marker| marker.column <= from);
         let from_position_accounting_for_widechars = self.position_accounting_for_widechars(from);
         let to_position_accounting_for_widechars = self.position_accounting_for_widechars(to);
         let replacement_length = to_position_accounting_for_widechars
@@ -5402,8 +5545,14 @@ impl Row {
         self.columns.append(&mut replace_with);
         self.width = None;
     }
-    pub fn append(&mut self, to_append: &mut VecDeque<TerminalCharacter>) {
-        self.columns.append(to_append);
+    pub fn append(&mut self, to_append: &mut Row) {
+        let column_offset = self.width();
+        self.columns.append(&mut to_append.columns);
+        self.osc133_markers
+            .extend(to_append.osc133_markers.drain(..).map(|mut marker| {
+                marker.column += column_offset;
+                marker
+            }));
         self.width = None;
     }
     pub fn drain_until(&mut self, x: usize) -> VecDeque<TerminalCharacter> {
@@ -5431,6 +5580,9 @@ impl Row {
             .get(to_position_accounting_for_widechars)
             .map(|character| character.width())
             .unwrap_or(1);
+        let replaced_end = to + width_of_current_character;
+        self.osc133_markers
+            .retain(|marker| marker.column >= replaced_end);
         let mut replace_with =
             VecDeque::from(vec![terminal_character; to + width_of_current_character]);
         if to_position_accounting_for_widechars > self.columns.len() {
@@ -5454,12 +5606,27 @@ impl Row {
         let erase_position = self.absolute_character_index(x);
         if erase_position < self.columns.len() {
             self.width = None;
-            self.columns.remove(erase_position)
+            let deleted = self.columns.remove(erase_position);
+            if let Some(deleted) = &deleted {
+                let end = x + deleted.width();
+                self.osc133_markers.retain_mut(|marker| {
+                    if (x..end).contains(&marker.column) {
+                        false
+                    } else {
+                        if marker.column >= end {
+                            marker.column -= deleted.width();
+                        }
+                        true
+                    }
+                });
+            }
+            deleted
         } else {
             None
         }
     }
     pub fn split_to_rows_of_length(&mut self, max_row_length: usize) -> Vec<Row> {
+        let markers = std::mem::take(&mut self.osc133_markers);
         let mut parts: Vec<Row> = vec![];
         let mut current_part: VecDeque<TerminalCharacter> = VecDeque::new();
         let mut current_part_len = 0;
@@ -5483,16 +5650,36 @@ impl Row {
         if parts.is_empty() {
             parts.push(self.clone());
         }
+        for mut marker in markers {
+            let mut column_offset = 0;
+            for part_index in 0..parts.len() {
+                let part_width = parts[part_index].width();
+                if marker.column <= column_offset + part_width || part_index + 1 == parts.len() {
+                    marker.column = marker.column.saturating_sub(column_offset).min(part_width);
+                    parts[part_index].osc133_markers.push(marker);
+                    break;
+                }
+                column_offset += part_width;
+            }
+        }
         self.width = None;
         parts
+    }
+    fn add_osc133_marker(&mut self, column: usize, kind: Osc133MarkerKind) {
+        self.osc133_markers.push(Osc133Marker { column, kind });
+        self.osc133_markers.sort_by_key(|marker| marker.column);
     }
     pub fn last_index_in_line(&self) -> usize {
         self.columns.len()
     }
-    pub fn word_indices_around_character_index(&self, index: usize) -> Option<(usize, usize)> {
+    pub fn word_indices_around_character_index(
+        &self,
+        index: usize,
+        word_separators: &str,
+    ) -> Option<(usize, usize)> {
         let absolute_character_index = self.absolute_character_index(index);
         let character_at_index = self.columns.get(absolute_character_index)?;
-        if is_selection_boundary_character(character_at_index.character) {
+        if is_selection_boundary_character(character_at_index.character, word_separators) {
             return Some((index, index + 1));
         }
         let mut end_position = self
@@ -5501,7 +5688,7 @@ impl Row {
             .enumerate()
             .skip(absolute_character_index)
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.character, word_separators) {
                     Some(i + self.excess_width_until(i))
                 } else {
                     None
@@ -5515,7 +5702,7 @@ impl Row {
             .take(absolute_character_index)
             .rev()
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.character, word_separators) {
                     Some(i + 1 + self.excess_width_until(i))
                 } else {
                     None
@@ -5528,13 +5715,13 @@ impl Row {
         }
         Some((start_position, end_position))
     }
-    pub fn word_start_index_of_last_character(&self) -> usize {
+    pub fn word_start_index_of_last_character(&self, word_separators: &str) -> usize {
         self.columns
             .iter()
             .enumerate()
             .rev()
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.character, word_separators) {
                     Some(self.absolute_character_index(i + 1))
                 } else {
                     None
@@ -5542,12 +5729,12 @@ impl Row {
             })
             .unwrap_or(0)
     }
-    pub fn word_end_index_of_first_character(&self) -> usize {
+    pub fn word_end_index_of_first_character(&self, word_separators: &str) -> usize {
         self.columns
             .iter()
             .enumerate()
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.character, word_separators) {
                     Some(self.absolute_character_index(i))
                 } else {
                     None
@@ -5557,16 +5744,8 @@ impl Row {
     }
 }
 
-fn is_selection_boundary_character(character: char) -> bool {
-    character.is_ascii_whitespace()
-        || character == '['
-        || character == ']'
-        || character == '{'
-        || character == '}'
-        || character == '<'
-        || character == '>'
-        || character == '('
-        || character == ')'
+fn is_selection_boundary_character(character: char, word_separators: &str) -> bool {
+    character.is_ascii_whitespace() || word_separators.contains(character)
 }
 
 #[cfg(test)]

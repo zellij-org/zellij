@@ -12,7 +12,9 @@ use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PercentOrFixed, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, TabLayoutInfo,
 };
-use crate::input::options::{Clipboard, OnForceClose, Options, PaneFrameStyle};
+use crate::input::options::{
+    Clipboard, OnForceClose, Options, PaneFrameStyle, DEFAULT_WORD_SEPARATORS,
+};
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
@@ -2913,6 +2915,12 @@ impl Options {
         let mouse_click_through =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_click_through")
                 .map(|(v, _)| v);
+        let osc133_command_selection =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc133_command_selection")
+                .map(|(v, _)| v);
+        let word_separators =
+            kdl_property_first_arg_as_string_or_error!(kdl_options, "word_separators")
+                .map(|(separators, _entry)| separators.to_string());
         let nested_session_handling = match kdl_property_first_arg_as_string_or_error!(
             kdl_options,
             "nested_session_handling"
@@ -2972,6 +2980,8 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            osc133_command_selection,
+            word_separators,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -4358,6 +4368,62 @@ impl Options {
             None
         }
     }
+    fn osc133_command_selection_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Whether triple-clicking inside command output marked by the shell (OSC 133) selects",
+            "// the command and its output instead of the logical line",
+            "// default is true",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("osc133_command_selection");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(osc133_command_selection) = self.osc133_command_selection {
+            let mut node = create_node(osc133_command_selection);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn word_separators_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Characters that terminate a word when double-clicking to select it",
+            "// whitespace is always a separator and need not be listed here",
+            "// default is \"[]{}<>()\"",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("word_separators");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(word_separators) = &self.word_separators {
+            let mut node = create_node(word_separators);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(DEFAULT_WORD_SEPARATORS);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn web_server_ip_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -4658,6 +4724,12 @@ impl Options {
         }
         if let Some(mouse_click_through) = self.mouse_click_through_to_kdl(add_comments) {
             nodes.push(mouse_click_through);
+        }
+        if let Some(osc133_command_selection) = self.osc133_command_selection_to_kdl(add_comments) {
+            nodes.push(osc133_command_selection);
+        }
+        if let Some(word_separators) = self.word_separators_to_kdl(add_comments) {
+            nodes.push(word_separators);
         }
         if let Some(web_server_ip) = self.web_server_ip_to_kdl(add_comments) {
             nodes.push(web_server_ip);
@@ -7410,6 +7482,30 @@ fn env_vars_to_string_with_no_env_vars() {
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = EnvironmentVariables::from_kdl(document.get("env").unwrap()).unwrap();
     assert_eq!(EnvironmentVariables::to_kdl(&deserialized), None);
+}
+
+#[test]
+fn selection_options_from_kdl() {
+    let fake_config = r##"
+        osc133_command_selection false
+        word_separators "[]{}<>():,"
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Options::from_kdl(&document).unwrap();
+    assert_eq!(deserialized.osc133_command_selection, Some(false));
+    assert_eq!(
+        deserialized.word_separators,
+        Some("[]{}<>():,".to_owned()),
+        "word separators are parsed verbatim"
+    );
+}
+
+#[test]
+fn selection_options_default_to_none_when_unspecified() {
+    let document: KdlDocument = "".parse().unwrap();
+    let deserialized = Options::from_kdl(&document).unwrap();
+    assert_eq!(deserialized.osc133_command_selection, None);
+    assert_eq!(deserialized.word_separators, None);
 }
 
 #[test]

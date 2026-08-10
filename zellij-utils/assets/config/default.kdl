@@ -548,6 +548,18 @@ load_plugins {
 //
 // mouse_hover_effects false
 
+// Whether triple-clicking inside command output marked by the shell (OSC 133) selects
+// the command and its output instead of the logical line
+// Default: true
+//
+// osc133_command_selection false
+
+// Characters that terminate a word when double-clicking to select it
+// whitespace is always a separator and need not be listed here
+// Default: "[]{}<>()"
+//
+// word_separators "[]{}<>()"
+
 // Whether to output OSC8 hyperlink sequences
 // Default: true
 //

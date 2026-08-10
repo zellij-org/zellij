@@ -10932,6 +10932,63 @@ fn test_left_release_after_selection_copies_to_clipboard() {
 }
 
 #[test]
+fn triple_click_without_motion_requests_render() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let position = Position::new(1, 5);
+
+    tab.handle_pty_bytes(1, Vec::from("Selectable text content here".as_bytes()))
+        .unwrap();
+
+    for _ in 0..2 {
+        tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+            .unwrap();
+        tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+            .unwrap();
+    }
+
+    let effect = tab
+        .handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+        .unwrap();
+
+    assert!(effect.state_changed);
+}
+
+#[test]
+fn configured_word_separators_reach_the_pane_on_double_click() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let position = Position::new(1, 6);
+
+    tab.update_selection_options(true, ":".to_owned());
+    tab.handle_pty_bytes(1, Vec::from("foo:bar baz".as_bytes()))
+        .unwrap();
+
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+        .unwrap();
+
+    let selected_text = tab
+        .get_active_pane(client_id)
+        .unwrap()
+        .get_selected_text(client_id);
+    assert_eq!(selected_text, Some("bar".to_owned()));
+}
+
+#[test]
 fn test_ctrl_click_on_tiled_pane_edge_starts_resize() {
     let size = Size {
         cols: 121,

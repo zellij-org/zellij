@@ -1209,6 +1209,8 @@ message Options {
   optional NestedSessionHandling nested_session_handling = 53;
   optional bool mouse_scroll_resize = 54;
   optional bool support_kitty_graphics_protocol = 55;
+  optional bool osc133_command_selection = 56;
+  optional string word_separators = 57;
 }
 
 enum OnForceClose {

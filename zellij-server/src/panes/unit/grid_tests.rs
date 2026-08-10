@@ -10,6 +10,7 @@ use vte;
 use zellij_utils::consts::SCROLL_BUFFER_SIZE;
 use zellij_utils::{
     data::{Palette, Style},
+    input::options::DEFAULT_WORD_SEPARATORS,
     pane_size::SizeInPixels,
     position::Position,
 };
@@ -4120,6 +4121,337 @@ fn create_grid_with_content(content: &str) -> Grid {
     );
     vte_parser.advance(&mut grid, content.as_bytes());
     grid
+}
+
+fn select_with_click_count(grid: &mut Grid, position: Position, click_count: usize) -> String {
+    for _ in 0..click_count {
+        grid.start_selection(&position);
+    }
+    grid.end_selection(&position);
+    grid.get_selected_text().unwrap()
+}
+
+fn viewport_position_of(grid: &Grid, needle: &str) -> Position {
+    grid.viewport
+        .iter()
+        .enumerate()
+        .find_map(|(line, row)| {
+            let text: String = row.columns.iter().map(|c| c.character).collect();
+            text.find(needle)
+                .map(|column| Position::new(line as i32, column as u16))
+        })
+        .unwrap_or_else(|| panic!("{needle:?} not found in viewport"))
+}
+
+#[test]
+fn osc133_a_b_c_d_selects_command_and_output_without_prompt() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07echo hi\x1b]133;C\x07\r\nhi\x1b]133;D;0\x07 suffix",
+    );
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(1, 0), 3),
+        "echo hi\nhi"
+    );
+}
+
+#[test]
+fn osc133_p_i_aliases_select_command_and_output_without_prompt() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;P\x07> \x1b]133;I\x07pwd\x1b]133;C\x07\r\n/tmp\x1b]133;D\x07",
+    );
+
+    let position = viewport_position_of(&grid, "/tmp");
+    assert_eq!(select_with_click_count(&mut grid, position, 3), "pwd\n/tmp");
+}
+
+#[test]
+fn osc133_input_marker_survives_ghostty_prompt_clear() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A;cl=line\x07$ \x1b]133;B\x07\x1b[Kecho hi\r\n\x1b]133;C\x07hi\r\n\x1b]133;D;0\x07\r\x1b[J\x1b]133;A;cl=line\x07$ \x1b]133;B\x07\x1b[Knext",
+    );
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(1, 0), 3),
+        "echo hi\nhi"
+    );
+}
+
+#[test]
+fn osc133_triple_click_outside_output_keeps_logical_line_selection() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07echo hi\x1b]133;C\x07 output\x1b]133;D\x07",
+    );
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(0, 0), 3),
+        "$ echo hi output"
+    );
+}
+
+#[test]
+fn osc133_double_click_keeps_word_selection() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07echo\x1b]133;C\x07 result word\x1b]133;D\x07",
+    );
+
+    let position = viewport_position_of(&grid, "word");
+    assert_eq!(select_with_click_count(&mut grid, position, 2), "word");
+}
+
+#[test]
+fn osc133_wrapped_command_and_output_are_selected_together() {
+    let mut grid = create_grid_with_size_and_raw(
+        4,
+        8,
+        b"\x1b]133;A\x07$ \x1b]133;B\x07longcmd\x1b]133;C\x07-output\x1b]133;D\x07",
+    );
+
+    let position = viewport_position_of(&grid, "output");
+    assert_eq!(
+        select_with_click_count(&mut grid, position, 3),
+        "longcmd-output"
+    );
+}
+
+#[test]
+fn osc133_running_command_without_end_boundary_falls_back_to_logical_line_selection() {
+    let mut grid =
+        create_grid_with_content("\x1b]133;A\x07$ \x1b]133;B\x07sleep\x1b]133;C\x07\r\npartial");
+
+    let position = viewport_position_of(&grid, "partial");
+    assert_eq!(select_with_click_count(&mut grid, position, 3), "partial");
+}
+
+#[test]
+fn osc133_command_becomes_selectable_once_its_end_boundary_arrives() {
+    let mut grid =
+        create_grid_with_content("\x1b]133;A\x07$ \x1b]133;B\x07sleep\x1b]133;C\x07\r\npartial");
+    let position = viewport_position_of(&grid, "partial");
+
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]133;D;0\x07");
+
+    assert_eq!(
+        select_with_click_count(&mut grid, position, 3),
+        "sleep\npartial"
+    );
+}
+
+#[test]
+fn osc133_missing_input_starts_selection_at_output_boundary() {
+    let mut grid =
+        create_grid_with_content("\x1b]133;A\x07$ hidden\x1b]133;C\x07visible\x1b]133;D\x07");
+
+    let position = viewport_position_of(&grid, "visible");
+    assert_eq!(select_with_click_count(&mut grid, position, 3), "visible");
+}
+
+#[test]
+fn osc133_missing_end_stops_at_later_prompt() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07one\x1b]133;C\x07:1\x1b]133;A\x07$ \x1b]133;B\x07two\x1b]133;C\x07:2",
+    );
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(0, 5), 3),
+        "one:1"
+    );
+}
+
+#[test]
+fn osc133_multiple_commands_on_one_row_remain_distinct() {
+    let content = "\x1b]133;A\x07$ \x1b]133;B\x07one\x1b]133;C\x07:1\x1b]133;D\x07\x1b]133;P\x07$ \x1b]133;I\x07two\x1b]133;C\x07:2\x1b]133;D\x07";
+    let mut first = create_grid_with_content(content);
+    let mut second = create_grid_with_content(content);
+
+    assert_eq!(
+        select_with_click_count(&mut first, Position::new(0, 5), 3),
+        "one:1"
+    );
+    assert_eq!(
+        select_with_click_count(&mut second, Position::new(0, 12), 3),
+        "two:2"
+    );
+}
+
+#[test]
+fn osc133_markers_survive_scrollback() {
+    let mut grid = create_grid_with_size_and_raw(
+        3,
+        20,
+        b"\x1b]133;A\x07$ \x1b]133;B\x07cmd\x1b]133;C\x07\r\nRESULT\x1b]133;D\x07\r\ntail1\r\ntail2\r\ntail3\r\ntail4",
+    );
+    for _ in 0..3 {
+        grid.scroll_up_one_line();
+    }
+
+    let position = viewport_position_of(&grid, "RESULT");
+    assert_eq!(
+        select_with_click_count(&mut grid, position, 3),
+        "cmd\nRESULT"
+    );
+}
+
+#[test]
+fn osc133_markers_survive_resize_reflow() {
+    let mut grid = create_grid_with_size_and_raw(
+        5,
+        20,
+        b"\x1b]133;A\x07$ \x1b]133;B\x07echo hi\x1b]133;C\x07RESULT\x1b]133;D\x07",
+    );
+    grid.change_size(5, 6);
+
+    let position = viewport_position_of(&grid, "RES");
+    assert_eq!(
+        select_with_click_count(&mut grid, position, 3),
+        "echo hiRESULT"
+    );
+}
+
+#[test]
+fn osc133_cleared_markers_fall_back_to_logical_line_selection() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07cmd\x1b]133;C\x07old\r\x1b[2Kunmarked",
+    );
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(0, 6), 3),
+        "unmarked"
+    );
+}
+
+#[test]
+fn osc133_truncated_markers_fall_back_to_logical_line_selection() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07cmd\x1b]133;C\x07old\r\x1b[2C\x1b[Jplain",
+    );
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(0, 3), 3),
+        "$ plain"
+    );
+}
+
+#[test]
+fn osc133_overwritten_markers_fall_back_to_logical_line_selection() {
+    let mut grid =
+        create_grid_with_content("\x1b]133;A\x07$ \x1b]133;B\x07cmd\x1b]133;C\x07old\runmarked");
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(0, 6), 3),
+        "unmarked"
+    );
+}
+
+#[test]
+fn osc133_unknown_subcommand_is_ignored() {
+    let mut grid = create_grid_with_content("plain\x1b]133;Z\x07 text");
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(0, 7), 3),
+        "plain text"
+    );
+}
+
+#[test]
+fn osc133_command_selection_disabled_falls_back_to_logical_line_selection() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07echo hi\x1b]133;C\x07\r\nhi\x1b]133;D;0\x07",
+    );
+    grid.set_selection_options(false, DEFAULT_WORD_SEPARATORS);
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(1, 0), 3),
+        "hi"
+    );
+}
+
+#[test]
+fn osc133_command_selection_can_be_re_enabled_for_existing_markers() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07echo hi\x1b]133;C\x07\r\nhi\x1b]133;D;0\x07",
+    );
+    grid.set_selection_options(false, DEFAULT_WORD_SEPARATORS);
+    grid.set_selection_options(true, DEFAULT_WORD_SEPARATORS);
+
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(1, 0), 3),
+        "echo hi\nhi"
+    );
+}
+
+#[test]
+fn configured_word_separators_split_double_click_selection() {
+    let mut grid = create_grid_with_content("foo:bar baz");
+    grid.set_selection_options(true, ":");
+
+    let position = viewport_position_of(&grid, "bar");
+    assert_eq!(select_with_click_count(&mut grid, position, 2), "bar");
+}
+
+#[test]
+fn characters_absent_from_word_separators_do_not_split_double_click_selection() {
+    let mut grid = create_grid_with_content("foo:bar baz");
+    grid.set_selection_options(true, DEFAULT_WORD_SEPARATORS);
+
+    let position = viewport_position_of(&grid, "bar");
+    assert_eq!(select_with_click_count(&mut grid, position, 2), "foo:bar");
+}
+
+#[test]
+fn word_separators_not_configured_as_separators_are_part_of_the_word() {
+    let mut grid = create_grid_with_content("foo(bar) baz");
+    grid.set_selection_options(true, "");
+
+    let position = viewport_position_of(&grid, "bar");
+    assert_eq!(select_with_click_count(&mut grid, position, 2), "foo(bar)");
+}
+
+#[test]
+fn default_word_separators_keep_bracket_boundaries() {
+    let mut grid = create_grid_with_content("foo(bar) baz");
+    grid.set_selection_options(true, DEFAULT_WORD_SEPARATORS);
+
+    let position = viewport_position_of(&grid, "bar");
+    assert_eq!(select_with_click_count(&mut grid, position, 2), "bar");
+}
+
+#[test]
+fn osc133_repeated_output_markers_without_input_start_at_latest_output() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ first\x1b]133;C\x07skip\x1b]133;C\x07keep\x1b]133;D\x07",
+    );
+
+    let position = viewport_position_of(&grid, "keep");
+    assert_eq!(select_with_click_count(&mut grid, position, 3), "keep");
+}
+
+#[test]
+fn osc133_click_exactly_on_output_marker_column_selects_command_and_output() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07cmd\x1b]133;C\x07OUT\x1b]133;D\x07",
+    );
+
+    let position = viewport_position_of(&grid, "OUT");
+    assert_eq!(select_with_click_count(&mut grid, position, 3), "cmdOUT");
+}
+
+#[test]
+fn osc133_backward_scan_finds_command_start_in_deep_scrollback() {
+    let mut content = b"\x1b]133;A\x07$ \x1b]133;B\x07cmd\x1b]133;C\x07\r\nline00".to_vec();
+    for i in 1..40 {
+        content.extend_from_slice(format!("\r\nline{:02}", i).as_bytes());
+    }
+    content.extend_from_slice(b"\x1b]133;D\x07");
+    let mut grid = create_grid_with_size_and_raw(10, 20, &content);
+
+    let position = viewport_position_of(&grid, "line39");
+    let expected = std::iter::once("cmd".to_string())
+        .chain((0..40).map(|i| format!("line{:02}", i)))
+        .collect::<Vec<String>>()
+        .join("\n");
+    assert_eq!(select_with_click_count(&mut grid, position, 3), expected);
 }
 
 #[test]
