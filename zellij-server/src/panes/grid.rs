@@ -753,6 +753,7 @@ pub struct Grid {
     // key: plugin_id (u32), inner vec: (pattern, compiled) pairs
     pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
     pub cached_hover_tooltip: Option<String>,
+    osc133_markers_seen: bool,
 }
 
 impl Grid {
@@ -1096,6 +1097,7 @@ impl Grid {
             plugin_highlights: HashMap::new(),
             hover_position: None,
             cached_hover_tooltip: None,
+            osc133_markers_seen: false,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -2612,6 +2614,7 @@ impl Grid {
         self.set_scroll_region_to_viewport_size();
         self.pane_default_fg = None;
         self.pane_default_bg = None;
+        self.osc133_markers_seen = false;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }
@@ -3207,84 +3210,81 @@ impl Grid {
         Some((position_start, position_end))
     }
 
-    fn osc133_command_around_position(&self, position: &Position) -> Option<(Position, Position)> {
-        let lines_above = self.lines_above.len() as isize;
-        let markers: Vec<(Position, Osc133MarkerKind)> = self
-            .lines_above
-            .iter()
-            .chain(self.viewport.iter())
-            .chain(self.lines_below.iter())
-            .enumerate()
-            .flat_map(|(line, row)| {
-                row.osc133_markers.iter().map(move |marker| {
-                    (
-                        Position::new(
-                            line as i32 - lines_above as i32,
-                            marker.column.min(u16::MAX as usize) as u16,
-                        ),
-                        marker.kind,
-                    )
-                })
-            })
-            .collect();
-        let clicked = (position.line.0, position.column.0 as usize);
-        let mut input_start = None;
-        let mut active_output = None;
-
-        for (marker_position, kind) in &markers {
-            if (marker_position.line.0, marker_position.column.0 as usize) > clicked {
-                break;
+    fn row_at(&self, line: isize) -> Option<&Row> {
+        if line < 0 {
+            let offset_from_end = line.unsigned_abs();
+            if self.lines_above.len() >= offset_from_end {
+                self.lines_above
+                    .get(self.lines_above.len() - offset_from_end)
+            } else {
+                None
             }
-            match kind {
-                Osc133MarkerKind::Prompt => {
-                    input_start = None;
-                    active_output = None;
-                },
-                Osc133MarkerKind::Input => {
-                    input_start = Some(*marker_position);
-                    active_output = None;
-                },
-                Osc133MarkerKind::Output => {
-                    active_output =
-                        Some((input_start.unwrap_or(*marker_position), *marker_position));
-                },
-                Osc133MarkerKind::End => {
-                    input_start = None;
-                    active_output = None;
-                },
+        } else if (line as usize) < self.viewport.len() {
+            self.viewport.get(line as usize)
+        } else {
+            self.lines_below.get((line as usize) - self.viewport.len())
+        }
+    }
+
+    fn osc133_command_around_position(&self, position: &Position) -> Option<(Position, Position)> {
+        if !self.osc133_markers_seen {
+            return None;
+        }
+        let first_line = -(self.lines_above.len() as isize);
+        let last_line = (self.viewport.len() + self.lines_below.len()) as isize - 1;
+        let clicked_line = position.line.0 as isize;
+        let clicked_column = position.column.0 as usize;
+        let marker_position = |line: isize, column: usize| {
+            Position::new(line as i32, column.min(u16::MAX as usize) as u16)
+        };
+
+        let mut latest_output = None;
+        let mut selection_start = None;
+        'backward: for line in (first_line..=clicked_line.min(last_line)).rev() {
+            let Some(row) = self.row_at(line) else {
+                continue;
+            };
+            for marker in row.osc133_markers.iter().rev() {
+                if line == clicked_line && marker.column > clicked_column {
+                    continue;
+                }
+                match marker.kind {
+                    Osc133MarkerKind::Output => {
+                        if latest_output.is_none() {
+                            latest_output = Some(marker_position(line, marker.column));
+                        }
+                    },
+                    Osc133MarkerKind::Input => {
+                        latest_output?;
+                        selection_start = Some(marker_position(line, marker.column));
+                        break 'backward;
+                    },
+                    Osc133MarkerKind::Prompt | Osc133MarkerKind::End => {
+                        latest_output?;
+                        break 'backward;
+                    },
+                }
             }
         }
+        let selection_start = selection_start.or(latest_output)?;
 
-        let (selection_start, _) = active_output?;
-        let selection_end = markers
-            .iter()
-            .find_map(|(marker_position, kind)| {
-                ((marker_position.line.0, marker_position.column.0 as usize) > clicked
-                    && matches!(
-                        kind,
-                        Osc133MarkerKind::Prompt
-                            | Osc133MarkerKind::Input
-                            | Osc133MarkerKind::Output
-                            | Osc133MarkerKind::End
-                    ))
-                .then_some(*marker_position)
-            })
-            .or_else(|| {
-                self.lines_above
-                    .iter()
-                    .chain(self.viewport.iter())
-                    .chain(self.lines_below.iter())
-                    .last()
-                    .map(|row| {
-                        Position::new(
-                            (self.lines_above.len() + self.viewport.len() + self.lines_below.len())
-                                as i32
-                                - lines_above as i32
-                                - 1,
-                            row.width().min(u16::MAX as usize) as u16,
-                        )
-                    })
-            })?;
+        let mut selection_end = None;
+        'forward: for line in clicked_line.max(first_line)..=last_line {
+            let Some(row) = self.row_at(line) else {
+                continue;
+            };
+            for marker in row.osc133_markers.iter() {
+                if line == clicked_line && marker.column <= clicked_column {
+                    continue;
+                }
+                selection_end = Some(marker_position(line, marker.column));
+                break 'forward;
+            }
+        }
+        let selection_end = selection_end.or_else(|| {
+            self.row_at(last_line)
+                .map(|row| marker_position(last_line, row.width()))
+        })?;
 
         Some((selection_start, selection_end))
     }
@@ -4316,6 +4316,7 @@ impl Perform for Grid {
                 });
                 if let (Some(marker), Some(row)) = (marker, self.viewport.get_mut(self.cursor.y)) {
                     row.add_osc133_marker(self.cursor.x, marker);
+                    self.osc133_markers_seen = true;
                 }
             },
 

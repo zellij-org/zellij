@@ -4342,6 +4342,43 @@ fn osc133_unknown_subcommand_is_ignored() {
 }
 
 #[test]
+fn osc133_repeated_output_markers_without_input_start_at_latest_output() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ first\x1b]133;C\x07skip\x1b]133;C\x07keep\x1b]133;D\x07",
+    );
+
+    let position = viewport_position_of(&grid, "keep");
+    assert_eq!(select_with_click_count(&mut grid, position, 3), "keep");
+}
+
+#[test]
+fn osc133_click_exactly_on_output_marker_column_selects_command_and_output() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A\x07$ \x1b]133;B\x07cmd\x1b]133;C\x07OUT\x1b]133;D\x07",
+    );
+
+    let position = viewport_position_of(&grid, "OUT");
+    assert_eq!(select_with_click_count(&mut grid, position, 3), "cmdOUT");
+}
+
+#[test]
+fn osc133_backward_scan_finds_command_start_in_deep_scrollback() {
+    let mut content = b"\x1b]133;A\x07$ \x1b]133;B\x07cmd\x1b]133;C\x07\r\nline00".to_vec();
+    for i in 1..40 {
+        content.extend_from_slice(format!("\r\nline{:02}", i).as_bytes());
+    }
+    content.extend_from_slice(b"\x1b]133;D\x07");
+    let mut grid = create_grid_with_size_and_raw(10, 20, &content);
+
+    let position = viewport_position_of(&grid, "line39");
+    let expected = std::iter::once("cmd".to_string())
+        .chain((0..40).map(|i| format!("line{:02}", i)))
+        .collect::<Vec<String>>()
+        .join("\n");
+    assert_eq!(select_with_click_count(&mut grid, position, 3), expected);
+}
+
+#[test]
 fn cursor_forward_over_unwritten_line_positions_character() {
     use crate::panes::terminal_character::AnsiCode;
 
