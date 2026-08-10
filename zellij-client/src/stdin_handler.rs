@@ -224,6 +224,7 @@ pub(crate) fn stdin_loop(
                                 break 'stdin;
                             }
                         }
+                        realign_current_buffer(&mut current_buffer, &input_parser);
 
                         schedule_finalization(
                             &stdin_ansi_parser,
@@ -330,6 +331,19 @@ fn drain_partial_to_keyboard(
             .send(InputInstruction::KeyEvent(input_event, raw_bytes))
             .unwrap();
     }
+    realign_current_buffer(current_buffer, input_parser);
+}
+
+/// Trim `current_buffer` to the parser's own buffered length so it can
+/// never drift from the parser's internal state: a trailing incomplete
+/// sequence is held by the parser (and mirrored here) until the next
+/// read completes it, while bytes already decoded into events are dropped.
+fn realign_current_buffer(current_buffer: &mut Vec<u8>, input_parser: &InputParser) {
+    let buffered = input_parser.buffered_len();
+    let excess = current_buffer.len().saturating_sub(buffered);
+    if excess > 0 {
+        current_buffer.drain(..excess);
+    }
 }
 
 /// Build the fire-and-forget host-query batch sent at client startup.
@@ -360,7 +374,52 @@ pub(crate) const PIXEL_SIZE_QUERY: &str = "\u{1b}[14t\u{1b}[16t";
 
 #[cfg(test)]
 mod tests {
-    use super::{build_startup_query_string, PIXEL_SIZE_QUERY};
+    use super::{
+        build_startup_query_string, realign_current_buffer, InputParser, PIXEL_SIZE_QUERY,
+    };
+
+    #[test]
+    fn realign_after_lone_paste_start_empties_the_buffer() {
+        let mut parser = InputParser::new();
+        parser.parse_with_consumed(b"\x1b[200~", |_, _| {}, true);
+        let mut current_buffer = b"\x1b[200~".to_vec();
+        realign_current_buffer(&mut current_buffer, &parser);
+        assert!(
+            current_buffer.is_empty(),
+            "the silently consumed paste-start bytes must not linger: {:?}",
+            current_buffer
+        );
+    }
+
+    #[test]
+    fn realign_drops_stale_bytes_from_the_front_and_keeps_the_pending_tail() {
+        let mut parser = InputParser::new();
+        parser.parse_with_consumed(b"\x1b[200~hel", |_, _| {}, true);
+        let mut current_buffer = b"\x1b[200~hel".to_vec();
+        realign_current_buffer(&mut current_buffer, &parser);
+        assert_eq!(
+            current_buffer, b"hel",
+            "the retained bytes must be the parser's pending tail, not the stale front"
+        );
+    }
+
+    #[test]
+    fn realign_is_a_no_op_when_nothing_was_consumed() {
+        let mut parser = InputParser::new();
+        parser.parse_with_consumed(b"\x1b[1;2", |_, _| {}, true);
+        let mut current_buffer = b"\x1b[1;2".to_vec();
+        realign_current_buffer(&mut current_buffer, &parser);
+        assert_eq!(current_buffer, b"\x1b[1;2");
+    }
+
+    #[test]
+    fn realign_tolerates_a_shorter_mirror_buffer() {
+        let mut parser = InputParser::new();
+        parser.parse_with_consumed(b"\x1b[1;2", |_, _| {}, true);
+        let mut current_buffer = b";2".to_vec();
+        realign_current_buffer(&mut current_buffer, &parser);
+        assert_eq!(current_buffer, b";2");
+    }
 
     #[test]
     fn pixel_size_query_probes_text_area_and_character_cell() {
