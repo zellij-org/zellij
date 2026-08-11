@@ -5632,10 +5632,7 @@ impl Screen {
             Some(mode_info) => mode_info.mode,
             None => return Ok(()),
         };
-        let active_pane_is_scrolled = self
-            .get_active_tab(client_id)
-            .map(|tab| tab.active_pane_is_scrolled(client_id))
-            .unwrap_or(false);
+        let active_pane_is_scrolled = self.active_pane_is_scrolled(client_id);
         let new_mode = match (current_mode, active_pane_is_scrolled) {
             (mode, true) if mode == default_mode => InputMode::Scroll,
             (InputMode::Scroll, false) => default_mode,
@@ -5649,6 +5646,30 @@ impl Screen {
             .senders
             .send_to_server(ServerInstruction::ChangeMode(client_id, new_mode, None))
             .with_context(|| format!("failed to sync scroll mode on focus for client {client_id}"))
+    }
+    fn active_pane_is_scrolled(&self, client_id: ClientId) -> bool {
+        self.get_active_tab(client_id)
+            .map(|tab| tab.active_pane_is_scrolled(client_id))
+            .unwrap_or(false)
+    }
+    fn sync_scroll_mode_if_scroll_changed(
+        &mut self,
+        client_id: ClientId,
+        was_scrolled: bool,
+    ) -> Result<()> {
+        if self.active_pane_is_scrolled(client_id) == was_scrolled {
+            return Ok(());
+        }
+        self.sync_scroll_mode_on_focus(client_id)
+    }
+    fn sync_scroll_mode_for_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
+        let client_ids: Vec<ClientId> = self.active_tab_ids.keys().copied().collect();
+        for client_id in client_ids {
+            if self.get_active_pane_id(&client_id) == Some(pane_id) {
+                self.sync_scroll_mode_on_focus(client_id)?;
+            }
+        }
+        Ok(())
     }
     pub fn change_mode_for_all_clients(
         &mut self,
@@ -6753,6 +6774,7 @@ impl Screen {
             .get_active_tab(client_id)
             .ok()
             .and_then(|tab| tab.get_active_pane_id(client_id));
+        let active_pane_was_scrolled = self.active_pane_is_scrolled(client_id);
         match self
             .get_active_tab_mut(client_id)
             .and_then(|tab| tab.handle_mouse_event(&event, client_id))
@@ -6815,6 +6837,7 @@ impl Screen {
                     }
                     should_render = true;
                 }
+                let _ = self.sync_scroll_mode_if_scroll_changed(client_id, active_pane_was_scrolled);
                 if should_render {
                     self.render(None).non_fatal();
                 }
@@ -8676,11 +8699,13 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.scroll_active_terminal_up(client_id)
                 );
+                screen.sync_scroll_mode_if_scroll_changed(client_id, was_scrolled)?;
                 screen.render(None)?;
             },
             ScreenInstruction::MovePane(
@@ -8767,12 +8792,14 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab
                         .handle_scrollwheel_up(&point, 3, client_id), ?
                 );
+                screen.sync_scroll_mode_if_scroll_changed(client_id, was_scrolled)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollDown(
@@ -8780,11 +8807,13 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.scroll_active_terminal_down(client_id), ?
                 );
+                screen.sync_scroll_mode_if_scroll_changed(client_id, was_scrolled)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollDownAt(
@@ -8793,12 +8822,14 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab
                         .handle_scrollwheel_down(&point, 3, client_id), ?
                 );
+                screen.sync_scroll_mode_if_scroll_changed(client_id, was_scrolled)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollToBottom(
@@ -8806,12 +8837,14 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab
                         .scroll_active_terminal_to_bottom(client_id), ?
                 );
+                screen.sync_scroll_mode_if_scroll_changed(client_id, was_scrolled)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollToTop(
@@ -8819,12 +8852,14 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab
                         .scroll_active_terminal_to_top(client_id), ?
                 );
+                screen.sync_scroll_mode_if_scroll_changed(client_id, was_scrolled)?;
                 screen.render(None)?;
             },
             ScreenInstruction::PageScrollUp(
@@ -8832,12 +8867,14 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab
                         .scroll_active_terminal_up_page(client_id)
                 );
+                screen.sync_scroll_mode_if_scroll_changed(client_id, was_scrolled)?;
                 screen.render(None)?;
             },
             ScreenInstruction::PageScrollDown(
@@ -8845,12 +8882,14 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab
                         .scroll_active_terminal_down_page(client_id), ?
                 );
+                screen.sync_scroll_mode_if_scroll_changed(client_id, was_scrolled)?;
                 screen.render(None)?;
             },
             ScreenInstruction::HalfPageScrollUp(
@@ -8858,12 +8897,14 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab
                         .scroll_active_terminal_up_half_page(client_id)
                 );
+                screen.sync_scroll_mode_if_scroll_changed(client_id, was_scrolled)?;
                 screen.render(None)?;
             },
             ScreenInstruction::HalfPageScrollDown(
@@ -8871,21 +8912,25 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab
                         .scroll_active_terminal_down_half_page(client_id), ?
                 );
+                screen.sync_scroll_mode_if_scroll_changed(client_id, was_scrolled)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ClearScroll(client_id) => {
+                let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab
                         .clear_active_terminal_scroll(client_id), ?
                 );
+                screen.sync_scroll_mode_if_scroll_changed(client_id, was_scrolled)?;
                 screen.render(None)?;
             },
             ScreenInstruction::CloseFocusedPane(client_id, completion_tx) => {
@@ -11130,6 +11175,7 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollDownInPaneId(pane_id) => {
@@ -11148,6 +11194,7 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollToTopInPaneId(pane_id) => {
@@ -11166,6 +11213,7 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollToBottomInPaneId(pane_id) => {
@@ -11182,6 +11230,7 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::PageScrollUpInPaneId(pane_id) => {
@@ -11200,6 +11249,7 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::PageScrollDownInPaneId(pane_id) => {
@@ -11218,6 +11268,7 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::TogglePaneIdFullscreen(pane_id) => {
@@ -11661,6 +11712,7 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
                 }
+                screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollDownWithPaneId(pane_id, mut _completion_tx) => {
@@ -11680,6 +11732,7 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
                 }
+                screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollToTopWithPaneId(pane_id, mut _completion_tx) => {
@@ -11699,6 +11752,7 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
                 }
+                screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollToBottomWithPaneId(pane_id, mut _completion_tx) => {
@@ -11718,6 +11772,7 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
                 }
+                screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::PageScrollUpWithPaneId(pane_id, mut _completion_tx) => {
@@ -11737,6 +11792,7 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
                 }
+                screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::PageScrollDownWithPaneId(pane_id, mut _completion_tx) => {
@@ -11756,6 +11812,7 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
                 }
+                screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::HalfPageScrollUpWithPaneId(pane_id, mut _completion_tx) => {
@@ -11775,6 +11832,7 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
                 }
+                screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::HalfPageScrollDownWithPaneId(pane_id, mut _completion_tx) => {
@@ -11794,6 +11852,7 @@ pub(crate) fn screen_thread_main(
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
                 }
+                screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ResizeWithPaneId(pane_id, strategy, mut _completion_tx) => {
