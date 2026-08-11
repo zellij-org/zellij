@@ -3688,6 +3688,11 @@ impl Tab {
             }
         })
     }
+    pub fn active_pane_is_scrolled(&self, client_id: ClientId) -> bool {
+        self.get_active_pane(client_id)
+            .map(|pane| pane.is_scrolled())
+            .unwrap_or(false)
+    }
     pub fn get_pane_with_id(&self, pane_id: PaneId) -> Option<&dyn Pane> {
         self.floating_panes
             .get_pane(pane_id)

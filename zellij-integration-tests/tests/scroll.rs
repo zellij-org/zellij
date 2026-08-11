@@ -52,7 +52,7 @@ fn page_scroll_down() {
     let grid_snapshot =
         zellij.wait_until("scrolled back down toward the bottom", |grid_snapshot| {
             grid_snapshot.contains("line39")
-                && grid_snapshot.contains("PgDn|PgUp")
+                && grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains("SCROLL 0/")
         });
     assert_snapshot!(normalized(&grid_snapshot));
@@ -92,7 +92,7 @@ fn half_page_scroll_down() {
     let grid_snapshot =
         zellij.wait_until("scrolled back down toward the bottom", |grid_snapshot| {
             grid_snapshot.contains("line39")
-                && grid_snapshot.contains("PgDn|PgUp")
+                && grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains("SCROLL 0/")
         });
     assert_snapshot!(normalized(&grid_snapshot));
