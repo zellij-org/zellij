@@ -2033,6 +2033,7 @@ impl Screen {
                         if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
                             self.report_key_passthrough_state(affected_client_id, old, new);
                         }
+                        let _ = self.sync_scroll_mode_on_focus(affected_client_id);
                     }
                     return self.render(None).with_context(err_context);
                 },
@@ -7776,6 +7777,9 @@ pub(crate) fn screen_thread_main(
                                 )
                             )
                         }
+                        if should_focus_pane {
+                            screen.sync_scroll_mode_on_focus(client_id)?;
+                        }
                     },
                     ClientTabIndexOrPaneId::TabIndex(tab_index)
                     | ClientTabIndexOrPaneId::TabIndexNoFocus(tab_index) => {
@@ -7948,6 +7952,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
                     .toggle_floating_panes(Some(client_id), default_shell, completion_tx), ?);
                 screen.clear_bell_for_focused_pane(client_id);
+                screen.sync_scroll_mode_on_focus(client_id)?;
                 screen.log_and_report_session_state()?;
 
                 screen.render(None)?;
@@ -7958,6 +7963,7 @@ pub(crate) fn screen_thread_main(
                 completion,
             } => {
                 screen.show_floating_panes_in_tab(client_id, tab_id, completion)?;
+                screen.sync_scroll_mode_on_focus(client_id)?;
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
             },
@@ -7967,6 +7973,7 @@ pub(crate) fn screen_thread_main(
                 completion,
             } => {
                 screen.hide_floating_panes_in_tab(client_id, tab_id, completion)?;
+                screen.sync_scroll_mode_on_focus(client_id)?;
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
             },
@@ -8892,6 +8899,7 @@ pub(crate) fn screen_thread_main(
                 if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
                     screen.report_key_passthrough_state(client_id, old, new);
                 }
+                screen.sync_scroll_mode_on_focus(client_id)?;
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
@@ -8995,6 +9003,11 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_pty(PtyInstruction::ClosePane(id, None));
 
+                let connected_client_ids: Vec<ClientId> =
+                    screen.active_tab_ids.keys().copied().collect();
+                for connected_client_id in connected_client_ids {
+                    screen.sync_scroll_mode_on_focus(connected_client_id)?;
+                }
                 screen.log_and_report_session_state().non_fatal();
                 screen.retain_only_existing_panes_in_pane_groups();
             },
@@ -9113,6 +9126,11 @@ pub(crate) fn screen_thread_main(
                                 // waiting for it
             ) => {
                 screen.close_tab(client_id)?;
+                let connected_client_ids: Vec<ClientId> =
+                    screen.active_tab_ids.keys().copied().collect();
+                for connected_client_id in connected_client_ids {
+                    screen.sync_scroll_mode_on_focus(connected_client_id)?;
+                }
                 screen.render(None)?;
             },
             ScreenInstruction::NewTab(
@@ -9583,6 +9601,7 @@ pub(crate) fn screen_thread_main(
                 if let Some(focused) = focused_pane_id {
                     screen.report_key_passthrough_state(client_id, focused, focused);
                 }
+                screen.sync_scroll_mode_on_focus(client_id)?;
                 for event in pending_events_waiting_for_client.drain(..) {
                     screen.bus.senders.send_to_screen(event).non_fatal();
                 }
@@ -10540,6 +10559,7 @@ pub(crate) fn screen_thread_main(
                         )?;
                         screen.clear_bell_for_pane_id(pane_id, client_id);
                         screen.reconcile_single_pane_focus(client_id);
+                        screen.sync_scroll_mode_on_focus(client_id)?;
                         screen.log_and_report_session_state()?;
                     }
                 }

@@ -11841,3 +11841,296 @@ pub fn focusing_a_scrolled_pane_with_the_mouse_enters_scroll_mode() {
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 }
+
+fn last_change_mode_for_client(
+    received_server_instructions: &Arc<Mutex<Vec<ServerInstruction>>>,
+    client_id: ClientId,
+) -> Option<InputMode> {
+    received_server_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find_map(|instruction| match instruction {
+            ServerInstruction::ChangeMode(cid, mode, _) if *cid == client_id => Some(*mode),
+            _ => None,
+        })
+}
+
+fn fill_and_scroll_focused_pane(
+    to_screen: &SenderWithContext<ScreenInstruction>,
+    session_metadata: &SessionMetaData,
+    client_id: ClientId,
+) {
+    let mut pane_contents = String::new();
+    for i in 0..20 {
+        pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
+    }
+    let _ = to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        pane_contents.as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    let scroll_up = CliAction::ScrollUp { pane_id: None };
+    for _ in 0..4 {
+        send_cli_action_to_server(session_metadata, scroll_up.clone(), client_id);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(100));
+}
+
+#[test]
+pub fn toggling_floating_panes_syncs_scroll_mode() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::TogglePaneEmbedOrFloating { pane_id: None },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    fill_and_scroll_focused_pane(&mock_screen.to_screen, &session_metadata, client_id);
+
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::ToggleFloatingPanes { tab_id: None },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Normal),
+        "hiding the scrolled floating pane should return the client to its default mode",
+    );
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::ToggleFloatingPanes { tab_id: None },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Scroll),
+        "showing the scrolled floating pane should switch the client to Scroll mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
+pub fn switching_tabs_syncs_scroll_mode() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    fill_and_scroll_focused_pane(&mock_screen.to_screen, &session_metadata, client_id);
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::NewTab(
+        None,
+        None,
+        Some(TiledPaneLayout::default()),
+        vec![],
+        None,
+        (Some(vec![]), Some(vec![])),
+        None,
+        false,
+        true,
+        (client_id, false),
+        None,
+    ));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        TiledPaneLayout::default(),
+        vec![],
+        vec![(2, None)],
+        vec![],
+        HashMap::new(),
+        1,
+        true,
+        (client_id, false),
+        None,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::GoToTab { index: 1 },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Scroll),
+        "switching to the tab with the scrolled pane should switch the client to Scroll mode",
+    );
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::GoToTab { index: 2 },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Normal),
+        "switching to the tab with the unscrolled pane should return the client to its default mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
+pub fn closing_focused_pane_syncs_scroll_mode_on_fallback_pane() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.drop_all_pty_messages();
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    fill_and_scroll_focused_pane(&mock_screen.to_screen, &session_metadata, client_id);
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::MoveFocus {
+            direction: Direction::Right,
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::ClosePane { pane_id: None },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Scroll),
+        "focus falling back to the scrolled pane should switch the client to Scroll mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
+pub fn focus_pane_with_id_syncs_scroll_mode() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    fill_and_scroll_focused_pane(&mock_screen.to_screen, &session_metadata, client_id);
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::MoveFocus {
+            direction: Direction::Right,
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::FocusPaneWithId(
+        PaneId::Terminal(0),
+        false,
+        false,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Scroll),
+        "focusing the scrolled pane by id should switch the client to Scroll mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
