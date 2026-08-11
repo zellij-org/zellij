@@ -6837,7 +6837,8 @@ impl Screen {
                     }
                     should_render = true;
                 }
-                let _ = self.sync_scroll_mode_if_scroll_changed(client_id, active_pane_was_scrolled);
+                let _ =
+                    self.sync_scroll_mode_if_scroll_changed(client_id, active_pane_was_scrolled);
                 if should_render {
                     self.render(None).non_fatal();
                 }

@@ -12118,13 +12118,15 @@ pub fn focus_pane_with_id_syncs_scroll_mode() {
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::FocusPaneWithId(
-        PaneId::Terminal(0),
-        false,
-        false,
-        client_id,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::FocusPaneWithId(
+            PaneId::Terminal(0),
+            false,
+            false,
+            client_id,
+            None,
+        ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     assert_eq!(
         last_change_mode_for_client(&received_server_instructions, client_id),
