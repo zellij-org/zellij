@@ -1073,6 +1073,19 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Shift,
+                },
+            }: [
+                ToggleFocusNoUiFullscreen,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -4150,11 +4163,33 @@ Config {
                 bare_key: Char(
                     '[',
                 ),
+                key_modifiers: {},
+            }: [
+                FocusGuestSession,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
                 PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {},
+            }: [
+                FocusHostSession,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -4247,6 +4282,17 @@ Config {
                 key_modifiers: {},
             }: [
                 Detach,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleHostFullscreen,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -6013,6 +6059,7 @@ Config {
         serialization_interval: None,
         disable_session_metadata: None,
         support_kitty_keyboard_protocol: None,
+        support_kitty_graphics_protocol: None,
         web_server: None,
         web_sharing: None,
         stacked_resize: None,
@@ -6025,6 +6072,8 @@ Config {
         visual_bell: None,
         focus_follows_mouse: None,
         mouse_click_through: None,
+        osc133_command_selection: None,
+        word_separators: None,
         web_server_ip: None,
         web_server_port: None,
         web_server_cert: None,
@@ -6032,9 +6081,7 @@ Config {
         enforce_https_for_localhost: None,
         post_command_discovery_hook: None,
         client_async_worker_tasks: None,
-        mobile_layout: None,
-        mobile_threshold_cols: None,
-        mobile_threshold_rows: None,
+        nested_session_handling: None,
     },
     themes: {
         "other-theme-from-config": Theme {
@@ -7859,18 +7906,6 @@ Config {
                 initial_cwd: Some(
                     "/",
                 ),
-            },
-            "mobile": RunPlugin {
-                _allow_exec_host_cmd: false,
-                location: Zellij(
-                    PluginTag(
-                        "mobile",
-                    ),
-                ),
-                configuration: PluginUserConfiguration(
-                    {},
-                ),
-                initial_cwd: None,
             },
             "plugin-manager": RunPlugin {
                 _allow_exec_host_cmd: false,

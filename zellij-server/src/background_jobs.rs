@@ -29,7 +29,6 @@ use std::sync::{
     Arc, Mutex,
 };
 use std::time::{Duration, Instant};
-use zellij_utils::consts::is_ipc_socket;
 
 use crate::panes::PaneId;
 use crate::plugins::{PluginId, PluginInstruction};
@@ -74,7 +73,8 @@ pub enum BackgroundJob {
     StopFlashPaneBell(Vec<PaneId>),
     FlashTabBell(usize),     // usize = tab_id
     StopFlashTabBell(usize), // usize = tab_id
-    MobileGateTimeout(ClientId),
+    StartNestedGuestPing(PaneId),
+    StopNestedGuestPing(PaneId),
     Exit,
 }
 
@@ -103,14 +103,14 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::StopFlashPaneBell(..) => BackgroundJobContext::StopFlashPaneBell,
             BackgroundJob::FlashTabBell(..) => BackgroundJobContext::FlashTabBell,
             BackgroundJob::StopFlashTabBell(..) => BackgroundJobContext::StopFlashTabBell,
-            BackgroundJob::MobileGateTimeout(..) => BackgroundJobContext::MobileGateTimeout,
+            BackgroundJob::StartNestedGuestPing(..) => BackgroundJobContext::StartNestedGuestPing,
+            BackgroundJob::StopNestedGuestPing(..) => BackgroundJobContext::StopNestedGuestPing,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
 }
 
 static LONG_FLASH_DURATION_MS: u64 = 1000;
-static MOBILE_GATE_FALLBACK_LIFT_TIMEOUT_MS: u64 = 5000;
 static FLASH_DURATION_MS: u64 = 400; // Doherty threshold
 static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_METADATA_WRITE_INTERVAL_MS: u64 = 1000;
@@ -161,6 +161,7 @@ pub(crate) fn background_jobs_main(
         Arc::new(Mutex::new(HashMap::new()));
     let mut flashing_pane_bells: HashMap<PaneId, Arc<AtomicBool>> = HashMap::new();
     let mut flashing_tab_bells: HashMap<usize, Arc<AtomicBool>> = HashMap::new();
+    let mut nested_guest_pings: HashMap<PaneId, Arc<AtomicBool>> = HashMap::new();
 
     let http_client = HttpClient::builder()
         // TODO: timeout?
@@ -624,22 +625,36 @@ pub(crate) fn background_jobs_main(
                     .senders
                     .send_to_screen(ScreenInstruction::SetTabBellFlash(tab_id, false));
             },
-            BackgroundJob::MobileGateTimeout(client_id) => {
-                runtime.spawn({
-                    let senders = bus.senders.clone();
-                    async move {
-                        tokio::time::sleep(Duration::from_millis(
-                            MOBILE_GATE_FALLBACK_LIFT_TIMEOUT_MS,
-                        ))
-                        .await;
-                        let _ =
-                            senders.send_to_screen(ScreenInstruction::ForceMobileUngate(client_id));
-                    }
-                });
+            BackgroundJob::StartNestedGuestPing(pane_id) => {
+                if !nested_guest_pings.contains_key(&pane_id) {
+                    let is_pinging = Arc::new(AtomicBool::new(true));
+                    nested_guest_pings.insert(pane_id, is_pinging.clone());
+                    runtime.spawn({
+                        let senders = bus.senders.clone();
+                        let flag = is_pinging.clone();
+                        let ping_interval_ms = crate::nested_guest::ping_interval_ms();
+                        async move {
+                            while flag.load(Ordering::SeqCst) {
+                                let _ = senders.send_to_screen(
+                                    ScreenInstruction::NestedGuestPingTick { pane_id },
+                                );
+                                tokio::time::sleep(Duration::from_millis(ping_interval_ms)).await;
+                            }
+                        }
+                    });
+                }
+            },
+            BackgroundJob::StopNestedGuestPing(pane_id) => {
+                if let Some(flag) = nested_guest_pings.remove(&pane_id) {
+                    flag.store(false, Ordering::SeqCst);
+                }
             },
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {
                     loading_plugin.store(false, Ordering::SeqCst);
+                }
+                for nested_guest_ping in nested_guest_pings.values() {
+                    nested_guest_ping.store(false, Ordering::SeqCst);
                 }
 
                 let cache_file_name =
@@ -726,8 +741,11 @@ pub fn scan_session_list(
     sock_dir: &Path,
     session_info_cache_dir: &Path,
 ) -> (BTreeMap<String, SessionInfo>, BTreeMap<String, Duration>) {
-    let mut session_infos_on_machine =
-        read_other_live_session_states(current_session_name, sock_dir, session_info_cache_dir);
+    let mut session_infos_on_machine = zellij_utils::sessions::read_live_session_states(
+        current_session_name,
+        sock_dir,
+        session_info_cache_dir,
+    );
     for (name, info) in session_infos_on_machine.iter_mut() {
         if name == current_session_name {
             info.populate_plugin_list(current_session_plugin_list.clone());
@@ -751,48 +769,6 @@ pub fn scan_session_list_default_dirs(
         &*ZELLIJ_SOCK_DIR,
         &*ZELLIJ_SESSION_INFO_CACHE_DIR,
     )
-}
-
-fn read_other_live_session_states(
-    current_session_name: &str,
-    sock_dir: &Path,
-    session_info_cache_dir: &Path,
-) -> BTreeMap<String, SessionInfo> {
-    let mut other_session_names: Vec<(String, Duration)> = vec![];
-    let mut session_infos_on_machine = BTreeMap::new();
-    // we do this so that the session infos will be actual and we're
-    // reasonably sure their session is running
-    if let Ok(files) = fs::read_dir(sock_dir) {
-        files.for_each(|file| {
-            if let Ok(file) = file {
-                if let Ok(file_name) = file.file_name().into_string() {
-                    if is_ipc_socket(&file.file_type().unwrap()) {
-                        let creation_time = std::fs::metadata(&file.path())
-                            .ok()
-                            .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
-                            .and_then(|d| d.elapsed().ok())
-                            .unwrap_or_default();
-                        other_session_names.push((file_name, creation_time));
-                    }
-                }
-            }
-        });
-    }
-
-    for (session_name, creation_time) in other_session_names {
-        let session_cache_file_name = session_info_cache_dir
-            .join(&session_name)
-            .join("session-metadata.kdl");
-        if let Ok(raw_session_info) = fs::read_to_string(&session_cache_file_name) {
-            if let Ok(mut session_info) =
-                SessionInfo::from_string(&raw_session_info, &current_session_name)
-            {
-                session_info.creation_time = creation_time;
-                session_infos_on_machine.insert(session_name, session_info);
-            }
-        }
-    }
-    session_infos_on_machine
 }
 
 fn find_resurrectable_sessions(

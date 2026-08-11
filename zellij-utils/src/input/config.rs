@@ -44,7 +44,7 @@ pub struct Config {
 pub struct KdlError {
     pub error_message: String,
     #[serde(skip)]
-    pub src: Option<NamedSource>,
+    pub src: Option<NamedSource<String>>,
     pub offset: Option<usize>,
     pub len: Option<usize>,
     pub help_message: Option<String>,

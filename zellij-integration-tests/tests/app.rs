@@ -61,6 +61,34 @@ fn resize_terminal_window() {
 }
 
 #[test]
+fn resize_re_queries_pixel_sizes() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE).start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    zellij.wait_until_raw_output("startup pixel size query", |bytes| {
+        count_pixel_size_queries(bytes) == 1
+    });
+
+    zellij.resize(Size {
+        cols: 100,
+        rows: 24,
+    });
+
+    zellij.wait_until_raw_output("pixel size re-query after resize", |bytes| {
+        count_pixel_size_queries(bytes) >= 2
+    });
+    zellij.quit();
+}
+
+fn count_pixel_size_queries(client_stdout_bytes: &[u8]) -> usize {
+    let pixel_size_query = b"\x1b[14t\x1b[16t";
+    client_stdout_bytes
+        .windows(pixel_size_query.len())
+        .filter(|window| window == pixel_size_query)
+        .count()
+}
+
+#[test]
 fn status_bar_loads_custom_keybindings() {
     let zellij = TestRunner::new(TERMINAL_SIZE)
         .with_config(CHANGED_KEYS_CONFIG)

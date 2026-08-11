@@ -146,9 +146,11 @@ fn forwarding_window_accumulates_and_barrier_closes() {
     chunk.extend_from_slice(b"\x1b]11;rgb:aaaa/bbbb/dddd\x1b\\");
     chunk.extend_from_slice(b"\x1b[?65;1c");
     let out = parser.feed(&chunk);
-    // OSC 11 was classified (double-dispatch).
-    assert_eq!(out.replies.len(), 1);
+    // OSC 11 was classified (double-dispatch), and the barrier itself
+    // advertises the host's sixel capability.
+    assert_eq!(out.replies.len(), 2);
     matches!(out.replies[0], HostReply::BackgroundColor(_));
+    matches!(out.replies[1], HostReply::SixelSupport(false));
     // Barrier closed the window, producing a completed forward.
     let (token, reply_bytes) = out
         .completed_forward
@@ -1210,6 +1212,187 @@ fn last_resort_force_drain_recovers_a_never_terminated_partial() {
 }
 
 #[test]
+fn kitty_probe_ok_reply_classifies_true() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b_Gi=31;OK\x1b\\");
+    assert!(residue.is_empty(), "probe reply must be fully consumed");
+    assert_eq!(replies.len(), 1);
+    match &replies[0] {
+        HostReply::KittyGraphicsSupport(supported) => assert!(*supported),
+        other => panic!("unexpected reply: {:?}", other),
+    }
+}
+
+#[test]
+fn kitty_probe_error_reply_classifies_false() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b_Gi=31;ENOTSUPPORTED:query failed\x1b\\");
+    assert!(residue.is_empty());
+    assert_eq!(replies.len(), 1);
+    match &replies[0] {
+        HostReply::KittyGraphicsSupport(supported) => assert!(!*supported),
+        other => panic!("unexpected reply: {:?}", other),
+    }
+}
+
+#[test]
+fn kitty_probe_absence_resolves_false_on_barrier() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b[?62;4;52c");
+    assert!(residue.is_empty());
+    let kitty_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::KittyGraphicsSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(kitty_replies, vec![false]);
+}
+
+#[test]
+fn primary_da_with_sixel_attribute_classifies_sixel_support_true() {
+    let mut parser = StdinAnsiParser::new();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b[?62;4;52c");
+    assert!(residue.is_empty());
+    let sixel_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::SixelSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sixel_replies, vec![true]);
+}
+
+#[test]
+fn primary_da_without_sixel_attribute_classifies_sixel_support_false() {
+    let mut parser = StdinAnsiParser::new();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b[?62;22c");
+    assert!(residue.is_empty());
+    let sixel_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::SixelSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sixel_replies, vec![false]);
+}
+
+#[test]
+fn primary_da_sixel_attribute_is_not_matched_as_a_substring() {
+    let mut parser = StdinAnsiParser::new();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b[?64;14;21;22c");
+    assert!(residue.is_empty());
+    let sixel_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::SixelSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sixel_replies, vec![false]);
+}
+
+#[test]
+fn kitty_probe_reply_then_barrier_emits_exactly_one_reply() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let mut chunk = Vec::new();
+    chunk.extend_from_slice(b"\x1b_Gi=31;OK\x1b\\");
+    chunk.extend_from_slice(b"\x1b[?62;4;52c");
+    let (replies, residue) = feed_once(&mut parser, &chunk);
+    assert!(residue.is_empty());
+    let kitty_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::KittyGraphicsSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(kitty_replies, vec![true]);
+}
+
+#[test]
+fn kitty_probe_reply_fragmented_across_feeds() {
+    let full = b"\x1b_Gi=31;OK\x1b\\";
+    for split in 1..full.len() {
+        let mut parser = StdinAnsiParser::new();
+        parser.expect_kitty_probe_reply();
+        let r1 = parser.feed(&full[..split]);
+        let r2 = parser.feed(&full[split..]);
+        assert!(
+            r1.residue.is_empty(),
+            "split at {}: chunk 1 residue {:?}",
+            split,
+            r1.residue
+        );
+        assert!(
+            r2.residue.is_empty(),
+            "split at {}: chunk 2 residue {:?}",
+            split,
+            r2.residue
+        );
+        assert_eq!(
+            r1.replies.len() + r2.replies.len(),
+            1,
+            "split at {}: exactly one reply across both chunks",
+            split
+        );
+        let reply = r1.replies.into_iter().chain(r2.replies).next().unwrap();
+        match reply {
+            HostReply::KittyGraphicsSupport(supported) => assert!(supported),
+            other => panic!("split at {}: unexpected reply {:?}", split, other),
+        }
+    }
+}
+
+#[test]
+fn apc_outside_probe_window_is_not_classified() {
+    let mut parser = StdinAnsiParser::new();
+    let out = parser.feed(b"\x1b_Gi=31;OK\x1b\\");
+    assert!(out.replies.is_empty());
+}
+
+#[test]
+fn unsolicited_kitty_graphics_reply_never_becomes_keyboard_input() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let out = parser.feed(b"\x1b_Gi=31;OK\x1b\\");
+    assert_eq!(out.replies.len(), 1);
+
+    let out = parser.feed(b"\x1b_Gi=2000000000;OK\x1b\\");
+    assert!(
+        out.residue.is_empty(),
+        "a host reply to our own image transmission must not be typed into the focused pane, got: {:?}",
+        out.residue
+    );
+    assert!(out.replies.is_empty());
+
+    let mut fragmented = StdinAnsiParser::new();
+    fragmented.expect_kitty_probe_reply();
+    let _ = fragmented.feed(b"\x1b_Gi=31;OK\x1b\\");
+    let first = fragmented.feed(b"\x1b_Gi=2000000");
+    let second = fragmented.feed(b"000;OK\x1b\\");
+    assert!(first.residue.is_empty() && second.residue.is_empty());
+}
+
+#[test]
+fn non_kitty_apc_sequences_are_left_alone() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let out = parser.feed(b"\x1b_Xsomething\x1b\\");
+    assert!(
+        !out.residue.is_empty(),
+        "only kitty graphics APCs may be swallowed"
+    );
+}
+
+#[test]
 fn unsolicited_theme_notification_classifies_without_outstanding_query() {
     let mut p = StdinAnsiParser::new();
     let out = p.feed(b"\x1b[?997;1n");
@@ -1224,4 +1407,108 @@ fn unsolicited_theme_notification_classifies_without_outstanding_query() {
         },
         other => panic!("expected HostTerminalThemeChanged, got {:?}", other),
     }
+}
+
+fn announce_frame_and_payload() -> (Vec<u8>, Vec<u8>) {
+    use zellij_utils::nested_session::{
+        encode_frame, encode_payload, NestedSessionCapability, NestedSessionMessage,
+    };
+    let message = NestedSessionMessage::Announce {
+        session_name: "guest-session".to_owned(),
+        capabilities: vec![NestedSessionCapability::NestedControl],
+    };
+    (encode_frame(&message), encode_payload(&message))
+}
+
+#[test]
+fn nested_frame_in_one_chunk_is_extracted_with_no_residue() {
+    let (frame, payload) = announce_frame_and_payload();
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(&frame);
+    assert_eq!(out.nested_frames, vec![payload]);
+    assert!(out.residue.is_empty(), "residue: {:?}", out.residue);
+    assert_eq!(p.pending_partial(), PendingPartial::None);
+}
+
+#[test]
+fn nested_frame_split_at_every_boundary_is_extracted() {
+    let (frame, payload) = announce_frame_and_payload();
+    for split_at in 1..frame.len() {
+        let mut p = StdinAnsiParser::new();
+        let first = p.feed(&frame[..split_at]);
+        let second = p.feed(&frame[split_at..]);
+        let mut extracted = first.nested_frames.clone();
+        extracted.extend(second.nested_frames.clone());
+        assert_eq!(extracted, vec![payload.clone()], "split at {}", split_at);
+        assert!(
+            first.residue.is_empty() && second.residue.is_empty(),
+            "split at {}: residue {:?} / {:?}",
+            split_at,
+            first.residue,
+            second.residue
+        );
+    }
+}
+
+#[test]
+fn keystrokes_around_nested_frame_survive_as_residue() {
+    let (frame, payload) = announce_frame_and_payload();
+    let mut chunk = b"abc".to_vec();
+    chunk.extend_from_slice(&frame);
+    chunk.extend_from_slice(b"def");
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(&chunk);
+    assert_eq!(out.nested_frames, vec![payload]);
+    assert_eq!(out.residue, b"abcdef".to_vec());
+}
+
+#[test]
+fn nested_frame_with_garbage_base64_is_stripped_without_payload() {
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(b"\x1bP26661n!!!not-base64!!!\x1b\\");
+    assert!(out.nested_frames.is_empty());
+    assert!(out.residue.is_empty(), "residue: {:?}", out.residue);
+}
+
+#[test]
+fn foreign_dcs_passes_through_untouched() {
+    let foreign_dcs = b"\x1bP1$qm\x1b\\q".to_vec();
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(&foreign_dcs);
+    assert!(out.nested_frames.is_empty());
+    assert_eq!(out.residue, foreign_dcs);
+}
+
+#[test]
+fn lone_esc_claimed_by_frame_prepass_reroutes_on_next_chunk() {
+    let mut p = StdinAnsiParser::new();
+    let first = p.feed(b"\x1b");
+    assert!(first.residue.is_empty());
+    assert!(first.has_partial_state);
+    assert_eq!(p.pending_partial(), PendingPartial::LoneEsc);
+    let second = p.feed(b"abc");
+    assert_eq!(second.residue, b"\x1babc".to_vec());
+    assert_eq!(p.pending_partial(), PendingPartial::None);
+}
+
+#[test]
+fn unterminated_frame_header_prefix_is_released_by_force_drain() {
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(b"\x1bP26");
+    assert!(out.residue.is_empty());
+    assert!(out.has_partial_state);
+    assert_eq!(p.pending_partial(), PendingPartial::ReplyInProgress);
+    assert_eq!(p.finalize_force(), b"\x1bP26".to_vec());
+    assert_eq!(p.pending_partial(), PendingPartial::None);
+}
+
+#[test]
+fn two_nested_frames_in_one_chunk_are_both_extracted() {
+    let (frame, payload) = announce_frame_and_payload();
+    let mut chunk = frame.clone();
+    chunk.extend_from_slice(&frame);
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(&chunk);
+    assert_eq!(out.nested_frames, vec![payload.clone(), payload]);
+    assert!(out.residue.is_empty());
 }

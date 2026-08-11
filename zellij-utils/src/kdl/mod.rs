@@ -12,7 +12,9 @@ use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PercentOrFixed, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, TabLayoutInfo,
 };
-use crate::input::options::{Clipboard, OnForceClose, Options, PaneFrameStyle};
+use crate::input::options::{
+    Clipboard, OnForceClose, Options, PaneFrameStyle, DEFAULT_WORD_SEPARATORS,
+};
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
@@ -49,6 +51,9 @@ macro_rules! parse_kdl_action_arguments {
                 "FocusNextPane" => Ok(Action::FocusNextPane),
                 "FocusPreviousPane" => Ok(Action::FocusPreviousPane),
                 "FocusLastPane" => Ok(Action::FocusLastPane),
+                "FocusHostSession" => Ok(Action::FocusHostSession),
+                "FocusGuestSession" => Ok(Action::FocusGuestSession),
+                "ToggleHostFullscreen" => Ok(Action::ToggleHostFullscreen),
                 "SwitchFocus" => Ok(Action::SwitchFocus),
                 "EditScrollback" => Ok(Action::EditScrollback { ansi: false }),
                 "ScrollUp" => Ok(Action::ScrollUp),
@@ -60,6 +65,7 @@ macro_rules! parse_kdl_action_arguments {
                 "HalfPageScrollUp" => Ok(Action::HalfPageScrollUp),
                 "HalfPageScrollDown" => Ok(Action::HalfPageScrollDown),
                 "ToggleFocusFullscreen" => Ok(Action::ToggleFocusFullscreen),
+                "ToggleFocusNoUiFullscreen" => Ok(Action::ToggleFocusNoUiFullscreen),
                 "TogglePaneFrames" => Ok(Action::TogglePaneFrames),
                 "ToggleActiveSyncTab" => Ok(Action::ToggleActiveSyncTab),
                 "TogglePaneEmbedOrFloating" => Ok(Action::TogglePaneEmbedOrFloating),
@@ -82,7 +88,6 @@ macro_rules! parse_kdl_action_arguments {
                 "Confirm" => Ok(Action::Confirm),
                 "Deny" => Ok(Action::Deny),
                 "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
-                "ToggleMobileMode" => Ok(Action::ToggleMobileMode),
                 "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
                 "NextSwapLayout" => Ok(Action::NextSwapLayout),
                 "Clear" => Ok(Action::ClearScreen),
@@ -744,6 +749,7 @@ impl Action {
             Action::HalfPageScrollUp => Some(KdlNode::new("HalfPageScrollUp")),
             Action::HalfPageScrollDown => Some(KdlNode::new("HalfPageScrollDown")),
             Action::ToggleFocusFullscreen => Some(KdlNode::new("ToggleFocusFullscreen")),
+            Action::ToggleFocusNoUiFullscreen => Some(KdlNode::new("ToggleFocusNoUiFullscreen")),
             Action::TogglePaneFrames => Some(KdlNode::new("TogglePaneFrames")),
             Action::SetPaneFrameStyle(style) => {
                 let mut node = KdlNode::new("SetPaneFrameStyle");
@@ -1264,7 +1270,6 @@ impl Action {
                 Some(node)
             },
             Action::ToggleMouseMode => Some(KdlNode::new("ToggleMouseMode")),
-            Action::ToggleMobileMode => Some(KdlNode::new("ToggleMobileMode")),
             Action::PreviousSwapLayout => Some(KdlNode::new("PreviousSwapLayout")),
             Action::NextSwapLayout => Some(KdlNode::new("NextSwapLayout")),
             Action::BreakPane => Some(KdlNode::new("BreakPane")),
@@ -1350,6 +1355,9 @@ impl Action {
             Action::SetDarkTheme => Some(KdlNode::new("SetDarkTheme")),
             Action::SetLightTheme => Some(KdlNode::new("SetLightTheme")),
             Action::ToggleTheme => Some(KdlNode::new("ToggleTheme")),
+            Action::FocusHostSession => Some(KdlNode::new("FocusHostSession")),
+            Action::FocusGuestSession => Some(KdlNode::new("FocusGuestSession")),
+            Action::ToggleHostFullscreen => Some(KdlNode::new("ToggleHostFullscreen")),
             _ => None,
         }
     }
@@ -1541,6 +1549,15 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "FocusLastPane" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
+            "FocusHostSession" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "FocusGuestSession" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "ToggleHostFullscreen" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
             "SwitchFocus" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "EditScrollback" => {
                 let ansi = crate::kdl_get_bool_property_or_child_value!(kdl_action, "ansi")
@@ -1568,6 +1585,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "ToggleFocusFullscreen" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "ToggleFocusNoUiFullscreen" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "TogglePaneFrames" => {
@@ -1611,9 +1631,6 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "ToggleMouseMode" => {
-                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
-            },
-            "ToggleMobileMode" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "Detach" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
@@ -2813,6 +2830,11 @@ impl Options {
             "support_kitty_keyboard_protocol"
         )
         .map(|(v, _)| v);
+        let support_kitty_graphics_protocol = kdl_property_first_arg_as_bool_or_error!(
+            kdl_options,
+            "support_kitty_graphics_protocol"
+        )
+        .map(|(v, _)| v);
         let web_server =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "web_server").map(|(v, _)| v);
         let web_sharing =
@@ -2893,39 +2915,25 @@ impl Options {
         let mouse_click_through =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_click_through")
                 .map(|(v, _)| v);
-        let mobile_layout =
-            match kdl_property_first_arg_as_string_or_error!(kdl_options, "mobile_layout") {
-                Some((value, entry)) => {
-                    use crate::input::options::MobileLayoutConfiguration;
-                    match value.parse::<MobileLayoutConfiguration>() {
-                        Ok(v) => Some(v),
-                        Err(e) => return Err(kdl_parsing_error!(e, entry)),
-                    }
-                },
-                None => None,
-            };
-        let mobile_threshold_cols =
-            match kdl_property_first_arg_as_i64_or_error!(kdl_options, "mobile_threshold_cols") {
-                Some((value, _)) if value >= 0 => Some(value as u16),
-                Some((value, entry)) => {
-                    return Err(kdl_parsing_error!(
-                        format!("mobile_threshold_cols must be >= 0, found '{}'", value),
-                        entry
-                    ));
-                },
-                None => None,
-            };
-        let mobile_threshold_rows =
-            match kdl_property_first_arg_as_i64_or_error!(kdl_options, "mobile_threshold_rows") {
-                Some((value, _)) if value >= 0 => Some(value as u16),
-                Some((value, entry)) => {
-                    return Err(kdl_parsing_error!(
-                        format!("mobile_threshold_rows must be >= 0, found '{}'", value),
-                        entry
-                    ));
-                },
-                None => None,
-            };
+        let osc133_command_selection =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc133_command_selection")
+                .map(|(v, _)| v);
+        let word_separators =
+            kdl_property_first_arg_as_string_or_error!(kdl_options, "word_separators")
+                .map(|(separators, _entry)| separators.to_string());
+        let nested_session_handling = match kdl_property_first_arg_as_string_or_error!(
+            kdl_options,
+            "nested_session_handling"
+        ) {
+            Some((value, entry)) => {
+                use crate::input::options::NestedSessionHandling;
+                match value.parse::<NestedSessionHandling>() {
+                    Ok(v) => Some(v),
+                    Err(e) => return Err(kdl_parsing_error!(e, entry)),
+                }
+            },
+            None => None,
+        };
 
         Ok(Options {
             simplified_ui,
@@ -2959,6 +2967,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
+            support_kitty_graphics_protocol,
             web_server,
             web_sharing,
             stacked_resize,
@@ -2971,6 +2980,8 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            osc133_command_selection,
+            word_separators,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -2978,9 +2989,7 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
-            mobile_layout,
-            mobile_threshold_cols,
-            mobile_threshold_rows,
+            nested_session_handling,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -3904,6 +3913,34 @@ impl Options {
             None
         }
     }
+    fn support_kitty_graphics_protocol_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Enable or disable support for the Kitty Graphics Protocol, used to display images (the host terminal must also support it)",
+            "// (Requires restart)",
+            "// Default: true (if the host terminal supports it)",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("support_kitty_graphics_protocol");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(support_kitty_graphics_protocol) = self.support_kitty_graphics_protocol {
+            let mut node = create_node(support_kitty_graphics_protocol);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn web_server_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
@@ -4331,6 +4368,62 @@ impl Options {
             None
         }
     }
+    fn osc133_command_selection_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Whether triple-clicking inside command output marked by the shell (OSC 133) selects",
+            "// the command and its output instead of the logical line",
+            "// default is true",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("osc133_command_selection");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(osc133_command_selection) = self.osc133_command_selection {
+            let mut node = create_node(osc133_command_selection);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn word_separators_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Characters that terminate a word when double-clicking to select it",
+            "// whitespace is always a separator and need not be listed here",
+            "// default is \"[]{}<>()\"",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("word_separators");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(word_separators) = &self.word_separators {
+            let mut node = create_node(word_separators);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(DEFAULT_WORD_SEPARATORS);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn web_server_ip_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -4417,88 +4510,38 @@ impl Options {
             None
         }
     }
-    fn mobile_layout_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        use crate::input::options::MobileLayoutConfiguration;
+    fn nested_session_handling_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        use crate::input::options::NestedSessionHandling;
         let comment_text = format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
             " ",
-            "// When attached clients land in the mobile UI plugin.",
+            "// How to handle a nested Zellij session detected inside a pane.",
             "// Options:",
-            "//   - \"web\" (Default — web clients only, gated on mobile_threshold_cols/rows)",
-            "//   - \"always\" (any client, gated on mobile_threshold_cols/rows)",
-            "//   - \"never\"",
+            "//   - \"ask\" (Default — prompt with a modal)",
+            "//   - \"fullscreen\" (always zoom into the nested session)",
+            "//   - \"descend\" (always control the nested session on focus)",
+            "//   - \"never\" (never prompt or descend; do it manually)",
             "// ",
         );
-        let create_node = |value: MobileLayoutConfiguration| -> KdlNode {
-            let mut node = KdlNode::new("mobile_layout");
+        let create_node = |value: NestedSessionHandling| -> KdlNode {
+            let mut node = KdlNode::new("nested_session_handling");
             let s = match value {
-                MobileLayoutConfiguration::Web => "web",
-                MobileLayoutConfiguration::Always => "always",
-                MobileLayoutConfiguration::Never => "never",
+                NestedSessionHandling::Ask => "ask",
+                NestedSessionHandling::Fullscreen => "fullscreen",
+                NestedSessionHandling::Descend => "descend",
+                NestedSessionHandling::Never => "never",
             };
             node.push(KdlValue::String(s.to_string()));
             node
         };
-        if let Some(value) = self.mobile_layout {
+        if let Some(value) = self.nested_session_handling {
             let mut node = create_node(value);
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }
             Some(node)
         } else if add_comments {
-            let mut node = create_node(MobileLayoutConfiguration::Web);
-            node.set_leading(format!("{}\n// ", comment_text));
-            Some(node)
-        } else {
-            None
-        }
-    }
-    fn mobile_threshold_cols_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!(
-            "{}\n{}\n{}",
-            " ",
-            "// Column breakpoint for mobile_layout (web/always). 0 = always match.",
-            "// Default: 60",
-        );
-        let create_node = |value: u16| -> KdlNode {
-            let mut node = KdlNode::new("mobile_threshold_cols");
-            node.push(KdlValue::Base10(value as i64));
-            node
-        };
-        if let Some(value) = self.mobile_threshold_cols {
-            let mut node = create_node(value);
-            if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
-            }
-            Some(node)
-        } else if add_comments {
-            let mut node = create_node(60);
-            node.set_leading(format!("{}\n// ", comment_text));
-            Some(node)
-        } else {
-            None
-        }
-    }
-    fn mobile_threshold_rows_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!(
-            "{}\n{}\n{}",
-            " ",
-            "// Row breakpoint for mobile_layout (web/always). 0 = always match.",
-            "// Default: 30",
-        );
-        let create_node = |value: u16| -> KdlNode {
-            let mut node = KdlNode::new("mobile_threshold_rows");
-            node.push(KdlValue::Base10(value as i64));
-            node
-        };
-        if let Some(value) = self.mobile_threshold_rows {
-            let mut node = create_node(value);
-            if add_comments {
-                node.set_leading(format!("{}\n", comment_text));
-            }
-            Some(node)
-        } else if add_comments {
-            let mut node = create_node(30);
+            let mut node = create_node(NestedSessionHandling::Ask);
             node.set_leading(format!("{}\n// ", comment_text));
             Some(node)
         } else {
@@ -4630,6 +4673,11 @@ impl Options {
         {
             nodes.push(support_kitty_keyboard_protocol);
         }
+        if let Some(support_kitty_graphics_protocol) =
+            self.support_kitty_graphics_protocol_to_kdl(add_comments)
+        {
+            nodes.push(support_kitty_graphics_protocol);
+        }
         if let Some(web_server) = self.web_server_to_kdl(add_comments) {
             nodes.push(web_server);
         }
@@ -4677,6 +4725,12 @@ impl Options {
         if let Some(mouse_click_through) = self.mouse_click_through_to_kdl(add_comments) {
             nodes.push(mouse_click_through);
         }
+        if let Some(osc133_command_selection) = self.osc133_command_selection_to_kdl(add_comments) {
+            nodes.push(osc133_command_selection);
+        }
+        if let Some(word_separators) = self.word_separators_to_kdl(add_comments) {
+            nodes.push(word_separators);
+        }
         if let Some(web_server_ip) = self.web_server_ip_to_kdl(add_comments) {
             nodes.push(web_server_ip);
         }
@@ -4692,14 +4746,8 @@ impl Options {
         {
             nodes.push(client_async_worker_tasks);
         }
-        if let Some(mobile_layout) = self.mobile_layout_to_kdl(add_comments) {
-            nodes.push(mobile_layout);
-        }
-        if let Some(mobile_threshold_cols) = self.mobile_threshold_cols_to_kdl(add_comments) {
-            nodes.push(mobile_threshold_cols);
-        }
-        if let Some(mobile_threshold_rows) = self.mobile_threshold_rows_to_kdl(add_comments) {
-            nodes.push(mobile_threshold_rows);
+        if let Some(nested_session_handling) = self.nested_session_handling_to_kdl(add_comments) {
+            nodes.push(nested_session_handling);
         }
         nodes
     }
@@ -7437,6 +7485,30 @@ fn env_vars_to_string_with_no_env_vars() {
 }
 
 #[test]
+fn selection_options_from_kdl() {
+    let fake_config = r##"
+        osc133_command_selection false
+        word_separators "[]{}<>():,"
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Options::from_kdl(&document).unwrap();
+    assert_eq!(deserialized.osc133_command_selection, Some(false));
+    assert_eq!(
+        deserialized.word_separators,
+        Some("[]{}<>():,".to_owned()),
+        "word separators are parsed verbatim"
+    );
+}
+
+#[test]
+fn selection_options_default_to_none_when_unspecified() {
+    let document: KdlDocument = "".parse().unwrap();
+    let deserialized = Options::from_kdl(&document).unwrap();
+    assert_eq!(deserialized.osc133_command_selection, None);
+    assert_eq!(deserialized.word_separators, None);
+}
+
+#[test]
 fn config_options_to_string() {
     let fake_config = r##"
         simplified_ui true
@@ -7468,9 +7540,6 @@ fn config_options_to_string() {
         support_kitty_keyboard_protocol false
         web_server true
         web_sharing "disabled"
-        mobile_layout "always"
-        mobile_threshold_cols 72
-        mobile_threshold_rows 0
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();
@@ -7518,9 +7587,6 @@ fn config_options_to_string_with_comments() {
         support_kitty_keyboard_protocol false
         web_server true
         web_sharing "disabled"
-        mobile_layout "always"
-        mobile_threshold_cols 72
-        mobile_threshold_rows 0
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();
@@ -7555,26 +7621,28 @@ fn config_options_to_string_without_options() {
 }
 
 #[test]
-fn mobile_layout_kdl_round_trip_for_every_variant() {
-    use crate::input::options::MobileLayoutConfiguration;
+#[test]
+fn nested_session_handling_kdl_round_trip_for_every_variant() {
+    use crate::input::options::NestedSessionHandling;
     let cases = [
-        ("web", MobileLayoutConfiguration::Web, (60, 30)),
-        ("always", MobileLayoutConfiguration::Always, (0, 0)),
-        ("never", MobileLayoutConfiguration::Never, (40, 0)),
+        ("ask", NestedSessionHandling::Ask),
+        ("fullscreen", NestedSessionHandling::Fullscreen),
+        ("descend", NestedSessionHandling::Descend),
+        ("never", NestedSessionHandling::Never),
     ];
-    for (value, expected, (cols, rows)) in cases {
+    for (value, expected) in cases {
         let fake_config = format!(
             r##"
-                mobile_layout "{value}"
-                mobile_threshold_cols {cols}
-                mobile_threshold_rows {rows}
+                nested_session_handling "{value}"
             "##
         );
         let document: KdlDocument = fake_config.parse().unwrap();
         let parsed = Options::from_kdl(&document).unwrap();
-        assert_eq!(parsed.mobile_layout, Some(expected), "case: {value}");
-        assert_eq!(parsed.mobile_threshold_cols, Some(cols), "case: {value}");
-        assert_eq!(parsed.mobile_threshold_rows, Some(rows), "case: {value}");
+        assert_eq!(
+            parsed.nested_session_handling,
+            Some(expected),
+            "case: {value}"
+        );
 
         let mut serialized = Options::to_kdl(&parsed, false);
         let mut fake_document = KdlDocument::new();

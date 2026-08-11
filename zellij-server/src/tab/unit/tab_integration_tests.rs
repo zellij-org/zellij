@@ -1,4 +1,5 @@
 use super::{Output, Tab};
+use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
 use crate::screen::CopyOptions;
 use crate::Arc;
@@ -249,6 +250,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -281,7 +283,6 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -346,6 +347,7 @@ fn create_new_tab_with_stacked_pane_list(
         stacked_resize,
         stacked_pane_list,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -378,7 +380,6 @@ fn create_new_tab_with_stacked_pane_list(
         false,
         web_server_ip,
         web_server_port,
-        0,
     );
     let (base_layout, new_terminal_ids) =
         base_layout_and_ids.unwrap_or_else(|| (TiledPaneLayout::default(), vec![(1, None)]));
@@ -439,6 +440,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -471,7 +473,6 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -545,6 +546,7 @@ fn create_new_tab_with_swap_layouts(
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -581,7 +583,6 @@ fn create_new_tab_with_swap_layouts(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     let (
         base_layout,
@@ -656,6 +657,7 @@ fn create_new_tab_with_os_api(
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -688,7 +690,6 @@ fn create_new_tab_with_os_api(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -749,6 +750,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -781,7 +783,6 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     let pane_ids = tab_layout
         .extract_run_instructions()
@@ -856,6 +857,7 @@ fn create_new_tab_with_mock_pty_writer(
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -888,7 +890,6 @@ fn create_new_tab_with_mock_pty_writer(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -954,6 +955,7 @@ fn create_new_tab_with_sixel_support(
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -986,7 +988,6 @@ fn create_new_tab_with_sixel_support(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -1036,6 +1037,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1044,9 +1046,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut vte_parser = vte::Parser::new();
-    for &byte in ansi_instructions.as_bytes() {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
     format!("{:?}", grid)
 }
 
@@ -1075,6 +1075,7 @@ fn take_snapshot_with_sixel(
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1083,9 +1084,7 @@ fn take_snapshot_with_sixel(
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut vte_parser = vte::Parser::new();
-    for &byte in ansi_instructions.as_bytes() {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
     format!("{:?}", grid)
 }
 
@@ -1111,6 +1110,7 @@ fn take_snapshot_and_cursor_position(
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -1119,9 +1119,7 @@ fn take_snapshot_and_cursor_position(
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut vte_parser = vte::Parser::new();
-    for &byte in ansi_instructions.as_bytes() {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
     let coords = grid
         .cursor_coordinates()
         .and_then(|(x, y, visible)| if visible { Some((x, y)) } else { None });
@@ -3446,6 +3444,228 @@ fn float_embedded_pane_without_pane_frames() {
     assert_snapshot!(snapshot);
 }
 
+fn setup_tab_with_focused_floating_pane(
+    size: Size,
+    client_id: ClientId,
+    frame_style: PaneFrameStyle,
+) -> Tab {
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.set_pane_frames(frame_style);
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("\n\n\n                   I am a floating pane".as_bytes()),
+    )
+    .unwrap();
+    tab
+}
+
+#[test]
+fn floating_fullscreen_full_frame_style() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::Full);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn floating_fullscreen_titles_frame_style() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::Titles);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn floating_fullscreen_none_frame_style() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::None);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn changing_frame_style_while_floating_fullscreen_reflows_content() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::Full);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.set_pane_frames(PaneFrameStyle::None);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn exiting_floating_fullscreen_clears_background() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("\n\n\n                   I am a floating pane".as_bytes()),
+    )
+    .unwrap();
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn floating_no_ui_fullscreen_covers_tab_and_status_bar() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::Full);
+    let mut output = Output::default();
+    tab.toggle_active_pane_no_ui_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn floating_fullscreen_hides_other_floating_and_pinned_panes() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.set_floating_pane_pinned(PaneId::Terminal(3), true);
+    tab.handle_pty_bytes(2, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(3, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    let _ = tab.focus_pane_with_id(PaneId::Terminal(2), false, false, client_id);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
 #[test]
 fn cannot_float_only_embedded_pane() {
     let size = Size {
@@ -3633,7 +3853,18 @@ fn move_floating_pane_with_sixel_image() {
         width: 8,
         height: 21,
     })));
-    let mut output = Output::new(sixel_image_store.clone(), character_cell_size, true, true);
+    let sixel_host_capabilities = Rc::new(RefCell::new(HashMap::new()));
+    sixel_host_capabilities.borrow_mut().insert(client_id, true);
+    let mut output = Output::new(
+        sixel_image_store.clone(),
+        character_cell_size,
+        true,
+        true,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(HashMap::new())),
+        sixel_host_capabilities,
+    );
 
     tab.toggle_floating_panes(Some(client_id), None, None)
         .unwrap();
@@ -3692,7 +3923,18 @@ fn floating_pane_above_sixel_image() {
         width: 8,
         height: 21,
     })));
-    let mut output = Output::new(sixel_image_store.clone(), character_cell_size, true, true);
+    let sixel_host_capabilities = Rc::new(RefCell::new(HashMap::new()));
+    sixel_host_capabilities.borrow_mut().insert(client_id, true);
+    let mut output = Output::new(
+        sixel_image_store.clone(),
+        character_cell_size,
+        true,
+        true,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(HashMap::new())),
+        sixel_host_capabilities,
+    );
 
     tab.toggle_floating_panes(Some(client_id), None, None)
         .unwrap();
@@ -10690,6 +10932,63 @@ fn test_left_release_after_selection_copies_to_clipboard() {
 }
 
 #[test]
+fn triple_click_without_motion_requests_render() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let position = Position::new(1, 5);
+
+    tab.handle_pty_bytes(1, Vec::from("Selectable text content here".as_bytes()))
+        .unwrap();
+
+    for _ in 0..2 {
+        tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+            .unwrap();
+        tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+            .unwrap();
+    }
+
+    let effect = tab
+        .handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+        .unwrap();
+
+    assert!(effect.state_changed);
+}
+
+#[test]
+fn configured_word_separators_reach_the_pane_on_double_click() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let position = Position::new(1, 6);
+
+    tab.update_selection_options(true, ":".to_owned());
+    tab.handle_pty_bytes(1, Vec::from("foo:bar baz".as_bytes()))
+        .unwrap();
+
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+        .unwrap();
+
+    let selected_text = tab
+        .get_active_pane(client_id)
+        .unwrap()
+        .get_selected_text(client_id);
+    assert_eq!(selected_text, Some("bar".to_owned()));
+}
+
+#[test]
 fn test_ctrl_click_on_tiled_pane_edge_starts_resize() {
     let size = Size {
         cols: 121,
@@ -13180,6 +13479,7 @@ fn create_new_tab_with_plugin_receiver(
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -13212,7 +13512,6 @@ fn create_new_tab_with_plugin_receiver(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -14967,6 +15266,7 @@ fn create_new_tab_with_server_receiver(
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -14999,7 +15299,6 @@ fn create_new_tab_with_server_receiver(
         false, // mouse_click_through
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         8080,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -15222,6 +15521,7 @@ fn osc99_grid_parses_and_stores_notification() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         false, // debug
         true,  // arrow_fonts
@@ -15232,9 +15532,10 @@ fn osc99_grid_parses_and_stores_notification() {
 
     // Feed OSC 99 through vte parser
     let mut vte_parser = vte::Parser::new();
-    for &byte in b"\x1b]99;i=gridtest:p=title;Grid notification\x07" {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(
+        &mut grid,
+        b"\x1b]99;i=gridtest:p=title;Grid notification\x07",
+    );
 
     assert_eq!(
         grid.pending_desktop_notifications.len(),

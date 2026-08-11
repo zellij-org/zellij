@@ -6,10 +6,10 @@ use crate::input::layout::{
     Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
 pub use crate::input::options::PaneFrameStyle;
-use crate::pane_size::{PaneGeom, Size};
+use crate::pane_size::PaneGeom;
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
-use clap::ArgEnum;
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
@@ -254,6 +254,7 @@ impl FromStr for BareKey {
             "end" => Ok(BareKey::End),
             "backspace" => Ok(BareKey::Backspace),
             "delete" => Ok(BareKey::Delete),
+            "del" => Ok(BareKey::Delete),
             "insert" => Ok(BareKey::Insert),
             "f1" => Ok(BareKey::F(1)),
             "f2" => Ok(BareKey::F(2)),
@@ -1019,7 +1020,6 @@ pub enum Event {
     /// An action was performed by the user (requires InterceptInput permission)
     UserAction(Action, ClientId, Option<u32>, Option<ClientId>), // Action, client_id, terminal_id, cli_client_id
     PaneRenderReport(HashMap<PaneId, PaneContents>),
-    PaneRenderReportWithAnsi(HashMap<PaneId, PaneContents>),
     ActionComplete(Action, Option<PaneId>, BTreeMap<String, String>), // Action, pane_id, context
     CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
     CommandChanged(PaneId, Vec<String>, bool, Vec<ClientId>), // pane_id, command, is_foreground, focused_client_ids
@@ -1151,7 +1151,7 @@ impl PluginPermission {
     EnumIter,
     Serialize,
     Deserialize,
-    ArgEnum,
+    ValueEnum,
     PartialOrd,
     Ord,
 )]
@@ -1751,6 +1751,12 @@ pub struct ModeInfo {
     pub web_server_port: Option<u16>,
     pub web_server_capability: Option<bool>,
     pub pane_frame_style: Option<PaneFrameStyle>,
+    pub session_dimmed: Option<bool>,
+    pub session_ancestry: Vec<String>,
+    pub host_fullscreen: Option<bool>,
+    pub nested_ascend_keys: Vec<KeyWithModifier>,
+    pub session_ascended: Option<bool>,
+    pub nested_descend_keys: Vec<KeyWithModifier>,
 }
 
 impl ModeInfo {
@@ -3180,7 +3186,7 @@ impl OriginatingPlugin {
     }
 }
 
-#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(ValueEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WebSharing {
     #[serde(alias = "on")]
     On,
@@ -3416,6 +3422,7 @@ pub enum PluginCommand {
     PageScrollUp,
     PageScrollDown,
     ToggleFocusFullscreen,
+    ToggleFocusNoUiFullscreen,
     TogglePaneFrames,
     SetPaneFrameStyle(PaneFrameStyle),
     TogglePaneEmbedOrEject,
@@ -3639,12 +3646,7 @@ pub enum PluginCommand {
     DeleteDeadSessionAndReply(String), // session name; sends a response back
     DeleteAllDeadSessionsAndReply,     // no payload; sends a response back
     SetSoftKeyboard(bool),
-    SetTabFit {
-        tab_id: usize,
-        fit: Option<(PaneId, Size)>,
-    },
-    SetShadowFocus(PaneId),
-    ExitMobileMode,
+    FocusHostSession,
 }
 
 // Response type for plugin API methods that open a pane in a new tab

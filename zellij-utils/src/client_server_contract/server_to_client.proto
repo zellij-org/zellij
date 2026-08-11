@@ -22,6 +22,8 @@ message ServerToClientMsg {
     SubscribedPaneClosedMsg subscribed_pane_closed = 15;
     ForwardQueryToHostMsg forward_query_to_host = 16;
     SetSoftKeyboardMsg set_soft_keyboard = 17;
+    EmitNestedSessionFrameMsg emit_nested_session_frame = 18;
+    MobileStateMsg mobile_state = 19;
   }
 }
 
@@ -98,4 +100,62 @@ message ForwardQueryToHostMsg {
 
 message SetSoftKeyboardMsg {
   bool on = 1;
+}
+
+message EmitNestedSessionFrameMsg {
+  bytes payload_bytes = 1;
+}
+
+message MobileSizeMsg {
+  uint32 cols = 1;
+  uint32 rows = 2;
+}
+
+message MobileActivePaneMsg {
+  uint32 pane_id = 1;
+  bool is_plugin = 2;
+  uint32 tab_position = 3;
+}
+
+message MobileTabMsg {
+  uint32 position = 1;
+  string name = 2;
+  bool active = 3;
+}
+
+message MobilePaneMsg {
+  uint32 tab_position = 1;
+  uint32 pane_id = 2;
+  bool is_plugin = 3;
+  string title = 4;
+  bool is_floating = 5;
+  uint64 last_activity_secs_ago = 6;
+}
+
+message MobileSessionMsg {
+  string name = 1;
+  bool web_clients_allowed = 2;
+  uint32 tab_count = 3;
+  uint32 pane_count = 4;
+  uint32 connected_clients = 5;
+  uint64 creation_secs_ago = 6;
+}
+
+message MobileRenderPrefsMsg {
+  bool single_pane = 1;
+  bool fit = 2;
+  bool active_pane_is_fullscreen = 3;
+}
+
+message MobileStateMsg {
+  string session_name = 1;
+  uint64 now_secs = 2;
+  bool is_welcome_screen = 3;
+  bool desktop_client_connected = 4;
+  optional MobileSizeMsg desktop_size = 5;
+  optional MobileActivePaneMsg active_pane = 6;
+  repeated MobileTabMsg tabs = 7;
+  repeated MobilePaneMsg panes = 8;
+  repeated MobileSessionMsg sessions = 9;
+  MobileRenderPrefsMsg render_prefs = 10;
 }

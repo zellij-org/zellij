@@ -14,7 +14,8 @@ pub mod tab;
 pub mod background_jobs;
 mod global_async_runtime;
 mod logging_pipe;
-mod mobile_mode;
+mod mobile_web;
+pub mod nested_guest;
 mod pane_groups;
 mod plugins;
 mod pty;
@@ -40,12 +41,13 @@ use zellij_utils::envs;
 use zellij_utils::pane_size::Size;
 
 use zellij_utils::input::cli_assets::CliAssets;
-use zellij_utils::input::options::PaneFrameStyle;
+use zellij_utils::input::options::{PaneFrameStyle, DEFAULT_WORD_SEPARATORS};
 
 use wasmi::Engine;
 
 use crate::{
     os_input_output::ServerOsApi,
+    panes::PaneId,
     plugins::{plugin_thread_main, PluginInstruction},
     pty::{get_default_shell, pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
@@ -58,8 +60,8 @@ use zellij_utils::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
     data::{
-        ConnectToSession, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError, Style,
-        WebSharing,
+        ConnectToSession, Direction, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError,
+        Style, WebSharing,
     },
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
@@ -138,6 +140,8 @@ pub enum ServerInstruction {
     /// loop. The main loop writes `ServerToClientMsg::ForwardQueryToHost`
     /// to any connected regular client.
     ForwardQueryToHost(u32, Vec<u8>),
+    KeyPassthroughChanged(ClientId, PaneId, PaneId, bool, Option<Direction>, bool),
+    EmitNestedSessionFrameToClient(ClientId, Vec<u8>),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -187,6 +191,10 @@ impl From<&ServerInstruction> for ServerContext {
             },
             ServerInstruction::ClearMouseHelpText(..) => ServerContext::ClearMouseHelpText,
             ServerInstruction::ForwardQueryToHost(..) => ServerContext::ForwardQueryToHost,
+            ServerInstruction::KeyPassthroughChanged(..) => ServerContext::KeyPassthroughChanged,
+            ServerInstruction::EmitNestedSessionFrameToClient(..) => {
+                ServerContext::EmitNestedSessionFrameToClient
+            },
         }
     }
 }
@@ -326,6 +334,7 @@ pub(crate) struct SessionMetaData {
     pub default_shell: Option<TerminalAction>,
     pub current_input_modes: HashMap<ClientId, InputMode>,
     pub session_configuration: SessionConfiguration,
+    pub key_passthrough_clients: HashMap<ClientId, PaneId>,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
     // initialization because we don't want it to be overridden by
     // configuration changes, the only way it can be overwritten is by
@@ -354,6 +363,30 @@ impl SessionMetaData {
                 Some((client_keybinds, client_input_mode, default_input_mode))
             },
             _ => None,
+        }
+    }
+    pub fn remove_key_passthrough_client(&mut self, client_id: ClientId) {
+        self.remove_key_passthrough_client_with_notify(client_id, true);
+    }
+    pub fn remove_key_passthrough_client_with_notify(
+        &mut self,
+        client_id: ClientId,
+        notify_guest: bool,
+    ) {
+        if let Some(pane_id) = self.key_passthrough_clients.remove(&client_id) {
+            let pane_still_active = self.key_passthrough_clients.values().any(|p| *p == pane_id);
+            if !pane_still_active && notify_guest {
+                if let PaneId::Terminal(terminal_id) = pane_id {
+                    let frame = zellij_utils::nested_session::encode_frame(
+                        &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
+                    );
+                    let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Write(
+                        frame,
+                        terminal_id,
+                        None,
+                    ));
+                }
+            }
         }
     }
     pub fn change_mode_for_all_clients(&mut self, input_mode: InputMode) {
@@ -438,6 +471,19 @@ impl SessionMetaData {
                     visual_bell: new_config.options.visual_bell.unwrap_or(true),
                     focus_follows_mouse: new_config.options.focus_follows_mouse.unwrap_or(false),
                     mouse_click_through: new_config.options.mouse_click_through.unwrap_or(false),
+                    osc133_command_selection: new_config
+                        .options
+                        .osc133_command_selection
+                        .unwrap_or(true),
+                    word_separators: new_config
+                        .options
+                        .word_separators
+                        .clone()
+                        .unwrap_or_else(|| DEFAULT_WORD_SEPARATORS.to_owned()),
+                    nested_session_handling: new_config
+                        .options
+                        .nested_session_handling
+                        .unwrap_or_default(),
                 })
                 .unwrap();
             self.senders
@@ -999,21 +1045,17 @@ pub fn start_server_impl(
                     is_web_client,
                 );
 
-                let should_enter_mobile = should_enter_mobile_on_connect(
-                    &runtime_config_options,
-                    is_web_client,
-                    client_attributes.size,
-                );
-                if should_enter_mobile {
-                    session_data
-                        .read()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::SuppressRenderUntilMobile(client_id))
-                        .unwrap();
-                }
+                session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_screen(ScreenInstruction::RecomputeTabSize(
+                        client_id,
+                        client_attributes.size,
+                    ))
+                    .unwrap();
 
                 let default_shell = runtime_config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
@@ -1111,17 +1153,6 @@ pub fn start_server_impl(
                     .senders
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
-
-                if should_enter_mobile {
-                    session_data
-                        .read()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::EnterMobileMode(client_id, None))
-                        .unwrap();
-                }
             },
             ServerInstruction::AttachClient(
                 cli_assets,
@@ -1166,18 +1197,6 @@ pub fn start_server_impl(
                     is_web_client,
                 );
 
-                let should_enter_mobile = should_enter_mobile_on_connect(
-                    &runtime_config_options,
-                    is_web_client,
-                    client_attributes.size,
-                );
-                if should_enter_mobile {
-                    session_data
-                        .senders
-                        .send_to_screen(ScreenInstruction::SuppressRenderUntilMobile(client_id))
-                        .unwrap();
-                }
-
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::AddClient(
@@ -1204,13 +1223,6 @@ pub fn start_server_impl(
                         None,
                     ))
                     .unwrap();
-
-                if should_enter_mobile {
-                    session_data
-                        .senders
-                        .send_to_screen(ScreenInstruction::EnterMobileMode(client_id, None))
-                        .unwrap();
-                }
             },
             ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client) => {
                 // the client_id was inserted into clients upon ipc tunnel initialization
@@ -1334,6 +1346,9 @@ pub fn start_server_impl(
 
                     os_input.remove_client(client_id).unwrap();
                 } else {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.remove_key_passthrough_client(client_id);
+                    }
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state, session_data);
                     drop(completion_tx); // prevent deadlock with route thread
@@ -1398,6 +1413,9 @@ pub fn start_server_impl(
 
                     os_input.remove_client(client_id).unwrap();
                 } else {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.remove_key_passthrough_client(client_id);
+                    }
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state, session_data);
                     session_data
@@ -1450,6 +1468,9 @@ pub fn start_server_impl(
                     .filter(|c| c != &client_id)
                     .collect();
                 for client_id in client_ids {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.remove_key_passthrough_client(client_id);
+                    }
                     let _ = os_input.send_to_client(
                         client_id,
                         ServerToClientMsg::Exit {
@@ -1461,6 +1482,9 @@ pub fn start_server_impl(
             },
             ServerInstruction::DetachSession(client_ids, completion_tx) => {
                 for client_id in &client_ids {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.remove_key_passthrough_client(*client_id);
+                    }
                     let _ = os_input.send_to_client(
                         *client_id,
                         ServerToClientMsg::Exit {
@@ -1913,6 +1937,77 @@ pub fn start_server_impl(
                     }
                 }
             },
+            ServerInstruction::KeyPassthroughChanged(
+                client_id,
+                _old_pane_id,
+                new_pane_id,
+                should_route,
+                entered_from_direction,
+                notify_guest,
+            ) => {
+                let mut session_data = session_data.write().unwrap();
+                if let Some(session_data) = session_data.as_mut() {
+                    let previous_pane = session_data
+                        .key_passthrough_clients
+                        .get(&client_id)
+                        .copied();
+
+                    if should_route {
+                        if previous_pane != Some(new_pane_id) {
+                            if let Some(previous_pane_id) = previous_pane {
+                                session_data.key_passthrough_clients.remove(&client_id);
+                                let pane_still_active = session_data
+                                    .key_passthrough_clients
+                                    .values()
+                                    .any(|p| *p == previous_pane_id);
+                                if !pane_still_active && notify_guest {
+                                    if let crate::panes::PaneId::Terminal(terminal_id) =
+                                        previous_pane_id
+                                    {
+                                        let frame = zellij_utils::nested_session::encode_frame(
+                                            &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
+                                        );
+                                        let _ = session_data.senders.send_to_pty_writer(
+                                            PtyWriteInstruction::Write(frame, terminal_id, None),
+                                        );
+                                    }
+                                }
+                            }
+                            let pane_already_active = session_data
+                                .key_passthrough_clients
+                                .values()
+                                .any(|p| *p == new_pane_id);
+                            session_data
+                                .key_passthrough_clients
+                                .insert(client_id, new_pane_id);
+                            if !pane_already_active {
+                                if let crate::panes::PaneId::Terminal(terminal_id) = new_pane_id {
+                                    let frame = zellij_utils::nested_session::encode_frame(
+                                        &zellij_utils::nested_session::NestedSessionMessage::FocusGained {
+                                            from_direction: entered_from_direction,
+                                        },
+                                    );
+                                    let _ = session_data.senders.send_to_pty_writer(
+                                        PtyWriteInstruction::Write(frame, terminal_id, None),
+                                    );
+                                }
+                            }
+                        }
+                    } else if previous_pane.is_some() {
+                        session_data
+                            .remove_key_passthrough_client_with_notify(client_id, notify_guest);
+                    }
+                }
+            },
+            ServerInstruction::EmitNestedSessionFrameToClient(client_id, payload_bytes) => {
+                send_to_client!(
+                    client_id,
+                    os_input,
+                    ServerToClientMsg::EmitNestedSessionFrame { payload_bytes },
+                    session_state,
+                    session_data
+                );
+            },
         }
     }
 
@@ -2193,6 +2288,7 @@ fn init_session(
         web_sharing: config.options.web_sharing.unwrap_or(WebSharing::Off),
         #[cfg(not(feature = "web_server_capability"))]
         web_sharing: WebSharing::Disabled,
+        key_passthrough_clients: HashMap::new(),
         config_file_path: cli_assets.config_file_path,
     }
 }
@@ -2270,21 +2366,6 @@ fn should_show_startup_tip(
         false
     } else {
         should_show_startup_tip_config.unwrap_or(true)
-    }
-}
-
-fn should_enter_mobile_on_connect(options: &Options, is_web_client: bool, viewport: Size) -> bool {
-    let mobile_layout = options.mobile_layout.unwrap_or_default();
-    if is_web_client {
-        mobile_layout.may_route_web_client_to_mobile()
-    } else {
-        mobile_layout.should_route_to_mobile(
-            is_web_client,
-            viewport.cols,
-            viewport.rows,
-            options.mobile_threshold_cols.unwrap_or(60),
-            options.mobile_threshold_rows.unwrap_or(30),
-        )
     }
 }
 

@@ -2,7 +2,7 @@
 
 use insta::assert_snapshot;
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, col, keys, normalized,
+    assert_same_rendered_grid, claim_first_terminal_and_wait_for_prompt, col, keys, normalized,
     split_down_and_wait_for_prompt, split_right_and_wait_for_prompt, start_zellij, Coord, Size,
     TestRunner, TestSession, PROMPT, TERMINAL_SIZE,
 };
@@ -72,6 +72,79 @@ fn toggle_pane_fullscreen() {
             && grid_snapshot.contains("(FULLSCREEN)")
     });
     assert_snapshot!(normalized(&grid_snapshot));
+    zellij.quit();
+}
+
+#[test]
+fn new_pane_while_fullscreen_breaks_out_of_fullscreen() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    split_right_and_wait_for_prompt(&zellij);
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('f'));
+    zellij.wait_until("focused pane is fullscreen", |grid_snapshot| {
+        grid_snapshot.contains("(FULLSCREEN)")
+    });
+
+    zellij.send_stdin(&keys::alt('n'));
+    let new_terminal = zellij.expect_pty_spawn();
+    new_terminal.output(PROMPT);
+
+    let grid_snapshot = zellij.wait_until(
+        "all three panes tiled after breaking out of fullscreen",
+        |grid_snapshot| {
+            !grid_snapshot.contains("(FULLSCREEN)")
+                && grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains("Pane #1")
+                && grid_snapshot.contains("Pane #2")
+                && grid_snapshot.contains("Pane #3")
+                && grid_snapshot.cursor.is_some()
+        },
+    );
+    assert_snapshot!(normalized(&grid_snapshot));
+    zellij.quit();
+}
+
+#[test]
+fn closing_the_fullscreen_pane_restores_the_remaining_layout() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    split_right_and_wait_for_prompt(&zellij);
+    let two_pane_state = zellij.wait_until("two panes settled", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(62).row(2))
+    });
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('d'));
+    let third_terminal = zellij.expect_pty_spawn();
+    third_terminal.output(PROMPT);
+    zellij.wait_until("third pane split below the right pane", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(62).row(13))
+    });
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('f'));
+    zellij.wait_until("third pane is fullscreen", |grid_snapshot| {
+        grid_snapshot.contains("(FULLSCREEN)")
+    });
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('x'));
+    let after_close = zellij.wait_until(
+        "fullscreen pane closed, two panes restored",
+        |grid_snapshot| {
+            !grid_snapshot.contains("(FULLSCREEN)")
+                && grid_snapshot.status_bar_appears()
+                && grid_snapshot.cursor_is_at(col(62).row(2))
+        },
+    );
+
+    assert_same_rendered_grid(
+        &after_close,
+        &two_pane_state,
+        "closing the fullscreen pane restores the pre-split layout",
+    );
     zellij.quit();
 }
 

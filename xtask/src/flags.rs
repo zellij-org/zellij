@@ -39,10 +39,13 @@ xflags::xflags! {
             }
         }
 
-        /// Build the manpage
-        cmd manpage {}
-
         cmd proto {}
+
+        /// Bundle the web client frontend assets
+        cmd assets {
+            /// Verify the checked-in assets are up to date instead of writing them
+            optional --check
+        }
 
         /// Publish zellij and all the sub-crates
         cmd publish {
@@ -56,13 +59,7 @@ xflags::xflags! {
             optional --cargo-registry registry: OsString
         }
 
-        /// Package zellij for distribution (result found in ./target/dist)
-        cmd dist {}
-
-        /// Run `cargo clippy` on all crates
-        cmd clippy {}
-
-        /// Sequentially call: format, build, test, clippy
+        /// Sequentially call: format, build, test
         cmd make {
             /// Build in release mode without debug symbols
             optional -r, --release
@@ -77,6 +74,10 @@ xflags::xflags! {
             required destination: PathBuf
             /// Compile without web server support
             optional --no-web
+            /// Extra arguments appended to the native `cargo build` invocation
+            /// (e.g. `--no-default-features`, `--features ...`, `--offline`, `--locked`, `-j N`).
+            /// Not applied to the wasm plugin build.
+            repeated args: OsString
         }
 
         /// Run debug version of zellij
@@ -128,6 +129,10 @@ xflags::xflags! {
             optional --no-plugins
             /// Compile without web support
             optional --no-web
+            /// Extra arguments appended to the native `cargo build` invocation
+            /// (e.g. `--no-default-features`, `--features ...`, `--offline`, `--locked`, `-j N`).
+            /// Not applied to the wasm plugin build.
+            repeated args: OsString
         }
     }
 }
@@ -143,11 +148,9 @@ pub struct Xtask {
 pub enum XtaskCmd {
     Deprecated(Deprecated),
     Ci(Ci),
-    Manpage(Manpage),
     Proto(Proto),
+    Assets(Assets),
     Publish(Publish),
-    Dist(Dist),
-    Clippy(Clippy),
     Make(Make),
     Install(Install),
     Run(Run),
@@ -195,10 +198,12 @@ pub struct BuildRelease {
 }
 
 #[derive(Debug)]
-pub struct Manpage;
+pub struct Proto;
 
 #[derive(Debug)]
-pub struct Proto;
+pub struct Assets {
+    pub check: bool,
+}
 
 #[derive(Debug)]
 pub struct Publish {
@@ -207,12 +212,6 @@ pub struct Publish {
     pub git_remote: Option<OsString>,
     pub cargo_registry: Option<OsString>,
 }
-
-#[derive(Debug)]
-pub struct Dist;
-
-#[derive(Debug)]
-pub struct Clippy;
 
 #[derive(Debug)]
 pub struct Make {
@@ -224,6 +223,7 @@ pub struct Make {
 #[derive(Debug)]
 pub struct Install {
     pub destination: PathBuf,
+    pub args: Vec<OsString>,
 
     pub no_web: bool,
 }
@@ -260,6 +260,8 @@ pub struct IntegrationTest {
 
 #[derive(Debug)]
 pub struct Build {
+    pub args: Vec<OsString>,
+
     pub release: bool,
     pub plugins_only: bool,
     pub no_plugins: bool,

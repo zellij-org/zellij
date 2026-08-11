@@ -8,6 +8,7 @@ import "action.proto";
 package api.event;
 
 enum EventType {
+    reserved 43;
     /// The input mode or relevant metadata changed
     ModeUpdate = 0;
     /// The tab state in the app was changed
@@ -65,7 +66,6 @@ enum EventType {
     AvailableLayoutInfo = 40;
     PluginConfigurationChanged = 41;
     HighlightClicked = 42;
-    PaneRenderReportWithAnsi = 43;
     InitialKeybinds = 44;
     CommandChanged = 45;
     HostTerminalThemeChanged = 46;
@@ -79,6 +79,7 @@ message EventNameList {
 }
 
 message Event {
+  reserved 37;
   EventType name = 1;
   oneof payload {
     ModeUpdatePayload mode_update_payload = 2;
@@ -116,7 +117,6 @@ message Event {
     AvailableLayoutInfoPayload available_layout_info_payload = 34;
     PluginConfigurationChangedPayload plugin_configuration_changed_payload = 35;
     HighlightClickedPayload highlight_clicked_payload = 36;
-    PaneRenderReportPayload pane_render_report_with_ansi_payload = 37;
     InitialKeybindsPayload initial_keybinds_payload = 38;
     CommandChangedPayload command_changed_payload = 39;
     HostTerminalThemeChangedPayload host_terminal_theme_changed_payload = 40;
@@ -511,6 +511,12 @@ message ModeUpdatePayload {
   optional uint32 web_server_port = 14;
   optional bool web_server_capability = 15;
   optional PaneFrameStyle pane_frame_style = 16;
+  optional bool session_dimmed = 17;
+  repeated string ancestry = 18;
+  optional bool host_fullscreen = 19;
+  repeated string nested_ascend_keys = 20;
+  optional bool session_ascended = 21;
+  repeated string nested_descend_keys = 22;
 }
 
 enum WebSharing {

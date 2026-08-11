@@ -11,7 +11,7 @@ use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use highway::{HighwayHash, PortableHash};
 use log::info;
-use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
+use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, RecommendedCache};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
@@ -177,7 +177,6 @@ pub struct WasmBridge {
     plugin_ids_waiting_for_permission_request: HashSet<PluginId>,
     cached_events_for_pending_plugins: HashMap<PluginId, Vec<EventOrPipeMessage>>,
     cached_resizes_for_pending_plugins: HashMap<PluginId, (usize, usize)>, // (rows, columns)
-    clients_holding_mobile_render_until_size_settled: HashSet<ClientId>,
     cached_worker_messages: HashMap<PluginId, Vec<(ClientId, String, String, String)>>, // Vec<clientid,
     // worker_name,
     // message,
@@ -185,7 +184,7 @@ pub struct WasmBridge {
     loading_plugins: HashSet<(PluginId, RunPlugin)>, // tracks loading plugins without handles
     pending_plugin_reloads: HashSet<RunPlugin>,
     path_to_default_shell: PathBuf,
-    watcher: Option<Debouncer<RecommendedWatcher, FileIdMap>>,
+    watcher: Option<Debouncer<RecommendedWatcher, RecommendedCache>>,
     zellij_cwd: PathBuf,
     session_env_vars: std::collections::BTreeMap<String, String>,
     default_shell: Option<TerminalAction>,
@@ -243,7 +242,6 @@ impl WasmBridge {
             path_to_default_shell,
             watcher,
             next_plugin_id: 0,
-            clients_holding_mobile_render_until_size_settled: HashSet::new(),
             cached_events_for_pending_plugins: HashMap::new(),
             plugin_ids_waiting_for_permission_request: HashSet::new(),
             cached_resizes_for_pending_plugins: HashMap::new(),
@@ -501,17 +499,6 @@ impl WasmBridge {
             plugin_map.remove_plugins(pid).into_iter().collect()
         };
 
-        // Check if any removed plugin was subscribed to ANSI pane render
-        let was_subscribed_to_ansi =
-            plugins_to_cleanup
-                .iter()
-                .any(|((_, _), (_, subscriptions, _))| {
-                    subscriptions
-                        .lock()
-                        .unwrap()
-                        .contains(&EventType::PaneRenderReportWithAnsi)
-                });
-
         // Schedule cleanup on each plugin's pinned thread
         for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in plugins_to_cleanup
         {
@@ -590,11 +577,6 @@ impl WasmBridge {
         let _ = self
             .senders
             .send_to_background_jobs(BackgroundJob::ReportPluginList(plugin_list));
-
-        // If any unloaded plugin was subscribed to ANSI pane content, re-check remaining plugins
-        if was_subscribed_to_ansi {
-            self.notify_screen_of_ansi_subscription_change();
-        }
 
         Ok(())
     }
@@ -1216,69 +1198,6 @@ impl WasmBridge {
         }
         Ok(())
     }
-    fn plugin_render_is_held_until_size_settled(&self, plugin_id: PluginId) -> bool {
-        let clients_of_plugin: Vec<ClientId> = self
-            .plugin_map
-            .lock()
-            .unwrap()
-            .running_plugins()
-            .iter()
-            .filter(|(pid, _client_id, _running_plugin)| *pid == plugin_id)
-            .map(|(_pid, client_id, _running_plugin)| *client_id)
-            .collect();
-        !clients_of_plugin.is_empty()
-            && clients_of_plugin.iter().all(|client_id| {
-                self.clients_holding_mobile_render_until_size_settled
-                    .contains(client_id)
-            })
-    }
-
-    pub fn hold_mobile_render(&mut self, client_id: ClientId) {
-        self.clients_holding_mobile_render_until_size_settled
-            .insert(client_id);
-    }
-
-    pub fn release_mobile_render(
-        &mut self,
-        client_id: ClientId,
-        shutdown_sender: Sender<()>,
-    ) -> Result<()> {
-        if !self
-            .clients_holding_mobile_render_until_size_settled
-            .remove(&client_id)
-        {
-            return Ok(());
-        }
-        let plugins_held_for_client: Vec<PluginId> = self
-            .plugin_map
-            .lock()
-            .unwrap()
-            .running_plugins()
-            .iter()
-            .filter(|(pid, cid, _)| {
-                *cid == client_id
-                    && (self.cached_events_for_pending_plugins.contains_key(pid)
-                        || self.cached_resizes_for_pending_plugins.contains_key(pid))
-            })
-            .map(|(pid, _cid, _)| *pid)
-            .collect();
-        for plugin_id in &plugins_held_for_client {
-            self.drain_pending_plugin_resize_before_events(*plugin_id, shutdown_sender.clone())?;
-        }
-        Ok(())
-    }
-
-    fn drain_pending_plugin_resize_before_events(
-        &mut self,
-        plugin_id: PluginId,
-        shutdown_sender: Sender<()>,
-    ) -> Result<()> {
-        if let Some((rows, columns)) = self.cached_resizes_for_pending_plugins.remove(&plugin_id) {
-            self.resize_plugin(plugin_id, columns, rows, shutdown_sender.clone())?;
-        }
-        self.apply_cached_events(vec![plugin_id], true, shutdown_sender)
-    }
-
     pub fn apply_cached_events(
         &mut self,
         plugin_ids: Vec<PluginId>,
@@ -1287,9 +1206,6 @@ impl WasmBridge {
     ) -> Result<()> {
         let mut applied_plugin_paths = HashSet::new();
         for plugin_id in plugin_ids {
-            if self.plugin_render_is_held_until_size_settled(plugin_id) {
-                continue;
-            }
             if !done_receiving_permissions
                 && self
                     .plugin_ids_waiting_for_permission_request
@@ -1315,8 +1231,6 @@ impl WasmBridge {
         Ok(())
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
-        self.clients_holding_mobile_render_until_size_settled
-            .remove(&client_id);
         self.connected_clients
             .lock()
             .unwrap()
@@ -1387,44 +1301,8 @@ impl WasmBridge {
             self.update_plugins(updates, shutdown_sender.clone())?;
         }
 
-        if !pane_render_report.all_pane_contents_with_ansi.is_empty() {
-            let changed_ansi_panes_per_client = self.get_changed_panes_per_client(
-                &pane_render_report.all_pane_contents_with_ansi,
-                self.previous_pane_render_report
-                    .as_ref()
-                    .map(|r| &r.all_pane_contents_with_ansi),
-            );
-            for (client_id, client_panes) in changed_ansi_panes_per_client {
-                let updates = vec![(
-                    None,
-                    Some(client_id),
-                    Event::PaneRenderReportWithAnsi(client_panes),
-                )];
-                self.update_plugins(updates, shutdown_sender.clone())?;
-            }
-        }
-
         self.previous_pane_render_report = Some(pane_render_report);
         Ok(())
-    }
-
-    pub fn notify_screen_of_ansi_subscription_change(&self) {
-        let any_plugin_needs_ansi = {
-            let mut plugin_map = self.plugin_map.lock().unwrap();
-            plugin_map
-                .running_plugins_and_subscriptions()
-                .iter()
-                .any(|(_, _, _, subs)| {
-                    subs.lock()
-                        .unwrap()
-                        .contains(&EventType::PaneRenderReportWithAnsi)
-                })
-        };
-        let _ = self
-            .senders
-            .send_to_screen(ScreenInstruction::PluginSubscribedToAnsiPaneContents(
-                any_plugin_needs_ansi,
-            ));
     }
 
     pub fn notify_screen_of_background_plugin_subscriptions(
@@ -2174,9 +2052,7 @@ fn check_event_permission(
         | Event::ActivePaneScroll(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
-        Event::PaneRenderReport(..) | Event::PaneRenderReportWithAnsi(..) => {
-            PermissionType::ReadPaneContents
-        },
+        Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
         Event::UserAction(..) => PermissionType::InterceptInput,
         _ => return (PermissionStatus::Granted, None),
     };

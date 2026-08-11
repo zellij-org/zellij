@@ -124,15 +124,13 @@ pub use super::generated_api::api::{
         SetPaneBorderlessPayload, SetPaneColorPayload,
         SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
         SetPaneRegexHighlightsPayload, SetSelfMouseSelectionSupportPayload,
-        SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload,
-        SetTabFitPayload as ProtobufSetTabFitPayload, SetTimeoutPayload, ShowCursorPayload,
-        ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
+        SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
+        ShowCursorPayload, ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
-        Size as ProtobufSize, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
-        SwitchTabToIdPayload, SwitchTabToPayload, ToggleFloatingPanesPayload,
-        TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
-        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToIdPayload,
+        SwitchTabToPayload, ToggleFloatingPanesPayload, TogglePaneBorderlessPayload,
+        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
+        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -148,25 +146,10 @@ use crate::data::{
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
-use crate::pane_size::Size;
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::path::PathBuf;
-
-fn size_from_protobuf(size: ProtobufSize) -> Size {
-    Size {
-        rows: size.rows as usize,
-        cols: size.cols as usize,
-    }
-}
-
-fn size_to_protobuf(size: Size) -> ProtobufSize {
-    ProtobufSize {
-        rows: size.rows as u32,
-        cols: size.cols as u32,
-    }
-}
 
 impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
     fn into(self) -> FloatingPaneCoordinates {
@@ -1110,6 +1093,18 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 }
                 Ok(PluginCommand::ToggleFocusFullscreen)
             },
+            Some(CommandName::ToggleFocusNoUiFullscreen) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    return Err("ToggleFocusNoUiFullscreen should not have a payload");
+                }
+                Ok(PluginCommand::ToggleFocusNoUiFullscreen)
+            },
+            Some(CommandName::FocusHostSession) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    return Err("FocusHostSession should not have a payload");
+                }
+                Ok(PluginCommand::FocusHostSession)
+            },
             Some(CommandName::TogglePaneFrames) => {
                 if protobuf_plugin_command.payload.is_some() {
                     return Err("TogglePaneFrames should not have a payload");
@@ -1527,32 +1522,6 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     Ok(PluginCommand::SetSoftKeyboard(payload.on))
                 },
                 _ => Err("Mismatched payload for SetSoftKeyboard"),
-            },
-            Some(CommandName::SetTabFit) => match protobuf_plugin_command.payload {
-                Some(Payload::SetTabFitPayload(payload)) => {
-                    let fit = match (payload.pane_id, payload.size) {
-                        (Some(pane_id), Some(size)) => {
-                            Some((pane_id.try_into()?, size_from_protobuf(size)))
-                        },
-                        (None, None) => None,
-                        _ => return Err("Malformed set_tab_fit_payload payload"),
-                    };
-                    Ok(PluginCommand::SetTabFit {
-                        tab_id: payload.tab_id as usize,
-                        fit,
-                    })
-                },
-                _ => Err("Mismatched payload for SetTabFit"),
-            },
-            Some(CommandName::ExitMobileMode) => match protobuf_plugin_command.payload {
-                Some(_) => Err("ExitMobileMode should have no payload, found a payload"),
-                None => Ok(PluginCommand::ExitMobileMode),
-            },
-            Some(CommandName::SetShadowFocus) => match protobuf_plugin_command.payload {
-                Some(Payload::SetShadowFocusPayload(pane_id)) => {
-                    Ok(PluginCommand::SetShadowFocus(pane_id.try_into()?))
-                },
-                _ => Err("Mismatched payload for SetShadowFocus"),
             },
             Some(CommandName::DumpSessionLayout) => match protobuf_plugin_command.payload {
                 Some(Payload::DumpSessionLayoutPayload(payload)) => {
@@ -3127,6 +3096,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ToggleFocusFullscreen as i32,
                 payload: None,
             }),
+            PluginCommand::ToggleFocusNoUiFullscreen => Ok(ProtobufPluginCommand {
+                name: CommandName::ToggleFocusNoUiFullscreen as i32,
+                payload: None,
+            }),
+            PluginCommand::FocusHostSession => Ok(ProtobufPluginCommand {
+                name: CommandName::FocusHostSession as i32,
+                payload: None,
+            }),
             PluginCommand::TogglePaneFrames => Ok(ProtobufPluginCommand {
                 name: CommandName::TogglePaneFrames as i32,
                 payload: None,
@@ -3465,26 +3442,6 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     ProtobufSetSoftKeyboardPayload { on },
                 )),
             }),
-            PluginCommand::SetTabFit { tab_id, fit } => {
-                let (pane_id, size) = match fit {
-                    Some((pane_id, size)) => {
-                        (Some(pane_id.try_into()?), Some(size_to_protobuf(size)))
-                    },
-                    None => (None, None),
-                };
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::SetTabFit as i32,
-                    payload: Some(Payload::SetTabFitPayload(ProtobufSetTabFitPayload {
-                        tab_id: tab_id as u32,
-                        pane_id,
-                        size,
-                    })),
-                })
-            },
-            PluginCommand::ExitMobileMode => Ok(ProtobufPluginCommand {
-                name: CommandName::ExitMobileMode as i32,
-                payload: None,
-            }),
             PluginCommand::DumpSessionLayout { tab_index } => Ok(ProtobufPluginCommand {
                 name: CommandName::DumpSessionLayout as i32,
                 payload: tab_index.map(|idx| {
@@ -3606,10 +3563,6 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::SendSigintToPaneId(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::SendSigintToPaneId as i32,
                 payload: Some(Payload::SendSigintToPaneIdPayload(pane_id.try_into()?)),
-            }),
-            PluginCommand::SetShadowFocus(pane_id) => Ok(ProtobufPluginCommand {
-                name: CommandName::SetShadowFocus as i32,
-                payload: Some(Payload::SetShadowFocusPayload(pane_id.try_into()?)),
             }),
             PluginCommand::SendSigkillToPaneId(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::SendSigkillToPaneId as i32,
@@ -5273,45 +5226,7 @@ impl From<OpenPluginPaneFloatingResponse> for ProtobufOpenPluginPaneFloatingResp
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{PaneId, PluginCommand};
-    use crate::pane_size::Size;
-
-    #[test]
-    fn set_tab_fit_set_protobuf_round_trip() {
-        let original = PluginCommand::SetTabFit {
-            tab_id: 7,
-            fit: Some((PaneId::Terminal(3), Size { rows: 24, cols: 80 })),
-        };
-        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
-        let decoded: PluginCommand = protobuf.try_into().expect("decode");
-        match decoded {
-            PluginCommand::SetTabFit { tab_id, fit } => {
-                assert_eq!(tab_id, 7);
-                assert_eq!(
-                    fit,
-                    Some((PaneId::Terminal(3), Size { rows: 24, cols: 80 }))
-                );
-            },
-            other => panic!("expected SetTabFit, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn set_tab_fit_clear_protobuf_round_trip() {
-        let original = PluginCommand::SetTabFit {
-            tab_id: 7,
-            fit: None,
-        };
-        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
-        let decoded: PluginCommand = protobuf.try_into().expect("decode");
-        match decoded {
-            PluginCommand::SetTabFit { tab_id, fit } => {
-                assert_eq!(tab_id, 7);
-                assert_eq!(fit, None);
-            },
-            other => panic!("expected SetTabFit, got {:?}", other),
-        }
-    }
+    use crate::data::PluginCommand;
 
     #[test]
     fn set_pane_frame_style_protobuf_round_trip() {

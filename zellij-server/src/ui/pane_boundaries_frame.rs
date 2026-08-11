@@ -2,6 +2,7 @@ use crate::output::CharacterChunk;
 use crate::panes::{
     AnsiCode, CharacterStyles, RcCharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
+use crate::tab::GuestChoiceIndicator;
 use crate::ui::boundaries::boundary_type;
 use crate::ui::hint_text::{
     exit_code_segments, hover_segments, rerun_segments, resize_segments, HintExitStatus, HintLevel,
@@ -96,6 +97,8 @@ pub struct FrameParams {
     pub stack_list_entry: Option<StackListEntry>,
     pub blank_title: bool,
     pub mouse_scroll_resize: bool,
+    pub dimmed: bool,
+    pub guest_choice_indicator: Option<GuestChoiceIndicator>,
 }
 
 #[derive(Default, PartialEq)]
@@ -126,6 +129,8 @@ pub struct PaneFrame {
     stack_list_entry: Option<StackListEntry>,
     color_override: Option<PaletteColor>,
     mouse_scroll_resize: bool,
+    dimmed: bool,
+    guest_choice_indicator: Option<GuestChoiceIndicator>,
 }
 
 impl PaneFrame {
@@ -162,6 +167,8 @@ impl PaneFrame {
             stack_list_entry: frame_params.stack_list_entry,
             color_override: None,
             mouse_scroll_resize: frame_params.mouse_scroll_resize,
+            dimmed: frame_params.dimmed,
+            guest_choice_indicator: frame_params.guest_choice_indicator,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -210,6 +217,12 @@ impl PaneFrame {
         }
     }
     fn render_title_right_side(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        self.render_title_right_side_inner(max_length)
+    }
+    fn render_title_right_side_inner(
         &self,
         max_length: usize,
     ) -> Option<(Vec<TerminalCharacter>, usize)> {
@@ -844,9 +857,9 @@ impl PaneFrame {
         let side_budget = width.saturating_sub(title_length) / 2;
         let focus = self.bracketed_focus_indicator(side_budget);
         let focus_length = focus.as_ref().map(|(_, length)| *length).unwrap_or(0);
-        let scroll =
-            self.bracketed_scroll_indicator(width.saturating_sub(focus_length + title_length));
-        Ok(self.compose_bracketed_title(focus, title, scroll))
+        let right_budget = width.saturating_sub(focus_length + title_length);
+        let right = self.bracketed_scroll_indicator(right_budget);
+        Ok(self.compose_bracketed_title(focus, title, right))
     }
     fn bracketed_title_part(&self, content: &str) -> (Vec<TerminalCharacter>, usize) {
         let text = format!(" [ {} ] ", content);
@@ -1466,6 +1479,8 @@ mod tests {
                 stack_list_entry: None,
                 blank_title: false,
                 mouse_scroll_resize,
+                dimmed: false,
+                guest_choice_indicator: None,
             },
         )
     }

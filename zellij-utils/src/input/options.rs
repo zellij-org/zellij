@@ -1,14 +1,16 @@
 //! Handles cli and configuration options
 use crate::cli::Command;
 use crate::data::{InputMode, WebSharing};
-use clap::{ArgEnum, Args};
+use clap::{Args, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use std::net::IpAddr;
 
-#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ArgEnum)]
+pub const DEFAULT_WORD_SEPARATORS: &str = "[]{}<>()";
+
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ValueEnum)]
 pub enum OnForceClose {
     #[serde(alias = "quit")]
     Quit,
@@ -16,62 +18,34 @@ pub enum OnForceClose {
     Detach,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ArgEnum)]
-pub enum MobileLayoutConfiguration {
-    #[serde(alias = "web")]
-    Web,
-    #[serde(alias = "always")]
-    Always,
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
+pub enum NestedSessionHandling {
+    #[serde(alias = "ask")]
+    Ask,
+    #[serde(alias = "fullscreen")]
+    Fullscreen,
+    #[serde(alias = "descend")]
+    Descend,
     #[serde(alias = "never")]
     Never,
 }
 
-impl Default for MobileLayoutConfiguration {
+impl Default for NestedSessionHandling {
     fn default() -> Self {
-        Self::Web
+        Self::Ask
     }
 }
 
-impl FromStr for MobileLayoutConfiguration {
+impl FromStr for NestedSessionHandling {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "Web" | "web" => Ok(Self::Web),
-            "Always" | "always" => Ok(Self::Always),
+            "Ask" | "ask" => Ok(Self::Ask),
+            "Fullscreen" | "fullscreen" => Ok(Self::Fullscreen),
+            "Descend" | "descend" => Ok(Self::Descend),
             "Never" | "never" => Ok(Self::Never),
-            _ => Err(format!("No such mobile_layout: {}", s)),
+            _ => Err(format!("No such nested_session_handling: {}", s)),
         }
-    }
-}
-
-impl MobileLayoutConfiguration {
-    pub fn should_route_to_mobile(
-        self,
-        is_web_client: bool,
-        viewport_cols: usize,
-        viewport_rows: usize,
-        threshold_cols: u16,
-        threshold_rows: u16,
-    ) -> bool {
-        let cols_reported = viewport_cols > 0;
-        let rows_reported = viewport_rows > 0;
-        let cols_match =
-            cols_reported && (threshold_cols == 0 || viewport_cols <= threshold_cols as usize);
-        let rows_match =
-            rows_reported && (threshold_rows == 0 || viewport_rows <= threshold_rows as usize);
-        let size_match = cols_match || rows_match;
-        match self {
-            MobileLayoutConfiguration::Always => size_match,
-            MobileLayoutConfiguration::Never => false,
-            MobileLayoutConfiguration::Web => is_web_client && size_match,
-        }
-    }
-
-    pub fn may_route_web_client_to_mobile(self) -> bool {
-        matches!(
-            self,
-            MobileLayoutConfiguration::Web | MobileLayoutConfiguration::Always
-        )
     }
 }
 
@@ -93,7 +67,7 @@ impl FromStr for OnForceClose {
     }
 }
 
-#[derive(ArgEnum, Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PaneFrameStyle {
     Full,
@@ -168,7 +142,7 @@ pub struct Options {
     #[clap(long, value_parser)]
     pub theme_light: Option<String>,
     /// Set the default mode
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     pub default_mode: Option<InputMode>,
     /// Set the default shell
     #[clap(long, value_parser)]
@@ -196,7 +170,7 @@ pub struct Options {
     #[serde(default)]
     /// Set display of the pane frames (true or false)
     pub pane_frames: Option<bool>,
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     #[serde(default)]
     pub pane_frame_style: Option<PaneFrameStyle>,
     #[clap(long, value_parser)]
@@ -204,7 +178,7 @@ pub struct Options {
     /// Mirror session when multiple users are connected (true or false)
     pub mirror_session: Option<bool>,
     /// Set behaviour on force close (quit or detach)
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     pub on_force_close: Option<OnForceClose>,
     #[clap(long, value_parser)]
     pub scroll_buffer_size: Option<usize>,
@@ -217,9 +191,9 @@ pub struct Options {
     /// OSC52 destination clipboard
     #[clap(
         long,
-        arg_enum,
+        value_enum,
         ignore_case = true,
-        conflicts_with = "copy-command",
+        conflicts_with = "copy_command",
         value_parser
     )]
     #[serde(default)]
@@ -290,6 +264,12 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub support_kitty_keyboard_protocol: Option<bool>,
+
+    /// Whether to enable support for the Kitty graphics (image) protocol (must also be supported
+    /// by the host terminal), defaults to true if the terminal supports it
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub support_kitty_graphics_protocol: Option<bool>,
 
     /// Whether to make sure a local web server is running when a new Zellij session starts.
     /// This web server will allow creating new sessions and attaching to existing ones that have
@@ -381,6 +361,20 @@ pub struct Options {
     #[serde(default)]
     pub mouse_click_through: Option<bool>,
 
+    /// Whether triple-clicking inside shell-marked (OSC 133) command output selects the command
+    /// and its output rather than the logical line
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc133_command_selection: Option<bool>,
+
+    /// Characters that terminate a word when double-clicking to select it, in addition to
+    /// whitespace (which is always a separator)
+    /// default is "[]{}<>()"
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub word_separators: Option<String>,
+
     // these are intentionally excluded from the CLI options as they must be specified in the
     // configuration file
     pub web_server_ip: Option<IpAddr>,
@@ -401,23 +395,14 @@ pub struct Options {
     #[clap(long)]
     pub client_async_worker_tasks: Option<usize>,
 
-    /// When a newly-attaching client should land in the mobile UI plugin (web, always, never)
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    /// How to handle a nested Zellij session detected inside a pane
+    /// (ask, fullscreen, descend, never)
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     #[serde(default)]
-    pub mobile_layout: Option<MobileLayoutConfiguration>,
-
-    /// Column breakpoint for mobile_layout (0 to always match)
-    #[clap(long, value_parser)]
-    #[serde(default)]
-    pub mobile_threshold_cols: Option<u16>,
-
-    /// Row breakpoint for mobile_layout (0 to always match)
-    #[clap(long, value_parser)]
-    #[serde(default)]
-    pub mobile_threshold_rows: Option<u16>,
+    pub nested_session_handling: Option<NestedSessionHandling>,
 }
 
-#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
+#[derive(ValueEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
 pub enum Clipboard {
     #[serde(alias = "system")]
     System,
@@ -497,6 +482,9 @@ impl Options {
         let support_kitty_keyboard_protocol = other
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
+        let support_kitty_graphics_protocol = other
+            .support_kitty_graphics_protocol
+            .or(self.support_kitty_graphics_protocol);
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
@@ -509,6 +497,12 @@ impl Options {
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = other.focus_follows_mouse.or(self.focus_follows_mouse);
         let mouse_click_through = other.mouse_click_through.or(self.mouse_click_through);
+        let osc133_command_selection = other
+            .osc133_command_selection
+            .or(self.osc133_command_selection);
+        let word_separators = other
+            .word_separators
+            .or_else(|| self.word_separators.clone());
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -524,9 +518,9 @@ impl Options {
         let client_async_worker_tasks = other
             .client_async_worker_tasks
             .or(self.client_async_worker_tasks);
-        let mobile_layout = other.mobile_layout.or(self.mobile_layout);
-        let mobile_threshold_cols = other.mobile_threshold_cols.or(self.mobile_threshold_cols);
-        let mobile_threshold_rows = other.mobile_threshold_rows.or(self.mobile_threshold_rows);
+        let nested_session_handling = other
+            .nested_session_handling
+            .or(self.nested_session_handling);
 
         Options {
             simplified_ui,
@@ -560,6 +554,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
+            support_kitty_graphics_protocol,
             web_server,
             web_sharing,
             stacked_resize,
@@ -572,6 +567,8 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            osc133_command_selection,
+            word_separators,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -579,9 +576,7 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
-            mobile_layout,
-            mobile_threshold_cols,
-            mobile_threshold_rows,
+            nested_session_handling,
         }
     }
 
@@ -644,6 +639,9 @@ impl Options {
         let support_kitty_keyboard_protocol = other
             .support_kitty_keyboard_protocol
             .or(self.support_kitty_keyboard_protocol);
+        let support_kitty_graphics_protocol = other
+            .support_kitty_graphics_protocol
+            .or(self.support_kitty_graphics_protocol);
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
@@ -656,6 +654,12 @@ impl Options {
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = merge_bool(other.focus_follows_mouse, self.focus_follows_mouse);
         let mouse_click_through = merge_bool(other.mouse_click_through, self.mouse_click_through);
+        let osc133_command_selection = other
+            .osc133_command_selection
+            .or(self.osc133_command_selection);
+        let word_separators = other
+            .word_separators
+            .or_else(|| self.word_separators.clone());
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -671,9 +675,9 @@ impl Options {
         let client_async_worker_tasks = other
             .client_async_worker_tasks
             .or(self.client_async_worker_tasks);
-        let mobile_layout = other.mobile_layout.or(self.mobile_layout);
-        let mobile_threshold_cols = other.mobile_threshold_cols.or(self.mobile_threshold_cols);
-        let mobile_threshold_rows = other.mobile_threshold_rows.or(self.mobile_threshold_rows);
+        let nested_session_handling = other
+            .nested_session_handling
+            .or(self.nested_session_handling);
 
         Options {
             simplified_ui,
@@ -707,6 +711,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
+            support_kitty_graphics_protocol,
             web_server,
             web_sharing,
             stacked_resize,
@@ -719,6 +724,8 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            osc133_command_selection,
+            word_separators,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -726,9 +733,7 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
-            mobile_layout,
-            mobile_threshold_cols,
-            mobile_threshold_rows,
+            nested_session_handling,
         }
     }
 
@@ -744,11 +749,6 @@ impl Options {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const SMALL: (usize, usize) = (40, 20);
-    const WIDE_SHORT: (usize, usize) = (200, 20);
-    const TALL_NARROW: (usize, usize) = (40, 200);
-    const LARGE: (usize, usize) = (200, 200);
 
     #[test]
     fn pane_frame_style_from_str_accepts_all_variants() {
@@ -769,198 +769,5 @@ mod tests {
             PaneFrameStyle::None
         );
         assert!("bogus".parse::<PaneFrameStyle>().is_err());
-    }
-
-    fn route(
-        layout: MobileLayoutConfiguration,
-        is_web: bool,
-        viewport: (usize, usize),
-        thresholds: (u16, u16),
-    ) -> bool {
-        layout.should_route_to_mobile(is_web, viewport.0, viewport.1, thresholds.0, thresholds.1)
-    }
-
-    #[test]
-    fn never_never_routes_to_mobile() {
-        for &is_web in &[true, false] {
-            for &viewport in &[SMALL, WIDE_SHORT, TALL_NARROW, LARGE] {
-                for &thresholds in &[(60, 30), (0, 0), (0, 30), (60, 0)] {
-                    assert!(
-                        !route(MobileLayoutConfiguration::Never, is_web, viewport, thresholds),
-                        "Never must never route (is_web={is_web} viewport={viewport:?} thresholds={thresholds:?})",
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn web_requires_web_client() {
-        assert!(route(MobileLayoutConfiguration::Web, true, SMALL, (60, 30)));
-        assert!(!route(
-            MobileLayoutConfiguration::Web,
-            false,
-            SMALL,
-            (60, 30)
-        ));
-    }
-
-    #[test]
-    fn web_respects_size_in_either_dimension() {
-        assert!(route(
-            MobileLayoutConfiguration::Web,
-            true,
-            TALL_NARROW,
-            (60, 30)
-        ));
-        assert!(route(
-            MobileLayoutConfiguration::Web,
-            true,
-            WIDE_SHORT,
-            (60, 30)
-        ));
-        assert!(!route(
-            MobileLayoutConfiguration::Web,
-            true,
-            LARGE,
-            (60, 30)
-        ));
-    }
-
-    #[test]
-    fn always_routes_any_client_on_size_match() {
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            true,
-            SMALL,
-            (60, 30)
-        ));
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            false,
-            SMALL,
-            (60, 30)
-        ));
-        assert!(!route(
-            MobileLayoutConfiguration::Always,
-            true,
-            LARGE,
-            (60, 30)
-        ));
-        assert!(!route(
-            MobileLayoutConfiguration::Always,
-            false,
-            LARGE,
-            (60, 30)
-        ));
-    }
-
-    #[test]
-    fn zero_threshold_makes_dimension_unconditional() {
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            false,
-            LARGE,
-            (0, 30)
-        ));
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            false,
-            LARGE,
-            (60, 0)
-        ));
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            false,
-            LARGE,
-            (0, 0)
-        ));
-        assert!(route(MobileLayoutConfiguration::Web, true, LARGE, (0, 0)));
-        assert!(!route(MobileLayoutConfiguration::Web, false, LARGE, (0, 0)));
-    }
-
-    #[test]
-    fn zero_viewport_is_treated_as_unknown() {
-        assert!(!route(
-            MobileLayoutConfiguration::Always,
-            true,
-            (0, 0),
-            (60, 30)
-        ));
-        assert!(!route(
-            MobileLayoutConfiguration::Web,
-            true,
-            (0, 0),
-            (60, 30)
-        ));
-        assert!(!route(
-            MobileLayoutConfiguration::Always,
-            true,
-            (0, 0),
-            (0, 0)
-        ));
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            true,
-            (40, 0),
-            (60, 30)
-        ));
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            true,
-            (0, 20),
-            (60, 30)
-        ));
-    }
-
-    #[test]
-    fn boundary_inclusive_at_threshold() {
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            false,
-            (60, 200),
-            (60, 30)
-        ));
-        assert!(route(
-            MobileLayoutConfiguration::Always,
-            false,
-            (200, 30),
-            (60, 30)
-        ));
-        assert!(!route(
-            MobileLayoutConfiguration::Always,
-            false,
-            (61, 31),
-            (60, 30)
-        ));
-    }
-
-    #[test]
-    fn from_str_accepts_canonical_and_lowercase() {
-        assert_eq!(
-            "web".parse::<MobileLayoutConfiguration>(),
-            Ok(MobileLayoutConfiguration::Web)
-        );
-        assert_eq!(
-            "Web".parse::<MobileLayoutConfiguration>(),
-            Ok(MobileLayoutConfiguration::Web)
-        );
-        assert_eq!(
-            "always".parse::<MobileLayoutConfiguration>(),
-            Ok(MobileLayoutConfiguration::Always)
-        );
-        assert_eq!(
-            "never".parse::<MobileLayoutConfiguration>(),
-            Ok(MobileLayoutConfiguration::Never)
-        );
-        assert!("auto".parse::<MobileLayoutConfiguration>().is_err());
-    }
-
-    #[test]
-    fn default_is_web() {
-        assert_eq!(
-            MobileLayoutConfiguration::default(),
-            MobileLayoutConfiguration::Web
-        );
     }
 }

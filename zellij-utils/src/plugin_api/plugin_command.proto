@@ -14,6 +14,7 @@ import "pane_frame_style.proto";
 package api.plugin_command;
 
 enum CommandName {
+  reserved 216, 219, 222;
   Subscribe = 0;
   Unsubscribe = 1;
   SetSelectable = 2;
@@ -209,18 +210,18 @@ enum CommandName {
   DeleteDeadSessionAndReply = 213;
   DeleteAllDeadSessionsAndReply = 214;
   SetSoftKeyboard = 215;
-  SetTabFit = 216;
-  SetShadowFocus = 219;
   NewTabUnfocused = 220;
   NewTiledPaneInTab = 221;
-  ExitMobileMode = 222;
   FocusLastPane = 223;
   SetPaneFrameStyle = 224;
   ToggleFloatingPanes = 225;
   NewPane = 226;
+  ToggleFocusNoUiFullscreen = 227;
+  FocusHostSession = 228;
 }
 
 message PluginCommand {
+  reserved 165, 167;
   CommandName name = 1;
   oneof payload {
     SubscribePayload subscribe_payload = 2;
@@ -373,8 +374,6 @@ message PluginCommand {
     KillSessionsPayload kill_sessions_and_reply_payload = 162;
     string delete_dead_session_and_reply_payload = 163;
     SetSoftKeyboardPayload set_soft_keyboard_payload = 164;
-    SetTabFitPayload set_tab_fit_payload = 165;
-    PaneId set_shadow_focus_payload = 167;
     NewTabUnfocusedPayload new_tab_unfocused_payload = 168;
     NewTiledPaneInTabPayload new_tiled_pane_in_tab_payload = 169;
     SetPaneFrameStylePayload set_pane_frame_style_payload = 170;
@@ -1379,13 +1378,3 @@ message SetSoftKeyboardPayload {
   bool on = 1;
 }
 
-message Size {
-  uint32 rows = 1;
-  uint32 cols = 2;
-}
-
-message SetTabFitPayload {
-  uint32 tab_id = 1;
-  PaneId pane_id = 2;
-  Size size = 3;
-}

@@ -34,6 +34,7 @@ keybinds clear-defaults=true {{
         bind "s" {{ NewPane "stacked"; SwitchToMode "Locked"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Locked"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Locked"; }}
+        bind "Shift f" {{ ToggleFocusNoUiFullscreen; SwitchToMode "Locked"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Locked"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Locked"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Locked"; }}
@@ -120,6 +121,9 @@ keybinds clear-defaults=true {{
     session {{
         bind "o" {{ SwitchToMode "Normal"; }}
         bind "d" {{ Detach; }}
+        bind "]" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "[" {{ FocusGuestSession; SwitchToMode "Normal"; }}
+        bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -255,6 +259,7 @@ keybinds clear-defaults=true {{
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
+        bind "Shift f" {{ ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
@@ -343,6 +348,9 @@ keybinds clear-defaults=true {{
         bind "{primary_modifier} o" {{ SwitchToMode "Normal"; }}
         bind "{primary_modifier} s" {{ SwitchToMode "Scroll"; }}
         bind "d" {{ Detach; }}
+        bind "]" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "[" {{ FocusGuestSession; SwitchToMode "Normal"; }}
+        bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -487,6 +495,7 @@ keybinds clear-defaults=true {{
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
+        bind "Shift f" {{ ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
@@ -566,6 +575,9 @@ keybinds clear-defaults=true {{
     }}
     session {{
         bind "d" {{ Detach; }}
+        bind "]" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "[" {{ FocusGuestSession; SwitchToMode "Normal"; }}
+        bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -690,6 +702,7 @@ keybinds clear-defaults=true {{
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
+        bind "Shift f" {{ ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
@@ -770,6 +783,9 @@ keybinds clear-defaults=true {{
         bind "{primary_modifier} o" {{ SwitchToMode "Normal"; }}
         bind "{primary_modifier} s" {{ SwitchToMode "Scroll"; }}
         bind "d" {{ Detach; }}
+        bind "]" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "[" {{ FocusGuestSession; SwitchToMode "Normal"; }}
+        bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -900,6 +916,7 @@ keybinds clear-defaults=true {{
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
+        bind "Shift f" {{ ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
@@ -974,6 +991,9 @@ keybinds clear-defaults=true {{
     }}
     session {{
         bind "d" {{ Detach; }}
+        bind "]" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "[" {{ FocusGuestSession; SwitchToMode "Normal"; }}
+        bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -1085,6 +1105,7 @@ keybinds clear-defaults=true {{
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
+        bind "Shift f" {{ ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
@@ -1173,6 +1194,9 @@ keybinds clear-defaults=true {{
         bind "{primary_modifier} o" {{ SwitchToMode "Normal"; }}
         bind "{primary_modifier} s" {{ SwitchToMode "Scroll"; }}
         bind "d" {{ Detach; }}
+        bind "]" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "[" {{ FocusGuestSession; SwitchToMode "Normal"; }}
+        bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true

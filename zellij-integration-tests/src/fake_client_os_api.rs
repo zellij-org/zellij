@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -14,6 +15,31 @@ use crate::client_screen::ClientScreen;
 
 type ServerSpawner = Box<dyn FnOnce(PathBuf) + Send>;
 
+fn server_message_name(msg: &ServerToClientMsg) -> String {
+    match msg {
+        ServerToClientMsg::Render { .. } => "Render",
+        ServerToClientMsg::UnblockInputThread => "UnblockInputThread",
+        ServerToClientMsg::Exit { .. } => "Exit",
+        ServerToClientMsg::Connected => "Connected",
+        ServerToClientMsg::Log { .. } => "Log",
+        ServerToClientMsg::LogError { .. } => "LogError",
+        ServerToClientMsg::SwitchSession { .. } => "SwitchSession",
+        ServerToClientMsg::UnblockCliPipeInput { .. } => "UnblockCliPipeInput",
+        ServerToClientMsg::CliPipeOutput { .. } => "CliPipeOutput",
+        ServerToClientMsg::QueryTerminalSize => "QueryTerminalSize",
+        ServerToClientMsg::SetSoftKeyboard { .. } => "SetSoftKeyboard",
+        ServerToClientMsg::StartWebServer => "StartWebServer",
+        ServerToClientMsg::RenamedSession { .. } => "RenamedSession",
+        ServerToClientMsg::ConfigFileUpdated => "ConfigFileUpdated",
+        ServerToClientMsg::PaneRenderUpdate { .. } => "PaneRenderUpdate",
+        ServerToClientMsg::SubscribedPaneClosed { .. } => "SubscribedPaneClosed",
+        ServerToClientMsg::ForwardQueryToHost { .. } => "ForwardQueryToHost",
+        ServerToClientMsg::MobileState { .. } => "MobileState",
+        ServerToClientMsg::EmitNestedSessionFrame { .. } => "EmitNestedSessionFrame",
+    }
+    .to_string()
+}
+
 pub struct FakeClientOsApi {
     client_screen: ClientScreen,
     size: Arc<Mutex<Size>>,
@@ -23,6 +49,8 @@ pub struct FakeClientOsApi {
     receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ServerToClientMsg>>>>,
     session_name: Arc<Mutex<Option<String>>>,
     server_spawner: Arc<Mutex<Option<ServerSpawner>>>,
+    env: Arc<Mutex<HashMap<String, String>>>,
+    received_server_messages: Arc<Mutex<Vec<String>>>,
 }
 
 impl Clone for FakeClientOsApi {
@@ -36,6 +64,8 @@ impl Clone for FakeClientOsApi {
             receive_instructions_from_server: self.receive_instructions_from_server.clone(),
             session_name: self.session_name.clone(),
             server_spawner: self.server_spawner.clone(),
+            env: self.env.clone(),
+            received_server_messages: self.received_server_messages.clone(),
         }
     }
 }
@@ -51,6 +81,13 @@ pub struct FakeClientHandle {
     pub size: Arc<Mutex<Size>>,
     pub stdin_tx: crossbeam::channel::Sender<Vec<u8>>,
     pub signal_tx: crossbeam::channel::Sender<SignalEvent>,
+    pub received_server_messages: Arc<Mutex<Vec<String>>>,
+}
+
+impl FakeClientHandle {
+    pub fn received_server_messages(&self) -> Vec<String> {
+        self.received_server_messages.lock().unwrap().clone()
+    }
 }
 
 impl FakeClientOsApi {
@@ -58,10 +95,19 @@ impl FakeClientOsApi {
         initial_size: Size,
         server_spawner: Option<ServerSpawner>,
     ) -> (Self, FakeClientHandle) {
+        Self::new_with_env(initial_size, server_spawner, HashMap::new())
+    }
+
+    pub fn new_with_env(
+        initial_size: Size,
+        server_spawner: Option<ServerSpawner>,
+        env: HashMap<String, String>,
+    ) -> (Self, FakeClientHandle) {
         let size = Arc::new(Mutex::new(initial_size));
         let client_screen = ClientScreen::new(size.clone());
         let (stdin_tx, stdin_rx) = crossbeam::channel::unbounded();
         let (signal_tx, signal_rx) = crossbeam::channel::unbounded();
+        let received_server_messages = Arc::new(Mutex::new(Vec::new()));
         let fake_client_os_api = FakeClientOsApi {
             client_screen: client_screen.clone(),
             size: size.clone(),
@@ -71,12 +117,15 @@ impl FakeClientOsApi {
             receive_instructions_from_server: Arc::new(Mutex::new(None)),
             session_name: Arc::new(Mutex::new(None)),
             server_spawner: Arc::new(Mutex::new(server_spawner)),
+            env: Arc::new(Mutex::new(env)),
+            received_server_messages: received_server_messages.clone(),
         };
         let fake_client_handle = FakeClientHandle {
             client_screen,
             size,
             stdin_tx,
             signal_tx,
+            received_server_messages,
         };
         (fake_client_os_api, fake_client_handle)
     }
@@ -116,12 +165,20 @@ impl ClientOsApi for FakeClientOsApi {
         }
     }
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
-        self.receive_instructions_from_server
+        let received = self
+            .receive_instructions_from_server
             .lock()
             .unwrap()
             .as_mut()
             .unwrap()
-            .recv_server_msg()
+            .recv_server_msg();
+        if let Some((msg, _)) = received.as_ref() {
+            self.received_server_messages
+                .lock()
+                .unwrap()
+                .push(server_message_name(msg));
+        }
+        received
     }
     fn handle_signals(
         &self,
@@ -168,13 +225,19 @@ impl ClientOsApi for FakeClientOsApi {
         default_palette()
     }
     fn enable_mouse(&self) -> anyhow::Result<()> {
+        use std::io::Write;
+        const ENABLE_MOUSE_SUPPORT: &str =
+            "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1003h\u{1b}[?1015h\u{1b}[?1006h";
+        let mut writer = self.client_screen.writer();
+        writer.write_all(ENABLE_MOUSE_SUPPORT.as_bytes())?;
+        writer.flush()?;
         Ok(())
     }
     fn disable_mouse(&self) -> anyhow::Result<()> {
         Ok(())
     }
-    fn env_variable(&self, _name: &str) -> Option<String> {
-        None
+    fn env_variable(&self, name: &str) -> Option<String> {
+        self.env.lock().unwrap().get(name).cloned()
     }
     fn should_install_panic_hook(&self) -> bool {
         false

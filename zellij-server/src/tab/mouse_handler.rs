@@ -8,6 +8,7 @@ use zellij_utils::position::Position;
 use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
 use crate::plugins::PluginInstruction;
+use crate::screen::{GuestModalOutcome, ScreenInstruction};
 use crate::ClientId;
 
 use super::{Pane, Tab};
@@ -349,9 +350,70 @@ impl MouseHandler {
         event: &MouseEvent,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
+        if let Some(effect) = Self::intercept_guest_modal_mouse_event(tab, event, client_id)? {
+            return Ok(effect);
+        }
         let context = Self::gather_mouse_event_context(tab, event, client_id)?;
         let action = Self::determine_mouse_action(event, &context)?;
         Self::execute_mouse_action(tab, action, event, client_id)
+    }
+
+    fn intercept_guest_modal_mouse_event(
+        tab: &mut Tab,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<Option<MouseEffect>> {
+        let pane_id_at_position = Self::get_pane_at(tab, &event.position, false)?.map(|p| p.pid());
+        let pane_id = match pane_id_at_position {
+            Some(pane_id) => pane_id,
+            None => return Ok(None),
+        };
+        if !tab.pane_has_guest_modal_for_client(pane_id, client_id) {
+            return Ok(None);
+        }
+        let hit_option = if event.event_type == MouseEventType::Release && event.left {
+            let style = tab.style;
+            if let Some(pane) = tab.get_pane_with_id(pane_id) {
+                let relative_position = pane.relative_position(&event.position);
+                let rows = pane.get_content_rows();
+                let columns = pane.get_content_columns();
+                let row = relative_position.line();
+                if row < 0 {
+                    None
+                } else {
+                    let session_name = pane.guest_session_name().unwrap_or_default();
+                    let selection = pane.guest_modal_selection(client_id).unwrap_or(0);
+                    let shortcuts = pane.guest_modal_shortcuts();
+                    crate::panes::nested_session_modal::guest_modal_option_at_content_row(
+                        rows,
+                        columns,
+                        row as usize,
+                        &style,
+                        &session_name,
+                        selection,
+                        &shortcuts,
+                    )
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if let Some(option) = hit_option {
+            let outcome = match option {
+                0 => GuestModalOutcome::Zoom,
+                _ => GuestModalOutcome::Descend,
+            };
+            let _ = tab
+                .senders
+                .send_to_screen(ScreenInstruction::GuestModalChoice {
+                    client_id,
+                    pane_id,
+                    outcome,
+                });
+        }
+        Ok(Some(MouseEffect::state_changed()))
     }
 
     fn gather_mouse_event_context(
@@ -715,12 +777,15 @@ impl MouseHandler {
                 Ok(MouseEffect::state_changed())
             },
             MouseAction::StartSelection { pane_id, position } => {
+                let osc133_command_selection = tab.osc133_command_selection;
+                let word_separators = tab.word_separators.clone();
                 let pane = tab
                     .get_pane_with_id_mut(pane_id)
                     .ok_or_else(|| anyhow!("Failed to find pane {pane_id:?}"))?;
                 let relative_position = pane.relative_position(&position);
 
                 let mut leave_clipboard_message = false;
+                pane.set_selection_options(osc133_command_selection, &word_separators);
                 pane.start_selection(&relative_position, client_id);
                 if pane.get_selected_text(client_id).is_some() {
                     leave_clipboard_message = true;
@@ -729,7 +794,7 @@ impl MouseHandler {
                     tab.selecting_with_mouse_in_pane = Some(pane_id);
                 }
                 if leave_clipboard_message {
-                    Ok(MouseEffect::leave_clipboard_message())
+                    Ok(MouseEffect::state_changed_and_leave_clipboard_message())
                 } else {
                     Ok(MouseEffect::default())
                 }
@@ -849,8 +914,11 @@ impl MouseHandler {
 
         Self::focus_pane_at(tab, &position, client_id).with_context(err_context)?;
 
+        let osc133_command_selection = tab.osc133_command_selection;
+        let word_separators = tab.word_separators.clone();
         if let Some(pane_at_position) = Self::unselectable_pane_at_position(tab, &position) {
             let relative_position = pane_at_position.relative_position(&position);
+            pane_at_position.set_selection_options(osc133_command_selection, &word_separators);
             pane_at_position.start_selection(&relative_position, client_id);
         }
 
@@ -890,8 +958,11 @@ impl MouseHandler {
         clear_hover_for_client(tab, client_id);
         Self::focus_pane_at(tab, &position, client_id).with_context(err_context)?;
 
+        let osc133_command_selection = tab.osc133_command_selection;
+        let word_separators = tab.word_separators.clone();
         if let Some(pane_at_position) = Self::unselectable_pane_at_position(tab, &position) {
             let relative_position = pane_at_position.relative_position(&position);
+            pane_at_position.set_selection_options(osc133_command_selection, &word_separators);
             pane_at_position.start_selection(&relative_position, client_id);
             return Ok(MouseEffect::state_changed());
         }
@@ -921,6 +992,7 @@ impl MouseHandler {
         } else {
             if let Some(pane) = tab.get_pane_with_id_mut(active_pane_id) {
                 let relative_position = pane.relative_position(&position);
+                pane.set_selection_options(osc133_command_selection, &word_separators);
                 pane.start_selection(&relative_position, client_id);
                 if pane.supports_mouse_selection() {
                     tab.selecting_with_mouse_in_pane = Some(active_pane_id);

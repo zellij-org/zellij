@@ -28,9 +28,7 @@ macro_rules! parse_next_param {
 macro_rules! parse_vte_bytes {
     ($self:expr, $encoded_component:expr) => {{
         let mut vte_parser = vte::Parser::new();
-        for &byte in &$encoded_component {
-            vte_parser.advance($self.grid, byte);
-        }
+        vte_parser.advance($self.grid, &$encoded_component);
     }};
 }
 
@@ -157,22 +155,30 @@ impl<'a> UiComponentParser<'a> {
     }
 }
 
-fn parse_selected(stringified: &mut String) -> bool {
-    let mut selected = false;
-    if stringified.chars().next() == Some('x') {
-        selected = true;
-        stringified.remove(0);
+fn parse_flag(stringified: &mut String, flag: char) -> bool {
+    const FLAG_CHARS: [char; 3] = ['x', 'z', 'd'];
+    let prefix_len = stringified
+        .chars()
+        .take_while(|c| FLAG_CHARS.contains(c))
+        .count();
+    if let Some(position) = stringified[..prefix_len].find(flag) {
+        stringified.remove(position);
+        true
+    } else {
+        false
     }
-    selected
+}
+
+fn parse_selected(stringified: &mut String) -> bool {
+    parse_flag(stringified, 'x')
 }
 
 fn parse_opaque(stringified: &mut String) -> bool {
-    let mut opaque = false;
-    if stringified.chars().next() == Some('z') {
-        opaque = true;
-        stringified.remove(0);
-    }
-    opaque
+    parse_flag(stringified, 'z')
+}
+
+fn parse_disabled(stringified: &mut String) -> bool {
+    parse_flag(stringified, 'd')
 }
 
 fn parse_indices(stringified: &mut String) -> Vec<Vec<usize>> {

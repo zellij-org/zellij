@@ -417,14 +417,6 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the PaneRenderReport Event"),
             },
-            Some(ProtobufEventType::PaneRenderReportWithAnsi) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::PaneRenderReportWithAnsiPayload(protobuf_payload)) => {
-                    Ok(Event::PaneRenderReportWithAnsi(
-                        protobuf_payload.try_into()?,
-                    ))
-                },
-                _ => Err("Malformed payload for the PaneRenderReportWithAnsi Event"),
-            },
             Some(ProtobufEventType::UserAction) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::UserActionPayload(protobuf_payload)) => {
                     let action: Action = protobuf_payload
@@ -1020,12 +1012,6 @@ impl TryFrom<Event> for ProtobufEvent {
             Event::PaneRenderReport(pane_contents_map) => Ok(ProtobufEvent {
                 name: ProtobufEventType::PaneRenderReport as i32,
                 payload: Some(event::Payload::PaneRenderReportPayload(
-                    pane_contents_map.try_into()?,
-                )),
-            }),
-            Event::PaneRenderReportWithAnsi(pane_contents_map) => Ok(ProtobufEvent {
-                name: ProtobufEventType::PaneRenderReportWithAnsi as i32,
-                payload: Some(event::Payload::PaneRenderReportWithAnsiPayload(
                     pane_contents_map.try_into()?,
                 )),
             }),
@@ -2020,6 +2006,26 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             .and_then(|p| ProtobufPaneFrameStyle::from_i32(p))
             .map(|p| p.into());
 
+        let session_dimmed = protobuf_mode_update_payload.session_dimmed;
+
+        let session_ancestry = protobuf_mode_update_payload.ancestry;
+
+        let host_fullscreen = protobuf_mode_update_payload.host_fullscreen;
+
+        let nested_ascend_keys = protobuf_mode_update_payload
+            .nested_ascend_keys
+            .iter()
+            .filter_map(|key| KeyWithModifier::from_str(key).ok())
+            .collect();
+
+        let session_ascended = protobuf_mode_update_payload.session_ascended;
+
+        let nested_descend_keys = protobuf_mode_update_payload
+            .nested_descend_keys
+            .iter()
+            .filter_map(|key| KeyWithModifier::from_str(key).ok())
+            .collect();
+
         let mode_info = ModeInfo {
             mode: current_mode,
             keybinds,
@@ -2037,6 +2043,12 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             web_server_port,
             web_server_capability,
             pane_frame_style,
+            session_dimmed,
+            session_ancestry,
+            host_fullscreen,
+            nested_ascend_keys,
+            session_ascended,
+            nested_descend_keys,
         };
         Ok(mode_info)
     }
@@ -2065,6 +2077,20 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             let protobuf_pane_frame_style: ProtobufPaneFrameStyle = p.into();
             protobuf_pane_frame_style as i32
         });
+        let session_dimmed = mode_info.session_dimmed;
+        let session_ancestry = mode_info.session_ancestry;
+        let host_fullscreen = mode_info.host_fullscreen;
+        let nested_ascend_keys = mode_info
+            .nested_ascend_keys
+            .iter()
+            .map(|key| key.to_kdl())
+            .collect();
+        let session_ascended = mode_info.session_ascended;
+        let nested_descend_keys = mode_info
+            .nested_descend_keys
+            .iter()
+            .map(|key| key.to_kdl())
+            .collect();
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -2106,6 +2132,12 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             web_server_port,
             web_server_capability,
             pane_frame_style,
+            session_dimmed,
+            ancestry: session_ancestry,
+            host_fullscreen,
+            nested_ascend_keys,
+            session_ascended,
+            nested_descend_keys,
         })
     }
 }
@@ -2180,7 +2212,6 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::FailedToStartWebServer => EventType::FailedToStartWebServer,
             ProtobufEventType::InterceptedKeyPress => EventType::InterceptedKeyPress,
             ProtobufEventType::PaneRenderReport => EventType::PaneRenderReport,
-            ProtobufEventType::PaneRenderReportWithAnsi => EventType::PaneRenderReportWithAnsi,
             ProtobufEventType::UserAction => EventType::UserAction,
             ProtobufEventType::ActionComplete => EventType::ActionComplete,
             ProtobufEventType::CwdChanged => EventType::CwdChanged,
@@ -2239,7 +2270,6 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::FailedToStartWebServer => ProtobufEventType::FailedToStartWebServer,
             EventType::InterceptedKeyPress => ProtobufEventType::InterceptedKeyPress,
             EventType::PaneRenderReport => ProtobufEventType::PaneRenderReport,
-            EventType::PaneRenderReportWithAnsi => ProtobufEventType::PaneRenderReportWithAnsi,
             EventType::UserAction => ProtobufEventType::UserAction,
             EventType::ActionComplete => ProtobufEventType::ActionComplete,
             EventType::CwdChanged => ProtobufEventType::CwdChanged,
@@ -2460,6 +2490,18 @@ fn serialize_mode_update_event_with_non_default_values() {
         web_server_port: Some(8082),
         web_server_capability: Some(true),
         pane_frame_style: Some(crate::input::options::PaneFrameStyle::Titles),
+        session_dimmed: Some(true),
+        session_ancestry: vec!["work".to_owned(), "prod".to_owned()],
+        host_fullscreen: Some(true),
+        nested_ascend_keys: vec![
+            KeyWithModifier::new(BareKey::Char('o')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Up),
+        ],
+        session_ascended: Some(true),
+        nested_descend_keys: vec![
+            KeyWithModifier::new(BareKey::Char('o')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Down),
+        ],
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
@@ -3298,52 +3340,4 @@ impl TryFrom<SelectedText> for ProtobufSelectedText {
             end: Some(selected_text.end.try_into()?),
         })
     }
-}
-
-#[test]
-fn serialize_pane_render_report_with_ansi_event() {
-    use prost::Message;
-    let pane_render_report_with_ansi_event = Event::PaneRenderReportWithAnsi(Default::default());
-    let protobuf_event: ProtobufEvent = pane_render_report_with_ansi_event
-        .clone()
-        .try_into()
-        .unwrap();
-    let serialized_protobuf_event = protobuf_event.encode_to_vec();
-    let deserialized_protobuf_event: ProtobufEvent =
-        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
-    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
-    assert_eq!(
-        pane_render_report_with_ansi_event, deserialized_event,
-        "Event properly serialized/deserialized without change"
-    );
-}
-
-#[test]
-fn serialize_pane_render_report_with_ansi_event_with_data() {
-    use prost::Message;
-    use std::collections::HashMap;
-    let mut pane_contents_map = HashMap::new();
-    pane_contents_map.insert(
-        PaneId::Terminal(1),
-        PaneContents {
-            viewport: vec![
-                "\x1b[31mred text\x1b[0m".to_owned(),
-                "\x1b[1mbold text\x1b[0m".to_owned(),
-            ],
-            selected_text: None,
-            lines_above_viewport: vec![],
-            lines_below_viewport: vec![],
-            cursor: None,
-        },
-    );
-    let event = Event::PaneRenderReportWithAnsi(pane_contents_map);
-    let protobuf_event: ProtobufEvent = event.clone().try_into().unwrap();
-    let serialized_protobuf_event = protobuf_event.encode_to_vec();
-    let deserialized_protobuf_event: ProtobufEvent =
-        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
-    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
-    assert_eq!(
-        event, deserialized_event,
-        "PaneRenderReportWithAnsi event with ANSI data properly serialized/deserialized"
-    );
 }

@@ -5,15 +5,18 @@ use crate::{
         client_to_server_msg, server_to_client_msg, ActionMsg, AttachClientMsg,
         AttachWatcherClientMsg, BackgroundColorMsg, CliPipeOutputMsg, ClientExitedMsg,
         ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
-        ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg, ExitMsg,
-        ExitReason as ProtoExitReason, FailedToStartWebServerMsg, FirstClientConnectedMsg,
-        ForegroundColorMsg, ForwardQueryToHostMsg, ForwardedReplyFromHostMsg,
-        HostTerminalThemeChangedMsg,
+        ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg,
+        EmitNestedSessionFrameMsg, ExitMsg, ExitReason as ProtoExitReason,
+        FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
+        ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
-        InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
-        LogErrorMsg, LogMsg, PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
-        QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg, ResizeCause as ProtoResizeCause,
-        ServerToClientMsg as ProtoServerToClientMsg, SetSoftKeyboardMsg,
+        InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, KittyGraphicsSupportMsg,
+        LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg, MobileActivePaneMsg,
+        MobilePaneMsg, MobileRenderPrefsMsg, MobileSessionMsg, MobileSizeMsg, MobileStateMsg,
+        MobileTabMsg, NestedSessionFrameFromHostMsg, PaneMetadata as ProtoPaneMetadata,
+        PaneRenderUpdateMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
+        RequestSessionListMsg, ServerToClientMsg as ProtoServerToClientMsg,
+        SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg, SixelSupportMsg,
         SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
         SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
         TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
@@ -22,8 +25,9 @@ use crate::{
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
     ipc::{
-        ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ResizeCause,
-        ServerToClientMsg,
+        ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
+        MobileRenderPrefsPayload, MobileSessionPayload, MobileSizePayload, MobileStatePayload,
+        MobileTabPayload, PaneReference, PixelDimensions, ServerToClientMsg,
     },
 };
 use std::collections::BTreeMap;
@@ -54,11 +58,9 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     color_registers: color_registers.into_iter().map(|cr| cr.into()).collect(),
                 })
             },
-            ClientToServerMsg::TerminalResize { new_size, cause } => {
-                let cause_proto: ProtoResizeCause = cause.into();
+            ClientToServerMsg::TerminalResize { new_size } => {
                 client_to_server_msg::Message::TerminalResize(TerminalResizeMsg {
                     new_size: Some(new_size.into()),
-                    cause: cause_proto as i32,
                 })
             },
             ClientToServerMsg::FirstClientConnected {
@@ -156,6 +158,27 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     SoftKeyboardVisibilityChangedMsg { visible },
                 )
             },
+            ClientToServerMsg::NestedSessionFrameFromHost { payload_bytes } => {
+                client_to_server_msg::Message::NestedSessionFrameFromHost(
+                    NestedSessionFrameFromHostMsg { payload_bytes },
+                )
+            },
+            ClientToServerMsg::KittyGraphicsSupport { supported } => {
+                client_to_server_msg::Message::KittyGraphicsSupport(KittyGraphicsSupportMsg {
+                    supported,
+                })
+            },
+            ClientToServerMsg::SixelSupport { supported } => {
+                client_to_server_msg::Message::SixelSupport(SixelSupportMsg { supported })
+            },
+            ClientToServerMsg::RequestSessionList => {
+                client_to_server_msg::Message::RequestSessionList(RequestSessionListMsg {})
+            },
+            ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit } => {
+                client_to_server_msg::Message::SetMobileRenderPreferences(
+                    SetMobileRenderPreferencesMsg { single_pane, fit },
+                )
+            },
         };
 
         ProtoClientToServerMsg {
@@ -203,15 +226,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 })
             },
             Some(client_to_server_msg::Message::TerminalResize(resize)) => {
-                let cause = ProtoResizeCause::from_i32(resize.cause)
-                    .unwrap_or(ProtoResizeCause::Viewport)
-                    .into();
                 Ok(ClientToServerMsg::TerminalResize {
                     new_size: resize
                         .new_size
                         .ok_or_else(|| anyhow!("Missing new_size"))?
                         .try_into()?,
-                    cause,
                 })
             },
             Some(client_to_server_msg::Message::FirstClientConnected(first_client)) => {
@@ -306,6 +325,30 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     visible: msg.visible,
                 })
             },
+            Some(client_to_server_msg::Message::NestedSessionFrameFromHost(msg)) => {
+                Ok(ClientToServerMsg::NestedSessionFrameFromHost {
+                    payload_bytes: msg.payload_bytes,
+                })
+            },
+            Some(client_to_server_msg::Message::KittyGraphicsSupport(msg)) => {
+                Ok(ClientToServerMsg::KittyGraphicsSupport {
+                    supported: msg.supported,
+                })
+            },
+            Some(client_to_server_msg::Message::SixelSupport(msg)) => {
+                Ok(ClientToServerMsg::SixelSupport {
+                    supported: msg.supported,
+                })
+            },
+            Some(client_to_server_msg::Message::RequestSessionList(_)) => {
+                Ok(ClientToServerMsg::RequestSessionList)
+            },
+            Some(client_to_server_msg::Message::SetMobileRenderPreferences(msg)) => {
+                Ok(ClientToServerMsg::SetMobileRenderPreferences {
+                    single_pane: msg.single_pane,
+                    fit: msg.fit,
+                })
+            },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
     }
@@ -394,11 +437,138 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             ServerToClientMsg::SetSoftKeyboard { on } => {
                 server_to_client_msg::Message::SetSoftKeyboard(SetSoftKeyboardMsg { on })
             },
+            ServerToClientMsg::EmitNestedSessionFrame { payload_bytes } => {
+                server_to_client_msg::Message::EmitNestedSessionFrame(EmitNestedSessionFrameMsg {
+                    payload_bytes,
+                })
+            },
+            ServerToClientMsg::MobileState { payload } => {
+                server_to_client_msg::Message::MobileState(mobile_state_payload_to_proto(payload))
+            },
         };
 
         ProtoServerToClientMsg {
             message: Some(message),
         }
+    }
+}
+
+fn mobile_state_payload_to_proto(payload: MobileStatePayload) -> MobileStateMsg {
+    MobileStateMsg {
+        session_name: payload.session_name,
+        now_secs: payload.now_secs,
+        is_welcome_screen: payload.is_welcome_screen,
+        desktop_client_connected: payload.desktop_client_connected,
+        desktop_size: payload.desktop_size.map(|s| MobileSizeMsg {
+            cols: s.cols as u32,
+            rows: s.rows as u32,
+        }),
+        active_pane: payload.active_pane.map(|p| MobileActivePaneMsg {
+            pane_id: p.pane_id,
+            is_plugin: p.is_plugin,
+            tab_position: p.tab_position as u32,
+        }),
+        tabs: payload
+            .tabs
+            .into_iter()
+            .map(|t| MobileTabMsg {
+                position: t.position as u32,
+                name: t.name,
+                active: t.active,
+            })
+            .collect(),
+        panes: payload
+            .panes
+            .into_iter()
+            .map(|p| MobilePaneMsg {
+                tab_position: p.tab_position as u32,
+                pane_id: p.pane_id,
+                is_plugin: p.is_plugin,
+                title: p.title,
+                is_floating: p.is_floating,
+                last_activity_secs_ago: p.last_activity_secs_ago,
+            })
+            .collect(),
+        sessions: payload
+            .sessions
+            .into_iter()
+            .map(|s| MobileSessionMsg {
+                name: s.name,
+                web_clients_allowed: s.web_clients_allowed,
+                tab_count: s.tab_count as u32,
+                pane_count: s.pane_count as u32,
+                connected_clients: s.connected_clients as u32,
+                creation_secs_ago: s.creation_secs_ago,
+            })
+            .collect(),
+        render_prefs: Some(MobileRenderPrefsMsg {
+            single_pane: payload.render_prefs.single_pane,
+            fit: payload.render_prefs.fit,
+            active_pane_is_fullscreen: payload.render_prefs.active_pane_is_fullscreen,
+        }),
+    }
+}
+
+fn mobile_state_payload_from_proto(msg: MobileStateMsg) -> MobileStatePayload {
+    MobileStatePayload {
+        session_name: msg.session_name,
+        now_secs: msg.now_secs,
+        is_welcome_screen: msg.is_welcome_screen,
+        desktop_client_connected: msg.desktop_client_connected,
+        desktop_size: msg.desktop_size.map(|s| MobileSizePayload {
+            cols: s.cols as usize,
+            rows: s.rows as usize,
+        }),
+        active_pane: msg.active_pane.map(|p| MobileActivePanePayload {
+            pane_id: p.pane_id,
+            is_plugin: p.is_plugin,
+            tab_position: p.tab_position as usize,
+        }),
+        tabs: msg
+            .tabs
+            .into_iter()
+            .map(|t| MobileTabPayload {
+                position: t.position as usize,
+                name: t.name,
+                active: t.active,
+            })
+            .collect(),
+        panes: msg
+            .panes
+            .into_iter()
+            .map(|p| MobilePanePayload {
+                tab_position: p.tab_position as usize,
+                pane_id: p.pane_id,
+                is_plugin: p.is_plugin,
+                title: p.title,
+                is_floating: p.is_floating,
+                last_activity_secs_ago: p.last_activity_secs_ago,
+            })
+            .collect(),
+        sessions: msg
+            .sessions
+            .into_iter()
+            .map(|s| MobileSessionPayload {
+                name: s.name,
+                web_clients_allowed: s.web_clients_allowed,
+                tab_count: s.tab_count as usize,
+                pane_count: s.pane_count as usize,
+                connected_clients: s.connected_clients as usize,
+                creation_secs_ago: s.creation_secs_ago,
+            })
+            .collect(),
+        render_prefs: msg
+            .render_prefs
+            .map(|p| MobileRenderPrefsPayload {
+                single_pane: p.single_pane,
+                fit: p.fit,
+                active_pane_is_fullscreen: p.active_pane_is_fullscreen,
+            })
+            .unwrap_or(MobileRenderPrefsPayload {
+                single_pane: true,
+                fit: true,
+                active_pane_is_fullscreen: false,
+            }),
     }
 }
 
@@ -508,6 +678,16 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             },
             Some(server_to_client_msg::Message::SetSoftKeyboard(msg)) => {
                 Ok(ServerToClientMsg::SetSoftKeyboard { on: msg.on })
+            },
+            Some(server_to_client_msg::Message::EmitNestedSessionFrame(msg)) => {
+                Ok(ServerToClientMsg::EmitNestedSessionFrame {
+                    payload_bytes: msg.payload_bytes,
+                })
+            },
+            Some(server_to_client_msg::Message::MobileState(msg)) => {
+                Ok(ServerToClientMsg::MobileState {
+                    payload: mobile_state_payload_from_proto(msg),
+                })
             },
             None => Err(anyhow!("Empty ServerToClientMsg message")),
         }
@@ -732,6 +912,7 @@ impl From<crate::input::options::Options>
             serialization_interval: options.serialization_interval,
             disable_session_metadata: options.disable_session_metadata,
             support_kitty_keyboard_protocol: options.support_kitty_keyboard_protocol,
+            support_kitty_graphics_protocol: options.support_kitty_graphics_protocol,
             web_server: options.web_server,
             web_sharing: options.web_sharing.map(|w| match w {
                 crate::data::WebSharing::On => ProtoWebSharing::On as i32,
@@ -759,21 +940,24 @@ impl From<crate::input::options::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
-            mobile_layout: options.mobile_layout.map(|m| {
-                use crate::client_server_contract::client_server_contract::MobileLayout as ProtoMobileLayout;
-                use crate::input::options::MobileLayoutConfiguration;
-                match m {
-                    MobileLayoutConfiguration::Web => ProtoMobileLayout::Web as i32,
-                    MobileLayoutConfiguration::Always => ProtoMobileLayout::Always as i32,
-                    MobileLayoutConfiguration::Never => ProtoMobileLayout::Never as i32,
-                }
-            }),
-            mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u32),
-            mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u32),
+            osc133_command_selection: options.osc133_command_selection,
+            word_separators: options.word_separators,
             pane_frame_style: options.pane_frame_style.map(|s| match s {
                 crate::input::options::PaneFrameStyle::Full => "full".to_owned(),
                 crate::input::options::PaneFrameStyle::Titles => "titles".to_owned(),
                 crate::input::options::PaneFrameStyle::None => "none".to_owned(),
+            }),
+            nested_session_handling: options.nested_session_handling.map(|n| {
+                use crate::client_server_contract::client_server_contract::NestedSessionHandling as ProtoNestedSessionHandling;
+                use crate::input::options::NestedSessionHandling;
+                match n {
+                    NestedSessionHandling::Ask => ProtoNestedSessionHandling::Ask as i32,
+                    NestedSessionHandling::Fullscreen => {
+                        ProtoNestedSessionHandling::Fullscreen as i32
+                    },
+                    NestedSessionHandling::Descend => ProtoNestedSessionHandling::Descend as i32,
+                    NestedSessionHandling::Never => ProtoNestedSessionHandling::Never as i32,
+                }
             }),
         }
     }
@@ -787,7 +971,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
         options: crate::client_server_contract::client_server_contract::Options,
     ) -> Result<Self> {
         use crate::client_server_contract::client_server_contract::{
-            Clipboard as ProtoClipboard, MobileLayout as ProtoMobileLayout,
+            Clipboard as ProtoClipboard, NestedSessionHandling as ProtoNestedSessionHandling,
             OnForceClose as ProtoOnForceClose, WebSharing as ProtoWebSharing,
         };
 
@@ -849,6 +1033,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             serialization_interval: options.serialization_interval,
             disable_session_metadata: options.disable_session_metadata,
             support_kitty_keyboard_protocol: options.support_kitty_keyboard_protocol,
+            support_kitty_graphics_protocol: options.support_kitty_graphics_protocol,
             web_server: options.web_server,
             web_sharing: options
                 .web_sharing
@@ -880,23 +1065,26 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
-            mobile_layout: options
-                .mobile_layout
-                .map(|m| match ProtoMobileLayout::from_i32(m) {
-                    Some(ProtoMobileLayout::Web) => {
-                        Ok(crate::input::options::MobileLayoutConfiguration::Web)
+            osc133_command_selection: options.osc133_command_selection,
+            word_separators: options.word_separators,
+            nested_session_handling: options
+                .nested_session_handling
+                .map(|n| match ProtoNestedSessionHandling::from_i32(n) {
+                    Some(ProtoNestedSessionHandling::Ask) => {
+                        Ok(crate::input::options::NestedSessionHandling::Ask)
                     },
-                    Some(ProtoMobileLayout::Always) => {
-                        Ok(crate::input::options::MobileLayoutConfiguration::Always)
+                    Some(ProtoNestedSessionHandling::Fullscreen) => {
+                        Ok(crate::input::options::NestedSessionHandling::Fullscreen)
                     },
-                    Some(ProtoMobileLayout::Never) => {
-                        Ok(crate::input::options::MobileLayoutConfiguration::Never)
+                    Some(ProtoNestedSessionHandling::Descend) => {
+                        Ok(crate::input::options::NestedSessionHandling::Descend)
                     },
-                    _ => Err(anyhow!("Invalid MobileLayout value: {}", m)),
+                    Some(ProtoNestedSessionHandling::Never) => {
+                        Ok(crate::input::options::NestedSessionHandling::Never)
+                    },
+                    _ => Err(anyhow!("Invalid NestedSessionHandling value: {}", n)),
                 })
                 .transpose()?,
-            mobile_threshold_cols: options.mobile_threshold_cols.map(|v| v as u16),
-            mobile_threshold_rows: options.mobile_threshold_rows.map(|v| v as u16),
         })
     }
 }
@@ -932,6 +1120,8 @@ impl From<crate::input::actions::Action>
             EditFileAction,
             EditScrollbackAction,
             EditScrollbackByPaneIdAction,
+            FocusGuestSessionAction,
+            FocusHostSessionAction,
             FocusLastPaneAction,
             FocusNextPaneAction,
             FocusPaneByPaneIdAction,
@@ -1031,9 +1221,12 @@ impl From<crate::input::actions::Action>
             ToggleFloatingPanesAction,
             ToggleFloatingPanesByTabIdAction,
             ToggleFocusFullscreenAction,
+            ToggleFocusNoUiFullscreenAction,
             ToggleFullscreenByPaneIdAction,
             ToggleGroupMarkingAction,
+            ToggleHostFullscreenAction,
             ToggleMouseModeAction,
+            ToggleNoUiFullscreenByPaneIdAction,
             TogglePaneBorderlessAction,
             TogglePaneEmbedOrFloatingAction,
             TogglePaneEmbedOrFloatingByPaneIdAction,
@@ -1111,6 +1304,15 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::FocusLastPane => {
                 ActionType::FocusLastPane(FocusLastPaneAction {})
+            },
+            crate::input::actions::Action::FocusHostSession => {
+                ActionType::FocusHostSession(FocusHostSessionAction {})
+            },
+            crate::input::actions::Action::FocusGuestSession => {
+                ActionType::FocusGuestSession(FocusGuestSessionAction {})
+            },
+            crate::input::actions::Action::ToggleHostFullscreen => {
+                ActionType::ToggleHostFullscreen(ToggleHostFullscreenAction {})
             },
             crate::input::actions::Action::SwitchFocus => {
                 ActionType::SwitchFocus(SwitchFocusAction {})
@@ -1191,6 +1393,9 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::ToggleFocusFullscreen => {
                 ActionType::ToggleFocusFullscreen(ToggleFocusFullscreenAction {})
+            },
+            crate::input::actions::Action::ToggleFocusNoUiFullscreen => {
+                ActionType::ToggleFocusNoUiFullscreen(ToggleFocusNoUiFullscreenAction {})
             },
             crate::input::actions::Action::TogglePaneFrames => {
                 ActionType::TogglePaneFrames(TogglePaneFramesAction {})
@@ -1518,9 +1723,6 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ToggleMouseMode => {
                 ActionType::ToggleMouseMode(ToggleMouseModeAction {})
             },
-            crate::input::actions::Action::ToggleMobileMode => ActionType::ToggleMobileMode(
-                crate::client_server_contract::client_server_contract::ToggleMobileModeAction {},
-            ),
             crate::input::actions::Action::PreviousSwapLayout => {
                 ActionType::PreviousSwapLayout(PreviousSwapLayoutAction {})
             },
@@ -1877,6 +2079,11 @@ impl From<crate::input::actions::Action>
                     pane_id: Some(pane_id.into()),
                 })
             },
+            crate::input::actions::Action::ToggleFocusNoUiFullscreenByPaneId { pane_id } => {
+                ActionType::ToggleNoUiFullscreenByPaneId(ToggleNoUiFullscreenByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
             crate::input::actions::Action::TogglePaneEmbedOrFloatingByPaneId { pane_id } => {
                 ActionType::TogglePaneEmbedOrFloatingByPaneId(
                     TogglePaneEmbedOrFloatingByPaneIdAction {
@@ -2085,6 +2292,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::ToggleFocusFullscreen(_) => {
                 Ok(crate::input::actions::Action::ToggleFocusFullscreen)
+            },
+            ActionType::ToggleFocusNoUiFullscreen(_) => {
+                Ok(crate::input::actions::Action::ToggleFocusNoUiFullscreen)
             },
             ActionType::TogglePaneFrames(_) => Ok(crate::input::actions::Action::TogglePaneFrames),
             ActionType::SetPaneFrameStyle(set_pane_frame_style_action) => {
@@ -2408,7 +2618,6 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::ToggleMouseMode(_) => Ok(crate::input::actions::Action::ToggleMouseMode),
-            ActionType::ToggleMobileMode(_) => Ok(crate::input::actions::Action::ToggleMobileMode),
             ActionType::PreviousSwapLayout(_) => {
                 Ok(crate::input::actions::Action::PreviousSwapLayout)
             },
@@ -2552,6 +2761,13 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::BreakPane(_) => Ok(crate::input::actions::Action::BreakPane),
             ActionType::BreakPaneRight(_) => Ok(crate::input::actions::Action::BreakPaneRight),
             ActionType::BreakPaneLeft(_) => Ok(crate::input::actions::Action::BreakPaneLeft),
+            ActionType::FocusHostSession(_) => Ok(crate::input::actions::Action::FocusHostSession),
+            ActionType::FocusGuestSession(_) => {
+                Ok(crate::input::actions::Action::FocusGuestSession)
+            },
+            ActionType::ToggleHostFullscreen(_) => {
+                Ok(crate::input::actions::Action::ToggleHostFullscreen)
+            },
             ActionType::RenameSession(rename_session_action) => {
                 Ok(crate::input::actions::Action::RenameSession {
                     name: rename_session_action.name,
@@ -2807,6 +3023,14 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     pane_id: a
                         .pane_id
                         .ok_or_else(|| anyhow!("ToggleFullscreenByPaneId missing pane_id"))?
+                        .try_into()?,
+                },
+            ),
+            ActionType::ToggleNoUiFullscreenByPaneId(a) => Ok(
+                crate::input::actions::Action::ToggleFocusNoUiFullscreenByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("ToggleNoUiFullscreenByPaneId missing pane_id"))?
                         .try_into()?,
                 },
             ),
@@ -3137,26 +3361,6 @@ impl TryFrom<ProtoExitReason> for ExitReason {
             ProtoExitReason::Error => Ok(ExitReason::Error("Protobuf error".to_string())),
             ProtoExitReason::CustomExitStatus => Ok(ExitReason::CustomExitStatus(0)),
             ProtoExitReason::Unspecified => Err(anyhow!("Unspecified exit reason")),
-        }
-    }
-}
-
-impl From<ResizeCause> for ProtoResizeCause {
-    fn from(cause: ResizeCause) -> Self {
-        match cause {
-            ResizeCause::Viewport => ProtoResizeCause::Viewport,
-            ResizeCause::RenderingPreference => ProtoResizeCause::RenderingPreference,
-            ResizeCause::SizeSettled => ProtoResizeCause::SizeSettled,
-        }
-    }
-}
-
-impl From<ProtoResizeCause> for ResizeCause {
-    fn from(cause: ProtoResizeCause) -> Self {
-        match cause {
-            ProtoResizeCause::Viewport => ResizeCause::Viewport,
-            ProtoResizeCause::RenderingPreference => ResizeCause::RenderingPreference,
-            ProtoResizeCause::SizeSettled => ResizeCause::SizeSettled,
         }
     }
 }

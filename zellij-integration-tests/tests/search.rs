@@ -109,7 +109,7 @@ fn search_down_to_next_match() {
     zellij.send_stdin(&keys::key('p'));
     zellij.send_stdin(&keys::key('p'));
     zellij.wait_until("upper match revealed by searching up", |grid_snapshot| {
-        grid_snapshot.contains("NEEDLE upper")
+        grid_snapshot.contains("NEEDLE upper") && grid_snapshot.contains("SCROLL 15/19")
     });
 
     zellij.send_stdin(&keys::key('n'));
@@ -118,6 +118,7 @@ fn search_down_to_next_match() {
         zellij.wait_until("lower match revealed by searching down", |grid_snapshot| {
             grid_snapshot.contains("NEEDLE lower")
                 && !grid_snapshot.contains("NEEDLE upper")
+                && grid_snapshot.contains("SCROLL 6/19")
                 && grid_snapshot.contains("PgDn|PgUp")
         });
     assert_snapshot!(normalized(&grid_snapshot));

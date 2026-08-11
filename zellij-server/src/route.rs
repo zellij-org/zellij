@@ -28,7 +28,7 @@ use zellij_utils::{
         actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
     },
-    ipc::{ClientToServerMsg, ExitReason, IpcReceiverWithContext, ResizeCause, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg},
 };
 
 use crate::ClientId;
@@ -606,6 +606,14 @@ pub(crate) fn route_action(
         Action::ToggleFocusFullscreen => {
             senders
                 .send_to_screen(ScreenInstruction::ToggleActiveTerminalFullscreen(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ToggleFocusNoUiFullscreen => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleActiveTerminalNoUiFullscreen(
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -1279,14 +1287,6 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::ToggleMouseMode => {}, // Handled client side
-        Action::ToggleMobileMode => {
-            senders
-                .send_to_screen(ScreenInstruction::ToggleMobileMode(
-                    client_id,
-                    Some(NotificationEnd::new(completion_tx)),
-                ))
-                .with_context(err_context)?;
-        },
         Action::PreviousSwapLayout => {
             senders
                 .send_to_screen(ScreenInstruction::PreviousSwapLayout(
@@ -1574,6 +1574,30 @@ pub(crate) fn route_action(
         Action::BreakPaneLeft => {
             senders
                 .send_to_screen(ScreenInstruction::BreakPaneLeft(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::FocusHostSession => {
+            senders
+                .send_to_screen(ScreenInstruction::FocusHostSession(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::FocusGuestSession => {
+            senders
+                .send_to_screen(ScreenInstruction::FocusGuestSession(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ToggleHostFullscreen => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleHostFullscreen(
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -2003,6 +2027,14 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ToggleFocusNoUiFullscreenByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleNoUiFullscreenWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::TogglePaneEmbedOrFloatingByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::TogglePaneEmbedOrFloatingWithPaneId(
@@ -2238,7 +2270,7 @@ pub(crate) fn route_thread_main(
                                     should_break = true;
                                 }
                             },
-                            ClientToServerMsg::TerminalResize { new_size, .. } => {
+                            ClientToServerMsg::TerminalResize { new_size } => {
                                 // For watchers: send size to Screen for rendering adjustments, but
                                 // this does not affect the screen size
                                 send_to_screen_or_retry_queue!(
@@ -2274,6 +2306,21 @@ pub(crate) fn route_thread_main(
                             // see the doc comment on `route_action` for why this matters.
                             let dispatch_inputs =
                                 session_data.read().unwrap().as_ref().and_then(|s| {
+                                    let in_passthrough =
+                                        s.key_passthrough_clients.contains_key(&client_id);
+                                    if in_passthrough {
+                                        return Some((
+                                            s.senders.clone(),
+                                            s.default_shell.clone(),
+                                            s.session_configuration
+                                                .get_client_default_input_mode(&client_id),
+                                            vec![Action::Write {
+                                                key_with_modifier: Some(key),
+                                                bytes: raw_bytes,
+                                                is_kitty_keyboard_protocol,
+                                            }],
+                                        ));
+                                    }
                                     let (kb, im, dim) =
                                         s.get_client_keybinds_and_mode(&client_id)?;
                                     let actions: Vec<Action> = kb
@@ -2402,7 +2449,7 @@ pub(crate) fn route_thread_main(
                                 }
                             }
                         },
-                        ClientToServerMsg::TerminalResize { new_size, cause } => {
+                        ClientToServerMsg::TerminalResize { new_size } => {
                             // Check if this is a watcher or regular client
                             if is_watcher {
                                 // For watchers: send size to Screen for tracking, don't affect screen size
@@ -2429,57 +2476,39 @@ pub(crate) fn route_thread_main(
                                         client_id, new_size,
                                     ))
                                 });
-                                if matches!(cause, ResizeCause::Viewport) {
-                                    let mobile_options =
-                                        session_data.read().ok().and_then(|guard| {
-                                            guard.as_ref().map(|s| {
-                                                let config = s
-                                                    .session_configuration
-                                                    .get_client_configuration(&client_id);
-                                                (
-                                                    config
-                                                        .options
-                                                        .mobile_layout
-                                                        .unwrap_or_default(),
-                                                    config
-                                                        .options
-                                                        .mobile_threshold_cols
-                                                        .unwrap_or(60),
-                                                    config
-                                                        .options
-                                                        .mobile_threshold_rows
-                                                        .unwrap_or(30),
-                                                )
-                                            })
-                                        });
-                                    if let Some((mobile_layout, threshold_cols, threshold_rows)) =
-                                        mobile_options
-                                    {
-                                        let _ = senders.as_ref().map(|s| {
-                                            s.send_to_screen(
-                                                ScreenInstruction::ReevaluateMobileMode {
-                                                    client_id,
-                                                    new_size,
-                                                    mobile_layout,
-                                                    threshold_cols,
-                                                    threshold_rows,
-                                                },
-                                            )
-                                        });
-                                    }
-                                } else if matches!(cause, ResizeCause::SizeSettled) {
-                                    let _ = senders.as_ref().map(|s| {
-                                        s.send_to_screen(ScreenInstruction::MobileSizeSettled(
-                                            client_id,
-                                        ))
-                                    });
-                                }
                             }
                         },
                         ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions } => {
                             send_to_screen_or_retry_queue!(
                                 senders,
-                                ScreenInstruction::TerminalPixelDimensions(pixel_dimensions),
+                                ScreenInstruction::TerminalPixelDimensions(
+                                    client_id,
+                                    pixel_dimensions,
+                                ),
+                                instruction,
+                                retry_queue
+                            )
+                            .with_context(err_context)?;
+                        },
+                        ClientToServerMsg::KittyGraphicsSupport { supported } => {
+                            send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::SetKittyGraphicsSupport {
+                                    client_id,
+                                    supported
+                                },
+                                instruction,
+                                retry_queue
+                            )
+                            .with_context(err_context)?;
+                        },
+                        ClientToServerMsg::SixelSupport { supported } => {
+                            send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::SetSixelSupport {
+                                    client_id,
+                                    supported
+                                },
                                 instruction,
                                 retry_queue
                             )
@@ -2703,25 +2732,142 @@ pub(crate) fn route_thread_main(
                                 )]));
                             }
                         },
+                        ClientToServerMsg::NestedSessionFrameFromHost { ref payload_bytes } => {
+                            match zellij_utils::nested_session::decode_payload(payload_bytes) {
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::AnnounceAck { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::FocusGained { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::FocusLost) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::ShortcutUpdate { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::FullscreenState { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::AncestryUpdate { .. }) => {
+                                    let _ = send_to_screen_or_retry_queue!(
+                                        senders,
+                                        ScreenInstruction::NestedSessionMessageFromHost { client_id, message },
+                                        instruction,
+                                        retry_queue
+                                    );
+                                },
+                                Some(message) => {
+                                    log::debug!(
+                                        "dropping unsupported nested session frame relayed from host: {:?}",
+                                        message
+                                    );
+                                },
+                                None => {
+                                    log::debug!("dropping undecodable nested session frame relayed from host");
+                                },
+                            }
+                        },
+                        ClientToServerMsg::RequestSessionList => {
+                            if let Some(senders) = senders.as_ref() {
+                                if let Some(scan_state) =
+                                    crate::background_jobs::session_scan_state()
+                                {
+                                    let (session_name, available_layouts, plugin_list) = {
+                                        let name =
+                                            scan_state.current_session_name.lock().unwrap().clone();
+                                        let info =
+                                            scan_state.current_session_info.lock().unwrap().clone();
+                                        let plugins = scan_state
+                                            .current_session_plugin_list
+                                            .lock()
+                                            .unwrap()
+                                            .clone();
+                                        (name, info.available_layouts, plugins)
+                                    };
+                                    let (live_sessions_map, resurrectable_sessions_map) =
+                                        crate::background_jobs::scan_session_list_default_dirs(
+                                            &session_name,
+                                            &available_layouts,
+                                            &plugin_list,
+                                        );
+                                    let _ = senders.send_to_screen(
+                                        ScreenInstruction::UpdateSessionInfos(
+                                            live_sessions_map,
+                                            resurrectable_sessions_map,
+                                        ),
+                                    );
+                                }
+                            }
+                        },
+                        ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit } => {
+                            let _ = send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::SetMobileRenderPreferences {
+                                    client_id,
+                                    single_pane,
+                                    fit,
+                                },
+                                instruction,
+                                retry_queue
+                            );
+                        },
                     }
                     Ok(should_break)
                 };
-                let mut repeat_retries = VecDeque::new();
-                while let Some(instruction_to_retry) = retry_queue.pop_front() {
-                    log::warn!("Server ready, retrying sending instruction.");
-                    thread::sleep(Duration::from_millis(5));
+                // the parked instructions and the one just received form a single
+                // FIFO sequence: the server can become ready in the middle of the
+                // retry pass below, and handing it the fresh instruction while
+                // older ones are still parked would deliver them out of order (a
+                // stale nested AnnounceAck landing after the AncestryUpdate that
+                // supersedes it, for instance). Once one instruction has to be
+                // parked, every instruction behind it is parked too.
+                let retried_count = retry_queue.len();
+                let mut pending_instructions = std::mem::take(&mut retry_queue);
+                pending_instructions.push_back(instruction);
+                let mut deferred_instructions = VecDeque::new();
+                for (index, pending_instruction) in pending_instructions.into_iter().enumerate() {
+                    if !deferred_instructions.is_empty() {
+                        deferred_instructions.push_back(pending_instruction);
+                        continue;
+                    }
+                    if index < retried_count {
+                        log::warn!("Server ready, retrying sending instruction.");
+                        thread::sleep(Duration::from_millis(5));
+                    }
                     let should_break =
-                        handle_instruction(instruction_to_retry, Some(&mut repeat_retries))?;
+                        handle_instruction(pending_instruction, Some(&mut deferred_instructions))?;
                     if should_break {
                         break 'route_loop;
                     }
                 }
                 // retry on loop around
-                retry_queue.append(&mut repeat_retries);
-                let should_break = handle_instruction(instruction, Some(&mut retry_queue))?;
-                if should_break {
-                    break 'route_loop;
-                }
+                retry_queue = deferred_instructions;
             },
             None => {
                 consecutive_unknown_messages_received += 1;

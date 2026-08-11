@@ -1,6 +1,8 @@
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use zellij_client::os_input_output::SignalEvent;
 use zellij_client::ClientInfo;
@@ -17,10 +19,15 @@ use crate::fake_pty::FakePtyHandle;
 use crate::fake_server_os_api::FakeServerOsApi;
 use crate::{keys, test_env};
 
+const GUEST_MODAL_TITLE: &str = "Nested Zellij session detected";
+
 pub struct TestRunner {
     size: Size,
     extra_config_kdl: String,
     layout: Option<LayoutInfo>,
+    env: std::collections::HashMap<String, String>,
+    stdout_tap: Option<crossbeam::channel::Sender<Vec<u8>>>,
+    skip_concurrency_slot: bool,
 }
 
 impl TestRunner {
@@ -29,6 +36,9 @@ impl TestRunner {
             size,
             extra_config_kdl: String::new(),
             layout: None,
+            env: std::collections::HashMap::new(),
+            stdout_tap: None,
+            skip_concurrency_slot: false,
         }
     }
 
@@ -40,6 +50,22 @@ impl TestRunner {
 
     pub fn with_layout(mut self, layout: LayoutInfo) -> Self {
         self.layout = Some(layout);
+        self
+    }
+
+    pub fn as_nested_guest(mut self, host_session_name: &str) -> Self {
+        self.env
+            .insert("ZELLIJ".to_string(), host_session_name.to_string());
+        self
+    }
+
+    pub fn with_stdout_tap(mut self, sender: crossbeam::channel::Sender<Vec<u8>>) -> Self {
+        self.stdout_tap = Some(sender);
+        self
+    }
+
+    pub fn skip_concurrency_slot(mut self) -> Self {
+        self.skip_concurrency_slot = true;
         self
     }
 
@@ -57,14 +83,21 @@ impl TestRunner {
         let (config, default_layout_info, config_options, _, _) =
             Setup::from_cli_args(&cli_args).expect("failed to load harness config");
 
-        let concurrency_slot = test_env::acquire_concurrency_slot();
+        let concurrency_slot = if self.skip_concurrency_slot {
+            None
+        } else {
+            Some(test_env::acquire_concurrency_slot())
+        };
 
         let fake_server_os_api = FakeServerOsApi::default();
         let server_thread: Arc<Mutex<Option<JoinHandle<()>>>> = Arc::new(Mutex::new(None));
         let server_spawner = in_process_server_spawner(fake_server_os_api.clone(), &server_thread);
 
         let (fake_client_os_api, fake_client_handle) =
-            FakeClientOsApi::new(self.size, Some(server_spawner));
+            FakeClientOsApi::new_with_env(self.size, Some(server_spawner), self.env);
+        if let Some(stdout_tap) = self.stdout_tap {
+            fake_client_handle.client_screen.set_stdout_tap(stdout_tap);
+        }
         let layout_info = self.layout.or(default_layout_info);
         let client_thread = spawn_client_thread(
             fake_client_os_api,
@@ -194,6 +227,19 @@ pub struct TestClient {
     thread: Option<JoinHandle<Option<ConnectToSession>>>,
 }
 
+#[derive(Clone)]
+pub struct GuestResizer {
+    size: Arc<Mutex<Size>>,
+    signal_tx: crossbeam::channel::Sender<SignalEvent>,
+}
+
+impl GuestResizer {
+    pub fn resize(&self, new_size: Size) -> bool {
+        *self.size.lock().unwrap() = new_size;
+        self.signal_tx.send(SignalEvent::Resize).is_ok()
+    }
+}
+
 impl TestClient {
     pub fn send_stdin(&self, bytes: &[u8]) {
         self.fake_client_handle
@@ -217,8 +263,22 @@ impl TestClient {
             .wait_until(what, predicate)
     }
 
+    pub fn wait_until_raw_output(&self, what: &str, predicate: impl Fn(&[u8]) -> bool) -> Vec<u8> {
+        self.fake_client_handle
+            .client_screen
+            .wait_until_raw_output(what, predicate)
+    }
+
     pub fn snapshot(&self) -> GridSnapshot {
         self.fake_client_handle.client_screen.snapshot()
+    }
+
+    pub fn raw_bytes(&self) -> Vec<u8> {
+        self.fake_client_handle.client_screen.raw_bytes()
+    }
+
+    pub fn received_server_messages(&self) -> Vec<String> {
+        self.fake_client_handle.received_server_messages()
     }
 
     pub fn quit(mut self) {
@@ -227,13 +287,46 @@ impl TestClient {
     }
 
     fn join(&mut self) -> Option<ConnectToSession> {
-        self.thread
-            .take()
-            .and_then(|join_handle: JoinHandle<Option<ConnectToSession>>| {
-                join_handle.join().expect("client thread panicked")
-            })
+        self.thread.take().and_then(join_client_thread_with_timeout)
     }
 }
+
+fn join_client_thread_with_timeout(
+    join_handle: JoinHandle<Option<ConnectToSession>>,
+) -> Option<ConnectToSession> {
+    let (done_tx, done_rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("nested_client_join_watchdog".to_string())
+        .spawn(move || {
+            let result = join_handle.join();
+            let _ = done_tx.send(result);
+        })
+        .unwrap();
+    match done_rx.recv_timeout(CLIENT_JOIN_TIMEOUT) {
+        Ok(Ok(reconnect)) => reconnect,
+        Ok(Err(_)) => panic!("client thread panicked"),
+        Err(mpsc::RecvTimeoutError::Timeout) => None,
+        Err(mpsc::RecvTimeoutError::Disconnected) => None,
+    }
+}
+
+fn join_server_thread_with_timeout(join_handle: JoinHandle<()>) {
+    let (done_tx, done_rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("nested_server_join_watchdog".to_string())
+        .spawn(move || {
+            let result = join_handle.join();
+            let _ = done_tx.send(result);
+        })
+        .unwrap();
+    match done_rx.recv_timeout(CLIENT_JOIN_TIMEOUT) {
+        Ok(Ok(())) => {},
+        Ok(Err(_)) => panic!("server thread panicked"),
+        Err(_) => {},
+    }
+}
+
+const CLIENT_JOIN_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct TestSession {
     session_name: String,
@@ -244,7 +337,7 @@ pub struct TestSession {
     fake_server_os_api: FakeServerOsApi,
     server_thread: Arc<Mutex<Option<JoinHandle<()>>>>,
     main_client: TestClient,
-    _concurrency_slot: test_env::ConcurrencySlot,
+    _concurrency_slot: Option<test_env::ConcurrencySlot>,
 }
 
 pub struct CliClientHandle {
@@ -279,8 +372,19 @@ impl TestSession {
         self.main_client.send_stdin(bytes);
     }
 
+    pub fn stdin_sender(&self) -> crossbeam::channel::Sender<Vec<u8>> {
+        self.main_client.fake_client_handle.stdin_tx.clone()
+    }
+
     pub fn resize(&self, new_size: Size) {
         self.main_client.resize(new_size);
+    }
+
+    pub fn resize_sender(&self) -> GuestResizer {
+        GuestResizer {
+            size: self.main_client.fake_client_handle.size.clone(),
+            signal_tx: self.main_client.fake_client_handle.signal_tx.clone(),
+        }
     }
 
     pub fn wait_until(
@@ -291,15 +395,27 @@ impl TestSession {
         self.main_client.wait_until(what, predicate)
     }
 
+    pub fn wait_until_raw_output(&self, what: &str, predicate: impl Fn(&[u8]) -> bool) -> Vec<u8> {
+        self.main_client.wait_until_raw_output(what, predicate)
+    }
+
     pub fn snapshot(&self) -> GridSnapshot {
         self.main_client.snapshot()
     }
 
+    pub fn raw_bytes(&self) -> Vec<u8> {
+        self.main_client.raw_bytes()
+    }
+
+    pub fn received_server_messages(&self) -> Vec<String> {
+        self.main_client.received_server_messages()
+    }
+
     pub fn wait_for_app_load(&self) -> GridSnapshot {
         self.main_client.wait_until("app to load", |grid_snapshot| {
-            grid_snapshot.status_bar_appears()
+            (grid_snapshot.status_bar_appears() || grid_snapshot.contains("Descend:"))
                 && grid_snapshot.tab_bar_appears()
-                && grid_snapshot.cursor.is_some()
+                && (grid_snapshot.cursor.is_some() || grid_snapshot.contains(GUEST_MODAL_TITLE))
         })
     }
 
@@ -504,7 +620,7 @@ impl TestSession {
             self.main_client.join();
         }
         if let Some(server_thread) = self.server_thread.lock().unwrap().take() {
-            server_thread.join().expect("server thread panicked");
+            join_server_thread_with_timeout(server_thread);
         }
     }
 
@@ -530,6 +646,15 @@ pub fn normalized(grid_snapshot: &GridSnapshot) -> String {
     let text = strip_swap_layout_indication(&text);
     let text = strip_tip_indication(&text);
     strip_trailing_whitespace(&text)
+}
+
+pub fn assert_same_rendered_grid(actual: &GridSnapshot, expected: &GridSnapshot, what: &str) {
+    let actual = normalized(actual);
+    let expected = normalized(expected);
+    assert!(
+        actual == expected,
+        "{what}\n--- expected grid ---\n{expected}\n--- actual grid ---\n{actual}"
+    );
 }
 
 fn strip_tip_indication(text: &str) -> String {

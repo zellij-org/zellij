@@ -1,0 +1,16 @@
+---
+source: zellij-integration-tests/tests/nested_guest_modal.rs
+expression: normalized(&steady_modal)
+---
+ Zellij (test)  Tab #1  + 
+                               Nested Zellij session detected: test-1
+                               What would you like to do?
+                               > 1. Zoom in and control this session
+                                    The session will take up the whole screen. Toggle
+                                    this on/off with <Ctrl y>
+                                 2. Control this session on focus
+                                    When this pane gains focus, keybindings will be sent
+                                    to this session. Ascend to the current session with
+                                    <Ctrl u>
+                               <↓↑> select  <Enter> confirm  <1-2> direct  <Esc> dismiss
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...
