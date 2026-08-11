@@ -7258,6 +7258,13 @@ impl Tab {
         self.tiled_panes
             .add_pane_to_stack_of_pane_id(pane_id, pane, root_pane_id);
         self.set_should_clear_display_before_rendering();
+        // Groupify BEFORE the focus/frame re-application so the just-collapsed
+        // in-grid stack member is moved to `suppressed_panes` before
+        // `reapply_pane_frames` sends a `resize_pty!` at the 1-row collapsed
+        // size. Without this, the shell inside that pane sees two rapid
+        // WINCH events (1 row → visible-size rows) and redraws its prompt
+        // twice, blanking out the visible rows of previous output.
+        self.sync_stacked_pane_list_mode();
         if should_focus {
             self.tiled_panes.expand_pane_in_stack(pane_id);
         }
@@ -7277,6 +7284,10 @@ impl Tab {
         self.dissolve_stack_lists_for_classic_mutation();
         self.tiled_panes
             .add_pane_to_stack_of_active_pane(pane_id, pane, client_id);
+        // See comment in `add_stacked_pane_to_pane_id` — groupify before
+        // focusing so the collapsed member is suppressed before
+        // `reapply_pane_frames` fires its intermediate `resize_pty!`.
+        self.sync_stacked_pane_list_mode();
         if should_focus {
             self.tiled_panes.focus_pane(pane_id, client_id);
         }
