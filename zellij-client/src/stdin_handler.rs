@@ -1,11 +1,22 @@
 use crate::keyboard_parser::{KittyKeyboardParser, KittyParseOutcome};
 use crate::os_input_output::ClientOsApi;
-use crate::stdin_ansi_parser::StdinAnsiParser;
+use crate::stdin_ansi_parser::{PendingPartial, StdinAnsiParser};
 #[cfg(windows)]
 use crate::stdin_handler_windows::enable_vt_input;
 use crate::InputInstruction;
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// How long stdin must stay quiet before a parked lone ESC is released
+/// to the keyboard parser as a real Esc keypress.
+const LONE_ESC_FLUSH_INTERVAL: Duration = Duration::from_millis(50);
+/// How long a payload-bearing partial host reply may sit unfinished
+/// before being force-drained. A fragmented reply normally completes
+/// within a read or two; 50ms of quiet is routine on a slow or remote
+/// host and must NOT release half an OSC 4 into the pane — that is the
+/// 0.44.2 palette-leak regression. One full second of silence means the
+/// reply is genuinely truncated.
+const PARTIAL_REPLY_FLUSH_GUARD: Duration = Duration::from_millis(1000);
 use zellij_utils::{
     channels::SenderWithContext,
     vendored::termwiz::input::{InputEvent, InputParser},
@@ -99,9 +110,10 @@ pub(crate) fn stdin_loop(
             }
         });
     let mut needs_finalization = false;
+    let mut reply_in_progress_since: Option<Instant> = None;
     loop {
         match if needs_finalization {
-            stdin_rx.recv_timeout(Duration::from_millis(50))
+            stdin_rx.recv_timeout(LONE_ESC_FLUSH_INTERVAL)
         } else {
             stdin_rx
                 .recv()
@@ -146,7 +158,12 @@ pub(crate) fn stdin_loop(
                             // so the idle drain releases it as keyboard
                             // residue when no follow-up arrives.
                             if has_partial {
-                                needs_finalization = true;
+                                schedule_finalization(
+                                    &stdin_ansi_parser,
+                                    false,
+                                    &mut needs_finalization,
+                                    &mut reply_in_progress_since,
+                                );
                             }
                             continue;
                         }
@@ -168,6 +185,12 @@ pub(crate) fn stdin_loop(
                                             true,
                                         ))
                                         .unwrap();
+                                    schedule_finalization(
+                                        &stdin_ansi_parser,
+                                        false,
+                                        &mut needs_finalization,
+                                        &mut reply_in_progress_since,
+                                    );
                                     continue;
                                 },
                                 KittyParseOutcome::Incomplete | KittyParseOutcome::NoMatch => {},
@@ -201,7 +224,12 @@ pub(crate) fn stdin_loop(
                                 .unwrap();
                         }
 
-                        needs_finalization = true;
+                        schedule_finalization(
+                            &stdin_ansi_parser,
+                            true,
+                            &mut needs_finalization,
+                            &mut reply_in_progress_since,
+                        );
                     },
                     Err(e) => {
                         if e == "Session ended" {
@@ -215,13 +243,42 @@ pub(crate) fn stdin_loop(
                 }
             },
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                finalize_events(
-                    &mut input_parser,
-                    &mut current_buffer,
-                    send_input_instructions.clone(),
-                    &stdin_ansi_parser,
-                );
-                needs_finalization = false;
+                // What gets drained on idle depends on what is parked.
+                // A lone ESC is a real keypress and is released now; a
+                // payload-bearing partial is a host reply in flight and
+                // is held until the long guard says it is truncated.
+                let pending = stdin_ansi_parser.lock().unwrap().pending_partial();
+                match pending {
+                    PendingPartial::ReplyInProgress => {
+                        let elapsed = reply_in_progress_since
+                            .map(|since| since.elapsed())
+                            .unwrap_or_default();
+                        if elapsed >= PARTIAL_REPLY_FLUSH_GUARD {
+                            let drained = stdin_ansi_parser.lock().unwrap().finalize_force();
+                            drain_partial_to_keyboard(
+                                &mut input_parser,
+                                &mut current_buffer,
+                                send_input_instructions.clone(),
+                                drained,
+                            );
+                            needs_finalization = false;
+                            reply_in_progress_since = None;
+                        } else {
+                            needs_finalization = true;
+                        }
+                    },
+                    _ => {
+                        let drained = stdin_ansi_parser.lock().unwrap().finalize_lone_esc();
+                        drain_partial_to_keyboard(
+                            &mut input_parser,
+                            &mut current_buffer,
+                            send_input_instructions.clone(),
+                            drained,
+                        );
+                        needs_finalization = false;
+                        reply_in_progress_since = None;
+                    },
+                }
             },
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 log::debug!("STDIN pump disconnected");
@@ -232,18 +289,34 @@ pub(crate) fn stdin_loop(
     }
 }
 
-fn finalize_events(
+fn schedule_finalization(
+    stdin_ansi_parser: &Arc<Mutex<StdinAnsiParser>>,
+    fed_termwiz: bool,
+    needs_finalization: &mut bool,
+    reply_in_progress_since: &mut Option<Instant>,
+) {
+    let pending = stdin_ansi_parser.lock().unwrap().pending_partial();
+    if fed_termwiz || pending != PendingPartial::None {
+        *needs_finalization = true;
+    }
+    // The guard clock starts when a reply first goes partial and is NOT
+    // restarted by later empty ticks — restarting it would let a reply
+    // that trickles one byte per tick hold the buffer forever.
+    if pending == PendingPartial::ReplyInProgress {
+        if reply_in_progress_since.is_none() {
+            *reply_in_progress_since = Some(Instant::now());
+        }
+    } else {
+        *reply_in_progress_since = None;
+    }
+}
+
+fn drain_partial_to_keyboard(
     input_parser: &mut InputParser,
     current_buffer: &mut Vec<u8>,
     send_input_instructions: SenderWithContext<InputInstruction>,
-    stdin_ansi_parser: &Arc<Mutex<StdinAnsiParser>>,
+    drained: Vec<u8>,
 ) {
-    // Drain any speculatively-buffered partial host-reply bytes (a
-    // lone trailing ESC, or an unterminated OSC/CSI prefix whose
-    // follow-up never arrived). They become keyboard residue — same
-    // path real keypress bytes take. Without this drain, a real Esc
-    // press whose byte was parked under partial_osc would be lost.
-    let drained = stdin_ansi_parser.lock().unwrap().finalize();
     if !drained.is_empty() {
         current_buffer.extend_from_slice(&drained);
     }
