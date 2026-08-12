@@ -222,6 +222,14 @@ enum SeqStatus {
 }
 
 /// Continuous host-reply parser. Lives for the whole client session.
+/// See `StdinAnsiParser::pending_partial`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PendingPartial {
+    None,
+    LoneEsc,
+    ReplyInProgress,
+}
+
 pub struct StdinAnsiParser {
     inner: InputParser,
     /// Active forwarding slot: `Some` while a forwarded query is in
@@ -398,13 +406,40 @@ impl StdinAnsiParser {
         out
     }
 
-    /// Drain any speculatively-buffered partial OSC/CSI bytes back into
-    /// keyboard residue. Called from the stdin handler's idle-timeout
-    /// path so a lone trailing ESC (or any unterminated host-reply
-    /// prefix that never received a follow-up byte) reaches the
-    /// keyboard parser instead of being stuck forever waiting for a
-    /// disambiguating byte that is never coming.
-    pub fn finalize(&mut self) -> Vec<u8> {
+    /// What kind of partial the parser is currently holding. The idle
+    /// drain in the stdin handler keys off this: a lone ESC is almost
+    /// certainly a real Esc keypress and must be released after one
+    /// tick, but a partial that already carries payload bytes is a
+    /// host reply split across reads — releasing it types the reply
+    /// into the focused pane (the 0.44.2 palette-leak regression).
+    pub fn pending_partial(&self) -> PendingPartial {
+        if self.partial_csi.is_empty() && self.partial_osc.is_empty() {
+            PendingPartial::None
+        } else if self.partial_csi.is_empty() && self.partial_osc == [0x1b] {
+            PendingPartial::LoneEsc
+        } else {
+            PendingPartial::ReplyInProgress
+        }
+    }
+
+    /// Drain the buffered partial back into keyboard residue, but only
+    /// when it is a lone ESC waiting for a disambiguating byte that is
+    /// never coming — a real Esc keypress. Anything longer is a reply
+    /// in flight and stays buffered; `finalize_force` is the escape
+    /// hatch for the pathological case where the rest never arrives.
+    pub fn finalize_lone_esc(&mut self) -> Vec<u8> {
+        if self.partial_csi.is_empty() && self.partial_osc == [0x1b] {
+            std::mem::take(&mut self.partial_osc)
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Unconditionally drain whatever partial is buffered. Reached only
+    /// after the stdin handler's long guard elapses with no follow-up
+    /// bytes: at that point the "reply" is genuinely truncated and
+    /// holding its bytes forever would swallow real input.
+    pub fn finalize_force(&mut self) -> Vec<u8> {
         let mut out = Vec::with_capacity(self.partial_osc.len() + self.partial_csi.len());
         out.append(&mut self.partial_osc);
         out.append(&mut self.partial_csi);

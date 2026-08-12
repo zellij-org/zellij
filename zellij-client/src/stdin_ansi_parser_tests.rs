@@ -1,6 +1,6 @@
 //! Unit tests for the continuous host-reply parser.
 
-use super::{schedule_forward_timeout, HostReply, StdinAnsiParser};
+use super::{schedule_forward_timeout, HostReply, PendingPartial, StdinAnsiParser};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -295,8 +295,8 @@ fn lone_trailing_esc_is_buffered_then_finalized_as_residue() {
     // OSC or CSI host-reply that's been fragmented at the ESC
     // boundary, so `feed` parks it under partial state instead of
     // leaking it as a keyboard residue. But the byte must not stay
-    // parked forever — `finalize()` is the idle drain that releases
-    // it back to the keyboard parser when no follow-up arrives.
+    // parked forever — `finalize_lone_esc()` is the idle drain that
+    // releases it back to the keyboard parser when no follow-up arrives.
     let mut p = StdinAnsiParser::new();
     let out = p.feed(b"\x1b");
     assert!(
@@ -308,14 +308,16 @@ fn lone_trailing_esc_is_buffered_then_finalized_as_residue() {
         out.has_partial_state,
         "lone ESC must mark has_partial_state so the caller schedules a finalize tick"
     );
-    let drained = p.finalize();
+    assert_eq!(p.pending_partial(), PendingPartial::LoneEsc);
+    let drained = p.finalize_lone_esc();
     assert_eq!(
         drained,
         vec![0x1b],
         "finalize must release the parked ESC as keyboard residue"
     );
     // Subsequent finalize is a no-op once the parker is empty.
-    assert!(p.finalize().is_empty());
+    assert!(p.finalize_lone_esc().is_empty());
+    assert_eq!(p.pending_partial(), PendingPartial::None);
 }
 
 #[test]
@@ -333,7 +335,99 @@ fn fragmented_osc_does_not_finalize_partial() {
     let r2 = p.feed(&full[1..]);
     assert!(r2.residue.is_empty(), "tail must complete the OSC");
     assert_eq!(r1.replies.len() + r2.replies.len(), 1);
-    assert!(p.finalize().is_empty(), "no partial left after completion");
+    assert!(
+        p.finalize_force().is_empty(),
+        "no partial left after completion"
+    );
+}
+
+/// Helper: a payload-bearing partial must survive the short idle drain.
+fn assert_held_across_idle(parser: &mut StdinAnsiParser) {
+    assert_eq!(
+        parser.pending_partial(),
+        PendingPartial::ReplyInProgress,
+        "a payload-bearing partial must report ReplyInProgress while held"
+    );
+    assert!(
+        parser.finalize_lone_esc().is_empty(),
+        "the short idle finalize must NOT drain a reply-in-progress partial"
+    );
+    assert_eq!(
+        parser.pending_partial(),
+        PendingPartial::ReplyInProgress,
+        "the partial must still be held after a lone-esc finalize"
+    );
+}
+
+#[test]
+fn fragmented_osc4_reply_is_retained_not_leaked() {
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(b"\x1b]4;1;rgb:1111");
+    assert!(
+        r1.residue.is_empty(),
+        "incomplete OSC 4 must not leak: {:?}",
+        r1.residue
+    );
+    assert!(r1.replies.is_empty());
+    assert_held_across_idle(&mut p);
+
+    let r2 = p.feed(b"/2222/3333\x1b\\");
+    assert!(
+        r2.residue.is_empty(),
+        "completion must not leak: {:?}",
+        r2.residue
+    );
+    assert_eq!(r2.replies.len(), 1, "the rejoined OSC 4 classifies once");
+    match &r2.replies[0] {
+        HostReply::ColorRegisters(regs) => {
+            assert_eq!(regs[0].0, 1);
+            assert_eq!(regs[0].1, "rgb:1111/2222/3333");
+        },
+        other => panic!("expected ColorRegisters, got {:?}", other),
+    }
+    assert_eq!(p.pending_partial(), PendingPartial::None);
+}
+
+#[test]
+fn fragmented_osc11_reply_is_retained_across_idle() {
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(b"\x1b]11;rgb:0000/00");
+    assert!(r1.residue.is_empty());
+    assert_held_across_idle(&mut p);
+
+    let r2 = p.feed(b"00/0000\x1b\\");
+    assert!(r2.residue.is_empty());
+    assert_eq!(r2.replies.len(), 1);
+    matches!(r2.replies[0], HostReply::BackgroundColor(_));
+}
+
+#[test]
+fn last_resort_force_drain_recovers_a_never_terminated_partial() {
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(b"\x1b]4;1;rgb:incomplete");
+    assert!(r1.residue.is_empty());
+    assert_eq!(p.pending_partial(), PendingPartial::ReplyInProgress);
+
+    let r2 = p.feed(b"and-more");
+    assert!(r2.residue.is_empty());
+    assert_eq!(p.pending_partial(), PendingPartial::ReplyInProgress);
+
+    let drained = p.finalize_force();
+    assert!(
+        drained.windows(14).any(|w| w == b"rgb:incomplete"),
+        "force-drain must recover the buffered partial: {:?}",
+        drained
+    );
+    assert!(
+        drained.windows(8).any(|w| w == b"and-more"),
+        "force-drain must recover bytes appended before the guard: {:?}",
+        drained
+    );
+    assert_eq!(
+        p.pending_partial(),
+        PendingPartial::None,
+        "the buffer is empty after a force-drain"
+    );
 }
 
 #[test]
