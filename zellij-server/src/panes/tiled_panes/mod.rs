@@ -3018,6 +3018,9 @@ impl TiledPanes {
     pub fn active_panes(&self) -> ActivePanes {
         self.active_panes.clone()
     }
+    pub fn remove_client(&mut self, client_id: ClientId) {
+        self.active_panes.remove_client(&client_id, &mut self.panes);
+    }
     pub fn set_active_panes(&mut self, active_panes: ActivePanes) {
         self.active_panes = active_panes;
     }

@@ -5952,6 +5952,29 @@ fn subscriber_removed_on_remove_client() {
 }
 
 #[test]
+fn removing_client_clears_pane_focus() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+
+    let pane_is_focused = |screen: &Screen| {
+        screen
+            .tabs
+            .get(&0)
+            .unwrap()
+            .pane_infos()
+            .iter()
+            .any(|pane_info| pane_info.id == 1 && pane_info.is_focused)
+    };
+
+    assert!(pane_is_focused(&screen));
+    screen.remove_client(1).expect("TEST");
+    assert!(!pane_is_focused(&screen));
+    screen.add_client(1, false).expect("TEST");
+    assert!(pane_is_focused(&screen));
+}
+
+#[test]
 fn subscriber_removed_when_all_panes_closed() {
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
