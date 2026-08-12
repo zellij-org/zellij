@@ -6117,56 +6117,38 @@ impl Screen {
         ))?;
         Ok(tab_index)
     }
+    // The distinct tiled-column x-positions of a tab, left to right. A stacked column's
+    // panes all share one x, so this is effectively "the columns of the tab".
+    fn tiled_column_xs(tab: &Tab) -> Vec<usize> {
+        let mut xs: Vec<usize> = tab.get_tiled_panes().map(|(_, p)| p.x()).collect();
+        xs.sort_unstable();
+        xs.dedup();
+        xs
+    }
+    // The column "rank" (0 = leftmost) of a pane within its tab.
+    fn column_rank_of(tab: &Tab, pane_id: &PaneId) -> Option<usize> {
+        let target_x = tab
+            .get_tiled_panes()
+            .find(|(pid, _)| *pid == pane_id)
+            .map(|(_, p)| p.x())?;
+        Self::tiled_column_xs(tab)
+            .iter()
+            .position(|&x| x == target_x)
+    }
+    // A pane in the tab's column at the given rank (to anchor a stack onto).
+    fn pane_at_column_rank(tab: &Tab, rank: usize) -> Option<PaneId> {
+        let x = *Self::tiled_column_xs(tab).get(rank)?;
+        tab.get_tiled_panes()
+            .find(|(_, p)| p.x() == x)
+            .map(|(pid, _)| *pid)
+    }
     pub fn break_pane_to_new_tab(
         &mut self,
         direction: Direction,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || "failed break pane out of tab".to_string();
-        if self.tabs.len() > 1 {
-            let (active_pane_id, active_pane, pane_to_break_is_floating) = {
-                let active_tab = self.get_active_tab_mut(client_id)?;
-                let active_pane_id = active_tab
-                    .get_active_pane_id(client_id)
-                    .with_context(err_context)?;
-                let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
-                let active_pane = active_tab
-                    .extract_pane(active_pane_id, false)
-                    .with_context(err_context)?;
-                (active_pane_id, active_pane, pane_to_break_is_floating)
-            };
-            let update_mode_infos = false;
-            match direction {
-                Direction::Right | Direction::Down => {
-                    self.switch_tab_next(None, update_mode_infos, client_id)?;
-                },
-                Direction::Left | Direction::Up => {
-                    self.switch_tab_prev(None, update_mode_infos, client_id)?;
-                },
-            };
-            let new_active_tab = self.get_active_tab_mut(client_id)?;
-
-            if pane_to_break_is_floating {
-                new_active_tab.show_floating_panes();
-                new_active_tab.add_floating_pane(
-                    active_pane,
-                    active_pane_id,
-                    None,
-                    true,
-                    Some(client_id),
-                )?;
-            } else {
-                new_active_tab.hide_floating_panes();
-                new_active_tab.add_tiled_pane(
-                    active_pane,
-                    active_pane_id,
-                    false,
-                    Some(client_id),
-                )?;
-            }
-
-            self.log_and_report_session_state()?;
-        } else {
+        if self.tabs.len() <= 1 {
             let active_pane_id = {
                 let active_tab = self.get_active_tab_mut(client_id)?;
                 active_tab
@@ -6180,7 +6162,87 @@ impl Screen {
                     "No other tabs to add pane to!".into(),
                 ))
                 .with_context(err_context)?;
+            self.render(None)?;
+            return Ok(());
         }
+
+        // Column-preserving fast path: move the focused *tiled* pane into the matching
+        // column (left->left, middle->middle, right->right) of the adjacent tab and stack
+        // it onto whatever is already there. Reuses stack_panes, which moves the pane
+        // across tabs and follows focus. Falls through to the default break behavior for
+        // floating panes or when the destination column has no pane to anchor onto.
+        let (active_pos, active_pane_id, is_floating, col_rank) = {
+            let active_tab = self.get_active_tab(client_id)?;
+            let active_pane_id = active_tab
+                .get_active_pane_id(client_id)
+                .with_context(err_context)?;
+            let is_floating = active_tab.are_floating_panes_visible();
+            let col_rank = if is_floating {
+                None
+            } else {
+                Self::column_rank_of(active_tab, &active_pane_id)
+            };
+            (active_tab.position, active_pane_id, is_floating, col_rank)
+        };
+        if !is_floating {
+            if let Some(rank) = col_rank {
+                let n = self.tabs.len();
+                let dest_pos = match direction {
+                    Direction::Right | Direction::Down => (active_pos + 1) % n,
+                    Direction::Left | Direction::Up => (active_pos + n - 1) % n,
+                };
+                let dest_root = self
+                    .tabs
+                    .values()
+                    .find(|t| t.position == dest_pos)
+                    .and_then(|t| Self::pane_at_column_rank(t, rank));
+                if let Some(root) = dest_root {
+                    self.stack_panes(vec![root, active_pane_id]);
+                    let _ =
+                        self.focus_pane_with_id(active_pane_id, false, false, client_id);
+                    self.log_and_report_session_state()?;
+                    self.render(None)?;
+                    return Ok(());
+                }
+            }
+        }
+
+        // Default behavior: extract the pane, switch to the adjacent tab, and add it.
+        let (active_pane_id, active_pane, pane_to_break_is_floating) = {
+            let active_tab = self.get_active_tab_mut(client_id)?;
+            let active_pane_id = active_tab
+                .get_active_pane_id(client_id)
+                .with_context(err_context)?;
+            let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
+            let active_pane = active_tab
+                .extract_pane(active_pane_id, false)
+                .with_context(err_context)?;
+            (active_pane_id, active_pane, pane_to_break_is_floating)
+        };
+        let update_mode_infos = false;
+        match direction {
+            Direction::Right | Direction::Down => {
+                self.switch_tab_next(None, update_mode_infos, client_id)?;
+            },
+            Direction::Left | Direction::Up => {
+                self.switch_tab_prev(None, update_mode_infos, client_id)?;
+            },
+        };
+        let new_active_tab = self.get_active_tab_mut(client_id)?;
+        if pane_to_break_is_floating {
+            new_active_tab.show_floating_panes();
+            new_active_tab.add_floating_pane(
+                active_pane,
+                active_pane_id,
+                None,
+                true,
+                Some(client_id),
+            )?;
+        } else {
+            new_active_tab.hide_floating_panes();
+            new_active_tab.add_tiled_pane(active_pane, active_pane_id, false, Some(client_id))?;
+        }
+        self.log_and_report_session_state()?;
         self.render(None)?;
         Ok(())
     }
