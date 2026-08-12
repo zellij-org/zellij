@@ -2610,6 +2610,8 @@ impl Tab {
             };
         }
         let was_dimmed = self.dimmed_clients.contains(&client_id);
+        self.tiled_panes.remove_client(client_id);
+        self.floating_panes.remove_client(client_id);
         self.mode_info.borrow_mut().remove(&client_id);
         self.connected_clients.borrow_mut().remove(&client_id);
         self.mouse_help_text_visible.remove(&client_id);
