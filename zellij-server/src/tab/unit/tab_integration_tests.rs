@@ -264,6 +264,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        Rc::new(RefCell::new(None)),
         (vec![], vec![]),
         PathBuf::from("my_default_shell"),
         debug,
@@ -361,6 +362,7 @@ fn create_new_tab_with_stacked_pane_list(
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        Rc::new(RefCell::new(None)),
         (vec![], vec![]),
         PathBuf::from("my_default_shell"),
         debug,
@@ -454,6 +456,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        Rc::new(RefCell::new(None)),
         (vec![], vec![]),
         PathBuf::from("my_default_shell"),
         debug,
@@ -564,6 +567,7 @@ fn create_new_tab_with_swap_layouts(
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        Rc::new(RefCell::new(None)),
         swap_layouts,
         PathBuf::from("my_default_shell"),
         debug,
@@ -671,6 +675,7 @@ fn create_new_tab_with_os_api(
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        Rc::new(RefCell::new(None)),
         (vec![], vec![]), // swap layouts
         PathBuf::from("my_default_shell"),
         debug,
@@ -764,6 +769,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        Rc::new(RefCell::new(None)),
         (vec![], vec![]), // swap layouts
         PathBuf::from("my_default_shell"),
         debug,
@@ -871,6 +877,7 @@ fn create_new_tab_with_mock_pty_writer(
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        Rc::new(RefCell::new(None)),
         (vec![], vec![]), // swap layouts
         PathBuf::from("my_default_shell"),
         debug,
@@ -969,6 +976,7 @@ fn create_new_tab_with_sixel_support(
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        Rc::new(RefCell::new(None)),
         (vec![], vec![]), // swap layouts
         PathBuf::from("my_default_shell"),
         debug,
@@ -4371,6 +4379,41 @@ fn enter_search_floating_pane() {
         Palette::default(),
     );
     assert_snapshot!("search_floating_tab_highlight_fring", snapshot);
+}
+
+#[test]
+fn osc_52_clipboard_query_is_answered_from_the_last_copy() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    // Nothing copied yet: the conventional empty-clipboard reply
+    tab.handle_pty_bytes(1, "\u{1b}]52;c;?\u{07}".as_bytes().to_vec())
+        .unwrap();
+    // An app copies via OSC 52, then queries: it reads its own copy back,
+    // with the reply mirroring the query's terminator
+    tab.handle_pty_bytes(1, "\u{1b}]52;c;aGVsbG8=\u{07}".as_bytes().to_vec())
+        .unwrap();
+    tab.handle_pty_bytes(1, "\u{1b}]52;c;?\u{1b}\\".as_bytes().to_vec())
+        .unwrap();
+
+    pty_instruction_bus.exit();
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec![
+            "\u{1b}]52;c;\u{07}".to_string(),
+            "\u{1b}]52;c;aGVsbG8=\u{1b}\\".to_string(),
+        ],
+    );
 }
 
 #[test]
@@ -13493,6 +13536,7 @@ fn create_new_tab_with_plugin_receiver(
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        Rc::new(RefCell::new(None)),
         (vec![], vec![]),
         PathBuf::from("my_default_shell"),
         debug,
@@ -15280,6 +15324,7 @@ fn create_new_tab_with_server_receiver(
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        Rc::new(RefCell::new(None)),
         (vec![], vec![]),
         PathBuf::from("my_default_shell"),
         false, // debug

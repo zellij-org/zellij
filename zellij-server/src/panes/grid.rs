@@ -718,6 +718,7 @@ pub struct Grid {
     pub color_palette_notification_enabled: bool,
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
+    pub pending_clipboard_queries: Vec<crate::host_query::ClipboardQuery>,
     pub pending_osc7_cwd: Option<std::path::PathBuf>,
     /// Pending desktop notifications: (payload, terminator)
     /// Payload is the semicolon-joined params after "99", terminator is "\x07" or "\x1b\\"
@@ -1079,6 +1080,7 @@ impl Grid {
             kitty_host_support: KittyHostSupport::Supported,
             sixel_host_support: true,
             pending_clipboard_update: None,
+            pending_clipboard_queries: Vec::new(),
             pending_osc7_cwd: None,
             pending_desktop_notifications: Vec::new(),
             pending_forwarded_queries: Vec::new(),
@@ -4354,10 +4356,13 @@ impl Perform for Grid {
                     return;
                 }
 
-                let _clipboard = params[1].get(0).unwrap_or(&b'c');
+                let clipboard = params[1].get(0).copied().unwrap_or(b'c');
                 match params[2] {
                     b"?" => {
-                        // TBD: paste from own clipboard - currently unsupported
+                        // echo back the copy
+                        self.pending_clipboard_queries.push(
+                            crate::host_query::ClipboardQuery::new(clipboard, bell_terminated),
+                        );
                     },
                     base64 => {
                         if let Ok(bytes) = BASE64_DECODER.decode(base64) {

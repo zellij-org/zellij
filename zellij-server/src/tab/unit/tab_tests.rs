@@ -206,6 +206,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        Rc::new(RefCell::new(None)),
         (vec![], vec![]), // swap layouts
         PathBuf::from("my_default_shell"),
         debug,
@@ -296,6 +297,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        Rc::new(RefCell::new(None)),
         (vec![], vec![]), // swap layouts
         PathBuf::from("my_default_shell"),
         debug,
@@ -392,6 +394,7 @@ fn create_new_tab_with_cell_size(
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        Rc::new(RefCell::new(None)),
         (vec![], vec![]), // swap layouts
         PathBuf::from("my_default_shell"),
         debug,
