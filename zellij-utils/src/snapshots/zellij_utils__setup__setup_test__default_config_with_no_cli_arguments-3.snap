@@ -57,4 +57,5 @@ Options {
     post_command_discovery_hook: None,
     client_async_worker_tasks: None,
     nested_session_handling: None,
+    dangerously_enable_paste_buffer_read: None,
 }

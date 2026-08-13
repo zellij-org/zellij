@@ -499,6 +499,7 @@ fn test_client_messages() {
                 osc133_command_selection: Some(false),
                 word_separators: Some("[]{}<>():".to_owned()),
                 nested_session_handling: Some(NestedSessionHandling::Fullscreen),
+                dangerously_enable_paste_buffer_read: Some(true),
             }),
             layout: None,
             terminal_window_size: Size { rows: 80, cols: 42 },
@@ -3871,14 +3872,22 @@ fn test_server_messages() {
     test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
         token: 0,
         query_bytes: vec![],
+        resolve_async: false,
     });
     test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
         token: 7,
         query_bytes: b"\x1b[14t".to_vec(),
+        resolve_async: false,
     });
     test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
         token: u32::MAX,
         query_bytes: (0u8..=255u8).collect(),
+        resolve_async: false,
+    });
+    test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
+        token: 12,
+        query_bytes: b"\x1b]52;c;?\x1b\\".to_vec(),
+        resolve_async: true,
     });
     test_server_roundtrip!(ServerToClientMsg::EmitNestedSessionFrame {
         payload_bytes: vec![],

@@ -2030,6 +2030,8 @@ pub struct Options {
     pub osc133_command_selection: ::core::option::Option<bool>,
     #[prost(string, optional, tag="57")]
     pub word_separators: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="58")]
+    pub dangerously_enable_paste_buffer_read: ::core::option::Option<bool>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3424,6 +3426,8 @@ pub struct ForwardQueryToHostMsg {
     pub token: u32,
     #[prost(bytes="vec", tag="2")]
     pub query_bytes: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bool, tag="3")]
+    pub resolve_async: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

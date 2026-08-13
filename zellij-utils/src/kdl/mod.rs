@@ -2934,6 +2934,11 @@ impl Options {
             },
             None => None,
         };
+        let dangerously_enable_paste_buffer_read = kdl_property_first_arg_as_bool_or_error!(
+            kdl_options,
+            "dangerously_enable_paste_buffer_read"
+        )
+        .map(|(v, _)| v);
 
         Ok(Options {
             simplified_ui,
@@ -2990,6 +2995,7 @@ impl Options {
             post_command_discovery_hook,
             client_async_worker_tasks,
             nested_session_handling,
+            dangerously_enable_paste_buffer_read,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -4548,6 +4554,35 @@ impl Options {
             None
         }
     }
+    fn dangerously_enable_paste_buffer_read_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Whether to let programs running inside panes read the paste buffer",
+            "// (clipboard) with the OSC 52 escape sequence. When enabled, any program",
+            "// in any pane - including one running on a remote machine over SSH - can",
+            "// read the clipboard without the user being asked.",
+            "// Default: false",
+        );
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("dangerously_enable_paste_buffer_read");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(value) = self.dangerously_enable_paste_buffer_read {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn client_async_worker_tasks_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = r#"
 // Number of async worker tasks to spawn per active client.
@@ -4745,6 +4780,11 @@ impl Options {
         if let Some(client_async_worker_tasks) = self.client_async_worker_tasks_to_kdl(add_comments)
         {
             nodes.push(client_async_worker_tasks);
+        }
+        if let Some(dangerously_enable_paste_buffer_read) =
+            self.dangerously_enable_paste_buffer_read_to_kdl(add_comments)
+        {
+            nodes.push(dangerously_enable_paste_buffer_read);
         }
         if let Some(nested_session_handling) = self.nested_session_handling_to_kdl(add_comments) {
             nodes.push(nested_session_handling);

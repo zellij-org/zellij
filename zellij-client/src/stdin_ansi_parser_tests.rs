@@ -1512,3 +1512,114 @@ fn two_nested_frames_in_one_chunk_are_both_extracted() {
     assert_eq!(out.nested_frames, vec![payload.clone(), payload]);
     assert!(out.residue.is_empty());
 }
+
+#[test]
+fn clipboard_forward_is_closed_by_the_hosts_osc_52_reply() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(9);
+    let out = parser.feed(b"\x1b]52;c;aGVsbG8=\x1b\\");
+    assert_eq!(
+        out.completed_clipboard_forward,
+        Some((9, b"\x1b]52;c;aGVsbG8=\x1b\\".to_vec())),
+        "the host's reply must be relayed verbatim (re-serialized with ST)"
+    );
+    assert!(out.residue.is_empty(), "clipboard data must never be typed");
+    assert!(parser.active_clipboard_forward_token().is_none());
+}
+
+#[test]
+fn clipboard_forward_is_closed_by_the_first_key_press() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(4);
+    let out = parser.feed(b"a");
+    assert_eq!(out.completed_clipboard_forward, Some((4, Vec::new())));
+    assert_eq!(out.residue, b"a", "the key itself must still reach the app");
+    assert!(parser.active_clipboard_forward_token().is_none());
+}
+
+#[test]
+fn clipboard_forward_survives_host_reports_and_resizes() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(11);
+    let out = parser.feed(b"\x1b[4;720;1280t");
+    assert!(out.completed_clipboard_forward.is_none());
+    let out = parser.feed(b"\x1b]11;rgb:0000/0000/0000\x1b\\");
+    assert!(out.completed_clipboard_forward.is_none());
+    let out = parser.feed(b"\x1b[?62;52c");
+    assert!(
+        out.completed_clipboard_forward.is_none(),
+        "the Primary-DA barrier must not close a clipboard window"
+    );
+    assert_eq!(parser.active_clipboard_forward_token(), Some(11));
+}
+
+#[test]
+fn a_reply_arriving_before_the_keypress_wins() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(2);
+    let mut input = Vec::new();
+    input.extend_from_slice(b"\x1b]52;c;d29ybGQ=\x1b\\");
+    input.extend_from_slice(b"x");
+    let out = parser.feed(&input);
+    assert_eq!(
+        out.completed_clipboard_forward,
+        Some((2, b"\x1b]52;c;d29ybGQ=\x1b\\".to_vec()))
+    );
+    assert_eq!(out.residue, b"x");
+}
+
+#[test]
+fn clipboard_and_barrier_forwards_are_independent() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(1);
+    parser.open_forward(2);
+    let out = parser.feed(b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\\x1b[?62;52c");
+    assert_eq!(
+        out.completed_forward,
+        Some((2, b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\".to_vec()))
+    );
+    assert!(out.completed_clipboard_forward.is_none());
+    assert_eq!(parser.active_clipboard_forward_token(), Some(1));
+}
+
+#[test]
+fn clipboard_reply_is_not_accumulated_into_a_barrier_slot() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(1);
+    parser.open_forward(2);
+    let out = parser.feed(b"\x1b]52;c;aGk=\x1b\\");
+    assert_eq!(
+        out.completed_clipboard_forward,
+        Some((1, b"\x1b]52;c;aGk=\x1b\\".to_vec()))
+    );
+    let out = parser.feed(b"\x1b[?62;52c");
+    assert_eq!(
+        out.completed_forward,
+        Some((2, Vec::new())),
+        "the clipboard payload must not leak into the barrier slot"
+    );
+}
+
+#[test]
+fn taking_the_clipboard_slot_hands_the_token_over() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(6);
+    assert_eq!(
+        parser.take_active_clipboard_forward(),
+        Some((6, Vec::new()))
+    );
+    assert!(parser.active_clipboard_forward_token().is_none());
+    assert_eq!(parser.take_active_clipboard_forward(), None);
+}
+
+#[test]
+fn clipboard_timeout_only_fires_for_the_open_token() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(3);
+    assert_eq!(parser.close_clipboard_forward_on_timeout(4), None);
+    assert_eq!(
+        parser.close_clipboard_forward_on_timeout(3),
+        Some((3, Vec::new()))
+    );
+    assert_eq!(parser.close_clipboard_forward_on_timeout(3), None);
+}

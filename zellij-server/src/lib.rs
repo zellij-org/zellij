@@ -138,8 +138,7 @@ pub enum ServerInstruction {
     ClearMouseHelpText(ClientId),
     /// Relay a forwarded-query dispatch from Screen to the server main
     /// loop. The main loop writes `ServerToClientMsg::ForwardQueryToHost`
-    /// to any connected regular client.
-    ForwardQueryToHost(u32, Vec<u8>),
+    ForwardQueryToHost(u32, Vec<u8>, bool),
     KeyPassthroughChanged(ClientId, PaneId, PaneId, bool, Option<Direction>, bool),
     EmitNestedSessionFrameToClient(ClientId, Vec<u8>),
 }
@@ -475,6 +474,10 @@ impl SessionMetaData {
                         .options
                         .osc133_command_selection
                         .unwrap_or(true),
+                    dangerously_enable_paste_buffer_read: new_config
+                        .options
+                        .dangerously_enable_paste_buffer_read
+                        .unwrap_or(false),
                     word_separators: new_config
                         .options
                         .word_separators
@@ -1892,7 +1895,7 @@ pub fn start_server_impl(
                     .send_to_screen(ScreenInstruction::ClearMouseHelpText(client_id))
                     .unwrap();
             },
-            ServerInstruction::ForwardQueryToHost(token, query_bytes) => {
+            ServerInstruction::ForwardQueryToHost(token, query_bytes, resolve_async) => {
                 // Pick a regular (non-watcher) client to carry the
                 // forward. Preference is the most recently active
                 // client (whichever last sent input); falls back to
@@ -1912,7 +1915,11 @@ pub fn start_server_impl(
                     send_to_client!(
                         client_id,
                         os_input,
-                        ServerToClientMsg::ForwardQueryToHost { token, query_bytes },
+                        ServerToClientMsg::ForwardQueryToHost {
+                            token,
+                            query_bytes,
+                            resolve_async
+                        },
                         session_state,
                         session_data
                     );

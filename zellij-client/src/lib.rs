@@ -186,6 +186,7 @@ pub(crate) enum ClientInstruction {
     ForwardQueryToHost {
         token: u32,
         query_bytes: Vec<u8>,
+        resolve_async: bool,
     },
     EmitNestedSessionFrame(Vec<u8>),
 }
@@ -210,8 +211,14 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
             ServerToClientMsg::RenamedSession { name } => ClientInstruction::RenamedSession(name),
             ServerToClientMsg::ConfigFileUpdated => ClientInstruction::ConfigFileUpdated,
-            ServerToClientMsg::ForwardQueryToHost { token, query_bytes } => {
-                ClientInstruction::ForwardQueryToHost { token, query_bytes }
+            ServerToClientMsg::ForwardQueryToHost {
+                token,
+                query_bytes,
+                resolve_async,
+            } => ClientInstruction::ForwardQueryToHost {
+                token,
+                query_bytes,
+                resolve_async,
             },
             ServerToClientMsg::EmitNestedSessionFrame { payload_bytes } => {
                 ClientInstruction::EmitNestedSessionFrame(payload_bytes)
@@ -1435,7 +1442,55 @@ pub fn start_client(
                     },
                 }
             },
-            ClientInstruction::ForwardQueryToHost { token, query_bytes } => {
+            ClientInstruction::ForwardQueryToHost {
+                token,
+                query_bytes,
+                resolve_async: true,
+            } => {
+                {
+                    let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
+                    if let Some((stale_token, stale_reply_bytes)) =
+                        stdin_ansi_parser.take_active_clipboard_forward()
+                    {
+                        log::warn!(
+                            "clipboard forward slot for token {} was still open when token {} was \
+                             dispatched ({} accumulated bytes); closing it out",
+                            stale_token,
+                            token,
+                            stale_reply_bytes.len(),
+                        );
+                        let _ = send_input_instructions.send(
+                            InputInstruction::ForwardedReplyFromHostComplete {
+                                token: stale_token,
+                                reply_bytes: stale_reply_bytes,
+                            },
+                        );
+                    }
+                    stdin_ansi_parser.open_clipboard_forward(token);
+                }
+                let runtime = stdin_ansi_parser::forward_timeout_runtime();
+                let parser_for_timer = stdin_ansi_parser.clone();
+                let sender_for_timer = send_input_instructions.clone();
+                stdin_ansi_parser::schedule_clipboard_forward_timeout(
+                    runtime.handle(),
+                    parser_for_timer,
+                    token,
+                    std::time::Duration::from_millis(
+                        stdin_ansi_parser::CLIENT_CLIPBOARD_FORWARD_TIMEOUT_MS,
+                    ),
+                    move |token, reply_bytes| {
+                        let _ = sender_for_timer.send(
+                            InputInstruction::ForwardedReplyFromHostComplete { token, reply_bytes },
+                        );
+                    },
+                );
+                let mut out = os_input.get_stdout_writer();
+                let _ = out.write_all(&query_bytes);
+                let _ = out.flush();
+            },
+            ClientInstruction::ForwardQueryToHost {
+                token, query_bytes, ..
+            } => {
                 // 1. Open a forwarding window on the parser so any reply
                 //    events that arrive before the barrier are captured.
                 //    A slot may still be open here: the server's backstop

@@ -2,7 +2,7 @@
 source: zellij-integration-tests/tests/search.rs
 expression: normalized(&grid_snapshot)
 ---
- Zellij (test)  Tab #1  +                                                                         [ SCROLL 0/19 ]
+ Zellij (test)  Tab #1  +                                                                        [ SCROLL 15/19 ]
 line05 NEEDLE upper
 line06
 line07

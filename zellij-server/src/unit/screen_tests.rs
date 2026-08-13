@@ -8687,8 +8687,18 @@ impl ForwardCapture {
     fn drain_forward_queries(&self) -> Vec<(u32, Vec<u8>)> {
         let mut out = Vec::new();
         while let Ok((instr, _ctx)) = self.server_rx.try_recv() {
-            if let ServerInstruction::ForwardQueryToHost(token, bytes) = instr {
+            if let ServerInstruction::ForwardQueryToHost(token, bytes, _) = instr {
                 out.push((token, bytes));
+            }
+        }
+        out
+    }
+
+    fn drain_forward_queries_with_async(&self) -> Vec<(u32, Vec<u8>, bool)> {
+        let mut out = Vec::new();
+        while let Ok((instr, _ctx)) = self.server_rx.try_recv() {
+            if let ServerInstruction::ForwardQueryToHost(token, bytes, resolve_async) = instr {
+                out.push((token, bytes, resolve_async));
             }
         }
         out
@@ -8940,6 +8950,178 @@ fn handle_reply_dispatches_next_queued_forward() {
             .map(|e| e.pane_id),
         Some(second_pane)
     );
+}
+
+fn clipboard_query() -> HostQuery {
+    HostQuery::ClipboardContent {
+        selection: 'c',
+        terminator: OscTerminator::St,
+    }
+}
+
+#[test]
+fn clipboard_read_is_dropped_when_the_option_is_off() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+
+    screen.forward_host_query(PaneId::Terminal(3), clipboard_query());
+
+    assert!(
+        capture.drain_forward_queries().is_empty(),
+        "an opted-out clipboard read must never reach the host terminal"
+    );
+    assert!(screen.clipboard_forward_in_flight_token.is_none());
+    assert!(screen.pending_clipboard_forwards.is_empty());
+}
+
+#[test]
+fn clipboard_read_is_forwarded_asynchronously_when_enabled() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    let pane_id = PaneId::Terminal(5);
+
+    let token = screen.forward_host_query(pane_id, clipboard_query());
+
+    let forwards = capture.drain_forward_queries_with_async();
+    assert_eq!(
+        forwards,
+        vec![(token, b"\x1b]52;c;?\x1b\\".to_vec(), true)],
+        "the query must go out marked as async so the client omits its barrier"
+    );
+    assert_eq!(screen.clipboard_forward_in_flight_token, Some(token));
+    assert_eq!(
+        screen
+            .pending_clipboard_forwards
+            .get(&token)
+            .map(|e| e.pane_id),
+        Some(pane_id)
+    );
+    assert!(
+        screen.forward_in_flight_token.is_none(),
+        "the barrier-serialized slot must stay free"
+    );
+}
+
+#[test]
+fn a_pending_clipboard_read_does_not_block_other_host_queries() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    let clipboard_token = screen.forward_host_query(PaneId::Terminal(1), clipboard_query());
+    let colour_token = screen.forward_host_query(PaneId::Terminal(2), bg_query());
+
+    let forwards = capture.drain_forward_queries();
+    assert_eq!(
+        forwards.len(),
+        2,
+        "a colour query must dispatch while a clipboard prompt is pending"
+    );
+    assert_eq!(forwards[0].0, clipboard_token);
+    assert_eq!(forwards[1].0, colour_token);
+    assert_eq!(screen.forward_in_flight_token, Some(colour_token));
+    assert_eq!(
+        screen.clipboard_forward_in_flight_token,
+        Some(clipboard_token)
+    );
+}
+
+#[test]
+fn a_real_clipboard_reply_is_written_to_the_pane_verbatim() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    let token = screen.forward_host_query(PaneId::Terminal(8), clipboard_query());
+    let _ = capture.drain_forward_queries();
+
+    let reply = b"\x1b]52;c;aGVsbG8=\x1b\\".to_vec();
+    screen
+        .handle_forwarded_reply_from_host(token, reply.clone())
+        .expect("handler must not fail");
+
+    assert_eq!(capture.drain_pty_writes(), vec![(reply, 8)]);
+    assert!(screen.clipboard_forward_in_flight_token.is_none());
+    assert!(screen.pending_clipboard_forwards.is_empty());
+}
+
+#[test]
+fn an_unanswered_clipboard_read_resolves_as_an_empty_clipboard() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    let token = screen.forward_host_query(PaneId::Terminal(9), clipboard_query());
+    let _ = capture.drain_forward_queries();
+
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("handler must not fail");
+
+    assert_eq!(
+        capture.drain_pty_writes(),
+        vec![(b"\x1b]52;c;\x1b\\".to_vec(), 9)]
+    );
+}
+
+#[test]
+fn a_late_clipboard_reply_is_discarded() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    let token = screen.forward_host_query(PaneId::Terminal(9), clipboard_query());
+    let _ = capture.drain_forward_queries();
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("ok");
+    let _ = capture.drain_pty_writes();
+
+    screen
+        .handle_forwarded_reply_from_host(token, b"\x1b]52;c;bGF0ZQ==\x1b\\".to_vec())
+        .expect("ok");
+
+    assert!(
+        capture.drain_pty_writes().is_empty(),
+        "clipboard data arriving after the window closed must never reach the pane"
+    );
+}
+
+#[test]
+fn a_second_clipboard_read_waits_for_the_first() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    let first_token = screen.forward_host_query(PaneId::Terminal(1), clipboard_query());
+    let second_token = screen.forward_host_query(PaneId::Terminal(2), clipboard_query());
+
+    let forwards = capture.drain_forward_queries();
+    assert_eq!(
+        forwards.len(),
+        1,
+        "a host can only show one consent prompt at a time"
+    );
+    assert_eq!(forwards[0].0, first_token);
+    assert_eq!(screen.clipboard_forward_queue.len(), 1);
+    assert_eq!(screen.clipboard_forward_queue[0].token, second_token);
+}
+
+#[test]
+fn a_queued_clipboard_read_for_a_closed_pane_is_skipped() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    let first_token = screen.forward_host_query(PaneId::Terminal(1), clipboard_query());
+    screen.forward_host_query(PaneId::Terminal(2), clipboard_query());
+    let _ = capture.drain_forward_queries();
+
+    screen
+        .handle_forwarded_reply_from_host(first_token, Vec::new())
+        .expect("ok");
+
+    assert!(
+        capture.drain_forward_queries().is_empty(),
+        "the queued read belongs to a pane no tab owns"
+    );
+    assert!(screen.clipboard_forward_queue.is_empty());
+    assert!(screen.clipboard_forward_in_flight_token.is_none());
 }
 
 #[test]

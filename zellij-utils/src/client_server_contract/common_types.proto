@@ -1211,6 +1211,7 @@ message Options {
   optional bool support_kitty_graphics_protocol = 55;
   optional bool osc133_command_selection = 56;
   optional string word_separators = 57;
+  optional bool dangerously_enable_paste_buffer_read = 58;
 }
 
 enum OnForceClose {

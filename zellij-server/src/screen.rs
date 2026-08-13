@@ -790,6 +790,7 @@ pub enum ScreenInstruction {
         osc133_command_selection: bool,
         word_separators: String,
         nested_session_handling: NestedSessionHandling,
+        dangerously_enable_paste_buffer_read: bool,
     },
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -1543,6 +1544,10 @@ pub(crate) struct Screen {
     pending_forwarded_queries: HashMap<u32, PendingForwardEntry>,
     forward_queue: VecDeque<PendingForward>,
     forward_in_flight_token: Option<u32>,
+    pending_clipboard_forwards: HashMap<u32, PendingForwardEntry>,
+    clipboard_forward_queue: VecDeque<PendingForward>,
+    clipboard_forward_in_flight_token: Option<u32>,
+    paste_buffer_read_enabled: bool,
     nested_guest_tracker: NestedGuestTracker,
     nested_ancestry: Vec<String>,
     nested_via_client_id: Option<ClientId>,
@@ -1608,6 +1613,8 @@ const STARTUP_SENTINEL_TOKEN: u32 = 0;
 /// client always replies first; only the old-client and
 /// network-pathological cases ever see this fire.
 const SERVER_FORWARD_TIMEOUT_MS: u64 = 1000;
+
+const SERVER_CLIPBOARD_FORWARD_TIMEOUT_MS: u64 = 35_000;
 
 impl Screen {
     /// Creates and returns a new [`Screen`].
@@ -1727,6 +1734,10 @@ impl Screen {
             pending_forwarded_queries: HashMap::new(),
             forward_queue: VecDeque::new(),
             forward_in_flight_token: None,
+            pending_clipboard_forwards: HashMap::new(),
+            clipboard_forward_queue: VecDeque::new(),
+            clipboard_forward_in_flight_token: None,
+            paste_buffer_read_enabled: false,
             nested_guest_tracker: NestedGuestTracker::default(),
             nested_ancestry: vec![],
             nested_via_client_id: None,
@@ -2667,6 +2678,13 @@ impl Screen {
             self.answer_color_palette_mode_query_locally(pane_id);
             return STARTUP_SENTINEL_TOKEN; // sentinel: no real forward happened
         }
+        if let crate::host_query::HostQuery::ClipboardContent { .. } = query {
+            if !self.paste_buffer_read_enabled {
+                let _ = self.resume_pane_after_forward(pane_id, Vec::new());
+                return STARTUP_SENTINEL_TOKEN;
+            }
+            return self.enqueue_clipboard_forward(pane_id, query);
+        }
         let token = self.next_forward_token;
         // Skip over the reserved sentinel (0) on wrap; allocate a fresh
         // u32 for every forward.
@@ -2684,6 +2702,85 @@ impl Screen {
             self.dispatch_forward(token, pane_id, query);
         }
         token
+    }
+
+    fn enqueue_clipboard_forward(
+        &mut self,
+        pane_id: PaneId,
+        query: crate::host_query::HostQuery,
+    ) -> u32 {
+        let token = self.next_forward_token;
+        self.next_forward_token = self.next_forward_token.wrapping_add(1);
+        if self.next_forward_token == STARTUP_SENTINEL_TOKEN {
+            self.next_forward_token = 1;
+        }
+        if self.clipboard_forward_in_flight_token.is_some() {
+            self.clipboard_forward_queue.push_back(PendingForward {
+                token,
+                pane_id,
+                query,
+            });
+        } else {
+            self.dispatch_clipboard_forward(token, pane_id, query);
+        }
+        token
+    }
+
+    fn dispatch_clipboard_forward(
+        &mut self,
+        token: u32,
+        pane_id: PaneId,
+        query: crate::host_query::HostQuery,
+    ) {
+        let query_bytes = query.to_query_bytes();
+        self.pending_clipboard_forwards
+            .insert(token, PendingForwardEntry { pane_id, query });
+        self.clipboard_forward_in_flight_token = Some(token);
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::ForwardQueryToHost(
+                token,
+                query_bytes,
+                true,
+            ));
+        let senders = self.bus.senders.clone();
+        crate::global_async_runtime::get_tokio_runtime().spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(
+                SERVER_CLIPBOARD_FORWARD_TIMEOUT_MS,
+            ))
+            .await;
+            let _ = senders.send_to_screen(ScreenInstruction::ForwardedReplyFromHost {
+                token,
+                reply_bytes: Vec::new(),
+            });
+        });
+    }
+
+    fn handle_clipboard_reply(&mut self, token: u32, reply_bytes: Vec<u8>) -> Result<()> {
+        if let Some(PendingForwardEntry { pane_id, query }) =
+            self.pending_clipboard_forwards.remove(&token)
+        {
+            let payload = if reply_bytes.is_empty() {
+                query.empty_reply_bytes()
+            } else {
+                reply_bytes
+            };
+            self.resume_pane_after_forward(pane_id, payload)?;
+        }
+        self.clipboard_forward_in_flight_token = None;
+        while let Some(next) = self.clipboard_forward_queue.pop_front() {
+            if !self.pane_exists(&next.pane_id) {
+                continue;
+            }
+            self.dispatch_clipboard_forward(next.token, next.pane_id, next.query);
+            break;
+        }
+        Ok(())
+    }
+
+    fn pane_exists(&self, pane_id: &PaneId) -> bool {
+        self.tabs.values().any(|tab| tab.has_pane_with_pid(pane_id))
     }
 
     fn answer_color_palette_mode_query_locally(&mut self, pane_id: PaneId) {
@@ -2729,7 +2826,11 @@ impl Screen {
         let _ = self
             .bus
             .senders
-            .send_to_server(ServerInstruction::ForwardQueryToHost(token, query_bytes));
+            .send_to_server(ServerInstruction::ForwardQueryToHost(
+                token,
+                query_bytes,
+                false,
+            ));
         let senders = self.bus.senders.clone();
         crate::global_async_runtime::get_tokio_runtime().spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(SERVER_FORWARD_TIMEOUT_MS)).await;
@@ -2757,6 +2858,17 @@ impl Screen {
         token: u32,
         reply_bytes: Vec<u8>,
     ) -> Result<()> {
+        if self.clipboard_forward_in_flight_token == Some(token) {
+            return self.handle_clipboard_reply(token, reply_bytes);
+        }
+        if self.pending_clipboard_forwards.contains_key(&token) {
+            log::debug!(
+                "Dropping stale clipboard reply (token={}, len={} bytes)",
+                token,
+                reply_bytes.len(),
+            );
+            return Ok(());
+        }
         // Stale-reply guard. Both the real `ForwardedReplyFromHost`
         // path and the server-side timeout path land here. If a real
         // reply landed first (releasing the slot AND dispatching the
@@ -3882,6 +3994,7 @@ impl Screen {
                     Vec::new()
                 }
             },
+            HostQuery::ClipboardContent { .. } => query.empty_reply_bytes(),
             // Should not reach here: ColorPaletteMode short-circuits in
             // `forward_host_query` before any cache-fallback path runs.
             HostQuery::ColorPaletteMode => match self.effective_host_terminal_theme_mode() {
@@ -6415,6 +6528,7 @@ impl Screen {
         osc133_command_selection: bool,
         word_separators: String,
         nested_session_handling: NestedSessionHandling,
+        dangerously_enable_paste_buffer_read: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -6444,6 +6558,7 @@ impl Screen {
         self.osc133_command_selection = osc133_command_selection;
         self.word_separators = word_separators;
         self.nested_session_handling = nested_session_handling;
+        self.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
         self.default_mode_info
             .update_arrow_fonts(should_support_arrow_fonts);
         self.default_mode_info
@@ -7627,6 +7742,9 @@ pub(crate) fn screen_thread_main(
     let focus_follows_mouse = config_options.focus_follows_mouse.unwrap_or(false);
     let mouse_click_through = config_options.mouse_click_through.unwrap_or(false);
     let nested_session_handling = config_options.nested_session_handling.unwrap_or_default();
+    let dangerously_enable_paste_buffer_read = config_options
+        .dangerously_enable_paste_buffer_read
+        .unwrap_or(false);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -7679,6 +7797,7 @@ pub(crate) fn screen_thread_main(
     );
     screen.host_theme_dark_styling = host_theme_dark_styling;
     screen.host_theme_light_styling = host_theme_light_styling;
+    screen.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
     let mut pending_tab_switches: HashSet<(usize, ClientId)> = HashSet::new(); // usize is the
@@ -10987,6 +11106,7 @@ pub(crate) fn screen_thread_main(
                 osc133_command_selection,
                 word_separators,
                 nested_session_handling,
+                dangerously_enable_paste_buffer_read,
             } => {
                 screen.host_theme_dark_styling = host_theme_dark;
                 screen.host_theme_light_styling = host_theme_light;
@@ -11016,6 +11136,7 @@ pub(crate) fn screen_thread_main(
                         osc133_command_selection,
                         word_separators,
                         nested_session_handling,
+                        dangerously_enable_paste_buffer_read,
                         client_id,
                     )
                     .non_fatal();

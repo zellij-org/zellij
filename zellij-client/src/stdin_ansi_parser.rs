@@ -187,6 +187,13 @@ pub struct ForwardSlot {
     pub reply_bytes: Vec<u8>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ClipboardForwardSlot {
+    pub token: u32,
+}
+
+pub const CLIENT_CLIPBOARD_FORWARD_TIMEOUT_MS: u64 = 30_000;
+
 /// Return value of `feed()`.
 #[derive(Debug, Clone, Default)]
 pub struct ParseOutput {
@@ -197,6 +204,7 @@ pub struct ParseOutput {
     /// single feed would indicate the host emitted two barriers, in which
     /// case only the first is honored.
     pub completed_forward: Option<(u32, Vec<u8>)>,
+    pub completed_clipboard_forward: Option<(u32, Vec<u8>)>,
     /// OSC 99 notification-response payloads (one per OSC 99 found in
     /// the chunk). Routed by the caller as
     /// `InputInstruction::DesktopNotificationResponse`. Lives here, not
@@ -213,6 +221,15 @@ pub struct ParseOutput {
     /// produced no residue (so a lone trailing ESC isn't stranded
     /// indefinitely). See `StdinAnsiParser::finalize`.
     pub has_partial_state: bool,
+}
+
+fn is_user_input(event: &InputEvent) -> bool {
+    match event {
+        InputEvent::Key(_) | InputEvent::Paste(_) => true,
+        InputEvent::Mouse(mouse_event) => !mouse_event.mouse_buttons.is_empty(),
+        InputEvent::PixelMouse(mouse_event) => !mouse_event.mouse_buttons.is_empty(),
+        _ => false,
+    }
 }
 
 /// Cap on the size of an in-flight partial OSC/CSI buffer. Sized to
@@ -285,6 +302,7 @@ pub struct StdinAnsiParser {
     /// Active forwarding slot: `Some` while a forwarded query is in
     /// flight, `None` otherwise.
     active_forward: Option<ForwardSlot>,
+    active_clipboard_forward: Option<ClipboardForwardSlot>,
     /// Bytes of an OSC sequence whose terminator hasn't arrived yet.
     /// Carried across feed() calls so the next chunk can complete it.
     partial_osc: Vec<u8>,
@@ -312,6 +330,7 @@ impl StdinAnsiParser {
         StdinAnsiParser {
             inner: InputParser::new(),
             active_forward: None,
+            active_clipboard_forward: None,
             partial_osc: Vec::new(),
             partial_csi: Vec::new(),
             partial_paste: Vec::new(),
@@ -383,6 +402,37 @@ impl StdinAnsiParser {
             .map(|slot| (slot.token, slot.reply_bytes))
     }
 
+    pub fn open_clipboard_forward(&mut self, token: u32) {
+        debug_assert!(
+            self.active_clipboard_forward.is_none(),
+            "open_clipboard_forward({}) called while slot for token {:?} is still active",
+            token,
+            self.active_clipboard_forward.as_ref().map(|s| s.token),
+        );
+        self.active_clipboard_forward = Some(ClipboardForwardSlot { token });
+    }
+
+    pub fn close_clipboard_forward_on_timeout(&mut self, token: u32) -> Option<(u32, Vec<u8>)> {
+        match &self.active_clipboard_forward {
+            Some(slot) if slot.token == token => {
+                let slot = self.active_clipboard_forward.take().unwrap();
+                Some((slot.token, Vec::new()))
+            },
+            _ => None,
+        }
+    }
+
+    pub fn take_active_clipboard_forward(&mut self) -> Option<(u32, Vec<u8>)> {
+        self.active_clipboard_forward
+            .take()
+            .map(|slot| (slot.token, Vec::new()))
+    }
+
+    #[cfg(test)]
+    pub fn active_clipboard_forward_token(&self) -> Option<u32> {
+        self.active_clipboard_forward.as_ref().map(|s| s.token)
+    }
+
     /// Currently-open slot's token, if any. Test-only inspector;
     /// production code drives slot lifecycle through `open_forward`,
     /// `close_forward_on_timeout`, and `feed()` directly.
@@ -427,6 +477,15 @@ impl StdinAnsiParser {
                             .push(payload.get(3..).unwrap_or_default().to_vec());
                     } else if let Some(reply) = HostReply::from_osc_payload(&payload) {
                         out.replies.push(reply);
+                    }
+                    if payload.starts_with(b"52;") {
+                        if let Some(slot) = self.active_clipboard_forward.take() {
+                            let mut bytes = b"\x1b]".to_vec();
+                            bytes.extend_from_slice(&payload);
+                            bytes.extend_from_slice(b"\x1b\\");
+                            out.completed_clipboard_forward = Some((slot.token, bytes));
+                            continue;
+                        }
                     }
                     if let Some(slot) = self.active_forward.as_mut() {
                         // Re-serialize so the pane's pty sees a legal OSC.
@@ -479,7 +538,16 @@ impl StdinAnsiParser {
                 // input bytes that are NOT part of a classified reply. To
                 // produce that residue deterministically, we re-scan the
                 // buffer a second time below.
-                _ => {},
+                other => {
+                    if self.active_clipboard_forward.is_some()
+                        && is_user_input(&other)
+                        && out.completed_clipboard_forward.is_none()
+                    {
+                        if let Some(slot) = self.active_clipboard_forward.take() {
+                            out.completed_clipboard_forward = Some((slot.token, Vec::new()));
+                        }
+                    }
+                },
             }
         }
         // Produce the residue: replay the input through a scratch parser
@@ -871,6 +939,27 @@ pub fn schedule_forward_timeout<F>(
     runtime.spawn(async move {
         tokio::time::sleep(deadline).await;
         let payload = parser.lock().unwrap().close_forward_on_timeout(token);
+        if let Some((t, bytes)) = payload {
+            on_timeout(t, bytes);
+        }
+    });
+}
+
+pub fn schedule_clipboard_forward_timeout<F>(
+    runtime: &tokio::runtime::Handle,
+    parser: Arc<Mutex<StdinAnsiParser>>,
+    token: u32,
+    deadline: std::time::Duration,
+    on_timeout: F,
+) where
+    F: FnOnce(u32, Vec<u8>) + Send + 'static,
+{
+    runtime.spawn(async move {
+        tokio::time::sleep(deadline).await;
+        let payload = parser
+            .lock()
+            .unwrap()
+            .close_clipboard_forward_on_timeout(token);
         if let Some((t, bytes)) = payload {
             on_timeout(t, bytes);
         }
