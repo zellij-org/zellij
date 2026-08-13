@@ -295,7 +295,7 @@ pub(crate) fn route_action(
         },
         Action::WriteToPaneId { bytes, pane_id } => {
             senders
-                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
+                .send_to_screen(ScreenInstruction::ClearScrollForPaneId(pane_id.into()))
                 .with_context(err_context)?;
             senders
                 .send_to_screen(ScreenInstruction::WriteToPaneId(
@@ -307,7 +307,7 @@ pub(crate) fn route_action(
         },
         Action::WriteCharsToPaneId { chars, pane_id } => {
             senders
-                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
+                .send_to_screen(ScreenInstruction::ClearScrollForPaneId(pane_id.into()))
                 .with_context(err_context)?;
             let bytes = chars.into_bytes();
             senders

@@ -29,6 +29,10 @@ fn main() {
             commands::subscribe_to_session(subscribe_cli, opts.session, config);
             std::process::exit(0);
         }
+        if let Some(Command::ApiServer(api_opts)) = opts.command {
+            commands::start_api_server(api_opts);
+            std::process::exit(0);
+        }
         if let Some(Command::Sessions(Sessions::Run {
             command,
             direction,

@@ -39,6 +39,50 @@
     </a>
 </p>
 
+# Remote control over WebSocket
+
+Zellij sessions can optionally be driven over a **WebSocket control plane**,
+so that a remote program — rather than a person at a keyboard — creates,
+inspects and drives them.
+
+```sh
+zellij api-server --port 8787 --token <secret>
+```
+
+- **Sessions and tabs through the API** — create, list, rename, focus and close.
+- **Focus is controllable** — the API attaches a real client to each session, so
+  focusing a tab or pane actually moves focus (and is confirmed before the
+  command returns). Splits, "current tab" behaviour and unaddressed input all
+  follow it, exactly as they would for a person at a terminal.
+- **Input through the API** — type text, send named keys (`ctrl-c`, `enter`,
+  `f5`), and click with the mouse, addressed to a specific pane in a specific
+  tab in a specific session.
+- **Screen history as diffs** — each pane's canvas is treated as a file, and
+  every change to it is reported as a unified, git-style diff:
+
+  ```
+  @@ -3,1 +3,1 @@
+  -sudr
+  +sudo
+  ```
+
+  Diffs stream live as `screen.diff` events and are kept in a per-pane history
+  you can replay from any version.
+
+Sessions started this way are ordinary Zellij sessions — `zellij attach`,
+`zellij list-sessions` and friends all see and can interact with them exactly
+as they would a session started interactively. The API is an additional way
+in, not a separate namespace.
+
+The protocol, the design, and how to run and test it are documented in
+**[REMOTE_API.md](./REMOTE_API.md)**. All the new code lives in the
+`zellij-api/` crate.
+
+**An MCP server** (`zellij-mcp/`) exposes the same API as MCP tools — list
+sessions, attach to one, drive it, read its screen — for any MCP-speaking agent
+(Claude included). It's a thin client of the WebSocket API above, not a second
+implementation of session control. See **[MCP.md](./MCP.md)**.
+
 # What is this?
 
 [Zellij](#origin-of-the-name) is a workspace aimed at developers, ops-oriented people and anyone who loves the terminal. Similar programs are sometimes called "Terminal Multiplexers".

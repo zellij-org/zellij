@@ -530,6 +530,22 @@ pub fn validate_session_name(name: &str) -> Result<(), String> {
     if name.contains('/') {
         return Err("Session name cannot contain '/'.".to_string());
     }
+    // Unix domain socket paths have a hard OS limit (`sockaddr_un.sun_path`).
+    // The interactive CLI checks this once it has a full socket path in hand
+    // (`zellij_client::check_ipc_pipe_length`) and exits cleanly if it's too
+    // long; callers that only ever see the bare name — like this function's
+    // — would otherwise let an overlong name straight through, and the
+    // session server fails silently at `bind()` far downstream, with no
+    // clean error anywhere near the caller.
+    let socket_path_len = crate::consts::ZELLIJ_SOCK_DIR.join(name).as_os_str().len();
+    if socket_path_len >= crate::consts::ZELLIJ_SOCK_MAX_LENGTH {
+        return Err(format!(
+            "session name \"{}\" is too long: the socket path would be {} bytes, over the OS limit of {}",
+            name,
+            socket_path_len,
+            crate::consts::ZELLIJ_SOCK_MAX_LENGTH - 1,
+        ));
+    }
     Ok(())
 }
 
