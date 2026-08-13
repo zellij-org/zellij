@@ -428,12 +428,15 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
                     pane_id: Some(pane_id.into()),
                 })
             },
-            ServerToClientMsg::ForwardQueryToHost { token, query_bytes } => {
-                server_to_client_msg::Message::ForwardQueryToHost(ForwardQueryToHostMsg {
-                    token,
-                    query_bytes,
-                })
-            },
+            ServerToClientMsg::ForwardQueryToHost {
+                token,
+                query_bytes,
+                resolve_async,
+            } => server_to_client_msg::Message::ForwardQueryToHost(ForwardQueryToHostMsg {
+                token,
+                query_bytes,
+                resolve_async,
+            }),
             ServerToClientMsg::SetSoftKeyboard { on } => {
                 server_to_client_msg::Message::SetSoftKeyboard(SetSoftKeyboardMsg { on })
             },
@@ -674,6 +677,7 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                 Ok(ServerToClientMsg::ForwardQueryToHost {
                     token: msg.token,
                     query_bytes: msg.query_bytes,
+                    resolve_async: msg.resolve_async,
                 })
             },
             Some(server_to_client_msg::Message::SetSoftKeyboard(msg)) => {
@@ -921,6 +925,7 @@ impl From<crate::input::options::Options>
             }),
             stacked_resize: options.stacked_resize,
             stacked_pane_list: options.stacked_pane_list,
+            dangerously_enable_paste_buffer_read: options.dangerously_enable_paste_buffer_read,
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
@@ -1046,6 +1051,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 .transpose()?,
             stacked_resize: options.stacked_resize,
             stacked_pane_list: options.stacked_pane_list,
+            dangerously_enable_paste_buffer_read: options.dangerously_enable_paste_buffer_read,
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,

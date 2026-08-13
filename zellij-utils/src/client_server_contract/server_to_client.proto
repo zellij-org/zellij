@@ -96,6 +96,7 @@ message SubscribedPaneClosedMsg {
 message ForwardQueryToHostMsg {
   uint32 token = 1;
   bytes query_bytes = 2;
+  bool resolve_async = 3;
 }
 
 message SetSoftKeyboardMsg {

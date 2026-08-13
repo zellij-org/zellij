@@ -523,6 +523,14 @@ load_plugins {
 //
 // stacked_resize false
 
+// Whether to let programs running inside panes read the paste buffer (clipboard)
+// with the OSC 52 escape sequence. When enabled, any program in any pane -
+// including one running on a remote machine over SSH - can read the clipboard
+// without the user being asked.
+// Default: false
+//
+// dangerously_enable_paste_buffer_read true
+
 // Whether stacked panes display as a list with the expanded pane pinned to the bottom
 // Default: true
 //

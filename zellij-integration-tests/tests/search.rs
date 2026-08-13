@@ -77,7 +77,9 @@ fn search_input_jumps_to_a_match() {
     zellij.send_stdin(b"NEEDLE");
 
     let grid_snapshot = zellij.wait_until("scrolled to the typed match", |grid_snapshot| {
-        grid_snapshot.contains("line05") && grid_snapshot.contains("ENTERING SEARCH TERM")
+        grid_snapshot.contains("line05")
+            && grid_snapshot.contains("ENTERING SEARCH TERM")
+            && grid_snapshot.contains("SCROLL 15/19")
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -94,7 +96,9 @@ fn search_up_to_previous_match() {
 
     let grid_snapshot =
         zellij.wait_until("upper match revealed by searching up", |grid_snapshot| {
-            grid_snapshot.contains("NEEDLE upper") && grid_snapshot.contains("PgDn|PgUp")
+            grid_snapshot.contains("NEEDLE upper")
+                && grid_snapshot.contains("PgDn|PgUp")
+                && grid_snapshot.contains("SCROLL 15/19")
         });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();

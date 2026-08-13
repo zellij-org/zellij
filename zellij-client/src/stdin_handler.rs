@@ -142,6 +142,15 @@ pub(crate) fn stdin_loop(
                                 },
                             );
                         }
+                        if let Some((token, reply_bytes)) = parse_output.completed_clipboard_forward
+                        {
+                            let _ = send_input_instructions.send(
+                                InputInstruction::ForwardedReplyFromHostComplete {
+                                    token,
+                                    reply_bytes,
+                                },
+                            );
+                        }
                         for payload in parse_output.desktop_notifications {
                             let _ = send_input_instructions
                                 .send(InputInstruction::DesktopNotificationResponse(payload));

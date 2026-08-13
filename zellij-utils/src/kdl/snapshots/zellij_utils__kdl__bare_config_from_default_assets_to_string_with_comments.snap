@@ -619,6 +619,13 @@ web_client {
 // Note: This only applies to web clients at the moment.
 // client_async_worker_tasks 4
  
+// Whether to let programs running inside panes read the paste buffer
+// (clipboard) with the OSC 52 escape sequence. When enabled, any program
+// in any pane - including one running on a remote machine over SSH - can
+// read the clipboard without the user being asked.
+// Default: false
+// dangerously_enable_paste_buffer_read false
+ 
 // How to handle a nested Zellij session detected inside a pane.
 // Options:
 //   - "ask" (Default — prompt with a modal)

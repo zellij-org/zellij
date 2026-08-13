@@ -731,6 +731,7 @@ pub struct Grid {
     pub pending_nested_session_messages: Vec<NestedSessionMessage>,
     ui_component_bytes: Option<Vec<u8>>,
     nested_frame_bytes: Option<Vec<u8>>,
+    xtgettcap_bytes: Option<Vec<u8>>,
     style: Style,
     debug: bool,
     arrow_fonts: bool,
@@ -804,6 +805,30 @@ fn rgb_to_hex_string((r, g, b): (u8, u8, u8)) -> String {
 fn osc_color_reply_body((r, g, b): (u8, u8, u8)) -> String {
     let expand = |c: u8| (c as u16) * 0x0101;
     format!("rgb:{:04x}/{:04x}/{:04x}", expand(r), expand(g), expand(b))
+}
+
+fn decode_hex_ascii(hex: &[u8]) -> Option<String> {
+    if hex.is_empty() || hex.len() % 2 != 0 {
+        return None;
+    }
+    let mut out = String::with_capacity(hex.len() / 2);
+    for pair in hex.chunks(2) {
+        let high = (pair[0] as char).to_digit(16)?;
+        let low = (pair[1] as char).to_digit(16)?;
+        let byte = (high * 16 + low) as u8;
+        if !byte.is_ascii_graphic() {
+            return None;
+        }
+        out.push(byte as char);
+    }
+    Some(out)
+}
+
+fn encode_hex_ascii(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| format!("{:02X}", byte))
+        .collect::<String>()
 }
 
 /// A compiled highlight entry for one plugin/pattern combination.
@@ -1085,6 +1110,7 @@ impl Grid {
             pending_nested_session_messages: Vec::new(),
             ui_component_bytes: None,
             nested_frame_bytes: None,
+            xtgettcap_bytes: None,
             style,
             debug,
             arrow_fonts,
@@ -3906,6 +3932,19 @@ impl Grid {
         self.pending_messages_to_pty
             .push(format!("\u{1b}[?997;{}n", code).into_bytes());
     }
+    fn answer_xtgettcap(&mut self, payload: &[u8]) {
+        for name_hex in payload.split(|byte| *byte == b';') {
+            let reply = match decode_hex_ascii(name_hex).as_deref() {
+                Some("Ms") => format!(
+                    "\u{1b}P1+r{}={}\u{1b}\\",
+                    encode_hex_ascii("Ms"),
+                    encode_hex_ascii("\u{1b}]52;%p1%s;%p2%s\u{7}"),
+                ),
+                _ => "\u{1b}P0+r\u{1b}\\".to_owned(),
+            };
+            self.pending_messages_to_pty.push(reply.into_bytes());
+        }
+    }
     pub fn lock_renders(&mut self) {
         self.lock_renders = true;
     }
@@ -4100,7 +4139,9 @@ impl Perform for Grid {
     }
 
     fn hook(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, c: char) {
-        if c == 'q' {
+        if c == 'q' && intermediates.get(0) == Some(&b'+') {
+            self.xtgettcap_bytes = Some(vec![]);
+        } else if c == 'q' && intermediates.is_empty() {
             // we only process sixel images if we know the pixel size of each character cell,
             // otherwise we can't reliably display them
             if self.current_cursor_pixel_coordinates().is_some() {
@@ -4138,6 +4179,8 @@ impl Perform for Grid {
             ui_component_bytes.push(byte);
         } else if let Some(nested_frame_bytes) = self.nested_frame_bytes.as_mut() {
             nested_frame_bytes.push(byte);
+        } else if let Some(xtgettcap_bytes) = self.xtgettcap_bytes.as_mut() {
+            xtgettcap_bytes.push(byte);
         }
     }
 
@@ -4157,6 +4200,8 @@ impl Perform for Grid {
             {
                 self.pending_nested_session_messages.push(message);
             }
+        } else if let Some(xtgettcap_bytes) = self.xtgettcap_bytes.take() {
+            self.answer_xtgettcap(&xtgettcap_bytes);
         }
         self.mark_for_rerender();
     }
@@ -4354,10 +4399,17 @@ impl Perform for Grid {
                     return;
                 }
 
-                let _clipboard = params[1].get(0).unwrap_or(&b'c');
+                let clipboard = *params[1].get(0).unwrap_or(&b'c');
                 match params[2] {
                     b"?" => {
-                        // TBD: paste from own clipboard - currently unsupported
+                        self.pending_forwarded_queries.push(
+                            crate::host_query::HostQuery::ClipboardContent {
+                                selection: clipboard as char,
+                                terminator: crate::host_query::OscTerminator::from_bell_terminated(
+                                    bell_terminated,
+                                ),
+                            },
+                        );
                     },
                     base64 => {
                         if let Ok(bytes) = BASE64_DECODER.decode(base64) {

@@ -291,6 +291,7 @@ pub enum ServerToClientMsg {
     ForwardQueryToHost {
         token: u32,
         query_bytes: Vec<u8>,
+        resolve_async: bool,
     },
     EmitNestedSessionFrame {
         payload_bytes: Vec<u8>,
