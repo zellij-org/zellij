@@ -59,6 +59,16 @@ The easiest way to install Zellij is through a [package for your OS](./docs/THIR
 
 If one is not available for your OS, you could download a prebuilt binary from the [latest release](https://github.com/zellij-org/zellij/releases/latest) and place it in your `$PATH`. If you'd like, we could [automatically choose one for you](#try-zellij-without-installing).
 
+On Debian/Ubuntu and Fedora/RHEL/openSUSE, every release also ships `.deb` and `.rpm` packages that install `zellij` into `/usr/bin` along with a desktop entry and icon:
+
+```bash
+# Debian/Ubuntu (use aarch64-unknown-linux-musl on ARM)
+sudo dpkg -i zellij-x86_64-unknown-linux-musl.deb
+
+# Fedora/RHEL/openSUSE
+sudo rpm -i zellij-x86_64-unknown-linux-musl.rpm
+```
+
 You can also install (compile) with `cargo`:
 
 ```
