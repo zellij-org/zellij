@@ -134,13 +134,36 @@ lto = true
 strip = true
 codegen-units = 1
 
+# Release binaries are statically linked against musl, so there is nothing to
+# depend on. `$auto` would shell out to dpkg-shlibdeps, which cannot inspect a
+# foreign-architecture binary when we cross-compile for aarch64.
 [package.metadata.deb]
-depends = "$auto"
+depends = ""
+section = "utils"
+priority = "optional"
 license-file = ["LICENSE.md", "4"]
+extended-description = """\
+Zellij is a terminal workspace and multiplexer. It splits the terminal into \
+panes and tabs, keeps sessions alive across disconnects and is extensible \
+through WebAssembly plugins."""
 assets = [
   ["target/release/zellij", "usr/bin/zellij", "755"],
+  ["assets/zellij.desktop", "usr/share/applications/zellij.desktop", "644"],
+  ["assets/logo.svg", "usr/share/icons/hicolor/scalable/apps/zellij.svg", "644"],
   ["GOVERNANCE.md", "usr/share/doc/zellij/GOVERNANCE.md", "644"],
   ["README.md", "usr/share/doc/zellij/README.md", "644"],
+]
+
+[package.metadata.generate-rpm]
+# Same reasoning as `metadata.deb.depends` above.
+auto-req = "disabled"
+assets = [
+  { source = "target/release/zellij", dest = "/usr/bin/zellij", mode = "755" },
+  { source = "assets/zellij.desktop", dest = "/usr/share/applications/zellij.desktop", mode = "644" },
+  { source = "assets/logo.svg", dest = "/usr/share/icons/hicolor/scalable/apps/zellij.svg", mode = "644" },
+  { source = "LICENSE.md", dest = "/usr/share/doc/zellij/LICENSE.md", mode = "644", doc = true },
+  { source = "GOVERNANCE.md", dest = "/usr/share/doc/zellij/GOVERNANCE.md", mode = "644", doc = true },
+  { source = "README.md", dest = "/usr/share/doc/zellij/README.md", mode = "644", doc = true },
 ]
 
 [package.metadata.binstall]

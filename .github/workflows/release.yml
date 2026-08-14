@@ -167,6 +167,71 @@ jobs:
           asset_name: zellij-${{matrix.target}}.sha256sum
           asset_content_type: text/plain
 
+      # ===== Linux .deb / .rpm packages =====
+      - name: Install packaging tools
+        if: runner.os == 'Linux'
+        run: cargo install cargo-deb cargo-generate-rpm --locked
+
+      - name: Build .deb and .rpm packages
+        if: runner.os == 'Linux'
+        run: |
+          # The binary is already stripped by the release profile, and a host
+          # `strip` cannot process a cross-compiled binary anyway.
+          cargo deb --no-build --no-strip --target "${{ matrix.target }}" \
+            --output "zellij-${{ matrix.target }}.deb"
+          cargo generate-rpm --target "${{ matrix.target }}" \
+            --output "zellij-${{ matrix.target }}.rpm"
+
+      - name: Create package checksums
+        if: runner.os == 'Linux'
+        run: |
+          sha256sum "zellij-${{ matrix.target }}.deb" > "zellij-${{ matrix.target }}.deb.sha256sum"
+          sha256sum "zellij-${{ matrix.target }}.rpm" > "zellij-${{ matrix.target }}.rpm.sha256sum"
+
+      - name: Upload .deb package
+        if: runner.os == 'Linux'
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: zellij-${{ matrix.target }}.deb
+          asset_name: zellij-${{ matrix.target }}.deb
+          asset_content_type: application/vnd.debian.binary-package
+
+      - name: Upload .deb checksum
+        if: runner.os == 'Linux'
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: zellij-${{ matrix.target }}.deb.sha256sum
+          asset_name: zellij-${{ matrix.target }}.deb.sha256sum
+          asset_content_type: text/plain
+
+      - name: Upload .rpm package
+        if: runner.os == 'Linux'
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: zellij-${{ matrix.target }}.rpm
+          asset_name: zellij-${{ matrix.target }}.rpm
+          asset_content_type: application/x-rpm
+
+      - name: Upload .rpm checksum
+        if: runner.os == 'Linux'
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: zellij-${{ matrix.target }}.rpm.sha256sum
+          asset_name: zellij-${{ matrix.target }}.rpm.sha256sum
+          asset_content_type: text/plain
+
       # ===== Windows MSI installer =====
       - name: Install WiX v6
         if: runner.os == 'Windows'
