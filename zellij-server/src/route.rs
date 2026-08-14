@@ -294,8 +294,13 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::WriteToPaneId { bytes, pane_id } => {
+            // we clear the scroll of the *targeted* pane rather than of the active one, so that
+            // writing to a background pane does not disturb the pane the user is looking at
             senders
-                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
+                .send_to_screen(ScreenInstruction::ScrollToBottomWithPaneId(
+                    pane_id.into(),
+                    None,
+                ))
                 .with_context(err_context)?;
             senders
                 .send_to_screen(ScreenInstruction::WriteToPaneId(
@@ -307,7 +312,10 @@ pub(crate) fn route_action(
         },
         Action::WriteCharsToPaneId { chars, pane_id } => {
             senders
-                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
+                .send_to_screen(ScreenInstruction::ScrollToBottomWithPaneId(
+                    pane_id.into(),
+                    None,
+                ))
                 .with_context(err_context)?;
             let bytes = chars.into_bytes();
             senders
@@ -319,9 +327,17 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::Paste { chars, pane_id } => {
-            senders
-                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
-                .with_context(err_context)?;
+            match pane_id {
+                Some(pane_id) => senders
+                    .send_to_screen(ScreenInstruction::ScrollToBottomWithPaneId(
+                        pane_id.into(),
+                        None,
+                    ))
+                    .with_context(err_context)?,
+                None => senders
+                    .send_to_screen(ScreenInstruction::ClearScroll(client_id))
+                    .with_context(err_context)?,
+            }
             let bytes = chars.into_bytes();
             senders
                 .send_to_screen(ScreenInstruction::Paste(
@@ -3418,5 +3434,86 @@ mod tests {
         assert_eq!(cloned.affected_tab_id, Some(99));
         // But channel should be None (as per the Clone implementation comment)
         assert!(cloned.channel.is_none());
+    }
+
+    // routes `action` through `route_action` with a mock screen sender, draining the screen
+    // channel in a background thread (so that the `NotificationEnd`s are dropped and the action
+    // completes) and returning the names of the ScreenInstructions that were sent
+    fn screen_instructions_for(action: Action) -> Vec<String> {
+        use zellij_utils::channels::{self, ChannelWithContext};
+        use zellij_utils::errors::ScreenContext;
+        let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> =
+            channels::unbounded();
+        let mut senders = ThreadSenders::default().silently_fail_on_send();
+        senders.to_screen = Some(SenderWithContext::new(to_screen));
+        let drainer = thread::spawn(move || {
+            let mut instruction_names = vec![];
+            while let Ok((instruction, _ctx)) = screen_receiver.recv() {
+                instruction_names.push(format!("{:?}", ScreenContext::from(&instruction)));
+            }
+            instruction_names
+        });
+        route_action(
+            action,
+            1,
+            None,
+            None,
+            senders,
+            None,
+            None,
+            InputMode::Normal,
+            None,
+        )
+        .unwrap();
+        drainer.join().unwrap()
+    }
+
+    #[test]
+    fn targeted_writes_do_not_clear_the_scroll_of_the_active_pane() {
+        // regression test for https://github.com/zellij-org/zellij/issues/5476
+        use zellij_utils::data::PaneId as DataPaneId;
+        for action in [
+            Action::WriteToPaneId {
+                bytes: vec![102],
+                pane_id: DataPaneId::Terminal(2),
+            },
+            Action::WriteCharsToPaneId {
+                chars: "f".to_owned(),
+                pane_id: DataPaneId::Terminal(2),
+            },
+            Action::Paste {
+                chars: "f".to_owned(),
+                pane_id: Some(DataPaneId::Terminal(2)),
+            },
+        ] {
+            let instructions = screen_instructions_for(action.clone());
+            assert!(
+                !instructions.iter().any(|i| i == "ClearScroll"),
+                "targeted action {action:?} must not clear the active pane scroll, got: {instructions:?}"
+            );
+            assert!(
+                instructions.iter().any(|i| i == "ScrollToBottomWithPaneId"),
+                "targeted action {action:?} must scroll the target pane to the bottom, got: {instructions:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn non_targeted_writes_still_clear_the_scroll_of_the_active_pane() {
+        for action in [
+            Action::WriteChars {
+                chars: "f".to_owned(),
+            },
+            Action::Paste {
+                chars: "f".to_owned(),
+                pane_id: None,
+            },
+        ] {
+            let instructions = screen_instructions_for(action.clone());
+            assert!(
+                instructions.iter().any(|i| i == "ClearScroll"),
+                "non-targeted action {action:?} must clear the active pane scroll, got: {instructions:?}"
+            );
+        }
     }
 }
