@@ -141,7 +141,38 @@ fn fn_index_to_main_key(index: u8) -> Result<ProtobufMainKey, &'static str> {
 }
 
 fn char_index_to_char(char_index: i32) -> char {
-    char_index as u8 as char
+    char::from_u32(char_index as u32).unwrap_or('\u{FFFD}')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn char_round_trip_preserves_unicode() {
+        let characters = ['中', '文', '搜', '索', 'é', 'ß', '𐍈'];
+        for character in characters {
+            let protobuf_main_key = ProtobufMainKey::try_from(BareKey::Char(character)).unwrap();
+            let protobuf_key = ProtobufKey {
+                main_key: Some(protobuf_main_key),
+                modifier: None,
+                additional_modifiers: vec![],
+            };
+            let key: KeyWithModifier = protobuf_key.try_into().unwrap();
+            assert_eq!(
+                key.bare_key,
+                BareKey::Char(character),
+                "char {character:?} should survive the plugin key round trip"
+            );
+        }
+    }
+
+    #[test]
+    fn char_index_to_char_handles_non_ascii() {
+        assert_eq!(char_index_to_char('中' as i32), '中');
+        assert_eq!(char_index_to_char('文' as i32), '文');
+        assert_eq!(char_index_to_char('é' as i32), 'é');
+    }
 }
 
 fn named_key_to_bare_key(named_key: ProtobufNamedKey) -> BareKey {
