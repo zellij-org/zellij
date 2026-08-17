@@ -964,6 +964,14 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    ';',
+                ),
+                key_modifiers: {},
+            }: [
+                FocusLastPane,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     '=',
                 ),
                 key_modifiers: {

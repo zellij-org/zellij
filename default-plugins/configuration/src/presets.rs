@@ -28,6 +28,7 @@ keybinds clear-defaults=true {{
         bind "j" "Down" {{ MoveFocus "Down"; }}
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "Tab" {{ SwitchFocus; }}
+        bind ";" {{ FocusLastPane; }}
         bind "n" {{ NewPane; SwitchToMode "Locked"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Locked"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Locked"; }}
@@ -260,6 +261,7 @@ keybinds clear-defaults=true {{
         bind "j" "Down" {{ MoveFocus "Down"; }}
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
+        bind ";" {{ FocusLastPane; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
@@ -503,6 +505,7 @@ keybinds clear-defaults=true {{
         bind "j" "Down" {{ MoveFocus "Down"; }}
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
+        bind ";" {{ FocusLastPane; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
@@ -717,6 +720,7 @@ keybinds clear-defaults=true {{
         bind "j" "Down" {{ MoveFocus "Down"; }}
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
+        bind ";" {{ FocusLastPane; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
@@ -938,6 +942,7 @@ keybinds clear-defaults=true {{
         bind "j" "Down" {{ MoveFocus "Down"; }}
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
+        bind ";" {{ FocusLastPane; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
@@ -1134,6 +1139,7 @@ keybinds clear-defaults=true {{
         bind "j" "Down" {{ MoveFocus "Down"; }}
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
+        bind ";" {{ FocusLastPane; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
