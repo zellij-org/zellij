@@ -1112,6 +1112,33 @@ fn wrapping_move_of_active_tab_to_left() {
 }
 
 #[test]
+fn serialized_layout_metadata_follows_tab_display_order() {
+    let mut screen = create_fixed_size_screen();
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+
+    screen.move_active_tab_to_left(1).expect("TEST");
+
+    let layout_metadata = screen.get_layout_metadata(None, None).to_layout_metadata();
+    let tab_names: Vec<Option<String>> = layout_metadata
+        .tabs
+        .iter()
+        .map(|tab| tab.name.clone())
+        .collect();
+
+    assert_eq!(
+        tab_names,
+        vec![
+            Some("Tab #1".to_string()),
+            Some("Tab #3".to_string()),
+            Some("Tab #2".to_string()),
+        ],
+        "Serialized tabs follow display order rather than creation order"
+    );
+}
+
+#[test]
 fn basic_move_of_active_tab_to_right() {
     let mut screen = create_fixed_size_screen();
     new_tab(&mut screen, 1, 0);
