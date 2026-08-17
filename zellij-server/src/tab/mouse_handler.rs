@@ -1012,8 +1012,12 @@ impl MouseHandler {
         let mut leave_clipboard_message = false;
         let copy_on_release = tab.copy_on_select;
 
+        // a release must always clear this state, even if the selecting pane was closed
+        // or its terminal enabled mouse tracking mid-drag, otherwise future left-motions
+        // would keep updating the stale selection
         if let Some(pane_with_selection) = tab
             .selecting_with_mouse_in_pane
+            .take()
             .and_then(|p_id| tab.get_pane_with_id_mut(p_id))
         {
             let mut relative_position = pane_with_selection.relative_position(&position);
@@ -1048,7 +1052,6 @@ impl MouseHandler {
                         }
                     }
                 }
-                tab.selecting_with_mouse_in_pane = None;
             }
         }
 
