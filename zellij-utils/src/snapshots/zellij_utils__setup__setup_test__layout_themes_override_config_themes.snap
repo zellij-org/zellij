@@ -1073,6 +1073,19 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Shift,
+                },
+            }: [
+                ToggleFocusNoUiFullscreen,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -1349,6 +1362,7 @@ Config {
                     command: None,
                     pane_name: None,
                     near_current_pane: false,
+                    no_focus: false,
                     tab_id: None,
                 },
                 SwitchToMode {
@@ -4149,11 +4163,33 @@ Config {
                 bare_key: Char(
                     '[',
                 ),
+                key_modifiers: {},
+            }: [
+                FocusGuestSession,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
                 PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {},
+            }: [
+                FocusHostSession,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -4246,6 +4282,17 @@ Config {
                 key_modifiers: {},
             }: [
                 Detach,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleHostFullscreen,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -5993,6 +6040,7 @@ Config {
         theme_dir: None,
         mouse_mode: None,
         pane_frames: None,
+        pane_frame_style: None,
         mirror_session: None,
         on_force_close: None,
         scroll_buffer_size: None,
@@ -6011,16 +6059,21 @@ Config {
         serialization_interval: None,
         disable_session_metadata: None,
         support_kitty_keyboard_protocol: None,
+        support_kitty_graphics_protocol: None,
         web_server: None,
         web_sharing: None,
         stacked_resize: None,
+        stacked_pane_list: None,
         show_startup_tips: None,
         show_release_notes: None,
         advanced_mouse_actions: None,
+        mouse_scroll_resize: None,
         mouse_hover_effects: None,
         visual_bell: None,
         focus_follows_mouse: None,
         mouse_click_through: None,
+        osc133_command_selection: None,
+        word_separators: None,
         web_server_ip: None,
         web_server_port: None,
         web_server_cert: None,
@@ -6028,6 +6081,8 @@ Config {
         enforce_https_for_localhost: None,
         post_command_discovery_hook: None,
         client_async_worker_tasks: None,
+        nested_session_handling: None,
+        dangerously_enable_paste_buffer_read: None,
     },
     themes: {
         "other-theme-from-config": Theme {
@@ -7960,5 +8015,6 @@ Config {
         cursor_style: None,
         mac_option_is_meta: true,
         base_url: None,
+        font_size: None,
     },
 }

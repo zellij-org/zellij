@@ -8,7 +8,7 @@ use uuid::Uuid;
 use zellij_tile::prelude::*;
 
 use new_session_info::NewSessionInfo;
-use single_screen::{SingleScreenMode, SingleScreenState, UnifiedSearchResult};
+use single_screen::{DeleteTarget, SingleScreenMode, SingleScreenState, UnifiedSearchResult};
 use ui::{
     components::{
         render_controls_line, render_error, render_new_session_block, render_prompt,
@@ -37,20 +37,20 @@ impl Default for ActiveScreen {
 }
 
 #[derive(Default)]
-struct State {
+pub(crate) struct State {
     session_name: Option<String>,
-    sessions: SessionList,
-    resurrectable_sessions: ResurrectableSessions,
+    pub(crate) sessions: SessionList,
+    pub(crate) resurrectable_sessions: ResurrectableSessions,
     search_term: String,
     new_session_info: NewSessionInfo,
-    renaming_session_name: Option<String>,
-    error: Option<String>,
-    active_screen: ActiveScreen,
-    colors: Colors,
-    is_welcome_screen: bool,
+    pub(crate) renaming_session_name: Option<String>,
+    pub(crate) error: Option<String>,
+    pub(crate) active_screen: ActiveScreen,
+    pub(crate) colors: Colors,
+    pub(crate) is_welcome_screen: bool,
     is_multi_screen: bool,
-    single_screen_state: SingleScreenState,
-    show_kill_all_sessions_warning: bool,
+    pub(crate) single_screen_state: SingleScreenState,
+    pub(crate) show_kill_all_sessions_warning: bool,
     request_ids: Vec<String>,
     is_web_client: bool,
     current_session_last_saved_time: Option<u64>,
@@ -150,7 +150,11 @@ impl ZellijPlugin for State {
             },
             Event::ModeUpdate(mode_info) => {
                 self.colors = Colors::new(mode_info.style.colors);
+                let was_web_client = self.is_web_client;
                 self.is_web_client = mode_info.is_web_client.unwrap_or(false);
+                if was_web_client != self.is_web_client {
+                    self.refresh_session_list();
+                }
                 should_render = true;
             },
             Event::Key(key) => {
@@ -523,11 +527,26 @@ impl State {
             match key.bare_key {
                 BareKey::Char('y') if key.has_no_modifiers() => {
                     let all_other_sessions = self.sessions.all_other_sessions();
-                    kill_sessions(&all_other_sessions);
-                    self.reset_selected_index();
-                    self.search_term.clear();
-                    self.sessions
-                        .update_search_term(&self.search_term, &self.colors);
+                    let was_searching = self.sessions.is_searching;
+                    let prev_search_idx = self.sessions.selected_search_index;
+                    let prev_top_idx = self.sessions.selected_index.0;
+                    match kill_sessions(&all_other_sessions) {
+                        Ok(()) => {
+                            self.sessions
+                                .session_ui_infos
+                                .retain(|s| !all_other_sessions.contains(&s.name));
+                            self.sessions
+                                .update_search_term(&self.search_term, &self.colors);
+                            self.sessions.restore_selection_after_delete(
+                                was_searching,
+                                prev_search_idx,
+                                prev_top_idx,
+                            );
+                        },
+                        Err(e) => {
+                            self.show_error(&format!("Failed to kill sessions: {}", e));
+                        },
+                    }
                     self.show_kill_all_sessions_warning = false;
                     should_render = true;
                 },
@@ -599,11 +618,26 @@ impl State {
                 },
                 BareKey::Delete if key.has_no_modifiers() => {
                     if let Some(selected_session_name) = self.sessions.get_selected_session_name() {
-                        kill_sessions(&[selected_session_name]);
-                        self.reset_selected_index();
-                        self.search_term.clear();
-                        self.sessions
-                            .update_search_term(&self.search_term, &self.colors);
+                        let was_searching = self.sessions.is_searching;
+                        let prev_search_idx = self.sessions.selected_search_index;
+                        let prev_top_idx = self.sessions.selected_index.0;
+                        match kill_sessions(&[selected_session_name.clone()]) {
+                            Ok(()) => {
+                                self.sessions
+                                    .session_ui_infos
+                                    .retain(|s| s.name != selected_session_name);
+                                self.sessions
+                                    .update_search_term(&self.search_term, &self.colors);
+                                self.sessions.restore_selection_after_delete(
+                                    was_searching,
+                                    prev_search_idx,
+                                    prev_top_idx,
+                                );
+                            },
+                            Err(e) => {
+                                self.show_error(&format!("Failed to kill session: {}", e));
+                            },
+                        }
                     } else {
                         self.show_error("Must select session before killing it.");
                     }
@@ -629,7 +663,7 @@ impl State {
                         self.reset_selected_index();
                     } else if !self.is_welcome_screen {
                         self.reset_selected_index();
-                        hide_self();
+                        close_self();
                     }
                     should_render = true;
                 },
@@ -642,7 +676,7 @@ impl State {
                         self.renaming_session_name = None;
                         should_render = true;
                     } else if !self.is_welcome_screen {
-                        hide_self();
+                        close_self();
                     }
                 },
                 BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
@@ -704,7 +738,7 @@ impl State {
             },
             BareKey::Esc if key.has_no_modifiers() => {
                 if !self.is_welcome_screen {
-                    hide_self();
+                    close_self();
                 }
             },
             _ => {},
@@ -725,7 +759,23 @@ impl State {
             match key.bare_key {
                 BareKey::Char('y') if key.has_no_modifiers() => {
                     let all_other_sessions = self.sessions.all_other_sessions();
-                    kill_sessions(&all_other_sessions);
+                    let previous_index = self.single_screen_state.selected_index;
+                    match kill_sessions(&all_other_sessions) {
+                        Ok(()) => {
+                            self.sessions
+                                .session_ui_infos
+                                .retain(|s| !all_other_sessions.contains(&s.name));
+                            self.single_screen_state.update_search_term(
+                                &self.sessions.session_ui_infos,
+                                &self.resurrectable_sessions.all_resurrectable_sessions,
+                            );
+                            self.single_screen_state
+                                .restore_selection_after_delete(previous_index);
+                        },
+                        Err(e) => {
+                            self.show_error(&format!("Failed to kill sessions: {}", e));
+                        },
+                    }
                     self.show_kill_all_sessions_warning = false;
                     should_render = true;
                 },
@@ -821,16 +871,35 @@ impl State {
                 should_render = true;
             },
             BareKey::Delete if key.has_no_modifiers() => {
-                if let Some(result) = self.single_screen_state.get_selected_result() {
-                    match result {
-                        UnifiedSearchResult::ActiveSession { session_name, .. } => {
-                            kill_sessions(&[session_name.clone()]);
+                let selected = self
+                    .single_screen_state
+                    .get_selected_result()
+                    .map(|r| r.as_delete_target());
+                if let Some(target) = selected {
+                    let previous_index = self.single_screen_state.selected_index;
+                    let outcome: Result<(), String> = match &target {
+                        DeleteTarget::Active(name) => kill_sessions(&[name.clone()]).map(|()| {
+                            self.sessions.session_ui_infos.retain(|s| s.name != *name);
+                        }),
+                        DeleteTarget::Resurrectable(name) => delete_dead_session(name).map(|()| {
+                            self.resurrectable_sessions
+                                .all_resurrectable_sessions
+                                .retain(|(n, _)| n != name);
+                        }),
+                    };
+                    match outcome {
+                        Ok(()) => {
+                            self.single_screen_state.update_search_term(
+                                &self.sessions.session_ui_infos,
+                                &self.resurrectable_sessions.all_resurrectable_sessions,
+                            );
+                            self.single_screen_state
+                                .restore_selection_after_delete(previous_index);
                         },
-                        UnifiedSearchResult::ResurrectableSession { session_name, .. } => {
-                            delete_dead_session(session_name);
+                        Err(e) => {
+                            self.show_error(&format!("Failed to delete session: {}", e));
                         },
                     }
-                    self.single_screen_state.selected_index = None;
                 }
                 should_render = true;
             },
@@ -861,7 +930,7 @@ impl State {
                         &self.resurrectable_sessions.all_resurrectable_sessions,
                     );
                 } else if !self.is_welcome_screen {
-                    hide_self();
+                    close_self();
                 }
                 should_render = true;
             },
@@ -870,7 +939,7 @@ impl State {
                     self.single_screen_state.selected_index = None;
                     should_render = true;
                 } else if !self.is_welcome_screen {
-                    hide_self();
+                    close_self();
                 }
             },
             _ => {},
@@ -1339,7 +1408,13 @@ impl State {
             },
         }
     }
-    fn render_kill_all_sessions_warning(&self, rows: usize, columns: usize, x: usize, y: usize) {
+    pub(crate) fn render_kill_all_sessions_warning(
+        &self,
+        rows: usize,
+        columns: usize,
+        x: usize,
+        y: usize,
+    ) {
         if rows == 0 || columns == 0 {
             return;
         }

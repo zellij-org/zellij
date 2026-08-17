@@ -5,10 +5,11 @@ use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
+pub use crate::input::options::PaneFrameStyle;
 use crate::pane_size::PaneGeom;
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
-use clap::ArgEnum;
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
@@ -253,6 +254,7 @@ impl FromStr for BareKey {
             "end" => Ok(BareKey::End),
             "backspace" => Ok(BareKey::Backspace),
             "delete" => Ok(BareKey::Delete),
+            "del" => Ok(BareKey::Delete),
             "insert" => Ok(BareKey::Insert),
             "f1" => Ok(BareKey::F(1)),
             "f2" => Ok(BareKey::F(2)),
@@ -894,8 +896,10 @@ impl fmt::Display for ResizeStrategy {
 // left click) and the `ScrollUp` and `ScrollDown` events could probably be
 // merged into a single `Scroll(isize)` event.
 pub enum Mouse {
-    ScrollUp(usize),          // number of lines
-    ScrollDown(usize),        // number of lines
+    ScrollUp(usize),   // number of lines
+    ScrollDown(usize), // number of lines
+    ScrollLeft(usize),
+    ScrollRight(usize),
     LeftClick(isize, usize),  // line and column
     RightClick(isize, usize), // line and column
     Hold(isize, usize),       // line and column
@@ -934,6 +938,12 @@ impl From<Metadata> for FileMetadata {
             len: metadata.len(),
         }
     }
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StyledText {
+    pub text: String,
+    pub indices: Vec<Vec<usize>>,
 }
 
 /// These events can be subscribed to with subscribe method exported by `zellij-tile`.
@@ -1010,7 +1020,6 @@ pub enum Event {
     /// An action was performed by the user (requires InterceptInput permission)
     UserAction(Action, ClientId, Option<u32>, Option<ClientId>), // Action, client_id, terminal_id, cli_client_id
     PaneRenderReport(HashMap<PaneId, PaneContents>),
-    PaneRenderReportWithAnsi(HashMap<PaneId, PaneContents>),
     ActionComplete(Action, Option<PaneId>, BTreeMap<String, String>), // Action, pane_id, context
     CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
     CommandChanged(PaneId, Vec<String>, bool, Vec<ClientId>), // pane_id, command, is_foreground, focused_client_ids
@@ -1028,6 +1037,9 @@ pub enum Event {
     InitialKeybinds(KeybindsVec),
     /// The host terminal indicated its color palette theme mode (CSI 2031 / DSR 997).
     HostTerminalThemeChanged(HostTerminalThemeMode),
+    SoftKeyboardVisibilityChanged(bool),
+    HintText(BTreeMap<usize, StyledText>),
+    ActivePaneScroll(Option<(usize, usize)>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1139,7 +1151,7 @@ impl PluginPermission {
     EnumIter,
     Serialize,
     Deserialize,
-    ArgEnum,
+    ValueEnum,
     PartialOrd,
     Ord,
 )]
@@ -1738,6 +1750,13 @@ pub struct ModeInfo {
     pub web_server_ip: Option<IpAddr>,
     pub web_server_port: Option<u16>,
     pub web_server_capability: Option<bool>,
+    pub pane_frame_style: Option<PaneFrameStyle>,
+    pub session_dimmed: Option<bool>,
+    pub session_ancestry: Vec<String>,
+    pub host_fullscreen: Option<bool>,
+    pub nested_ascend_keys: Vec<KeyWithModifier>,
+    pub session_ascended: Option<bool>,
+    pub nested_descend_keys: Vec<KeyWithModifier>,
 }
 
 impl ModeInfo {
@@ -2432,6 +2451,7 @@ pub struct PaneContents {
     pub lines_below_viewport: Vec<String>,
     pub viewport: Vec<String>,
     pub selected_text: Option<SelectedText>,
+    pub cursor: Option<(usize, usize)>,
 }
 
 /// Extract text from a line between two column positions, accounting for wide characters
@@ -2526,6 +2546,7 @@ impl PaneContents {
             selected_text: SelectedText::from_positions(selection_start, selection_end),
             lines_above_viewport,
             lines_below_viewport,
+            cursor: None,
         }
     }
 
@@ -2599,6 +2620,24 @@ pub struct SessionListSnapshot {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GetSessionListResponse {
     Ok(SessionListSnapshot),
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum KillSessionsResponse {
+    Ok,
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum DeleteDeadSessionResponse {
+    Ok,
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum DeleteAllDeadSessionsResponse {
+    Ok,
     Err(String),
 }
 
@@ -3147,7 +3186,7 @@ impl OriginatingPlugin {
     }
 }
 
-#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(ValueEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WebSharing {
     #[serde(alias = "on")]
     On,
@@ -3348,12 +3387,24 @@ pub enum PluginCommand {
         name: Option<String>,
         cwd: Option<String>,
     },
+    NewTabUnfocused {
+        name: Option<String>,
+        cwd: Option<String>,
+    },
+    NewTiledPaneInTab {
+        tab_position: usize,
+    },
+    ToggleFloatingPanes {
+        tab_id: Option<u64>,
+    },
+    NewPane,
     GoToNextTab,
     GoToPreviousTab,
     Resize(Resize),
     ResizeWithDirection(ResizeStrategy),
     FocusNextPane,
     FocusPreviousPane,
+    FocusLastPane,
     MoveFocus(Direction),
     MoveFocusOrTab(Direction),
     Detach,
@@ -3371,7 +3422,9 @@ pub enum PluginCommand {
     PageScrollUp,
     PageScrollDown,
     ToggleFocusFullscreen,
+    ToggleFocusNoUiFullscreen,
     TogglePaneFrames,
+    SetPaneFrameStyle(PaneFrameStyle),
     TogglePaneEmbedOrEject,
     UndoRenamePane,
     CloseFocus,
@@ -3589,6 +3642,11 @@ pub enum PluginCommand {
     },
     ListWindowsVolumes,
     GetSessionList,
+    KillSessionsAndReply(Vec<String>), // one or more session names; sends a response back
+    DeleteDeadSessionAndReply(String), // session name; sends a response back
+    DeleteAllDeadSessionsAndReply,     // no payload; sends a response back
+    SetSoftKeyboard(bool),
+    FocusHostSession,
 }
 
 // Response type for plugin API methods that open a pane in a new tab
@@ -3600,6 +3658,7 @@ pub struct OpenPaneInNewTabResponse {
 
 // Response types for plugin API methods that create tabs
 pub type NewTabResponse = Option<usize>;
+pub type NewTabUnfocusedResponse = Option<usize>;
 pub type NewTabsResponse = Vec<usize>;
 pub type FocusOrCreateTabResponse = Option<usize>;
 pub type BreakPanesToNewTabResponse = Option<usize>;
@@ -3620,6 +3679,7 @@ pub type OpenTerminalInPlaceResponse = Option<PaneId>;
 pub type OpenTerminalNearPluginResponse = Option<PaneId>;
 pub type OpenTerminalFloatingNearPluginResponse = Option<PaneId>;
 pub type OpenTerminalInPlaceOfPluginResponse = Option<PaneId>;
+pub type NewTiledPaneInTabResponse = Option<PaneId>;
 
 pub type OpenCommandPaneResponse = Option<PaneId>;
 pub type OpenCommandPaneFloatingResponse = Option<PaneId>;

@@ -50,6 +50,7 @@ fn main() {
             block_until_exit_failure,
             block_until_exit,
             near_current_pane,
+            no_focus,
             borderless,
             tab_id,
         })) = opts.command
@@ -76,6 +77,7 @@ fn main() {
                 floating,
                 in_place,
                 close_replaced_pane,
+                pane_id: None,
                 name,
                 close_on_exit,
                 start_suspended,
@@ -93,6 +95,7 @@ fn main() {
                 block_until_exit: false,
                 unblock_condition,
                 near_current_pane,
+                no_focus,
                 borderless,
                 tab_id,
             };
@@ -111,6 +114,7 @@ fn main() {
             width,
             height,
             pinned,
+            no_focus,
             borderless,
             tab_id,
         })) = opts.command
@@ -127,6 +131,7 @@ fn main() {
                 floating,
                 in_place,
                 close_replaced_pane,
+                pane_id: None,
                 name: None,
                 close_on_exit: false,
                 start_suspended: false,
@@ -144,6 +149,7 @@ fn main() {
                 block_until_exit: false,
                 unblock_condition,
                 near_current_pane: false,
+                no_focus,
                 borderless,
                 tab_id,
             };
@@ -164,6 +170,7 @@ fn main() {
             height,
             pinned,
             near_current_pane,
+            no_focus,
             borderless,
             tab_id,
         })) = opts.command
@@ -189,22 +196,11 @@ fn main() {
                 height,
                 pinned,
                 near_current_pane,
+                no_focus,
                 borderless,
                 tab_id,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
-            std::process::exit(0);
-        }
-        if let Some(Command::Sessions(Sessions::ConvertConfig { old_config_file })) = opts.command {
-            commands::convert_old_config_file(old_config_file);
-            std::process::exit(0);
-        }
-        if let Some(Command::Sessions(Sessions::ConvertLayout { old_layout_file })) = opts.command {
-            commands::convert_old_layout_file(old_layout_file);
-            std::process::exit(0);
-        }
-        if let Some(Command::Sessions(Sessions::ConvertTheme { old_theme_file })) = opts.command {
-            commands::convert_old_theme_file(old_theme_file);
             std::process::exit(0);
         }
         if let Some(Command::Sessions(Sessions::Pipe {
@@ -284,6 +280,7 @@ fn main() {
                 block_until_exit_success: false,
                 block_until_exit_failure: false,
                 block_until_exit: false,
+                no_focus: false,
             };
             commands::send_action_to_session(new_layout_cli_action, Some(session_name), config);
         } else {

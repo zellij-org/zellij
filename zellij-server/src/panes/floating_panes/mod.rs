@@ -4,6 +4,7 @@ use zellij_utils::{
     position::Position,
 };
 
+use crate::panes::kitty_graphics::KittyHostSupport;
 use crate::resize_pty;
 use crate::tab::{pane_info_for_pane, Pane};
 use floating_pane_grid::FloatingPaneGrid;
@@ -27,6 +28,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::command::RunCommand,
     input::layout::{FloatingPaneLayout, Run, RunPluginOrAlias},
+    input::options::PaneFrameStyle,
     pane_size::{Dimension, Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -53,6 +55,11 @@ pub struct FloatingPanes {
     // last_position)
     senders: ThreadSenders,
     window_title: Option<String>,
+    dimmed_clients: HashSet<ClientId>,
+    fullscreen_covers_ui: Rc<RefCell<bool>>,
+    fullscreen_pane_id: Option<PaneId>,
+    floating_fullscreen_covers_ui: bool,
+    pane_frame_style: PaneFrameStyle,
 }
 
 #[allow(clippy::borrowed_box)]
@@ -65,6 +72,8 @@ impl FloatingPanes {
         connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        fullscreen_covers_ui: Rc<RefCell<bool>>,
+        pane_frame_style: PaneFrameStyle,
         session_is_mirrored: bool,
         default_mode_info: ModeInfo,
         style: Style,
@@ -89,9 +98,39 @@ impl FloatingPanes {
             pane_being_moved_with_mouse: None,
             senders,
             window_title: None,
+            dimmed_clients: HashSet::new(),
+            fullscreen_covers_ui,
+            fullscreen_pane_id: None,
+            floating_fullscreen_covers_ui: false,
+            pane_frame_style,
         }
     }
+    pub fn set_pane_frame_style(&mut self, pane_frame_style: PaneFrameStyle) {
+        self.pane_frame_style = pane_frame_style;
+        if self.fullscreen_pane_id.is_some() && !self.floating_fullscreen_covers_ui {
+            let _ = self.set_pane_frames();
+        }
+    }
+    pub fn set_client_dimmed(&mut self, client_id: ClientId, dimmed: bool) {
+        if dimmed {
+            self.dimmed_clients.insert(client_id);
+        } else {
+            self.dimmed_clients.remove(&client_id);
+        }
+        self.set_force_render();
+    }
     pub fn stack(&self) -> Option<FloatingPanesStack> {
+        if *self.fullscreen_covers_ui.borrow() {
+            return None;
+        }
+        if let Some(fullscreen_pane_id) = self.fullscreen_pane_id {
+            return self
+                .panes
+                .get(&fullscreen_pane_id)
+                .map(|p| FloatingPanesStack {
+                    layers: vec![p.current_geom()],
+                });
+        }
         if self.panes_are_visible() {
             let layers: Vec<PaneGeom> = self
                 .z_indices
@@ -126,6 +165,17 @@ impl FloatingPanes {
     }
     pub fn pane_ids(&self) -> impl Iterator<Item = &PaneId> {
         self.panes.keys()
+    }
+    pub fn rendered_pane_ids(&self) -> Vec<PaneId> {
+        if self.panes_are_visible() {
+            self.panes.keys().copied().collect()
+        } else {
+            self.panes
+                .iter()
+                .filter(|(_, pane)| pane.position_and_size().is_pinned)
+                .map(|(pane_id, _)| *pane_id)
+                .collect()
+        }
     }
     pub fn add_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
         self.desired_pane_positions
@@ -221,7 +271,7 @@ impl FloatingPanes {
             .and_then(|active_pane_id| self.panes.get_mut(active_pane_id))
     }
     pub fn panes_are_visible(&self) -> bool {
-        self.show_panes
+        self.show_panes && !*self.fullscreen_covers_ui.borrow()
     }
     pub fn has_active_panes(&self) -> bool {
         !self.active_panes.is_empty()
@@ -363,7 +413,43 @@ impl FloatingPanes {
         let err_context =
             |pane_id: &PaneId| format!("failed to activate frame on pane {pane_id:?}");
 
+        let no_ui_fullscreen_pane_id = if self.floating_fullscreen_covers_ui {
+            self.fullscreen_pane_id
+        } else {
+            None
+        };
+        let regular_fullscreen_pane_id = if self.floating_fullscreen_covers_ui {
+            None
+        } else {
+            self.fullscreen_pane_id
+        };
+        let pane_frame_style = self.pane_frame_style;
         for pane in self.panes.values_mut() {
+            if no_ui_fullscreen_pane_id == Some(pane.pid()) {
+                pane.set_frame(false);
+                pane.set_content_offset(Offset::default());
+                resize_pty!(pane, os_api, self.senders, self.character_cell_size)
+                    .with_context(|| err_context(&pane.pid()))?;
+                continue;
+            }
+            if regular_fullscreen_pane_id == Some(pane.pid()) {
+                if pane.borderless() {
+                    pane.set_frame(false);
+                    pane.set_content_offset(Offset::default());
+                } else if pane_frame_style.draws_full_frames() {
+                    pane.set_frame(true);
+                    pane.set_content_offset(Offset::frame(1));
+                } else if pane_frame_style.draws_titles() {
+                    pane.set_frame(false);
+                    pane.set_content_offset(Offset::shift_right_top_and_bottom(0, 1, 0));
+                } else {
+                    pane.set_frame(false);
+                    pane.set_content_offset(Offset::default());
+                }
+                resize_pty!(pane, os_api, self.senders, self.character_cell_size)
+                    .with_context(|| err_context(&pane.pid()))?;
+                continue;
+            }
             // floating panes should always have a frame unless explicitly set otherwise
             if !pane.borderless() {
                 pane.set_frame(true);
@@ -383,6 +469,7 @@ impl FloatingPanes {
         current_pane_group: HashMap<ClientId, Vec<PaneId>>,
         client_id_override: Option<ClientId>,
         help_text_visible: &HashMap<ClientId, bool>,
+        mouse_scroll_resize: bool,
     ) -> Result<()> {
         let err_context = || "failed to render output";
         let mut connected_clients: HashSet<ClientId> =
@@ -401,6 +488,11 @@ impl FloatingPanes {
         };
 
         for (kind, pane) in &self.panes {
+            if let Some(fullscreen_pane_id) = self.fullscreen_pane_id {
+                if kind != &fullscreen_pane_id {
+                    continue;
+                }
+            }
             match kind {
                 PaneId::Terminal(_) => {
                     output.add_pane_contents(
@@ -435,7 +527,17 @@ impl FloatingPanes {
             }
         }
 
-        let mut floating_panes: Vec<_> = if self.panes_are_visible() {
+        let fullscreen_pane_id = self.fullscreen_pane_id;
+        let no_ui_fullscreen = self.floating_fullscreen_covers_ui && fullscreen_pane_id.is_some();
+        let regular_fullscreen =
+            fullscreen_pane_id.is_some() && !self.floating_fullscreen_covers_ui;
+        let pane_frame_style = self.pane_frame_style;
+        let mut floating_panes: Vec<_> = if let Some(fullscreen_pane_id) = fullscreen_pane_id {
+            self.panes
+                .iter_mut()
+                .filter(|(id, _)| **id == fullscreen_pane_id)
+                .collect()
+        } else if self.panes_are_visible() {
             self.panes.iter_mut().collect()
         } else if self.has_pinned_panes() {
             self.panes
@@ -459,6 +561,14 @@ impl FloatingPanes {
             let show_help_text = active_panes.iter().any(|(client_id, pane_id)| {
                 pane_id == &pane.pid() && help_text_visible.get(client_id).copied().unwrap_or(false)
             });
+            let pane_has_guest_modal = pane.has_guest_modal_for_any_client();
+            let pane_is_regular_fullscreen =
+                regular_fullscreen && Some(**kind) == fullscreen_pane_id;
+            let should_draw_pane_frames = if pane_is_regular_fullscreen {
+                pane_frame_style.draws_full_frames()
+            } else {
+                true
+            };
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
                 output,
@@ -468,10 +578,13 @@ impl FloatingPanes {
                 Some(z_index + 1), // +1 because 0 is reserved for non-floating panes
                 false,
                 false,
-                true,
+                should_draw_pane_frames,
                 mouse_hover_pane_id,
                 current_pane_group.clone(),
                 show_help_text,
+                false,
+                mouse_scroll_resize,
+                self.dimmed_clients.clone(),
             );
             for client_id in &connected_clients {
                 let client_mode = self
@@ -481,15 +594,21 @@ impl FloatingPanes {
                     .unwrap_or(&self.default_mode_info)
                     .mode;
                 let is_floating = true;
-                pane_contents_and_ui
-                    .render_pane_frame(
-                        *client_id,
-                        client_mode,
-                        self.session_is_mirrored,
-                        is_floating,
-                        pane_is_selectable,
-                    )
-                    .with_context(err_context)?;
+                let skip_frame = no_ui_fullscreen
+                    || (pane_is_regular_fullscreen
+                        && !pane_frame_style.draws_full_frames()
+                        && !pane_frame_style.draws_titles());
+                if !skip_frame {
+                    pane_contents_and_ui
+                        .render_pane_frame(
+                            *client_id,
+                            client_mode,
+                            self.session_is_mirrored,
+                            is_floating,
+                            pane_is_selectable,
+                        )
+                        .with_context(err_context)?;
+                }
                 if let PaneId::Plugin(..) = kind {
                     pane_contents_and_ui
                         .render_pane_contents_for_client(*client_id)
@@ -507,9 +626,28 @@ impl FloatingPanes {
                     .with_context(err_context)?;
             }
             if let PaneId::Terminal(..) = kind {
-                pane_contents_and_ui
-                    .render_pane_contents_to_multiple_clients(connected_clients.iter().copied())
-                    .with_context(err_context)?;
+                if pane_has_guest_modal {
+                    let (modal_clients, plain_clients): (Vec<ClientId>, Vec<ClientId>) =
+                        connected_clients.iter().copied().partition(|client_id| {
+                            pane_contents_and_ui.client_has_guest_modal(*client_id)
+                        });
+                    if !plain_clients.is_empty() {
+                        pane_contents_and_ui
+                            .render_pane_contents_to_multiple_clients(plain_clients.iter().copied())
+                            .with_context(err_context)?;
+                    } else {
+                        pane_contents_and_ui.drain_pane_render_state();
+                    }
+                    for client_id in modal_clients {
+                        pane_contents_and_ui
+                            .render_guest_modal_for_client(client_id)
+                            .with_context(err_context)?;
+                    }
+                } else {
+                    pane_contents_and_ui
+                        .render_pane_contents_to_multiple_clients(connected_clients.iter().copied())
+                        .with_context(err_context)?;
+                }
             }
         }
         Ok(())
@@ -616,6 +754,11 @@ impl FloatingPanes {
         }
     }
 
+    fn reenter_fullscreen_on_active_pane(&mut self, client_id: ClientId, covers_ui: bool) {
+        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+            self.set_fullscreen(active_pane_id, covers_ui);
+        }
+    }
     pub fn move_focus(
         &mut self,
         client_id: ClientId,
@@ -626,6 +769,13 @@ impl FloatingPanes {
         let _err_context = || {
             format!("failed to move focus of floating pane {direction:?} for client {client_id}")
         };
+        if self.fullscreen_pane_id.is_some() {
+            let covers_ui = self.floating_fullscreen_covers_ui;
+            self.unset_fullscreen();
+            let ret = self.move_focus(client_id, connected_clients, direction);
+            self.reenter_fullscreen_on_active_pane(client_id, covers_ui);
+            return ret;
+        }
 
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
@@ -706,6 +856,13 @@ impl FloatingPanes {
         Ok(false)
     }
     pub fn focus_pane_on_edge(&mut self, direction: Direction, client_id: ClientId) {
+        if self.fullscreen_pane_id.is_some() {
+            let covers_ui = self.floating_fullscreen_covers_ui;
+            self.unset_fullscreen();
+            self.focus_pane_on_edge(direction, client_id);
+            self.reenter_fullscreen_on_active_pane(client_id, covers_ui);
+            return;
+        }
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
         let floating_pane_grid = FloatingPaneGrid::new(
@@ -719,6 +876,78 @@ impl FloatingPanes {
             self.set_force_render();
         }
     }
+    pub fn focus_pane_adjacent_to(
+        &mut self,
+        pane_id: PaneId,
+        direction: Direction,
+        client_id: ClientId,
+    ) -> Option<PaneId> {
+        if !self.panes.contains_key(&pane_id) {
+            return None;
+        }
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
+        let floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        let next_index = match direction {
+            Direction::Left => floating_pane_grid.next_selectable_pane_id_to_the_left(&pane_id),
+            Direction::Down => floating_pane_grid.next_selectable_pane_id_below(&pane_id),
+            Direction::Up => floating_pane_grid.next_selectable_pane_id_above(&pane_id),
+            Direction::Right => floating_pane_grid.next_selectable_pane_id_to_the_right(&pane_id),
+        }?;
+        if let Some(previously_active_pane) = self.get_active_pane_mut(client_id) {
+            previously_active_pane.set_should_render(true);
+            previously_active_pane.render_full_viewport();
+        }
+        if let Some(next_active_pane) = self.get_pane_mut(next_index) {
+            next_active_pane.set_should_render(true);
+            next_active_pane.render_full_viewport();
+        }
+        self.focus_pane(next_index, client_id);
+        self.set_pane_active_at(next_index);
+        self.set_force_render();
+        Some(next_index)
+    }
+
+    pub fn focus_last_pane(&mut self, client_id: ClientId) {
+        if self.fullscreen_pane_id.is_some() {
+            let covers_ui = self.floating_fullscreen_covers_ui;
+            self.unset_fullscreen();
+            self.focus_last_pane(client_id);
+            self.reenter_fullscreen_on_active_pane(client_id, covers_ui);
+            return;
+        }
+        let currently_active_pane_id = self.active_panes.get(&client_id).copied();
+        let last_pane_id = self
+            .active_panes
+            .get_last(&client_id)
+            .copied()
+            .filter(|last_pane_id| {
+                Some(*last_pane_id) != currently_active_pane_id
+                    && self
+                        .panes
+                        .get(last_pane_id)
+                        .map(|p| p.selectable())
+                        .unwrap_or(false)
+            });
+        let target_pane_id = last_pane_id
+            .or_else(|| self.most_recently_active_selectable_pane(currently_active_pane_id));
+        if let Some(target_pane_id) = target_pane_id {
+            self.focus_pane(target_pane_id, client_id);
+            self.set_force_render();
+        }
+    }
+    fn most_recently_active_selectable_pane(&self, exclude: Option<PaneId>) -> Option<PaneId> {
+        self.panes
+            .iter()
+            .filter(|(pane_id, pane)| Some(**pane_id) != exclude && pane.selectable())
+            .max_by_key(|(_pane_id, pane)| pane.active_at())
+            .map(|(pane_id, _pane)| *pane_id)
+    }
 
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.active_panes.get(&client_id) {
@@ -726,6 +955,9 @@ impl FloatingPanes {
         }
     }
     pub fn move_pane_down(&mut self, pane_id: PaneId) {
+        if self.fullscreen_pane_id.is_some() {
+            return;
+        }
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
         let mut floating_pane_grid = FloatingPaneGrid::new(
@@ -743,6 +975,9 @@ impl FloatingPanes {
         }
     }
     pub fn move_pane_up(&mut self, pane_id: PaneId) {
+        if self.fullscreen_pane_id.is_some() {
+            return;
+        }
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
         let mut floating_pane_grid = FloatingPaneGrid::new(
@@ -760,6 +995,9 @@ impl FloatingPanes {
         }
     }
     pub fn move_pane_left(&mut self, pane_id: PaneId) {
+        if self.fullscreen_pane_id.is_some() {
+            return;
+        }
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
         let mut floating_pane_grid = FloatingPaneGrid::new(
@@ -777,6 +1015,9 @@ impl FloatingPanes {
         }
     }
     pub fn move_pane_right(&mut self, pane_id: PaneId) {
+        if self.fullscreen_pane_id.is_some() {
+            return;
+        }
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
         let mut floating_pane_grid = FloatingPaneGrid::new(
@@ -799,6 +1040,9 @@ impl FloatingPanes {
         }
     }
     pub fn move_pane(&mut self, search_backwards: bool, pane_id: PaneId) {
+        if self.fullscreen_pane_id.is_some() {
+            return;
+        }
         let new_position_id = {
             let pane_grid = FloatingPaneGrid::new(
                 &mut self.panes,
@@ -902,6 +1146,11 @@ impl FloatingPanes {
         let next_active_pane_id = next_active_pane_candidates
             .last()
             .map(|(pane_id, _pane)| **pane_id);
+        let last_active_pane_id = next_active_pane_candidates
+            .iter()
+            .rev()
+            .nth(1)
+            .map(|(pane_id, _pane)| **pane_id);
 
         for (client_id, active_pane_id) in active_panes {
             if active_pane_id == pane_id {
@@ -910,6 +1159,10 @@ impl FloatingPanes {
                         self.active_panes
                             .insert(client_id, next_active_pane_id, &mut self.panes);
                         self.focus_pane(next_active_pane_id, client_id);
+                        if let Some(last_active_pane_id) = last_active_pane_id {
+                            self.active_panes
+                                .set_last_pane(client_id, last_active_pane_id);
+                        }
                     },
                     None => {
                         self.defocus_pane(client_id);
@@ -931,7 +1184,142 @@ impl FloatingPanes {
         self.set_pane_active_at(pane_id);
         self.set_force_render();
     }
+    pub fn fullscreen_is_active(&self) -> bool {
+        self.fullscreen_pane_id.is_some()
+    }
+    pub fn fullscreen_pane_id(&self) -> Option<PaneId> {
+        self.fullscreen_pane_id
+    }
+    pub fn fullscreen_covers_ui(&self) -> bool {
+        self.fullscreen_pane_id.is_some() && self.floating_fullscreen_covers_ui
+    }
+    fn expand_pane_over_area(
+        &mut self,
+        pane_id: PaneId,
+        x: usize,
+        y: usize,
+        rows: usize,
+        cols: usize,
+    ) {
+        if let Some(pane) = self.panes.get_mut(&pane_id) {
+            let mut expanded_geom = PaneGeom {
+                x,
+                y,
+                ..Default::default()
+            };
+            expanded_geom.rows.set_inner(rows);
+            expanded_geom.cols.set_inner(cols);
+            pane.set_geom_override(expanded_geom);
+        }
+    }
+    fn set_fullscreen(&mut self, pane_id: PaneId, covers_ui: bool) {
+        if !self.panes.contains_key(&pane_id) {
+            log::error!("No floating pane with id: {:?} found", pane_id);
+            return;
+        }
+        if covers_ui {
+            let display_area = { *self.display_area.borrow() };
+            self.expand_pane_over_area(pane_id, 0, 0, display_area.rows, display_area.cols);
+        } else {
+            let viewport = { *self.viewport.borrow() };
+            self.expand_pane_over_area(
+                pane_id,
+                viewport.x,
+                viewport.y,
+                viewport.rows,
+                viewport.cols,
+            );
+        }
+        let pane_frame_style = self.pane_frame_style;
+        if let Some(pane) = self.panes.get_mut(&pane_id) {
+            if covers_ui {
+                pane.set_frame(false);
+                pane.set_content_offset(Offset::default());
+            } else if pane.borderless() {
+                pane.set_frame(false);
+                pane.set_content_offset(Offset::default());
+            } else if pane_frame_style.draws_full_frames() {
+                pane.set_frame(true);
+                pane.set_content_offset(Offset::frame(1));
+            } else if pane_frame_style.draws_titles() {
+                pane.set_frame(false);
+                pane.set_content_offset(Offset::shift_right_top_and_bottom(0, 1, 0));
+            } else {
+                pane.set_frame(false);
+                pane.set_content_offset(Offset::default());
+            }
+        }
+        let _ = resize_pty!(
+            self.panes.get_mut(&pane_id).unwrap(),
+            os_api,
+            self.senders,
+            self.character_cell_size
+        );
+        self.fullscreen_pane_id = Some(pane_id);
+        self.floating_fullscreen_covers_ui = covers_ui;
+        self.focus_pane_for_all_clients(pane_id);
+        self.set_force_render();
+    }
+    pub fn unset_fullscreen(&mut self) {
+        if let Some(fullscreen_pane_id) = self.fullscreen_pane_id.take() {
+            if let Some(pane) = self.panes.get_mut(&fullscreen_pane_id) {
+                pane.reset_size_and_position_override();
+                if !pane.borderless() {
+                    pane.set_frame(true);
+                    pane.set_content_offset(Offset::frame(1));
+                } else {
+                    pane.set_content_offset(Offset::default());
+                }
+                let _ = resize_pty!(pane, os_api, self.senders, self.character_cell_size);
+            }
+            self.floating_fullscreen_covers_ui = false;
+            self.set_force_render();
+        }
+    }
+    pub fn toggle_pane_fullscreen(&mut self, pane_id: PaneId) {
+        if self.fullscreen_pane_id.is_some() {
+            let was_no_ui = self.floating_fullscreen_covers_ui;
+            self.unset_fullscreen();
+            if was_no_ui {
+                self.set_fullscreen(pane_id, false);
+            }
+        } else {
+            self.set_fullscreen(pane_id, false);
+        }
+    }
+    pub fn toggle_pane_no_ui_fullscreen(&mut self, pane_id: PaneId) {
+        if self.fullscreen_pane_id.is_some() {
+            let was_no_ui = self.floating_fullscreen_covers_ui;
+            self.unset_fullscreen();
+            if !was_no_ui {
+                self.set_fullscreen(pane_id, true);
+            }
+        } else {
+            self.set_fullscreen(pane_id, true);
+        }
+    }
+    pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
+        if let Some(active_pane_id) = self
+            .fullscreen_pane_id
+            .or_else(|| self.get_active_pane_id(client_id))
+        {
+            self.toggle_pane_fullscreen(active_pane_id);
+        }
+    }
+    pub fn toggle_active_pane_no_ui_fullscreen(&mut self, client_id: ClientId) {
+        if let Some(active_pane_id) = self
+            .fullscreen_pane_id
+            .or_else(|| self.get_active_pane_id(client_id))
+        {
+            self.toggle_pane_no_ui_fullscreen(active_pane_id);
+        }
+    }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        if let Some(focused_pane) = self.active_panes.get(&client_id) {
+            if pane_id != *focused_pane {
+                self.active_panes.set_last_pane(client_id, *focused_pane);
+            }
+        }
         let pane_is_selectable = self
             .panes
             .get(&pane_id)
@@ -1120,6 +1508,9 @@ impl FloatingPanes {
     }
     pub fn move_pane_with_mouse(&mut self, position: Position, search_selectable: bool) -> bool {
         // true => handled, false => not handled (eg. no pane at this position)
+        if *self.fullscreen_covers_ui.borrow() || self.fullscreen_pane_id.is_some() {
+            return false;
+        }
         let show_panes = self.show_panes;
         if self.pane_being_moved_with_mouse.is_some() {
             if self.move_pane_to_position(&position) {
@@ -1260,7 +1651,7 @@ impl FloatingPanes {
             pane_info_for_pane.is_floating = true;
             pane_info_for_pane.is_suppressed = false;
             pane_info_for_pane.is_focused = is_focused;
-            pane_info_for_pane.is_fullscreen = false;
+            pane_info_for_pane.is_fullscreen = self.fullscreen_pane_id == Some(*pane_id);
             pane_infos.push(pane_info_for_pane);
         }
         pane_infos
@@ -1288,6 +1679,16 @@ impl FloatingPanes {
     pub fn update_pane_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
         for pane in self.panes.values_mut() {
             pane.update_arrow_fonts(should_support_arrow_fonts);
+        }
+    }
+    pub fn update_pane_kitty_host_support(&mut self, supported: KittyHostSupport) {
+        for pane in self.panes.values_mut() {
+            pane.update_kitty_host_support(supported);
+        }
+    }
+    pub fn update_pane_sixel_host_support(&mut self, supported: bool) {
+        for pane in self.panes.values_mut() {
+            pane.update_sixel_host_support(supported);
         }
     }
     pub fn update_pane_rounded_corners(&mut self, rounded_corners: bool) {

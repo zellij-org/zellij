@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use zellij_utils::{input::config::Config, pane_size::Size};
+use zellij_utils::{input::config::Config, ipc::MobileStatePayload, pane_size::Size};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 
@@ -12,6 +12,36 @@ pub struct WebClientToWebServerControlMessage {
 #[serde(tag = "type")]
 pub enum WebClientToWebServerControlMessagePayload {
     TerminalResize(Size),
+    TerminalMetrics(TerminalMetricsPayload),
+    SoftKeyboardVisibilityChanged {
+        visible: bool,
+    },
+    NestedSessionFrameFromHost {
+        payload_bytes: Vec<u8>,
+    },
+    RequestSessionList,
+    FocusPane {
+        pane_id: u32,
+        is_plugin: bool,
+    },
+    NewPaneInTab {
+        tab_id: usize,
+    },
+    NewTab,
+    SetMobileRenderPreferences {
+        single_pane: bool,
+        fit: bool,
+    },
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TerminalMetricsPayload {
+    pub cell_pixel_width: usize,
+    pub cell_pixel_height: usize,
+    pub text_area_pixel_width: usize,
+    pub text_area_pixel_height: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -22,6 +52,8 @@ pub enum WebServerToWebClientControlMessage {
     Log { lines: Vec<String> },
     LogError { lines: Vec<String> },
     SwitchedSession { new_session_name: String },
+    SetSoftKeyboard { on: bool },
+    MobileState { payload: MobileStatePayload },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -34,6 +66,8 @@ pub struct SetConfigPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor_style: Option<String>,
     pub mac_option_is_meta: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<u16>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -150,6 +184,8 @@ impl From<&Config> for SetConfigPayload {
             .as_ref()
             .map(|s| s.to_string());
 
+        let font_size = config.web_client.font_size;
+
         SetConfigPayload {
             font,
             theme,
@@ -157,6 +193,7 @@ impl From<&Config> for SetConfigPayload {
             mac_option_is_meta,
             cursor_style,
             cursor_inactive_style,
+            font_size,
         }
     }
 }

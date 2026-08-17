@@ -3,13 +3,15 @@ use crate::{
         is_ipc_socket, session_info_folder_for_session, session_layout_cache_file_name,
         ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
     },
+    data::SessionInfo,
     envs,
     input::layout::Layout,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
 };
 use anyhow;
 use humantime::format_duration;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::path::Path;
 use std::time::{Duration, SystemTime};
 use std::{fs, io, process};
 use suggest::Suggest;
@@ -552,6 +554,74 @@ pub fn assert_session_ne(name: &str) {
     process::exit(1);
 }
 
+pub fn session_listing_error_message(kind: io::ErrorKind) -> String {
+    format!(
+        "Failed to list existing Zellij sessions in the socket directory:\n  {}\n\n\
+         Reason: {}\n\n\
+         This usually means the directory (or one of its parents) is not readable \
+         by the current user - for example if $ZELLIJ_SOCKET_DIR or $XDG_RUNTIME_DIR \
+         points to a directory you do not own.\n\
+         To fix this, set a readable and writable socket directory, eg.:\n  \
+         ZELLIJ_SOCKET_DIR=/tmp/zellij-$USER zellij",
+        ZELLIJ_SOCK_DIR.display(),
+        io::Error::from(kind)
+    )
+}
+
+pub fn read_live_session_states(
+    current_session_name: &str,
+    sock_dir: &Path,
+    session_info_cache_dir: &Path,
+) -> BTreeMap<String, SessionInfo> {
+    let mut other_session_names: Vec<(String, Duration)> = vec![];
+    let mut session_infos_on_machine = BTreeMap::new();
+    if let Ok(files) = fs::read_dir(sock_dir) {
+        files.for_each(|file| {
+            if let Ok(file) = file {
+                if let Ok(file_name) = file.file_name().into_string() {
+                    if file
+                        .file_type()
+                        .map(|file_type| is_ipc_socket(&file_type))
+                        .unwrap_or(false)
+                    {
+                        let creation_time = std::fs::metadata(&file.path())
+                            .ok()
+                            .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
+                            .and_then(|d| d.elapsed().ok())
+                            .unwrap_or_default();
+                        other_session_names.push((file_name, creation_time));
+                    }
+                }
+            }
+        });
+    }
+
+    for (session_name, creation_time) in other_session_names {
+        let session_cache_file_name = session_info_cache_dir
+            .join(&session_name)
+            .join("session-metadata.kdl");
+        if let Ok(raw_session_info) = fs::read_to_string(&session_cache_file_name) {
+            if let Ok(mut session_info) =
+                SessionInfo::from_string(&raw_session_info, current_session_name)
+            {
+                session_info.creation_time = creation_time;
+                session_infos_on_machine.insert(session_name, session_info);
+            }
+        }
+    }
+    session_infos_on_machine
+}
+
+pub fn read_live_session_states_default_dirs(
+    current_session_name: &str,
+) -> BTreeMap<String, SessionInfo> {
+    read_live_session_states(
+        current_session_name,
+        &*ZELLIJ_SOCK_DIR,
+        &*ZELLIJ_SESSION_INFO_CACHE_DIR,
+    )
+}
+
 pub fn generate_unique_session_name() -> Option<String> {
     let sessions = get_sessions().map(|sessions| {
         sessions
@@ -560,9 +630,12 @@ pub fn generate_unique_session_name() -> Option<String> {
             .collect::<Vec<String>>()
     });
     let dead_sessions = get_resurrectable_session_names();
-    let Ok(sessions) = sessions else {
-        eprintln!("Failed to list existing sessions: {:?}", sessions);
-        return None;
+    let sessions = match sessions {
+        Ok(sessions) => sessions,
+        Err(kind) => {
+            eprintln!("{}", session_listing_error_message(kind));
+            return None;
+        },
     };
 
     let name = get_name_generator()
@@ -688,7 +761,7 @@ const NOUNS: &[&'static str] = &[
     "goose",
     "hill",
     "horse",
-    "iguanadon",
+    "iguanodon",
     "jellyfish",
     "kangaroo",
     "lake",

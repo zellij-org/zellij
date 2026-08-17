@@ -25,6 +25,12 @@ message ClientToServerMsg {
     DesktopNotificationResponseMsg desktop_notification_response = 18;
     ForwardedReplyFromHostMsg forwarded_reply_from_host = 19;
     HostTerminalThemeChangedMsg host_terminal_theme_changed = 20;
+    SoftKeyboardVisibilityChangedMsg soft_keyboard_visibility_changed = 21;
+    NestedSessionFrameFromHostMsg nested_session_frame_from_host = 22;
+    KittyGraphicsSupportMsg kitty_graphics_support = 23;
+    SixelSupportMsg sixel_support = 24;
+    RequestSessionListMsg request_session_list = 25;
+    SetMobileRenderPreferencesMsg set_mobile_render_preferences = 26;
   }
 }
 
@@ -124,4 +130,29 @@ message HostTerminalThemeChangedMsg {
 enum HostTerminalThemeIndication {
   HOST_TERMINAL_THEME_INDICATION_DARK = 0;
   HOST_TERMINAL_THEME_INDICATION_LIGHT = 1;
+}
+
+message SoftKeyboardVisibilityChangedMsg {
+  bool visible = 1;
+}
+
+message NestedSessionFrameFromHostMsg {
+  bytes payload_bytes = 1;
+}
+
+message KittyGraphicsSupportMsg {
+  bool supported = 1;
+}
+
+message SixelSupportMsg {
+  bool supported = 1;
+}
+
+message RequestSessionListMsg {
+  // Empty message
+}
+
+message SetMobileRenderPreferencesMsg {
+  bool single_pane = 1;
+  bool fit = 2;
 }

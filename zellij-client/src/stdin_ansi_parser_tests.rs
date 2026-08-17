@@ -1,6 +1,6 @@
 //! Unit tests for the continuous host-reply parser.
 
-use super::{schedule_forward_timeout, HostReply, StdinAnsiParser};
+use super::{schedule_forward_timeout, HostReply, PendingPartial, StdinAnsiParser};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -146,9 +146,11 @@ fn forwarding_window_accumulates_and_barrier_closes() {
     chunk.extend_from_slice(b"\x1b]11;rgb:aaaa/bbbb/dddd\x1b\\");
     chunk.extend_from_slice(b"\x1b[?65;1c");
     let out = parser.feed(&chunk);
-    // OSC 11 was classified (double-dispatch).
-    assert_eq!(out.replies.len(), 1);
+    // OSC 11 was classified (double-dispatch), and the barrier itself
+    // advertises the host's sixel capability.
+    assert_eq!(out.replies.len(), 2);
     matches!(out.replies[0], HostReply::BackgroundColor(_));
+    matches!(out.replies[1], HostReply::SixelSupport(false));
     // Barrier closed the window, producing a completed forward.
     let (token, reply_bytes) = out
         .completed_forward
@@ -308,14 +310,16 @@ fn lone_trailing_esc_is_buffered_then_finalized_as_residue() {
         out.has_partial_state,
         "lone ESC must mark has_partial_state so the caller schedules a finalize tick"
     );
-    let drained = p.finalize();
+    assert_eq!(p.pending_partial(), PendingPartial::LoneEsc);
+    let drained = p.finalize_lone_esc();
     assert_eq!(
         drained,
         vec![0x1b],
         "finalize must release the parked ESC as keyboard residue"
     );
     // Subsequent finalize is a no-op once the parker is empty.
-    assert!(p.finalize().is_empty());
+    assert!(p.finalize_lone_esc().is_empty());
+    assert_eq!(p.pending_partial(), PendingPartial::None);
 }
 
 #[test]
@@ -333,7 +337,10 @@ fn fragmented_osc_does_not_finalize_partial() {
     let r2 = p.feed(&full[1..]);
     assert!(r2.residue.is_empty(), "tail must complete the OSC");
     assert_eq!(r1.replies.len() + r2.replies.len(), 1);
-    assert!(p.finalize().is_empty(), "no partial left after completion");
+    assert!(
+        p.finalize_force().is_empty(),
+        "no partial left after completion"
+    );
 }
 
 #[test]
@@ -874,4 +881,745 @@ fn kitty_kbd_event_does_not_wedge_subsequent_forward_reply() {
             pretty
         );
     }
+}
+
+use crate::keyboard_parser::{KittyKeyboardParser, KittyParseOutcome};
+use zellij_utils::data::BareKey;
+
+fn assert_held_across_idle(parser: &mut StdinAnsiParser) {
+    assert_eq!(
+        parser.pending_partial(),
+        PendingPartial::ReplyInProgress,
+        "a payload-bearing partial must report ReplyInProgress while held"
+    );
+    assert!(
+        parser.finalize_lone_esc().is_empty(),
+        "the short idle finalize must NOT drain a reply-in-progress partial"
+    );
+    assert_eq!(
+        parser.pending_partial(),
+        PendingPartial::ReplyInProgress,
+        "the partial must still be held after a lone-esc finalize"
+    );
+}
+
+#[test]
+fn fragmented_osc4_reply_is_retained_not_leaked() {
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(b"\x1b]4;1;rgb:1111");
+    assert!(
+        r1.residue.is_empty(),
+        "incomplete OSC 4 must not leak: {:?}",
+        r1.residue
+    );
+    assert!(r1.replies.is_empty());
+    assert_held_across_idle(&mut p);
+
+    let r2 = p.feed(b"/2222/3333\x1b\\");
+    assert!(
+        r2.residue.is_empty(),
+        "completion must not leak: {:?}",
+        r2.residue
+    );
+    assert_eq!(r2.replies.len(), 1, "the rejoined OSC 4 classifies once");
+    match &r2.replies[0] {
+        HostReply::ColorRegisters(regs) => {
+            assert_eq!(regs[0].0, 1);
+            assert_eq!(regs[0].1, "rgb:1111/2222/3333");
+        },
+        other => panic!("expected ColorRegisters, got {:?}", other),
+    }
+    assert_eq!(p.pending_partial(), PendingPartial::None);
+}
+
+#[test]
+fn fragmented_osc11_reply_is_retained_across_idle() {
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(b"\x1b]11;rgb:0000/00");
+    assert!(r1.residue.is_empty());
+    assert_held_across_idle(&mut p);
+
+    let r2 = p.feed(b"00/0000\x1b\\");
+    assert!(r2.residue.is_empty());
+    assert_eq!(r2.replies.len(), 1);
+    matches!(r2.replies[0], HostReply::BackgroundColor(_));
+}
+
+#[test]
+fn esc_companion_chord_is_not_held_as_reply() {
+    let mut whole = StdinAnsiParser::new();
+    let out = whole.feed(b"\x1ba");
+    assert_eq!(out.residue, b"\x1ba");
+    assert!(out.replies.is_empty());
+
+    let mut split = StdinAnsiParser::new();
+    let r1 = split.feed(b"\x1b");
+    assert!(
+        r1.residue.is_empty(),
+        "lone ESC must park until disambiguated"
+    );
+    assert_eq!(split.pending_partial(), PendingPartial::LoneEsc);
+    let r2 = split.feed(b"a");
+    let mut combined = r1.residue.clone();
+    combined.extend_from_slice(&r2.residue);
+    assert_eq!(combined, b"\x1ba");
+    assert!(r2.replies.is_empty());
+}
+
+#[test]
+fn fragmented_ctrl_arrow_is_retained_then_passed_through() {
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(b"\x1b[1;5");
+    assert!(r1.residue.is_empty(), "incomplete CSI must not leak");
+    assert_held_across_idle(&mut p);
+
+    let r2 = p.feed(b"C");
+    assert_eq!(r2.residue, b"\x1b[1;5C", "the arrow reassembles intact");
+    assert!(r2.replies.is_empty(), "a cursor key is never a host reply");
+}
+
+#[test]
+fn fragmented_sgr_mouse_is_retained_then_passed_through() {
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(b"\x1b[<0;12;3");
+    assert!(r1.residue.is_empty());
+    assert_held_across_idle(&mut p);
+    let r2 = p.feed(b"4M");
+    assert_eq!(r2.residue, b"\x1b[<0;12;34M");
+    assert!(r2.replies.is_empty());
+}
+
+#[test]
+fn focus_event_is_residue_not_reply() {
+    let mut whole = StdinAnsiParser::new();
+    let out = whole.feed(b"\x1b[I");
+    assert_eq!(out.residue, b"\x1b[I");
+    assert!(out.replies.is_empty());
+
+    let mut split = StdinAnsiParser::new();
+    let r1 = split.feed(b"\x1b[");
+    assert!(r1.residue.is_empty());
+    let r2 = split.feed(b"I");
+    let mut combined = r1.residue.clone();
+    combined.extend_from_slice(&r2.residue);
+    assert_eq!(combined, b"\x1b[I");
+    assert!(r2.replies.is_empty());
+}
+
+#[test]
+fn kitty_keyboard_variants_whole_and_fragmented() {
+    let variants: Vec<&[u8]> = vec![
+        b"\x1b[97u",
+        b"\x1b[97;5u",
+        b"\x1b[97;1:3u",
+        b"\x1b[97:65;5u",
+        b"\x1b[97;5;65u",
+        b"\x1b[1;5A",
+        b"\x1b[1;2H",
+        b"\x1b[1;2P",
+        b"\x1b[1;2S",
+        b"\x1b[2;5~",
+        b"\x1b[3;5~",
+        b"\x1b[15;2~",
+        b"\x1b[27u",
+        b"\x1b[57362u",
+        b"\x1b[Z",
+    ];
+    for seq in variants {
+        let pretty = String::from_utf8_lossy(seq).replace('\x1b', "ESC");
+
+        let mut whole = StdinAnsiParser::new();
+        let out = whole.feed(seq);
+        assert_eq!(
+            out.residue, seq,
+            "{}: whole residue must equal the sequence",
+            pretty
+        );
+        assert!(out.replies.is_empty(), "{}: a key is never a reply", pretty);
+
+        for split in 2..seq.len() {
+            let mut p = StdinAnsiParser::new();
+            let r1 = p.feed(&seq[..split]);
+            assert!(
+                r1.residue.is_empty(),
+                "{} split at {}: prefix must be held, not leaked: {:?}",
+                pretty,
+                split,
+                r1.residue
+            );
+            assert_eq!(
+                p.pending_partial(),
+                PendingPartial::ReplyInProgress,
+                "{} split at {}: prefix must be held",
+                pretty,
+                split
+            );
+            assert!(
+                p.finalize_lone_esc().is_empty(),
+                "{} split at {}: idle must not drain the held key",
+                pretty,
+                split
+            );
+            let r2 = p.feed(&seq[split..]);
+            let mut combined = r1.residue.clone();
+            combined.extend_from_slice(&r2.residue);
+            assert_eq!(
+                combined, seq,
+                "{} split at {}: reassembled residue must equal the sequence",
+                pretty, split
+            );
+            assert!(
+                r1.replies.is_empty() && r2.replies.is_empty(),
+                "{} split at {}: never classified as a reply",
+                pretty,
+                split
+            );
+        }
+    }
+}
+
+#[test]
+fn kitty_ctrl_a_trace_yields_one_event_not_a_literal_u() {
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(b"\x1b[97;5");
+    assert!(r1.residue.is_empty());
+    assert_held_across_idle(&mut p);
+    let r2 = p.feed(b"u");
+    assert_eq!(r2.residue, b"\x1b[97;5u");
+
+    let mut kitty = KittyKeyboardParser::new();
+    match kitty.feed(&r2.residue) {
+        KittyParseOutcome::Complete(key) => {
+            assert!(
+                key.is_key_with_ctrl_modifier(BareKey::Char('a')),
+                "expected Ctrl-a, got {:?}",
+                key
+            );
+        },
+        other => panic!("expected a complete Ctrl-a, got {:?}", other),
+    }
+}
+
+#[test]
+fn bracketed_paste_preserves_embedded_escape_content() {
+    let mut p = StdinAnsiParser::new();
+    let mut chunk = Vec::new();
+    chunk.extend_from_slice(b"\x1b[200~");
+    chunk.extend_from_slice(b"echo \x1b]0;hi\x1b\\ done");
+    chunk.extend_from_slice(b"\x1b[201~");
+    let out = p.feed(&chunk);
+    assert!(
+        out.replies.is_empty(),
+        "paste content must not classify as a reply: {:?}",
+        out.replies
+    );
+    assert!(
+        out.desktop_notifications.is_empty(),
+        "an OSC inside a paste is literal, not a notification"
+    );
+    assert_eq!(
+        out.residue, chunk,
+        "the entire paste body, including the embedded OSC, passes through verbatim"
+    );
+    assert!(
+        out.residue.windows(6).any(|w| w == b"\x1b]0;hi"),
+        "the embedded OSC bytes must survive in residue"
+    );
+}
+
+#[test]
+fn paste_embedded_osc_is_not_eaten_when_fragmented() {
+    let full: Vec<u8> = b"\x1b[200~A\x1b]11;rgb:0/0/0\x1b\\B\x1b[201~".to_vec();
+    for split in 1..full.len() {
+        let mut p = StdinAnsiParser::new();
+        let r1 = p.feed(&full[..split]);
+        let r2 = p.feed(&full[split..]);
+        let mut combined = r1.residue.clone();
+        combined.extend_from_slice(&r2.residue);
+        assert_eq!(
+            combined, full,
+            "split at {}: paste body (with embedded OSC) must pass through whole",
+            split
+        );
+        assert!(
+            r1.replies.is_empty() && r2.replies.is_empty(),
+            "split at {}: embedded OSC must not classify as a reply",
+            split
+        );
+    }
+}
+
+#[test]
+fn paste_markers_fragmented_still_toggle_paste_mode() {
+    for (head, tail) in [(b"\x1b[20".as_ref(), b"0~".as_ref())] {
+        let mut p = StdinAnsiParser::new();
+        let r1 = p.feed(head);
+        assert!(r1.residue.is_empty(), "fragmented start marker is held");
+        let r2 = p.feed(tail);
+        let mut start = r1.residue.clone();
+        start.extend_from_slice(&r2.residue);
+        assert_eq!(
+            start, b"\x1b[200~",
+            "start marker passes through to residue"
+        );
+
+        let body = p.feed(b"\x1b]0;x\x1b\\");
+        assert_eq!(body.residue, b"\x1b]0;x\x1b\\");
+        assert!(body.replies.is_empty());
+    }
+    for (head, tail) in [(b"\x1b[20".as_ref(), b"1~".as_ref())] {
+        let mut p = StdinAnsiParser::new();
+        let _ = p.feed(b"\x1b[200~body");
+        let r1 = p.feed(head);
+        let r2 = p.feed(tail);
+        let mut end = r1.residue.clone();
+        end.extend_from_slice(&r2.residue);
+        assert_eq!(end, b"\x1b[201~", "end marker passes through to residue");
+
+        let after = p.feed(b"\x1b]11;rgb:1/2/3\x1b\\");
+        assert!(after.residue.is_empty());
+        assert_eq!(after.replies.len(), 1);
+    }
+}
+
+#[test]
+fn last_resort_force_drain_recovers_a_never_terminated_partial() {
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(b"\x1b]4;1;rgb:incomplete");
+    assert!(r1.residue.is_empty());
+    assert_eq!(p.pending_partial(), PendingPartial::ReplyInProgress);
+
+    let r2 = p.feed(b"and-more");
+    assert!(r2.residue.is_empty());
+    assert_eq!(p.pending_partial(), PendingPartial::ReplyInProgress);
+
+    let drained = p.finalize_force();
+    assert!(
+        drained.windows(14).any(|w| w == b"rgb:incomplete"),
+        "force-drain must recover the buffered partial: {:?}",
+        drained
+    );
+    assert!(
+        drained.windows(8).any(|w| w == b"and-more"),
+        "force-drain must recover bytes appended before the guard: {:?}",
+        drained
+    );
+    assert_eq!(
+        p.pending_partial(),
+        PendingPartial::None,
+        "the buffer is empty after a force-drain"
+    );
+}
+
+#[test]
+fn kitty_probe_ok_reply_classifies_true() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b_Gi=31;OK\x1b\\");
+    assert!(residue.is_empty(), "probe reply must be fully consumed");
+    assert_eq!(replies.len(), 1);
+    match &replies[0] {
+        HostReply::KittyGraphicsSupport(supported) => assert!(*supported),
+        other => panic!("unexpected reply: {:?}", other),
+    }
+}
+
+#[test]
+fn kitty_probe_error_reply_classifies_false() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b_Gi=31;ENOTSUPPORTED:query failed\x1b\\");
+    assert!(residue.is_empty());
+    assert_eq!(replies.len(), 1);
+    match &replies[0] {
+        HostReply::KittyGraphicsSupport(supported) => assert!(!*supported),
+        other => panic!("unexpected reply: {:?}", other),
+    }
+}
+
+#[test]
+fn kitty_probe_absence_resolves_false_on_barrier() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b[?62;4;52c");
+    assert!(residue.is_empty());
+    let kitty_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::KittyGraphicsSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(kitty_replies, vec![false]);
+}
+
+#[test]
+fn primary_da_with_sixel_attribute_classifies_sixel_support_true() {
+    let mut parser = StdinAnsiParser::new();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b[?62;4;52c");
+    assert!(residue.is_empty());
+    let sixel_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::SixelSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sixel_replies, vec![true]);
+}
+
+#[test]
+fn primary_da_without_sixel_attribute_classifies_sixel_support_false() {
+    let mut parser = StdinAnsiParser::new();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b[?62;22c");
+    assert!(residue.is_empty());
+    let sixel_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::SixelSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sixel_replies, vec![false]);
+}
+
+#[test]
+fn primary_da_sixel_attribute_is_not_matched_as_a_substring() {
+    let mut parser = StdinAnsiParser::new();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b[?64;14;21;22c");
+    assert!(residue.is_empty());
+    let sixel_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::SixelSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sixel_replies, vec![false]);
+}
+
+#[test]
+fn kitty_probe_reply_then_barrier_emits_exactly_one_reply() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let mut chunk = Vec::new();
+    chunk.extend_from_slice(b"\x1b_Gi=31;OK\x1b\\");
+    chunk.extend_from_slice(b"\x1b[?62;4;52c");
+    let (replies, residue) = feed_once(&mut parser, &chunk);
+    assert!(residue.is_empty());
+    let kitty_replies: Vec<bool> = replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::KittyGraphicsSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(kitty_replies, vec![true]);
+}
+
+#[test]
+fn kitty_probe_reply_fragmented_across_feeds() {
+    let full = b"\x1b_Gi=31;OK\x1b\\";
+    for split in 1..full.len() {
+        let mut parser = StdinAnsiParser::new();
+        parser.expect_kitty_probe_reply();
+        let r1 = parser.feed(&full[..split]);
+        let r2 = parser.feed(&full[split..]);
+        assert!(
+            r1.residue.is_empty(),
+            "split at {}: chunk 1 residue {:?}",
+            split,
+            r1.residue
+        );
+        assert!(
+            r2.residue.is_empty(),
+            "split at {}: chunk 2 residue {:?}",
+            split,
+            r2.residue
+        );
+        assert_eq!(
+            r1.replies.len() + r2.replies.len(),
+            1,
+            "split at {}: exactly one reply across both chunks",
+            split
+        );
+        let reply = r1.replies.into_iter().chain(r2.replies).next().unwrap();
+        match reply {
+            HostReply::KittyGraphicsSupport(supported) => assert!(supported),
+            other => panic!("split at {}: unexpected reply {:?}", split, other),
+        }
+    }
+}
+
+#[test]
+fn apc_outside_probe_window_is_not_classified() {
+    let mut parser = StdinAnsiParser::new();
+    let out = parser.feed(b"\x1b_Gi=31;OK\x1b\\");
+    assert!(out.replies.is_empty());
+}
+
+#[test]
+fn unsolicited_kitty_graphics_reply_never_becomes_keyboard_input() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let out = parser.feed(b"\x1b_Gi=31;OK\x1b\\");
+    assert_eq!(out.replies.len(), 1);
+
+    let out = parser.feed(b"\x1b_Gi=2000000000;OK\x1b\\");
+    assert!(
+        out.residue.is_empty(),
+        "a host reply to our own image transmission must not be typed into the focused pane, got: {:?}",
+        out.residue
+    );
+    assert!(out.replies.is_empty());
+
+    let mut fragmented = StdinAnsiParser::new();
+    fragmented.expect_kitty_probe_reply();
+    let _ = fragmented.feed(b"\x1b_Gi=31;OK\x1b\\");
+    let first = fragmented.feed(b"\x1b_Gi=2000000");
+    let second = fragmented.feed(b"000;OK\x1b\\");
+    assert!(first.residue.is_empty() && second.residue.is_empty());
+}
+
+#[test]
+fn non_kitty_apc_sequences_are_left_alone() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let out = parser.feed(b"\x1b_Xsomething\x1b\\");
+    assert!(
+        !out.residue.is_empty(),
+        "only kitty graphics APCs may be swallowed"
+    );
+}
+
+#[test]
+fn unsolicited_theme_notification_classifies_without_outstanding_query() {
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(b"\x1b[?997;1n");
+    assert!(
+        out.residue.is_empty(),
+        "the notification must not leak as residue"
+    );
+    assert_eq!(out.replies.len(), 1);
+    match &out.replies[0] {
+        HostReply::HostTerminalThemeChanged(mode) => {
+            assert_eq!(*mode, zellij_utils::data::HostTerminalThemeMode::Dark);
+        },
+        other => panic!("expected HostTerminalThemeChanged, got {:?}", other),
+    }
+}
+
+fn announce_frame_and_payload() -> (Vec<u8>, Vec<u8>) {
+    use zellij_utils::nested_session::{
+        encode_frame, encode_payload, NestedSessionCapability, NestedSessionMessage,
+    };
+    let message = NestedSessionMessage::Announce {
+        session_name: "guest-session".to_owned(),
+        capabilities: vec![NestedSessionCapability::NestedControl],
+    };
+    (encode_frame(&message), encode_payload(&message))
+}
+
+#[test]
+fn nested_frame_in_one_chunk_is_extracted_with_no_residue() {
+    let (frame, payload) = announce_frame_and_payload();
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(&frame);
+    assert_eq!(out.nested_frames, vec![payload]);
+    assert!(out.residue.is_empty(), "residue: {:?}", out.residue);
+    assert_eq!(p.pending_partial(), PendingPartial::None);
+}
+
+#[test]
+fn nested_frame_split_at_every_boundary_is_extracted() {
+    let (frame, payload) = announce_frame_and_payload();
+    for split_at in 1..frame.len() {
+        let mut p = StdinAnsiParser::new();
+        let first = p.feed(&frame[..split_at]);
+        let second = p.feed(&frame[split_at..]);
+        let mut extracted = first.nested_frames.clone();
+        extracted.extend(second.nested_frames.clone());
+        assert_eq!(extracted, vec![payload.clone()], "split at {}", split_at);
+        assert!(
+            first.residue.is_empty() && second.residue.is_empty(),
+            "split at {}: residue {:?} / {:?}",
+            split_at,
+            first.residue,
+            second.residue
+        );
+    }
+}
+
+#[test]
+fn keystrokes_around_nested_frame_survive_as_residue() {
+    let (frame, payload) = announce_frame_and_payload();
+    let mut chunk = b"abc".to_vec();
+    chunk.extend_from_slice(&frame);
+    chunk.extend_from_slice(b"def");
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(&chunk);
+    assert_eq!(out.nested_frames, vec![payload]);
+    assert_eq!(out.residue, b"abcdef".to_vec());
+}
+
+#[test]
+fn nested_frame_with_garbage_base64_is_stripped_without_payload() {
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(b"\x1bP26661n!!!not-base64!!!\x1b\\");
+    assert!(out.nested_frames.is_empty());
+    assert!(out.residue.is_empty(), "residue: {:?}", out.residue);
+}
+
+#[test]
+fn foreign_dcs_passes_through_untouched() {
+    let foreign_dcs = b"\x1bP1$qm\x1b\\q".to_vec();
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(&foreign_dcs);
+    assert!(out.nested_frames.is_empty());
+    assert_eq!(out.residue, foreign_dcs);
+}
+
+#[test]
+fn lone_esc_claimed_by_frame_prepass_reroutes_on_next_chunk() {
+    let mut p = StdinAnsiParser::new();
+    let first = p.feed(b"\x1b");
+    assert!(first.residue.is_empty());
+    assert!(first.has_partial_state);
+    assert_eq!(p.pending_partial(), PendingPartial::LoneEsc);
+    let second = p.feed(b"abc");
+    assert_eq!(second.residue, b"\x1babc".to_vec());
+    assert_eq!(p.pending_partial(), PendingPartial::None);
+}
+
+#[test]
+fn unterminated_frame_header_prefix_is_released_by_force_drain() {
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(b"\x1bP26");
+    assert!(out.residue.is_empty());
+    assert!(out.has_partial_state);
+    assert_eq!(p.pending_partial(), PendingPartial::ReplyInProgress);
+    assert_eq!(p.finalize_force(), b"\x1bP26".to_vec());
+    assert_eq!(p.pending_partial(), PendingPartial::None);
+}
+
+#[test]
+fn two_nested_frames_in_one_chunk_are_both_extracted() {
+    let (frame, payload) = announce_frame_and_payload();
+    let mut chunk = frame.clone();
+    chunk.extend_from_slice(&frame);
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(&chunk);
+    assert_eq!(out.nested_frames, vec![payload.clone(), payload]);
+    assert!(out.residue.is_empty());
+}
+
+#[test]
+fn clipboard_forward_is_closed_by_the_hosts_osc_52_reply() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(9);
+    let out = parser.feed(b"\x1b]52;c;aGVsbG8=\x1b\\");
+    assert_eq!(
+        out.completed_clipboard_forward,
+        Some((9, b"\x1b]52;c;aGVsbG8=\x1b\\".to_vec())),
+        "the host's reply must be relayed verbatim (re-serialized with ST)"
+    );
+    assert!(out.residue.is_empty(), "clipboard data must never be typed");
+    assert!(parser.active_clipboard_forward_token().is_none());
+}
+
+#[test]
+fn clipboard_forward_is_closed_by_the_first_key_press() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(4);
+    let out = parser.feed(b"a");
+    assert_eq!(out.completed_clipboard_forward, Some((4, Vec::new())));
+    assert_eq!(out.residue, b"a", "the key itself must still reach the app");
+    assert!(parser.active_clipboard_forward_token().is_none());
+}
+
+#[test]
+fn clipboard_forward_survives_host_reports_and_resizes() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(11);
+    let out = parser.feed(b"\x1b[4;720;1280t");
+    assert!(out.completed_clipboard_forward.is_none());
+    let out = parser.feed(b"\x1b]11;rgb:0000/0000/0000\x1b\\");
+    assert!(out.completed_clipboard_forward.is_none());
+    let out = parser.feed(b"\x1b[?62;52c");
+    assert!(
+        out.completed_clipboard_forward.is_none(),
+        "the Primary-DA barrier must not close a clipboard window"
+    );
+    assert_eq!(parser.active_clipboard_forward_token(), Some(11));
+}
+
+#[test]
+fn a_reply_arriving_before_the_keypress_wins() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(2);
+    let mut input = Vec::new();
+    input.extend_from_slice(b"\x1b]52;c;d29ybGQ=\x1b\\");
+    input.extend_from_slice(b"x");
+    let out = parser.feed(&input);
+    assert_eq!(
+        out.completed_clipboard_forward,
+        Some((2, b"\x1b]52;c;d29ybGQ=\x1b\\".to_vec()))
+    );
+    assert_eq!(out.residue, b"x");
+}
+
+#[test]
+fn clipboard_and_barrier_forwards_are_independent() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(1);
+    parser.open_forward(2);
+    let out = parser.feed(b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\\x1b[?62;52c");
+    assert_eq!(
+        out.completed_forward,
+        Some((2, b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\".to_vec()))
+    );
+    assert!(out.completed_clipboard_forward.is_none());
+    assert_eq!(parser.active_clipboard_forward_token(), Some(1));
+}
+
+#[test]
+fn clipboard_reply_is_not_accumulated_into_a_barrier_slot() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(1);
+    parser.open_forward(2);
+    let out = parser.feed(b"\x1b]52;c;aGk=\x1b\\");
+    assert_eq!(
+        out.completed_clipboard_forward,
+        Some((1, b"\x1b]52;c;aGk=\x1b\\".to_vec()))
+    );
+    let out = parser.feed(b"\x1b[?62;52c");
+    assert_eq!(
+        out.completed_forward,
+        Some((2, Vec::new())),
+        "the clipboard payload must not leak into the barrier slot"
+    );
+}
+
+#[test]
+fn taking_the_clipboard_slot_hands_the_token_over() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(6);
+    assert_eq!(
+        parser.take_active_clipboard_forward(),
+        Some((6, Vec::new()))
+    );
+    assert!(parser.active_clipboard_forward_token().is_none());
+    assert_eq!(parser.take_active_clipboard_forward(), None);
+}
+
+#[test]
+fn clipboard_timeout_only_fires_for_the_open_token() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_clipboard_forward(3);
+    assert_eq!(parser.close_clipboard_forward_on_timeout(4), None);
+    assert_eq!(
+        parser.close_clipboard_forward_on_timeout(3),
+        Some((3, Vec::new()))
+    );
+    assert_eq!(parser.close_clipboard_forward_on_timeout(3), None);
 }

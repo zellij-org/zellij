@@ -137,6 +137,12 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
     );
     /// Establish a connection with the server socket.
     fn connect_to_server(&self, path: &Path);
+    fn spawn_server(&self, socket_path: &Path, debug: bool) -> Result<(), std::io::Error> {
+        crate::spawn_server(socket_path, debug)
+    }
+    fn should_install_panic_hook(&self) -> bool {
+        true
+    }
     fn load_palette(&self) -> Palette;
     fn enable_mouse(&self) -> Result<()>;
     fn disable_mouse(&self) -> Result<()>;

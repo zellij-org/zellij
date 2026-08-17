@@ -1375,6 +1375,112 @@ Some(
                         (
                             {
                                 MinPanes(
+                                    3,
+                                ): TiledPaneLayout {
+                                    children_split_direction: Horizontal,
+                                    name: None,
+                                    children: [
+                                        TiledPaneLayout {
+                                            children_split_direction: Horizontal,
+                                            name: None,
+                                            children: [
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: None,
+                                                    focus: None,
+                                                    external_children_index: Some(
+                                                        0,
+                                                    ),
+                                                    children_are_stacked: true,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                    run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
+                                                    default_fg: None,
+                                                    default_bg: None,
+                                                },
+                                            ],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: None,
+                                            focus: None,
+                                            external_children_index: None,
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                            run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
+                                            default_fg: None,
+                                            default_bg: None,
+                                        },
+                                        TiledPaneLayout {
+                                            children_split_direction: Horizontal,
+                                            name: None,
+                                            children: [],
+                                            split_size: Some(
+                                                Fixed(
+                                                    1,
+                                                ),
+                                            ),
+                                            run: Some(
+                                                Plugin(
+                                                    Alias(
+                                                        PluginAlias {
+                                                            name: "compact-bar",
+                                                            configuration: Some(
+                                                                PluginUserConfiguration(
+                                                                    {},
+                                                                ),
+                                                            ),
+                                                            initial_cwd: None,
+                                                            run_plugin: None,
+                                                        },
+                                                    ),
+                                                ),
+                                            ),
+                                            borderless: Some(
+                                                true,
+                                            ),
+                                            focus: None,
+                                            external_children_index: None,
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                            run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
+                                            default_fg: None,
+                                            default_bg: None,
+                                        },
+                                    ],
+                                    split_size: None,
+                                    run: None,
+                                    borderless: None,
+                                    focus: None,
+                                    external_children_index: None,
+                                    children_are_stacked: false,
+                                    is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
+                                    run_instructions_to_ignore: [],
+                                    hide_floating_panes: false,
+                                    pane_initial_contents: None,
+                                    default_fg: None,
+                                    default_bg: None,
+                                },
+                            },
+                            Some(
+                                "stacked",
+                            ),
+                        ),
+                        (
+                            {
+                                MinPanes(
                                     4,
                                 ): TiledPaneLayout {
                                     children_split_direction: Horizontal,
@@ -1512,7 +1618,7 @@ Some(
                                 },
                             },
                             Some(
-                                "stacked",
+                                "half-stacked",
                             ),
                         ),
                     ],

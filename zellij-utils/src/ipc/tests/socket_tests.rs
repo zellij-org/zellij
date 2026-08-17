@@ -162,9 +162,7 @@ fn bidirectional_communication_via_fd_duplication() {
         let stream = listener.incoming().next().unwrap().expect("accept failed");
         let mut sender: IpcSenderWithContext<ServerToClientMsg> = IpcSenderWithContext::new(stream);
 
-        // Create a receiver from the same socket via dup()
         let mut receiver: IpcReceiverWithContext<ClientToServerMsg> = sender.get_receiver();
-
         sender
             .send_server_msg(ServerToClientMsg::Connected)
             .expect("send failed");
@@ -181,7 +179,6 @@ fn bidirectional_communication_via_fd_duplication() {
     let stream = connect_stream(&name);
     let mut sender: IpcSenderWithContext<ClientToServerMsg> = IpcSenderWithContext::new(stream);
 
-    // Create a receiver from the same socket via dup()
     let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
 
     let msg = receiver.recv_server_msg();
@@ -264,7 +261,6 @@ fn receiver_returns_none_on_closed_connection() {
             sender
                 .send_client_msg(ClientToServerMsg::ConnStatus)
                 .expect("send failed");
-            // sender drops here, closing the connection
         }
     });
 
@@ -277,15 +273,9 @@ fn receiver_returns_none_on_closed_connection() {
     let msg = receiver.recv_client_msg();
     assert!(msg.is_some(), "should receive the sent message");
 
-    // After the sender is dropped, subsequent reads should return None
     let msg = receiver.recv_client_msg();
     assert!(msg.is_none(), "should return None after connection closed");
 }
-
-// --- Session discovery tests ---
-// These test the OS-specific mechanics used by get_sessions() in sessions.rs:
-// FileTypeExt::is_socket() for identifying socket files, and the assert_socket
-// probing pattern (connect, send ConnStatus, expect Connected).
 
 #[cfg(unix)]
 #[test]
@@ -318,12 +308,9 @@ fn is_socket_rejects_regular_file() {
 
 #[test]
 fn session_probe_accepts_responding_socket() {
-    // Simulates the assert_socket() pattern from sessions.rs:
-    // A real Zellij server responds to ConnStatus with Connected.
     let (_guard, name) = new_ipc();
     let listener = bind_listener(&name);
 
-    // Spawn a fake "server" that responds to ConnStatus with Connected
     let server = std::thread::spawn(move || {
         let stream = listener.incoming().next().unwrap().expect("accept failed");
         let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
@@ -338,7 +325,6 @@ fn session_probe_accepts_responding_socket() {
             .expect("send failed");
     });
 
-    // Client-side probing (mirrors assert_socket in sessions.rs)
     let stream = connect_stream(&name);
     let mut sender: IpcSenderWithContext<ClientToServerMsg> = IpcSenderWithContext::new(stream);
     sender
@@ -357,15 +343,11 @@ fn session_probe_accepts_responding_socket() {
 
 #[test]
 fn session_probe_rejects_dead_socket() {
-    // Simulates discovering a stale socket file with no listener.
-    // get_sessions() filters these out via assert_socket() which tries to connect.
     let (_guard, name) = new_ipc();
 
-    // Bind and immediately drop the listener to create a stale socket file
     {
         let _listener = bind_listener(&name);
     }
-    // Listener is dropped -- the socket file may still exist but nobody is listening
 
     let result = try_connect(&name);
     assert!(
@@ -380,21 +362,17 @@ fn socket_directory_enumeration_finds_sockets() {
     use interprocess::local_socket::GenericFilePath;
     use std::os::unix::fs::FileTypeExt;
 
-    // Simulates the readdir + is_socket() filtering pattern from get_sessions().
     let dir = tempfile::TempDir::new().expect("failed to create temp dir");
 
-    // Create a socket
     let sock_path = dir.path().join("test-session");
     let _listener = ListenerOptions::new()
         .name(sock_path.as_path().to_fs_name::<GenericFilePath>().unwrap())
         .create_sync()
         .expect("bind failed");
 
-    // Create a regular file (should be filtered out)
     let file_path = dir.path().join("not-a-session");
     std::fs::write(&file_path, b"data").expect("write failed");
 
-    // Enumerate the directory, filtering for sockets (same pattern as get_sessions)
     let entries: Vec<String> = std::fs::read_dir(dir.path())
         .expect("read_dir failed")
         .filter_map(|entry| {

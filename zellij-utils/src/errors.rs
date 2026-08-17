@@ -246,6 +246,7 @@ pub enum ScreenContext {
     SwitchFocus,
     FocusNextPane,
     FocusPreviousPane,
+    FocusLastPane,
     FocusPaneAt,
     MoveFocusLeft,
     MoveFocusLeftOrPreviousTab,
@@ -280,7 +281,9 @@ pub enum ScreenContext {
     CloseFocusedPane,
     ToggleActiveSyncTab,
     ToggleActiveTerminalFullscreen,
+    ToggleActiveTerminalNoUiFullscreen,
     TogglePaneFrames,
+    SetPaneFrameStyle,
     SetSelectable,
     ShowPluginCursor,
     SetInvisibleBorders,
@@ -305,13 +308,18 @@ pub enum ScreenContext {
     CloseTabWithId,
     RenameTabWithId,
     BreakPanesToTabWithId,
-    TerminalResize,
     RecomputeTabSize,
     TerminalPixelDimensions,
     TerminalBackgroundColor,
     TerminalForegroundColor,
     TerminalColorRegisters,
+    SetKittyGraphicsSupport,
+    SetSixelSupport,
     ForwardHostQuery,
+    NestedSessionMessageFromPane,
+    NestedGuestPingTick,
+    NestedSessionMessageFromHost,
+    GuestModalChoice,
     ForwardedReplyFromHost,
     ResumePaneAfterForward,
     HostTerminalThemeChanged,
@@ -399,6 +407,7 @@ pub enum ScreenContext {
     PageScrollUpInPaneId,
     PageScrollDownInPaneId,
     TogglePaneIdFullscreen,
+    SetMobileRenderPreferences,
     TogglePaneEmbedOrEjectForPaneId,
     CloseTabWithIndex,
     BreakPanesToNewTab,
@@ -447,6 +456,7 @@ pub enum ScreenContext {
     ClearScreenWithPaneId,
     EditScrollbackWithPaneId,
     ToggleFullscreenWithPaneId,
+    ToggleNoUiFullscreenWithPaneId,
     TogglePaneEmbedOrFloatingWithPaneId,
     CloseFocusWithPaneId,
     RenamePaneWithPaneId,
@@ -459,9 +469,13 @@ pub enum ScreenContext {
     PreviousSwapLayoutWithTabId,
     NextSwapLayoutWithTabId,
     MoveTabWithTabId,
-    PluginSubscribedToAnsiPaneContents,
     UpdateBackgroundPluginSubscriptions,
+    ClearHintTextCache,
     BroadcastModeUpdate,
+    SetSoftKeyboard,
+    FocusHostSession,
+    FocusGuestSession,
+    ToggleHostFullscreen,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -571,6 +585,7 @@ pub enum ClientContext {
     RenamedSession,
     ConfigFileUpdated,
     ForwardQueryToHost,
+    EmitNestedSessionFrame,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -607,6 +622,8 @@ pub enum ServerContext {
     SendWebClientsForbidden,
     ClearMouseHelpText,
     ForwardQueryToHost,
+    KeyPassthroughChanged,
+    EmitNestedSessionFrameToClient,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -637,6 +654,8 @@ pub enum BackgroundJobContext {
     StopFlashPaneBell,
     FlashTabBell,
     StopFlashTabBell,
+    StartNestedGuestPing,
+    StopNestedGuestPing,
     Exit,
 }
 
@@ -671,9 +690,10 @@ If you're a developer:
     plugin directory.
 
 Possible fix for your problem:
-    Run `zellij setup --dump-plugins`, and optionally point it to your
-    'DATA DIR', visible in e.g. the output of `zellij setup --check`. Without
-    further arguments, it will use the default 'DATA DIR'.
+    Place the builtin plugin '.wasm' files in the plugin directory shown above,
+    or in the 'plugins' folder of the system data directory. Both are visible in
+    the output of `zellij setup --check`. This build carries no bundled plugins,
+    so `zellij setup --dump-plugins` cannot provide them.
 "
     )]
     BuiltinPluginMissing {
@@ -742,7 +762,7 @@ mod not_wasm {
     const MAX_THREAD_CALL_STACK: usize = 6;
 
     #[derive(Debug, ThisError, Diagnostic)]
-    #[error("{0}{}", self.show_backtrace())]
+    #[error("{0}{backtrace}", backtrace = self.show_backtrace())]
     #[diagnostic(help("{}", self.show_help()))]
     struct Panic(String);
 

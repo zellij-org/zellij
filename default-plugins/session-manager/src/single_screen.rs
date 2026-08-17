@@ -39,7 +39,27 @@ pub enum UnifiedSearchResult {
     },
 }
 
+/// Which kind of entry was under the cursor when the user pressed `Delete`.
+/// Carries the session name so the host code can issue the right shim call
+/// (`kill_sessions` vs `delete_dead_session`) without re-borrowing the
+/// underlying `UnifiedSearchResult`.
+#[derive(Debug, Clone)]
+pub enum DeleteTarget {
+    Active(String),
+    Resurrectable(String),
+}
+
 impl UnifiedSearchResult {
+    pub fn as_delete_target(&self) -> DeleteTarget {
+        match self {
+            UnifiedSearchResult::ActiveSession { session_name, .. } => {
+                DeleteTarget::Active(session_name.clone())
+            },
+            UnifiedSearchResult::ResurrectableSession { session_name, .. } => {
+                DeleteTarget::Resurrectable(session_name.clone())
+            },
+        }
+    }
     pub fn session_name(&self) -> &str {
         match self {
             UnifiedSearchResult::ActiveSession { session_name, .. } => session_name.as_str(),
@@ -149,6 +169,21 @@ impl SingleScreenState {
                 .iter()
                 .position(|r| r.session_name() == prev_name);
         }
+    }
+
+    /// After deleting an entry, ensure the cursor stays on a sensible row.
+    /// `update_search_term` already keeps the selection on the same entry by
+    /// name if it still exists; this method picks up the case where the
+    /// deleted entry **was** the selected one, by falling back to the same
+    /// numeric row clamped to the new `unified_results` length.
+    pub fn restore_selection_after_delete(&mut self, previous_index: Option<usize>) {
+        if self.selected_index.is_some() {
+            return;
+        }
+        self.selected_index = crate::session_list::clamp_index_after_delete(
+            previous_index,
+            self.unified_results.len(),
+        );
     }
 
     fn collect_all_sessions(

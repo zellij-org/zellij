@@ -58,6 +58,7 @@ pub use super::generated_api::api::{
         ScrollAtPayload,
         SearchDirection as ProtobufSearchDirection,
         SearchOption as ProtobufSearchOption,
+        SetPaneFrameStylePayload,
         ShowFloatingPanesPayload,
         SplitDirection as ProtobufSplitDirection,
         SplitSize as ProtobufSplitSize,
@@ -74,6 +75,7 @@ pub use super::generated_api::api::{
         WritePayload,
     },
     input_mode::InputMode as ProtobufInputMode,
+    pane_frame_style::PaneFrameStyle as ProtobufPaneFrameStyle,
     resize::{Resize as ProtobufResize, ResizeDirection as ProtobufResizeDirection},
 };
 use crate::data::{
@@ -167,6 +169,10 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::FocusPreviousPane) => match protobuf_action.optional_payload {
                 Some(_) => Err("FocusPreviousPane should not have a payload"),
                 None => Ok(Action::FocusPreviousPane),
+            },
+            Some(ProtobufActionName::FocusLastPane) => match protobuf_action.optional_payload {
+                Some(_) => Err("FocusLastPane should not have a payload"),
+                None => Ok(Action::FocusLastPane),
             },
             Some(ProtobufActionName::SwitchFocus) => match protobuf_action.optional_payload {
                 Some(_) => Err("SwitchFocus should not have a payload"),
@@ -292,9 +298,26 @@ impl TryFrom<ProtobufAction> for Action {
                     None => Ok(Action::ToggleFocusFullscreen),
                 }
             },
+            Some(ProtobufActionName::ToggleFocusNoUiFullscreen) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleFocusNoUiFullscreen should not have a payload"),
+                    None => Ok(Action::ToggleFocusNoUiFullscreen),
+                }
+            },
             Some(ProtobufActionName::TogglePaneFrames) => match protobuf_action.optional_payload {
                 Some(_) => Err("TogglePaneFrames should not have a payload"),
                 None => Ok(Action::TogglePaneFrames),
+            },
+            Some(ProtobufActionName::SetPaneFrameStyle) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::SetPaneFrameStylePayload(payload)) => {
+                    match ProtobufPaneFrameStyle::from_i32(payload.pane_frame_style) {
+                        Some(protobuf_pane_frame_style) => Ok(Action::SetPaneFrameStyle(
+                            protobuf_pane_frame_style.try_into()?,
+                        )),
+                        None => Err("Malformed payload for Action::SetPaneFrameStyle"),
+                    }
+                },
+                _ => Err("Wrong payload for Action::SetPaneFrameStyle"),
             },
             Some(ProtobufActionName::ToggleActiveSyncTab) => {
                 match protobuf_action.optional_payload {
@@ -338,6 +361,7 @@ impl TryFrom<ProtobufAction> for Action {
                         start_suppressed: false,
                         coordinates: None,
                         near_current_pane,
+                        no_focus: false,
                         tab_id: None,
                     })
                 },
@@ -354,6 +378,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name,
                             coordinates: None,
                             near_current_pane,
+                            no_focus: false,
                             tab_id: None,
                         })
                     } else {
@@ -362,6 +387,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name: None,
                             coordinates: None,
                             near_current_pane,
+                            no_focus: false,
                             tab_id: None,
                         })
                     }
@@ -384,6 +410,7 @@ impl TryFrom<ProtobufAction> for Action {
                             command: Some(run_command_action),
                             pane_name,
                             near_current_pane,
+                            no_focus: false,
                             borderless,
                             tab_id: None,
                         })
@@ -393,6 +420,7 @@ impl TryFrom<ProtobufAction> for Action {
                             command: None,
                             pane_name: None,
                             near_current_pane,
+                            no_focus: false,
                             borderless,
                             tab_id: None,
                         })
@@ -603,6 +631,7 @@ impl TryFrom<ProtobufAction> for Action {
                     Ok(Action::Run {
                         command: run_command_action,
                         near_current_pane: false,
+                        no_focus: false,
                     })
                 },
                 _ => Err("Wrong payload for Action::Run"),
@@ -706,6 +735,7 @@ impl TryFrom<ProtobufAction> for Action {
                         close_replaced_pane: false,
                         skip_cache: skip_plugin_cache,
                         cwd: None,
+                        no_focus: false,
                         tab_id: None,
                     })
                 },
@@ -826,6 +856,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name,
                             skip_cache: skip_plugin_cache,
                             cwd: None,
+                            no_focus: false,
                             tab_id: None,
                         })
                     },
@@ -852,6 +883,7 @@ impl TryFrom<ProtobufAction> for Action {
                             skip_cache: skip_plugin_cache,
                             cwd: None,
                             coordinates: None,
+                            no_focus: false,
                             tab_id: None,
                         })
                     },
@@ -1005,6 +1037,7 @@ impl TryFrom<ProtobufAction> for Action {
                     command: None,
                     pane_name: None,
                     near_current_pane: false,
+                    no_focus: false,
                     tab_id: None,
                 }),
             },
@@ -1027,6 +1060,7 @@ impl TryFrom<ProtobufAction> for Action {
                         command,
                         unblock_condition,
                         near_current_pane,
+                        no_focus: false,
                         tab_id: None,
                     })
                 },
@@ -1045,6 +1079,7 @@ impl TryFrom<ProtobufAction> for Action {
                             command: Some(run_command_action),
                             pane_name,
                             near_current_pane,
+                            no_focus: false,
                             pane_id_to_replace,
                             close_replaced_pane,
                             tab_id: None,
@@ -1054,6 +1089,7 @@ impl TryFrom<ProtobufAction> for Action {
                             command: None,
                             pane_name: payload.pane_name,
                             near_current_pane,
+                            no_focus: false,
                             pane_id_to_replace,
                             close_replaced_pane,
                             tab_id: None,
@@ -1061,6 +1097,20 @@ impl TryFrom<ProtobufAction> for Action {
                     }
                 },
                 _ => Err("Wrong payload for Action::NewInPlacePane"),
+            },
+            Some(ProtobufActionName::FocusHostSession) => match protobuf_action.optional_payload {
+                Some(_) => Err("FocusHostSession should not have a payload"),
+                None => Ok(Action::FocusHostSession),
+            },
+            Some(ProtobufActionName::FocusGuestSession) => match protobuf_action.optional_payload {
+                Some(_) => Err("FocusGuestSession should not have a payload"),
+                None => Ok(Action::FocusGuestSession),
+            },
+            Some(ProtobufActionName::ToggleHostFullscreen) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleHostFullscreen should not have a payload"),
+                    None => Ok(Action::ToggleHostFullscreen),
+                }
             },
             _ => Err("Unknown Action"),
         }
@@ -1118,6 +1168,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::ClearScreenByPaneId { .. }
             | Action::EditScrollbackByPaneId { .. }
             | Action::ToggleFocusFullscreenByPaneId { .. }
+            | Action::ToggleFocusNoUiFullscreenByPaneId { .. }
             | Action::TogglePaneEmbedOrFloatingByPaneId { .. }
             | Action::CloseFocusByPaneId { .. }
             | Action::RenamePaneByPaneId { .. }
@@ -1171,6 +1222,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::FocusPreviousPane => Ok(ProtobufAction {
                 name: ProtobufActionName::FocusPreviousPane as i32,
+                optional_payload: None,
+            }),
+            Action::FocusLastPane => Ok(ProtobufAction {
+                name: ProtobufActionName::FocusLastPane as i32,
                 optional_payload: None,
             }),
             Action::SwitchFocus => Ok(ProtobufAction {
@@ -1289,9 +1344,22 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::ToggleFocusFullscreen as i32,
                 optional_payload: None,
             }),
+            Action::ToggleFocusNoUiFullscreen => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleFocusNoUiFullscreen as i32,
+                optional_payload: None,
+            }),
             Action::TogglePaneFrames => Ok(ProtobufAction {
                 name: ProtobufActionName::TogglePaneFrames as i32,
                 optional_payload: None,
+            }),
+            Action::SetPaneFrameStyle(pane_frame_style) => Ok(ProtobufAction {
+                name: ProtobufActionName::SetPaneFrameStyle as i32,
+                optional_payload: Some(OptionalPayload::SetPaneFrameStylePayload(
+                    SetPaneFrameStylePayload {
+                        pane_frame_style: ProtobufPaneFrameStyle::try_from(pane_frame_style)?
+                            as i32,
+                    },
+                )),
             }),
             Action::ToggleActiveSyncTab => Ok(ProtobufAction {
                 name: ProtobufActionName::ToggleActiveSyncTab as i32,
@@ -1568,6 +1636,7 @@ impl TryFrom<Action> for ProtobufAction {
             Action::Run {
                 command: run_command_action,
                 near_current_pane: _,
+                no_focus: _,
             } => {
                 let run_command_action: ProtobufRunCommandAction = run_command_action.try_into()?;
                 Ok(ProtobufAction {
@@ -1916,6 +1985,18 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
+            Action::FocusHostSession => Ok(ProtobufAction {
+                name: ProtobufActionName::FocusHostSession as i32,
+                optional_payload: None,
+            }),
+            Action::FocusGuestSession => Ok(ProtobufAction {
+                name: ProtobufActionName::FocusGuestSession as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleHostFullscreen => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleHostFullscreen as i32,
+                optional_payload: None,
+            }),
             Action::NoOp
             | Action::Confirm
             | Action::NewInPlacePluginPane {
@@ -2097,6 +2178,8 @@ impl TryFrom<ProtobufMouseEventPayload> for MouseEvent {
             middle: protobuf_event.middle as bool,
             wheel_up: protobuf_event.wheel_up as bool,
             wheel_down: protobuf_event.wheel_down as bool,
+            wheel_left: protobuf_event.wheel_left as bool,
+            wheel_right: protobuf_event.wheel_right as bool,
             shift: protobuf_event.shift as bool,
             alt: protobuf_event.alt as bool,
             ctrl: protobuf_event.ctrl as bool,
@@ -2119,6 +2202,8 @@ impl TryFrom<MouseEvent> for ProtobufMouseEventPayload {
             middle: event.middle as bool,
             wheel_up: event.wheel_up as bool,
             wheel_down: event.wheel_down as bool,
+            wheel_left: event.wheel_left as bool,
+            wheel_right: event.wheel_right as bool,
             shift: event.shift as bool,
             alt: event.alt as bool,
             ctrl: event.ctrl as bool,
@@ -3220,5 +3305,25 @@ impl TryFrom<SwapFloatingLayout> for ProtobufSwapFloatingLayout {
             constraint_map,
             name: internal.1,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::input::options::PaneFrameStyle;
+
+    #[test]
+    fn set_pane_frame_style_action_protobuf_round_trip() {
+        for style in [
+            PaneFrameStyle::Full,
+            PaneFrameStyle::Titles,
+            PaneFrameStyle::None,
+        ] {
+            let original = Action::SetPaneFrameStyle(style);
+            let protobuf: ProtobufAction = original.clone().try_into().expect("encode");
+            let decoded: Action = protobuf.try_into().expect("decode");
+            assert_eq!(original, decoded);
+        }
     }
 }

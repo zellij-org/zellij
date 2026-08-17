@@ -135,6 +135,7 @@ enum AnsiCode {
 }
 
 message Action {
+  reserved 140;
   oneof action_type {
     QuitAction quit = 1;
     WriteAction write = 2;
@@ -277,6 +278,13 @@ message Action {
     SetDarkThemeAction set_dark_theme = 137;
     SetLightThemeAction set_light_theme = 138;
     ToggleThemeAction toggle_theme = 139;
+    FocusLastPaneAction focus_last_pane = 141;
+    SetPaneFrameStyleAction set_pane_frame_style = 142;
+    ToggleFocusNoUiFullscreenAction toggle_focus_no_ui_fullscreen = 143;
+    ToggleNoUiFullscreenByPaneIdAction toggle_no_ui_fullscreen_by_pane_id = 144;
+    FocusHostSessionAction focus_host_session = 145;
+    ToggleHostFullscreenAction toggle_host_fullscreen = 146;
+    FocusGuestSessionAction focus_guest_session = 147;
   }
 }
 
@@ -286,6 +294,10 @@ message Action {
 message QuitAction {}
 message FocusNextPaneAction {}
 message FocusPreviousPaneAction {}
+message FocusLastPaneAction {}
+message FocusHostSessionAction {}
+message FocusGuestSessionAction {}
+message ToggleHostFullscreenAction {}
 message SwitchFocusAction {}
 message MovePaneBackwardsAction {}
 message ClearScreenAction {}
@@ -303,7 +315,11 @@ message PageScrollDownAction {}
 message HalfPageScrollUpAction {}
 message HalfPageScrollDownAction {}
 message ToggleFocusFullscreenAction {}
+message ToggleFocusNoUiFullscreenAction {}
 message TogglePaneFramesAction {}
+message SetPaneFrameStyleAction {
+  string style = 1;
+}
 message ToggleActiveSyncTabAction {}
 message TogglePaneEmbedOrFloatingAction {}
 message ToggleFloatingPanesAction {}
@@ -461,6 +477,7 @@ message EditFileAction {
   bool near_current_pane = 7;
   bool close_replaced_pane = 8;
   optional uint32 tab_id = 9;
+  bool no_focus = 10;
 }
 
 message NewFloatingPaneAction {
@@ -469,6 +486,7 @@ message NewFloatingPaneAction {
   optional FloatingPaneCoordinates coordinates = 3;
   bool near_current_pane = 7;
   optional uint32 tab_id = 8;
+  bool no_focus = 9;
 }
 
 message NewTiledPaneAction {
@@ -478,6 +496,7 @@ message NewTiledPaneAction {
   bool near_current_pane = 7;
   optional bool borderless = 8;
   optional uint32 tab_id = 9;
+  bool no_focus = 10;
 }
 
 message NewInPlacePaneAction {
@@ -487,6 +506,7 @@ message NewInPlacePaneAction {
   optional PaneId pane_id_to_replace = 4;
   bool close_replaced_pane = 5;
   optional uint32 tab_id = 6;
+  bool no_focus = 7;
 }
 
 message NewStackedPaneAction {
@@ -494,6 +514,7 @@ message NewStackedPaneAction {
   optional string pane_name = 2;
   bool near_current_pane = 3;
   optional uint32 tab_id = 4;
+  bool no_focus = 5;
 }
 
 message NewBlockingPaneAction {
@@ -503,6 +524,7 @@ message NewBlockingPaneAction {
   optional UnblockCondition unblock_condition = 4;
   bool near_current_pane = 5;
   optional uint32 tab_id = 6;
+  bool no_focus = 7;
 }
 
 message PaneNameInputAction {
@@ -541,6 +563,7 @@ message MoveTabAction {
 message RunAction {
   RunCommandAction command = 1;
   bool near_current_pane = 2;
+  bool no_focus = 3;
 }
 
 message LaunchOrFocusPluginAction {
@@ -561,6 +584,7 @@ message LaunchPluginAction {
   optional string cwd = 5;
   bool close_replaced_pane = 6;
   optional uint32 tab_id = 7;
+  bool no_focus = 8;
 }
 
 message MouseEventAction {
@@ -589,6 +613,7 @@ message NewTiledPluginPaneAction {
   bool skip_cache = 3;
   optional string cwd = 4;
   optional uint32 tab_id = 5;
+  bool no_focus = 6;
 }
 
 message NewFloatingPluginPaneAction {
@@ -598,6 +623,7 @@ message NewFloatingPluginPaneAction {
   optional string cwd = 4;
   optional FloatingPaneCoordinates coordinates = 5;
   optional uint32 tab_id = 6;
+  bool no_focus = 7;
 }
 
 message NewInPlacePluginPaneAction {
@@ -606,6 +632,7 @@ message NewInPlacePluginPaneAction {
   bool skip_cache = 3;
   bool close_replaced_pane = 4;
   optional uint32 tab_id = 5;
+  bool no_focus = 6;
 }
 
 message StartOrReloadPluginAction {
@@ -1012,6 +1039,8 @@ message MouseEvent {
   bool alt = 8;
   bool ctrl = 9;
   Position position = 10;
+  bool wheel_left = 11;
+  bool wheel_right = 12;
 }
 
 enum MouseEventType {
@@ -1174,6 +1203,15 @@ message Options {
   optional bool mouse_click_through = 45;
   optional string theme_dark = 46;
   optional string theme_light = 47;
+  reserved 48, 49, 50;
+  optional string pane_frame_style = 51;
+  optional bool stacked_pane_list = 52;
+  optional NestedSessionHandling nested_session_handling = 53;
+  optional bool mouse_scroll_resize = 54;
+  optional bool support_kitty_graphics_protocol = 55;
+  optional bool osc133_command_selection = 56;
+  optional string word_separators = 57;
+  optional bool dangerously_enable_paste_buffer_read = 58;
 }
 
 enum OnForceClose {
@@ -1201,6 +1239,15 @@ enum WebSharing {
   WEB_SHARING_DISABLED = 3;
 }
 
+enum NestedSessionHandling {
+  NESTED_SESSION_HANDLING_UNSPECIFIED = 0;
+  NESTED_SESSION_HANDLING_ASK = 1;
+  NESTED_SESSION_HANDLING_FULLSCREEN = 2;
+  NESTED_SESSION_HANDLING_DESCEND = 3;
+  NESTED_SESSION_HANDLING_NEVER = 4;
+}
+
+
 // Pane-targeting action messages
 message ScrollUpByPaneIdAction { PaneId pane_id = 1; }
 message ScrollDownByPaneIdAction { PaneId pane_id = 1; }
@@ -1219,6 +1266,7 @@ message EditScrollbackByPaneIdAction {
   bool ansi = 2;
 }
 message ToggleFullscreenByPaneIdAction { PaneId pane_id = 1; }
+message ToggleNoUiFullscreenByPaneIdAction { PaneId pane_id = 1; }
 message TogglePaneEmbedOrFloatingByPaneIdAction { PaneId pane_id = 1; }
 message CloseFocusByPaneIdAction { PaneId pane_id = 1; }
 message RenamePaneByPaneIdAction { PaneId pane_id = 1; bytes name = 2; }

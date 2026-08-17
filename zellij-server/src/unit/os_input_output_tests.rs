@@ -201,3 +201,57 @@ fn spawn_and_read_output() {
         output_str
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn tcgetpgrp_returns_foreground_group() {
+    use crate::panes::PaneId;
+    use zellij_utils::input::command::TerminalAction;
+
+    let server = make_server();
+
+    // `login_tty` in the child makes the spawned command the controlling terminal's
+    // foreground process group, so tcgetpgrp(master) should return its pid
+    let cmd = RunCommand {
+        command: PathBuf::from("sleep"),
+        args: vec!["60".to_string()],
+        ..Default::default()
+    };
+    let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> = Box::new(|_, _, _| {});
+    let (terminal_id, _reader, child_pid) = server
+        .spawn_terminal(TerminalAction::RunCommand(cmd), quit_cb, None)
+        .expect("spawn_terminal should succeed");
+
+    // poll (bounded to ~2s) for the child to finish setting up its controlling terminal
+    let mut fpgid = None;
+    for _ in 0..100 {
+        fpgid = server.pty_backend.tcgetpgrp(terminal_id);
+        let ready = match (fpgid, child_pid) {
+            (Some(p), Some(child_pid)) => p > 0 && p as u32 == child_pid,
+            (Some(p), None) => p > 0,
+            _ => false,
+        };
+        if ready {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(
+        matches!(fpgid, Some(p) if p > 0),
+        "tcgetpgrp should return the foreground process group, got {:?}",
+        fpgid
+    );
+    if let (Some(fpgid), Some(child_pid)) = (fpgid, child_pid) {
+        assert_eq!(
+            fpgid as u32, child_pid,
+            "the spawned command leads its own foreground group"
+        );
+    }
+
+    // An unknown terminal id has no fd and must not panic.
+    assert_eq!(server.pty_backend.tcgetpgrp(u32::MAX), None);
+
+    if let Some(child_pid) = child_pid {
+        let _ = server.force_kill(child_pid);
+    }
+}

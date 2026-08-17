@@ -13,41 +13,41 @@ ansi_term = { workspace = true }
 anyhow = { workspace = true }
 arrayvec = { version = "0.7.2", default-features = false, features = ["std"] }
 async-trait = { version = "0.1.50", default-features = false }
-base64 = { version = "0.13.0", default-features = false, features = ["std"] }
+base64 = { version = "0.22", default-features = false, features = ["std"] }
 byteorder = { version = "1.4.3", default-features = false, features = ["std"] }
 bytes = { version = "1.6.0", default-features = false, features = ["std"] }
-cassowary = { version = "0.3.0", default-features = false }
-chrono = { version = "0.4.19", default-features = false, features = ["std", "clock"] }
+chrono = { workspace = true }
 crossbeam = { version = "0.8", default-features = false, features = ["crossbeam-channel", "std"] }
-highway = { version = "0.6.4", default-features = false, features = ["std"] }
+flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
+highway = { version = "=1.2.0", default-features = false, features = ["std"] }
 interprocess = { workspace = true }
 isahc = { workspace = true }
+kasuari = { version = "0.4.12", default-features = false }
 kdl = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 notify-debouncer-full = { workspace = true }
+png = { version = "0.17.16", default-features = false }
 prost = { workspace = true }
 regex = { workspace = true }
-semver = { version = "0.11.0", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sixel-image = { version = "0.2.1", default-features = false }
 sixel-tokenizer = { version = "0.1.0", default-features = false }
-sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+sysinfo = { version = "0.39.5", default-features = false, features = ["system"] }
 tempfile = { workspace = true }
 tokio = { workspace = true }
-typetag = { version = "0.1.7", default-features = false }
 unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 vte = { workspace = true }
-wasmi_wasi = { version = "0.51.3" }
+wasmi_wasi = { version = "1.1.0" }
 zellij-utils = { workspace = true }
 once_cell = "1.19"
 num_cpus = { workspace = true }
 
 [dependencies.wasmi]
-version = "0.51.3"
+version = "1.1.0"
 default-features = false
 features = ["std"]
 
@@ -55,7 +55,7 @@ features = ["std"]
 close_fds = "0.3.2"
 daemonize = { workspace = true }
 libc = { workspace = true }
-nix = { workspace = true }
+nix = { workspace = true, features = ["fs", "process", "signal", "term"] }
 signal-hook = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
@@ -69,9 +69,9 @@ windows-sys = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
-insta = "1.6.0"
+insta = "1.48"
 tempfile = "3.2.0"
-wasmi = { version = "0.51.3", features = ["std"] }
+wasmi = { version = "1.1.0", features = ["std"] }
 
 [features]
 web_server_capability = ["zellij-utils/web_server_capability"]

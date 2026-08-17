@@ -22,15 +22,12 @@ If you're still eager to contribute minor fixes, please note that we might take 
 To build Zellij, we're using cargo xtask. This is a standalone package shipped
 inside the repository, so you don't have to install additional dependencies.
 
-To edit our manpage, the mandown crate (`cargo install --locked
-mandown`) is used and the work is done on a markdown file in docs/MANPAGE.md.
-
 To build zellij, you'll need [`protoc`](https://github.com/protocolbuffers/protobuf#protobuf-compiler-installation) installed. This is used to compile the .proto files into Rust assets. These protocol buffers are used for communication between Zellij and its plugins across the wasm boundary.
 
 Here are some of the commands currently supported by the build system:
 
 ```sh
-# Format code, build, then run tests and clippy
+# Format code, build, then run tests
 cargo xtask
 # You can also perform these actions individually
 cargo xtask format
@@ -38,21 +35,68 @@ cargo xtask build
 cargo xtask test
 # Run Zellij (optionally with additional arguments)
 cargo xtask run
-cargo xtask run -l strider
-# Run Clippy
-cargo xtask clippy
+cargo xtask run -- -l strider
 # Install Zellij to some directory
 cargo xtask install /path/of/zellij/binary
 # Publish the zellij and zellij-tile crates
 cargo xtask publish
-# Update manpage
-cargo xtask manpage
 ```
 
 You can see a list of all commands (with supported arguments) with `cargo xtask
 --help`. For convenience, `xtask` may be shortened to `x`: `cargo x build` etc.
 
 To run `test`, you will need the package `pkg-config` and a version of `openssl`.
+
+### The cargo target directory
+
+Debug builds embed the plugins from `<repository>/target/wasm32-wasip1/debug`, which is
+resolved at compile time. `.cargo/config.toml` therefore pins `build.target-dir` to
+`target`, so that a `target-dir` configured globally in `~/.cargo/config.toml` does not
+move the plugins out of reach. Removing that pin breaks debug builds for everyone who
+configures a shared target directory.
+
+If you want to share compilation artifacts between projects anyway, symlink the folder
+instead of pointing cargo elsewhere:
+
+```sh
+ln -s /path/to/shared/target /path/to/zellij/target
+```
+
+Setting the `CARGO_TARGET_DIR` environment variable takes precedence over
+`.cargo/config.toml` and will break debug builds for the same reason. Release builds are
+unaffected, since they embed the plugins from `zellij-utils/assets/plugins`.
+
+## Packaging Zellij for a distribution
+
+Builtin plugins (`status-bar`, `tab-bar`, ...) are `.wasm` files that are embedded into
+the Zellij binary at compile time. Pre-built copies live in `zellij-utils/assets/plugins`
+so that `cargo install zellij` works without further tooling. Distributions that forbid
+pre-built binaries in source packages can strip that folder and build the plugins from
+source instead:
+
+```sh
+# 1. build the plugins from source (repeat for every plugin, or use `cargo x build --release`)
+cargo build --release --target wasm32-wasip1 \
+  -p status-bar -p tab-bar -p compact-bar -p strider -p session-manager \
+  -p configuration -p plugin-manager -p about -p share -p multiple-select \
+  -p layout-manager -p link -p mobile
+
+# 2. install the resulting artifacts from <target-dir>/wasm32-wasip1/release/*.wasm
+#    into $PREFIX/share/zellij/plugins/
+
+# 3. build zellij without bundled plugins
+PREFIX=/usr cargo build --release --bin zellij \
+  --no-default-features --features disable_automatic_asset_installation
+```
+
+With the `disable_automatic_asset_installation` feature no plugin is embedded into the
+binary and `zellij setup --dump-plugins` is unavailable. At runtime builtin plugins are
+looked up in the configured plugin directory and then in `$PREFIX/share/zellij/plugins`.
+`zellij setup --check` prints both locations.
+
+`protoc` is required to regenerate the protobuf definitions in `zellij-utils/assets/prost*`
+via `cargo x proto`. The `web_server_capability` and `vendored_curl` features are optional
+and may be dropped with `--no-default-features`.
 
 ## Running the end-to-end tests
 Zellij includes some end-to-end tests which test the whole application as a black-box from the outside.
@@ -97,14 +141,6 @@ To enable the singlepass compiler, use the `singlepass` flag. E.g.:
 ```sh
 cargo xtask run --singlepass
 ```
-
-## How we treat clippy lints
-
-We currently use clippy in [GitHub Actions](https://github.com/zellij-org/zellij/blob/main/.github/workflows/rust.yml) with the default settings that report only [`clippy::correctness`](https://github.com/rust-lang/rust-clippy#readme) as errors and other lints as warnings because Zellij is still unstable. This means that all warnings can be ignored depending on the situation at that time, even though they are also helpful to keep the code quality.
-Since we just cannot afford to manage them, we are always welcome to fix them!
-
-Here is [the detailed discussion](https://github.com/zellij-org/zellij/pull/1090) if you want to see it.
-
 
 ## Toolchain Versions and MSRV
 

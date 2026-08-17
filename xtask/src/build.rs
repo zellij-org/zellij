@@ -3,7 +3,6 @@
 //! Currently has the following functions:
 //!
 //! - [`build`]: Builds general cargo projects (i.e. zellij components) with `cargo build`
-//! - [`manpage`]: Builds the manpage with `mandown`
 use crate::{flags, metadata, WorkspaceMember};
 use anyhow::Context;
 use std::path::{Path, PathBuf};
@@ -27,47 +26,39 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
     // See [this PR][1] for details.
     //
     // [1]: https://github.com/zellij-org/zellij/pull/2711#issuecomment-1695015818
-    run_proto_codegen(sh);
+    run_proto_codegen(sh, false);
 
     // Build all plugins in a single invocation so Cargo can unify transitive dependency
     // features across all of them and compile shared crates (e.g. zellij-utils) only once.
-    if !flags.no_plugins {
+    let build_plugins =
+        !flags.no_plugins && (flags.release || plugins_force() || plugin_sources_changed());
+    if build_plugins {
         let plugin_members: Vec<&WorkspaceMember> = crate::workspace_members()
             .iter()
             .filter(|m| m.build && m.crate_name.contains("plugins"))
             .collect();
 
         if !plugin_members.is_empty() {
-            println!();
+            eprintln!();
             let msg = ">> Building plugins";
             crate::status(msg);
-            println!("{}", msg);
-
-            let mut base_cmd = cmd!(sh, "{cargo} build --target wasm32-wasip1");
-            if flags.release {
-                base_cmd = base_cmd.arg("--release");
-            }
-            for member in &plugin_members {
-                let plugin_name = member
-                    .crate_name
-                    .rsplit_once('/')
-                    .context("Cannot determine plugin name from crate path")?
-                    .1;
-                base_cmd = base_cmd.args(["-p", plugin_name]);
-            }
-            base_cmd.run().context("failed to build plugins")?;
+            eprintln!("{}", msg);
 
             if flags.release {
+                build_plugins_release_into_assets(sh, &plugin_members)?;
+            } else {
+                let mut base_cmd = cmd!(sh, "{cargo} build --target wasm32-wasip1");
                 for member in &plugin_members {
-                    let plugin_name = member
-                        .crate_name
-                        .rsplit_once('/')
-                        .context("Cannot determine plugin name from crate path")?
-                        .1;
-                    move_plugin_to_assets(sh, plugin_name)?;
+                    base_cmd = base_cmd.args(["-p", plugin_name_of(member)?]);
                 }
+                base_cmd.run().context("failed to build plugins")?;
+                write_plugin_stamp(sh);
             }
         }
+    } else if !flags.no_plugins {
+        let msg = ">> Plugins unchanged since last build, skipping (set ZELLIJ_FORCE_PLUGINS=1 to rebuild)";
+        crate::status(msg);
+        eprintln!("{}", msg);
     }
 
     // Build non-plugin crates (native target).
@@ -107,6 +98,7 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
                     },
                 }
             }
+            base_cmd = base_cmd.args(&flags.args);
             base_cmd.run().with_context(err_context)?;
         }
     }
@@ -114,7 +106,146 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_proto_codegen(sh: &Shell) {
+fn plugins_force() -> bool {
+    std::env::var_os("ZELLIJ_FORCE_PLUGINS").is_some()
+}
+
+fn plugin_asset_path(plugin_name: &str) -> PathBuf {
+    crate::asset_dir()
+        .join("plugins")
+        .join(plugin_name)
+        .with_extension("wasm")
+}
+
+fn newest_plugin_source_time() -> Option<std::time::SystemTime> {
+    let root = crate::project_root();
+    ["default-plugins", "zellij-tile", "zellij-tile-utils"]
+        .iter()
+        .filter_map(|dir| newest_file_time(&root.join(dir)))
+        .max()
+}
+
+fn newest_file_time(dir: &Path) -> Option<std::time::SystemTime> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    let mut newest: Option<std::time::SystemTime> = None;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => continue,
+        };
+        if file_type.is_dir() {
+            if path
+                .file_name()
+                .map(|name| name == "target")
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            if let Some(child) = newest_file_time(&path) {
+                newest = Some(newest.map_or(child, |current| current.max(child)));
+            }
+        } else if let Ok(modified) = entry.metadata().and_then(|m| m.modified()) {
+            newest = Some(newest.map_or(modified, |current| current.max(modified)));
+        }
+    }
+    newest
+}
+
+pub fn ensure_plugin_assets(sh: &Shell) -> anyhow::Result<()> {
+    let plugin_members: Vec<&WorkspaceMember> = crate::workspace_members()
+        .iter()
+        .filter(|m| m.build && m.crate_name.contains("plugins"))
+        .collect();
+    if plugin_members.is_empty() {
+        return Ok(());
+    }
+
+    let newest_source = newest_plugin_source_time();
+    let stale = plugins_force()
+        || plugin_members.iter().any(|member| {
+            let plugin_name = match member.crate_name.rsplit_once('/') {
+                Some((_, name)) => name,
+                None => return true,
+            };
+            let asset_time = std::fs::metadata(plugin_asset_path(plugin_name))
+                .and_then(|m| m.modified())
+                .ok();
+            match (asset_time, newest_source) {
+                (Some(asset_time), Some(newest_source)) => asset_time < newest_source,
+                _ => true,
+            }
+        });
+
+    if !stale {
+        let msg = ">> Plugin assets up to date, skipping plugin build";
+        crate::status(msg);
+        eprintln!("{}", msg);
+        return Ok(());
+    }
+
+    let msg = ">> Building plugin assets (release)";
+    crate::status(msg);
+    eprintln!("{}", msg);
+
+    build_plugins_release_into_assets(sh, &plugin_members)
+}
+
+fn build_plugins_release_into_assets(
+    sh: &Shell,
+    plugin_members: &[&WorkspaceMember],
+) -> anyhow::Result<()> {
+    let cargo = crate::cargo()?;
+    let mut base_cmd = cmd!(sh, "{cargo} build --target wasm32-wasip1 --release");
+    for member in plugin_members {
+        let plugin_name = plugin_name_of(member)?;
+        base_cmd = base_cmd.args(["-p", plugin_name]);
+    }
+    base_cmd.run().context("failed to build plugin assets")?;
+
+    for member in plugin_members {
+        move_plugin_to_assets(sh, plugin_name_of(member)?)?;
+    }
+    Ok(())
+}
+
+fn plugin_name_of(member: &WorkspaceMember) -> anyhow::Result<&'static str> {
+    Ok(member
+        .crate_name
+        .rsplit_once('/')
+        .context("Cannot determine plugin name from crate path")?
+        .1)
+}
+
+fn plugin_stamp_path() -> PathBuf {
+    crate::target_dir().join(".xtask-plugins-stamp")
+}
+
+fn write_plugin_stamp(sh: &Shell) {
+    let _ = sh.write_file(plugin_stamp_path(), b"");
+}
+
+fn plugin_sources_changed() -> bool {
+    let stamp_time = match std::fs::metadata(plugin_stamp_path()).and_then(|m| m.modified()) {
+        Ok(stamp_time) => stamp_time,
+        Err(_) => return true,
+    };
+    match newest_plugin_source_time() {
+        Some(newest_source) => newest_source > stamp_time,
+        None => true,
+    }
+}
+
+pub fn proto(sh: &Shell) -> anyhow::Result<()> {
+    let msg = ">> Generating protobuffer code";
+    crate::status(msg);
+    println!("{}", msg);
+
+    run_proto_codegen(sh, true);
+    Ok(())
+}
+
+fn run_proto_codegen(sh: &Shell, force: bool) {
     let zellij_utils_basedir = crate::project_root().join("zellij-utils");
     let _pd = sh.push_dir(&zellij_utils_basedir);
 
@@ -130,6 +261,11 @@ fn run_proto_codegen(sh: &Shell) {
             "src/web_server_contract",
             "generated_web_server_api.rs",
         ),
+        (
+            "assets/prost_nested_session",
+            "src/nested_session_contract",
+            "generated_nested_session_api.rs",
+        ),
     ];
 
     for (out_subdir, src_subdir, include_file) in specs {
@@ -142,7 +278,7 @@ fn run_proto_codegen(sh: &Shell) {
             .metadata()
             .and_then(|m| m.modified());
         let mut proto_files = vec![];
-        let mut needs_regeneration = false;
+        let mut needs_regeneration = force;
 
         for entry in std::fs::read_dir(&src_dir).unwrap() {
             let entry_path = entry.unwrap().path();
@@ -182,14 +318,11 @@ fn move_plugin_to_assets(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
         .with_extension("wasm");
 
     // Get plugin path
-    let plugin = PathBuf::from(
-        std::env::var_os("CARGO_TARGET_DIR")
-            .unwrap_or(crate::project_root().join("target").into_os_string()),
-    )
-    .join("wasm32-wasip1")
-    .join("release")
-    .join(plugin_name)
-    .with_extension("wasm");
+    let plugin = crate::target_dir()
+        .join("wasm32-wasip1")
+        .join("release")
+        .join(plugin_name)
+        .with_extension("wasm");
 
     if !plugin.is_file() {
         return Err(anyhow::anyhow!("No plugin found at '{}'", plugin.display()))
@@ -200,37 +333,4 @@ fn move_plugin_to_assets(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
     let from = plugin.as_path();
     let to = asset_name.as_path();
     sh.copy_file(from, to).with_context(err_context)
-}
-
-/// Build the manpage with `mandown`.
-//      mkdir -p ${root_dir}/assets/man
-//      mandown ${root_dir}/docs/MANPAGE.md 1 > ${root_dir}/assets/man/zellij.1
-pub fn manpage(sh: &Shell) -> anyhow::Result<()> {
-    let err_context = "failed to generate manpage";
-
-    let mandown = mandown(sh).context(err_context)?;
-
-    let project_root = crate::project_root();
-    let asset_dir = &project_root.join("assets").join("man");
-    sh.create_dir(asset_dir).context(err_context)?;
-    let _pd = sh.push_dir(asset_dir);
-
-    cmd!(sh, "{mandown} {project_root}/docs/MANPAGE.md 1")
-        .read()
-        .and_then(|text| sh.write_file("zellij.1", text))
-        .context(err_context)
-}
-
-/// Get the path to a `mandown` executable.
-///
-/// If the executable isn't found, an error is returned instead.
-fn mandown(_sh: &Shell) -> anyhow::Result<PathBuf> {
-    match which::which("mandown") {
-        Ok(path) => Ok(path),
-        Err(e) => {
-            eprintln!("!! 'mandown' wasn't found but is needed for this build step.");
-            eprintln!("!! Please install it with: `cargo install mandown`");
-            Err(e).context("Couldn't find 'mandown' executable")
-        },
-    }
 }

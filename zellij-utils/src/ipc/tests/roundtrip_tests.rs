@@ -13,25 +13,32 @@ use crate::input::layout::{
     TiledPaneLayout,
 };
 use crate::input::mouse::{MouseEvent, MouseEventType};
-use crate::input::options::{Clipboard, OnForceClose, Options};
+use crate::input::options::{
+    Clipboard, NestedSessionHandling, OnForceClose, Options, PaneFrameStyle,
+};
 use crate::ipc::{
-    ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ServerToClientMsg,
+    ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
+    MobileRenderPrefsPayload, MobileSessionPayload, MobileSizePayload, MobileStatePayload,
+    MobileTabPayload, PaneReference, PixelDimensions, ServerToClientMsg,
 };
 use crate::pane_size::{Size, SizeInPixels};
 use crate::position::Position;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
+const ROUNDTRIP_TEST_STACK_SIZE: usize = 32 * 1024 * 1024;
+
 #[test]
 fn server_client_contract() {
-    // here we test all possible values of each of the nested types in the server/client contract
-    // in the context of its message.
-    //
-    // we do a "roundtrip" test, meaning we take each message, encode it to protobuf bytes and
-    // decode it back to its rust type and then assert its equality with the original type to make
-    // sure they are identical and did not lose any information
-    test_client_messages();
-    test_server_messages();
+    std::thread::Builder::new()
+        .stack_size(ROUNDTRIP_TEST_STACK_SIZE)
+        .spawn(|| {
+            test_client_messages();
+            test_server_messages();
+        })
+        .expect("failed to spawn roundtrip test thread")
+        .join()
+        .expect("roundtrip test thread panicked");
 }
 
 fn test_client_messages() {
@@ -345,6 +352,10 @@ fn test_client_messages() {
             }),
         },
     });
+    test_client_roundtrip!(ClientToServerMsg::KittyGraphicsSupport { supported: true });
+    test_client_roundtrip!(ClientToServerMsg::KittyGraphicsSupport { supported: false });
+    test_client_roundtrip!(ClientToServerMsg::SixelSupport { supported: true });
+    test_client_roundtrip!(ClientToServerMsg::SixelSupport { supported: false });
     test_client_roundtrip!(ClientToServerMsg::BackgroundColor {
         color: "red".to_string(),
     });
@@ -384,6 +395,9 @@ fn test_client_messages() {
             cols: 200,
             rows: 50
         },
+    });
+    test_client_roundtrip!(ClientToServerMsg::TerminalResize {
+        new_size: Size { cols: 40, rows: 38 },
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets::default(),
@@ -443,6 +457,7 @@ fn test_client_messages() {
                 theme_dir: Some(PathBuf::from("theme_dir")),
                 mouse_mode: Some(true),
                 pane_frames: Some(true),
+                pane_frame_style: Some(PaneFrameStyle::Full),
                 mirror_session: Some(true),
                 on_force_close: Some(OnForceClose::Quit),
                 scroll_buffer_size: Some(100000),
@@ -461,12 +476,15 @@ fn test_client_messages() {
                 serialization_interval: Some(1),
                 disable_session_metadata: Some(true),
                 support_kitty_keyboard_protocol: Some(true),
+                support_kitty_graphics_protocol: Some(false),
                 web_server: Some(true),
                 web_sharing: Some(WebSharing::On),
                 stacked_resize: Some(true),
+                stacked_pane_list: Some(true),
                 show_startup_tips: Some(true),
                 show_release_notes: Some(true),
                 advanced_mouse_actions: Some(true),
+                mouse_scroll_resize: Some(true),
                 web_server_ip: Some("1.1.1.1".parse().unwrap()),
                 web_server_port: Some(8080),
                 web_server_cert: Some(PathBuf::from("web_server_cert")),
@@ -478,6 +496,10 @@ fn test_client_messages() {
                 visual_bell: Some(true),
                 focus_follows_mouse: Some(false),
                 mouse_click_through: Some(false),
+                osc133_command_selection: Some(false),
+                word_separators: Some("[]{}<>():".to_owned()),
+                nested_session_handling: Some(NestedSessionHandling::Fullscreen),
+                dangerously_enable_paste_buffer_read: Some(true),
             }),
             layout: None,
             terminal_window_size: Size { rows: 80, cols: 42 },
@@ -669,8 +691,47 @@ fn test_client_messages() {
         },
         is_web_client: true,
     });
+    test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
+        cli_assets: CliAssets {
+            configuration_options: Some(Options {
+                nested_session_handling: Some(NestedSessionHandling::Ask),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        is_web_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
+        cli_assets: CliAssets {
+            configuration_options: Some(Options {
+                nested_session_handling: Some(NestedSessionHandling::Fullscreen),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        is_web_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
+        cli_assets: CliAssets {
+            configuration_options: Some(Options {
+                nested_session_handling: Some(NestedSessionHandling::Descend),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        is_web_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
+        cli_assets: CliAssets {
+            configuration_options: Some(Options {
+                nested_session_handling: Some(NestedSessionHandling::Never),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        is_web_client: true,
+    });
     test_client_roundtrip!(ClientToServerMsg::AttachClient {
-        // cli_assets tested extensively ijn FirstClientConnected, we can skip it here
         cli_assets: CliAssets::default(),
         tab_position_to_focus: None,
         pane_to_focus: None,
@@ -700,6 +761,18 @@ fn test_client_messages() {
         }),
         is_web_client: true,
     });
+    test_client_roundtrip!(ClientToServerMsg::AttachClient {
+        cli_assets: CliAssets {
+            configuration_options: Some(Options {
+                nested_session_handling: Some(NestedSessionHandling::Descend),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        tab_position_to_focus: None,
+        pane_to_focus: None,
+        is_web_client: false,
+    });
     // TODO: Action
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::Quit,
@@ -725,7 +798,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::Write {
-            // KeyWithModifier is tested extensively in the Key ClientToServerMsg
             key_with_modifier: Some(KeyWithModifier::new(BareKey::Char('a'))),
             bytes: "a".as_bytes().to_vec(),
             is_kitty_keyboard_protocol: true,
@@ -744,7 +816,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::SwitchToMode {
-            // InputMode is tested extensively in the Options conversion tests above
             input_mode: InputMode::Locked,
         },
         terminal_id: Some(1),
@@ -753,7 +824,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::SwitchModeForAllClients {
-            // InputMode is tested extensively in the Options conversion tests above
             input_mode: InputMode::Locked,
         },
         terminal_id: Some(1),
@@ -834,7 +904,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::MoveFocus {
-            // Direction is tested extensively elsewhere
             direction: Direction::Up,
         },
         terminal_id: Some(1),
@@ -1010,6 +1079,12 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ToggleFocusNoUiFullscreen,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::TogglePaneFrames,
         terminal_id: Some(1),
         client_id: Some(100),
@@ -1056,6 +1131,7 @@ fn test_client_messages() {
             start_suppressed: false,
             coordinates: None,
             near_current_pane: false,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -1081,6 +1157,7 @@ fn test_client_messages() {
             start_suppressed: false,
             coordinates: None,
             near_current_pane: false,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -1106,6 +1183,7 @@ fn test_client_messages() {
             start_suppressed: false,
             coordinates: None,
             near_current_pane: false,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -1131,6 +1209,7 @@ fn test_client_messages() {
             start_suppressed: true,
             coordinates: FloatingPaneCoordinates::new(None, None, None, None, None, Some(false)),
             near_current_pane: false,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -1163,6 +1242,7 @@ fn test_client_messages() {
                 Some(false),
             ),
             near_current_pane: false,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -1195,6 +1275,7 @@ fn test_client_messages() {
                 Some(false),
             ),
             near_current_pane: false,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -1227,6 +1308,7 @@ fn test_client_messages() {
                 Some(false),
             ),
             near_current_pane: false,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -1259,6 +1341,7 @@ fn test_client_messages() {
                 Some(false)
             ),
             near_current_pane: false,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -1271,6 +1354,7 @@ fn test_client_messages() {
             pane_name: None,
             coordinates: None,
             near_current_pane: false,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -1299,6 +1383,7 @@ fn test_client_messages() {
                 Some(false),
             ),
             near_current_pane: false,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -1331,6 +1416,7 @@ fn test_client_messages() {
                 Some(false),
             ),
             near_current_pane: false,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -1343,6 +1429,7 @@ fn test_client_messages() {
             direction: None,
             pane_name: None,
             near_current_pane: false,
+            no_focus: false,
             borderless: None,
             tab_id: None,
         },
@@ -1369,6 +1456,7 @@ fn test_client_messages() {
             direction: Some(Direction::Right),
             pane_name: Some("my_pane_name".to_owned()),
             near_current_pane: false,
+            no_focus: false,
             borderless: Some(true),
             tab_id: None,
         },
@@ -1394,6 +1482,7 @@ fn test_client_messages() {
             }),
             pane_name: Some("my_pane_name".to_owned()),
             near_current_pane: false,
+            no_focus: false,
             pane_id_to_replace: None,
             close_replaced_pane: false,
             tab_id: None,
@@ -1407,6 +1496,7 @@ fn test_client_messages() {
             command: None,
             pane_name: None,
             near_current_pane: false,
+            no_focus: false,
             pane_id_to_replace: None,
             close_replaced_pane: false,
             tab_id: None,
@@ -1433,6 +1523,7 @@ fn test_client_messages() {
             }),
             pane_name: Some("my_pane_name".to_owned()),
             near_current_pane: false,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -1444,6 +1535,7 @@ fn test_client_messages() {
             command: None,
             pane_name: None,
             near_current_pane: false,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -2235,7 +2327,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::Run {
-            // RunCommandAction serialization roundtrip is tested extensively upwards of here
             command: RunCommandAction {
                 command: PathBuf::from("/path/to/command"),
                 args: vec![],
@@ -2247,6 +2338,7 @@ fn test_client_messages() {
                 use_terminal_title: false,
             },
             near_current_pane: false,
+            no_focus: false,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -2259,8 +2351,25 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetDarkTheme,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetLightTheme,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ToggleTheme,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::LaunchOrFocusPlugin {
-            // RunPluginOrAlias serialization roundtrip is tested extensively upwards
             plugin: RunPluginOrAlias::RunPlugin(RunPlugin::default()),
             should_float: true,
             move_to_focused_tab: true,
@@ -2275,7 +2384,6 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::LaunchOrFocusPlugin {
-            // RunPluginOrAlias serialization roundtrip is tested extensively upwards
             plugin: RunPluginOrAlias::Alias(PluginAlias::default()),
             should_float: false,
             move_to_focused_tab: false,
@@ -2290,13 +2398,13 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::LaunchPlugin {
-            // RunPluginOrAlias serialization roundtrip is tested extensively upwards
             plugin: RunPluginOrAlias::RunPlugin(RunPlugin::default()),
             should_float: true,
             should_open_in_place: true,
             close_replaced_pane: false,
             skip_cache: true,
             cwd: None,
+            no_focus: true,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -2305,13 +2413,13 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::LaunchPlugin {
-            // RunPluginOrAlias serialization roundtrip is tested extensively upwards
             plugin: RunPluginOrAlias::Alias(PluginAlias::default()),
             should_float: false,
             should_open_in_place: false,
             close_replaced_pane: false,
             skip_cache: false,
             cwd: Some(PathBuf::from("/path/to/cwd")),
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -2327,6 +2435,8 @@ fn test_client_messages() {
                 middle: true,
                 wheel_up: true,
                 wheel_down: true,
+                wheel_left: true,
+                wheel_right: true,
                 shift: true,
                 alt: true,
                 ctrl: true,
@@ -2346,6 +2456,8 @@ fn test_client_messages() {
                 middle: true,
                 wheel_up: true,
                 wheel_down: true,
+                wheel_left: true,
+                wheel_right: true,
                 shift: true,
                 alt: true,
                 ctrl: true,
@@ -2365,6 +2477,8 @@ fn test_client_messages() {
                 middle: true,
                 wheel_up: true,
                 wheel_down: true,
+                wheel_left: true,
+                wheel_right: true,
                 shift: true,
                 alt: true,
                 ctrl: true,
@@ -2479,6 +2593,7 @@ fn test_client_messages() {
             pane_name: Some("my_pane_name".to_owned()),
             skip_cache: false,
             cwd: Some(PathBuf::from("relative/path/to/cwd")),
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -2492,6 +2607,7 @@ fn test_client_messages() {
             skip_cache: true,
             cwd: Some(PathBuf::from("relative/path/to/cwd")),
             coordinates: None,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -2512,6 +2628,7 @@ fn test_client_messages() {
                 Some(true),
                 Some(false),
             ),
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
@@ -2524,19 +2641,20 @@ fn test_client_messages() {
             pane_name: Some("my_pane_name".to_owned()),
             skip_cache: true,
             close_replaced_pane: false,
+            no_focus: false,
             tab_id: None,
         },
         terminal_id: Some(1),
         client_id: Some(100),
         is_cli_client: true,
     });
-    // tab_id roundtrip tests - verify tab_id survives serialization
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::NewTiledPane {
             direction: Some(Direction::Right),
             command: None,
             pane_name: None,
             near_current_pane: false,
+            no_focus: false,
             borderless: None,
             tab_id: Some(3),
         },
@@ -2550,6 +2668,7 @@ fn test_client_messages() {
             pane_name: None,
             coordinates: None,
             near_current_pane: false,
+            no_focus: false,
             tab_id: Some(5),
         },
         terminal_id: Some(1),
@@ -2561,6 +2680,7 @@ fn test_client_messages() {
             command: None,
             pane_name: None,
             near_current_pane: false,
+            no_focus: false,
             tab_id: Some(2),
         },
         terminal_id: Some(1),
@@ -2577,6 +2697,7 @@ fn test_client_messages() {
             command: None,
             unblock_condition: None,
             near_current_pane: false,
+            no_focus: false,
             tab_id: Some(1),
         },
         terminal_id: Some(1),
@@ -2598,6 +2719,7 @@ fn test_client_messages() {
             start_suppressed: false,
             coordinates: None,
             near_current_pane: false,
+            no_focus: false,
             tab_id: Some(4),
         },
         terminal_id: Some(1),
@@ -2609,6 +2731,7 @@ fn test_client_messages() {
             command: None,
             pane_name: None,
             near_current_pane: false,
+            no_focus: false,
             pane_id_to_replace: None,
             close_replaced_pane: false,
             tab_id: Some(7),
@@ -2639,6 +2762,7 @@ fn test_client_messages() {
             close_replaced_pane: false,
             skip_cache: false,
             cwd: None,
+            no_focus: false,
             tab_id: Some(6),
         },
         terminal_id: Some(1),
@@ -2651,6 +2775,7 @@ fn test_client_messages() {
             pane_name: None,
             skip_cache: false,
             cwd: None,
+            no_focus: false,
             tab_id: Some(1),
         },
         terminal_id: Some(1),
@@ -2664,6 +2789,7 @@ fn test_client_messages() {
             skip_cache: false,
             cwd: None,
             coordinates: None,
+            no_focus: false,
             tab_id: Some(3),
         },
         terminal_id: Some(1),
@@ -2676,6 +2802,7 @@ fn test_client_messages() {
             pane_name: None,
             skip_cache: false,
             close_replaced_pane: false,
+            no_focus: false,
             tab_id: Some(2),
         },
         terminal_id: Some(1),
@@ -3259,6 +3386,15 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::ClientExited);
     test_client_roundtrip!(ClientToServerMsg::KillSession);
     test_client_roundtrip!(ClientToServerMsg::ConnStatus);
+    test_client_roundtrip!(ClientToServerMsg::RequestSessionList);
+    test_client_roundtrip!(ClientToServerMsg::SetMobileRenderPreferences {
+        single_pane: true,
+        fit: false,
+    });
+    test_client_roundtrip!(ClientToServerMsg::SetMobileRenderPreferences {
+        single_pane: false,
+        fit: true,
+    });
     test_client_roundtrip!(ClientToServerMsg::WebServerStarted {
         base_url: "http://localhost:8080".to_string(),
     });
@@ -3280,7 +3416,6 @@ fn test_client_messages() {
         scrollback: Some(0),
         ansi: true,
     });
-    // Pane-targeting roundtrips
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::ScrollUpByPaneId {
             pane_id: PaneId::Terminal(1),
@@ -3416,7 +3551,6 @@ fn test_client_messages() {
         client_id: Some(100),
         is_cli_client: true,
     });
-    // ANSI flag roundtrip tests
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::DumpScreen {
             file_path: Some("/path".to_owned()),
@@ -3445,6 +3579,14 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::ToggleFocusFullscreenByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ToggleFocusNoUiFullscreenByPaneId {
             pane_id: PaneId::Terminal(1),
         },
         terminal_id: Some(1),
@@ -3500,7 +3642,6 @@ fn test_client_messages() {
         client_id: Some(100),
         is_cli_client: true,
     });
-    // Tab-targeting roundtrips
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::UndoRenameTabByTabId { id: 5 },
         terminal_id: Some(1),
@@ -3540,6 +3681,24 @@ fn test_client_messages() {
         client_id: Some(100),
         is_cli_client: true,
     });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetPaneFrameStyle(PaneFrameStyle::Full),
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetPaneFrameStyle(PaneFrameStyle::Titles),
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetPaneFrameStyle(PaneFrameStyle::None),
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
     test_client_roundtrip!(ClientToServerMsg::ForwardedReplyFromHost {
         token: 0,
         reply_bytes: vec![],
@@ -3568,6 +3727,12 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::HostTerminalThemeChanged {
         mode: HostTerminalThemeMode::Light,
+    });
+    test_client_roundtrip!(ClientToServerMsg::NestedSessionFrameFromHost {
+        payload_bytes: vec![],
+    });
+    test_client_roundtrip!(ClientToServerMsg::NestedSessionFrameFromHost {
+        payload_bytes: (0u8..=255u8).collect(),
     });
 }
 
@@ -3707,20 +3872,113 @@ fn test_server_messages() {
     test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
         token: 0,
         query_bytes: vec![],
+        resolve_async: false,
     });
     test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
         token: 7,
         query_bytes: b"\x1b[14t".to_vec(),
+        resolve_async: false,
     });
     test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
         token: u32::MAX,
         query_bytes: (0u8..=255u8).collect(),
+        resolve_async: false,
+    });
+    test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
+        token: 12,
+        query_bytes: b"\x1b]52;c;?\x1b\\".to_vec(),
+        resolve_async: true,
+    });
+    test_server_roundtrip!(ServerToClientMsg::EmitNestedSessionFrame {
+        payload_bytes: vec![],
+    });
+    test_server_roundtrip!(ServerToClientMsg::EmitNestedSessionFrame {
+        payload_bytes: (0u8..=255u8).collect(),
+    });
+    test_server_roundtrip!(ServerToClientMsg::SetSoftKeyboard { on: true });
+    test_server_roundtrip!(ServerToClientMsg::SetSoftKeyboard { on: false });
+    test_server_roundtrip!(ServerToClientMsg::MobileState {
+        payload: MobileStatePayload {
+            session_name: String::new(),
+            now_secs: 0,
+            is_welcome_screen: false,
+            desktop_client_connected: false,
+            desktop_size: None,
+            active_pane: None,
+            tabs: vec![],
+            panes: vec![],
+            sessions: vec![],
+            render_prefs: MobileRenderPrefsPayload {
+                single_pane: true,
+                fit: true,
+                active_pane_is_fullscreen: false,
+            },
+        },
+    });
+    test_server_roundtrip!(ServerToClientMsg::MobileState {
+        payload: MobileStatePayload {
+            session_name: "my-session".to_string(),
+            now_secs: 1_700_000_000,
+            is_welcome_screen: true,
+            desktop_client_connected: true,
+            desktop_size: Some(MobileSizePayload {
+                cols: 200,
+                rows: 60,
+            }),
+            active_pane: Some(MobileActivePanePayload {
+                pane_id: 3,
+                is_plugin: true,
+                tab_position: 1,
+            }),
+            tabs: vec![
+                MobileTabPayload {
+                    position: 0,
+                    name: "Tab #1".to_string(),
+                    active: true,
+                },
+                MobileTabPayload {
+                    position: 1,
+                    name: "Tab #2".to_string(),
+                    active: false,
+                },
+            ],
+            panes: vec![
+                MobilePanePayload {
+                    tab_position: 0,
+                    pane_id: 1,
+                    is_plugin: false,
+                    title: "zsh".to_string(),
+                    is_floating: false,
+                    last_activity_secs_ago: 0,
+                },
+                MobilePanePayload {
+                    tab_position: 1,
+                    pane_id: 3,
+                    is_plugin: true,
+                    title: "welcome-screen".to_string(),
+                    is_floating: true,
+                    last_activity_secs_ago: 340,
+                },
+            ],
+            sessions: vec![MobileSessionPayload {
+                name: "other-session".to_string(),
+                web_clients_allowed: true,
+                tab_count: 2,
+                pane_count: 4,
+                connected_clients: 1,
+                creation_secs_ago: 3600,
+            }],
+            render_prefs: MobileRenderPrefsPayload {
+                single_pane: false,
+                fit: false,
+                active_pane_is_fullscreen: true,
+            },
+        },
     });
 }
 
 #[test]
 fn set_pane_color_wire_roundtrip() {
-    // Test actual byte-level encode/decode, not just struct conversion
     use prost::Message;
 
     let original = ClientToServerMsg::Action {
@@ -3734,21 +3992,17 @@ fn set_pane_color_wire_roundtrip() {
         is_cli_client: true,
     };
 
-    // Rust -> proto struct
     let proto: crate::client_server_contract::client_server_contract::ClientToServerMsg =
         original.clone().into();
 
-    // proto struct -> bytes (what goes over the wire)
     let bytes = proto.encode_to_vec();
 
-    // bytes -> proto struct (what the server does)
     let decoded_proto =
         crate::client_server_contract::client_server_contract::ClientToServerMsg::decode(
             &bytes[..],
         )
         .expect("Failed to decode protobuf bytes");
 
-    // proto struct -> Rust
     let roundtrip: ClientToServerMsg = decoded_proto
         .try_into()
         .expect("Failed to convert decoded protobuf back to Rust");
@@ -3782,14 +4036,12 @@ fn rename_active_pane_wire_roundtrip() {
     let proto: crate::client_server_contract::client_server_contract::ClientToServerMsg =
         original.clone().into();
 
-    // proto struct → bytes → proto struct (the actual wire path)
     let mut buf = Vec::new();
     proto.encode(&mut buf).expect("Failed to encode protobuf");
     let decoded =
         crate::client_server_contract::client_server_contract::ClientToServerMsg::decode(&buf[..])
             .expect("Failed to decode protobuf bytes");
 
-    // proto struct → Rust
     let roundtrip: ClientToServerMsg = decoded
         .try_into()
         .expect("Failed to convert decoded protobuf back to Rust");

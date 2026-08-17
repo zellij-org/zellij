@@ -18,14 +18,16 @@ use zellij_utils::plugin_api::plugin_command::{
     parse_layout_response, CreateTokenResponse, ListTokensResponse,
     ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIdResponse,
     ProtobufBreakPanesToTabWithIndexResponse, ProtobufCurrentSessionLastSavedTimeResponse,
+    ProtobufDeleteAllDeadSessionsResponse, ProtobufDeleteDeadSessionResponse,
     ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
     ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
     ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
     ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
     ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
     ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetSessionListResponse,
-    ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse, ProtobufNewTabResponse,
-    ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
+    ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse, ProtobufKillSessionsResponse,
+    ProtobufNewTabResponse, ProtobufNewTabUnfocusedResponse, ProtobufNewTabsResponse,
+    ProtobufNewTiledPaneInTabResponse, ProtobufOpenCommandPaneBackgroundResponse,
     ProtobufOpenCommandPaneFloatingNearPluginResponse, ProtobufOpenCommandPaneFloatingResponse,
     ProtobufOpenCommandPaneInPlaceOfPaneIdResponse, ProtobufOpenCommandPaneInPlaceOfPluginResponse,
     ProtobufOpenCommandPaneInPlaceResponse, ProtobufOpenCommandPaneNearPluginResponse,
@@ -960,6 +962,33 @@ where
     NewTabResponse::try_from(response).unwrap()
 }
 
+pub fn new_tab_unfocused<S: AsRef<str>>(name: Option<S>, cwd: Option<S>) -> Option<usize>
+where
+    S: ToString,
+{
+    let name = name.map(|s| s.to_string());
+    let cwd = cwd.map(|s| s.to_string());
+    let plugin_command = PluginCommand::NewTabUnfocused { name, cwd };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufNewTabUnfocusedResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    NewTabUnfocusedResponse::try_from(response).unwrap()
+}
+
+pub fn new_tiled_pane_in_tab(tab_position: usize) -> Option<PaneId> {
+    let plugin_command = PluginCommand::NewTiledPaneInTab { tab_position };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufNewTiledPaneInTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    NewTiledPaneInTabResponse::try_from(response).unwrap()
+}
+
 /// Opens a new tab with a command pane running `command_to_run`.
 /// Returns `(tab_id, pane_id)` of the created tab and pane, or `None` if unavailable.
 pub fn open_command_pane_in_new_tab(
@@ -1102,6 +1131,14 @@ pub fn focus_next_pane() {
 /// Change focus to the previous pane in chronological order
 pub fn focus_previous_pane() {
     let plugin_command = PluginCommand::FocusPreviousPane;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Change focus to the previously focused pane
+pub fn focus_last_pane() {
+    let plugin_command = PluginCommand::FocusLastPane;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -1254,9 +1291,30 @@ pub fn toggle_focus_fullscreen() {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn toggle_focus_no_ui_fullscreen() {
+    let plugin_command = PluginCommand::ToggleFocusNoUiFullscreen;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn focus_host_session() {
+    let plugin_command = PluginCommand::FocusHostSession;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Toggle the UI pane frames on or off
 pub fn toggle_pane_frames() {
     let plugin_command = PluginCommand::TogglePaneFrames;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn set_pane_frame_style(pane_frame_style: PaneFrameStyle) {
+    let plugin_command = PluginCommand::SetPaneFrameStyle(pane_frame_style);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -1280,6 +1338,20 @@ pub fn undo_rename_pane() {
 /// Close the focused pane
 pub fn close_focus() {
     let plugin_command = PluginCommand::CloseFocus;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn new_pane() {
+    let plugin_command = PluginCommand::NewPane;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn toggle_floating_panes(tab_id: Option<u64>) {
+    let plugin_command = PluginCommand::ToggleFloatingPanes { tab_id };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -1512,20 +1584,45 @@ pub fn switch_session_with_focus(
     unsafe { host_run_plugin_command() };
 }
 
-/// Permanently delete a resurrectable session with the given name
-pub fn delete_dead_session(name: &str) {
-    let plugin_command = PluginCommand::DeleteDeadSession(name.to_owned());
+/// Permanently delete a resurrectable session with the given name.
+///
+/// Returns `Ok(())` if the session's cache directory was removed; `Err(...)`
+/// if the underlying `remove_dir_all` failed (e.g. permissions, missing path).
+pub fn delete_dead_session(name: &str) -> Result<(), String> {
+    let plugin_command = PluginCommand::DeleteDeadSessionAndReply(name.to_owned());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response_bytes = bytes_from_stdin()
+        .map_err(|e| format!("Failed to read DeleteDeadSession response: {}", e))?;
+    let protobuf_response = ProtobufDeleteDeadSessionResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Malformed DeleteDeadSession response: {}", e))?;
+    match protobuf_response.error {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
 }
 
-/// Permanently delete aall resurrectable sessions on this machine
-pub fn delete_all_dead_sessions() {
-    let plugin_command = PluginCommand::DeleteAllDeadSessions;
+/// Permanently delete all resurrectable sessions on this machine.
+///
+/// Bounded by a host-side wedge timeout (matching the kill-all budget) so a
+/// pathological filesystem cannot freeze the calling plugin.
+pub fn delete_all_dead_sessions() -> Result<(), String> {
+    let plugin_command = PluginCommand::DeleteAllDeadSessionsAndReply;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response_bytes = bytes_from_stdin()
+        .map_err(|e| format!("Failed to read DeleteAllDeadSessions response: {}", e))?;
+    let protobuf_response =
+        ProtobufDeleteAllDeadSessionsResponse::decode(response_bytes.as_slice())
+            .map_err(|e| format!("Malformed DeleteAllDeadSessions response: {}", e))?;
+    match protobuf_response.error {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
 }
 
 /// Rename the current session
@@ -1576,16 +1673,32 @@ pub fn disconnect_other_clients() {
     unsafe { host_run_plugin_command() };
 }
 
-/// Kill all Zellij sessions in the list
-pub fn kill_sessions<S: AsRef<str>>(session_names: &[S])
+/// Kill all Zellij sessions in the list.
+///
+/// Waits for each peer session to acknowledge the kill (over its own IPC
+/// socket -- the server-side handler reads back the `Exit` message the peer
+/// sends as part of its shutdown, or a stream-close if the peer dies first).
+/// Returns once every kill has been confirmed or one has failed. A wedged
+/// peer is bounded by a short server-side wedge timeout.
+pub fn kill_sessions<S: AsRef<str>>(session_names: &[S]) -> Result<(), String>
 where
     S: ToString,
 {
-    let plugin_command =
-        PluginCommand::KillSessions(session_names.into_iter().map(|s| s.to_string()).collect());
+    let plugin_command = PluginCommand::KillSessionsAndReply(
+        session_names.into_iter().map(|s| s.to_string()).collect(),
+    );
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read KillSessions response: {}", e))?;
+    let protobuf_response = ProtobufKillSessionsResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Malformed KillSessions response: {}", e))?;
+    match protobuf_response.error {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
 }
 
 /// List Windows volumes (drives and WSL distributions).
@@ -1602,6 +1715,13 @@ pub fn list_windows_volumes() {
 /// issues), will not follow symlinks
 pub fn scan_host_folder<S: AsRef<Path>>(folder_to_scan: &S) {
     let plugin_command = PluginCommand::ScanHostFolder(folder_to_scan.as_ref().to_path_buf());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn set_soft_keyboard(on: bool) {
+    let plugin_command = PluginCommand::SetSoftKeyboard(on);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -2858,7 +2978,11 @@ pub fn clear_pane_highlights(pane_id: PaneId) {
     unsafe { host_run_plugin_command() };
 }
 
+#[cfg(target_arch = "wasm32")]
 #[link(wasm_import_module = "zellij")]
 extern "C" {
     fn host_run_plugin_command();
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+unsafe fn host_run_plugin_command() {}

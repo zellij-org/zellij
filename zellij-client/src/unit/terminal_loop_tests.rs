@@ -20,7 +20,6 @@ use zellij_utils::errors::ErrorContext;
 use zellij_utils::ipc::{ClientToServerMsg, ServerToClientMsg};
 use zellij_utils::pane_size::Size;
 
-/// Mock stdin that allows tests to inject input data
 struct MockAsyncStdin {
     rx: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<Vec<u8>>>>,
 }
@@ -30,12 +29,11 @@ impl AsyncStdin for MockAsyncStdin {
     async fn read(&mut self) -> io::Result<Vec<u8>> {
         match self.rx.lock().await.recv().await {
             Some(data) => Ok(data),
-            None => Ok(Vec::new()), // EOF
+            None => Ok(Vec::new()),
         }
     }
 }
 
-/// Mock signal listener that allows tests to inject signals
 struct MockAsyncSignals {
     rx: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<SignalEvent>>>,
 }
@@ -47,7 +45,6 @@ impl AsyncSignals for MockAsyncSignals {
     }
 }
 
-/// Mock ClientOsApi for testing
 #[derive(Clone)]
 struct TestClientOsApi {
     stdout_buffer: Arc<Mutex<Vec<u8>>>,
@@ -223,7 +220,6 @@ mod mock_ws_server {
                 axum::serve(listener, app).await.unwrap();
             });
 
-            // Wait for server to start
             tokio::time::sleep(Duration::from_millis(100)).await;
 
             let server = MockWsServer {
@@ -257,17 +253,20 @@ mod mock_ws_server {
 
         let recv_task = tokio::spawn(async move {
             while let Some(Ok(axum_msg)) = ws_rx.next().await {
-                // Convert axum::extract::ws::Message to tokio_tungstenite::tungstenite::Message
                 let tungstenite_msg = match axum_msg {
-                    axum::extract::ws::Message::Text(text) => Message::Text(text.to_string()),
-                    axum::extract::ws::Message::Binary(data) => Message::Binary(data.to_vec()),
-                    axum::extract::ws::Message::Ping(data) => Message::Ping(data.to_vec()),
-                    axum::extract::ws::Message::Pong(data) => Message::Pong(data.to_vec()),
+                    axum::extract::ws::Message::Text(text) => {
+                        Message::Text(text.to_string().into())
+                    },
+                    axum::extract::ws::Message::Binary(data) => {
+                        Message::Binary(data.to_vec().into())
+                    },
+                    axum::extract::ws::Message::Ping(data) => Message::Ping(data.to_vec().into()),
+                    axum::extract::ws::Message::Pong(data) => Message::Pong(data.to_vec().into()),
                     axum::extract::ws::Message::Close(frame) => {
                         if let Some(f) = frame {
                             Message::Close(Some(tokio_tungstenite::tungstenite::protocol::CloseFrame {
                                 code: tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::from(f.code),
-                                reason: std::borrow::Cow::Owned(f.reason.to_string()),
+                                reason: f.reason.to_string().into(),
                             }))
                         } else {
                             Message::Close(None)
@@ -282,12 +281,19 @@ mod mock_ws_server {
             let msg = state.server_rx.lock().unwrap().try_recv();
             match msg {
                 Ok(tungstenite_msg) => {
-                    // Convert tokio_tungstenite::tungstenite::Message to axum::extract::ws::Message
                     let axum_msg = match tungstenite_msg {
-                        Message::Text(text) => axum::extract::ws::Message::Text(text.into()),
-                        Message::Binary(data) => axum::extract::ws::Message::Binary(data.into()),
-                        Message::Ping(data) => axum::extract::ws::Message::Ping(data.into()),
-                        Message::Pong(data) => axum::extract::ws::Message::Pong(data.into()),
+                        Message::Text(text) => {
+                            axum::extract::ws::Message::Text(text.to_string().into())
+                        },
+                        Message::Binary(data) => {
+                            axum::extract::ws::Message::Binary(data.to_vec().into())
+                        },
+                        Message::Ping(data) => {
+                            axum::extract::ws::Message::Ping(data.to_vec().into())
+                        },
+                        Message::Pong(data) => {
+                            axum::extract::ws::Message::Pong(data.to_vec().into())
+                        },
                         Message::Close(frame) => {
                             if let Some(f) = frame {
                                 axum::extract::ws::Message::Close(Some(
@@ -300,7 +306,7 @@ mod mock_ws_server {
                                 axum::extract::ws::Message::Close(None)
                             }
                         },
-                        Message::Frame(_) => continue, // Skip raw frames
+                        Message::Frame(_) => continue,
                     };
                     if ws_tx.send(axum_msg).await.is_err() {
                         break;
@@ -319,10 +325,8 @@ mod mock_ws_server {
 #[tokio::test]
 #[serial]
 async fn test_stdin_forwarded_to_terminal_websocket() {
-    // Setup mock WebSocket server
     let (port, server, _server_handle) = mock_ws_server::MockWsServer::start().await;
 
-    // Create WebSocket connections
     let terminal_url = format!("ws://127.0.0.1:{}/ws/terminal", port);
     let control_url = format!("ws://127.0.0.1:{}/ws/control", port);
 
@@ -353,21 +357,19 @@ async fn test_stdin_forwarded_to_terminal_websocket() {
         web_client_id: "test-stdin".to_string(),
     };
 
-    // Create mock OS API with controllable stdin
     let (stdin_tx, stdin_rx) = mpsc::unbounded_channel();
     let (_signal_tx, signal_rx) = mpsc::unbounded_channel();
 
     let os_input = Box::new(TestClientOsApi::new(stdin_rx, signal_rx));
 
-    // Spawn the async loop
     let loop_handle =
-        tokio::spawn(async move { run_remote_client_terminal_loop(os_input, connections).await });
+        tokio::spawn(
+            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
+        );
 
-    // Send stdin data
     let test_data = b"hello from stdin\n".to_vec();
     stdin_tx.send(test_data.clone()).unwrap();
 
-    // Verify terminal WebSocket received the data
     tokio::time::sleep(Duration::from_millis(200)).await;
     let received = tokio::time::timeout(
         Duration::from_secs(1),
@@ -382,7 +384,6 @@ async fn test_stdin_forwarded_to_terminal_websocket() {
         _ => panic!("Expected Binary message, got: {:?}", received),
     }
 
-    // Cleanup: send EOF via stdin
     drop(stdin_tx);
     let _ = tokio::time::timeout(Duration::from_secs(2), loop_handle)
         .await
@@ -433,18 +434,18 @@ async fn test_terminal_output_written_to_stdout() {
     let os_input = Box::new(os_input);
 
     let loop_handle =
-        tokio::spawn(async move { run_remote_client_terminal_loop(os_input, connections).await });
+        tokio::spawn(
+            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
+        );
 
-    // Send terminal output from server
     let test_output = "Hello from terminal";
     server
         .terminal_to_client_tx
-        .send(Message::Text(test_output.to_string()))
+        .send(Message::Text(test_output.to_string().into()))
         .unwrap();
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // Verify stdout received the output
     let stdout = stdout_buffer.lock().unwrap().clone();
     let stdout_str = String::from_utf8_lossy(&stdout);
     assert!(
@@ -454,7 +455,6 @@ async fn test_terminal_output_written_to_stdout() {
         stdout_str
     );
 
-    // Cleanup
     server
         .terminal_to_client_tx
         .send(Message::Close(None))
@@ -506,24 +506,22 @@ async fn test_resize_signal_sends_control_message() {
     let os_input = Box::new(TestClientOsApi::new(stdin_rx, signal_rx));
 
     let loop_handle =
-        tokio::spawn(async move { run_remote_client_terminal_loop(os_input, connections).await });
+        tokio::spawn(
+            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
+        );
 
-    // Wait for initial resize message to be sent on startup
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // Consume the initial resize message
     let _ = tokio::time::timeout(
         Duration::from_millis(500),
         server.client_to_control_rx.lock().unwrap().recv(),
     )
     .await;
 
-    // Send resize signal
     signal_tx.send(SignalEvent::Resize).unwrap();
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // Verify control WebSocket received resize message
     let received = tokio::time::timeout(
         Duration::from_secs(1),
         server.client_to_control_rx.lock().unwrap().recv(),
@@ -548,7 +546,6 @@ async fn test_resize_signal_sends_control_message() {
         _ => panic!("Expected Text message, got: {:?}", received),
     }
 
-    // Cleanup
     signal_tx.send(SignalEvent::Quit).unwrap();
     let _ = tokio::time::timeout(Duration::from_secs(2), loop_handle)
         .await
@@ -597,12 +594,12 @@ async fn test_quit_signal_exits_loop() {
     let os_input = Box::new(TestClientOsApi::new(stdin_rx, signal_rx));
 
     let loop_handle =
-        tokio::spawn(async move { run_remote_client_terminal_loop(os_input, connections).await });
+        tokio::spawn(
+            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
+        );
 
-    // Send quit signal
     signal_tx.send(SignalEvent::Quit).unwrap();
 
-    // Verify loop exits cleanly
     let result = tokio::time::timeout(Duration::from_secs(2), loop_handle)
         .await
         .expect("Loop didn't exit within timeout")
@@ -652,15 +649,15 @@ async fn test_websocket_close_exits_loop() {
     let os_input = Box::new(TestClientOsApi::new(stdin_rx, signal_rx));
 
     let loop_handle =
-        tokio::spawn(async move { run_remote_client_terminal_loop(os_input, connections).await });
+        tokio::spawn(
+            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
+        );
 
-    // Send close message
     server
         .terminal_to_client_tx
         .send(Message::Close(None))
         .unwrap();
 
-    // Verify loop exits cleanly
     let result = tokio::time::timeout(Duration::from_secs(2), loop_handle)
         .await
         .expect("Loop didn't exit within timeout")
@@ -712,28 +709,28 @@ async fn test_control_message_handling() {
     let os_input = Box::new(os_input);
 
     let loop_handle =
-        tokio::spawn(async move { run_remote_client_terminal_loop(os_input, connections).await });
+        tokio::spawn(
+            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
+        );
 
-    // Wait for initial resize message to be sent on startup
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // Consume the initial resize message
     let _ = tokio::time::timeout(
         Duration::from_millis(500),
         server.client_to_control_rx.lock().unwrap().recv(),
     )
     .await;
 
-    // Send QueryTerminalSize control message
     let query_msg = WebServerToWebClientControlMessage::QueryTerminalSize;
     server
         .control_to_client_tx
-        .send(Message::Text(serde_json::to_string(&query_msg).unwrap()))
+        .send(Message::Text(
+            serde_json::to_string(&query_msg).unwrap().into(),
+        ))
         .unwrap();
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // Verify we receive a resize response
     let received = tokio::time::timeout(
         Duration::from_secs(1),
         server.client_to_control_rx.lock().unwrap().recv(),
@@ -746,28 +743,176 @@ async fn test_control_message_handling() {
         Message::Text(text) => {
             let parsed: WebClientToWebServerControlMessage =
                 serde_json::from_str(&text).expect("Failed to parse");
-            let WebClientToWebServerControlMessagePayload::TerminalResize(size) = parsed.payload;
+            let size = match parsed.payload {
+                WebClientToWebServerControlMessagePayload::TerminalResize(size) => size,
+                other => panic!("Expected TerminalResize, got: {:?}", other),
+            };
             assert_eq!(size, terminal_size);
         },
         _ => panic!("Expected Text message, got: {:?}", received),
     }
 
-    // Test Log message (should not crash)
     let log_msg = WebServerToWebClientControlMessage::Log {
         lines: vec!["Test log".to_string()],
     };
     server
         .control_to_client_tx
-        .send(Message::Text(serde_json::to_string(&log_msg).unwrap()))
+        .send(Message::Text(
+            serde_json::to_string(&log_msg).unwrap().into(),
+        ))
         .unwrap();
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Cleanup
     server
         .terminal_to_client_tx
         .send(Message::Close(None))
         .unwrap();
+    let _ = tokio::time::timeout(Duration::from_secs(2), loop_handle)
+        .await
+        .expect("Loop didn't exit")
+        .unwrap();
+}
+
+async fn connect_mock_ws(port: u16) -> WebSocketConnections {
+    let terminal_url = format!("ws://127.0.0.1:{}/ws/terminal", port);
+    let control_url = format!("ws://127.0.0.1:{}/ws/control", port);
+    let terminal_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (terminal_ws, _) = tokio_tungstenite::client_async_with_config(
+        &terminal_url,
+        MaybeTls::Plain(terminal_tcp),
+        None,
+    )
+    .await
+    .unwrap();
+    let control_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (control_ws, _) = tokio_tungstenite::client_async_with_config(
+        &control_url,
+        MaybeTls::Plain(control_tcp),
+        None,
+    )
+    .await
+    .unwrap();
+    WebSocketConnections {
+        terminal_ws,
+        control_ws,
+        web_client_id: "test-nested".to_string(),
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn test_nested_ping_frame_is_answered_locally_and_stripped_from_forwarded_stdin() {
+    let (port, server, _server_handle) = mock_ws_server::MockWsServer::start().await;
+    let connections = connect_mock_ws(port).await;
+
+    let (stdin_tx, stdin_rx) = mpsc::unbounded_channel();
+    let (_signal_tx, signal_rx) = mpsc::unbounded_channel();
+    let os_input = TestClientOsApi::new(stdin_rx, signal_rx);
+    let stdout_buffer = os_input.stdout_buffer.clone();
+    let os_input = Box::new(os_input);
+
+    let loop_handle =
+        tokio::spawn(
+            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
+        );
+
+    let mut chunk = b"abc".to_vec();
+    chunk.extend_from_slice(&zellij_utils::nested_session::encode_frame(
+        &zellij_utils::nested_session::NestedSessionMessage::Ping,
+    ));
+    chunk.extend_from_slice(b"def");
+    stdin_tx.send(chunk).unwrap();
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let received = tokio::time::timeout(
+        Duration::from_secs(1),
+        server.client_to_terminal_rx.lock().unwrap().recv(),
+    )
+    .await
+    .expect("Timeout")
+    .expect("No message");
+    match received {
+        Message::Binary(data) => assert_eq!(data, b"abcdef".to_vec()),
+        _ => panic!("Expected Binary message, got: {:?}", received),
+    }
+
+    let pong_frame = zellij_utils::nested_session::encode_frame(
+        &zellij_utils::nested_session::NestedSessionMessage::Pong,
+    );
+    let stdout_bytes = stdout_buffer.lock().unwrap().clone();
+    assert!(
+        stdout_bytes
+            .windows(pong_frame.len())
+            .any(|window| window == &pong_frame[..]),
+        "expected a pong frame on stdout, got: {:?}",
+        stdout_bytes
+    );
+
+    drop(stdin_tx);
+    let _ = tokio::time::timeout(Duration::from_secs(2), loop_handle)
+        .await
+        .expect("Loop didn't exit")
+        .unwrap();
+}
+
+#[tokio::test]
+#[serial]
+async fn test_nested_announce_ack_is_relayed_over_control_websocket() {
+    let (port, server, _server_handle) = mock_ws_server::MockWsServer::start().await;
+    let connections = connect_mock_ws(port).await;
+
+    let (stdin_tx, stdin_rx) = mpsc::unbounded_channel();
+    let (_signal_tx, signal_rx) = mpsc::unbounded_channel();
+    let os_input = Box::new(TestClientOsApi::new(stdin_rx, signal_rx));
+
+    let loop_handle =
+        tokio::spawn(
+            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
+        );
+
+    let announce_ack = zellij_utils::nested_session::NestedSessionMessage::AnnounceAck {
+        ancestry: vec!["outer-host".to_owned()],
+        capabilities: vec![zellij_utils::nested_session::NestedSessionCapability::NestedControl],
+        descend_keys: vec![],
+    };
+    stdin_tx
+        .send(zellij_utils::nested_session::encode_frame(&announce_ack))
+        .unwrap();
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let mut relayed_payload = None;
+    loop {
+        let received = tokio::time::timeout(
+            Duration::from_secs(1),
+            server.client_to_control_rx.lock().unwrap().recv(),
+        )
+        .await
+        .expect("Timeout")
+        .expect("No message");
+        if let Message::Text(text) = received {
+            let control_msg: WebClientToWebServerControlMessage =
+                serde_json::from_str(&text).unwrap();
+            if let WebClientToWebServerControlMessagePayload::NestedSessionFrameFromHost {
+                payload_bytes,
+            } = control_msg.payload
+            {
+                assert_eq!(control_msg.web_client_id, "test-nested");
+                relayed_payload = Some(payload_bytes);
+                break;
+            }
+        }
+    }
+    assert_eq!(
+        zellij_utils::nested_session::decode_payload(&relayed_payload.unwrap()),
+        Some(announce_ack)
+    );
+
+    drop(stdin_tx);
     let _ = tokio::time::timeout(Duration::from_secs(2), loop_handle)
         .await
         .expect("Loop didn't exit")

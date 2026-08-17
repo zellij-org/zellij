@@ -6,6 +6,7 @@ pub use super::generated_api::api::{
         SessionManifest as ProtobufSessionManifest,
     },
     input_mode::InputMode as ProtobufInputMode,
+    pane_frame_style::PaneFrameStyle as ProtobufPaneFrameStyle,
     plugin_command::{
         break_panes_to_new_tab_response, break_panes_to_tab_with_id_response,
         break_panes_to_tab_with_index_response, delete_layout_response, dump_layout_response,
@@ -13,9 +14,9 @@ pub use super::generated_api::api::{
         get_focused_pane_info_response, get_pane_cwd_response, get_pane_pid_response,
         get_pane_running_command_response, get_session_list_response, hide_floating_panes_response,
         highlight_style::Style as ProtobufHighlightStyleVariant, new_tab_response,
-        parse_layout_response, plugin_command::Payload, rename_layout_response,
-        save_layout_response, save_session_response, show_floating_panes_response,
-        BreakPanesToNewTabPayload,
+        new_tab_unfocused_response, parse_layout_response, plugin_command::Payload,
+        rename_layout_response, save_layout_response, save_session_response,
+        show_floating_panes_response, BreakPanesToNewTabPayload,
         BreakPanesToNewTabResponse as ProtobufBreakPanesToNewTabResponse,
         BreakPanesToTabWithIdPayload,
         BreakPanesToTabWithIdResponse as ProtobufBreakPanesToTabWithIdResponse,
@@ -28,7 +29,9 @@ pub use super::generated_api::api::{
         CreateTokenResponse, CurrentSessionLastSavedTimePayload,
         CurrentSessionLastSavedTimeResponse as ProtobufCurrentSessionLastSavedTimeResponse,
         CursorPosition, CustomIndexHighlight as ProtobufCustomIndexHighlight,
-        CustomRgbHighlight as ProtobufCustomRgbHighlight, DeleteLayoutPayload,
+        CustomRgbHighlight as ProtobufCustomRgbHighlight,
+        DeleteAllDeadSessionsResponse as ProtobufDeleteAllDeadSessionsResponse,
+        DeleteDeadSessionResponse as ProtobufDeleteDeadSessionResponse, DeleteLayoutPayload,
         DeleteLayoutResponse as ProtobufDeleteLayoutResponse, DumpLayoutPayload,
         DumpLayoutResponse as ProtobufDumpLayoutResponse, DumpSessionLayoutPayload,
         DumpSessionLayoutResponse as ProtobufDumpSessionLayoutResponse, EditLayoutPayload,
@@ -59,11 +62,14 @@ pub use super::generated_api::api::{
         HideFloatingPanesResponse as ProtobufHideFloatingPanesResponse, HidePaneWithIdPayload,
         HighlightAndUnhighlightPanesPayload, HighlightLayer as ProtobufHighlightLayer,
         HighlightStyle as ProtobufHighlightStyle, HttpVerb as ProtobufHttpVerb, IdAndNewName,
-        KeyToRebind, KeyToUnbind, KillSessionsPayload, ListTokensResponse, LoadNewPluginPayload,
-        MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload,
-        MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
-        NewTabResponse as ProtobufNewTabResponse, NewTabsResponse as ProtobufNewTabsResponse,
-        NewTabsWithLayoutInfoPayload,
+        KeyToRebind, KeyToUnbind, KillSessionsPayload,
+        KillSessionsResponse as ProtobufKillSessionsResponse, ListTokensResponse,
+        LoadNewPluginPayload, MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload,
+        MovePaneWithPaneIdPayload, MovePayload, NewPluginArgs as ProtobufNewPluginArgs,
+        NewTabPayload, NewTabResponse as ProtobufNewTabResponse, NewTabUnfocusedPayload,
+        NewTabUnfocusedResponse as ProtobufNewTabUnfocusedResponse,
+        NewTabsResponse as ProtobufNewTabsResponse, NewTabsWithLayoutInfoPayload,
+        NewTiledPaneInTabPayload, NewTiledPaneInTabResponse as ProtobufNewTiledPaneInTabResponse,
         OpenCommandPaneBackgroundResponse as ProtobufOpenCommandPaneBackgroundResponse,
         OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneFloatingNearPluginResponse as ProtobufOpenCommandPaneFloatingNearPluginResponse,
@@ -115,26 +121,28 @@ pub use super::generated_api::api::{
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
-        SetPaneBorderlessPayload, SetPaneColorPayload, SetPaneRegexHighlightsPayload,
-        SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowCursorPayload,
-        ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
+        SetPaneBorderlessPayload, SetPaneColorPayload,
+        SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
+        SetPaneRegexHighlightsPayload, SetSelfMouseSelectionSupportPayload,
+        SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
+        ShowCursorPayload, ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
         StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToIdPayload,
-        SwitchTabToPayload, TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
-        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        SwitchTabToPayload, ToggleFloatingPanesPayload, TogglePaneBorderlessPayload,
+        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
+        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
 };
 
 use crate::data::{
-    ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates,
-    GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
-    GetPaneRunningCommandResponse, GetSessionListResponse, HighlightLayer, HighlightStyle,
-    HttpVerb, InputMode, KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType,
-    PluginCommand, RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, SessionInfo,
-    SessionListSnapshot,
+    ConnectToSession, DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse,
+    DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
+    GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, GetSessionListResponse,
+    HighlightLayer, HighlightStyle, HttpVerb, InputMode, KeyWithModifier, KillSessionsResponse,
+    MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand, RegexHighlight,
+    RenameLayoutResponse, SaveLayoutResponse, SessionInfo, SessionListSnapshot,
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
@@ -390,6 +398,66 @@ impl TryFrom<ProtobufGetSessionListResponse> for GetSessionListResponse {
                 Ok(GetSessionListResponse::Err(err))
             },
             None => Err("Empty GetSessionListResponse"),
+        }
+    }
+}
+
+impl From<KillSessionsResponse> for ProtobufKillSessionsResponse {
+    fn from(response: KillSessionsResponse) -> Self {
+        match response {
+            KillSessionsResponse::Ok => ProtobufKillSessionsResponse { error: None },
+            KillSessionsResponse::Err(err) => ProtobufKillSessionsResponse { error: Some(err) },
+        }
+    }
+}
+
+impl From<ProtobufKillSessionsResponse> for KillSessionsResponse {
+    fn from(protobuf_response: ProtobufKillSessionsResponse) -> Self {
+        match protobuf_response.error {
+            Some(err) => KillSessionsResponse::Err(err),
+            None => KillSessionsResponse::Ok,
+        }
+    }
+}
+
+impl From<DeleteDeadSessionResponse> for ProtobufDeleteDeadSessionResponse {
+    fn from(response: DeleteDeadSessionResponse) -> Self {
+        match response {
+            DeleteDeadSessionResponse::Ok => ProtobufDeleteDeadSessionResponse { error: None },
+            DeleteDeadSessionResponse::Err(err) => {
+                ProtobufDeleteDeadSessionResponse { error: Some(err) }
+            },
+        }
+    }
+}
+
+impl From<ProtobufDeleteDeadSessionResponse> for DeleteDeadSessionResponse {
+    fn from(protobuf_response: ProtobufDeleteDeadSessionResponse) -> Self {
+        match protobuf_response.error {
+            Some(err) => DeleteDeadSessionResponse::Err(err),
+            None => DeleteDeadSessionResponse::Ok,
+        }
+    }
+}
+
+impl From<DeleteAllDeadSessionsResponse> for ProtobufDeleteAllDeadSessionsResponse {
+    fn from(response: DeleteAllDeadSessionsResponse) -> Self {
+        match response {
+            DeleteAllDeadSessionsResponse::Ok => {
+                ProtobufDeleteAllDeadSessionsResponse { error: None }
+            },
+            DeleteAllDeadSessionsResponse::Err(err) => {
+                ProtobufDeleteAllDeadSessionsResponse { error: Some(err) }
+            },
+        }
+    }
+}
+
+impl From<ProtobufDeleteAllDeadSessionsResponse> for DeleteAllDeadSessionsResponse {
+    fn from(protobuf_response: ProtobufDeleteAllDeadSessionsResponse) -> Self {
+        match protobuf_response.error {
+            Some(err) => DeleteAllDeadSessionsResponse::Err(err),
+            None => DeleteAllDeadSessionsResponse::Ok,
         }
     }
 }
@@ -837,6 +905,41 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 }),
                 _ => Err("Mismatched payload for NewTab"),
             },
+            Some(CommandName::NewTabUnfocused) => match protobuf_plugin_command.payload {
+                Some(Payload::NewTabUnfocusedPayload(payload)) => {
+                    Ok(PluginCommand::NewTabUnfocused {
+                        name: payload.name,
+                        cwd: payload.cwd,
+                    })
+                },
+                None => Ok(PluginCommand::NewTabUnfocused {
+                    name: None,
+                    cwd: None,
+                }),
+                _ => Err("Mismatched payload for NewTabUnfocused"),
+            },
+            Some(CommandName::NewTiledPaneInTab) => match protobuf_plugin_command.payload {
+                Some(Payload::NewTiledPaneInTabPayload(payload)) => {
+                    Ok(PluginCommand::NewTiledPaneInTab {
+                        tab_position: payload.tab_position as usize,
+                    })
+                },
+                _ => Err("Mismatched payload for NewTiledPaneInTab"),
+            },
+            Some(CommandName::ToggleFloatingPanes) => match protobuf_plugin_command.payload {
+                Some(Payload::ToggleFloatingPanesPayload(payload)) => {
+                    Ok(PluginCommand::ToggleFloatingPanes {
+                        tab_id: payload.tab_id,
+                    })
+                },
+                _ => Ok(PluginCommand::ToggleFloatingPanes { tab_id: None }),
+            },
+            Some(CommandName::NewPane) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    return Err("NewPane should not have a payload");
+                }
+                Ok(PluginCommand::NewPane)
+            },
             Some(CommandName::GoToNextTab) => {
                 if protobuf_plugin_command.payload.is_some() {
                     return Err("GoToNextTab should not have a payload");
@@ -876,6 +979,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     return Err("FocusPreviousPane should not have a payload");
                 }
                 Ok(PluginCommand::FocusPreviousPane)
+            },
+            Some(CommandName::FocusLastPane) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    return Err("FocusLastPane should not have a payload");
+                }
+                Ok(PluginCommand::FocusLastPane)
             },
             Some(CommandName::MoveFocus) => match protobuf_plugin_command.payload {
                 Some(Payload::MoveFocusPayload(move_payload)) => match move_payload.direction {
@@ -984,11 +1093,34 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 }
                 Ok(PluginCommand::ToggleFocusFullscreen)
             },
+            Some(CommandName::ToggleFocusNoUiFullscreen) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    return Err("ToggleFocusNoUiFullscreen should not have a payload");
+                }
+                Ok(PluginCommand::ToggleFocusNoUiFullscreen)
+            },
+            Some(CommandName::FocusHostSession) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    return Err("FocusHostSession should not have a payload");
+                }
+                Ok(PluginCommand::FocusHostSession)
+            },
             Some(CommandName::TogglePaneFrames) => {
                 if protobuf_plugin_command.payload.is_some() {
                     return Err("TogglePaneFrames should not have a payload");
                 }
                 Ok(PluginCommand::TogglePaneFrames)
+            },
+            Some(CommandName::SetPaneFrameStyle) => match protobuf_plugin_command.payload {
+                Some(Payload::SetPaneFrameStylePayload(payload)) => {
+                    match ProtobufPaneFrameStyle::from_i32(payload.pane_frame_style) {
+                        Some(protobuf_pane_frame_style) => Ok(PluginCommand::SetPaneFrameStyle(
+                            protobuf_pane_frame_style.try_into()?,
+                        )),
+                        None => Err("Malformed SetPaneFrameStyle payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for SetPaneFrameStyle"),
             },
             Some(CommandName::TogglePaneEmbedOrEject) => {
                 if protobuf_plugin_command.payload.is_some() {
@@ -1369,6 +1501,27 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::GetSessionListPayload(_)) => Ok(PluginCommand::GetSessionList),
                 None => Ok(PluginCommand::GetSessionList),
                 _ => Err("Mismatched payload for GetSessionList"),
+            },
+            Some(CommandName::KillSessionsAndReply) => match protobuf_plugin_command.payload {
+                Some(Payload::KillSessionsAndReplyPayload(KillSessionsPayload {
+                    session_names,
+                })) => Ok(PluginCommand::KillSessionsAndReply(session_names)),
+                _ => Err("Mismatched payload for KillSessionsAndReply"),
+            },
+            Some(CommandName::DeleteDeadSessionAndReply) => match protobuf_plugin_command.payload {
+                Some(Payload::DeleteDeadSessionAndReplyPayload(dead_session_name)) => {
+                    Ok(PluginCommand::DeleteDeadSessionAndReply(dead_session_name))
+                },
+                _ => Err("Mismatched payload for DeleteDeadSessionAndReply"),
+            },
+            Some(CommandName::DeleteAllDeadSessionsAndReply) => {
+                Ok(PluginCommand::DeleteAllDeadSessionsAndReply)
+            },
+            Some(CommandName::SetSoftKeyboard) => match protobuf_plugin_command.payload {
+                Some(Payload::SetSoftKeyboardPayload(payload)) => {
+                    Ok(PluginCommand::SetSoftKeyboard(payload.on))
+                },
+                _ => Err("Mismatched payload for SetSoftKeyboard"),
             },
             Some(CommandName::DumpSessionLayout) => match protobuf_plugin_command.payload {
                 Some(Payload::DumpSessionLayoutPayload(payload)) => {
@@ -2812,6 +2965,31 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::NewTab as i32,
                 payload: Some(Payload::NewTabPayload(NewTabPayload { name, cwd })),
             }),
+            PluginCommand::NewTabUnfocused { name, cwd } => Ok(ProtobufPluginCommand {
+                name: CommandName::NewTabUnfocused as i32,
+                payload: Some(Payload::NewTabUnfocusedPayload(NewTabUnfocusedPayload {
+                    name,
+                    cwd,
+                })),
+            }),
+            PluginCommand::NewTiledPaneInTab { tab_position } => Ok(ProtobufPluginCommand {
+                name: CommandName::NewTiledPaneInTab as i32,
+                payload: Some(Payload::NewTiledPaneInTabPayload(
+                    NewTiledPaneInTabPayload {
+                        tab_position: tab_position as u32,
+                    },
+                )),
+            }),
+            PluginCommand::ToggleFloatingPanes { tab_id } => Ok(ProtobufPluginCommand {
+                name: CommandName::ToggleFloatingPanes as i32,
+                payload: Some(Payload::ToggleFloatingPanesPayload(
+                    ToggleFloatingPanesPayload { tab_id },
+                )),
+            }),
+            PluginCommand::NewPane => Ok(ProtobufPluginCommand {
+                name: CommandName::NewPane as i32,
+                payload: None,
+            }),
             PluginCommand::GoToNextTab => Ok(ProtobufPluginCommand {
                 name: CommandName::GoToNextTab as i32,
                 payload: None,
@@ -2838,6 +3016,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::FocusPreviousPane => Ok(ProtobufPluginCommand {
                 name: CommandName::FocusPreviousPane as i32,
+                payload: None,
+            }),
+            PluginCommand::FocusLastPane => Ok(ProtobufPluginCommand {
+                name: CommandName::FocusLastPane as i32,
                 payload: None,
             }),
             PluginCommand::MoveFocus(direction) => Ok(ProtobufPluginCommand {
@@ -2914,9 +3096,26 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ToggleFocusFullscreen as i32,
                 payload: None,
             }),
+            PluginCommand::ToggleFocusNoUiFullscreen => Ok(ProtobufPluginCommand {
+                name: CommandName::ToggleFocusNoUiFullscreen as i32,
+                payload: None,
+            }),
+            PluginCommand::FocusHostSession => Ok(ProtobufPluginCommand {
+                name: CommandName::FocusHostSession as i32,
+                payload: None,
+            }),
             PluginCommand::TogglePaneFrames => Ok(ProtobufPluginCommand {
                 name: CommandName::TogglePaneFrames as i32,
                 payload: None,
+            }),
+            PluginCommand::SetPaneFrameStyle(pane_frame_style) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetPaneFrameStyle as i32,
+                payload: Some(Payload::SetPaneFrameStylePayload(
+                    ProtobufSetPaneFrameStylePayload {
+                        pane_frame_style: ProtobufPaneFrameStyle::try_from(pane_frame_style)?
+                            as i32,
+                    },
+                )),
             }),
             PluginCommand::TogglePaneEmbedOrEject => Ok(ProtobufPluginCommand {
                 name: CommandName::TogglePaneEmbedOrEject as i32,
@@ -3219,6 +3418,28 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::GetSessionList as i32,
                 payload: Some(Payload::GetSessionListPayload(
                     ProtobufGetSessionListPayload {},
+                )),
+            }),
+            PluginCommand::KillSessionsAndReply(session_names) => Ok(ProtobufPluginCommand {
+                name: CommandName::KillSessionsAndReply as i32,
+                payload: Some(Payload::KillSessionsAndReplyPayload(KillSessionsPayload {
+                    session_names,
+                })),
+            }),
+            PluginCommand::DeleteDeadSessionAndReply(dead_session_name) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::DeleteDeadSessionAndReply as i32,
+                    payload: Some(Payload::DeleteDeadSessionAndReplyPayload(dead_session_name)),
+                })
+            },
+            PluginCommand::DeleteAllDeadSessionsAndReply => Ok(ProtobufPluginCommand {
+                name: CommandName::DeleteAllDeadSessionsAndReply as i32,
+                payload: None,
+            }),
+            PluginCommand::SetSoftKeyboard(on) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetSoftKeyboard as i32,
+                payload: Some(Payload::SetSoftKeyboardPayload(
+                    ProtobufSetSoftKeyboardPayload { on },
                 )),
             }),
             PluginCommand::DumpSessionLayout { tab_index } => Ok(ProtobufPluginCommand {
@@ -4339,7 +4560,8 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
 // Conversion implementations for tab creation response types
 use crate::data::{
     BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
-    FocusOrCreateTabResponse, NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
+    FocusOrCreateTabResponse, NewTabResponse, NewTabUnfocusedResponse, NewTabsResponse,
+    NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
     OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
     OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
@@ -4370,6 +4592,47 @@ impl From<NewTabResponse> for ProtobufNewTabResponse {
             None => ProtobufNewTabResponse {
                 result: Some(new_tab_response::Result::None(true)),
             },
+        }
+    }
+}
+
+impl TryFrom<ProtobufNewTabUnfocusedResponse> for NewTabUnfocusedResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufNewTabUnfocusedResponse) -> Result<Self, Self::Error> {
+        match protobuf.result {
+            Some(new_tab_unfocused_response::Result::TabId(id)) => Ok(Some(id as usize)),
+            Some(new_tab_unfocused_response::Result::None(_)) | None => Ok(None),
+        }
+    }
+}
+
+impl From<NewTabUnfocusedResponse> for ProtobufNewTabUnfocusedResponse {
+    fn from(response: NewTabUnfocusedResponse) -> Self {
+        match response {
+            Some(tab_id) => ProtobufNewTabUnfocusedResponse {
+                result: Some(new_tab_unfocused_response::Result::TabId(tab_id as u64)),
+            },
+            None => ProtobufNewTabUnfocusedResponse {
+                result: Some(new_tab_unfocused_response::Result::None(true)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufNewTiledPaneInTabResponse> for NewTiledPaneInTabResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufNewTiledPaneInTabResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<NewTiledPaneInTabResponse> for ProtobufNewTiledPaneInTabResponse {
+    fn from(response: NewTiledPaneInTabResponse) -> Self {
+        ProtobufNewTiledPaneInTabResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
         }
     }
 }
@@ -4956,6 +5219,65 @@ impl From<OpenPluginPaneFloatingResponse> for ProtobufOpenPluginPaneFloatingResp
     fn from(response: OpenPluginPaneFloatingResponse) -> Self {
         ProtobufOpenPluginPaneFloatingResponse {
             pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::PluginCommand;
+
+    #[test]
+    fn set_pane_frame_style_protobuf_round_trip() {
+        use crate::input::options::PaneFrameStyle;
+        for style in [
+            PaneFrameStyle::Full,
+            PaneFrameStyle::Titles,
+            PaneFrameStyle::None,
+        ] {
+            let original = PluginCommand::SetPaneFrameStyle(style);
+            let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+            let decoded: PluginCommand = protobuf.try_into().expect("decode");
+            match decoded {
+                PluginCommand::SetPaneFrameStyle(decoded_style) => {
+                    assert_eq!(decoded_style, style)
+                },
+                other => panic!("expected SetPaneFrameStyle, got {:?}", other),
+            }
+        }
+    }
+
+    #[test]
+    fn new_pane_protobuf_round_trip() {
+        let original = PluginCommand::NewPane;
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::NewPane => {},
+            other => panic!("expected NewPane, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn toggle_floating_panes_focused_tab_protobuf_round_trip() {
+        let original = PluginCommand::ToggleFloatingPanes { tab_id: None };
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::ToggleFloatingPanes { tab_id } => assert_eq!(tab_id, None),
+            other => panic!("expected ToggleFloatingPanes, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn toggle_floating_panes_with_tab_id_protobuf_round_trip() {
+        let original = PluginCommand::ToggleFloatingPanes { tab_id: Some(2) };
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::ToggleFloatingPanes { tab_id } => assert_eq!(tab_id, Some(2)),
+            other => panic!("expected ToggleFloatingPanes, got {:?}", other),
         }
     }
 }

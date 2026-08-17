@@ -1,7 +1,9 @@
 use super::{Output, Tab};
+use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
 use crate::screen::CopyOptions;
 use crate::Arc;
+use zellij_utils::input::options::PaneFrameStyle;
 
 use crate::{
     os_input_output::ServerOsApi, pane_groups::PaneGroups, panes::PaneId,
@@ -214,7 +216,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let max_panes = None;
     let mode_info = default_mode;
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -235,6 +237,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -245,7 +248,9 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         size,
         character_cell_info,
         stacked_resize,
+        Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -272,6 +277,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -291,7 +297,12 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     tab
 }
 
-fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab {
+fn create_new_tab_with_stacked_pane_list(
+    size: Size,
+    default_mode: ModeInfo,
+    stacked_pane_list: bool,
+    base_layout_and_ids: Option<(TiledPaneLayout, Vec<(u32, Option<RunCommand>)>)>,
+) -> Tab {
     set_session_name("test".into());
     let index = 0;
     let position = 0;
@@ -301,7 +312,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
     let max_panes = None;
     let mode_info = default_mode;
     let style = Style::default();
-    let draw_pane_frames = false;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -310,6 +321,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let character_cell_info = Rc::new(RefCell::new(None));
     let stacked_resize = Rc::new(RefCell::new(true));
+    let stacked_pane_list = Rc::new(RefCell::new(stacked_pane_list));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -322,6 +334,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -332,7 +345,9 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         size,
         character_cell_info,
         stacked_resize,
+        stacked_pane_list,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -359,6 +374,100 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
+        true,
+        false,
+        false,
+        web_server_ip,
+        web_server_port,
+    );
+    let (base_layout, new_terminal_ids) =
+        base_layout_and_ids.unwrap_or_else(|| (TiledPaneLayout::default(), vec![(1, None)]));
+    tab.apply_layout(
+        base_layout,
+        vec![],
+        new_terminal_ids,
+        vec![],
+        HashMap::new(),
+        client_id,
+        None,
+    )
+    .unwrap();
+    tab
+}
+
+fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab {
+    set_session_name("test".into());
+    let index = 0;
+    let position = 0;
+    let name = String::new();
+    let os_api = Box::new(FakeInputOutput::default());
+    let senders = ThreadSenders::default().silently_fail_on_send();
+    let max_panes = None;
+    let mode_info = default_mode;
+    let style = Style::default();
+    let draw_pane_frames = PaneFrameStyle::None;
+    let auto_layout = true;
+    let client_id = 1;
+    let session_is_mirrored = true;
+    let mut connected_clients = HashMap::new();
+    connected_clients.insert(client_id, false);
+    let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let character_cell_info = Rc::new(RefCell::new(None));
+    let stacked_resize = Rc::new(RefCell::new(true));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let copy_options = CopyOptions::default();
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(PaneGroups::new(ThreadSenders::default())));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let osc8_hyperlinks = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+    let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
+    let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
+    let mut tab = Tab::new(
+        index,
+        position,
+        name,
+        size,
+        character_cell_info,
+        stacked_resize,
+        Rc::new(RefCell::new(false)),
+        sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        os_api,
+        senders,
+        max_panes,
+        style,
+        mode_info,
+        draw_pane_frames,
+        auto_layout,
+        connected_clients,
+        session_is_mirrored,
+        Some(client_id),
+        copy_options,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        (vec![], vec![]),
+        PathBuf::from("my_default_shell"),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+        false,
+        web_sharing,
+        current_group,
+        currently_marking_pane_group,
+        advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -424,6 +533,7 @@ fn create_new_tab_with_swap_layouts(
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -434,13 +544,19 @@ fn create_new_tab_with_swap_layouts(
         size,
         character_cell_info,
         stacked_resize,
+        Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
         style,
         mode_info,
-        draw_pane_frames,
+        if draw_pane_frames {
+            PaneFrameStyle::Full
+        } else {
+            PaneFrameStyle::None
+        },
         auto_layout,
         connected_clients,
         session_is_mirrored,
@@ -461,6 +577,7 @@ fn create_new_tab_with_swap_layouts(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -506,7 +623,7 @@ fn create_new_tab_with_os_api(
     let max_panes = None;
     let mode_info = default_mode;
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -527,6 +644,7 @@ fn create_new_tab_with_os_api(
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -537,7 +655,9 @@ fn create_new_tab_with_os_api(
         size,
         character_cell_info,
         stacked_resize,
+        Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -564,6 +684,7 @@ fn create_new_tab_with_os_api(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -593,7 +714,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let max_panes = None;
     let mode_info = default_mode;
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -616,6 +737,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -626,7 +748,9 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         size,
         character_cell_info,
         stacked_resize,
+        Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -653,6 +777,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -698,7 +823,7 @@ fn create_new_tab_with_mock_pty_writer(
     let max_panes = None;
     let mode_info = default_mode;
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -719,6 +844,7 @@ fn create_new_tab_with_mock_pty_writer(
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -729,7 +855,9 @@ fn create_new_tab_with_mock_pty_writer(
         size,
         character_cell_info,
         stacked_resize,
+        Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -756,6 +884,7 @@ fn create_new_tab_with_mock_pty_writer(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -790,7 +919,7 @@ fn create_new_tab_with_sixel_support(
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -813,6 +942,7 @@ fn create_new_tab_with_sixel_support(
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -823,7 +953,9 @@ fn create_new_tab_with_sixel_support(
         size,
         character_cell_size,
         stacked_resize,
+        Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -850,6 +982,7 @@ fn create_new_tab_with_sixel_support(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -904,6 +1037,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -912,9 +1046,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut vte_parser = vte::Parser::new();
-    for &byte in ansi_instructions.as_bytes() {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
     format!("{:?}", grid)
 }
 
@@ -943,6 +1075,7 @@ fn take_snapshot_with_sixel(
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -951,9 +1084,7 @@ fn take_snapshot_with_sixel(
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut vte_parser = vte::Parser::new();
-    for &byte in ansi_instructions.as_bytes() {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
     format!("{:?}", grid)
 }
 
@@ -979,6 +1110,7 @@ fn take_snapshot_and_cursor_position(
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         debug,
         arrow_fonts,
@@ -987,9 +1119,7 @@ fn take_snapshot_and_cursor_position(
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut vte_parser = vte::Parser::new();
-    for &byte in ansi_instructions.as_bytes() {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
     let coords = grid
         .cursor_coordinates()
         .and_then(|(x, y, visible)| if visible { Some((x, y)) } else { None });
@@ -2424,6 +2554,108 @@ fn move_floating_pane_focus_with_mouse() {
 }
 
 #[test]
+fn move_floating_pane_focus_to_last_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+    let new_pane_id_4 = PaneId::Terminal(5);
+    let new_pane_id_5 = PaneId::Terminal(6);
+    let mut output = Output::default();
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        new_pane_id_1,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.new_pane(
+        new_pane_id_2,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.new_pane(
+        new_pane_id_3,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.new_pane(
+        new_pane_id_4,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.new_pane(
+        new_pane_id_5,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
+    )
+    .unwrap();
+    tab.handle_pty_bytes(3, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(4, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(5, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    tab.move_focus_up(client_id).unwrap();
+    tab.focus_last_pane(client_id);
+    tab.render(&mut output, None).unwrap();
+    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_eq!(
+        cursor_coordinates,
+        Some((5, 5)),
+        "cursor coordinates moved back to the last pane below"
+    );
+
+    assert_snapshot!(snapshot);
+}
+
+#[test]
 fn move_pane_focus_with_mouse_to_non_floating_pane() {
     let size = Size {
         cols: 121,
@@ -3144,7 +3376,7 @@ fn embed_floating_pane_without_pane_frames() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.set_pane_frames(false);
+    tab.set_pane_frames(PaneFrameStyle::None);
     tab.toggle_floating_panes(Some(client_id), None, None)
         .unwrap();
     tab.new_pane(
@@ -3184,7 +3416,7 @@ fn float_embedded_pane_without_pane_frames() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.set_pane_frames(false);
+    tab.set_pane_frames(PaneFrameStyle::None);
     tab.new_pane(
         new_pane_id,
         None,
@@ -3202,6 +3434,228 @@ fn float_embedded_pane_without_pane_frames() {
     )
     .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+fn setup_tab_with_focused_floating_pane(
+    size: Size,
+    client_id: ClientId,
+    frame_style: PaneFrameStyle,
+) -> Tab {
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.set_pane_frames(frame_style);
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("\n\n\n                   I am a floating pane".as_bytes()),
+    )
+    .unwrap();
+    tab
+}
+
+#[test]
+fn floating_fullscreen_full_frame_style() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::Full);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn floating_fullscreen_titles_frame_style() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::Titles);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn floating_fullscreen_none_frame_style() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::None);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn changing_frame_style_while_floating_fullscreen_reflows_content() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::Full);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.set_pane_frames(PaneFrameStyle::None);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn exiting_floating_fullscreen_clears_background() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("\n\n\n                   I am a floating pane".as_bytes()),
+    )
+    .unwrap();
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn floating_no_ui_fullscreen_covers_tab_and_status_bar() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = setup_tab_with_focused_floating_pane(size, client_id, PaneFrameStyle::Full);
+    let mut output = Output::default();
+    tab.toggle_active_pane_no_ui_fullscreen(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn floating_fullscreen_hides_other_floating_and_pinned_panes() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.set_floating_pane_pinned(PaneId::Terminal(3), true);
+    tab.handle_pty_bytes(2, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(3, Vec::from("\u{1b}#8".as_bytes()))
+        .unwrap();
+    let _ = tab.focus_pane_with_id(PaneId::Terminal(2), false, false, client_id);
+    let mut output = Output::default();
+    tab.toggle_active_pane_fullscreen(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3399,7 +3853,18 @@ fn move_floating_pane_with_sixel_image() {
         width: 8,
         height: 21,
     })));
-    let mut output = Output::new(sixel_image_store.clone(), character_cell_size, true, true);
+    let sixel_host_capabilities = Rc::new(RefCell::new(HashMap::new()));
+    sixel_host_capabilities.borrow_mut().insert(client_id, true);
+    let mut output = Output::new(
+        sixel_image_store.clone(),
+        character_cell_size,
+        true,
+        true,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(HashMap::new())),
+        sixel_host_capabilities,
+    );
 
     tab.toggle_floating_panes(Some(client_id), None, None)
         .unwrap();
@@ -3458,7 +3923,18 @@ fn floating_pane_above_sixel_image() {
         width: 8,
         height: 21,
     })));
-    let mut output = Output::new(sixel_image_store.clone(), character_cell_size, true, true);
+    let sixel_host_capabilities = Rc::new(RefCell::new(HashMap::new()));
+    sixel_host_capabilities.borrow_mut().insert(client_id, true);
+    let mut output = Output::new(
+        sixel_image_store.clone(),
+        character_cell_size,
+        true,
+        true,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(HashMap::new())),
+        sixel_host_capabilities,
+    );
 
     tab.toggle_floating_panes(Some(client_id), None, None)
         .unwrap();
@@ -5792,6 +6268,89 @@ fn move_focus_down_into_stacked_panes() {
         "cursor coordinates moved to the main pane of the stack",
     );
 
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn focus_last_stacked_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let swap_layouts = r#"
+        layout {
+            swap_tiled_layout {
+                tab {
+                    pane split_direction="vertical" {
+                        pane focus=true
+                        pane stacked=true { children; }
+                    }
+                }
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
+    let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
+    let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let stacked_resize = true;
+    let mut tab = create_new_tab_with_swap_layouts(
+        size,
+        ModeInfo::default(),
+        (swap_tiled_layouts, swap_floating_layouts),
+        None,
+        true,
+        stacked_resize,
+    );
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.new_pane(
+        new_pane_id_1,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.new_pane(
+        new_pane_id_2,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.new_pane(
+        new_pane_id_3,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.move_focus_right(client_id);
+    tab.move_focus_up(client_id);
+    tab.move_focus_up(client_id);
+    tab.focus_last_pane(client_id);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
     assert_snapshot!(snapshot);
 }
 
@@ -10373,6 +10932,63 @@ fn test_left_release_after_selection_copies_to_clipboard() {
 }
 
 #[test]
+fn triple_click_without_motion_requests_render() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let position = Position::new(1, 5);
+
+    tab.handle_pty_bytes(1, Vec::from("Selectable text content here".as_bytes()))
+        .unwrap();
+
+    for _ in 0..2 {
+        tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+            .unwrap();
+        tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+            .unwrap();
+    }
+
+    let effect = tab
+        .handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+        .unwrap();
+
+    assert!(effect.state_changed);
+}
+
+#[test]
+fn configured_word_separators_reach_the_pane_on_double_click() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let position = Position::new(1, 6);
+
+    tab.update_selection_options(true, ":".to_owned());
+    tab.handle_pty_bytes(1, Vec::from("foo:bar baz".as_bytes()))
+        .unwrap();
+
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+        .unwrap();
+
+    let selected_text = tab
+        .get_active_pane(client_id)
+        .unwrap()
+        .get_selected_text(client_id);
+    assert_eq!(selected_text, Some("bar".to_owned()));
+}
+
+#[test]
 fn test_ctrl_click_on_tiled_pane_edge_starts_resize() {
     let size = Size {
         cols: 121,
@@ -12353,6 +12969,336 @@ fn test_ctrl_scroll_down_decreases_pinned_floating_pane_size_when_floating_panes
 }
 
 #[test]
+fn test_ctrl_scroll_up_does_not_resize_pane_when_mouse_scroll_resize_disabled() {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.vertical_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+    tab.update_mouse_scroll_resize(false);
+
+    let pane_geom_before = tab.get_active_pane(client_id).unwrap().position_and_size();
+
+    let active_pane_position = Position::new(5, 70);
+    let effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_ctrl_scroll_up_event(active_pane_position),
+            client_id,
+        )
+        .unwrap();
+
+    let pane_geom_after = tab.get_active_pane(client_id).unwrap().position_and_size();
+
+    assert!(!effect.state_changed);
+    assert_eq!(pane_geom_before, pane_geom_after);
+}
+
+#[test]
+fn test_ctrl_scroll_down_does_not_resize_pane_when_mouse_scroll_resize_disabled() {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+
+    tab.vertical_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+    tab.update_mouse_scroll_resize(false);
+
+    let pane_geom_before = tab.get_active_pane(client_id).unwrap().position_and_size();
+
+    let active_pane_position = Position::new(5, 70);
+    let effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_ctrl_scroll_down_event(active_pane_position),
+            client_id,
+        )
+        .unwrap();
+
+    let pane_geom_after = tab.get_active_pane(client_id).unwrap().position_and_size();
+
+    assert!(!effect.state_changed);
+    assert_eq!(pane_geom_before, pane_geom_after);
+}
+
+fn two_adjacent_stacks_layout() -> (TiledPaneLayout, Vec<(u32, Option<RunCommand>)>) {
+    let base_layout = r#"
+        layout {
+            pane split_direction="horizontal" {
+                pane stacked=true {
+                    pane focus=true
+                    pane
+                    pane
+                }
+                pane stacked=true {
+                    pane
+                    pane
+                    pane
+                }
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![
+        (1, None),
+        (2, None),
+        (3, None),
+        (4, None),
+        (5, None),
+        (6, None),
+    ];
+    (base_layout, new_terminal_ids)
+}
+
+fn stack_member_pane_count(tab: &Tab) -> usize {
+    tab.get_all_pane_ids()
+        .into_iter()
+        .filter(|id| tab.pane_is_stack_list_member(id))
+        .count()
+}
+
+#[test]
+fn test_ctrl_scroll_up_merging_stacks_preserves_all_panes() {
+    let size = Size {
+        cols: 150,
+        rows: 40,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some(two_adjacent_stacks_layout()),
+    );
+
+    tab.render(&mut output, None).unwrap();
+
+    let mut pane_ids_before = tab.get_all_pane_ids();
+    pane_ids_before.sort();
+    assert_eq!(
+        pane_ids_before.len(),
+        6,
+        "all six panes exist before the merge"
+    );
+    assert_eq!(stack_member_pane_count(&tab), 6);
+
+    let active_pane_position = Position::new(5, 40);
+    tab.handle_mouse_event(
+        &MouseEvent::new_ctrl_scroll_up_event(active_pane_position),
+        client_id,
+    )
+    .unwrap();
+
+    let dissolved_into_grid = !tab.has_stack_lists();
+    assert!(
+        dissolved_into_grid,
+        "stack lists must be dissolved into in-grid stacks before the classic merge mutation"
+    );
+    let mut in_grid_ids = tab.get_static_and_floating_pane_ids();
+    in_grid_ids.sort();
+    assert_eq!(
+        in_grid_ids, pane_ids_before,
+        "all panes must be present in the grid after the merge, none orphaned"
+    );
+
+    let mut pane_ids_after = tab.get_all_pane_ids();
+    pane_ids_after.sort();
+    assert_eq!(
+        pane_ids_before, pane_ids_after,
+        "no panes are lost when merging stacks via ctrl+scroll resize"
+    );
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let mut pane_ids_final = tab.get_all_pane_ids();
+    pane_ids_final.sort();
+    assert_eq!(pane_ids_before, pane_ids_final);
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+// Regression: when stacked_pane_list mode is active, adding a stacked pane
+// used to send the pre-existing pane an intermediate `resize_pty!` at 1 row
+// (from the classic in-grid collapse) before groupify_all moved it into
+// suppressed_panes and resized it back to the visible size. Shells (nushell,
+// pwsh, bash) redraw their prompt on each WINCH, which blanks out
+// previously-visible rows of output — visible to the user as "truncated
+// scrollback" when they focus back to that pane.
+//
+// The fix syncs stacked_pane_list mode immediately after the classic in-grid
+// mutation (before focus/frame reapplication), so the collapsed pane is
+// promoted to a stack-list suppressed pane before any resize_pty at the
+// 1-row size can leak out to its shell. This test pins that end-state:
+// after adding a stacked pane, the pre-existing pane must have been moved
+// into suppressed_panes (indicating groupify_all ran), rather than left in
+// tiled_panes at rows=1 waiting for the next render.
+#[test]
+fn adding_stacked_pane_in_stack_list_mode_moves_existing_pane_to_suppressed_immediately() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab_with_stacked_pane_list(size, ModeInfo::default(), true, None);
+
+    // Add a second tiled pane so we have a real stack candidate.
+    let existing_pane_id = PaneId::Terminal(2);
+    tab.new_pane(
+        existing_pane_id,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    // Sanity: pane 2 is a tiled pane and no stack lists exist yet.
+    assert!(tab.tiled_panes.get_pane(existing_pane_id).is_some());
+    assert!(!tab.has_stack_lists());
+    assert!(!tab.suppressed_panes.contains_key(&existing_pane_id));
+
+    // Now add a stacked pane on top of the active pane (pane 2).
+    let stacked_pane_id = PaneId::Terminal(3);
+    tab.new_pane(
+        stacked_pane_id,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: None,
+            borderless: None,
+        },
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    // After the operation, stacked_pane_list mode should have picked up the
+    // new stack: pane 2 (the pre-existing member) must be in suppressed_panes,
+    // and the visible member (pane 3) must be in tiled_panes with a non-fixed
+    // row dimension (i.e., not the collapsed 1-row tab-strip form).
+    assert!(
+        tab.has_stack_lists(),
+        "stacked_pane_list mode should have groupified the new stack immediately"
+    );
+    assert!(
+        tab.suppressed_panes.contains_key(&existing_pane_id),
+        "pane 2 (pre-existing pane) should be in suppressed_panes after the \
+         stacked pane is added; if it is still in tiled_panes at rows=1 the \
+         next `reapply_pane_frames` will send a resize_pty to its shell at \
+         the collapsed size, blanking its viewport"
+    );
+    assert!(
+        tab.tiled_panes.get_pane(stacked_pane_id).is_some(),
+        "the newly-added stacked pane should be the visible tiled pane"
+    );
+    let visible_geom = tab
+        .tiled_panes
+        .get_pane(stacked_pane_id)
+        .unwrap()
+        .position_and_size();
+    assert!(
+        !visible_geom.rows.is_fixed(),
+        "the visible member of the stack must not be at fixed(1) rows"
+    );
+}
+
+#[test]
+fn test_ctrl_scroll_down_in_stack_dissolves_stack_lists_before_mutation() {
+    let size = Size {
+        cols: 150,
+        rows: 40,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some(two_adjacent_stacks_layout()),
+    );
+
+    tab.render(&mut output, None).unwrap();
+
+    let mut pane_ids_before = tab.get_all_pane_ids();
+    pane_ids_before.sort();
+    assert_eq!(pane_ids_before.len(), 6);
+    assert_eq!(stack_member_pane_count(&tab), 6);
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_ctrl_scroll_down_event(Position::new(5, 40)),
+        client_id,
+    )
+    .unwrap();
+
+    assert!(
+        !tab.has_stack_lists(),
+        "stack lists must be dissolved into in-grid stacks before the classic merge mutation"
+    );
+    let mut in_grid_ids = tab.get_static_and_floating_pane_ids();
+    in_grid_ids.sort();
+    assert_eq!(
+        in_grid_ids, pane_ids_before,
+        "all panes must be present in the grid after the resize, none orphaned"
+    );
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let mut pane_ids_final = tab.get_all_pane_ids();
+    pane_ids_final.sort();
+    assert_eq!(pane_ids_before, pane_ids_final);
+}
+
+#[test]
+fn resize_hint_text_tracks_mouse_scroll_resize_updates() {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+
+    tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
+        .unwrap();
+    tab.mouse_help_text_visible.insert(client_id, true);
+
+    tab.update_mouse_scroll_resize(false);
+    let disabled_hints = tab.resolve_hint_text(client_id);
+    assert!(!disabled_hints.is_empty());
+    assert!(disabled_hints
+        .values()
+        .all(|hint| !hint.text.contains("MouseScroll")));
+
+    tab.update_mouse_scroll_resize(true);
+    let enabled_hints = tab.resolve_hint_text(client_id);
+    assert!(!enabled_hints.is_empty());
+    assert!(enabled_hints
+        .values()
+        .all(|hint| hint.text.contains("MouseScroll")));
+}
+
+#[test]
 fn in_place_pane_with_close_replaced_pane_false_restores_original() {
     // When an in-place pane is closed and close_replaced_pane=false (the default),
     // the pane that was replaced is restored to its original position.
@@ -12499,7 +13445,7 @@ fn create_new_tab_with_plugin_receiver(
     let max_panes = None;
     let mode_info = default_mode;
     let style = Style::default();
-    let draw_pane_frames = true;
+    let draw_pane_frames = PaneFrameStyle::Full;
     let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -12520,6 +13466,7 @@ fn create_new_tab_with_plugin_receiver(
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -12530,7 +13477,9 @@ fn create_new_tab_with_plugin_receiver(
         size,
         character_cell_info,
         stacked_resize,
+        Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -12557,6 +13506,7 @@ fn create_new_tab_with_plugin_receiver(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        mouse_scroll_resize,
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -14314,13 +15264,15 @@ fn create_new_tab_with_server_receiver(
         size,
         character_cell_info,
         stacked_resize,
+        Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
         Style::default(),
         default_mode,
-        true, // draw_pane_frames
+        PaneFrameStyle::Full,
         true, // auto_layout
         connected_clients,
         true, // session_is_mirrored
@@ -14341,6 +15293,7 @@ fn create_new_tab_with_server_receiver(
         current_group,
         currently_marking_pane_group,
         true,  // advanced_mouse_actions
+        true,  // mouse_scroll_resize
         true,  // mouse_hover_effects
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -14568,6 +15521,7 @@ fn osc99_grid_parses_and_stores_notification() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Style::default(),
         false, // debug
         true,  // arrow_fonts
@@ -14578,9 +15532,10 @@ fn osc99_grid_parses_and_stores_notification() {
 
     // Feed OSC 99 through vte parser
     let mut vte_parser = vte::Parser::new();
-    for &byte in b"\x1b]99;i=gridtest:p=title;Grid notification\x07" {
-        vte_parser.advance(&mut grid, byte);
-    }
+    vte_parser.advance(
+        &mut grid,
+        b"\x1b]99;i=gridtest:p=title;Grid notification\x07",
+    );
 
     assert_eq!(
         grid.pending_desktop_notifications.len(),
@@ -14804,14 +15759,10 @@ fn osc99_query_flag_roundtrip() {
 
 #[test]
 fn hidden_cursor_still_emits_cup_for_host_terminal_positioning() {
-    // When an app hides the cursor the host
-    // terminal still needs a CUP sequence so that IME composition candidates and
-    // other cursor-position-dependent features appear in the correct location.
     let size = Size { cols: 80, rows: 24 };
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
 
-    // Move cursor to a known position, then hide it
     tab.handle_pty_bytes(1, Vec::from("\u{1b}[10;20H\u{1b}[?25l".as_bytes()))
         .unwrap();
 
@@ -14820,26 +15771,17 @@ fn hidden_cursor_still_emits_cup_for_host_terminal_positioning() {
     let serialized = output.serialize().unwrap();
     let client_output = serialized.get(&client_id).unwrap();
 
-    // The output must contain a hide-cursor instruction
     assert!(
         client_output.contains("\u{1b}[?25l"),
         "Expected hide-cursor sequence in output"
     );
 
-    // The output must contain a CUP sequence positioning the cursor where the app
-    // left it (row 10, col 20 — 1-indexed in the pane, plus the content offset
-    // from the pane frame). The key point is that a CUP is emitted at all, even
-    // though the cursor is hidden.
-    //
-    // With draw_pane_frames=true the content offset is (1, 1), so the absolute
-    // position is row 11, col 21.
     assert!(
         client_output.contains("\u{1b}[11;21H"),
         "Expected CUP sequence for hidden cursor positioning, got: {:?}",
         client_output
     );
 
-    // The output must NOT contain a show-cursor instruction
     assert!(
         !client_output.contains("\u{1b}[?25h"),
         "Show-cursor sequence must not be present when app has hidden the cursor"

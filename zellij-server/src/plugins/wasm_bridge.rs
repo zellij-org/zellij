@@ -11,7 +11,7 @@ use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use highway::{HighwayHash, PortableHash};
 use log::info;
-use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
+use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, RecommendedCache};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
@@ -40,14 +40,13 @@ use crate::{
     ServerInstruction,
 };
 use zellij_utils::{
-    data::{Event, EventType, PluginCapabilities},
+    data::{Event, EventType},
     errors::prelude::*,
     input::{
         command::TerminalAction,
-        layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias},
+        layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias},
         plugins::{PluginAliases, PluginConfig},
     },
-    ipc::ClientAttributes,
     pane_size::Size,
 };
 
@@ -104,8 +103,6 @@ pub struct LoadingContext {
     pub tab_index: Option<usize>,
     pub path_to_default_shell: PathBuf,
     pub session_env_vars: std::collections::BTreeMap<String, String>,
-    pub capabilities: PluginCapabilities,
-    pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
     pub layout_dir: Option<PathBuf>,
     pub default_mode: InputMode,
@@ -151,8 +148,6 @@ impl LoadingContext {
             path_to_default_shell: wasm_bridge.path_to_default_shell.clone(),
             session_env_vars: wasm_bridge.session_env_vars.clone(),
             plugin_cwd: cwd.unwrap_or_else(|| wasm_bridge.zellij_cwd.clone()),
-            capabilities: wasm_bridge.capabilities.clone(),
-            client_attributes: wasm_bridge.client_attributes.clone(),
             default_shell: wasm_bridge.default_shell.clone(),
             layout_dir: wasm_bridge.layout_dir.clone(),
             keybinds,
@@ -189,11 +184,9 @@ pub struct WasmBridge {
     loading_plugins: HashSet<(PluginId, RunPlugin)>, // tracks loading plugins without handles
     pending_plugin_reloads: HashSet<RunPlugin>,
     path_to_default_shell: PathBuf,
-    watcher: Option<Debouncer<RecommendedWatcher, FileIdMap>>,
+    watcher: Option<Debouncer<RecommendedWatcher, RecommendedCache>>,
     zellij_cwd: PathBuf,
     session_env_vars: std::collections::BTreeMap<String, String>,
-    capabilities: PluginCapabilities,
-    client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
     cached_plugin_map:
         HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>,
@@ -218,10 +211,7 @@ impl WasmBridge {
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
         session_env_vars: std::collections::BTreeMap<String, String>,
-        capabilities: PluginCapabilities,
-        client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
         available_layouts: Vec<LayoutInfo>,
         available_layout_errors: Vec<LayoutWithError>,
@@ -240,7 +230,6 @@ impl WasmBridge {
             &senders,
             &plugin_map,
             &connected_clients,
-            &default_layout,
             &plugin_cache,
             &engine,
         ));
@@ -261,8 +250,6 @@ impl WasmBridge {
             pending_plugin_reloads: HashSet::new(),
             zellij_cwd,
             session_env_vars,
-            capabilities,
-            client_attributes,
             default_shell,
             cached_plugin_map: HashMap::new(),
             pending_pipes: Default::default(),
@@ -399,7 +386,6 @@ impl WasmBridge {
                             move |senders: ThreadSenders,
                                   plugin_map: Arc<Mutex<PluginMap>>,
                                   connected_clients: Arc<Mutex<Vec<ClientId>>>,
-                                  default_layout: Box<Layout>,
                                   plugin_cache: PluginCache,
                                   engine| {
                                 let mut plugin_map = plugin_map.lock().unwrap();
@@ -408,7 +394,6 @@ impl WasmBridge {
                                     loading_context,
                                     senders.clone(),
                                     engine.clone(),
-                                    default_layout.clone(),
                                     plugin_cache.clone(),
                                     &mut plugin_map,
                                     connected_clients.clone(),
@@ -450,7 +435,6 @@ impl WasmBridge {
                         move |senders,
                               plugin_map,
                               connected_clients,
-                              default_layout,
                               plugin_cache: PluginCache,
                               engine: Engine| {
                             let mut plugin_map = plugin_map.lock().unwrap();
@@ -459,7 +443,6 @@ impl WasmBridge {
                                 loading_context,
                                 senders.clone(),
                                 engine.clone(),
-                                default_layout.clone(),
                                 plugin_cache.clone(),
                                 &mut plugin_map,
                                 connected_clients.clone(),
@@ -516,17 +499,6 @@ impl WasmBridge {
             plugin_map.remove_plugins(pid).into_iter().collect()
         };
 
-        // Check if any removed plugin was subscribed to ANSI pane render
-        let was_subscribed_to_ansi =
-            plugins_to_cleanup
-                .iter()
-                .any(|((_, _), (_, subscriptions, _))| {
-                    subscriptions
-                        .lock()
-                        .unwrap()
-                        .contains(&EventType::PaneRenderReportWithAnsi)
-                });
-
         // Schedule cleanup on each plugin's pinned thread
         for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in plugins_to_cleanup
         {
@@ -548,12 +520,7 @@ impl WasmBridge {
 
             self.plugin_executor.execute_plugin_unload(
                 plugin_id,
-                move |senders,
-                      _plugin_map,
-                      _connected_clients,
-                      _default_layout,
-                      _plugin_cache,
-                      _engine| {
+                move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let subscriptions_guard = subscriptions.lock().unwrap();
                     let needs_before_close = subscriptions_guard.contains(&EventType::BeforeClose);
                     drop(subscriptions_guard); // Release lock before calling plugin
@@ -611,11 +578,6 @@ impl WasmBridge {
             .senders
             .send_to_background_jobs(BackgroundJob::ReportPluginList(plugin_list));
 
-        // If any unloaded plugin was subscribed to ANSI pane content, re-check remaining plugins
-        if was_subscribed_to_ansi {
-            self.notify_screen_of_ansi_subscription_change();
-        }
-
         Ok(())
     }
     pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
@@ -671,7 +633,7 @@ impl WasmBridge {
 
         plugin_executor.execute_for_plugin(
             plugin_id,
-            move |senders, plugin_map, connected_clients, default_layout, plugin_cache, engine| {
+            move |senders, plugin_map, connected_clients, plugin_cache, engine| {
                 let skip_cache = true; // we want to explicitly reload the plugin
                 let mut plugin_map = plugin_map.lock().unwrap();
                 match PluginLoader::new(
@@ -679,7 +641,6 @@ impl WasmBridge {
                     loading_context,
                     senders.clone(),
                     engine.clone(),
-                    default_layout.clone(),
                     plugin_cache.clone(),
                     &mut plugin_map,
                     connected_clients.clone(),
@@ -778,12 +739,7 @@ impl WasmBridge {
 
             plugin_executor.execute_for_plugin(
                 plugin_id,
-                move |senders,
-                      plugin_map,
-                      connected_clients,
-                      default_layout,
-                      plugin_cache,
-                      engine| {
+                move |senders, plugin_map, connected_clients, plugin_cache, engine| {
                     let skip_cache = false;
                     let mut plugin_map = plugin_map.lock().unwrap();
                     match PluginLoader::new(
@@ -791,7 +747,6 @@ impl WasmBridge {
                         loading_context,
                         senders.clone(),
                         engine.clone(),
-                        default_layout.clone(),
                         plugin_cache.clone(),
                         &mut plugin_map,
                         connected_clients.clone(),
@@ -853,12 +808,7 @@ impl WasmBridge {
                     // let senders = self.senders.clone();
                     let running_plugin = running_plugin.clone();
                     let _s = shutdown_sender.clone();
-                    move |senders,
-                          _plugin_map,
-                          _connected_clients,
-                          _default_layout,
-                          _plugin_cache,
-                          _engine| {
+                    move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                         let mut running_plugin = running_plugin.lock().unwrap();
                         let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                         if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
@@ -965,7 +915,6 @@ impl WasmBridge {
                             move |senders,
                                   _plugin_map,
                                   _connected_clients,
-                                  _default_layout,
                                   _plugin_cache,
                                   _engine| {
                                 let _s = _s; // guard to allow the task to complete before cleanup/shutdown
@@ -1061,12 +1010,7 @@ impl WasmBridge {
         // Execute directly on pinned thread (no async I/O needed for directory check/change)
         self.plugin_executor
             .execute_for_plugin(plugin_id_to_update, {
-                move |senders,
-                      _plugin_map,
-                      _connected_clients,
-                      _default_layout,
-                      _plugin_cache,
-                      _engine| {
+                move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                     match new_host_dir.try_exists() {
                         Ok(false) => {
                             log::error!(
@@ -1190,12 +1134,7 @@ impl WasmBridge {
                         let client_id = *client_id;
                         let _s = shutdown_sender.clone();
                         let notification_end = notification_end.take();
-                        move |senders,
-                              _plugin_map,
-                              _connected_clients,
-                              _default_layout,
-                              _plugin_cache,
-                              _engine| {
+                        move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                             let mut running_plugin = running_plugin.lock().unwrap();
                             let mut plugin_render_assets = vec![];
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
@@ -1332,6 +1271,7 @@ impl WasmBridge {
                     .map(|prev_pane_contents| {
                         prev_pane_contents.viewport != new_pane_contents.viewport
                             || prev_pane_contents.selected_text != new_pane_contents.selected_text
+                            || prev_pane_contents.cursor != new_pane_contents.cursor
                     })
                     .unwrap_or(true);
                 if has_changed {
@@ -1350,7 +1290,6 @@ impl WasmBridge {
         pane_render_report: PaneRenderReport,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
-        // Plain content (existing behavior)
         let changed_panes_per_client = self.get_changed_panes_per_client(
             &pane_render_report.all_pane_contents,
             self.previous_pane_render_report
@@ -1362,45 +1301,8 @@ impl WasmBridge {
             self.update_plugins(updates, shutdown_sender.clone())?;
         }
 
-        // ANSI content (new behavior)
-        if !pane_render_report.all_pane_contents_with_ansi.is_empty() {
-            let changed_ansi_panes_per_client = self.get_changed_panes_per_client(
-                &pane_render_report.all_pane_contents_with_ansi,
-                self.previous_pane_render_report
-                    .as_ref()
-                    .map(|r| &r.all_pane_contents_with_ansi),
-            );
-            for (client_id, client_panes) in changed_ansi_panes_per_client {
-                let updates = vec![(
-                    None,
-                    Some(client_id),
-                    Event::PaneRenderReportWithAnsi(client_panes),
-                )];
-                self.update_plugins(updates, shutdown_sender.clone())?;
-            }
-        }
-
         self.previous_pane_render_report = Some(pane_render_report);
         Ok(())
-    }
-
-    pub fn notify_screen_of_ansi_subscription_change(&self) {
-        let any_plugin_needs_ansi = {
-            let mut plugin_map = self.plugin_map.lock().unwrap();
-            plugin_map
-                .running_plugins_and_subscriptions()
-                .iter()
-                .any(|(_, _, _, subs)| {
-                    subs.lock()
-                        .unwrap()
-                        .contains(&EventType::PaneRenderReportWithAnsi)
-                })
-        };
-        let _ = self
-            .senders
-            .send_to_screen(ScreenInstruction::PluginSubscribedToAnsiPaneContents(
-                any_plugin_needs_ansi,
-            ));
     }
 
     pub fn notify_screen_of_background_plugin_subscriptions(
@@ -1525,12 +1427,7 @@ impl WasmBridge {
                 let keybinds = keybinds.clone();
                 let default_shell = default_shell.clone();
                 let layout_dir = layout_dir.clone();
-                move |_senders,
-                      _plugin_map,
-                      _connected_clients,
-                      _default_layout,
-                      _plugin_cache,
-                      _engine| {
+                move |_senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let mut running_plugin = running_plugin.lock().unwrap();
                     if let Some(keybinds) = keybinds {
                         running_plugin.update_keybinds(keybinds);
@@ -1578,12 +1475,7 @@ impl WasmBridge {
                         let client_id = *client_id;
                         let _s = shutdown_sender.clone();
                         let events_or_pipe_messages = events_or_pipe_messages.clone();
-                        move |senders,
-                              _plugin_map,
-                              _connected_clients,
-                              _default_layout,
-                              _plugin_cache,
-                              _engine| {
+                        move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                             for event_or_pipe_message in events_or_pipe_messages {
                                 match event_or_pipe_message {
@@ -2155,11 +2047,12 @@ fn check_event_permission(
         | Event::AvailableLayoutInfo(..)
         | Event::PluginConfigurationChanged(..)
         | Event::HighlightClicked { .. }
+        | Event::SoftKeyboardVisibilityChanged(..)
+        | Event::HintText(..)
+        | Event::ActivePaneScroll(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
-        Event::PaneRenderReport(..) | Event::PaneRenderReportWithAnsi(..) => {
-            PermissionType::ReadPaneContents
-        },
+        Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
         Event::UserAction(..) => PermissionType::InterceptInput,
         _ => return (PermissionStatus::Granted, None),
     };
