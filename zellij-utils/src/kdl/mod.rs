@@ -2934,6 +2934,19 @@ impl Options {
             },
             None => None,
         };
+        let host_notification_protocol = match kdl_property_first_arg_as_string_or_error!(
+            kdl_options,
+            "host_notification_protocol"
+        ) {
+            Some((value, entry)) => {
+                use crate::input::options::HostNotificationProtocol;
+                match value.parse::<HostNotificationProtocol>() {
+                    Ok(v) => Some(v),
+                    Err(e) => return Err(kdl_parsing_error!(e, entry)),
+                }
+            },
+            None => None,
+        };
         let dangerously_enable_paste_buffer_read = kdl_property_first_arg_as_bool_or_error!(
             kdl_options,
             "dangerously_enable_paste_buffer_read"
@@ -2987,6 +3000,7 @@ impl Options {
             mouse_click_through,
             osc133_command_selection,
             word_separators,
+            host_notification_protocol,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -4554,6 +4568,40 @@ impl Options {
             None
         }
     }
+    fn host_notification_protocol_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        use crate::input::options::HostNotificationProtocol;
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Which escape sequence desktop notifications coming from panes are",
+            "// forwarded to the host terminal with.",
+            "// Options:",
+            "//   - \"auto\" (Default — detect from the host terminal environment)",
+            "//   - \"osc9\" (the legacy iTerm2 protocol, understood by most terminals)",
+            "//   - \"osc99\" (kitty's notification protocol)",
+            "//   - \"bell\" (ring the terminal bell instead)",
+            "//   - \"off\" (do not forward notifications to the host terminal)",
+            "// ",
+        );
+        let create_node = |value: HostNotificationProtocol| -> KdlNode {
+            let mut node = KdlNode::new("host_notification_protocol");
+            node.push(KdlValue::String(value.as_str().to_string()));
+            node
+        };
+        if let Some(value) = self.host_notification_protocol {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(HostNotificationProtocol::Auto);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn dangerously_enable_paste_buffer_read_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}\n{}\n{}",
@@ -4788,6 +4836,11 @@ impl Options {
         }
         if let Some(nested_session_handling) = self.nested_session_handling_to_kdl(add_comments) {
             nodes.push(nested_session_handling);
+        }
+        if let Some(host_notification_protocol) =
+            self.host_notification_protocol_to_kdl(add_comments)
+        {
+            nodes.push(host_notification_protocol);
         }
         nodes
     }
@@ -7691,6 +7744,59 @@ fn nested_session_handling_kdl_round_trip_for_every_variant() {
             Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
         assert_eq!(parsed, reparsed, "round-trip mismatch for {value}");
     }
+}
+
+#[test]
+fn host_notification_protocol_kdl_round_trip_for_every_variant() {
+    use crate::input::options::HostNotificationProtocol;
+    let cases = [
+        ("auto", HostNotificationProtocol::Auto),
+        ("osc9", HostNotificationProtocol::Osc9),
+        ("osc99", HostNotificationProtocol::Osc99),
+        ("bell", HostNotificationProtocol::Bell),
+        ("off", HostNotificationProtocol::Off),
+    ];
+    for (value, expected) in cases {
+        let fake_config = format!(
+            r##"
+                host_notification_protocol "{value}"
+            "##
+        );
+        let document: KdlDocument = fake_config.parse().unwrap();
+        let parsed = Options::from_kdl(&document).unwrap();
+        assert_eq!(
+            parsed.host_notification_protocol,
+            Some(expected),
+            "case: {value}"
+        );
+
+        let mut serialized = Options::to_kdl(&parsed, false);
+        let mut fake_document = KdlDocument::new();
+        fake_document.nodes_mut().append(&mut serialized);
+        let reparsed =
+            Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+        assert_eq!(parsed, reparsed, "round-trip mismatch for {value}");
+    }
+}
+
+#[test]
+fn an_unknown_host_notification_protocol_is_a_config_error() {
+    let fake_config = r##"
+        host_notification_protocol "carrier-pigeon"
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    assert!(Options::from_kdl(&document).is_err());
+}
+
+#[test]
+fn an_unset_host_notification_protocol_parses_as_none() {
+    let document: KdlDocument = r##"
+        simplified_ui true
+    "##
+    .parse()
+    .unwrap();
+    let parsed = Options::from_kdl(&document).unwrap();
+    assert_eq!(parsed.host_notification_protocol, None);
 }
 
 #[test]

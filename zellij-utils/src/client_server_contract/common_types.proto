@@ -802,6 +802,7 @@ message CliAssets {
   optional uint32 max_panes = 9;
   bool force_run_layout_commands = 10;
   optional string cwd = 11;
+  map<string, string> host_terminal_env = 12;
 }
 
 message LayoutInfo {
@@ -1212,6 +1213,7 @@ message Options {
   optional bool osc133_command_selection = 56;
   optional string word_separators = 57;
   optional bool dangerously_enable_paste_buffer_read = 58;
+  optional string host_notification_protocol = 67;
 }
 
 enum OnForceClose {

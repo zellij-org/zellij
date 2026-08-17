@@ -375,6 +375,10 @@ pub struct Options {
     #[serde(default)]
     pub word_separators: Option<String>,
 
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub host_notification_protocol: Option<HostNotificationProtocol>,
+
     // these are intentionally excluded from the CLI options as they must be specified in the
     // configuration file
     pub web_server_ip: Option<IpAddr>,
@@ -417,6 +421,52 @@ pub enum Clipboard {
 impl Default for Clipboard {
     fn default() -> Self {
         Self::System
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
+pub enum HostNotificationProtocol {
+    #[serde(alias = "auto")]
+    Auto,
+    #[serde(alias = "osc9")]
+    Osc9,
+    #[serde(alias = "osc99")]
+    Osc99,
+    #[serde(alias = "bell")]
+    Bell,
+    #[serde(alias = "off")]
+    Off,
+}
+
+impl Default for HostNotificationProtocol {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+impl HostNotificationProtocol {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Osc9 => "osc9",
+            Self::Osc99 => "osc99",
+            Self::Bell => "bell",
+            Self::Off => "off",
+        }
+    }
+}
+
+impl FromStr for HostNotificationProtocol {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Auto" | "auto" => Ok(Self::Auto),
+            "Osc9" | "osc9" => Ok(Self::Osc9),
+            "Osc99" | "osc99" => Ok(Self::Osc99),
+            "Bell" | "bell" => Ok(Self::Bell),
+            "Off" | "off" => Ok(Self::Off),
+            _ => Err(format!("No such host_notification_protocol: {}", s)),
+        }
     }
 }
 
@@ -507,6 +557,9 @@ impl Options {
         let word_separators = other
             .word_separators
             .or_else(|| self.word_separators.clone());
+        let host_notification_protocol = other
+            .host_notification_protocol
+            .or(self.host_notification_protocol);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -576,6 +629,7 @@ impl Options {
             mouse_click_through,
             osc133_command_selection,
             word_separators,
+            host_notification_protocol,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -668,6 +722,9 @@ impl Options {
         let word_separators = other
             .word_separators
             .or_else(|| self.word_separators.clone());
+        let host_notification_protocol = other
+            .host_notification_protocol
+            .or(self.host_notification_protocol);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -737,6 +794,7 @@ impl Options {
             mouse_click_through,
             osc133_command_selection,
             word_separators,
+            host_notification_protocol,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -781,5 +839,132 @@ mod tests {
             PaneFrameStyle::None
         );
         assert!("bogus".parse::<PaneFrameStyle>().is_err());
+    }
+
+    #[test]
+    fn host_notification_protocol_from_str_accepts_all_variants() {
+        assert_eq!(
+            "auto".parse::<HostNotificationProtocol>().unwrap(),
+            HostNotificationProtocol::Auto
+        );
+        assert_eq!(
+            "osc9".parse::<HostNotificationProtocol>().unwrap(),
+            HostNotificationProtocol::Osc9
+        );
+        assert_eq!(
+            "osc99".parse::<HostNotificationProtocol>().unwrap(),
+            HostNotificationProtocol::Osc99
+        );
+        assert_eq!(
+            "bell".parse::<HostNotificationProtocol>().unwrap(),
+            HostNotificationProtocol::Bell
+        );
+        assert_eq!(
+            "off".parse::<HostNotificationProtocol>().unwrap(),
+            HostNotificationProtocol::Off
+        );
+        assert!("bogus".parse::<HostNotificationProtocol>().is_err());
+    }
+
+    #[test]
+    fn every_host_notification_protocol_variant_stringifies_back_to_itself() {
+        for variant in [
+            HostNotificationProtocol::Auto,
+            HostNotificationProtocol::Osc9,
+            HostNotificationProtocol::Osc99,
+            HostNotificationProtocol::Bell,
+            HostNotificationProtocol::Off,
+        ] {
+            assert_eq!(
+                variant
+                    .as_str()
+                    .parse::<HostNotificationProtocol>()
+                    .unwrap(),
+                variant
+            );
+        }
+    }
+
+    #[test]
+    fn the_host_notification_protocol_defaults_to_auto() {
+        assert_eq!(
+            HostNotificationProtocol::default(),
+            HostNotificationProtocol::Auto
+        );
+    }
+
+    #[test]
+    fn a_configured_host_notification_protocol_is_overridden_by_the_merged_in_one() {
+        let config = Options {
+            host_notification_protocol: Some(HostNotificationProtocol::Osc9),
+            ..Default::default()
+        };
+        let layout = Options {
+            host_notification_protocol: Some(HostNotificationProtocol::Bell),
+            ..Default::default()
+        };
+        assert_eq!(
+            config.merge(layout).host_notification_protocol,
+            Some(HostNotificationProtocol::Bell)
+        );
+    }
+
+    #[test]
+    fn an_unset_host_notification_protocol_does_not_clobber_the_configured_one() {
+        let config = Options {
+            host_notification_protocol: Some(HostNotificationProtocol::Osc9),
+            ..Default::default()
+        };
+        assert_eq!(
+            config.merge(Options::default()).host_notification_protocol,
+            Some(HostNotificationProtocol::Osc9)
+        );
+    }
+
+    #[test]
+    fn a_host_notification_protocol_unset_everywhere_stays_unset() {
+        assert_eq!(
+            Options::default()
+                .merge(Options::default())
+                .host_notification_protocol,
+            None
+        );
+        assert_eq!(
+            Options::default()
+                .merge_from_cli(Options::default())
+                .host_notification_protocol,
+            None
+        );
+    }
+
+    #[test]
+    fn a_host_notification_protocol_given_on_the_command_line_wins() {
+        let config = Options {
+            host_notification_protocol: Some(HostNotificationProtocol::Osc9),
+            ..Default::default()
+        };
+        let cli = Options {
+            host_notification_protocol: Some(HostNotificationProtocol::Off),
+            ..Default::default()
+        };
+        assert_eq!(
+            config.merge_from_cli(cli).host_notification_protocol,
+            Some(HostNotificationProtocol::Off)
+        );
+    }
+
+    #[test]
+    fn a_host_notification_protocol_absent_from_the_command_line_keeps_the_configured_one() {
+        let config = Options {
+            host_notification_protocol: Some(HostNotificationProtocol::Osc99),
+            ..Default::default()
+        };
+        assert_eq!(
+            config
+                .merge_from_cli(Options::default())
+                .host_notification_protocol,
+            Some(HostNotificationProtocol::Osc99),
+            "the option is carried over verbatim, not toggled like the boolean options are"
+        );
     }
 }

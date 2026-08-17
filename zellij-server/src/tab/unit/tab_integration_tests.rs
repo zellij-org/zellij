@@ -1,7 +1,7 @@
 use super::{Output, Tab};
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
-use crate::screen::CopyOptions;
+use crate::screen::{CopyOptions, ScreenInstruction};
 use crate::Arc;
 use zellij_utils::input::options::PaneFrameStyle;
 
@@ -15226,23 +15226,20 @@ fn mouse_click_through_respects_live_toggle() {
 // OSC 99 Desktop Notification Integration Tests
 // ========================================================================
 
-/// Creates a Tab with a real `to_server` sender so that `ServerInstruction::Render`
-/// calls from `forward_desktop_notifications` can be captured on the receiver.
 fn create_new_tab_with_server_receiver(
     size: Size,
     default_mode: ModeInfo,
-) -> (Tab, Receiver<(ServerInstruction, ErrorContext)>) {
+) -> (Tab, Receiver<(ScreenInstruction, ErrorContext)>) {
     set_session_name("test".into());
     let index = 0;
     let position = 0;
     let name = String::new();
     let os_api = Box::new(FakeInputOutput::default());
 
-    // Set up real server channel to capture ServerInstruction::Render
-    let (server_sender, server_receiver) = channels::unbounded();
-    let server_sender = SenderWithContext::new(server_sender);
+    let (screen_sender, screen_receiver) = channels::unbounded();
+    let screen_sender = SenderWithContext::new(screen_sender);
     let mut senders = ThreadSenders::default().silently_fail_on_send();
-    senders.to_server = Some(server_sender);
+    senders.to_screen = Some(screen_sender);
 
     let max_panes = None;
     let client_id = 1;
@@ -15310,17 +15307,37 @@ fn create_new_tab_with_server_receiver(
         None,
     )
     .unwrap();
-    (tab, server_receiver)
+    (tab, screen_receiver)
 }
 
-/// Helper: collect all ServerInstruction::Render messages from the receiver,
-/// concatenate the per-client strings, and return the combined output.
-fn collect_render_output(receiver: &Receiver<(ServerInstruction, ErrorContext)>) -> String {
+fn collect_render_output(receiver: &Receiver<(ScreenInstruction, ErrorContext)>) -> String {
+    use crate::panes::grid::{namespace_notification_id, PendingNotification};
     let mut output = String::new();
     while let Ok((instruction, _)) = receiver.try_recv() {
-        if let ServerInstruction::Render(Some(client_map)) = instruction {
-            for (_client_id, content) in client_map {
-                output.push_str(&content);
+        if let ScreenInstruction::ForwardDesktopNotifications {
+            pane_id,
+            notifications,
+        } = instruction
+        {
+            for notification in notifications {
+                if let PendingNotification::Osc99 {
+                    payload,
+                    terminator,
+                } = notification
+                {
+                    let (metadata, rest) = match payload.find(';') {
+                        Some(idx) => (
+                            payload.get(..idx).unwrap_or_default(),
+                            payload.get(idx..).unwrap_or_default(),
+                        ),
+                        None => (payload.as_str(), ""),
+                    };
+                    let namespaced_metadata = namespace_notification_id(metadata, pane_id);
+                    output.push_str(&format!(
+                        "\u{1b}]99;{}{}{}",
+                        namespaced_metadata, rest, terminator
+                    ));
+                }
             }
         }
     }
@@ -15543,7 +15560,11 @@ fn osc99_grid_parses_and_stores_notification() {
         "Should have one pending notification"
     );
 
-    let (ref payload, ref _terminator) = grid.pending_desktop_notifications.first().unwrap();
+    let notification = grid.pending_desktop_notifications.first().unwrap();
+    let payload = match notification {
+        crate::panes::grid::PendingNotification::Osc99 { payload, .. } => payload.clone(),
+        other => panic!("Expected an OSC 99 notification, got: {:?}", other),
+    };
     assert!(
         payload.contains("i=gridtest"),
         "Payload should contain i=gridtest, got: {:?}",
@@ -15786,4 +15807,37 @@ fn hidden_cursor_still_emits_cup_for_host_terminal_positioning() {
         !client_output.contains("\u{1b}[?25h"),
         "Show-cursor sequence must not be present when app has hidden the cursor"
     );
+}
+
+#[test]
+fn host_focus_events_only_reach_panes_that_asked_for_them() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let tty_stdin_bytes = Arc::new(Mutex::new(BTreeMap::new()));
+    let os_api = Box::new(FakeInputOutput {
+        tty_stdin_bytes: tty_stdin_bytes.clone(),
+        ..Default::default()
+    });
+    let mut tab = create_new_tab_with_os_api(size, ModeInfo::default(), &os_api);
+    let pane_id = PaneId::Terminal(1);
+
+    tab.send_host_focus_event_to_pane(pane_id, false);
+    assert!(
+        tty_stdin_bytes.lock().unwrap().is_empty(),
+        "a pane that did not subscribe to focus events receives nothing"
+    );
+
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1004h".as_bytes()))
+        .unwrap();
+    tab.send_host_focus_event_to_pane(pane_id, false);
+    tab.send_host_focus_event_to_pane(pane_id, true);
+
+    let written = tty_stdin_bytes
+        .lock()
+        .unwrap()
+        .get(&1)
+        .map(|bytes| String::from_utf8_lossy(bytes).to_string());
+    assert_eq!(written, Some("\u{1b}[O\u{1b}[I".to_owned()));
 }

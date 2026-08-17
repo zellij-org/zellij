@@ -2732,6 +2732,13 @@ pub(crate) fn route_thread_main(
                                 )]));
                             }
                         },
+                        ClientToServerMsg::HostTerminalFocusChanged { focused } => {
+                            if let Some(senders) = senders.as_ref() {
+                                let _ = senders.send_to_screen(
+                                    ScreenInstruction::HostTerminalFocusChanged(client_id, focused),
+                                );
+                            }
+                        },
                         ClientToServerMsg::NestedSessionFrameFromHost { ref payload_bytes } => {
                             match zellij_utils::nested_session::decode_payload(payload_bytes) {
                                 Some(message @ zellij_utils::nested_session::NestedSessionMessage::AnnounceAck { .. }) => {

@@ -53,7 +53,8 @@ use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::{shortcut_for_action, Keybinds};
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::options::{
-    Clipboard, NestedSessionHandling, PaneFrameStyle, DEFAULT_WORD_SEPARATORS,
+    Clipboard, HostNotificationProtocol, NestedSessionHandling, PaneFrameStyle,
+    DEFAULT_WORD_SEPARATORS,
 };
 use zellij_utils::ipc::{
     ExitReason, MobileActivePanePayload, MobilePanePayload, MobileSessionPayload,
@@ -73,9 +74,11 @@ use zellij_utils::{
 };
 
 use crate::background_jobs::BackgroundJob;
+use crate::notifications::NotificationProtocol;
 use crate::os_input_output::ResizeCache;
 use crate::pane_groups::PaneGroups;
 use crate::panes::alacritty_functions::xparse_color;
+use crate::panes::grid::{namespace_notification_id, PendingNotification};
 use crate::panes::nested_session_modal::GuestModalShortcuts;
 use crate::panes::terminal_character::AnsiCode;
 use crate::panes::terminal_pane::{BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END};
@@ -86,6 +89,7 @@ use crate::{
     output::{HostKittyState, Output},
     panes::kitty_graphics::{KittyHostSupport, KittyImageStore},
     panes::sixel::SixelImageStore,
+    panes::LinkHandler,
     panes::PaneId,
     plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction, PluginRenderAsset},
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
@@ -612,6 +616,12 @@ pub enum ScreenInstruction {
     AddRedPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional error text
     ClearPaneFrameColorOverride(Vec<PaneId>),
     SetTabBellFlash(usize, bool), // tab_id, is_flashing
+    HostTerminalFocusChanged(ClientId, bool),
+    SetClientHostTerminalEnv(ClientId, BTreeMap<String, String>),
+    ForwardDesktopNotifications {
+        pane_id: u32,
+        notifications: Vec<PendingNotification>,
+    },
     PreviousSwapLayout(ClientId, Option<NotificationEnd>),
     NextSwapLayout(ClientId, Option<NotificationEnd>),
     OverrideLayout(
@@ -789,6 +799,7 @@ pub enum ScreenInstruction {
         mouse_click_through: bool,
         osc133_command_selection: bool,
         word_separators: String,
+        host_notification_protocol: HostNotificationProtocol,
         nested_session_handling: NestedSessionHandling,
         dangerously_enable_paste_buffer_read: bool,
     },
@@ -1108,6 +1119,15 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::ClearPaneFrameColorOverride
             },
             ScreenInstruction::SetTabBellFlash(..) => ScreenContext::SetTabBellFlash,
+            ScreenInstruction::HostTerminalFocusChanged(..) => {
+                ScreenContext::HostTerminalFocusChanged
+            },
+            ScreenInstruction::SetClientHostTerminalEnv(..) => {
+                ScreenContext::SetClientHostTerminalEnv
+            },
+            ScreenInstruction::ForwardDesktopNotifications { .. } => {
+                ScreenContext::ForwardDesktopNotifications
+            },
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
             ScreenInstruction::OverrideLayout(..) => ScreenContext::OverrideLayout,
@@ -1567,6 +1587,10 @@ pub(crate) struct Screen {
     last_mobile_state_sent: HashMap<ClientId, MobileStatePayload>,
     pane_output_activity: HashMap<PaneId, Instant>,
     mobile_web_prefs: HashMap<ClientId, MobileWebPrefs>,
+    client_host_focused: HashMap<ClientId, bool>,
+    client_notification_protocols: HashMap<ClientId, NotificationProtocol>,
+    host_notification_protocol: HostNotificationProtocol,
+    client_host_terminal_env: HashMap<ClientId, BTreeMap<String, String>>,
 }
 
 /// A pending forward waiting to be dispatched once the current in-flight
@@ -1757,6 +1781,10 @@ impl Screen {
             last_mobile_state_sent: HashMap::new(),
             pane_output_activity: HashMap::new(),
             mobile_web_prefs: HashMap::new(),
+            client_host_focused: HashMap::new(),
+            client_notification_protocols: HashMap::new(),
+            host_notification_protocol: HostNotificationProtocol::default(),
+            client_host_terminal_env: HashMap::new(),
         }
     }
 
@@ -4326,6 +4354,155 @@ impl Screen {
         self.get_tabs_mut().get_mut(&tab_index)
     }
 
+    pub fn host_terminal_focus_changed(&mut self, client_id: ClientId, focused: bool) {
+        let was_focused = self.client_host_is_focused(&client_id);
+        self.client_host_focused.insert(client_id, focused);
+        if was_focused == focused {
+            return;
+        }
+        let Some(pane_id) = self.get_active_pane_id(&client_id) else {
+            return;
+        };
+        if self.pane_is_held_focused_by_another_client(&client_id, pane_id) {
+            return;
+        }
+        if let Ok(tab) = self.get_active_tab_mut(client_id) {
+            tab.send_host_focus_event_to_pane(pane_id, focused);
+        }
+    }
+
+    fn pane_is_held_focused_by_another_client(
+        &self,
+        client_id: &ClientId,
+        pane_id: PaneId,
+    ) -> bool {
+        self.active_tab_ids
+            .keys()
+            .filter(|other_client_id| {
+                *other_client_id != client_id && !self.watcher_clients.contains_key(other_client_id)
+            })
+            .any(|other_client_id| {
+                self.client_host_is_focused(other_client_id)
+                    && self.get_active_pane_id(other_client_id) == Some(pane_id)
+            })
+    }
+
+    fn client_host_is_focused(&self, client_id: &ClientId) -> bool {
+        self.client_host_focused
+            .get(client_id)
+            .copied()
+            .unwrap_or(true)
+    }
+
+    pub fn set_client_host_terminal_env(
+        &mut self,
+        client_id: ClientId,
+        host_terminal_env: BTreeMap<String, String>,
+    ) {
+        self.client_notification_protocols.insert(
+            client_id,
+            NotificationProtocol::resolve(self.host_notification_protocol, &host_terminal_env),
+        );
+        self.client_host_terminal_env
+            .insert(client_id, host_terminal_env);
+    }
+
+    pub fn set_host_notification_protocol(
+        &mut self,
+        host_notification_protocol: HostNotificationProtocol,
+    ) {
+        self.host_notification_protocol = host_notification_protocol;
+        let client_ids: Vec<ClientId> = self.client_host_terminal_env.keys().copied().collect();
+        for client_id in client_ids {
+            let host_terminal_env = self
+                .client_host_terminal_env
+                .get(&client_id)
+                .cloned()
+                .unwrap_or_default();
+            self.client_notification_protocols.insert(
+                client_id,
+                NotificationProtocol::resolve(host_notification_protocol, &host_terminal_env),
+            );
+        }
+    }
+
+    fn notification_protocol_for_client(&self, client_id: &ClientId) -> NotificationProtocol {
+        self.client_notification_protocols
+            .get(client_id)
+            .copied()
+            .unwrap_or_else(|| {
+                NotificationProtocol::resolve(self.host_notification_protocol, &BTreeMap::new())
+            })
+    }
+
+    fn forward_desktop_notifications(
+        &mut self,
+        notifications: Vec<PendingNotification>,
+        pane_id: u32,
+    ) {
+        let all_clients: Vec<ClientId> = self.connected_clients.borrow().keys().copied().collect();
+        if all_clients.is_empty() || notifications.is_empty() {
+            return;
+        }
+        let mut output = Output::default();
+        let client_set: HashSet<ClientId> = all_clients.iter().copied().collect();
+        output.add_clients(&client_set, Rc::new(RefCell::new(LinkHandler::new())), None);
+        let mut emitted_anything = false;
+        for client_id in &all_clients {
+            let protocol = self.notification_protocol_for_client(client_id);
+            for notification in &notifications {
+                let raw = match (protocol, notification) {
+                    (
+                        NotificationProtocol::Osc99,
+                        PendingNotification::Osc99 {
+                            payload,
+                            terminator,
+                        },
+                    ) => {
+                        let (metadata, rest) = match payload.find(';') {
+                            Some(idx) => (
+                                payload.get(..idx).unwrap_or_default(),
+                                payload.get(idx..).unwrap_or_default(),
+                            ),
+                            None => (payload.as_str(), ""),
+                        };
+                        let namespaced_metadata = namespace_notification_id(metadata, pane_id);
+                        Some(format!(
+                            "\u{1b}]99;{}{}{}",
+                            namespaced_metadata, rest, terminator
+                        ))
+                    },
+                    _ => {
+                        let (title, body) = notification.title_and_body();
+                        protocol.render(&title, &body)
+                    },
+                };
+                if let Some(raw) = raw {
+                    emitted_anything = true;
+                    output.add_post_vte_instruction_to_multiple_clients(
+                        std::iter::once(*client_id),
+                        &raw,
+                    );
+                }
+            }
+        }
+        if !emitted_anything {
+            return;
+        }
+        match output.serialize() {
+            Ok(serialized_output) if !serialized_output.is_empty() => {
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::Render(Some(serialized_output)));
+            },
+            Ok(_) => {},
+            Err(e) => {
+                log::error!("Failed to forward desktop notifications: {}", e);
+            },
+        }
+    }
+
     /// Clear bell notification for the currently focused pane of the given client.
     /// Also cancels any running flash jobs if applicable.
     pub fn clear_bell_for_focused_pane(&mut self, client_id: ClientId) {
@@ -4863,6 +5040,9 @@ impl Screen {
         }
         self.client_sizes.remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
+        self.client_host_focused.remove(&client_id);
+        self.client_notification_protocols.remove(&client_id);
+        self.client_host_terminal_env.remove(&client_id);
         self.revert_fit_disabled_without_reference_client()
             .with_context(err_context)?;
         if let Some(prev_tab_id) = previously_active_tab_id {
@@ -6527,6 +6707,7 @@ impl Screen {
         mouse_click_through: bool,
         osc133_command_selection: bool,
         word_separators: String,
+        host_notification_protocol: HostNotificationProtocol,
         nested_session_handling: NestedSessionHandling,
         dangerously_enable_paste_buffer_read: bool,
         client_id: ClientId,
@@ -6557,6 +6738,7 @@ impl Screen {
         self.mouse_click_through = mouse_click_through;
         self.osc133_command_selection = osc133_command_selection;
         self.word_separators = word_separators;
+        self.set_host_notification_protocol(host_notification_protocol);
         self.nested_session_handling = nested_session_handling;
         self.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
         self.default_mode_info
@@ -7678,6 +7860,9 @@ pub(crate) fn screen_thread_main(
     }
 
     let config_options = config.options;
+    let host_notification_protocol = config_options
+        .host_notification_protocol
+        .unwrap_or_default();
     let arrow_fonts = !config_options.simplified_ui.unwrap_or_default();
     let pane_frame_style = PaneFrameStyle::from_options(&config_options);
     let auto_layout = config_options.auto_layout.unwrap_or(true);
@@ -7799,6 +7984,7 @@ pub(crate) fn screen_thread_main(
     screen.host_theme_dark_styling = host_theme_dark_styling;
     screen.host_theme_light_styling = host_theme_light_styling;
     screen.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
+    screen.set_host_notification_protocol(host_notification_protocol);
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
     let mut pending_tab_switches: HashSet<(usize, ClientId)> = HashSet::new(); // usize is the
@@ -9902,6 +10088,18 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
+            ScreenInstruction::HostTerminalFocusChanged(client_id, focused) => {
+                screen.host_terminal_focus_changed(client_id, focused);
+            },
+            ScreenInstruction::SetClientHostTerminalEnv(client_id, host_terminal_env) => {
+                screen.set_client_host_terminal_env(client_id, host_terminal_env);
+            },
+            ScreenInstruction::ForwardDesktopNotifications {
+                pane_id,
+                notifications,
+            } => {
+                screen.forward_desktop_notifications(notifications, pane_id);
+            },
             ScreenInstruction::PreviousSwapLayout(
                 client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
@@ -11106,6 +11304,7 @@ pub(crate) fn screen_thread_main(
                 mouse_click_through,
                 osc133_command_selection,
                 word_separators,
+                host_notification_protocol,
                 nested_session_handling,
                 dangerously_enable_paste_buffer_read,
             } => {
@@ -11136,6 +11335,7 @@ pub(crate) fn screen_thread_main(
                         mouse_click_through,
                         osc133_command_selection,
                         word_separators,
+                        host_notification_protocol,
                         nested_session_handling,
                         dangerously_enable_paste_buffer_read,
                         client_id,

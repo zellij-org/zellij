@@ -14,7 +14,8 @@ use crate::input::layout::{
 };
 use crate::input::mouse::{MouseEvent, MouseEventType};
 use crate::input::options::{
-    Clipboard, NestedSessionHandling, OnForceClose, Options, PaneFrameStyle,
+    Clipboard, HostNotificationProtocol, NestedSessionHandling, OnForceClose, Options,
+    PaneFrameStyle,
 };
 use crate::ipc::{
     ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
@@ -420,6 +421,9 @@ fn test_client_messages() {
             max_panes: Some(4),
             force_run_layout_commands: true,
             cwd: Some(PathBuf::from("/path/to/cwd")),
+            host_terminal_env: [("TERM".to_owned(), "xterm-kitty".to_owned())]
+                .into_iter()
+                .collect(),
         },
         is_web_client: true,
     });
@@ -436,6 +440,9 @@ fn test_client_messages() {
             max_panes: Some(4),
             force_run_layout_commands: true,
             cwd: Some(PathBuf::from("/path/to/cwd")),
+            host_terminal_env: [("TERM".to_owned(), "xterm-kitty".to_owned())]
+                .into_iter()
+                .collect(),
         },
         is_web_client: true,
     });
@@ -498,6 +505,7 @@ fn test_client_messages() {
                 mouse_click_through: Some(false),
                 osc133_command_selection: Some(false),
                 word_separators: Some("[]{}<>():".to_owned()),
+                host_notification_protocol: Some(HostNotificationProtocol::Osc99),
                 nested_session_handling: Some(NestedSessionHandling::Fullscreen),
                 dangerously_enable_paste_buffer_read: Some(true),
             }),
@@ -508,6 +516,9 @@ fn test_client_messages() {
             max_panes: Some(4),
             force_run_layout_commands: true,
             cwd: Some(PathBuf::from("/path/to/cwd")),
+            host_terminal_env: [("TERM".to_owned(), "xterm-kitty".to_owned())]
+                .into_iter()
+                .collect(),
         },
         is_web_client: true,
     });
@@ -3395,6 +3406,8 @@ fn test_client_messages() {
         single_pane: false,
         fit: true,
     });
+    test_client_roundtrip!(ClientToServerMsg::HostTerminalFocusChanged { focused: true });
+    test_client_roundtrip!(ClientToServerMsg::HostTerminalFocusChanged { focused: false });
     test_client_roundtrip!(ClientToServerMsg::WebServerStarted {
         base_url: "http://localhost:8080".to_string(),
     });

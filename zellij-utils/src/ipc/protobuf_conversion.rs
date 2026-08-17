@@ -8,7 +8,8 @@ use crate::{
         ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg,
         EmitNestedSessionFrameMsg, ExitMsg, ExitReason as ProtoExitReason,
         FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
-        ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalThemeChangedMsg,
+        ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalFocusChangedMsg,
+        HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, KittyGraphicsSupportMsg,
         LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg, MobileActivePaneMsg,
@@ -179,6 +180,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     SetMobileRenderPreferencesMsg { single_pane, fit },
                 )
             },
+            ClientToServerMsg::HostTerminalFocusChanged { focused } => {
+                client_to_server_msg::Message::HostTerminalFocusChanged(
+                    HostTerminalFocusChangedMsg { focused },
+                )
+            },
         };
 
         ProtoClientToServerMsg {
@@ -347,6 +353,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 Ok(ClientToServerMsg::SetMobileRenderPreferences {
                     single_pane: msg.single_pane,
                     fit: msg.fit,
+                })
+            },
+            Some(client_to_server_msg::Message::HostTerminalFocusChanged(msg)) => {
+                Ok(ClientToServerMsg::HostTerminalFocusChanged {
+                    focused: msg.focused,
                 })
             },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
@@ -831,6 +842,7 @@ impl From<crate::input::cli_assets::CliAssets>
             max_panes: cli_assets.max_panes.map(|m| m as u32),
             force_run_layout_commands: cli_assets.force_run_layout_commands,
             cwd: cli_assets.cwd.map(|p| p.to_string_lossy().to_string()),
+            host_terminal_env: cli_assets.host_terminal_env.into_iter().collect(),
         }
     }
 }
@@ -860,6 +872,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::CliAssets>
             max_panes: cli_assets.max_panes.map(|m| m as usize),
             force_run_layout_commands: cli_assets.force_run_layout_commands,
             cwd: cli_assets.cwd.map(PathBuf::from),
+            host_terminal_env: cli_assets.host_terminal_env.into_iter().collect(),
         })
     }
 }
@@ -947,6 +960,9 @@ impl From<crate::input::options::Options>
             mouse_click_through: options.mouse_click_through,
             osc133_command_selection: options.osc133_command_selection,
             word_separators: options.word_separators,
+            host_notification_protocol: options
+                .host_notification_protocol
+                .map(|p| p.as_str().to_owned()),
             pane_frame_style: options.pane_frame_style.map(|s| match s {
                 crate::input::options::PaneFrameStyle::Full => "full".to_owned(),
                 crate::input::options::PaneFrameStyle::Titles => "titles".to_owned(),
@@ -1073,6 +1089,13 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             mouse_click_through: options.mouse_click_through,
             osc133_command_selection: options.osc133_command_selection,
             word_separators: options.word_separators,
+            host_notification_protocol: options
+                .host_notification_protocol
+                .map(|p| {
+                    p.parse::<crate::input::options::HostNotificationProtocol>()
+                        .map_err(|e| anyhow!(e))
+                })
+                .transpose()?,
             nested_session_handling: options
                 .nested_session_handling
                 .map(|n| match ProtoNestedSessionHandling::from_i32(n) {

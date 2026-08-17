@@ -634,3 +634,14 @@ web_client {
 //   - "never" (never prompt or descend; do it manually)
 // 
 // nested_session_handling "ask"
+ 
+// Which escape sequence desktop notifications coming from panes are
+// forwarded to the host terminal with.
+// Options:
+//   - "auto" (Default — detect from the host terminal environment)
+//   - "osc9" (the legacy iTerm2 protocol, understood by most terminals)
+//   - "osc99" (kitty's notification protocol)
+//   - "bell" (ring the terminal bell instead)
+//   - "off" (do not forward notifications to the host terminal)
+// 
+// host_notification_protocol "auto"

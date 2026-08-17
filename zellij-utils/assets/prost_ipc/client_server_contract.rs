@@ -1355,6 +1355,8 @@ pub struct CliAssets {
     pub force_run_layout_commands: bool,
     #[prost(string, optional, tag="11")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(map="string, string", tag="12")]
+    pub host_terminal_env: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2032,6 +2034,8 @@ pub struct Options {
     pub word_separators: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="58")]
     pub dangerously_enable_paste_buffer_read: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="67")]
+    pub host_notification_protocol: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3003,7 +3007,7 @@ impl NestedSessionHandling {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -3063,6 +3067,8 @@ pub mod client_to_server_msg {
         RequestSessionList(super::RequestSessionListMsg),
         #[prost(message, tag="26")]
         SetMobileRenderPreferences(super::SetMobileRenderPreferencesMsg),
+        #[prost(message, tag="27")]
+        HostTerminalFocusChanged(super::HostTerminalFocusChangedMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3213,6 +3219,12 @@ pub struct HostTerminalThemeChangedMsg {
 pub struct SoftKeyboardVisibilityChangedMsg {
     #[prost(bool, tag="1")]
     pub visible: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HostTerminalFocusChangedMsg {
+    #[prost(bool, tag="1")]
+    pub focused: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

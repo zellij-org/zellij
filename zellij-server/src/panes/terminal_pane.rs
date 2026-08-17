@@ -5,7 +5,7 @@ use crate::panes::kitty_graphics::{
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::panes::{
-    grid::Grid,
+    grid::{Grid, PendingNotification},
     nested_session_modal::GuestModalShortcuts,
     terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
@@ -875,7 +875,7 @@ impl Pane for TerminalPane {
         self.grid.pending_clipboard_update.take()
     }
 
-    fn drain_desktop_notifications(&mut self) -> Vec<(String, String)> {
+    fn drain_desktop_notifications(&mut self) -> Vec<PendingNotification> {
         self.grid.pending_desktop_notifications.drain(..).collect()
     }
 
