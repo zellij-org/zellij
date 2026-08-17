@@ -38,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: support OSC133, triple-mouse-click to mark whole command, configurable double-click word boundaries (https://github.com/zellij-org/zellij/pull/5460)
 * fix(scroll): keep a pane's scroll position when leaving scroll mode, and re-enter scroll mode when focusing a scrolled pane (https://github.com/zellij-org/zellij/pull/5299)
 * feat: allow opting-in to reading paste buffer (default false) (https://github.com/zellij-org/zellij/pull/5472)
+* feat: support additional notification protocols (OSC9 + OSC777), forward host gain/lost focus messages (https://github.com/zellij-org/zellij/pull/5485)
 
 ## [0.44.3] - 2026-05-13
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)
