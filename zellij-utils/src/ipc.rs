@@ -241,6 +241,9 @@ pub enum ClientToServerMsg {
         single_pane: bool,
         fit: bool,
     },
+    HostTerminalFocusChanged {
+        focused: bool,
+    },
 }
 
 // Types of messages sent from the server to the client

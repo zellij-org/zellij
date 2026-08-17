@@ -8800,3 +8800,120 @@ fn ech_over_wide_character_preserves_background_on_padding_cell() {
         ))
     );
 }
+
+#[test]
+fn osc_9_notification_is_parsed() {
+    use crate::panes::grid::PendingNotification;
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]9;the build finished\x07");
+    assert_eq!(
+        grid.pending_desktop_notifications,
+        vec![PendingNotification::Osc9 {
+            body: "the build finished".to_owned()
+        }]
+    );
+}
+
+#[test]
+fn osc_9_notification_with_semicolons_keeps_the_whole_body() {
+    use crate::panes::grid::PendingNotification;
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]9;done: 1;2;3\x07");
+    assert_eq!(
+        grid.pending_desktop_notifications,
+        vec![PendingNotification::Osc9 {
+            body: "done: 1;2;3".to_owned()
+        }]
+    );
+}
+
+#[test]
+fn an_empty_osc_9_notification_is_ignored() {
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]9;\x07");
+    assert!(grid.pending_desktop_notifications.is_empty());
+}
+
+#[test]
+fn osc_777_notification_is_parsed() {
+    use crate::panes::grid::PendingNotification;
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]777;notify;the title;the body\x07");
+    assert_eq!(
+        grid.pending_desktop_notifications,
+        vec![PendingNotification::Osc777 {
+            title: "the title".to_owned(),
+            body: "the body".to_owned()
+        }]
+    );
+}
+
+#[test]
+fn an_osc_777_notification_body_may_contain_semicolons() {
+    use crate::panes::grid::PendingNotification;
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]777;notify;title;a;b;c\x07");
+    assert_eq!(
+        grid.pending_desktop_notifications,
+        vec![PendingNotification::Osc777 {
+            title: "title".to_owned(),
+            body: "a;b;c".to_owned()
+        }]
+    );
+}
+
+#[test]
+fn an_osc_777_non_notify_subcommand_is_ignored() {
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]777;precmd;something\x07");
+    assert!(grid.pending_desktop_notifications.is_empty());
+}
+
+#[test]
+fn an_osc_777_notification_without_a_body_is_kept() {
+    use crate::panes::grid::PendingNotification;
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]777;notify;just a title\x07");
+    assert_eq!(
+        grid.pending_desktop_notifications,
+        vec![PendingNotification::Osc777 {
+            title: "just a title".to_owned(),
+            body: String::new()
+        }]
+    );
+}
+
+#[test]
+fn a_notification_carries_its_title_and_body_across_protocols() {
+    use crate::panes::grid::PendingNotification;
+    assert_eq!(
+        PendingNotification::Osc9 {
+            body: "body".to_owned()
+        }
+        .title_and_body(),
+        (String::new(), "body".to_owned())
+    );
+    assert_eq!(
+        PendingNotification::Osc777 {
+            title: "title".to_owned(),
+            body: "body".to_owned()
+        }
+        .title_and_body(),
+        ("title".to_owned(), "body".to_owned())
+    );
+    assert_eq!(
+        PendingNotification::Osc99 {
+            payload: "i=1:d=0;the body".to_owned(),
+            terminator: "\u{7}".to_owned()
+        }
+        .title_and_body(),
+        (String::new(), "the body".to_owned())
+    );
+}

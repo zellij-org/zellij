@@ -280,6 +280,10 @@ impl InputHandler {
                 )) => {
                     self.handle_nested_session_frame_from_host(payload_bytes);
                 },
+                Ok((InputInstruction::HostTerminalFocusChanged(focused), _error_context)) => {
+                    self.os_input
+                        .send_to_server(ClientToServerMsg::HostTerminalFocusChanged { focused });
+                },
                 Ok((InputInstruction::Exit, _error_context)) => {
                     self.should_exit = true;
                 },

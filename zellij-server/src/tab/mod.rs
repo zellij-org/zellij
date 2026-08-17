@@ -48,7 +48,7 @@ use crate::{
     os_input_output::ServerOsApi,
     output::{CharacterChunk, KittyImageChunk, Output, SixelImageChunk},
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
-    panes::grid::namespace_notification_id,
+    panes::grid::PendingNotification,
     panes::kitty_graphics::{KittyHostSupport, KittyImageStore},
     panes::nested_session_modal::GuestModalShortcuts,
     panes::sixel::SixelImageStore,
@@ -539,7 +539,7 @@ pub trait Pane {
     fn drain_clipboard_update(&mut self) -> Option<String> {
         None
     }
-    fn drain_desktop_notifications(&mut self) -> Vec<(String, String)> {
+    fn drain_desktop_notifications(&mut self) -> Vec<PendingNotification> {
         vec![]
     }
     fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
@@ -3747,6 +3747,23 @@ impl Tab {
             None
         }
     }
+    pub fn send_host_focus_event_to_pane(&mut self, pane_id: PaneId, focused: bool) {
+        let PaneId::Terminal(terminal_id) = pane_id else {
+            return;
+        };
+        let focus_event = self.get_pane_with_id(pane_id).and_then(|pane| {
+            if focused {
+                pane.focus_event()
+            } else {
+                pane.unfocus_event()
+            }
+        });
+        if let Some(focus_event) = focus_event {
+            let _ = self
+                .os_api
+                .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
+        }
+    }
     pub fn check_and_handle_bell_notifications(
         &mut self,
         is_active_tab: bool,
@@ -4231,8 +4248,12 @@ impl Tab {
                     .with_context(err_context)?;
             }
             if !desktop_notifications.is_empty() {
-                self.forward_desktop_notifications(desktop_notifications, pid)
-                    .with_context(err_context)?;
+                let _ =
+                    self.senders
+                        .send_to_screen(ScreenInstruction::ForwardDesktopNotifications {
+                            pane_id: pid,
+                            notifications: desktop_notifications,
+                        });
             }
             if let Some(path) = osc7_cwd {
                 let _ = self
@@ -6484,48 +6505,6 @@ impl Tab {
             .context("failed to notify plugins about new clipboard event")
             .non_fatal();
 
-        Ok(())
-    }
-    fn forward_desktop_notifications(
-        &self,
-        notifications: Vec<(String, String)>,
-        pane_id: u32,
-    ) -> Result<()> {
-        let err_context = || "failed to forward desktop notifications to host terminal".to_string();
-        let mut output = Output::default();
-        // Use all clients in the app, not just those viewing this tab —
-        // desktop notifications should reach the host terminal regardless
-        // of which tab is currently focused.
-        let all_clients: HashSet<ClientId> = {
-            self.connected_clients_in_app
-                .borrow()
-                .keys()
-                .copied()
-                .collect()
-        };
-        output.add_clients(&all_clients, self.link_handler.clone(), None);
-        for (payload, terminator) in notifications {
-            // Apply identifier namespacing (Phase 3)
-            // The first semicolon-delimited part of payload is the metadata
-            let (metadata, rest) = match payload.find(';') {
-                Some(idx) => (
-                    payload.get(..idx).unwrap_or_default(),
-                    payload.get(idx..).unwrap_or_default(),
-                ),
-                None => (payload.as_str(), ""),
-            };
-            let namespaced_metadata = namespace_notification_id(metadata, pane_id);
-            let raw = if rest.is_empty() {
-                format!("\x1b]99;{}{}", namespaced_metadata, terminator)
-            } else {
-                format!("\x1b]99;{}{}{}", namespaced_metadata, rest, terminator)
-            };
-            output.add_post_vte_instruction_to_multiple_clients(all_clients.iter().copied(), &raw);
-        }
-        let serialized_output = output.serialize().with_context(err_context)?;
-        self.senders
-            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-            .with_context(err_context)?;
         Ok(())
     }
     pub fn visible(&mut self, visible: bool) -> Result<()> {

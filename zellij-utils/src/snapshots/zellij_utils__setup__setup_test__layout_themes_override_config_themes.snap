@@ -6074,6 +6074,7 @@ Config {
         mouse_click_through: None,
         osc133_command_selection: None,
         word_separators: None,
+        host_notification_protocol: None,
         web_server_ip: None,
         web_server_port: None,
         web_server_cert: None,

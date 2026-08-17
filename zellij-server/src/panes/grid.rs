@@ -44,6 +44,29 @@ const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
     GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
 );
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PendingNotification {
+    Osc99 { payload: String, terminator: String },
+    Osc9 { body: String },
+    Osc777 { title: String, body: String },
+}
+
+impl PendingNotification {
+    pub fn title_and_body(&self) -> (String, String) {
+        match self {
+            PendingNotification::Osc99 { payload, .. } => match payload.find(';') {
+                Some(idx) => (
+                    String::new(),
+                    payload.get(idx + 1..).unwrap_or_default().to_owned(),
+                ),
+                None => (String::new(), String::new()),
+            },
+            PendingNotification::Osc9 { body } => (String::new(), body.clone()),
+            PendingNotification::Osc777 { title, body } => (title.clone(), body.clone()),
+        }
+    }
+}
+
 /// Rewrites OSC 99 metadata for multiplexer forwarding:
 ///
 /// 1. Namespaces the `i=` value with a pane ID prefix and flags so responses
@@ -719,9 +742,7 @@ pub struct Grid {
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
     pub pending_osc7_cwd: Option<std::path::PathBuf>,
-    /// Pending desktop notifications: (payload, terminator)
-    /// Payload is the semicolon-joined params after "99", terminator is "\x07" or "\x1b\\"
-    pub pending_desktop_notifications: Vec<(String, String)>,
+    pub pending_desktop_notifications: Vec<PendingNotification>,
     /// Whitelisted host-terminal queries intercepted from the app running
     /// in this pane (CSI 14t / 16t pixel-dim queries, OSC 10;? / 11;? /
     /// 4;N;? color queries). Each entry is the raw byte sequence that
@@ -4479,9 +4500,47 @@ impl Perform for Grid {
                         .collect::<Vec<&str>>()
                         .join(";");
                     if !payload.is_empty() {
-                        // Store raw payload and terminator; namespacing applied at Tab level
                         self.pending_desktop_notifications
-                            .push((payload, terminator.to_string()));
+                            .push(PendingNotification::Osc99 {
+                                payload,
+                                terminator: terminator.to_string(),
+                            });
+                    }
+                }
+            },
+
+            b"9" => {
+                if params.len() > 1 {
+                    let body = params
+                        .get(1..)
+                        .unwrap_or_default()
+                        .iter()
+                        .flat_map(|x| str::from_utf8(x))
+                        .collect::<Vec<&str>>()
+                        .join(";");
+                    if !body.is_empty() {
+                        self.pending_desktop_notifications
+                            .push(PendingNotification::Osc9 { body });
+                    }
+                }
+            },
+
+            b"777" => {
+                let parts: Vec<&str> = params
+                    .get(1..)
+                    .unwrap_or_default()
+                    .iter()
+                    .flat_map(|x| str::from_utf8(x))
+                    .collect();
+                if parts.first().map(|s| *s) == Some("notify") {
+                    let title = parts.get(1).map(|s| s.to_string()).unwrap_or_default();
+                    let body = parts
+                        .get(2..)
+                        .map(|rest| rest.join(";"))
+                        .unwrap_or_default();
+                    if !title.is_empty() || !body.is_empty() {
+                        self.pending_desktop_notifications
+                            .push(PendingNotification::Osc777 { title, body });
                     }
                 }
             },

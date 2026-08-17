@@ -49,6 +49,8 @@ use std::sync::OnceLock;
 const ENTER_ALTERNATE_SCREEN: &str = "\u{1b}[?1049h";
 const EXIT_ALTERNATE_SCREEN: &str = "\u{1b}[?1049l";
 const ENABLE_BRACKETED_PASTE: &str = "\u{1b}[?2004h";
+const ENABLE_FOCUS_REPORTING: &str = "\u{1b}[?1004h";
+const DISABLE_FOCUS_REPORTING: &str = "\u{1b}[?1004l";
 const RESET_STYLE: &str = "\u{1b}[m";
 const SHOW_CURSOR: &str = "\u{1b}[?25h";
 const ENTER_KITTY_KEYBOARD_MODE: &str = "\u{1b}[>1u";
@@ -155,7 +157,11 @@ use zellij_utils::{
     data::{ClientId, ConnectToSession, KeyWithModifier, LayoutInfo, LayoutMetadata},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{cli_assets::CliAssets, config::Config, options::Options},
+    input::{
+        cli_assets::{host_terminal_env, CliAssets},
+        config::Config,
+        options::Options,
+    },
     ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
     nested_session,
     pane_size::Size,
@@ -375,9 +381,10 @@ fn exit_after_startup_error(teardown: Option<TerminalTeardown>, message: String)
                 ""
             };
             let rendered = format!(
-                "{}{}{}{}{}\r\n{}\n",
+                "{}{}{}{}{}{}\r\n{}\n",
                 kitty_exit,
                 DISABLE_HOST_THEME_NOTIFY,
+                DISABLE_FOCUS_REPORTING,
                 EXIT_ALTERNATE_SCREEN,
                 RESET_STYLE,
                 SHOW_CURSOR,
@@ -538,6 +545,7 @@ pub(crate) enum InputInstruction {
         reply_bytes: Vec<u8>,
     },
     NestedSessionFrameFromHost(Vec<u8>),
+    HostTerminalFocusChanged(bool),
     Exit,
 }
 
@@ -842,6 +850,7 @@ pub fn start_remote_client(
 
     os_input.set_raw_mode();
     stdout.write_all(ENABLE_BRACKETED_PASTE.as_bytes()).unwrap();
+    stdout.write_all(ENABLE_FOCUS_REPORTING.as_bytes()).unwrap();
     if is_nested_inside_zellij_pane {
         let announce = nested_session::NestedSessionMessage::Announce {
             session_name: remote_session_name.clone(),
@@ -1024,6 +1033,7 @@ pub fn start_client(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: false,
                 cwd: None,
+                host_terminal_env: host_terminal_env(),
             };
             (
                 ClientToServerMsg::AttachClient {
@@ -1069,6 +1079,7 @@ pub fn start_client(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: force_run_commands,
                 cwd,
+                host_terminal_env: host_terminal_env(),
             };
 
             os_input.update_session_name(name);
@@ -1125,6 +1136,7 @@ pub fn start_client(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: false,
                 cwd: layout_cwd,
+                host_terminal_env: host_terminal_env(),
             };
 
             os_input.update_session_name(name);
@@ -1159,6 +1171,7 @@ pub fn start_client(
     os_input.set_raw_mode();
     let mut stdout = os_input.get_stdout_writer();
     stdout.write_all(ENABLE_BRACKETED_PASTE.as_bytes()).unwrap();
+    stdout.write_all(ENABLE_FOCUS_REPORTING.as_bytes()).unwrap();
     let nested_reannounce = if is_nested_inside_zellij_pane {
         let announce = nested_session::NestedSessionMessage::Announce {
             session_name: own_session_name.clone(),
@@ -1633,6 +1646,7 @@ pub fn start_server_detached(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: force_run_commands,
                 cwd,
+                host_terminal_env: host_terminal_env(),
             };
 
             os_input.update_session_name(name);
@@ -1690,6 +1704,7 @@ pub fn start_server_detached(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: false,
                 cwd: layout_cwd,
+                host_terminal_env: host_terminal_env(),
             };
 
             os_input.update_session_name(name);
@@ -1731,9 +1746,10 @@ fn terminal_teardown_message(message: &str, rows: usize, include_kitty_exit: boo
         ""
     };
     format!(
-        "{}{}{}{}{}{}{}\n",
+        "{}{}{}{}{}{}{}{}\n",
         kitty_exit,
         DISABLE_HOST_THEME_NOTIFY,
+        DISABLE_FOCUS_REPORTING,
         EXIT_ALTERNATE_SCREEN,
         RESET_STYLE,
         SHOW_CURSOR,

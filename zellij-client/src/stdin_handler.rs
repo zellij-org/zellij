@@ -159,7 +159,11 @@ pub(crate) fn stdin_loop(
                             let _ = send_input_instructions
                                 .send(InputInstruction::NestedSessionFrameFromHost(payload_bytes));
                         }
-                        let residue = parse_output.residue;
+                        let (residue, focus_changes) = extract_focus_reports(parse_output.residue);
+                        for focused in focus_changes {
+                            let _ = send_input_instructions
+                                .send(InputInstruction::HostTerminalFocusChanged(focused));
+                        }
                         if residue.is_empty() {
                             schedule_finalization(
                                 &stdin_ansi_parser,
@@ -343,6 +347,31 @@ fn drain_partial_to_keyboard(
     realign_current_buffer(current_buffer, input_parser);
 }
 
+fn extract_focus_reports(residue: Vec<u8>) -> (Vec<u8>, Vec<bool>) {
+    const FOCUS_GAINED: &[u8] = b"\x1b[I";
+    const FOCUS_LOST: &[u8] = b"\x1b[O";
+    if residue.len() < FOCUS_GAINED.len() {
+        return (residue, vec![]);
+    }
+    let mut remaining = Vec::with_capacity(residue.len());
+    let mut focus_changes = vec![];
+    let mut index = 0;
+    while index < residue.len() {
+        let rest = &residue[index..];
+        if rest.starts_with(FOCUS_GAINED) {
+            focus_changes.push(true);
+            index += FOCUS_GAINED.len();
+        } else if rest.starts_with(FOCUS_LOST) {
+            focus_changes.push(false);
+            index += FOCUS_LOST.len();
+        } else {
+            remaining.push(residue[index]);
+            index += 1;
+        }
+    }
+    (remaining, focus_changes)
+}
+
 /// Trim `current_buffer` to the parser's own buffered length so it can
 /// never drift from the parser's internal state: a trailing incomplete
 /// sequence is held by the parser (and mirrored here) until the next
@@ -384,7 +413,8 @@ pub(crate) const PIXEL_SIZE_QUERY: &str = "\u{1b}[14t\u{1b}[16t";
 #[cfg(test)]
 mod tests {
     use super::{
-        build_startup_query_string, realign_current_buffer, InputParser, PIXEL_SIZE_QUERY,
+        build_startup_query_string, extract_focus_reports, realign_current_buffer, InputParser,
+        PIXEL_SIZE_QUERY,
     };
 
     #[test]
@@ -447,6 +477,20 @@ mod tests {
             "startup query must not contain OSC 4 palette-register probes: {:?}",
             query
         );
+    }
+
+    #[test]
+    fn focus_reports_are_extracted_from_the_byte_stream() {
+        let (residue, focus_changes) = extract_focus_reports(b"a\x1b[Ib\x1b[Oc".to_vec());
+        assert_eq!(residue, b"abc".to_vec());
+        assert_eq!(focus_changes, vec![true, false]);
+    }
+
+    #[test]
+    fn a_stream_without_focus_reports_is_left_untouched() {
+        let (residue, focus_changes) = extract_focus_reports(b"\x1b[A\x1b[B".to_vec());
+        assert_eq!(residue, b"\x1b[A\x1b[B".to_vec());
+        assert!(focus_changes.is_empty());
     }
 
     #[test]
