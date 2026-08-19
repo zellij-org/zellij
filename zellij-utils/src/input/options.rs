@@ -343,6 +343,12 @@ pub struct Options {
     #[serde(default)]
     pub mouse_hover_effects: Option<bool>,
 
+    /// Whether to show mouse hover help-text tips (resize help and group shortcuts)
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub mouse_hover_tips: Option<bool>,
+
     /// Whether to show visual bell indicators (pane/tab frame flash and [!] suffix)
     /// default is true
     #[clap(long, value_parser)]
@@ -548,6 +554,7 @@ impl Options {
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
         let mouse_scroll_resize = other.mouse_scroll_resize.or(self.mouse_scroll_resize);
         let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
+        let mouse_hover_tips = other.mouse_hover_tips.or(self.mouse_hover_tips);
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = other.focus_follows_mouse.or(self.focus_follows_mouse);
         let mouse_click_through = other.mouse_click_through.or(self.mouse_click_through);
@@ -624,6 +631,7 @@ impl Options {
             advanced_mouse_actions,
             mouse_scroll_resize,
             mouse_hover_effects,
+            mouse_hover_tips,
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
@@ -713,6 +721,7 @@ impl Options {
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
         let mouse_scroll_resize = other.mouse_scroll_resize.or(self.mouse_scroll_resize);
         let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
+        let mouse_hover_tips = other.mouse_hover_tips.or(self.mouse_hover_tips);
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = merge_bool(other.focus_follows_mouse, self.focus_follows_mouse);
         let mouse_click_through = merge_bool(other.mouse_click_through, self.mouse_click_through);
@@ -789,6 +798,7 @@ impl Options {
             advanced_mouse_actions,
             mouse_scroll_resize,
             mouse_hover_effects,
+            mouse_hover_tips,
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,

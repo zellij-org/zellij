@@ -2034,6 +2034,8 @@ pub struct Options {
     pub word_separators: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="58")]
     pub dangerously_enable_paste_buffer_read: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="59")]
+    pub mouse_hover_tips: ::core::option::Option<bool>,
     #[prost(string, optional, tag="67")]
     pub host_notification_protocol: ::core::option::Option<::prost::alloc::string::String>,
 }

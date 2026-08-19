@@ -794,6 +794,7 @@ pub enum ScreenInstruction {
         advanced_mouse_actions: bool,
         mouse_scroll_resize: bool,
         mouse_hover_effects: bool,
+        mouse_hover_tips: bool,
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
@@ -1545,6 +1546,7 @@ pub(crate) struct Screen {
     word_separators: String,
     mouse_scroll_resize: bool,
     mouse_hover_effects: bool,
+    mouse_hover_tips: bool,
     visual_bell: bool,
     focus_follows_mouse: bool,
     mouse_click_through: bool,
@@ -1674,6 +1676,7 @@ impl Screen {
         word_separators: String,
         mouse_scroll_resize: bool,
         mouse_hover_effects: bool,
+        mouse_hover_tips: bool,
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
@@ -1742,6 +1745,7 @@ impl Screen {
             word_separators,
             mouse_scroll_resize,
             mouse_hover_effects,
+            mouse_hover_tips,
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
@@ -4743,6 +4747,7 @@ impl Screen {
             self.advanced_mouse_actions,
             self.mouse_scroll_resize,
             self.mouse_hover_effects,
+            self.mouse_hover_tips,
             self.focus_follows_mouse,
             self.mouse_click_through,
             self.web_server_ip,
@@ -6751,6 +6756,7 @@ impl Screen {
         advanced_mouse_actions: bool,
         mouse_scroll_resize: bool,
         mouse_hover_effects: bool,
+        mouse_hover_tips: bool,
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
@@ -6782,6 +6788,7 @@ impl Screen {
         self.advanced_mouse_actions = advanced_mouse_actions;
         self.mouse_scroll_resize = mouse_scroll_resize;
         self.mouse_hover_effects = mouse_hover_effects;
+        self.mouse_hover_tips = mouse_hover_tips;
         self.visual_bell = visual_bell;
         self.focus_follows_mouse = focus_follows_mouse;
         self.mouse_click_through = mouse_click_through;
@@ -6815,6 +6822,7 @@ impl Screen {
             tab.update_advanced_mouse_actions(advanced_mouse_actions);
             tab.update_mouse_scroll_resize(mouse_scroll_resize);
             tab.update_mouse_hover_effects(mouse_hover_effects);
+            tab.update_mouse_hover_tips(mouse_hover_tips);
             tab.update_focus_follows_mouse(focus_follows_mouse);
             tab.update_mouse_click_through(mouse_click_through);
             tab.update_selection_options(osc133_command_selection, self.word_separators.clone());
@@ -7974,6 +7982,7 @@ pub(crate) fn screen_thread_main(
         .unwrap_or_else(|| DEFAULT_WORD_SEPARATORS.to_owned());
     let mouse_scroll_resize = config_options.mouse_scroll_resize.unwrap_or(true);
     let mouse_hover_effects = config_options.mouse_hover_effects.unwrap_or(true);
+    let mouse_hover_tips = config_options.mouse_hover_tips.unwrap_or(true);
     let visual_bell = config_options.visual_bell.unwrap_or(true);
     let focus_follows_mouse = config_options.focus_follows_mouse.unwrap_or(false);
     let mouse_click_through = config_options.mouse_click_through.unwrap_or(false);
@@ -8024,6 +8033,7 @@ pub(crate) fn screen_thread_main(
         word_separators,
         mouse_scroll_resize,
         mouse_hover_effects,
+        mouse_hover_tips,
         visual_bell,
         focus_follows_mouse,
         mouse_click_through,
@@ -11360,6 +11370,7 @@ pub(crate) fn screen_thread_main(
                 advanced_mouse_actions,
                 mouse_scroll_resize,
                 mouse_hover_effects,
+                mouse_hover_tips,
                 visual_bell,
                 focus_follows_mouse,
                 mouse_click_through,
@@ -11391,6 +11402,7 @@ pub(crate) fn screen_thread_main(
                         advanced_mouse_actions,
                         mouse_scroll_resize,
                         mouse_hover_effects,
+                        mouse_hover_tips,
                         visual_bell,
                         focus_follows_mouse,
                         mouse_click_through,

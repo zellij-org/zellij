@@ -260,6 +260,7 @@ pub(crate) struct Tab {
     advanced_mouse_actions: bool,
     mouse_scroll_resize: bool,
     mouse_hover_effects: bool,
+    mouse_hover_tips: bool,
     focus_follows_mouse: bool,
     mouse_click_through: bool,
     osc133_command_selection: bool,
@@ -873,6 +874,7 @@ impl Tab {
         advanced_mouse_actions: bool,
         mouse_scroll_resize: bool,
         mouse_hover_effects: bool,
+        mouse_hover_tips: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
         web_server_ip: IpAddr,
@@ -1013,6 +1015,7 @@ impl Tab {
             advanced_mouse_actions,
             mouse_scroll_resize,
             mouse_hover_effects,
+            mouse_hover_tips,
             focus_follows_mouse,
             mouse_click_through,
             osc133_command_selection: true,
@@ -1668,6 +1671,7 @@ impl Tab {
                     false,
                     false,
                     self.mouse_scroll_resize,
+                    self.mouse_hover_tips,
                     self.dimmed_clients.clone(),
                 );
                 pane_contents_and_ui.set_frame_geom_override(Some(header_geom));
@@ -2079,9 +2083,11 @@ impl Tab {
     fn resolve_hint_text(&self, client_id: ClientId) -> BTreeMap<usize, StyledText> {
         let focused_pane_id = self.get_active_pane_id(client_id);
         let hovered_pane_id = self.mouse_hover_pane_id.get(&client_id).copied();
-        if let Some(hovered_pane_id) = hovered_pane_id {
-            if Some(hovered_pane_id) != focused_pane_id {
-                return hover_hint_variants();
+        if self.mouse_hover_tips {
+            if let Some(hovered_pane_id) = hovered_pane_id {
+                if Some(hovered_pane_id) != focused_pane_id {
+                    return hover_hint_variants();
+                }
             }
         }
         if let Some(focused_pane) = self.get_active_pane(client_id) {
@@ -2104,7 +2110,7 @@ impl Tab {
             .get(&client_id)
             .copied()
             .unwrap_or(false);
-        if resize_help_visible {
+        if resize_help_visible && self.mouse_hover_tips {
             let selectable_pane_count = self.get_selectable_tiled_panes().count()
                 + self.get_selectable_floating_panes().count();
             if selectable_pane_count > 1 && !self.is_fullscreen_active() {
@@ -4862,6 +4868,7 @@ impl Tab {
                 client_id_override,
                 &self.mouse_help_text_visible,
                 self.mouse_scroll_resize,
+                self.mouse_hover_tips,
             )
             .with_context(err_context)?;
         self.render_stack_list_headers(output, client_id_override)
@@ -4879,6 +4886,7 @@ impl Tab {
                     client_id_override,
                     &self.mouse_help_text_visible,
                     self.mouse_scroll_resize,
+                    self.mouse_hover_tips,
                 )
                 .with_context(err_context)?;
         }
@@ -7501,6 +7509,9 @@ impl Tab {
     }
     pub fn update_mouse_hover_effects(&mut self, mouse_hover_effects: bool) {
         self.mouse_hover_effects = mouse_hover_effects;
+    }
+    pub fn update_mouse_hover_tips(&mut self, mouse_hover_tips: bool) {
+        self.mouse_hover_tips = mouse_hover_tips;
     }
     pub fn update_focus_follows_mouse(&mut self, focus_follows_mouse: bool) {
         self.focus_follows_mouse = focus_follows_mouse;

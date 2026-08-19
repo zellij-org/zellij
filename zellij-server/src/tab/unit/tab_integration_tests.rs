@@ -279,6 +279,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         advanced_mouse_actions,
         mouse_scroll_resize,
         true,  // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -376,6 +377,7 @@ fn create_new_tab_with_stacked_pane_list(
         advanced_mouse_actions,
         mouse_scroll_resize,
         true,
+        true,
         false,
         false,
         web_server_ip,
@@ -469,6 +471,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         advanced_mouse_actions,
         mouse_scroll_resize,
         true,  // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -579,6 +582,7 @@ fn create_new_tab_with_swap_layouts(
         advanced_mouse_actions,
         mouse_scroll_resize,
         true,  // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -686,6 +690,7 @@ fn create_new_tab_with_os_api(
         advanced_mouse_actions,
         mouse_scroll_resize,
         true,  // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -779,6 +784,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         advanced_mouse_actions,
         mouse_scroll_resize,
         true,  // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -886,6 +892,7 @@ fn create_new_tab_with_mock_pty_writer(
         advanced_mouse_actions,
         mouse_scroll_resize,
         true,  // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -984,6 +991,7 @@ fn create_new_tab_with_sixel_support(
         advanced_mouse_actions,
         mouse_scroll_resize,
         true,  // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -13387,6 +13395,99 @@ fn resize_hint_text_tracks_mouse_scroll_resize_updates() {
 }
 
 #[test]
+fn hint_text_suppressed_when_mouse_hover_tips_disabled() {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+
+    tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
+        .unwrap();
+    tab.mouse_help_text_visible.insert(client_id, true);
+
+    let enabled_resize_hints = tab.resolve_hint_text(client_id);
+    assert!(!enabled_resize_hints.is_empty());
+    assert!(enabled_resize_hints
+        .values()
+        .all(|hint| hint.text.contains("drag borders")));
+
+    tab.update_mouse_hover_tips(false);
+    assert!(tab.resolve_hint_text(client_id).is_empty());
+
+    tab.mouse_hover_pane_id.insert(client_id, PaneId::Terminal(1));
+    assert!(tab.resolve_hint_text(client_id).is_empty());
+
+    tab.update_mouse_hover_tips(true);
+    let hover_hints = tab.resolve_hint_text(client_id);
+    assert!(!hover_hints.is_empty());
+    assert!(hover_hints
+        .values()
+        .all(|hint| hint.text.contains("group")));
+
+    tab.update_mouse_hover_tips(false);
+    assert!(tab.resolve_hint_text(client_id).is_empty());
+
+    tab.hold_pane(PaneId::Terminal(2), Some(0), false, RunCommand::default());
+    let held_hints = tab.resolve_hint_text(client_id);
+    assert!(!held_hints.is_empty());
+    assert!(held_hints
+        .values()
+        .all(|hint| hint.text.contains("re-run")));
+}
+
+#[test]
+fn plugin_hover_tooltip_still_renders_when_mouse_hover_tips_disabled() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+
+    tab.update_mouse_hover_tips(false);
+
+    tab.handle_pty_bytes(1, Vec::from("hover here tooltipped bar\n".as_bytes()))
+        .unwrap();
+
+    let highlights = vec![RegexHighlight {
+        pattern: "tooltipped".into(),
+        style: HighlightStyle::None,
+        layer: HighlightLayer::Tool,
+        context: BTreeMap::new(),
+        on_hover: true,
+        bold: false,
+        italic: true,
+        underline: true,
+        tooltip_text: Some("Tool Tooltip".to_string()),
+    }];
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 20, highlights, &Style::default());
+
+    let hover_position = Position::new(1, 12);
+    let _effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_buttonless_motion(hover_position),
+            client_id,
+        )
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert!(
+        snapshot.contains("Tool Tooltip"),
+        "the plugin hover tooltip must survive mouse_hover_tips false:\n{}",
+        snapshot
+    );
+}
+
+#[test]
 fn in_place_pane_with_close_replaced_pane_false_restores_original() {
     // When an in-place pane is closed and close_replaced_pane=false (the default),
     // the pane that was replaced is restored to its original position.
@@ -13596,6 +13697,7 @@ fn create_new_tab_with_plugin_receiver(
         advanced_mouse_actions,
         mouse_scroll_resize,
         true,  // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -15380,6 +15482,7 @@ fn create_new_tab_with_server_receiver(
         true,  // advanced_mouse_actions
         true,  // mouse_scroll_resize
         true,  // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),

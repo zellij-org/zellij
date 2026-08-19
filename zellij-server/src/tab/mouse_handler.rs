@@ -1277,7 +1277,7 @@ impl MouseHandler {
                     .insert(client_id, Instant::now());
                 let entered_pane = tab.mouse_last_pane_id.get(&client_id) != Some(&pane_id);
                 tab.mouse_last_pane_id.insert(client_id, pane_id);
-                if entered_pane {
+                if entered_pane && tab.mouse_hover_tips {
                     let was_visible = tab
                         .mouse_help_text_visible
                         .get(&client_id)

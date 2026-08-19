@@ -500,6 +500,7 @@ fn test_client_messages() {
                 post_command_discovery_hook: Some("post_command_discovery_hook".to_owned()),
                 client_async_worker_tasks: Some(16),
                 mouse_hover_effects: Some(false),
+                mouse_hover_tips: Some(false),
                 visual_bell: Some(true),
                 focus_follows_mouse: Some(false),
                 mouse_click_through: Some(false),

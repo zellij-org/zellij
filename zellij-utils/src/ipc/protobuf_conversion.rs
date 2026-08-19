@@ -944,6 +944,7 @@ impl From<crate::input::options::Options>
             advanced_mouse_actions: options.advanced_mouse_actions,
             mouse_scroll_resize: options.mouse_scroll_resize,
             mouse_hover_effects: options.mouse_hover_effects,
+            mouse_hover_tips: options.mouse_hover_tips,
             web_server_ip: options.web_server_ip.map(|ip| ip.to_string()),
             web_server_port: options.web_server_port.map(|p| p as u32),
             web_server_cert: options
@@ -1073,6 +1074,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             advanced_mouse_actions: options.advanced_mouse_actions,
             mouse_scroll_resize: options.mouse_scroll_resize,
             mouse_hover_effects: options.mouse_hover_effects,
+            mouse_hover_tips: options.mouse_hover_tips,
             web_server_ip: options
                 .web_server_ip
                 .map(|ip| ip.parse())

@@ -386,6 +386,7 @@ fn create_new_screen_with_capture(
         DEFAULT_WORD_SEPARATORS.to_owned(),
         mouse_scroll_resize,
         mouse_hover_effects,
+        true,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -5817,6 +5818,7 @@ fn create_new_screen_with_message_capture(
         DEFAULT_WORD_SEPARATORS.to_owned(),
         true,
         true,
+        true,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -8927,6 +8929,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         DEFAULT_WORD_SEPARATORS.to_owned(),
         true,
         true,
+        true,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -9778,6 +9781,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         true,
         true,
         true,
+        true,
         false,
         false,
         web_server_ip,
@@ -10309,6 +10313,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         DEFAULT_WORD_SEPARATORS.to_owned(),
         true,  // mouse_scroll_resize
         true,  // mouse_hover_effects
+        true,
         true,  // visual_bell
         false, // focus_follows_mouse
         false, // mouse_click_through

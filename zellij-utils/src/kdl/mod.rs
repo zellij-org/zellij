@@ -2867,6 +2867,9 @@ impl Options {
         let mouse_hover_effects =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_hover_effects")
                 .map(|(v, _)| v);
+        let mouse_hover_tips =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_hover_tips")
+                .map(|(v, _)| v);
         let web_server_ip =
             match kdl_property_first_arg_as_string_or_error!(kdl_options, "web_server_ip") {
                 Some((string, entry)) => Some(IpAddr::from_str(string).map_err(|_| {
@@ -2995,6 +2998,7 @@ impl Options {
             advanced_mouse_actions,
             mouse_scroll_resize,
             mouse_hover_effects,
+            mouse_hover_tips,
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
@@ -4282,6 +4286,33 @@ impl Options {
             None
         }
     }
+    fn mouse_hover_tips_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ",
+            "// Whether to show mouse hover help-text tips (resize help and group shortcuts)",
+            "// default is true",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("mouse_hover_tips");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(mouse_hover_tips) = self.mouse_hover_tips {
+            let mut node = create_node(mouse_hover_tips);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn mouse_hover_effects_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}",
@@ -4798,6 +4829,9 @@ impl Options {
         }
         if let Some(mouse_hover_effects) = self.mouse_hover_effects_to_kdl(add_comments) {
             nodes.push(mouse_hover_effects);
+        }
+        if let Some(mouse_hover_tips) = self.mouse_hover_tips_to_kdl(add_comments) {
+            nodes.push(mouse_hover_tips);
         }
         if let Some(visual_bell) = self.visual_bell_to_kdl(add_comments) {
             nodes.push(visual_bell);

@@ -288,6 +288,10 @@ web_sharing "disabled"
 // default is true
 // mouse_hover_effects false
  
+// Whether to show mouse hover help-text tips (resize help and group shortcuts)
+// default is true
+// mouse_hover_tips false
+ 
 // Whether to show visual bell indicators (pane/tab frame flash and [!] suffix)
 // default is true
 // visual_bell true

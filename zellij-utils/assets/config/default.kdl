@@ -564,6 +564,11 @@ load_plugins {
 //
 // mouse_hover_effects false
 
+// Whether to show mouse hover help-text tips (resize help and group shortcuts)
+// Default: true
+//
+// mouse_hover_tips false
+
 // Whether triple-clicking inside command output marked by the shell (OSC 133) selects
 // the command and its output instead of the logical line
 // Default: true

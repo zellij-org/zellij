@@ -538,6 +538,11 @@ load_plugins {
 //
 // mouse_hover_effects false
 
+// Whether to show mouse hover help-text tips (resize help and group shortcuts)
+// Default: true
+//
+// mouse_hover_tips false
+
 // Whether to output OSC8 hyperlink sequences
 // Default: true
 //
