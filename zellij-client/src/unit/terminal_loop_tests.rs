@@ -885,8 +885,7 @@ async fn test_nested_announce_ack_is_relayed_over_control_websocket() {
         .unwrap();
 
     tokio::time::sleep(Duration::from_millis(200)).await;
-    let mut relayed_payload = None;
-    loop {
+    let relayed_payload = loop {
         let received = tokio::time::timeout(
             Duration::from_secs(1),
             server.client_to_control_rx.lock().unwrap().recv(),
@@ -902,13 +901,12 @@ async fn test_nested_announce_ack_is_relayed_over_control_websocket() {
             } = control_msg.payload
             {
                 assert_eq!(control_msg.web_client_id, "test-nested");
-                relayed_payload = Some(payload_bytes);
-                break;
+                break payload_bytes;
             }
         }
-    }
+    };
     assert_eq!(
-        zellij_utils::nested_session::decode_payload(&relayed_payload.unwrap()),
+        zellij_utils::nested_session::decode_payload(&relayed_payload),
         Some(announce_ack)
     );
 

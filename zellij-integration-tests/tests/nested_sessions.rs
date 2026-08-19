@@ -923,7 +923,7 @@ fn split_second_guest_pane(nested: &NestedHarness) {
 
 #[test]
 fn descended_client_sees_dimmed_host_chrome_while_second_client_does_not() {
-    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+    let nested = NestedHarness::start(TERMINAL_SIZE);
     let guest_session_name = nested.guest.session_name().to_string();
 
     boot_and_descend_on_first_load(&nested);
@@ -1086,7 +1086,7 @@ fn guest_edge_focus_move_bubbles_out_to_the_adjacent_host_pane() {
 
 #[test]
 fn host_focus_move_onto_guest_pane_enters_at_the_correct_edge() {
-    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+    let nested = NestedHarness::start(TERMINAL_SIZE);
 
     build_descended_state_with_host_sibling(&nested);
 
@@ -1133,7 +1133,7 @@ fn host_focus_move_onto_guest_pane_enters_at_the_correct_edge() {
 
 #[test]
 fn no_bubble_when_the_focus_move_stays_inside_the_guest() {
-    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+    let nested = NestedHarness::start(TERMINAL_SIZE);
 
     build_descended_state_with_host_sibling(&nested);
     split_second_guest_pane(&nested);
@@ -1248,7 +1248,7 @@ fn move_focus_or_tab_bubbles_only_when_the_guest_has_a_single_tab() {
 
 #[test]
 fn move_focus_or_tab_wraps_tabs_without_bubbling_when_the_guest_has_multiple_tabs() {
-    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+    let nested = NestedHarness::start(TERMINAL_SIZE);
 
     build_descended_state_with_host_sibling(&nested);
 

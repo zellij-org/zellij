@@ -2,6 +2,8 @@ use super::super::Grid;
 use crate::panes::grid::SixelImageStore;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::link_handler::LinkHandler;
+use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
+use base64::engine::Engine as _;
 use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -4601,8 +4603,6 @@ fn single_click_drag_selection_preserved_after_scroll() {
 
 #[test]
 fn osc_11_set_and_query_pane_default_bg() {
-    use crate::panes::terminal_character::AnsiCode;
-
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -4649,8 +4649,6 @@ fn osc_11_set_and_query_pane_default_bg() {
 
 #[test]
 fn osc_10_set_and_query_pane_default_fg() {
-    use crate::panes::terminal_character::AnsiCode;
-
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -4694,8 +4692,6 @@ fn osc_10_set_and_query_pane_default_fg() {
 
 #[test]
 fn osc_110_111_reset_pane_default_colors() {
-    use crate::panes::terminal_character::AnsiCode;
-
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -6659,7 +6655,7 @@ fn kitty_apc(control: &str, payload: &[u8]) -> Vec<u8> {
     out.extend_from_slice(control.as_bytes());
     if !payload.is_empty() {
         out.push(b';');
-        out.extend_from_slice(base64::encode(payload).as_bytes());
+        out.extend_from_slice(BASE64_ENCODER.encode(payload).as_bytes());
     }
     out.extend_from_slice(b"\x1b\\");
     out
@@ -7293,7 +7289,7 @@ fn kitty_yazi_kgpold_stream_roundtrip() {
     let mut vte_parser = vte::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     let raster = rgb_raster(2, 2);
-    let full_b64 = base64::encode(&raster);
+    let full_b64 = BASE64_ENCODER.encode(&raster);
     let (b64_chunk_one, b64_chunk_two) = full_b64.split_at(8);
     let mut stream = Vec::new();
     stream.extend_from_slice(
@@ -7624,7 +7620,7 @@ fn kitty_reply_icat_detection_sequence() {
         format!(
             "\x1b_Gt=t,a=q,i=2,s=1,v=1,f=24,S={};{}\x1b\\",
             path_bytes.len(),
-            base64::encode(path_bytes)
+            BASE64_ENCODER.encode(path_bytes)
         )
         .as_bytes(),
     );
@@ -7634,7 +7630,7 @@ fn kitty_reply_icat_detection_sequence() {
         &mut interceptor,
         format!(
             "\x1b_Gt=s,a=q,i=3,s=1,v=1,f=24,S=3;{}\x1b\\",
-            base64::encode(b"/some-shm")
+            BASE64_ENCODER.encode(b"/some-shm")
         )
         .as_bytes(),
     );

@@ -156,7 +156,7 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
         FloatingPaneCoordinates {
             x: self
                 .x
-                .and_then(|x| match ProtobufFixedOrPercent::from_i32(x.r#type) {
+                .and_then(|x| match ProtobufFixedOrPercent::try_from(x.r#type).ok() {
                     Some(ProtobufFixedOrPercent::Percent) => {
                         Some(PercentOrFixed::Percent(x.value as usize))
                     },
@@ -167,7 +167,7 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                 }),
             y: self
                 .y
-                .and_then(|y| match ProtobufFixedOrPercent::from_i32(y.r#type) {
+                .and_then(|y| match ProtobufFixedOrPercent::try_from(y.r#type).ok() {
                     Some(ProtobufFixedOrPercent::Percent) => {
                         Some(PercentOrFixed::Percent(y.value as usize))
                     },
@@ -177,7 +177,7 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                     None => None,
                 }),
             width: self.width.and_then(|width| {
-                match ProtobufFixedOrPercent::from_i32(width.r#type) {
+                match ProtobufFixedOrPercent::try_from(width.r#type).ok() {
                     Some(ProtobufFixedOrPercent::Percent) => {
                         Some(PercentOrFixed::Percent(width.value as usize))
                     },
@@ -188,7 +188,7 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                 }
             }),
             height: self.height.and_then(|height| {
-                match ProtobufFixedOrPercent::from_i32(height.r#type) {
+                match ProtobufFixedOrPercent::try_from(height.r#type).ok() {
                     Some(ProtobufFixedOrPercent::Percent) => {
                         Some(PercentOrFixed::Percent(height.value as usize))
                     },
@@ -282,7 +282,7 @@ impl Into<ProtobufHttpVerb> for HttpVerb {
 impl TryFrom<ProtobufPaneId> for PaneId {
     type Error = &'static str;
     fn try_from(protobuf_pane_id: ProtobufPaneId) -> Result<Self, &'static str> {
-        match ProtobufPaneType::from_i32(protobuf_pane_id.pane_type) {
+        match ProtobufPaneType::try_from(protobuf_pane_id.pane_type).ok() {
             Some(ProtobufPaneType::Terminal) => Ok(PaneId::Terminal(protobuf_pane_id.id)),
             Some(ProtobufPaneType::Plugin) => Ok(PaneId::Plugin(protobuf_pane_id.id)),
             None => Err("Failed to convert PaneId"),
@@ -641,7 +641,8 @@ fn key_to_rebind_to_plugin_command_assets(
     key_to_rebind: KeyToRebind,
 ) -> Option<(InputMode, KeyWithModifier, Vec<Action>)> {
     Some((
-        ProtobufInputMode::from_i32(key_to_rebind.input_mode)?
+        ProtobufInputMode::try_from(key_to_rebind.input_mode)
+            .ok()?
             .try_into()
             .ok()?,
         key_to_rebind.key?.try_into().ok()?,
@@ -657,7 +658,8 @@ fn key_to_unbind_to_plugin_command_assets(
     key_to_unbind: KeyToUnbind,
 ) -> Option<(InputMode, KeyWithModifier)> {
     Some((
-        ProtobufInputMode::from_i32(key_to_unbind.input_mode)?
+        ProtobufInputMode::try_from(key_to_unbind.input_mode)
+            .ok()?
             .try_into()
             .ok()?,
         key_to_unbind.key?.try_into().ok()?,
@@ -667,7 +669,7 @@ fn key_to_unbind_to_plugin_command_assets(
 impl TryFrom<ProtobufPluginCommand> for PluginCommand {
     type Error = &'static str;
     fn try_from(protobuf_plugin_command: ProtobufPluginCommand) -> Result<Self, &'static str> {
-        match CommandName::from_i32(protobuf_plugin_command.name) {
+        match CommandName::try_from(protobuf_plugin_command.name).ok() {
             Some(CommandName::Subscribe) => match protobuf_plugin_command.payload {
                 Some(Payload::SubscribePayload(subscribe_payload)) => {
                     let protobuf_event_list = subscribe_payload.subscriptions;
@@ -877,7 +879,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::SwitchToMode) => match protobuf_plugin_command.payload {
                 Some(Payload::SwitchToModePayload(switch_to_mode_payload)) => {
-                    match ProtobufInputMode::from_i32(switch_to_mode_payload.input_mode) {
+                    match ProtobufInputMode::try_from(switch_to_mode_payload.input_mode).ok() {
                         Some(protobuf_input_mode) => {
                             Ok(PluginCommand::SwitchToMode(protobuf_input_mode.try_into()?))
                         },
@@ -1113,7 +1115,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::SetPaneFrameStyle) => match protobuf_plugin_command.payload {
                 Some(Payload::SetPaneFrameStylePayload(payload)) => {
-                    match ProtobufPaneFrameStyle::from_i32(payload.pane_frame_style) {
+                    match ProtobufPaneFrameStyle::try_from(payload.pane_frame_style).ok() {
                         Some(protobuf_pane_frame_style) => Ok(PluginCommand::SetPaneFrameStyle(
                             protobuf_pane_frame_style.try_into()?,
                         )),
@@ -1274,7 +1276,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         payload
                             .permissions
                             .iter()
-                            .filter_map(|p| ProtobufPermissionType::from_i32(*p))
+                            .filter_map(|p| ProtobufPermissionType::try_from(*p).ok())
                             .filter_map(|p| PermissionType::try_from(p).ok())
                             .collect(),
                     ))
@@ -1382,7 +1384,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         .into_iter()
                         .map(|e| (e.name, e.value))
                         .collect();
-                    let verb = match ProtobufHttpVerb::from_i32(web_request_payload.verb) {
+                    let verb = match ProtobufHttpVerb::try_from(web_request_payload.verb).ok() {
                         Some(verb) => verb.into(),
                         None => {
                             return Err("Unrecognized http verb");

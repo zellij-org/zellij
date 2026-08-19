@@ -13060,7 +13060,8 @@ pub fn mode_update_payload_is_lightweight_for_opted_in_plugins() {
                 let keybinds = &mode_update[keybinds_start..];
                 if keybinds.starts_with("keybinds: [],") {
                     plugin_b_has_empty_keybinds = true;
-                } else if keybinds.starts_with("keybinds: [(Normal, ") && keybinds.contains("Quit") {
+                } else if keybinds.starts_with("keybinds: [(Normal, ") && keybinds.contains("Quit")
+                {
                     plugin_a_has_keybinds = true;
                 }
             }

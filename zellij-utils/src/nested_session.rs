@@ -104,7 +104,7 @@ fn capabilities_from_proto(capabilities: &[i32]) -> Vec<NestedSessionCapability>
     capabilities
         .iter()
         .filter_map(
-            |capability| match proto::NestedCapability::from_i32(*capability) {
+            |capability| match proto::NestedCapability::try_from(*capability).ok() {
                 Some(proto::NestedCapability::NestedControl) => {
                     Some(NestedSessionCapability::NestedControl)
                 },
@@ -125,7 +125,7 @@ fn direction_to_proto(direction: Option<Direction>) -> i32 {
 }
 
 fn direction_from_proto(direction: i32) -> Option<Direction> {
-    match proto::NestedDirection::from_i32(direction) {
+    match proto::NestedDirection::try_from(direction).ok() {
         Some(proto::NestedDirection::Left) => Some(Direction::Left),
         Some(proto::NestedDirection::Right) => Some(Direction::Right),
         Some(proto::NestedDirection::Up) => Some(Direction::Up),

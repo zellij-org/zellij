@@ -7,7 +7,7 @@ use zellij_utils::input::options::PaneFrameStyle;
 
 use crate::{
     os_input_output::ServerOsApi, pane_groups::PaneGroups, panes::PaneId,
-    plugins::PluginInstruction, thread_bus::ThreadSenders, ClientId, ServerInstruction,
+    plugins::PluginInstruction, thread_bus::ThreadSenders, ClientId,
 };
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
@@ -6348,9 +6348,9 @@ fn focus_last_stacked_pane() {
         None,
     )
     .unwrap();
-    tab.move_focus_right(client_id);
-    tab.move_focus_up(client_id);
-    tab.move_focus_up(client_id);
+    tab.move_focus_right(client_id).unwrap();
+    tab.move_focus_up(client_id).unwrap();
+    tab.move_focus_up(client_id).unwrap();
     tab.focus_last_pane(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(

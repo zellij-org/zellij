@@ -1,4 +1,5 @@
 use super::*;
+use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
 use std::io::{Seek, Write};
 
 const PNG_2X2_RGBA: [u8; 75] = [
@@ -13,7 +14,7 @@ const PNG_2X2_EXPECTED_RGBA: [u8; 16] = [
 ];
 
 fn b64(data: &[u8]) -> String {
-    base64::encode(data)
+    BASE64_ENCODER.encode(data)
 }
 
 fn raw_cmd(control: &str, payload: &[u8]) -> Vec<u8> {

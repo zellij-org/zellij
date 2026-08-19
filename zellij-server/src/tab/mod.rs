@@ -920,7 +920,6 @@ impl Tab {
             mode_info.clone(),
             character_cell_size.clone(),
             stacked_resize.clone(),
-            stacked_pane_list.clone(),
             reserved_top_rows.clone(),
             fullscreen_covers_ui.clone(),
             session_is_mirrored,

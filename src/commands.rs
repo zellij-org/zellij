@@ -334,6 +334,7 @@ pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> {
 }
 
 /// Default timeout for web server status check (in seconds)
+#[cfg(feature = "web_server_capability")]
 pub const DEFAULT_WEB_SERVER_STATUS_TIMEOUT_SECS: u64 = 30;
 
 #[cfg(feature = "web_server_capability")]
@@ -686,6 +687,7 @@ pub(crate) fn start_client(opts: CliArgs) {
             assert_session_ne(&session_name);
         };
 
+        #[cfg_attr(not(feature = "web_server_capability"), allow(unused_variables))]
         if let Some(Command::Sessions(Sessions::Attach {
             session_name,
             create,

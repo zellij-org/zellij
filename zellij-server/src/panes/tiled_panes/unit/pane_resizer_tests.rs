@@ -5,7 +5,6 @@ use super::pane_resizer_test_mock::{
     PaneSpec, Run,
 };
 use crate::panes::PaneId;
-use std::collections::BTreeMap;
 use zellij_utils::input::layout::SplitDirection;
 use zellij_utils::pane_size::{Constraint, PaneGeom};
 

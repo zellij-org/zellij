@@ -198,7 +198,8 @@ impl TryFrom<ProtobufPalette> for Palette {
     type Error = &'static str;
     fn try_from(protobuf_palette: ProtobufPalette) -> Result<Self, &'static str> {
         Ok(Palette {
-            theme_hue: ProtobufThemeHue::from_i32(protobuf_palette.theme_hue)
+            theme_hue: ProtobufThemeHue::try_from(protobuf_palette.theme_hue)
+                .ok()
                 .ok_or("malformed theme_hue payload for Palette")?
                 .try_into()?,
             fg: protobuf_palette
@@ -308,7 +309,7 @@ impl TryFrom<Palette> for ProtobufPalette {
 impl TryFrom<ProtobufColor> for PaletteColor {
     type Error = &'static str;
     fn try_from(protobuf_color: ProtobufColor) -> Result<Self, &'static str> {
-        match ProtobufColorType::from_i32(protobuf_color.color_type) {
+        match ProtobufColorType::try_from(protobuf_color.color_type).ok() {
             Some(ProtobufColorType::Rgb) => match protobuf_color.payload {
                 Some(ProtobufColorPayload::RgbColorPayload(rgb_color_payload)) => {
                     Ok(PaletteColor::Rgb((

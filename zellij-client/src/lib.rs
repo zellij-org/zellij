@@ -43,7 +43,9 @@ use crate::web_client::control_message::{
     WebServerToWebClientControlMessage,
 };
 
+#[cfg(feature = "web_server_capability")]
 static ASYNC_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+#[cfg(feature = "web_server_capability")]
 use std::sync::OnceLock;
 
 const ENTER_ALTERNATE_SCREEN: &str = "\u{1b}[?1049h";
@@ -72,6 +74,7 @@ const QUERY_HOST_THEME: &str = "\u{1b}[?996n";
 ///
 /// The number of workers can be configured to any nonzero value. Passing zero or `None` will spawn
 /// one worker per physical CPU on the current machine.
+#[cfg(feature = "web_server_capability")]
 pub(crate) fn async_runtime(maybe_number_of_workers: Option<usize>) -> tokio::runtime::Handle {
     match tokio::runtime::Handle::try_current() {
         Ok(handle) => handle.clone(),

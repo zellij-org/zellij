@@ -320,7 +320,8 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 })
             },
             Some(client_to_server_msg::Message::HostTerminalThemeChanged(msg)) => {
-                let proto_mode = ProtoHostTerminalThemeIndication::from_i32(msg.mode)
+                let proto_mode = ProtoHostTerminalThemeIndication::try_from(msg.mode)
+                    .ok()
                     .ok_or_else(|| anyhow!("Unknown HostTerminalThemeIndication: {}", msg.mode))?;
                 Ok(ClientToServerMsg::HostTerminalThemeChanged {
                     mode: proto_mode.into(),
@@ -599,7 +600,8 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                 Ok(ServerToClientMsg::UnblockInputThread)
             },
             Some(server_to_client_msg::Message::Exit(exit)) => {
-                let proto_exit_reason = ProtoExitReason::from_i32(exit.exit_reason)
+                let proto_exit_reason = ProtoExitReason::try_from(exit.exit_reason)
+                    .ok()
                     .ok_or_else(|| anyhow!("Invalid exit_reason"))?;
 
                 let exit_reason = match proto_exit_reason {
@@ -1022,7 +1024,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             mirror_session: options.mirror_session,
             on_force_close: options
                 .on_force_close
-                .map(|o| match ProtoOnForceClose::from_i32(o) {
+                .map(|o| match ProtoOnForceClose::try_from(o).ok() {
                     Some(ProtoOnForceClose::Quit) => Ok(crate::input::options::OnForceClose::Quit),
                     Some(ProtoOnForceClose::Detach) => {
                         Ok(crate::input::options::OnForceClose::Detach)
@@ -1034,7 +1036,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             copy_command: options.copy_command,
             copy_clipboard: options
                 .copy_clipboard
-                .map(|c| match ProtoClipboard::from_i32(c) {
+                .map(|c| match ProtoClipboard::try_from(c).ok() {
                     Some(ProtoClipboard::System) => Ok(crate::input::options::Clipboard::System),
                     Some(ProtoClipboard::Primary) => Ok(crate::input::options::Clipboard::Primary),
                     _ => Err(anyhow!("Invalid Clipboard value: {}", c)),
@@ -1059,7 +1061,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             web_server: options.web_server,
             web_sharing: options
                 .web_sharing
-                .map(|w| match ProtoWebSharing::from_i32(w) {
+                .map(|w| match ProtoWebSharing::try_from(w).ok() {
                     Some(ProtoWebSharing::On) => Ok(crate::data::WebSharing::On),
                     Some(ProtoWebSharing::Off) => Ok(crate::data::WebSharing::Off),
                     Some(ProtoWebSharing::Disabled) => Ok(crate::data::WebSharing::Disabled),
@@ -1100,7 +1102,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 .transpose()?,
             nested_session_handling: options
                 .nested_session_handling
-                .map(|n| match ProtoNestedSessionHandling::from_i32(n) {
+                .map(|n| match ProtoNestedSessionHandling::try_from(n).ok() {
                     Some(ProtoNestedSessionHandling::Ask) => {
                         Ok(crate::input::options::NestedSessionHandling::Ask)
                     },
@@ -3463,7 +3465,7 @@ fn input_mode_to_proto_i32(mode: InputMode) -> i32 {
 }
 
 fn proto_i32_to_input_mode(i: i32) -> Result<InputMode> {
-    match ProtoInputMode::from_i32(i) {
+    match ProtoInputMode::try_from(i).ok() {
         Some(ProtoInputMode::Normal) => Ok(InputMode::Normal),
         Some(ProtoInputMode::Locked) => Ok(InputMode::Locked),
         Some(ProtoInputMode::Resize) => Ok(InputMode::Resize),
