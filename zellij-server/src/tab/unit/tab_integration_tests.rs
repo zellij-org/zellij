@@ -11961,6 +11961,94 @@ fn test_right_alt_click_ungroups_panes() {
 }
 
 #[test]
+fn alt_click_is_forwarded_to_a_pane_the_client_is_descended_into() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1002h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+
+    let effect = tab
+        .handle_mouse_event_with_passthrough(
+            &MouseEvent::new_left_press_with_alt_event(Position::new(5, 71)),
+            client_id,
+            Some(PaneId::Terminal(1)),
+        )
+        .unwrap();
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec!["\u{1b}[<8;71;5M".to_string()],
+        "the alt bit must survive into the SGR report written to the descended pane"
+    );
+    assert!(
+        effect.group_toggle.is_none(),
+        "an alt click inside a descended pane must not toggle a host pane group"
+    );
+    assert!(
+        effect.group_add.is_none(),
+        "an alt click inside a descended pane must not add to a host pane group"
+    );
+    assert!(
+        !effect.ungroup,
+        "an alt click inside a descended pane must not ungroup host panes"
+    );
+}
+
+#[test]
+fn alt_click_still_groups_a_mouse_tracking_pane_the_client_is_not_descended_into() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1002h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+
+    let effect = tab
+        .handle_mouse_event_with_passthrough(
+            &MouseEvent::new_left_press_with_alt_event(Position::new(5, 71)),
+            client_id,
+            None,
+        )
+        .unwrap();
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(
+        effect.group_toggle,
+        Some(PaneId::Terminal(1)),
+        "without a descend, alt click keeps grouping panes even when the pane tracks the mouse"
+    );
+    assert!(
+        pty_instruction_bus.clone_output().is_empty(),
+        "without a descend, nothing should be written to the pane"
+    );
+}
+
+#[test]
 fn test_scroll_wheel_up_scrolls_pane() {
     let size = Size {
         cols: 121,

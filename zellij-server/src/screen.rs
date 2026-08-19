@@ -7121,10 +7121,11 @@ impl Screen {
             .ok()
             .and_then(|tab| tab.get_active_pane_id(client_id));
         let active_pane_was_scrolled = self.active_pane_is_scrolled(client_id);
-        match self
-            .get_active_tab_mut(client_id)
-            .and_then(|tab| tab.handle_mouse_event(&event, client_id))
-        {
+        let passthrough_pane_id = active_pane_id_before
+            .filter(|pane_id| self.should_route_keys_to_pane(client_id, *pane_id));
+        match self.get_active_tab_mut(client_id).and_then(|tab| {
+            tab.handle_mouse_event_with_passthrough(&event, client_id, passthrough_pane_id)
+        }) {
             Ok(mouse_effect) => {
                 let mut should_render = false;
                 if let Some(pane_id) = mouse_effect.group_toggle {

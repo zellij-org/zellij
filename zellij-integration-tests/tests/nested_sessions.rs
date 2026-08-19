@@ -592,6 +592,48 @@ fn clicking_a_host_tab_while_descended_switches_tabs_and_ascends() {
     nested.host.quit();
 }
 
+fn stdin_contains(stdin: &[u8], needle: &[u8]) -> bool {
+    stdin.windows(needle.len()).any(|window| window == needle)
+}
+
+#[test]
+fn alt_clicking_the_guest_while_descended_reaches_the_guest_and_keeps_keys_flowing() {
+    let mut nested = NestedHarness::start_with_host_and_guest_config(
+        TERMINAL_SIZE,
+        "mouse_mode true",
+        "mouse_mode true\nadvanced_mouse_actions false",
+    );
+
+    boot_and_descend_on_first_load(&nested);
+    nested.guest.wait_for_app_load();
+    nested.wait_until_host_composites_settled_guest(
+        "the host composited the descended guest before the alt click",
+        single_blank_pane_guest_settled,
+        host_descended_bar_settled,
+    );
+
+    nested.host.send_stdin(&sgr_mouse_report(30, 8, 8));
+    nested.host_pane.wait_for_stdin(
+        "the alt-modified mouse report to be written down into the guest pane",
+        |stdin| stdin_contains(stdin, b"\x1b[<8;30;"),
+    );
+
+    nested.host.send_stdin(&keys::alt('n'));
+    let guest_new_pane = nested.guest.expect_pty_spawn();
+    guest_new_pane.output(PROMPT);
+    let guest_after_new_pane = nested.guest.wait_until(
+        "the key after the alt click still reached the guest",
+        two_pane_guest_settled,
+    );
+    assert_snapshot!(
+        "guest_reacts_to_key_after_alt_click",
+        normalized(&guest_after_new_pane)
+    );
+
+    nested.guest.quit();
+    nested.host.quit();
+}
+
 #[test]
 fn a_key_immediately_after_descend_lands_in_the_guest_and_after_ascend_lands_in_the_host() {
     let mut nested = NestedHarness::start(TERMINAL_SIZE);
