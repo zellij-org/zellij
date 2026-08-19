@@ -2020,6 +2020,96 @@ fn floating_pane_centers_large_pane_safely() {
 }
 
 #[test]
+pub fn rename_active_pane_without_a_connected_client_reports_an_error() {
+    let size = Size {
+        cols: 130,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::RemoveClient(client_id));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::RenameActivePane(
+            "my-new-name".as_bytes().to_vec(),
+            client_id,
+            None,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let logged_instructions = received_server_instructions.lock().unwrap();
+    let reported_errors: Vec<&String> = logged_instructions
+        .iter()
+        .filter_map(|instruction| match instruction {
+            ServerInstruction::LogError(lines, _, _) => lines.first(),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        reported_errors
+            .iter()
+            .any(|error| error.contains("--pane-id")),
+        "renaming the focused pane with no client attached reports an error, got: {:?}",
+        reported_errors
+    );
+}
+
+#[test]
+pub fn rename_active_tab_without_a_connected_client_reports_an_error() {
+    let size = Size {
+        cols: 130,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::RemoveClient(client_id));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::UpdateTabName(
+        "my-new-tab-name".as_bytes().to_vec(),
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let logged_instructions = received_server_instructions.lock().unwrap();
+    let reported_errors: Vec<&String> = logged_instructions
+        .iter()
+        .filter_map(|instruction| match instruction {
+            ServerInstruction::LogError(lines, _, _) => lines.first(),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        reported_errors
+            .iter()
+            .any(|error| error.contains("--tab-id")),
+        "renaming the focused tab with no client attached reports an error, got: {:?}",
+        reported_errors
+    );
+}
+
+#[test]
 pub fn mouse_hover_effect() {
     let size = Size {
         cols: 130,

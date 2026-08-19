@@ -4320,6 +4320,24 @@ impl Screen {
         self.active_tab_ids.keys().next().copied()
     }
 
+    pub fn has_no_client_to_act_for(&self, client_id: ClientId) -> bool {
+        self.get_active_tab(client_id).is_err() && self.get_first_client_id().is_none()
+    }
+
+    pub fn report_no_client_to_act_for(
+        &self,
+        client_id: ClientId,
+        message: String,
+        completion_tx: Option<NotificationEnd>,
+    ) {
+        log::error!("{}", &message);
+        let _ = self.bus.senders.send_to_server(ServerInstruction::LogError(
+            vec![message],
+            client_id,
+            completion_tx,
+        ));
+    }
+
     /// Returns an immutable reference to this [`Screen`]'s previous active [`Tab`].
     /// Consumes the last entry in tab history.
     pub fn get_previous_tab(&mut self, client_id: ClientId) -> Result<Option<&Tab>> {
@@ -9729,14 +9747,17 @@ pub(crate) fn screen_thread_main(
                     }
                 }
             },
-            ScreenInstruction::UpdateTabName(
-                c,
-                client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
-            ) => {
-                screen.update_active_tab_name(c, client_id)?;
-                screen.render(None)?;
+            ScreenInstruction::UpdateTabName(c, client_id, completion_tx) => {
+                if screen.has_no_client_to_act_for(client_id) {
+                    screen.report_no_client_to_act_for(
+                        client_id,
+                        "Cannot rename the focused tab: no client is attached to this session. Target a tab explicitly with --tab-id.".to_owned(),
+                        completion_tx,
+                    );
+                } else {
+                    screen.update_active_tab_name(c, client_id)?;
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::UndoRenameTab(
                 client_id,
@@ -10946,16 +10967,24 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::RenameActivePane(new_name, client_id, _completion_tx) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab
-                        .rename_active_pane(new_name, client_id),
-                    ?
-                );
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
+            ScreenInstruction::RenameActivePane(new_name, client_id, completion_tx) => {
+                if screen.has_no_client_to_act_for(client_id) {
+                    screen.report_no_client_to_act_for(
+                        client_id,
+                        "Cannot rename the focused pane: no client is attached to this session. Target a pane explicitly with --pane-id.".to_owned(),
+                        completion_tx,
+                    );
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab
+                            .rename_active_pane(new_name, client_id),
+                        ?
+                    );
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
             },
             ScreenInstruction::RenameTab(
                 tab_index,

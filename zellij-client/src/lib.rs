@@ -162,7 +162,7 @@ use zellij_utils::{
         config::Config,
         options::Options,
     },
-    ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ExitReason, IpcReceiveError, ServerToClientMsg},
     nested_session,
     pane_size::Size,
     vendored::termwiz::input::InputEvent,
@@ -1319,8 +1319,8 @@ pub fn start_client(
             let mut should_break = false;
             let mut consecutive_unknown_messages_received = 0;
             move || loop {
-                match os_input.recv_from_server() {
-                    Some((instruction, err_ctx)) => {
+                match os_input.try_recv_from_server() {
+                    Ok((instruction, err_ctx)) => {
                         consecutive_unknown_messages_received = 0;
                         err_ctx.update_thread_ctx();
                         if let ServerToClientMsg::Exit { .. } = instruction {
@@ -1331,12 +1331,26 @@ pub fn start_client(
                             break;
                         }
                     },
-                    None => {
+                    Err(IpcReceiveError::Disconnected) => {
+                        log::error!("Lost connection to the Zellij server");
+                        send_client_instructions
+                            .send(ClientInstruction::UnblockInputThread)
+                            .unwrap();
+                        send_client_instructions
+                            .send(ClientInstruction::Error(
+                                "Lost connection to the Zellij server".to_string(),
+                            ))
+                            .unwrap();
+                        break;
+                    },
+                    Err(IpcReceiveError::Undecodable) => {
                         consecutive_unknown_messages_received += 1;
                         send_client_instructions
                             .send(ClientInstruction::UnblockInputThread)
                             .unwrap();
-                        log::error!("Received unknown message from server");
+                        if consecutive_unknown_messages_received == 1 {
+                            log::error!("Received unknown message from server");
+                        }
                         if consecutive_unknown_messages_received >= 1000 {
                             send_client_instructions
                                 .send(ClientInstruction::Error(

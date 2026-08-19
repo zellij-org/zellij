@@ -879,6 +879,82 @@ pub fn cannot_split_panes_horizontally_when_active_pane_is_too_small() {
 }
 
 #[test]
+pub fn split_in_direction_without_a_connected_client_still_creates_the_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.remove_client(1);
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Tiled {
+            direction: Some(Direction::Down),
+            borderless: None,
+        },
+        None,
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        tab.tiled_panes.panes.len(),
+        2,
+        "the pane is created even though no client is attached"
+    );
+}
+
+#[test]
+pub fn split_in_direction_without_a_connected_client_splits_the_existing_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.remove_client(1);
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Tiled {
+            direction: Some(Direction::Right),
+            borderless: None,
+        },
+        None,
+        None,
+    )
+    .unwrap();
+    let first_pane_geom = tab
+        .tiled_panes
+        .panes
+        .get(&PaneId::Terminal(1))
+        .unwrap()
+        .position_and_size();
+    let new_pane_geom = tab
+        .tiled_panes
+        .panes
+        .get(&PaneId::Terminal(2))
+        .unwrap()
+        .position_and_size();
+    assert_eq!(first_pane_geom.x, 0, "the existing pane keeps its position");
+    assert!(
+        new_pane_geom.x > first_pane_geom.x,
+        "the new pane is placed to the right of the existing one"
+    );
+    assert_eq!(
+        first_pane_geom.y, new_pane_geom.y,
+        "both panes share the same row"
+    );
+}
+
+#[test]
 pub fn cannot_split_largest_pane_when_there_is_no_room() {
     let size = Size { cols: 8, rows: 4 };
     let stacked_resize = true;

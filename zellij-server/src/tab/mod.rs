@@ -2495,8 +2495,9 @@ impl Tab {
                 borderless,
             } => {
                 let is_vertical = direction == Direction::Left || direction == Direction::Right;
-                if should_focus_pane {
-                    if let Some(client_id) = client_id {
+                let focused_client_id = client_id.filter(|_| should_focus_pane);
+                match focused_client_id {
+                    Some(client_id) => {
                         if is_vertical {
                             self.vertical_split(
                                 pid,
@@ -2514,29 +2515,46 @@ impl Tab {
                                 borderless,
                             )?;
                         }
-                    }
-                } else if let Some(target_pane_id) =
-                    client_id.and_then(|client_id| self.tiled_panes.get_active_pane_id(client_id))
-                {
-                    if is_vertical {
-                        self.vertical_split_of_pane_id(
-                            pid,
-                            initial_pane_title,
-                            invoked_with,
-                            target_pane_id,
-                            blocking_notification,
-                            borderless,
-                        )?;
-                    } else {
-                        self.horizontal_split_of_pane_id(
-                            pid,
-                            initial_pane_title,
-                            invoked_with,
-                            target_pane_id,
-                            blocking_notification,
-                            borderless,
-                        )?;
-                    }
+                    },
+                    None => {
+                        let target_pane_id = client_id
+                            .and_then(|client_id| self.tiled_panes.get_active_pane_id(client_id))
+                            .or_else(|| self.tiled_panes.first_selectable_pane_id());
+                        match target_pane_id {
+                            Some(target_pane_id) if is_vertical => {
+                                self.vertical_split_of_pane_id(
+                                    pid,
+                                    initial_pane_title,
+                                    invoked_with,
+                                    target_pane_id,
+                                    blocking_notification,
+                                    borderless,
+                                )?;
+                            },
+                            Some(target_pane_id) => {
+                                self.horizontal_split_of_pane_id(
+                                    pid,
+                                    initial_pane_title,
+                                    invoked_with,
+                                    target_pane_id,
+                                    blocking_notification,
+                                    borderless,
+                                )?;
+                            },
+                            None => {
+                                self.new_tiled_pane(
+                                    pid,
+                                    initial_pane_title,
+                                    invoked_with,
+                                    start_suppressed,
+                                    should_focus_pane,
+                                    client_id,
+                                    blocking_notification,
+                                    borderless,
+                                )?;
+                            },
+                        }
+                    },
                 }
                 Ok(())
             },
