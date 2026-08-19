@@ -287,8 +287,8 @@ pub struct Setup {
 impl Setup {
     /// Entrypoint from main
     /// Merges options from the config file and the command line options
-    /// into `[Options]`, the command line options superceeding the layout
-    /// file options, superceeding the config file options:
+    /// into `[Options]`, the command line options superseding the layout
+    /// file options, superseding the config file options:
     /// 1. command line options (`zellij options`)
     /// 2. layout options
     ///    (`layout.kdl` / `zellij --layout`)

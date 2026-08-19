@@ -2271,9 +2271,9 @@ pub struct TabInfo {
     pub active_swap_layout_name: Option<String>,
     /// Whether the user manually changed the layout, moving out of the swap layout scheme
     pub is_swap_layout_dirty: bool,
-    /// Row count in the viewport (including all non-ui panes, eg. will excluse the status bar)
+    /// Row count in the viewport (including all non-ui panes, eg. will exclude the status bar)
     pub viewport_rows: usize,
-    /// Column count in the viewport (including all non-ui panes, eg. will excluse the status bar)
+    /// Column count in the viewport (including all non-ui panes, eg. will exclude the status bar)
     pub viewport_columns: usize,
     /// Row count in the display area (including all panes, will typically be larger than the
     /// viewport)
