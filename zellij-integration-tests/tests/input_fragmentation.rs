@@ -1,7 +1,7 @@
 #![cfg(unix)]
 
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, keys, start_zellij, TestSession,
@@ -9,6 +9,7 @@ use zellij_integration_tests::{
 
 const IDLE_BEYOND_SHORT_FLUSH: Duration = Duration::from_millis(150);
 const IDLE_BEYOND_LONE_ESC_FLUSH: Duration = Duration::from_millis(80);
+const FAST_FLUSH_DELIVERY_CEILING: Duration = Duration::from_millis(700);
 const PASTE_FRAGMENT_SIZE: usize = 4_000;
 const PASTE_SEGMENTS: u32 = 15_000;
 
@@ -76,6 +77,93 @@ fn a_csi_sequence_split_across_delayed_chunks_arrives_without_garbage() {
     assert_eq!(
         pane_stdin, b"\x1b[1;5Cx",
         "no bytes other than the sequence and the following key may reach the pane"
+    );
+
+    unlock_interface(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn a_bare_csi_introducer_reaches_the_pane_without_the_reply_guard() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    terminal.disable_echo();
+    lock_interface(&zellij);
+
+    let sent_at = Instant::now();
+    zellij.send_stdin(b"\x1b[");
+
+    let pane_stdin = terminal.wait_for_stdin("the bare Alt+[ reached the pane", |stdin_bytes| {
+        contains_subslice(stdin_bytes, b"\x1b[")
+    });
+    let elapsed = sent_at.elapsed();
+    assert_eq!(
+        pane_stdin, b"\x1b[",
+        "only the Alt+[ bytes may reach the pane"
+    );
+    assert!(
+        elapsed < FAST_FLUSH_DELIVERY_CEILING,
+        "Alt+[ must be released by the short idle flush, not the 1s reply guard: took {:?}",
+        elapsed
+    );
+
+    unlock_interface(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn a_bare_osc_introducer_reaches_the_pane_without_the_reply_guard() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    terminal.disable_echo();
+    lock_interface(&zellij);
+
+    let sent_at = Instant::now();
+    zellij.send_stdin(b"\x1b]");
+
+    let pane_stdin = terminal.wait_for_stdin("the bare Alt+] reached the pane", |stdin_bytes| {
+        contains_subslice(stdin_bytes, b"\x1b]")
+    });
+    let elapsed = sent_at.elapsed();
+    assert_eq!(
+        pane_stdin, b"\x1b]",
+        "only the Alt+] bytes may reach the pane"
+    );
+    assert!(
+        elapsed < FAST_FLUSH_DELIVERY_CEILING,
+        "Alt+] must be released by the short idle flush, not the 1s reply guard: took {:?}",
+        elapsed
+    );
+
+    unlock_interface(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn a_key_typed_after_a_bare_osc_introducer_is_not_swallowed() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    terminal.disable_echo();
+    lock_interface(&zellij);
+
+    zellij.send_stdin(b"\x1b]");
+    sleep(IDLE_BEYOND_SHORT_FLUSH);
+    let typed_at = Instant::now();
+    zellij.send_stdin(b"z");
+
+    let pane_stdin = terminal.wait_for_stdin(
+        "the key typed after Alt+] reached the pane",
+        |stdin_bytes| stdin_bytes.contains(&b'z'),
+    );
+    let elapsed = typed_at.elapsed();
+    assert_eq!(
+        pane_stdin, b"\x1b]z",
+        "Alt+] and the key after it must arrive intact and separate"
+    );
+    assert!(
+        elapsed < FAST_FLUSH_DELIVERY_CEILING,
+        "the key after Alt+] must not be absorbed into the OSC accumulator: took {:?}",
+        elapsed
     );
 
     unlock_interface(&zellij);

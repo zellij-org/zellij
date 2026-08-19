@@ -259,27 +259,12 @@ pub(crate) fn stdin_loop(
             },
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 let pending = stdin_ansi_parser.lock().unwrap().pending_partial();
-                match pending {
-                    PendingPartial::ReplyInProgress => {
-                        let elapsed = reply_in_progress_since
-                            .map(|since| since.elapsed())
-                            .unwrap_or_default();
-                        if elapsed >= PARTIAL_REPLY_FLUSH_GUARD {
-                            let drained = stdin_ansi_parser.lock().unwrap().finalize_force();
-                            drain_partial_to_keyboard(
-                                &mut input_parser,
-                                &mut current_buffer,
-                                send_input_instructions.clone(),
-                                drained,
-                            );
-                            needs_finalization = false;
-                            reply_in_progress_since = None;
-                        } else {
-                            needs_finalization = true;
-                        }
-                    },
-                    _ => {
-                        let drained = stdin_ansi_parser.lock().unwrap().finalize_lone_esc();
+                if pending.uses_reply_flush_guard() {
+                    let elapsed = reply_in_progress_since
+                        .map(|since| since.elapsed())
+                        .unwrap_or_default();
+                    if elapsed >= PARTIAL_REPLY_FLUSH_GUARD {
+                        let drained = stdin_ansi_parser.lock().unwrap().finalize_force();
                         drain_partial_to_keyboard(
                             &mut input_parser,
                             &mut current_buffer,
@@ -288,7 +273,19 @@ pub(crate) fn stdin_loop(
                         );
                         needs_finalization = false;
                         reply_in_progress_since = None;
-                    },
+                    } else {
+                        needs_finalization = true;
+                    }
+                } else {
+                    let drained = stdin_ansi_parser.lock().unwrap().finalize_fast_partial();
+                    drain_partial_to_keyboard(
+                        &mut input_parser,
+                        &mut current_buffer,
+                        send_input_instructions.clone(),
+                        drained,
+                    );
+                    needs_finalization = false;
+                    reply_in_progress_since = None;
                 }
             },
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -310,7 +307,7 @@ fn schedule_finalization(
     if fed_termwiz || pending != PendingPartial::None {
         *needs_finalization = true;
     }
-    if pending == PendingPartial::ReplyInProgress {
+    if pending.uses_reply_flush_guard() {
         if reply_in_progress_since.is_none() {
             *reply_in_progress_since = Some(Instant::now());
         }
