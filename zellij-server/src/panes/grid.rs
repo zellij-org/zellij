@@ -3442,13 +3442,6 @@ impl Grid {
 
     pub fn scroll_to_previous_prompt(&mut self) -> bool {
         let delta = self.previous_prompt_line_delta();
-        log::info!(
-            "osc133: scroll_to_previous_prompt: markers_seen={} lines_above={} viewport={} delta={:?}",
-            self.osc133_markers_seen,
-            self.lines_above.len(),
-            self.viewport.len(),
-            delta
-        );
         match delta {
             Some(delta) => {
                 self.move_viewport_up(delta);
@@ -3460,13 +3453,6 @@ impl Grid {
 
     pub fn scroll_to_next_prompt(&mut self) -> bool {
         let delta = self.next_prompt_line_delta();
-        log::info!(
-            "osc133: scroll_to_next_prompt: markers_seen={} lines_below={} viewport={} delta={:?}",
-            self.osc133_markers_seen,
-            self.lines_below.len(),
-            self.viewport.len(),
-            delta
-        );
         match delta {
             Some(delta) => {
                 self.move_viewport_down(delta);
@@ -3525,59 +3511,28 @@ impl Grid {
 
     pub fn last_completed_command_output(&self) -> Option<(String, Position, Position)> {
         if !self.osc133_markers_seen {
-            log::info!(
-                "osc133: last_completed_command_output: no OSC 133 marker has ever been seen in this pane, so shell integration is either not configured or not emitting marks"
-            );
             return None;
         }
         let first_line = -(self.lines_above.len() as isize);
         let last_line = (self.viewport.len() + self.lines_below.len()) as isize - 1;
         let mut command_boundary: Option<Position> = None;
-        let mut markers_seen = (0, 0, 0, 0);
-        let mut skipped_commands = 0;
         for line in (first_line..=last_line).rev() {
             let Some(row) = self.row_at(line) else {
                 continue;
             };
             for marker in row.osc133_markers.iter().rev() {
                 let marker_position = Self::osc133_marker_position(line, marker.column);
-                match marker.kind {
-                    Osc133MarkerKind::Prompt => markers_seen.0 += 1,
-                    Osc133MarkerKind::Input => markers_seen.1 += 1,
-                    Osc133MarkerKind::Output => markers_seen.2 += 1,
-                    Osc133MarkerKind::End(_) => markers_seen.3 += 1,
-                }
                 if marker.kind == Osc133MarkerKind::Output {
                     if let Some(output_end) = command_boundary {
-                        match self.command_output_text(marker_position, output_end) {
-                            Some(output) => {
-                                log::info!(
-                                    "osc133: last_completed_command_output: copying {} chars between {:?} and {:?} after skipping {} output-less command(s)",
-                                    output.chars().count(),
-                                    marker_position,
-                                    output_end,
-                                    skipped_commands
-                                );
-                                return Some((output, marker_position, output_end));
-                            },
-                            None => skipped_commands += 1,
+                        if let Some(output) = self.command_output_text(marker_position, output_end)
+                        {
+                            return Some((output, marker_position, output_end));
                         }
                     }
                 }
                 command_boundary = Some(marker_position);
             }
         }
-        log::info!(
-            "osc133: last_completed_command_output: found no command with output (markers seen: prompt={} input={} output={} end={}, commands skipped for having no output: {}, lines_above: {}, viewport: {}, lines_below: {})",
-            markers_seen.0,
-            markers_seen.1,
-            markers_seen.2,
-            markers_seen.3,
-            skipped_commands,
-            self.lines_above.len(),
-            self.viewport.len(),
-            self.lines_below.len()
-        );
         None
     }
 
@@ -4668,20 +4623,7 @@ impl Perform for Grid {
                 });
                 if let (Some(marker), Some(row)) = (marker, self.viewport.get_mut(self.cursor.y)) {
                     row.add_osc133_marker(self.cursor.x, marker);
-                    if !self.osc133_markers_seen {
-                        log::info!(
-                            "osc133: first shell integration mark received in this pane: {:?}",
-                            marker
-                        );
-                    }
                     self.osc133_markers_seen = true;
-                } else if marker.is_none() {
-                    log::info!(
-                        "osc133: ignoring an OSC 133 sequence with an unsupported subcommand: {:?}",
-                        params
-                            .get(1)
-                            .map(|p| String::from_utf8_lossy(p).to_string())
-                    );
                 }
             },
 

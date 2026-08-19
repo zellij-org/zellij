@@ -1369,18 +1369,7 @@ impl MouseHandler {
             }
 
             if event.wheel_up || event.wheel_down {
-                log::info!(
-                    "osc133: alt wheel at {:?}: advanced_mouse_actions={} pane_at_position={:?} passthrough_pane={:?} wheel_up={}",
-                    event.position,
-                    ctx.advanced_mouse_actions,
-                    ctx.pane_id_at_position,
-                    ctx.passthrough_pane_id,
-                    event.wheel_up
-                );
                 if !ctx.advanced_mouse_actions {
-                    log::info!(
-                        "osc133: alt wheel ignored because advanced_mouse_actions is disabled in the config of this session"
-                    );
                     return Ok(MouseAction::NoAction);
                 }
                 if let Some(pane_id) = ctx.pane_id_at_position {
@@ -1773,24 +1762,11 @@ impl MouseHandler {
             pane.mouse_event(&event_for_pane, client_id)
         });
         if let Some(report_for_pane) = report_for_pane {
-            log::info!(
-                "osc133: alt wheel forwarded to pane {:?} because it tracks the mouse, the prompt jump must happen inside it",
-                pane_id
-            );
             tab.write_to_terminal_at(report_for_pane.into_bytes(), &event.position, client_id)
                 .with_context(err_context)?;
             return Ok(MouseEffect::default());
         }
 
-        log::info!(
-            "osc133: alt wheel jumping to {} prompt in pane {:?}",
-            if to_previous_prompt {
-                "previous"
-            } else {
-                "next"
-            },
-            pane_id
-        );
         if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
             if to_previous_prompt {
                 pane.scroll_to_previous_prompt(client_id);

@@ -9090,9 +9090,6 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollToPreviousPrompt(client_id, _completion_tx) => {
-                log::info!(
-                    "osc133: ScrollToPreviousPrompt reached the server for client {client_id}"
-                );
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -9102,7 +9099,6 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollToNextPrompt(client_id, _completion_tx) => {
-                log::info!("osc133: ScrollToNextPrompt reached the server for client {client_id}");
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -9112,7 +9108,6 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::SelectCommandAtScrollPosition(client_id, _completion_tx) => {
-                log::info!("osc133: SelectCommandAtScrollPosition reached the server for client {client_id}");
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -9122,9 +9117,6 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::CopyLastCommandOutput(client_id, _completion_tx) => {
-                log::info!(
-                    "osc133: CopyLastCommandOutput reached the server for client {client_id}"
-                );
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -9134,7 +9126,6 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::ClearCommandOutputFlash(pane_id) => {
-                log::info!("osc133: clearing the copy flash on pane {pane_id:?}");
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {

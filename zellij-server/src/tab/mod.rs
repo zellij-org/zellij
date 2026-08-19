@@ -6171,22 +6171,12 @@ impl Tab {
     pub fn copy_last_command_output(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to copy last command output for client {client_id}");
         let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) else {
-            log::info!(
-                "osc133: copy_last_command_output: client {client_id} has no active pane in this tab"
-            );
             return Ok(());
         };
         let pane_id = active_pane.pid();
         let Some(output) = active_pane.copy_last_command_output() else {
-            log::info!(
-                "osc133: copy_last_command_output: pane {pane_id:?} reported no completed command output to copy"
-            );
             return Ok(());
         };
-        log::info!(
-            "osc133: copy_last_command_output: copying {} chars from pane {pane_id:?} to the clipboard",
-            output.chars().count()
-        );
         self.copy_text_to_clipboard(&output)
             .with_context(err_context)?;
         self.senders
