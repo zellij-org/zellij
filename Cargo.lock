@@ -5060,6 +5060,7 @@ version = "0.45.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64",
  "crossbeam",
  "insta",
  "interprocess",

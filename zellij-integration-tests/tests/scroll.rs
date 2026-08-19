@@ -2,8 +2,8 @@
 
 use insta::assert_snapshot;
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, keys, normalized, start_zellij, FakePtyHandle,
-    TestSession,
+    claim_first_terminal_and_wait_for_prompt, keys, normalized, split_down_and_wait_for_prompt,
+    start_zellij, FakePtyHandle, TestSession,
 };
 
 const LAST_LINE: &str = "line40";
@@ -139,6 +139,76 @@ fn scroll_to_bottom() {
                 && grid_snapshot.contains(LAST_LINE)
                 && grid_snapshot.contains("SCROLL 0/")
         });
+    assert_snapshot!(normalized(&grid_snapshot));
+    zellij.quit();
+}
+
+#[test]
+fn scroll_position_is_kept_when_leaving_scroll_mode() {
+    let mut zellij = start_zellij();
+    fill_pane_past_viewport(&zellij);
+
+    zellij.send_stdin(&keys::ctrl('s'));
+    for _ in 0..4 {
+        zellij.send_stdin(&keys::key('k'));
+    }
+    zellij.wait_until("scrolled up four lines", |grid_snapshot| {
+        grid_snapshot.contains("SCROLL 4/") && grid_snapshot.contains("PgDn|PgUp")
+    });
+
+    zellij.send_stdin(&keys::ctrl('s'));
+
+    let grid_snapshot = zellij.wait_until(
+        "normal mode restored with the viewport left where it was",
+        |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains("SCROLL 4/")
+                && !grid_snapshot.contains(LAST_LINE)
+        },
+    );
+    assert_snapshot!(normalized(&grid_snapshot));
+    zellij.quit();
+}
+
+#[test]
+fn focusing_a_scrolled_pane_re_enters_scroll_mode_at_the_same_offset() {
+    let mut zellij = start_zellij();
+    let upper_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    split_down_and_wait_for_prompt(&zellij);
+
+    for line in 1..=40 {
+        upper_terminal.output(format!("upper{:02}\r\n", line).as_bytes());
+    }
+    zellij.wait_until("upper pane filled past its viewport", |grid_snapshot| {
+        grid_snapshot.contains("upper40")
+    });
+
+    zellij.send_stdin(&keys::alt('k'));
+    zellij.send_stdin(&keys::ctrl('s'));
+    for _ in 0..4 {
+        zellij.send_stdin(&keys::key('k'));
+    }
+    zellij.wait_until("upper pane scrolled up four lines", |grid_snapshot| {
+        grid_snapshot.contains("SCROLL: 4/") && grid_snapshot.contains("PgDn|PgUp")
+    });
+
+    zellij.send_stdin(&keys::ctrl('s'));
+    zellij.wait_until("left scroll mode with the offset kept", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && grid_snapshot.contains("SCROLL: 4/")
+    });
+
+    zellij.send_stdin(&keys::alt('j'));
+    zellij.wait_until(
+        "focusing the unscrolled pane returned the client to normal mode",
+        |grid_snapshot| grid_snapshot.status_bar_appears() && !grid_snapshot.contains("PgDn|PgUp"),
+    );
+
+    zellij.send_stdin(&keys::alt('k'));
+
+    let grid_snapshot = zellij.wait_until(
+        "focusing the scrolled pane re-entered scroll mode at the same offset",
+        |grid_snapshot| grid_snapshot.contains("PgDn|PgUp") && grid_snapshot.contains("SCROLL: 4/"),
+    );
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
