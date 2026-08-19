@@ -285,6 +285,10 @@ message Action {
     FocusHostSessionAction focus_host_session = 145;
     ToggleHostFullscreenAction toggle_host_fullscreen = 146;
     FocusGuestSessionAction focus_guest_session = 147;
+    ScrollToPreviousPromptAction scroll_to_previous_prompt = 148;
+    ScrollToNextPromptAction scroll_to_next_prompt = 149;
+    SelectCommandAtScrollPositionAction select_command_at_scroll_position = 150;
+    CopyLastCommandOutputAction copy_last_command_output = 151;
   }
 }
 
@@ -310,6 +314,10 @@ message ScrollUpAction {}
 message ScrollDownAction {}
 message ScrollToBottomAction {}
 message ScrollToTopAction {}
+message ScrollToPreviousPromptAction {}
+message ScrollToNextPromptAction {}
+message SelectCommandAtScrollPositionAction {}
+message CopyLastCommandOutputAction {}
 message PageScrollUpAction {}
 message PageScrollDownAction {}
 message HalfPageScrollUpAction {}

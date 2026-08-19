@@ -10311,8 +10311,8 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         true, // advanced_mouse_actions
         true,
         DEFAULT_WORD_SEPARATORS.to_owned(),
-        true,  // mouse_scroll_resize
-        true,  // mouse_hover_effects
+        true, // mouse_scroll_resize
+        true, // mouse_hover_effects
         true,
         true,  // visual_bell
         false, // focus_follows_mouse

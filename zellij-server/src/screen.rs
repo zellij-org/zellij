@@ -436,6 +436,11 @@ pub enum ScreenInstruction {
     ScrollDownAt(Position, ClientId, Option<NotificationEnd>),
     ScrollToBottom(ClientId, Option<NotificationEnd>),
     ScrollToTop(ClientId, Option<NotificationEnd>),
+    ScrollToPreviousPrompt(ClientId, Option<NotificationEnd>),
+    ScrollToNextPrompt(ClientId, Option<NotificationEnd>),
+    SelectCommandAtScrollPosition(ClientId, Option<NotificationEnd>),
+    CopyLastCommandOutput(ClientId, Option<NotificationEnd>),
+    ClearCommandOutputFlash(PaneId),
     PageScrollUp(ClientId, Option<NotificationEnd>),
     PageScrollDown(ClientId, Option<NotificationEnd>),
     HalfPageScrollUp(ClientId, Option<NotificationEnd>),
@@ -1022,6 +1027,15 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
             ScreenInstruction::ScrollToBottom(..) => ScreenContext::ScrollToBottom,
             ScreenInstruction::ScrollToTop(..) => ScreenContext::ScrollToTop,
+            ScreenInstruction::ScrollToPreviousPrompt(..) => ScreenContext::ScrollToPreviousPrompt,
+            ScreenInstruction::ScrollToNextPrompt(..) => ScreenContext::ScrollToNextPrompt,
+            ScreenInstruction::SelectCommandAtScrollPosition(..) => {
+                ScreenContext::SelectCommandAtScrollPosition
+            },
+            ScreenInstruction::CopyLastCommandOutput(..) => ScreenContext::CopyLastCommandOutput,
+            ScreenInstruction::ClearCommandOutputFlash(..) => {
+                ScreenContext::ClearCommandOutputFlash
+            },
             ScreenInstruction::PageScrollUp(..) => ScreenContext::PageScrollUp,
             ScreenInstruction::PageScrollDown(..) => ScreenContext::PageScrollDown,
             ScreenInstruction::HalfPageScrollUp(..) => ScreenContext::HalfPageScrollUp,
@@ -9073,6 +9087,61 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.scroll_active_terminal_up(client_id)
                 );
                 screen.sync_scroll_mode_if_scroll_changed(client_id, was_scrolled)?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::ScrollToPreviousPrompt(client_id, _completion_tx) => {
+                log::info!(
+                    "osc133: ScrollToPreviousPrompt reached the server for client {client_id}"
+                );
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab
+                        .scroll_active_terminal_to_previous_prompt(client_id)
+                );
+                screen.render(None)?;
+            },
+            ScreenInstruction::ScrollToNextPrompt(client_id, _completion_tx) => {
+                log::info!("osc133: ScrollToNextPrompt reached the server for client {client_id}");
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab
+                        .scroll_active_terminal_to_next_prompt(client_id)
+                );
+                screen.render(None)?;
+            },
+            ScreenInstruction::SelectCommandAtScrollPosition(client_id, _completion_tx) => {
+                log::info!("osc133: SelectCommandAtScrollPosition reached the server for client {client_id}");
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab
+                        .select_command_at_scroll_position(client_id)
+                );
+                screen.render(None)?;
+            },
+            ScreenInstruction::CopyLastCommandOutput(client_id, _completion_tx) => {
+                log::info!(
+                    "osc133: CopyLastCommandOutput reached the server for client {client_id}"
+                );
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.copy_last_command_output(client_id),
+                    ?
+                );
+                screen.render(None)?;
+            },
+            ScreenInstruction::ClearCommandOutputFlash(pane_id) => {
+                log::info!("osc133: clearing the copy flash on pane {pane_id:?}");
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.clear_command_output_flash(pane_id);
+                        break;
+                    }
+                }
                 screen.render(None)?;
             },
             ScreenInstruction::MovePane(

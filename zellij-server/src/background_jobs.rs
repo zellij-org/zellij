@@ -69,6 +69,9 @@ pub enum BackgroundJob {
     ClearHelpText {
         client_id: ClientId,
     },
+    ClearCommandOutputFlash {
+        pane_id: PaneId,
+    },
     FlashPaneBell(Vec<PaneId>),
     StopFlashPaneBell(Vec<PaneId>),
     FlashTabBell(usize),     // usize = tab_id
@@ -99,6 +102,9 @@ impl From<&BackgroundJob> for BackgroundJobContext {
                 BackgroundJobContext::QueryZellijWebServerStatus
             },
             BackgroundJob::ClearHelpText { .. } => BackgroundJobContext::ClearHelpText,
+            BackgroundJob::ClearCommandOutputFlash { .. } => {
+                BackgroundJobContext::ClearCommandOutputFlash
+            },
             BackgroundJob::FlashPaneBell(..) => BackgroundJobContext::FlashPaneBell,
             BackgroundJob::StopFlashPaneBell(..) => BackgroundJobContext::StopFlashPaneBell,
             BackgroundJob::FlashTabBell(..) => BackgroundJobContext::FlashTabBell,
@@ -118,6 +124,7 @@ static UPDATE_AND_REPORT_CWDS_INTERVAL_MS: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
 static REPAINT_DELAY_MS: u64 = 10;
 static HELP_TEXT_DEBOUNCE_DURATION: u64 = 5000;
+static COMMAND_OUTPUT_FLASH_DURATION_MS: u64 = 400;
 
 #[derive(Clone)]
 pub struct SessionScanState {
@@ -158,6 +165,8 @@ pub(crate) fn background_jobs_main(
                                                                            // milliseconds
     let last_render_request: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
     let pending_help_text_clear: Arc<Mutex<HashMap<ClientId, Instant>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let pending_command_output_flash_clear: Arc<Mutex<HashMap<PaneId, Instant>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let mut flashing_pane_bells: HashMap<PaneId, Arc<AtomicBool>> = HashMap::new();
     let mut flashing_tab_bells: HashMap<usize, Arc<AtomicBool>> = HashMap::new();
@@ -554,6 +563,59 @@ pub(crate) fn background_jobs_main(
                                     None => {
                                         let _ = senders.send_to_server(
                                             ServerInstruction::ClearMouseHelpText(client_id),
+                                        );
+                                        break;
+                                    },
+                                }
+                            }
+                        }
+                    });
+                }
+            },
+            BackgroundJob::ClearCommandOutputFlash { pane_id } => {
+                let should_spawn = {
+                    let mut pending = pending_command_output_flash_clear.lock().unwrap();
+                    let current_time = Instant::now();
+                    let should_spawn = !pending.contains_key(&pane_id);
+                    pending.insert(pane_id, current_time);
+                    should_spawn
+                };
+
+                if should_spawn {
+                    runtime.spawn({
+                        let senders = bus.senders.clone();
+                        let pending = pending_command_output_flash_clear.clone();
+                        let flash_duration =
+                            Duration::from_millis(COMMAND_OUTPUT_FLASH_DURATION_MS);
+                        async move {
+                            tokio::time::sleep(flash_duration).await;
+                            loop {
+                                let next_sleep_duration = {
+                                    let mut pending = pending.lock().unwrap();
+                                    match pending.get(&pane_id) {
+                                        Some(&last_flash_time) => {
+                                            let time_since_flash =
+                                                Instant::now().duration_since(last_flash_time);
+                                            if time_since_flash >= flash_duration {
+                                                pending.remove(&pane_id);
+                                                None
+                                            } else {
+                                                Some(
+                                                    flash_duration.saturating_sub(time_since_flash),
+                                                )
+                                            }
+                                        },
+                                        None => break,
+                                    }
+                                };
+
+                                match next_sleep_duration {
+                                    Some(duration) => {
+                                        tokio::time::sleep(duration).await;
+                                    },
+                                    None => {
+                                        let _ = senders.send_to_server(
+                                            ServerInstruction::ClearCommandOutputFlash(pane_id),
                                         );
                                         break;
                                     },

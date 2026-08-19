@@ -278,7 +278,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
         true,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -470,7 +470,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
         true,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -581,7 +581,7 @@ fn create_new_tab_with_swap_layouts(
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
         true,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -689,7 +689,7 @@ fn create_new_tab_with_os_api(
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
         true,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -783,7 +783,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
         true,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -891,7 +891,7 @@ fn create_new_tab_with_mock_pty_writer(
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
         true,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -990,7 +990,7 @@ fn create_new_tab_with_sixel_support(
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
         true,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -12057,6 +12057,169 @@ fn alt_click_still_groups_a_mouse_tracking_pane_the_client_is_not_descended_into
 }
 
 #[test]
+fn alt_wheel_up_is_forwarded_to_a_pane_the_client_is_descended_into() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1002h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+
+    tab.handle_mouse_event_with_passthrough(
+        &MouseEvent::new_alt_scroll_up_event(Position::new(5, 71)),
+        client_id,
+        Some(PaneId::Terminal(1)),
+    )
+    .unwrap();
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec!["\u{1b}[<72;71;5M".to_string()],
+        "alt wheel over a descended pane must reach the guest instead of jumping prompts"
+    );
+}
+
+#[test]
+fn alt_wheel_over_a_mouse_tracking_pane_is_forwarded_instead_of_jumping_prompts() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1002h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+    let mut content = String::new();
+    for i in 0..20 {
+        content.push_str(&format!(
+            "\u{1b}]133;A\u{7}$ \u{1b}]133;B\u{7}cmd{i}\u{1b}]133;C\u{7}\r\nout{i}\u{1b}]133;D;0\u{7}\r\n"
+        ));
+    }
+    tab.handle_pty_bytes(1, Vec::from(content.as_bytes()))
+        .unwrap();
+
+    tab.handle_mouse_event_with_passthrough(
+        &MouseEvent::new_alt_scroll_up_event(Position::new(5, 71)),
+        client_id,
+        None,
+    )
+    .unwrap();
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec!["\u{1b}[<72;71;5M".to_string()],
+        "a pane that tracks the mouse receives alt wheel just like a plain wheel"
+    );
+    assert!(
+        !tab.get_pane_with_id(PaneId::Terminal(1))
+            .map(|pane| pane.is_scrolled())
+            .unwrap_or(false),
+        "a forwarded alt wheel must not also scroll the host pane"
+    );
+}
+
+#[test]
+fn alt_wheel_jumps_between_prompts_of_the_pane_below_the_cursor() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+
+    let mut content = String::new();
+    for i in 0..20 {
+        content.push_str(&format!(
+            "\u{1b}]133;A\u{7}$ \u{1b}]133;B\u{7}cmd{i}\u{1b}]133;C\u{7}\r\nout{i}\u{1b}]133;D;0\u{7}\r\n"
+        ));
+    }
+    tab.handle_pty_bytes(1, Vec::from(content.as_bytes()))
+        .unwrap();
+
+    let pane_is_scrolled = |tab: &Tab| {
+        tab.get_pane_with_id(PaneId::Terminal(1))
+            .map(|pane| pane.is_scrolled())
+            .unwrap_or(false)
+    };
+    assert!(!pane_is_scrolled(&tab));
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_alt_scroll_up_event(Position::new(10, 60)),
+        client_id,
+    )
+    .unwrap();
+    assert!(
+        pane_is_scrolled(&tab),
+        "alt wheel up must jump to the previous prompt"
+    );
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_alt_scroll_down_event(Position::new(10, 60)),
+        client_id,
+    )
+    .unwrap();
+    assert!(
+        !pane_is_scrolled(&tab),
+        "alt wheel down must jump back towards the bottom of the buffer"
+    );
+}
+
+#[test]
+fn alt_wheel_is_swallowed_when_advanced_mouse_actions_are_disabled() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.update_advanced_mouse_actions(false);
+
+    let mut content = String::new();
+    for i in 0..20 {
+        content.push_str(&format!(
+            "\u{1b}]133;A\u{7}$ \u{1b}]133;B\u{7}cmd{i}\u{1b}]133;C\u{7}\r\nout{i}\u{1b}]133;D;0\u{7}\r\n"
+        ));
+    }
+    tab.handle_pty_bytes(1, Vec::from(content.as_bytes()))
+        .unwrap();
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_alt_scroll_up_event(Position::new(10, 60)),
+        client_id,
+    )
+    .unwrap();
+
+    assert!(
+        !tab.get_pane_with_id(PaneId::Terminal(1))
+            .map(|pane| pane.is_scrolled())
+            .unwrap_or(false),
+        "alt wheel must be swallowed when advanced mouse actions are disabled"
+    );
+}
+
+#[test]
 fn test_scroll_wheel_up_scrolls_pane() {
     let size = Size {
         cols: 121,
@@ -13416,15 +13579,14 @@ fn hint_text_suppressed_when_mouse_hover_tips_disabled() {
     tab.update_mouse_hover_tips(false);
     assert!(tab.resolve_hint_text(client_id).is_empty());
 
-    tab.mouse_hover_pane_id.insert(client_id, PaneId::Terminal(1));
+    tab.mouse_hover_pane_id
+        .insert(client_id, PaneId::Terminal(1));
     assert!(tab.resolve_hint_text(client_id).is_empty());
 
     tab.update_mouse_hover_tips(true);
     let hover_hints = tab.resolve_hint_text(client_id);
     assert!(!hover_hints.is_empty());
-    assert!(hover_hints
-        .values()
-        .all(|hint| hint.text.contains("group")));
+    assert!(hover_hints.values().all(|hint| hint.text.contains("group")));
 
     tab.update_mouse_hover_tips(false);
     assert!(tab.resolve_hint_text(client_id).is_empty());
@@ -13432,9 +13594,7 @@ fn hint_text_suppressed_when_mouse_hover_tips_disabled() {
     tab.hold_pane(PaneId::Terminal(2), Some(0), false, RunCommand::default());
     let held_hints = tab.resolve_hint_text(client_id);
     assert!(!held_hints.is_empty());
-    assert!(held_hints
-        .values()
-        .all(|hint| hint.text.contains("re-run")));
+    assert!(held_hints.values().all(|hint| hint.text.contains("re-run")));
 }
 
 #[test]
@@ -13463,7 +13623,12 @@ fn plugin_hover_tooltip_still_renders_when_mouse_hover_tips_disabled() {
         underline: true,
         tooltip_text: Some("Tool Tooltip".to_string()),
     }];
-    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 20, highlights, &Style::default());
+    tab.set_plugin_regex_highlights_for_pane(
+        PaneId::Terminal(1),
+        20,
+        highlights,
+        &Style::default(),
+    );
 
     let hover_position = Position::new(1, 12);
     let _effect = tab
@@ -13696,7 +13861,7 @@ fn create_new_tab_with_plugin_receiver(
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
         true,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -15479,9 +15644,9 @@ fn create_new_tab_with_server_receiver(
         WebSharing::Off,
         current_group,
         currently_marking_pane_group,
-        true,  // advanced_mouse_actions
-        true,  // mouse_scroll_resize
-        true,  // mouse_hover_effects
+        true, // advanced_mouse_actions
+        true, // mouse_scroll_resize
+        true, // mouse_hover_effects
         true,
         false, // focus_follows_mouse
         false, // mouse_click_through

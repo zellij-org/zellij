@@ -60,6 +60,10 @@ macro_rules! parse_kdl_action_arguments {
                 "ScrollDown" => Ok(Action::ScrollDown),
                 "ScrollToBottom" => Ok(Action::ScrollToBottom),
                 "ScrollToTop" => Ok(Action::ScrollToTop),
+                "ScrollToPreviousPrompt" => Ok(Action::ScrollToPreviousPrompt),
+                "ScrollToNextPrompt" => Ok(Action::ScrollToNextPrompt),
+                "SelectCommandAtScrollPosition" => Ok(Action::SelectCommandAtScrollPosition),
+                "CopyLastCommandOutput" => Ok(Action::CopyLastCommandOutput),
                 "PageScrollUp" => Ok(Action::PageScrollUp),
                 "PageScrollDown" => Ok(Action::PageScrollDown),
                 "HalfPageScrollUp" => Ok(Action::HalfPageScrollUp),
@@ -744,6 +748,12 @@ impl Action {
             Action::ScrollDown => Some(KdlNode::new("ScrollDown")),
             Action::ScrollToBottom => Some(KdlNode::new("ScrollToBottom")),
             Action::ScrollToTop => Some(KdlNode::new("ScrollToTop")),
+            Action::ScrollToPreviousPrompt => Some(KdlNode::new("ScrollToPreviousPrompt")),
+            Action::ScrollToNextPrompt => Some(KdlNode::new("ScrollToNextPrompt")),
+            Action::SelectCommandAtScrollPosition => {
+                Some(KdlNode::new("SelectCommandAtScrollPosition"))
+            },
+            Action::CopyLastCommandOutput => Some(KdlNode::new("CopyLastCommandOutput")),
             Action::PageScrollUp => Some(KdlNode::new("PageScrollUp")),
             Action::PageScrollDown => Some(KdlNode::new("PageScrollDown")),
             Action::HalfPageScrollUp => Some(KdlNode::new("HalfPageScrollUp")),
@@ -1570,6 +1580,18 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "ScrollToTop" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "ScrollToPreviousPrompt" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "ScrollToNextPrompt" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "SelectCommandAtScrollPosition" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "CopyLastCommandOutput" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "PageScrollUp" => {

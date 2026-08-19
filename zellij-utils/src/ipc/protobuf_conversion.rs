@@ -1143,6 +1143,7 @@ impl From<crate::input::actions::Action>
             CloseTerminalPaneAction,
             ConfirmAction,
             CopyAction,
+            CopyLastCommandOutputAction,
             CurrentTabInfoAction,
             DenyAction,
             DetachAction,
@@ -1224,6 +1225,8 @@ impl From<crate::input::actions::Action>
             ScrollDownByPaneIdAction,
             ScrollToBottomAction,
             ScrollToBottomByPaneIdAction,
+            ScrollToNextPromptAction,
+            ScrollToPreviousPromptAction,
             ScrollToTopAction,
             ScrollToTopByPaneIdAction,
             ScrollUpAction,
@@ -1233,6 +1236,7 @@ impl From<crate::input::actions::Action>
             SearchAction,
             SearchInputAction,
             SearchToggleOptionAction,
+            SelectCommandAtScrollPositionAction,
             SetDarkThemeAction,
             SetLightThemeAction,
             SetPaneBorderlessAction,
@@ -1409,6 +1413,18 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::ScrollToTop => {
                 ActionType::ScrollToTop(ScrollToTopAction {})
+            },
+            crate::input::actions::Action::ScrollToPreviousPrompt => {
+                ActionType::ScrollToPreviousPrompt(ScrollToPreviousPromptAction {})
+            },
+            crate::input::actions::Action::ScrollToNextPrompt => {
+                ActionType::ScrollToNextPrompt(ScrollToNextPromptAction {})
+            },
+            crate::input::actions::Action::SelectCommandAtScrollPosition => {
+                ActionType::SelectCommandAtScrollPosition(SelectCommandAtScrollPositionAction {})
+            },
+            crate::input::actions::Action::CopyLastCommandOutput => {
+                ActionType::CopyLastCommandOutput(CopyLastCommandOutputAction {})
             },
             crate::input::actions::Action::PageScrollUp => {
                 ActionType::PageScrollUp(PageScrollUpAction {})
@@ -2296,6 +2312,18 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::ScrollUp(_) => Ok(crate::input::actions::Action::ScrollUp),
+            ActionType::ScrollToPreviousPrompt(_) => {
+                Ok(crate::input::actions::Action::ScrollToPreviousPrompt)
+            },
+            ActionType::ScrollToNextPrompt(_) => {
+                Ok(crate::input::actions::Action::ScrollToNextPrompt)
+            },
+            ActionType::SelectCommandAtScrollPosition(_) => {
+                Ok(crate::input::actions::Action::SelectCommandAtScrollPosition)
+            },
+            ActionType::CopyLastCommandOutput(_) => {
+                Ok(crate::input::actions::Action::CopyLastCommandOutput)
+            },
             ActionType::ScrollUpAt(scroll_action) => {
                 Ok(crate::input::actions::Action::ScrollUpAt {
                     position: scroll_action

@@ -505,6 +505,10 @@ enum ActionName {
     FocusHostSession = 107;
     ToggleHostFullscreen = 108;
     FocusGuestSession = 109;
+    ScrollToPreviousPrompt = 110;
+    ScrollToNextPrompt = 111;
+    SelectCommandAtScrollPosition = 112;
+    CopyLastCommandOutput = 113;
 }
 
 message Position {

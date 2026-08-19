@@ -531,6 +531,38 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ScrollToPreviousPrompt => {
+            senders
+                .send_to_screen(ScreenInstruction::ScrollToPreviousPrompt(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ScrollToNextPrompt => {
+            senders
+                .send_to_screen(ScreenInstruction::ScrollToNextPrompt(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::SelectCommandAtScrollPosition => {
+            senders
+                .send_to_screen(ScreenInstruction::SelectCommandAtScrollPosition(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::CopyLastCommandOutput => {
+            senders
+                .send_to_screen(ScreenInstruction::CopyLastCommandOutput(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::ScrollUpAt { position } => {
             senders
                 .send_to_screen(ScreenInstruction::ScrollUpAt(
