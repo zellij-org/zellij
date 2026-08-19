@@ -23,7 +23,7 @@ use url::Url;
 use wasmi::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{
-    FloatingPaneCoordinates, InputMode, LayoutInfo, LayoutWithError, PaneContents,
+    FloatingPaneCoordinates, InputMode, KeybindsVec, LayoutInfo, LayoutWithError, PaneContents,
     PaneRenderReport, PermissionStatus, PermissionType, PipeMessage, PipeSource,
 };
 use zellij_utils::downloader::Downloader;
@@ -1350,12 +1350,21 @@ impl WasmBridge {
                 .map(|(_, _, rp, _)| rp.lock().unwrap().store.data().keybinds.to_keybinds_vec())
         };
         if let Some(keybinds) = keybinds {
-            let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
-                Some(plugin_id),
-                Some(client_id),
-                Event::InitialKeybinds(keybinds),
-            )]));
+            self.send_keybinds_payload_to_plugin(plugin_id, client_id, keybinds);
         }
+    }
+
+    fn send_keybinds_payload_to_plugin(
+        &self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        keybinds: KeybindsVec,
+    ) {
+        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+            Some(plugin_id),
+            Some(client_id),
+            Event::InitialKeybinds(keybinds),
+        )]));
     }
 
     pub fn cleanup(&mut self) {
@@ -1449,8 +1458,15 @@ impl WasmBridge {
             });
         }
         // Send InitialKeybinds to subscribed plugins after reconfiguration
-        for plugin_id in plugins_subscribed_to_initial_keybinds {
-            self.send_initial_keybinds_to_plugin(plugin_id, client_id);
+        if let Some(keybinds) = keybinds.as_ref() {
+            let keybinds_payload = keybinds.to_keybinds_vec();
+            for plugin_id in plugins_subscribed_to_initial_keybinds {
+                self.send_keybinds_payload_to_plugin(
+                    plugin_id,
+                    client_id,
+                    keybinds_payload.clone(),
+                );
+            }
         }
         Ok(())
     }
@@ -2092,7 +2108,9 @@ pub fn apply_event_to_plugin(
         (PermissionStatus::Granted, _) => {
             let mut event = event.clone();
             if let Event::ModeUpdate(mode_info) = &mut event {
-                mode_info.base_mode = Some(running_plugin.store.data().default_mode);
+                if mode_info.base_mode.is_none() {
+                    mode_info.base_mode = Some(running_plugin.store.data().default_mode);
+                }
                 if plugin_subscriptions.contains(&EventType::InitialKeybinds) {
                     // Plugin caches keybindings via InitialKeybinds — send lightweight ModeUpdate
                     mode_info.keybinds = vec![];

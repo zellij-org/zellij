@@ -13050,14 +13050,18 @@ pub fn mode_update_payload_is_lightweight_for_opted_in_plugins() {
         if let ScreenInstruction::PluginBytes(plugin_render_assets) = instruction {
             for asset in plugin_render_assets {
                 let bytes = String::from_utf8_lossy(&asset.bytes).to_string();
-                if bytes.contains("ModeUpdate") {
-                    // Plugin A (plugin_id 0) should have keybinds with 'q' -> Quit
-                    // Plugin B (plugin_id 1) should have empty keybinds
-                    if bytes.contains("Quit") {
-                        plugin_a_has_keybinds = true;
-                    } else if bytes.contains("ModeUpdate") && !bytes.contains("Quit") {
-                        plugin_b_has_empty_keybinds = true;
-                    }
+                let Some(mode_update_start) = bytes.find("ModeUpdate(") else {
+                    continue;
+                };
+                let mode_update = &bytes[mode_update_start..];
+                let Some(keybinds_start) = mode_update.find("keybinds: ") else {
+                    continue;
+                };
+                let keybinds = &mode_update[keybinds_start..];
+                if keybinds.starts_with("keybinds: [],") {
+                    plugin_b_has_empty_keybinds = true;
+                } else if keybinds.starts_with("keybinds: [(Normal, ") && keybinds.contains("Quit") {
+                    plugin_a_has_keybinds = true;
                 }
             }
         }
@@ -13159,6 +13163,10 @@ pub fn reconfiguration_resends_keybinds_to_opted_in_plugins() {
     mode_map.insert(KeyWithModifier::new(BareKey::Char('x')), vec![Action::Quit]);
     keybind_map.insert(InputMode::Normal, mode_map);
     let new_keybinds = Keybinds(keybind_map);
+    let expected_event = format!(
+        "{:?}",
+        Event::InitialKeybinds(new_keybinds.to_keybinds_vec())
+    );
 
     // Send Reconfigure
     let _ = plugin_thread_sender.send(PluginInstruction::Reconfigure {
@@ -13175,23 +13183,30 @@ pub fn reconfiguration_resends_keybinds_to_opted_in_plugins() {
     screen_thread.join().unwrap();
 
     let instructions = received_screen_instructions.lock().unwrap();
-    let initial_keybinds_event = instructions.iter().find_map(|instruction| {
-        if let ScreenInstruction::PluginBytes(plugin_render_assets) = instruction {
-            for asset in plugin_render_assets {
-                let bytes = String::from_utf8_lossy(&asset.bytes).to_string();
-                if bytes.contains("InitialKeybinds") {
-                    return Some(bytes);
+    let renders_containing_initial_keybinds: Vec<String> = instructions
+        .iter()
+        .filter_map(|instruction| {
+            if let ScreenInstruction::PluginBytes(plugin_render_assets) = instruction {
+                for asset in plugin_render_assets {
+                    let bytes = String::from_utf8_lossy(&asset.bytes).to_string();
+                    if bytes.contains("InitialKeybinds") {
+                        return Some(bytes);
+                    }
                 }
             }
-        }
-        None
-    });
+            None
+        })
+        .collect();
 
     assert!(
-        initial_keybinds_event.is_some(),
+        !renders_containing_initial_keybinds.is_empty(),
         "Plugin should receive InitialKeybinds event after reconfiguration"
     );
-    // Note: the keybinds content in InitialKeybinds may be empty due to a race condition
-    // between the executor thread updating keybinds and send_initial_keybinds_to_plugin
-    // reading them synchronously. The important thing is that the event IS delivered.
+    let last_render = renders_containing_initial_keybinds.last().unwrap();
+    assert!(
+        last_render.contains(&expected_event),
+        "InitialKeybinds sent on reconfiguration must carry the new keybinds.\nexpected to find: {}\nin: {}",
+        expected_event,
+        last_render
+    );
 }
