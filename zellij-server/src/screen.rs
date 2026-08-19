@@ -1921,6 +1921,12 @@ impl Screen {
             .map(|t| t.drain_connected_clients(clients_to_move));
 
         if let Some(client_mode_info_in_source_tab) = drained_clients {
+            let arriving_client_ids: Vec<ClientId> = client_mode_info_in_source_tab
+                .iter()
+                .map(|(client_id, _mode_info)| *client_id)
+                .collect();
+            let arriving_clients_overflow_destination =
+                self.clients_are_larger_than_tab(destination_tab_index, &arriving_client_ids);
             let destination_tab = self
                 .get_indexed_tab_mut(destination_tab_index)
                 .context("failed to get destination tab by index")
@@ -1934,7 +1940,7 @@ impl Screen {
                     .with_context(err_context)?;
             }
             destination_tab.set_force_render();
-            if destination_tab.has_stack_lists() {
+            if destination_tab.has_stack_lists() || arriving_clients_overflow_destination {
                 destination_tab.set_should_clear_display_before_rendering();
             }
             destination_tab.visible(true).with_context(err_context)?;
@@ -2283,6 +2289,20 @@ impl Screen {
             .and_then(|tab_id| self.tabs.get(tab_id))
             .map(|tab| tab.size)
             .unwrap_or_else(|| self.size_for_client(Some(client_id)))
+    }
+
+    fn clients_are_larger_than_tab(&self, tab_id: usize, client_ids: &[ClientId]) -> bool {
+        let Some(tab_size) = self.tabs.get(&tab_id).map(|tab| tab.size) else {
+            return false;
+        };
+        client_ids.iter().any(|client_id| {
+            self.client_sizes
+                .get(client_id)
+                .map(|client_size| {
+                    client_size.rows > tab_size.rows || client_size.cols > tab_size.cols
+                })
+                .unwrap_or(false)
+        })
     }
 
     pub fn recompute_tab_size(&mut self, tab_id: usize) -> Result<()> {
@@ -4800,6 +4820,13 @@ impl Screen {
                 .iter()
                 .map(|c| (*c, self.get_active_pane_id(c)))
                 .collect();
+        let mut vacated_tab_ids: Vec<usize> = passthrough_affected_client_ids
+            .iter()
+            .filter_map(|affected_client_id| self.active_tab_ids.get(affected_client_id).copied())
+            .filter(|vacated_tab_id| *vacated_tab_id != tab_id)
+            .collect();
+        vacated_tab_ids.sort_unstable();
+        vacated_tab_ids.dedup();
 
         // move the relevant clients out of the current tab and place them in the new one
         let drained_clients = if should_change_client_focus {
@@ -4886,6 +4913,10 @@ impl Screen {
         }
 
         self.recompute_tab_size(tab_id).with_context(err_context)?;
+        for vacated_tab_id in vacated_tab_ids {
+            self.recompute_tab_size(vacated_tab_id)
+                .with_context(err_context)?;
+        }
 
         for (affected_client_id, old_pane_id) in passthrough_old_focused_panes {
             let new_pane_id = self.get_active_pane_id(&affected_client_id);

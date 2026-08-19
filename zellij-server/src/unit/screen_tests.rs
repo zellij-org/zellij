@@ -10497,6 +10497,48 @@ fn switching_tabs_recomputes_source_and_destination() {
 }
 
 #[test]
+fn creating_a_new_tab_recomputes_the_tab_its_creator_left() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+
+    screen.set_client_size(1, Size { cols: 80, rows: 24 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    screen.recompute_tab_size(0).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Pre-condition: both clients view tab 0, so it sizes to the smaller of them"
+    );
+
+    new_tab(&mut screen, 2, 1);
+
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "The new tab is created at the size of the client creating it"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "The tab its creator left grows back to fit the viewer it still has"
+    );
+}
+
+#[test]
 fn break_pane_to_new_tab_recomputes_source_and_destination() {
     let initial_size = Size {
         cols: 200,
