@@ -385,6 +385,7 @@ message ListPanesAction {
   bool show_geometry = 4;
   bool show_all = 5;
   bool output_json = 6;
+  bool filter_bell = 7;
 }
 message ListTabsAction {
   bool show_state = 1;

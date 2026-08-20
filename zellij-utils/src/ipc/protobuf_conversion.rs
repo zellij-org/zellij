@@ -1980,6 +1980,7 @@ impl From<crate::input::actions::Action>
                 show_geometry,
                 show_all,
                 output_json,
+                filter_bell,
             } => ActionType::ListPanes(ListPanesAction {
                 show_tab,
                 show_command,
@@ -1987,6 +1988,7 @@ impl From<crate::input::actions::Action>
                 show_geometry,
                 show_all,
                 output_json,
+                filter_bell,
             }),
             crate::input::actions::Action::TogglePanePinned => {
                 ActionType::TogglePanePinned(TogglePanePinnedAction {})
@@ -2889,6 +2891,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     show_geometry: list_panes_action.show_geometry,
                     show_all: list_panes_action.show_all,
                     output_json: list_panes_action.output_json,
+                    filter_bell: list_panes_action.filter_bell,
                 })
             },
             ActionType::ListTabs(list_tabs_action) => Ok(crate::input::actions::Action::ListTabs {

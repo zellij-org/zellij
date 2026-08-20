@@ -1436,6 +1436,10 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Output as JSON
         #[clap(short, long, value_parser)]
         json: bool,
+
+        /// Only show panes that currently have a pending bell notification
+        #[clap(short, long, value_parser)]
+        bell: bool,
     },
     /// List all tabs with their information
     ///

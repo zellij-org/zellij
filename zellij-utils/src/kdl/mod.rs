@@ -6581,6 +6581,12 @@ impl PaneInfo {
         let terminal_command = optional_string_node!("terminal_command");
         let plugin_url = optional_string_node!("plugin_url");
         let is_selectable = bool_node!("is_selectable");
+        // tolerate absence for backwards compatibility with older session dumps
+        let has_bell_notification = kdl_document
+            .get("has_bell_notification")
+            .and_then(|n| n.entries().iter().next())
+            .and_then(|e| e.value().as_bool())
+            .unwrap_or(false);
 
         let pane_info = PaneInfo {
             id,
@@ -6608,6 +6614,7 @@ impl PaneInfo {
             index_in_pane_group: Default::default(), // we don't serialize this
             default_fg: None,
             default_bg: None,
+            has_bell_notification,
         };
         Ok((tab_position, pane_info))
     }
@@ -6668,6 +6675,7 @@ impl PaneInfo {
             string_node!("plugin_url", plugin_url.to_string());
         }
         bool_node!("is_selectable", self.is_selectable);
+        bool_node!("has_bell_notification", self.has_bell_notification);
         kdl_doucment
     }
 }
@@ -6758,6 +6766,7 @@ fn serialize_and_deserialize_session_info_with_data() {
             index_in_pane_group: Default::default(), // we don't serialize this
             default_fg: None,
             default_bg: None,
+            has_bell_notification: true,
         },
         PaneInfo {
             id: 1,
@@ -6785,6 +6794,7 @@ fn serialize_and_deserialize_session_info_with_data() {
             index_in_pane_group: Default::default(), // we don't serialize this
             default_fg: None,
             default_bg: None,
+            has_bell_notification: false,
         },
     ];
     let mut panes = HashMap::new();

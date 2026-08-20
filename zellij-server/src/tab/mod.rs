@@ -8054,6 +8054,7 @@ pub fn pane_info_for_pane(
     pane_info.exited = pane.exited();
     pane_info.exit_status = pane.exit_status();
     pane_info.is_held = pane.is_held();
+    pane_info.has_bell_notification = pane.get_bell_notification();
     let index_in_pane_group: BTreeMap<ClientId, usize> = current_pane_group
         .iter()
         .filter_map(|(client_id, pane_ids)| {
