@@ -69,6 +69,22 @@ impl ActivePanes {
         }
         self.active_panes.remove(client_id)
     }
+    pub fn remove_client(
+        &mut self,
+        client_id: &ClientId,
+        panes: &mut BTreeMap<PaneId, Box<dyn Pane>>,
+    ) {
+        if let Some(pane_id) = self.active_panes.remove(client_id) {
+            let still_focused = self
+                .active_panes
+                .values()
+                .any(|active_pane_id| *active_pane_id == pane_id);
+            if !still_focused {
+                self.unfocus_pane(pane_id, panes);
+            }
+        }
+        self.last_panes.remove(client_id);
+    }
     pub fn unfocus_all_panes(&self, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
         for (_client_id, pane_id) in &self.active_panes {
             self.unfocus_pane(*pane_id, panes);
