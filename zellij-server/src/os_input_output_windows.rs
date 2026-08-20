@@ -18,7 +18,7 @@ use tokio::net::windows::named_pipe::NamedPipeServer;
 
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, S_OK};
 use windows_sys::Win32::Storage::FileSystem::{
-    CreateFileW, FlushFileBuffers, WriteFile, FILE_FLAG_OVERLAPPED, OPEN_EXISTING,
+    CreateFileW, WriteFile, FILE_FLAG_OVERLAPPED, OPEN_EXISTING,
 };
 use windows_sys::Win32::System::Console::{
     ClosePseudoConsole, CreatePseudoConsole, GenerateConsoleCtrlEvent, ResizePseudoConsole, COORD,
@@ -598,31 +598,6 @@ impl WindowsPtyBackend {
                 } else {
                     Ok(written as usize)
                 }
-            },
-            _ => Err(anyhow!("no ConPTY terminal found for id {}", terminal_id))
-                .with_context(err_context),
-        }
-    }
-
-    pub fn tcdrain(&self, terminal_id: u32) -> Result<()> {
-        let err_context = || format!("failed to drain terminal {}", terminal_id);
-
-        match self
-            .terminals
-            .lock()
-            .to_anyhow()
-            .with_context(err_context)?
-            .get(&terminal_id)
-        {
-            Some(Some(term)) => {
-                let ok = unsafe { FlushFileBuffers(term.input_write_handle) };
-                if ok == 0 {
-                    // FlushFileBuffers can legitimately fail on pipe handles
-                    // (ERROR_INVALID_FUNCTION) — treat as non-fatal.
-                    let e = io::Error::last_os_error();
-                    log::debug!("FlushFileBuffers on terminal {}: {}", terminal_id, e);
-                }
-                Ok(())
             },
             _ => Err(anyhow!("no ConPTY terminal found for id {}", terminal_id))
                 .with_context(err_context),

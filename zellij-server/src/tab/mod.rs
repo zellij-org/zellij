@@ -926,7 +926,6 @@ impl Tab {
             pane_frame_style,
             default_mode_info.clone(),
             style,
-            os_api.clone(),
             senders.clone(),
         );
         let floating_panes = FloatingPanes::new(
@@ -941,7 +940,6 @@ impl Tab {
             session_is_mirrored,
             default_mode_info.clone(),
             style,
-            os_api.clone(),
             senders.clone(),
         );
 
@@ -3789,9 +3787,11 @@ impl Tab {
             }
         });
         if let Some(focus_event) = focus_event {
-            let _ = self
-                .os_api
-                .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
+            let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Write(
+                focus_event.into_bytes(),
+                terminal_id,
+                None,
+            ));
         }
     }
     pub fn check_and_handle_bell_notifications(

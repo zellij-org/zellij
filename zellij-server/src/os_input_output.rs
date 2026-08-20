@@ -321,8 +321,6 @@ pub trait ServerOsApi: Send + Sync {
     }
     /// Write bytes to the standard input of the virtual terminal referred to by `terminal_id`.
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize>;
-    /// Wait until all output written to the terminal has been transmitted.
-    fn tcdrain(&self, terminal_id: u32) -> Result<()>;
     /// Terminate the process with process ID `pid`. (SIGHUP)
     fn kill(&self, pid: u32) -> Result<()>;
     /// Terminate the process with process ID `pid`. (SIGKILL)
@@ -429,9 +427,6 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
         self.pty_backend.write_to_tty_stdin(terminal_id, buf)
-    }
-    fn tcdrain(&self, terminal_id: u32) -> Result<()> {
-        self.pty_backend.tcdrain(terminal_id)
     }
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
         Box::new((*self).clone())

@@ -215,9 +215,6 @@ impl ServerOsApi for FakeInputOutput {
             .extend_from_slice(buf);
         Ok(buf.len())
     }
-    fn tcdrain(&self, _id: u32) -> Result<()> {
-        unimplemented!()
-    }
     fn kill(&self, _pid: u32) -> Result<()> {
         unimplemented!()
     }
@@ -309,8 +306,33 @@ fn create_new_screen_with_kitty_graphics(
     screen
 }
 
-type TtyStdinBytes = Arc<Mutex<BTreeMap<u32, Vec<u8>>>>;
 type ServerReceiver = Receiver<(ServerInstruction, ErrorContext)>;
+
+// Focus events are sent to the pty writer, not written to the tty directly, so
+// tests read them off that channel. Reads accumulate so callers can assert on
+// the running total the way they did with the old tty capture map.
+struct FocusCapture {
+    receiver: Receiver<(PtyWriteInstruction, ErrorContext)>,
+    accumulated: RefCell<BTreeMap<u32, Vec<u8>>>,
+}
+
+impl FocusCapture {
+    fn pump(&self) {
+        while let Ok((instruction, _)) = self.receiver.try_recv() {
+            if let PtyWriteInstruction::Write(bytes, terminal_id, _) = instruction {
+                self.accumulated
+                    .borrow_mut()
+                    .entry(terminal_id)
+                    .or_default()
+                    .extend(bytes);
+            }
+        }
+    }
+    fn clear(&self) {
+        self.pump();
+        self.accumulated.borrow_mut().clear();
+    }
+}
 
 fn create_new_screen_with_capture(
     size: Size,
@@ -318,13 +340,19 @@ fn create_new_screen_with_capture(
     mouse_hover_effects: bool,
     support_kitty_graphics_protocol: bool,
     session_is_mirrored: bool,
-) -> (Screen, TtyStdinBytes, ServerReceiver) {
+) -> (Screen, FocusCapture, ServerReceiver) {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput::default();
-    let tty_stdin_bytes = fake_os_input.tty_stdin_bytes.clone();
     bus.os_input = Some(Box::new(fake_os_input));
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::unbounded();
     bus.senders.to_server = Some(SenderWithContext::new(to_server));
+    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    bus.senders.to_pty_writer = Some(SenderWithContext::new(to_pty_writer));
+    let focus_capture = FocusCapture {
+        receiver: pty_writer_receiver,
+        accumulated: RefCell::new(BTreeMap::new()),
+    };
     let client_attributes = ClientAttributes {
         size,
         ..Default::default()
@@ -396,7 +424,7 @@ fn create_new_screen_with_capture(
     );
     (
         seed_first_client_size(screen, size),
-        tty_stdin_bytes,
+        focus_capture,
         server_receiver,
     )
 }
@@ -12659,10 +12687,11 @@ fn subscribe_pane_to_focus_events(screen: &mut Screen, client_id: ClientId, term
         .unwrap();
 }
 
-fn focus_events_written_to_pane(tty_stdin_bytes: &TtyStdinBytes, terminal_id: u32) -> String {
-    tty_stdin_bytes
-        .lock()
-        .unwrap()
+fn focus_events_written_to_pane(focus_capture: &FocusCapture, terminal_id: u32) -> String {
+    focus_capture.pump();
+    focus_capture
+        .accumulated
+        .borrow()
         .get(&terminal_id)
         .map(|bytes| String::from_utf8_lossy(bytes).to_string())
         .unwrap_or_default()
@@ -12679,7 +12708,7 @@ fn host_focus_changes_are_forwarded_to_the_active_pane() {
         create_new_screen_with_capture(size, true, true, true, true);
     new_tab(&mut screen, 1, 0);
     subscribe_pane_to_focus_events(&mut screen, client_id, 1);
-    tty_stdin_bytes.lock().unwrap().clear();
+    tty_stdin_bytes.clear();
 
     screen.host_terminal_focus_changed(client_id, false);
     assert_eq!(
@@ -12707,7 +12736,7 @@ fn repeated_host_focus_reports_are_not_forwarded_twice() {
         create_new_screen_with_capture(size, true, true, true, true);
     new_tab(&mut screen, 1, 0);
     subscribe_pane_to_focus_events(&mut screen, client_id, 1);
-    tty_stdin_bytes.lock().unwrap().clear();
+    tty_stdin_bytes.clear();
 
     screen.host_terminal_focus_changed(client_id, false);
     screen.host_terminal_focus_changed(client_id, false);
@@ -12731,7 +12760,7 @@ fn host_focus_is_not_forwarded_to_a_pane_that_did_not_subscribe() {
     let (mut screen, tty_stdin_bytes, _server_receiver) =
         create_new_screen_with_capture(size, true, true, true, true);
     new_tab(&mut screen, 1, 0);
-    tty_stdin_bytes.lock().unwrap().clear();
+    tty_stdin_bytes.clear();
 
     screen.host_terminal_focus_changed(client_id, false);
     screen.host_terminal_focus_changed(client_id, true);
@@ -12757,7 +12786,7 @@ fn host_focus_loss_is_withheld_while_another_client_is_still_focused() {
     screen.set_client_size(second_client_id, size);
     screen.add_client(second_client_id, false).unwrap();
     subscribe_pane_to_focus_events(&mut screen, first_client_id, 1);
-    tty_stdin_bytes.lock().unwrap().clear();
+    tty_stdin_bytes.clear();
 
     screen.host_terminal_focus_changed(first_client_id, false);
     assert_eq!(
@@ -12816,7 +12845,7 @@ fn host_focus_changes_of_clients_on_different_panes_are_independent() {
         .unwrap();
     subscribe_pane_to_focus_events(&mut screen, first_client_id, 1);
     subscribe_pane_to_focus_events(&mut screen, first_client_id, 2);
-    tty_stdin_bytes.lock().unwrap().clear();
+    tty_stdin_bytes.clear();
 
     screen.host_terminal_focus_changed(second_client_id, false);
 
@@ -13127,7 +13156,7 @@ fn a_client_whose_host_focus_was_never_reported_counts_as_focused() {
         create_new_screen_with_capture(size, true, true, true, true);
     new_tab(&mut screen, 1, 0);
     subscribe_pane_to_focus_events(&mut screen, 1, 1);
-    tty_stdin_bytes.lock().unwrap().clear();
+    tty_stdin_bytes.clear();
 
     screen.host_terminal_focus_changed(1, true);
 
