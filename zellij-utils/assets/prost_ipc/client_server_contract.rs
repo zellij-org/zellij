@@ -120,7 +120,7 @@ pub struct RgbColor {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Action {
-    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147")]
+    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151")]
     pub action_type: ::core::option::Option<action::ActionType>,
 }
 /// Nested message and enum types in `Action`.
@@ -408,8 +408,6 @@ pub mod action {
         SetLightTheme(super::SetLightThemeAction),
         #[prost(message, tag="139")]
         ToggleTheme(super::ToggleThemeAction),
-        #[prost(message, tag="140")]
-        ToggleMobileMode(super::ToggleMobileModeAction),
         #[prost(message, tag="141")]
         FocusLastPane(super::FocusLastPaneAction),
         #[prost(message, tag="142")]
@@ -424,6 +422,14 @@ pub mod action {
         ToggleHostFullscreen(super::ToggleHostFullscreenAction),
         #[prost(message, tag="147")]
         FocusGuestSession(super::FocusGuestSessionAction),
+        #[prost(message, tag="148")]
+        ScrollToPreviousPrompt(super::ScrollToPreviousPromptAction),
+        #[prost(message, tag="149")]
+        ScrollToNextPrompt(super::ScrollToNextPromptAction),
+        #[prost(message, tag="150")]
+        SelectCommandAtScrollPosition(super::SelectCommandAtScrollPositionAction),
+        #[prost(message, tag="151")]
+        CopyLastCommandOutput(super::CopyLastCommandOutputAction),
     }
 }
 // Action message definitions (all 92 variants)
@@ -498,6 +504,22 @@ pub struct ScrollToBottomAction {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ScrollToTopAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScrollToPreviousPromptAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScrollToNextPromptAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SelectCommandAtScrollPositionAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CopyLastCommandOutputAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -626,10 +648,6 @@ pub struct DenyAction {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ToggleMouseModeAction {
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ToggleMobileModeAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1361,6 +1379,8 @@ pub struct CliAssets {
     pub force_run_layout_commands: bool,
     #[prost(string, optional, tag="11")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(map="string, string", tag="12")]
+    pub host_terminal_env: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2022,12 +2042,6 @@ pub struct Options {
     pub theme_dark: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="47")]
     pub theme_light: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(enumeration="MobileLayout", optional, tag="48")]
-    pub mobile_layout: ::core::option::Option<i32>,
-    #[prost(uint32, optional, tag="49")]
-    pub mobile_threshold_cols: ::core::option::Option<u32>,
-    #[prost(uint32, optional, tag="50")]
-    pub mobile_threshold_rows: ::core::option::Option<u32>,
     #[prost(string, optional, tag="51")]
     pub pane_frame_style: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="52")]
@@ -2038,6 +2052,16 @@ pub struct Options {
     pub mouse_scroll_resize: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="55")]
     pub support_kitty_graphics_protocol: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="56")]
+    pub osc133_command_selection: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="57")]
+    pub word_separators: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="58")]
+    pub dangerously_enable_paste_buffer_read: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="59")]
+    pub mouse_hover_tips: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="67")]
+    pub host_notification_protocol: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -2973,38 +2997,6 @@ impl WebSharing {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
-pub enum MobileLayout {
-    Unspecified = 0,
-    Web = 1,
-    Always = 2,
-    Never = 3,
-}
-impl MobileLayout {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            MobileLayout::Unspecified => "MOBILE_LAYOUT_UNSPECIFIED",
-            MobileLayout::Web => "MOBILE_LAYOUT_WEB",
-            MobileLayout::Always => "MOBILE_LAYOUT_ALWAYS",
-            MobileLayout::Never => "MOBILE_LAYOUT_NEVER",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "MOBILE_LAYOUT_UNSPECIFIED" => Some(Self::Unspecified),
-            "MOBILE_LAYOUT_WEB" => Some(Self::Web),
-            "MOBILE_LAYOUT_ALWAYS" => Some(Self::Always),
-            "MOBILE_LAYOUT_NEVER" => Some(Self::Never),
-            _ => None,
-        }
-    }
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
 pub enum NestedSessionHandling {
     Unspecified = 0,
     Ask = 1,
@@ -3041,7 +3033,7 @@ impl NestedSessionHandling {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -3097,6 +3089,12 @@ pub mod client_to_server_msg {
         KittyGraphicsSupport(super::KittyGraphicsSupportMsg),
         #[prost(message, tag="24")]
         SixelSupport(super::SixelSupportMsg),
+        #[prost(message, tag="25")]
+        RequestSessionList(super::RequestSessionListMsg),
+        #[prost(message, tag="26")]
+        SetMobileRenderPreferences(super::SetMobileRenderPreferencesMsg),
+        #[prost(message, tag="27")]
+        HostTerminalFocusChanged(super::HostTerminalFocusChangedMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3134,8 +3132,6 @@ pub struct ColorRegistersMsg {
 pub struct TerminalResizeMsg {
     #[prost(message, optional, tag="1")]
     pub new_size: ::core::option::Option<Size>,
-    #[prost(enumeration="ResizeCause", tag="2")]
-    pub cause: i32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3252,6 +3248,12 @@ pub struct SoftKeyboardVisibilityChangedMsg {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HostTerminalFocusChangedMsg {
+    #[prost(bool, tag="1")]
+    pub focused: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NestedSessionFrameFromHostMsg {
     #[prost(bytes="vec", tag="1")]
     pub payload_bytes: ::prost::alloc::vec::Vec<u8>,
@@ -3268,34 +3270,18 @@ pub struct SixelSupportMsg {
     #[prost(bool, tag="1")]
     pub supported: bool,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum ResizeCause {
-    Viewport = 0,
-    RenderingPreference = 1,
-    SizeSettled = 2,
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RequestSessionListMsg {
 }
-impl ResizeCause {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            ResizeCause::Viewport => "RESIZE_CAUSE_VIEWPORT",
-            ResizeCause::RenderingPreference => "RESIZE_CAUSE_RENDERING_PREFERENCE",
-            ResizeCause::SizeSettled => "RESIZE_CAUSE_SIZE_SETTLED",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "RESIZE_CAUSE_VIEWPORT" => Some(Self::Viewport),
-            "RESIZE_CAUSE_RENDERING_PREFERENCE" => Some(Self::RenderingPreference),
-            "RESIZE_CAUSE_SIZE_SETTLED" => Some(Self::SizeSettled),
-            _ => None,
-        }
-    }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetMobileRenderPreferencesMsg {
+    #[prost(bool, tag="1")]
+    pub single_pane: bool,
+    #[prost(bool, tag="2")]
+    pub fit: bool,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -3326,7 +3312,7 @@ impl HostTerminalThemeIndication {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerToClientMsg {
-    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18")]
+    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19")]
     pub message: ::core::option::Option<server_to_client_msg::Message>,
 }
 /// Nested message and enum types in `ServerToClientMsg`.
@@ -3370,6 +3356,8 @@ pub mod server_to_client_msg {
         SetSoftKeyboard(super::SetSoftKeyboardMsg),
         #[prost(message, tag="18")]
         EmitNestedSessionFrame(super::EmitNestedSessionFrameMsg),
+        #[prost(message, tag="19")]
+        MobileState(super::MobileStateMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3476,6 +3464,8 @@ pub struct ForwardQueryToHostMsg {
     pub token: u32,
     #[prost(bytes="vec", tag="2")]
     pub query_bytes: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bool, tag="3")]
+    pub resolve_async: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3488,4 +3478,98 @@ pub struct SetSoftKeyboardMsg {
 pub struct EmitNestedSessionFrameMsg {
     #[prost(bytes="vec", tag="1")]
     pub payload_bytes: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MobileSizeMsg {
+    #[prost(uint32, tag="1")]
+    pub cols: u32,
+    #[prost(uint32, tag="2")]
+    pub rows: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MobileActivePaneMsg {
+    #[prost(uint32, tag="1")]
+    pub pane_id: u32,
+    #[prost(bool, tag="2")]
+    pub is_plugin: bool,
+    #[prost(uint32, tag="3")]
+    pub tab_position: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MobileTabMsg {
+    #[prost(uint32, tag="1")]
+    pub position: u32,
+    #[prost(string, tag="2")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(bool, tag="3")]
+    pub active: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MobilePaneMsg {
+    #[prost(uint32, tag="1")]
+    pub tab_position: u32,
+    #[prost(uint32, tag="2")]
+    pub pane_id: u32,
+    #[prost(bool, tag="3")]
+    pub is_plugin: bool,
+    #[prost(string, tag="4")]
+    pub title: ::prost::alloc::string::String,
+    #[prost(bool, tag="5")]
+    pub is_floating: bool,
+    #[prost(uint64, tag="6")]
+    pub last_activity_secs_ago: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MobileSessionMsg {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(bool, tag="2")]
+    pub web_clients_allowed: bool,
+    #[prost(uint32, tag="3")]
+    pub tab_count: u32,
+    #[prost(uint32, tag="4")]
+    pub pane_count: u32,
+    #[prost(uint32, tag="5")]
+    pub connected_clients: u32,
+    #[prost(uint64, tag="6")]
+    pub creation_secs_ago: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MobileRenderPrefsMsg {
+    #[prost(bool, tag="1")]
+    pub single_pane: bool,
+    #[prost(bool, tag="2")]
+    pub fit: bool,
+    #[prost(bool, tag="3")]
+    pub active_pane_is_fullscreen: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MobileStateMsg {
+    #[prost(string, tag="1")]
+    pub session_name: ::prost::alloc::string::String,
+    #[prost(uint64, tag="2")]
+    pub now_secs: u64,
+    #[prost(bool, tag="3")]
+    pub is_welcome_screen: bool,
+    #[prost(bool, tag="4")]
+    pub desktop_client_connected: bool,
+    #[prost(message, optional, tag="5")]
+    pub desktop_size: ::core::option::Option<MobileSizeMsg>,
+    #[prost(message, optional, tag="6")]
+    pub active_pane: ::core::option::Option<MobileActivePaneMsg>,
+    #[prost(message, repeated, tag="7")]
+    pub tabs: ::prost::alloc::vec::Vec<MobileTabMsg>,
+    #[prost(message, repeated, tag="8")]
+    pub panes: ::prost::alloc::vec::Vec<MobilePaneMsg>,
+    #[prost(message, repeated, tag="9")]
+    pub sessions: ::prost::alloc::vec::Vec<MobileSessionMsg>,
+    #[prost(message, optional, tag="10")]
+    pub render_prefs: ::core::option::Option<MobileRenderPrefsMsg>,
 }

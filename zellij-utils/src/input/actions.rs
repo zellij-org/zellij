@@ -202,6 +202,10 @@ pub enum Action {
     ScrollDownAt {
         position: Position,
     },
+    ScrollToPreviousPrompt,
+    ScrollToNextPrompt,
+    SelectCommandAtScrollPosition,
+    CopyLastCommandOutput,
     /// Scroll down to bottom in focus pane.
     ScrollToBottom,
     /// Scroll up to top in focus pane.
@@ -424,7 +428,6 @@ pub enum Action {
         option: SearchOption,
     },
     ToggleMouseMode,
-    ToggleMobileMode,
     PreviousSwapLayout,
     NextSwapLayout,
     /// Override the layout of the active tab

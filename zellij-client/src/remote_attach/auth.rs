@@ -15,10 +15,24 @@ pub struct SessionResponse {
     pub web_client_id: String,
 }
 
+fn session_url(server_base_url: &str, session_name: &str) -> String {
+    if session_name.is_empty() {
+        format!("{}{}", server_base_url, SESSION_ENDPOINT)
+    } else {
+        format!(
+            "{}{}?session={}",
+            server_base_url,
+            SESSION_ENDPOINT,
+            urlencoding::encode(session_name)
+        )
+    }
+}
+
 pub async fn authenticate(
     server_base_url: &str,
     auth_token: &str,
     remember_me: bool,
+    session_name: &str,
     ca_cert: Option<&std::path::Path>,
     insecure: bool,
 ) -> Result<(String, HttpClientWithCookies, Option<String>), RemoteClientError> {
@@ -61,7 +75,7 @@ pub async fn authenticate(
     }
 
     // Step 2: Get session/client ID
-    let session_url = format!("{}{}", server_base_url, SESSION_ENDPOINT);
+    let session_url = session_url(server_base_url, session_name);
 
     let mut session_response = http_client
         .send_with_cookies(
@@ -107,6 +121,7 @@ pub async fn authenticate(
 pub async fn validate_session_token(
     server_base_url: &str,
     session_token: &str,
+    session_name: &str,
     ca_cert: Option<&std::path::Path>,
     insecure: bool,
 ) -> Result<(String, HttpClientWithCookies), RemoteClientError> {
@@ -117,7 +132,7 @@ pub async fn validate_session_token(
     http_client.set_cookie("session_token".to_string(), session_token.to_string());
 
     // Skip /login, go directly to /session endpoint
-    let session_url = format!("{}{}", server_base_url, SESSION_ENDPOINT);
+    let session_url = session_url(server_base_url, session_name);
 
     let mut session_response = http_client
         .send_with_cookies(

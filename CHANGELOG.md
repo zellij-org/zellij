@@ -5,9 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.45.0] - 2026-08-20
 * feat: allow tabs to have different sizes if clients aren't focused on the same one (https://github.com/zellij-org/zellij/pull/5133)
 * feat: PWA support for the web client (manifest + icons + iOS meta tags) so the page can be installed as a standalone app (https://github.com/zellij-org/zellij/pull/5184)
-* feat: mobile UI (https://github.com/zellij-org/zellij/pull/5241)
+* feat: mobile UI (https://github.com/zellij-org/zellij/pull/5241 and https://github.com/zellij-org/zellij/pull/5441)
 * chore: new integration testing infra (https://github.com/zellij-org/zellij/pull/5269)
 * feat: FocusLastPane bindable action (https://github.com/zellij-org/zellij/pull/4241 and https://github.com/zellij-org/zellij/pull/5344)
 * fix: live reload on theme dir changes (https://github.com/zellij-org/zellij/pull/5135)
@@ -28,12 +30,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: clear existing pane name when entering rename input (https://github.com/zellij-org/zellij/pull/5369)
 * fix: occasional input spam when pressing ESC and holding the mouse over slow SSH connections (https://github.com/zellij-org/zellij/pull/5323)
 * chore: switch cassowary deps to maintained fork kasuari (https://github.com/zellij-org/zellij/pull/5416)
+* fix: don't kill the `copy_command` process while it owns the system clipboard (https://github.com/zellij-org/zellij/pull/5458)
 * chore: switch unmaintained daemonize with maintained fork daemonix (https://github.com/zellij-org/zellij/pull/4512)
 * feat: handle nested Zellij sessions (https://github.com/zellij-org/zellij/pull/5417)
 * chore: remove outdated manpage and some build fixes (https://github.com/zellij-org/zellij/pull/5426)
 * feat: implement support for the kitty graphics protocol to display images in the terminal (https://github.com/zellij-org/zellij/pull/5428)
 * fix: only advertise Sixel support if the attached terminal also supports it (https://github.com/zellij-org/zellij/pull/5432)
 * fix: properly unbundle plugin wasm executables when stripping them (to assist distro packagers) (https://github.com/zellij-org/zellij/pull/5433)
+* feat: support OSC133, triple-mouse-click to mark whole command, configurable double-click word boundaries (https://github.com/zellij-org/zellij/pull/5460 and https://github.com/zellij-org/zellij/pull/5492)
+* fix(scroll): keep a pane's scroll position when leaving scroll mode, and re-enter scroll mode when focusing a scrolled pane (https://github.com/zellij-org/zellij/pull/5299)
+* feat: allow opting-in to reading paste buffer (default false) (https://github.com/zellij-org/zellij/pull/5472)
+* feat: support additional notification protocols (OSC9 + OSC777), forward host gain/lost focus messages (https://github.com/zellij-org/zellij/pull/5485)
 
 ## [0.44.3] - 2026-05-13
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)

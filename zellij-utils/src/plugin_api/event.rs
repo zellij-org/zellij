@@ -62,7 +62,7 @@ use std::time::Duration;
 impl TryFrom<ProtobufEvent> for Event {
     type Error = &'static str;
     fn try_from(protobuf_event: ProtobufEvent) -> Result<Self, &'static str> {
-        match ProtobufEventType::from_i32(protobuf_event.name) {
+        match ProtobufEventType::try_from(protobuf_event.name).ok() {
             Some(ProtobufEventType::ModeUpdate) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::ModeUpdatePayload(protobuf_mode_update_payload)) => {
                     let mode_info: ModeInfo = protobuf_mode_update_payload.try_into()?;
@@ -121,7 +121,8 @@ impl TryFrom<ProtobufEvent> for Event {
             Some(ProtobufEventType::CopyToClipboard) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::CopyToClipboardPayload(copy_to_clipboard)) => {
                     let protobuf_copy_to_clipboard =
-                        ProtobufCopyDestination::from_i32(copy_to_clipboard)
+                        ProtobufCopyDestination::try_from(copy_to_clipboard)
+                            .ok()
                             .ok_or("Malformed copy to clipboard payload")?;
                     Ok(Event::CopyToClipboard(
                         protobuf_copy_to_clipboard.try_into()?,
@@ -417,14 +418,6 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the PaneRenderReport Event"),
             },
-            Some(ProtobufEventType::PaneRenderReportWithAnsi) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::PaneRenderReportWithAnsiPayload(protobuf_payload)) => {
-                    Ok(Event::PaneRenderReportWithAnsi(
-                        protobuf_payload.try_into()?,
-                    ))
-                },
-                _ => Err("Malformed payload for the PaneRenderReportWithAnsi Event"),
-            },
             Some(ProtobufEventType::UserAction) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::UserActionPayload(protobuf_payload)) => {
                     let action: Action = protobuf_payload
@@ -563,8 +556,10 @@ impl TryFrom<ProtobufEvent> for Event {
                         .keybinds
                         .into_iter()
                         .filter_map(|imk| {
-                            let mode: InputMode =
-                                ProtobufInputMode::from_i32(imk.mode)?.try_into().ok()?;
+                            let mode: InputMode = ProtobufInputMode::try_from(imk.mode)
+                                .ok()?
+                                .try_into()
+                                .ok()?;
                             let key_binds: Vec<(KeyWithModifier, Vec<Action>)> = imk
                                 .key_bind
                                 .into_iter()
@@ -587,7 +582,8 @@ impl TryFrom<ProtobufEvent> for Event {
             },
             Some(ProtobufEventType::HostTerminalThemeChanged) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::HostTerminalThemeChangedPayload(p)) => {
-                    let mode = ProtobufHostTerminalThemeIndication::from_i32(p.mode)
+                    let mode = ProtobufHostTerminalThemeIndication::try_from(p.mode)
+                        .ok()
                         .ok_or("Unknown HostTerminalThemeIndication")?;
                     Ok(Event::HostTerminalThemeChanged(mode.into()))
                 },
@@ -1020,12 +1016,6 @@ impl TryFrom<Event> for ProtobufEvent {
             Event::PaneRenderReport(pane_contents_map) => Ok(ProtobufEvent {
                 name: ProtobufEventType::PaneRenderReport as i32,
                 payload: Some(event::Payload::PaneRenderReportPayload(
-                    pane_contents_map.try_into()?,
-                )),
-            }),
-            Event::PaneRenderReportWithAnsi(pane_contents_map) => Ok(ProtobufEvent {
-                name: ProtobufEventType::PaneRenderReportWithAnsi as i32,
-                payload: Some(event::Payload::PaneRenderReportWithAnsiPayload(
                     pane_contents_map.try_into()?,
                 )),
             }),
@@ -1650,7 +1640,7 @@ impl TryFrom<ProtobufCopyDestination> for CopyDestination {
 impl TryFrom<MouseEventPayload> for Mouse {
     type Error = &'static str;
     fn try_from(mouse_event_payload: MouseEventPayload) -> Result<Self, &'static str> {
-        match MouseEventName::from_i32(mouse_event_payload.mouse_event_name) {
+        match MouseEventName::try_from(mouse_event_payload.mouse_event_name).ok() {
             Some(MouseEventName::MouseScrollUp) => match mouse_event_payload.mouse_event_payload {
                 Some(mouse_event_payload::MouseEventPayload::LineCount(line_count)) => {
                     Ok(Mouse::ScrollUp(line_count as usize))
@@ -1953,18 +1943,20 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
         mut protobuf_mode_update_payload: ProtobufModeUpdatePayload,
     ) -> Result<Self, &'static str> {
         let current_mode: InputMode =
-            ProtobufInputMode::from_i32(protobuf_mode_update_payload.current_mode)
+            ProtobufInputMode::try_from(protobuf_mode_update_payload.current_mode)
+                .ok()
                 .ok_or("Malformed InputMode in the ModeUpdate Event")?
                 .try_into()?;
         let base_mode: Option<InputMode> = protobuf_mode_update_payload
             .base_mode
-            .and_then(|b_m| ProtobufInputMode::from_i32(b_m)?.try_into().ok());
+            .and_then(|b_m| ProtobufInputMode::try_from(b_m).ok()?.try_into().ok());
         let keybinds: Vec<(InputMode, Vec<(KeyWithModifier, Vec<Action>)>)> =
             protobuf_mode_update_payload
                 .keybinds
                 .iter_mut()
                 .filter_map(|k| {
-                    let input_mode: InputMode = ProtobufInputMode::from_i32(k.mode)
+                    let input_mode: InputMode = ProtobufInputMode::try_from(k.mode)
+                        .ok()
                         .ok_or("Malformed InputMode in the ModeUpdate Event")
                         .ok()?
                         .try_into()
@@ -1995,7 +1987,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
         let web_clients_allowed = protobuf_mode_update_payload.web_clients_allowed;
         let web_sharing = protobuf_mode_update_payload
             .web_sharing
-            .and_then(|w| ProtobufWebSharing::from_i32(w))
+            .and_then(|w| ProtobufWebSharing::try_from(w).ok())
             .map(|w| w.into());
         let capabilities = PluginCapabilities {
             arrow_fonts: protobuf_mode_update_payload.arrow_fonts_support,
@@ -2017,7 +2009,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
 
         let pane_frame_style = protobuf_mode_update_payload
             .pane_frame_style
-            .and_then(|p| ProtobufPaneFrameStyle::from_i32(p))
+            .and_then(|p| ProtobufPaneFrameStyle::try_from(p).ok())
             .map(|p| p.into());
 
         let session_dimmed = protobuf_mode_update_payload.session_dimmed;
@@ -2162,7 +2154,7 @@ impl TryFrom<ProtobufEventNameList> for HashSet<EventType> {
         let event_types: Vec<ProtobufEventType> = protobuf_event_name_list
             .event_types
             .iter()
-            .filter_map(|i| ProtobufEventType::from_i32(*i))
+            .filter_map(|i| ProtobufEventType::try_from(*i).ok())
             .collect();
         let event_types: Vec<EventType> = event_types
             .iter()
@@ -2226,7 +2218,6 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::FailedToStartWebServer => EventType::FailedToStartWebServer,
             ProtobufEventType::InterceptedKeyPress => EventType::InterceptedKeyPress,
             ProtobufEventType::PaneRenderReport => EventType::PaneRenderReport,
-            ProtobufEventType::PaneRenderReportWithAnsi => EventType::PaneRenderReportWithAnsi,
             ProtobufEventType::UserAction => EventType::UserAction,
             ProtobufEventType::ActionComplete => EventType::ActionComplete,
             ProtobufEventType::CwdChanged => EventType::CwdChanged,
@@ -2285,7 +2276,6 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::FailedToStartWebServer => ProtobufEventType::FailedToStartWebServer,
             EventType::InterceptedKeyPress => ProtobufEventType::InterceptedKeyPress,
             EventType::PaneRenderReport => ProtobufEventType::PaneRenderReport,
-            EventType::PaneRenderReportWithAnsi => ProtobufEventType::PaneRenderReportWithAnsi,
             EventType::UserAction => ProtobufEventType::UserAction,
             EventType::ActionComplete => ProtobufEventType::ActionComplete,
             EventType::CwdChanged => ProtobufEventType::CwdChanged,
@@ -3105,7 +3095,7 @@ fn serialize_session_update_event_with_non_default_values() {
 impl TryFrom<ProtobufPaneId> for PaneId {
     type Error = &'static str;
     fn try_from(protobuf_pane_id: ProtobufPaneId) -> Result<Self, &'static str> {
-        match ProtobufPaneType::from_i32(protobuf_pane_id.pane_type) {
+        match ProtobufPaneType::try_from(protobuf_pane_id.pane_type).ok() {
             Some(ProtobufPaneType::Terminal) => Ok(PaneId::Terminal(protobuf_pane_id.id)),
             Some(ProtobufPaneType::Plugin) => Ok(PaneId::Plugin(protobuf_pane_id.id)),
             None => Err("Failed to convert PaneId"),
@@ -3197,9 +3187,11 @@ impl TryFrom<ProtobufWebServerStatusPayload> for WebServerStatus {
     fn try_from(
         protobuf_web_server_status: ProtobufWebServerStatusPayload,
     ) -> Result<Self, &'static str> {
-        match WebServerStatusIndication::from_i32(
+        match WebServerStatusIndication::try_from(
             protobuf_web_server_status.web_server_status_indication,
-        ) {
+        )
+        .ok()
+        {
             Some(WebServerStatusIndication::Online) => {
                 let payload = protobuf_web_server_status
                     .payload
@@ -3356,52 +3348,4 @@ impl TryFrom<SelectedText> for ProtobufSelectedText {
             end: Some(selected_text.end.try_into()?),
         })
     }
-}
-
-#[test]
-fn serialize_pane_render_report_with_ansi_event() {
-    use prost::Message;
-    let pane_render_report_with_ansi_event = Event::PaneRenderReportWithAnsi(Default::default());
-    let protobuf_event: ProtobufEvent = pane_render_report_with_ansi_event
-        .clone()
-        .try_into()
-        .unwrap();
-    let serialized_protobuf_event = protobuf_event.encode_to_vec();
-    let deserialized_protobuf_event: ProtobufEvent =
-        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
-    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
-    assert_eq!(
-        pane_render_report_with_ansi_event, deserialized_event,
-        "Event properly serialized/deserialized without change"
-    );
-}
-
-#[test]
-fn serialize_pane_render_report_with_ansi_event_with_data() {
-    use prost::Message;
-    use std::collections::HashMap;
-    let mut pane_contents_map = HashMap::new();
-    pane_contents_map.insert(
-        PaneId::Terminal(1),
-        PaneContents {
-            viewport: vec![
-                "\x1b[31mred text\x1b[0m".to_owned(),
-                "\x1b[1mbold text\x1b[0m".to_owned(),
-            ],
-            selected_text: None,
-            lines_above_viewport: vec![],
-            lines_below_viewport: vec![],
-            cursor: None,
-        },
-    );
-    let event = Event::PaneRenderReportWithAnsi(pane_contents_map);
-    let protobuf_event: ProtobufEvent = event.clone().try_into().unwrap();
-    let serialized_protobuf_event = protobuf_event.encode_to_vec();
-    let deserialized_protobuf_event: ProtobufEvent =
-        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
-    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
-    assert_eq!(
-        event, deserialized_event,
-        "PaneRenderReportWithAnsi event with ANSI data properly serialized/deserialized"
-    );
 }

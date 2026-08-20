@@ -964,6 +964,14 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    ';',
+                ),
+                key_modifiers: {},
+            }: [
+                FocusLastPane,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     '=',
                 ),
                 key_modifiers: {
@@ -2173,11 +2181,27 @@ Config {
                 bare_key: Char(
                     '[',
                 ),
+                key_modifiers: {},
+            }: [
+                ScrollToPreviousPrompt,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
                 PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {},
+            }: [
+                ScrollToNextPrompt,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -2198,6 +2222,17 @@ Config {
                 },
             }: [
                 PageScrollUp,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {},
+            }: [
+                CopyLastCommandOutput,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -2368,6 +2403,14 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {},
+            }: [
+                SelectCommandAtScrollPosition,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -2998,11 +3041,27 @@ Config {
                 bare_key: Char(
                     '[',
                 ),
+                key_modifiers: {},
+            }: [
+                ScrollToPreviousPrompt,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
                 PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {},
+            }: [
+                ScrollToNextPrompt,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -3190,6 +3249,14 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {},
+            }: [
+                SelectCommandAtScrollPosition,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -6069,9 +6136,13 @@ Config {
         advanced_mouse_actions: None,
         mouse_scroll_resize: None,
         mouse_hover_effects: None,
+        mouse_hover_tips: None,
         visual_bell: None,
         focus_follows_mouse: None,
         mouse_click_through: None,
+        osc133_command_selection: None,
+        word_separators: None,
+        host_notification_protocol: None,
         web_server_ip: None,
         web_server_port: None,
         web_server_cert: None,
@@ -6079,10 +6150,8 @@ Config {
         enforce_https_for_localhost: None,
         post_command_discovery_hook: None,
         client_async_worker_tasks: None,
-        mobile_layout: None,
-        mobile_threshold_cols: None,
-        mobile_threshold_rows: None,
         nested_session_handling: None,
+        dangerously_enable_paste_buffer_read: None,
     },
     themes: {},
     plugins: PluginAliases {
@@ -6136,18 +6205,6 @@ Config {
                 initial_cwd: Some(
                     "/",
                 ),
-            },
-            "mobile": RunPlugin {
-                _allow_exec_host_cmd: false,
-                location: Zellij(
-                    PluginTag(
-                        "mobile",
-                    ),
-                ),
-                configuration: PluginUserConfiguration(
-                    {},
-                ),
-                initial_cwd: None,
             },
             "plugin-manager": RunPlugin {
                 _allow_exec_host_cmd: false,

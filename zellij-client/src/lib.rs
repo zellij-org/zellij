@@ -43,12 +43,16 @@ use crate::web_client::control_message::{
     WebServerToWebClientControlMessage,
 };
 
+#[cfg(feature = "web_server_capability")]
 static ASYNC_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+#[cfg(feature = "web_server_capability")]
 use std::sync::OnceLock;
 
 const ENTER_ALTERNATE_SCREEN: &str = "\u{1b}[?1049h";
 const EXIT_ALTERNATE_SCREEN: &str = "\u{1b}[?1049l";
 const ENABLE_BRACKETED_PASTE: &str = "\u{1b}[?2004h";
+const ENABLE_FOCUS_REPORTING: &str = "\u{1b}[?1004h";
+const DISABLE_FOCUS_REPORTING: &str = "\u{1b}[?1004l";
 const RESET_STYLE: &str = "\u{1b}[m";
 const SHOW_CURSOR: &str = "\u{1b}[?25h";
 const ENTER_KITTY_KEYBOARD_MODE: &str = "\u{1b}[>1u";
@@ -70,6 +74,7 @@ const QUERY_HOST_THEME: &str = "\u{1b}[?996n";
 ///
 /// The number of workers can be configured to any nonzero value. Passing zero or `None` will spawn
 /// one worker per physical CPU on the current machine.
+#[cfg(feature = "web_server_capability")]
 pub(crate) fn async_runtime(maybe_number_of_workers: Option<usize>) -> tokio::runtime::Handle {
     match tokio::runtime::Handle::try_current() {
         Ok(handle) => handle.clone(),
@@ -155,8 +160,12 @@ use zellij_utils::{
     data::{ClientId, ConnectToSession, KeyWithModifier, LayoutInfo, LayoutMetadata},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{cli_assets::CliAssets, config::Config, options::Options},
-    ipc::{ClientToServerMsg, ExitReason, ResizeCause, ServerToClientMsg},
+    input::{
+        cli_assets::{host_terminal_env, CliAssets},
+        config::Config,
+        options::Options,
+    },
+    ipc::{ClientToServerMsg, ExitReason, IpcReceiveError, ServerToClientMsg},
     nested_session,
     pane_size::Size,
     vendored::termwiz::input::InputEvent,
@@ -186,6 +195,7 @@ pub(crate) enum ClientInstruction {
     ForwardQueryToHost {
         token: u32,
         query_bytes: Vec<u8>,
+        resolve_async: bool,
     },
     EmitNestedSessionFrame(Vec<u8>),
 }
@@ -210,8 +220,14 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
             ServerToClientMsg::RenamedSession { name } => ClientInstruction::RenamedSession(name),
             ServerToClientMsg::ConfigFileUpdated => ClientInstruction::ConfigFileUpdated,
-            ServerToClientMsg::ForwardQueryToHost { token, query_bytes } => {
-                ClientInstruction::ForwardQueryToHost { token, query_bytes }
+            ServerToClientMsg::ForwardQueryToHost {
+                token,
+                query_bytes,
+                resolve_async,
+            } => ClientInstruction::ForwardQueryToHost {
+                token,
+                query_bytes,
+                resolve_async,
             },
             ServerToClientMsg::EmitNestedSessionFrame { payload_bytes } => {
                 ClientInstruction::EmitNestedSessionFrame(payload_bytes)
@@ -220,6 +236,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::PaneRenderUpdate { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SubscribedPaneClosed { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SetSoftKeyboard { .. } => ClientInstruction::UnblockInputThread,
+            ServerToClientMsg::MobileState { .. } => ClientInstruction::UnblockInputThread,
         }
     }
 }
@@ -367,9 +384,10 @@ fn exit_after_startup_error(teardown: Option<TerminalTeardown>, message: String)
                 ""
             };
             let rendered = format!(
-                "{}{}{}{}{}\r\n{}\n",
+                "{}{}{}{}{}{}\r\n{}\n",
                 kitty_exit,
                 DISABLE_HOST_THEME_NOTIFY,
+                DISABLE_FOCUS_REPORTING,
                 EXIT_ALTERNATE_SCREEN,
                 RESET_STYLE,
                 SHOW_CURSOR,
@@ -530,6 +548,7 @@ pub(crate) enum InputInstruction {
         reply_bytes: Vec<u8>,
     },
     NestedSessionFrameFromHost(Vec<u8>),
+    HostTerminalFocusChanged(bool),
     Exit,
 }
 
@@ -751,8 +770,11 @@ pub async fn run_remote_client_terminal_loop(
                             Ok(WebServerToWebClientControlMessage::SetSoftKeyboard{ .. }) => {
                                 // no-op
                             }
+                            Ok(WebServerToWebClientControlMessage::MobileState{ .. }) => {
+                                // no-op
+                            }
                             Err(e) => {
-                                log::error!("Failed to deserialize control message: {}", e);
+                                log::debug!("Ignoring unrecognized control message: {}", e);
                             }
                         }
 
@@ -831,6 +853,7 @@ pub fn start_remote_client(
 
     os_input.set_raw_mode();
     stdout.write_all(ENABLE_BRACKETED_PASTE.as_bytes()).unwrap();
+    stdout.write_all(ENABLE_FOCUS_REPORTING.as_bytes()).unwrap();
     if is_nested_inside_zellij_pane {
         let announce = nested_session::NestedSessionMessage::Announce {
             session_name: remote_session_name.clone(),
@@ -1013,6 +1036,7 @@ pub fn start_client(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: false,
                 cwd: None,
+                host_terminal_env: host_terminal_env(),
             };
             (
                 ClientToServerMsg::AttachClient {
@@ -1058,6 +1082,7 @@ pub fn start_client(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: force_run_commands,
                 cwd,
+                host_terminal_env: host_terminal_env(),
             };
 
             os_input.update_session_name(name);
@@ -1114,6 +1139,7 @@ pub fn start_client(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: false,
                 cwd: layout_cwd,
+                host_terminal_env: host_terminal_env(),
             };
 
             os_input.update_session_name(name);
@@ -1148,6 +1174,7 @@ pub fn start_client(
     os_input.set_raw_mode();
     let mut stdout = os_input.get_stdout_writer();
     stdout.write_all(ENABLE_BRACKETED_PASTE.as_bytes()).unwrap();
+    stdout.write_all(ENABLE_FOCUS_REPORTING.as_bytes()).unwrap();
     let nested_reannounce = if is_nested_inside_zellij_pane {
         let announce = nested_session::NestedSessionMessage::Announce {
             session_name: own_session_name.clone(),
@@ -1264,7 +1291,6 @@ pub fn start_client(
                         move || {
                             os_api.send_to_server(ClientToServerMsg::TerminalResize {
                                 new_size: os_api.get_terminal_size(),
-                                cause: ResizeCause::Viewport,
                             });
                             #[cfg(not(windows))]
                             let _ = os_api
@@ -1296,8 +1322,8 @@ pub fn start_client(
             let mut should_break = false;
             let mut consecutive_unknown_messages_received = 0;
             move || loop {
-                match os_input.recv_from_server() {
-                    Some((instruction, err_ctx)) => {
+                match os_input.try_recv_from_server() {
+                    Ok((instruction, err_ctx)) => {
                         consecutive_unknown_messages_received = 0;
                         err_ctx.update_thread_ctx();
                         if let ServerToClientMsg::Exit { .. } = instruction {
@@ -1308,12 +1334,26 @@ pub fn start_client(
                             break;
                         }
                     },
-                    None => {
+                    Err(IpcReceiveError::Disconnected) => {
+                        log::error!("Lost connection to the Zellij server");
+                        send_client_instructions
+                            .send(ClientInstruction::UnblockInputThread)
+                            .unwrap();
+                        send_client_instructions
+                            .send(ClientInstruction::Error(
+                                "Lost connection to the Zellij server".to_string(),
+                            ))
+                            .unwrap();
+                        break;
+                    },
+                    Err(IpcReceiveError::Undecodable) => {
                         consecutive_unknown_messages_received += 1;
                         send_client_instructions
                             .send(ClientInstruction::UnblockInputThread)
                             .unwrap();
-                        log::error!("Received unknown message from server");
+                        if consecutive_unknown_messages_received == 1 {
+                            log::error!("Received unknown message from server");
+                        }
                         if consecutive_unknown_messages_received >= 1000 {
                             send_client_instructions
                                 .send(ClientInstruction::Error(
@@ -1410,7 +1450,6 @@ pub fn start_client(
             ClientInstruction::QueryTerminalSize => {
                 os_input.send_to_server(ClientToServerMsg::TerminalResize {
                     new_size: os_input.get_terminal_size(),
-                    cause: ResizeCause::Viewport,
                 });
             },
             ClientInstruction::StartWebServer => {
@@ -1433,10 +1472,82 @@ pub fn start_client(
                     },
                 }
             },
-            ClientInstruction::ForwardQueryToHost { token, query_bytes } => {
+            ClientInstruction::ForwardQueryToHost {
+                token,
+                query_bytes,
+                resolve_async: true,
+            } => {
+                {
+                    let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
+                    if let Some((stale_token, stale_reply_bytes)) =
+                        stdin_ansi_parser.take_active_clipboard_forward()
+                    {
+                        log::warn!(
+                            "clipboard forward slot for token {} was still open when token {} was \
+                             dispatched ({} accumulated bytes); closing it out",
+                            stale_token,
+                            token,
+                            stale_reply_bytes.len(),
+                        );
+                        let _ = send_input_instructions.send(
+                            InputInstruction::ForwardedReplyFromHostComplete {
+                                token: stale_token,
+                                reply_bytes: stale_reply_bytes,
+                            },
+                        );
+                    }
+                    stdin_ansi_parser.open_clipboard_forward(token);
+                }
+                let runtime = stdin_ansi_parser::forward_timeout_runtime();
+                let parser_for_timer = stdin_ansi_parser.clone();
+                let sender_for_timer = send_input_instructions.clone();
+                stdin_ansi_parser::schedule_clipboard_forward_timeout(
+                    runtime.handle(),
+                    parser_for_timer,
+                    token,
+                    std::time::Duration::from_millis(
+                        stdin_ansi_parser::CLIENT_CLIPBOARD_FORWARD_TIMEOUT_MS,
+                    ),
+                    move |token, reply_bytes| {
+                        let _ = sender_for_timer.send(
+                            InputInstruction::ForwardedReplyFromHostComplete { token, reply_bytes },
+                        );
+                    },
+                );
+                let mut out = os_input.get_stdout_writer();
+                let _ = out.write_all(&query_bytes);
+                let _ = out.flush();
+            },
+            ClientInstruction::ForwardQueryToHost {
+                token, query_bytes, ..
+            } => {
                 // 1. Open a forwarding window on the parser so any reply
                 //    events that arrive before the barrier are captured.
-                stdin_ansi_parser.lock().unwrap().open_forward(token);
+                //    A slot may still be open here: the server's backstop
+                //    timeout can give up on the previous token and dispatch
+                //    this one before this client's per-slot timer got to
+                //    run. Hand that slot over instead of clobbering it.
+                let stale_forward = {
+                    let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
+                    let stale_forward = stdin_ansi_parser.take_active_forward();
+                    stdin_ansi_parser.open_forward(token);
+                    stale_forward
+                };
+                if let Some((stale_token, stale_reply_bytes)) = stale_forward {
+                    log::warn!(
+                        "forward slot for token {} was still open when token {} was dispatched \
+                         ({} accumulated bytes); closing it out",
+                        stale_token,
+                        token,
+                        stale_reply_bytes.len(),
+                    );
+                    let _ = send_input_instructions.send(
+                        InputInstruction::ForwardedReplyFromHostComplete {
+                            token: stale_token,
+                            reply_bytes: stale_reply_bytes,
+                        },
+                    );
+                }
                 // 2. Spawn a per-forward timer on the dedicated async
                 //    runtime. When the deadline fires, the task closes
                 //    the slot (if it's still open for this token) and
@@ -1552,6 +1663,7 @@ pub fn start_server_detached(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: force_run_commands,
                 cwd,
+                host_terminal_env: host_terminal_env(),
             };
 
             os_input.update_session_name(name);
@@ -1609,6 +1721,7 @@ pub fn start_server_detached(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: false,
                 cwd: layout_cwd,
+                host_terminal_env: host_terminal_env(),
             };
 
             os_input.update_session_name(name);
@@ -1650,9 +1763,10 @@ fn terminal_teardown_message(message: &str, rows: usize, include_kitty_exit: boo
         ""
     };
     format!(
-        "{}{}{}{}{}{}{}\n",
+        "{}{}{}{}{}{}{}{}\n",
         kitty_exit,
         DISABLE_HOST_THEME_NOTIFY,
+        DISABLE_FOCUS_REPORTING,
         EXIT_ALTERNATE_SCREEN,
         RESET_STYLE,
         SHOW_CURSOR,

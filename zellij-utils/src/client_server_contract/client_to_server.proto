@@ -29,6 +29,9 @@ message ClientToServerMsg {
     NestedSessionFrameFromHostMsg nested_session_frame_from_host = 22;
     KittyGraphicsSupportMsg kitty_graphics_support = 23;
     SixelSupportMsg sixel_support = 24;
+    RequestSessionListMsg request_session_list = 25;
+    SetMobileRenderPreferencesMsg set_mobile_render_preferences = 26;
+    HostTerminalFocusChangedMsg host_terminal_focus_changed = 27;
   }
 }
 
@@ -54,13 +57,6 @@ message ColorRegistersMsg {
 
 message TerminalResizeMsg {
   Size new_size = 1;
-  ResizeCause cause = 2;
-}
-
-enum ResizeCause {
-  RESIZE_CAUSE_VIEWPORT = 0;
-  RESIZE_CAUSE_RENDERING_PREFERENCE = 1;
-  RESIZE_CAUSE_SIZE_SETTLED = 2;
 }
 
 message FirstClientConnectedMsg {
@@ -141,6 +137,10 @@ message SoftKeyboardVisibilityChangedMsg {
   bool visible = 1;
 }
 
+message HostTerminalFocusChangedMsg {
+  bool focused = 1;
+}
+
 message NestedSessionFrameFromHostMsg {
   bytes payload_bytes = 1;
 }
@@ -151,4 +151,13 @@ message KittyGraphicsSupportMsg {
 
 message SixelSupportMsg {
   bool supported = 1;
+}
+
+message RequestSessionListMsg {
+  // Empty message
+}
+
+message SetMobileRenderPreferencesMsg {
+  bool single_pane = 1;
+  bool fit = 2;
 }

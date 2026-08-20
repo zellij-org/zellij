@@ -14,8 +14,9 @@ pub mod tab;
 pub mod background_jobs;
 mod global_async_runtime;
 mod logging_pipe;
-mod mobile_mode;
+mod mobile_web;
 pub mod nested_guest;
+pub mod notifications;
 mod pane_groups;
 mod plugins;
 mod pty;
@@ -41,7 +42,7 @@ use zellij_utils::envs;
 use zellij_utils::pane_size::Size;
 
 use zellij_utils::input::cli_assets::CliAssets;
-use zellij_utils::input::options::PaneFrameStyle;
+use zellij_utils::input::options::{PaneFrameStyle, DEFAULT_WORD_SEPARATORS};
 
 use wasmi::Engine;
 
@@ -136,10 +137,10 @@ pub enum ServerInstruction {
     WebServerStarted(String), // String -> base_url
     FailedToStartWebServer(String),
     ClearMouseHelpText(ClientId),
+    ClearCommandOutputFlash(PaneId),
     /// Relay a forwarded-query dispatch from Screen to the server main
     /// loop. The main loop writes `ServerToClientMsg::ForwardQueryToHost`
-    /// to any connected regular client.
-    ForwardQueryToHost(u32, Vec<u8>),
+    ForwardQueryToHost(u32, Vec<u8>, bool),
     KeyPassthroughChanged(ClientId, PaneId, PaneId, bool, Option<Direction>, bool),
     EmitNestedSessionFrameToClient(ClientId, Vec<u8>),
 }
@@ -190,6 +191,9 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::SendWebClientsForbidden
             },
             ServerInstruction::ClearMouseHelpText(..) => ServerContext::ClearMouseHelpText,
+            ServerInstruction::ClearCommandOutputFlash(..) => {
+                ServerContext::ClearCommandOutputFlash
+            },
             ServerInstruction::ForwardQueryToHost(..) => ServerContext::ForwardQueryToHost,
             ServerInstruction::KeyPassthroughChanged(..) => ServerContext::KeyPassthroughChanged,
             ServerInstruction::EmitNestedSessionFrameToClient(..) => {
@@ -468,9 +472,27 @@ impl SessionMetaData {
                         .unwrap_or(true),
                     mouse_scroll_resize: new_config.options.mouse_scroll_resize.unwrap_or(true),
                     mouse_hover_effects: new_config.options.mouse_hover_effects.unwrap_or(true),
+                    mouse_hover_tips: new_config.options.mouse_hover_tips.unwrap_or(true),
                     visual_bell: new_config.options.visual_bell.unwrap_or(true),
                     focus_follows_mouse: new_config.options.focus_follows_mouse.unwrap_or(false),
                     mouse_click_through: new_config.options.mouse_click_through.unwrap_or(false),
+                    osc133_command_selection: new_config
+                        .options
+                        .osc133_command_selection
+                        .unwrap_or(true),
+                    dangerously_enable_paste_buffer_read: new_config
+                        .options
+                        .dangerously_enable_paste_buffer_read
+                        .unwrap_or(false),
+                    word_separators: new_config
+                        .options
+                        .word_separators
+                        .clone()
+                        .unwrap_or_else(|| DEFAULT_WORD_SEPARATORS.to_owned()),
+                    host_notification_protocol: new_config
+                        .options
+                        .host_notification_protocol
+                        .unwrap_or_default(),
                     nested_session_handling: new_config
                         .options
                         .nested_session_handling
@@ -968,6 +990,7 @@ pub fn start_server_impl(
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
             ServerInstruction::FirstClientConnected(cli_assets, is_web_client, client_id) => {
+                let host_terminal_env = cli_assets.host_terminal_env.clone();
                 let (config, layout) = cli_assets.load_config_and_layout();
                 let layout_is_welcome_screen = cli_assets.layout
                     == Some(LayoutInfo::BuiltIn("welcome".to_owned()))
@@ -1036,21 +1059,17 @@ pub fn start_server_impl(
                     is_web_client,
                 );
 
-                let should_enter_mobile = should_enter_mobile_on_connect(
-                    &runtime_config_options,
-                    is_web_client,
-                    client_attributes.size,
-                );
-                if should_enter_mobile {
-                    session_data
-                        .read()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::SuppressRenderUntilMobile(client_id))
-                        .unwrap();
-                }
+                session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_screen(ScreenInstruction::RecomputeTabSize(
+                        client_id,
+                        client_attributes.size,
+                    ))
+                    .unwrap();
 
                 let default_shell = runtime_config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
@@ -1140,23 +1159,19 @@ pub fn start_server_impl(
                         true,
                     );
                 }
-                session_data
-                    .read()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_plugin(PluginInstruction::AddClient(client_id))
-                    .unwrap();
-
-                if should_enter_mobile {
+                {
+                    let rlock = session_data.read().unwrap();
+                    let session_data = rlock.as_ref().unwrap();
                     session_data
-                        .read()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
                         .senders
-                        .send_to_screen(ScreenInstruction::EnterMobileMode(client_id, None))
+                        .send_to_plugin(PluginInstruction::AddClient(client_id))
+                        .unwrap();
+                    session_data
+                        .senders
+                        .send_to_screen(ScreenInstruction::SetClientHostTerminalEnv(
+                            client_id,
+                            host_terminal_env,
+                        ))
                         .unwrap();
                 }
             },
@@ -1170,6 +1185,7 @@ pub fn start_server_impl(
                 let mut rlock = session_data.write().unwrap();
                 let session_data = rlock.as_mut().unwrap();
                 let config = session_data.session_configuration.saved_config.clone();
+                let host_terminal_env = cli_assets.host_terminal_env.clone();
                 let runtime_config_options = match cli_assets.configuration_options {
                     Some(configuration_options) => config.options.merge(configuration_options),
                     None => config.options.clone(),
@@ -1203,18 +1219,13 @@ pub fn start_server_impl(
                     is_web_client,
                 );
 
-                let should_enter_mobile = should_enter_mobile_on_connect(
-                    &runtime_config_options,
-                    is_web_client,
-                    client_attributes.size,
-                );
-                if should_enter_mobile {
-                    session_data
-                        .senders
-                        .send_to_screen(ScreenInstruction::SuppressRenderUntilMobile(client_id))
-                        .unwrap();
-                }
-
+                session_data
+                    .senders
+                    .send_to_screen(ScreenInstruction::SetClientHostTerminalEnv(
+                        client_id,
+                        host_terminal_env,
+                    ))
+                    .unwrap();
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::AddClient(
@@ -1241,13 +1252,6 @@ pub fn start_server_impl(
                         None,
                     ))
                     .unwrap();
-
-                if should_enter_mobile {
-                    session_data
-                        .senders
-                        .send_to_screen(ScreenInstruction::EnterMobileMode(client_id, None))
-                        .unwrap();
-                }
             },
             ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client) => {
                 // the client_id was inserted into clients upon ipc tunnel initialization
@@ -1917,7 +1921,17 @@ pub fn start_server_impl(
                     .send_to_screen(ScreenInstruction::ClearMouseHelpText(client_id))
                     .unwrap();
             },
-            ServerInstruction::ForwardQueryToHost(token, query_bytes) => {
+            ServerInstruction::ClearCommandOutputFlash(pane_id) => {
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_screen(ScreenInstruction::ClearCommandOutputFlash(pane_id))
+                    .unwrap();
+            },
+            ServerInstruction::ForwardQueryToHost(token, query_bytes, resolve_async) => {
                 // Pick a regular (non-watcher) client to carry the
                 // forward. Preference is the most recently active
                 // client (whichever last sent input); falls back to
@@ -1937,7 +1951,11 @@ pub fn start_server_impl(
                     send_to_client!(
                         client_id,
                         os_input,
-                        ServerToClientMsg::ForwardQueryToHost { token, query_bytes },
+                        ServerToClientMsg::ForwardQueryToHost {
+                            token,
+                            query_bytes,
+                            resolve_async
+                        },
                         session_state,
                         session_data
                     );
@@ -2391,21 +2409,6 @@ fn should_show_startup_tip(
         false
     } else {
         should_show_startup_tip_config.unwrap_or(true)
-    }
-}
-
-fn should_enter_mobile_on_connect(options: &Options, is_web_client: bool, viewport: Size) -> bool {
-    let mobile_layout = options.mobile_layout.unwrap_or_default();
-    if is_web_client {
-        mobile_layout.may_route_web_client_to_mobile()
-    } else {
-        mobile_layout.should_route_to_mobile(
-            is_web_client,
-            viewport.cols,
-            viewport.rows,
-            options.mobile_threshold_cols.unwrap_or(60),
-            options.mobile_threshold_rows.unwrap_or(30),
-        )
     }
 }
 

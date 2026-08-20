@@ -81,14 +81,6 @@ pub struct ColorRegister {
     pub color: String,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ResizeCause {
-    #[default]
-    Viewport,
-    RenderingPreference,
-    SizeSettled,
-}
-
 impl PixelDimensions {
     pub fn merge(&mut self, other: PixelDimensions) {
         if let Some(text_area_size) = other.text_area_size {
@@ -98,6 +90,67 @@ impl PixelDimensions {
             self.character_cell_size = Some(character_cell_size);
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileSizePayload {
+    pub cols: usize,
+    pub rows: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileActivePanePayload {
+    pub pane_id: u32,
+    pub is_plugin: bool,
+    pub tab_position: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileTabPayload {
+    pub position: usize,
+    pub name: String,
+    pub active: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobilePanePayload {
+    pub tab_position: usize,
+    pub pane_id: u32,
+    pub is_plugin: bool,
+    pub title: String,
+    pub is_floating: bool,
+    pub last_activity_secs_ago: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileSessionPayload {
+    pub name: String,
+    pub web_clients_allowed: bool,
+    pub tab_count: usize,
+    pub pane_count: usize,
+    pub connected_clients: usize,
+    pub creation_secs_ago: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileRenderPrefsPayload {
+    pub single_pane: bool,
+    pub fit: bool,
+    pub active_pane_is_fullscreen: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileStatePayload {
+    pub session_name: String,
+    pub now_secs: u64,
+    pub is_welcome_screen: bool,
+    pub desktop_client_connected: bool,
+    pub desktop_size: Option<MobileSizePayload>,
+    pub active_pane: Option<MobileActivePanePayload>,
+    pub tabs: Vec<MobileTabPayload>,
+    pub panes: Vec<MobilePanePayload>,
+    pub sessions: Vec<MobileSessionPayload>,
+    pub render_prefs: MobileRenderPrefsPayload,
 }
 
 // Types of messages sent from the client to the server
@@ -121,8 +174,6 @@ pub enum ClientToServerMsg {
     },
     TerminalResize {
         new_size: Size,
-        #[serde(default)]
-        cause: ResizeCause,
     },
     FirstClientConnected {
         cli_assets: CliAssets,
@@ -185,6 +236,14 @@ pub enum ClientToServerMsg {
     SixelSupport {
         supported: bool,
     },
+    RequestSessionList,
+    SetMobileRenderPreferences {
+        single_pane: bool,
+        fit: bool,
+    },
+    HostTerminalFocusChanged {
+        focused: bool,
+    },
 }
 
 // Types of messages sent from the server to the client
@@ -235,9 +294,13 @@ pub enum ServerToClientMsg {
     ForwardQueryToHost {
         token: u32,
         query_bytes: Vec<u8>,
+        resolve_async: bool,
     },
     EmitNestedSessionFrame {
         payload_bytes: Vec<u8>,
+    },
+    MobileState {
+        payload: MobileStatePayload,
     },
 }
 
@@ -354,6 +417,21 @@ pub struct IpcReceiverWithContext<T> {
     _phantom: PhantomData<T>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IpcReceiveError {
+    Disconnected,
+    Undecodable,
+}
+
+impl Display for IpcReceiveError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::result::Result<(), Error> {
+        match self {
+            IpcReceiveError::Disconnected => write!(f, "the peer closed the connection"),
+            IpcReceiveError::Undecodable => write!(f, "received a message that could not be read"),
+        }
+    }
+}
+
 impl<T> IpcReceiverWithContext<T>
 where
     T: for<'de> Deserialize<'de> + Serialize,
@@ -374,28 +452,36 @@ where
     }
 
     pub fn recv_client_msg(&mut self) -> Option<(ClientToServerMsg, ErrorContext)> {
-        match read_protobuf_message::<ProtoClientToServerMsg>(&mut self.receiver) {
-            Ok(proto_msg) => match proto_msg.try_into() {
-                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
-                Err(e) => {
-                    warn!("Error converting protobuf to ClientToServerMsg: {:?}", e);
-                    None
-                },
-            },
-            Err(_e) => None,
-        }
+        self.try_recv_client_msg().ok()
     }
 
     pub fn recv_server_msg(&mut self) -> Option<(ServerToClientMsg, ErrorContext)> {
-        match read_protobuf_message::<ProtoServerToClientMsg>(&mut self.receiver) {
-            Ok(proto_msg) => match proto_msg.try_into() {
-                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
-                Err(e) => {
-                    warn!("Error converting protobuf to ServerToClientMsg: {:?}", e);
-                    None
-                },
+        self.try_recv_server_msg().ok()
+    }
+
+    pub fn try_recv_client_msg(
+        &mut self,
+    ) -> std::result::Result<(ClientToServerMsg, ErrorContext), IpcReceiveError> {
+        let proto_msg = read_protobuf_message::<ProtoClientToServerMsg>(&mut self.receiver)?;
+        match proto_msg.try_into() {
+            Ok(rust_msg) => Ok((rust_msg, ErrorContext::default())),
+            Err(e) => {
+                warn!("Error converting protobuf to ClientToServerMsg: {:?}", e);
+                Err(IpcReceiveError::Undecodable)
             },
-            Err(_e) => None,
+        }
+    }
+
+    pub fn try_recv_server_msg(
+        &mut self,
+    ) -> std::result::Result<(ServerToClientMsg, ErrorContext), IpcReceiveError> {
+        let proto_msg = read_protobuf_message::<ProtoServerToClientMsg>(&mut self.receiver)?;
+        match proto_msg.try_into() {
+            Ok(rust_msg) => Ok((rust_msg, ErrorContext::default())),
+            Err(e) => {
+                warn!("Error converting protobuf to ServerToClientMsg: {:?}", e);
+                Err(IpcReceiveError::Undecodable)
+            },
         }
     }
 
@@ -407,16 +493,22 @@ where
 }
 
 // Protobuf wire format utilities
-fn read_protobuf_message<T: Message + Default>(reader: &mut impl Read) -> Result<T> {
+fn read_protobuf_message<T: Message + Default>(
+    reader: &mut impl Read,
+) -> std::result::Result<T, IpcReceiveError> {
     // Read length-prefixed protobuf message
     let mut len_bytes = [0u8; 4];
-    reader.read_exact(&mut len_bytes)?;
+    reader
+        .read_exact(&mut len_bytes)
+        .map_err(|_| IpcReceiveError::Disconnected)?;
     let len = u32::from_le_bytes(len_bytes) as usize;
 
     let mut buf = vec![0u8; len];
-    reader.read_exact(&mut buf)?;
+    reader
+        .read_exact(&mut buf)
+        .map_err(|_| IpcReceiveError::Disconnected)?;
 
-    T::decode(&buf[..]).map_err(Into::into)
+    T::decode(&buf[..]).map_err(|_| IpcReceiveError::Undecodable)
 }
 
 fn write_protobuf_message<T: Message>(writer: &mut impl Write, msg: &T) -> Result<()> {
@@ -456,31 +548,13 @@ pub fn send_protobuf_server_to_client(
 pub fn recv_protobuf_client_to_server(
     receiver: &mut IpcReceiverWithContext<ClientToServerMsg>,
 ) -> Option<(ClientToServerMsg, ErrorContext)> {
-    match read_protobuf_message::<ProtoClientToServerMsg>(&mut receiver.receiver) {
-        Ok(proto_msg) => match proto_msg.try_into() {
-            Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
-            Err(e) => {
-                warn!("Error converting protobuf message: {:?}", e);
-                None
-            },
-        },
-        Err(_e) => None,
-    }
+    receiver.try_recv_client_msg().ok()
 }
 
 pub fn recv_protobuf_server_to_client(
     receiver: &mut IpcReceiverWithContext<ServerToClientMsg>,
 ) -> Option<(ServerToClientMsg, ErrorContext)> {
-    match read_protobuf_message::<ProtoServerToClientMsg>(&mut receiver.receiver) {
-        Ok(proto_msg) => match proto_msg.try_into() {
-            Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
-            Err(e) => {
-                warn!("Error converting protobuf message: {:?}", e);
-                None
-            },
-        },
-        Err(_e) => None,
-    }
+    receiver.try_recv_server_msg().ok()
 }
 
 /// Asynchronously send `ClientToServerMsg::KillSession` to the peer at `path`

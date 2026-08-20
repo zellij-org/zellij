@@ -124,15 +124,13 @@ pub use super::generated_api::api::{
         SetPaneBorderlessPayload, SetPaneColorPayload,
         SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
         SetPaneRegexHighlightsPayload, SetSelfMouseSelectionSupportPayload,
-        SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload,
-        SetTabFitPayload as ProtobufSetTabFitPayload, SetTimeoutPayload, ShowCursorPayload,
-        ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
+        SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
+        ShowCursorPayload, ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
-        Size as ProtobufSize, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
-        SwitchTabToIdPayload, SwitchTabToPayload, ToggleFloatingPanesPayload,
-        TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
-        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToIdPayload,
+        SwitchTabToPayload, ToggleFloatingPanesPayload, TogglePaneBorderlessPayload,
+        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
+        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -148,32 +146,17 @@ use crate::data::{
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
-use crate::pane_size::Size;
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::path::PathBuf;
-
-fn size_from_protobuf(size: ProtobufSize) -> Size {
-    Size {
-        rows: size.rows as usize,
-        cols: size.cols as usize,
-    }
-}
-
-fn size_to_protobuf(size: Size) -> ProtobufSize {
-    ProtobufSize {
-        rows: size.rows as u32,
-        cols: size.cols as u32,
-    }
-}
 
 impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
     fn into(self) -> FloatingPaneCoordinates {
         FloatingPaneCoordinates {
             x: self
                 .x
-                .and_then(|x| match ProtobufFixedOrPercent::from_i32(x.r#type) {
+                .and_then(|x| match ProtobufFixedOrPercent::try_from(x.r#type).ok() {
                     Some(ProtobufFixedOrPercent::Percent) => {
                         Some(PercentOrFixed::Percent(x.value as usize))
                     },
@@ -184,7 +167,7 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                 }),
             y: self
                 .y
-                .and_then(|y| match ProtobufFixedOrPercent::from_i32(y.r#type) {
+                .and_then(|y| match ProtobufFixedOrPercent::try_from(y.r#type).ok() {
                     Some(ProtobufFixedOrPercent::Percent) => {
                         Some(PercentOrFixed::Percent(y.value as usize))
                     },
@@ -194,7 +177,7 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                     None => None,
                 }),
             width: self.width.and_then(|width| {
-                match ProtobufFixedOrPercent::from_i32(width.r#type) {
+                match ProtobufFixedOrPercent::try_from(width.r#type).ok() {
                     Some(ProtobufFixedOrPercent::Percent) => {
                         Some(PercentOrFixed::Percent(width.value as usize))
                     },
@@ -205,7 +188,7 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                 }
             }),
             height: self.height.and_then(|height| {
-                match ProtobufFixedOrPercent::from_i32(height.r#type) {
+                match ProtobufFixedOrPercent::try_from(height.r#type).ok() {
                     Some(ProtobufFixedOrPercent::Percent) => {
                         Some(PercentOrFixed::Percent(height.value as usize))
                     },
@@ -299,7 +282,7 @@ impl Into<ProtobufHttpVerb> for HttpVerb {
 impl TryFrom<ProtobufPaneId> for PaneId {
     type Error = &'static str;
     fn try_from(protobuf_pane_id: ProtobufPaneId) -> Result<Self, &'static str> {
-        match ProtobufPaneType::from_i32(protobuf_pane_id.pane_type) {
+        match ProtobufPaneType::try_from(protobuf_pane_id.pane_type).ok() {
             Some(ProtobufPaneType::Terminal) => Ok(PaneId::Terminal(protobuf_pane_id.id)),
             Some(ProtobufPaneType::Plugin) => Ok(PaneId::Plugin(protobuf_pane_id.id)),
             None => Err("Failed to convert PaneId"),
@@ -658,7 +641,8 @@ fn key_to_rebind_to_plugin_command_assets(
     key_to_rebind: KeyToRebind,
 ) -> Option<(InputMode, KeyWithModifier, Vec<Action>)> {
     Some((
-        ProtobufInputMode::from_i32(key_to_rebind.input_mode)?
+        ProtobufInputMode::try_from(key_to_rebind.input_mode)
+            .ok()?
             .try_into()
             .ok()?,
         key_to_rebind.key?.try_into().ok()?,
@@ -674,7 +658,8 @@ fn key_to_unbind_to_plugin_command_assets(
     key_to_unbind: KeyToUnbind,
 ) -> Option<(InputMode, KeyWithModifier)> {
     Some((
-        ProtobufInputMode::from_i32(key_to_unbind.input_mode)?
+        ProtobufInputMode::try_from(key_to_unbind.input_mode)
+            .ok()?
             .try_into()
             .ok()?,
         key_to_unbind.key?.try_into().ok()?,
@@ -684,7 +669,7 @@ fn key_to_unbind_to_plugin_command_assets(
 impl TryFrom<ProtobufPluginCommand> for PluginCommand {
     type Error = &'static str;
     fn try_from(protobuf_plugin_command: ProtobufPluginCommand) -> Result<Self, &'static str> {
-        match CommandName::from_i32(protobuf_plugin_command.name) {
+        match CommandName::try_from(protobuf_plugin_command.name).ok() {
             Some(CommandName::Subscribe) => match protobuf_plugin_command.payload {
                 Some(Payload::SubscribePayload(subscribe_payload)) => {
                     let protobuf_event_list = subscribe_payload.subscriptions;
@@ -894,7 +879,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::SwitchToMode) => match protobuf_plugin_command.payload {
                 Some(Payload::SwitchToModePayload(switch_to_mode_payload)) => {
-                    match ProtobufInputMode::from_i32(switch_to_mode_payload.input_mode) {
+                    match ProtobufInputMode::try_from(switch_to_mode_payload.input_mode).ok() {
                         Some(protobuf_input_mode) => {
                             Ok(PluginCommand::SwitchToMode(protobuf_input_mode.try_into()?))
                         },
@@ -1130,7 +1115,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::SetPaneFrameStyle) => match protobuf_plugin_command.payload {
                 Some(Payload::SetPaneFrameStylePayload(payload)) => {
-                    match ProtobufPaneFrameStyle::from_i32(payload.pane_frame_style) {
+                    match ProtobufPaneFrameStyle::try_from(payload.pane_frame_style).ok() {
                         Some(protobuf_pane_frame_style) => Ok(PluginCommand::SetPaneFrameStyle(
                             protobuf_pane_frame_style.try_into()?,
                         )),
@@ -1291,7 +1276,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         payload
                             .permissions
                             .iter()
-                            .filter_map(|p| ProtobufPermissionType::from_i32(*p))
+                            .filter_map(|p| ProtobufPermissionType::try_from(*p).ok())
                             .filter_map(|p| PermissionType::try_from(p).ok())
                             .collect(),
                     ))
@@ -1399,7 +1384,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         .into_iter()
                         .map(|e| (e.name, e.value))
                         .collect();
-                    let verb = match ProtobufHttpVerb::from_i32(web_request_payload.verb) {
+                    let verb = match ProtobufHttpVerb::try_from(web_request_payload.verb).ok() {
                         Some(verb) => verb.into(),
                         None => {
                             return Err("Unrecognized http verb");
@@ -1539,32 +1524,6 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     Ok(PluginCommand::SetSoftKeyboard(payload.on))
                 },
                 _ => Err("Mismatched payload for SetSoftKeyboard"),
-            },
-            Some(CommandName::SetTabFit) => match protobuf_plugin_command.payload {
-                Some(Payload::SetTabFitPayload(payload)) => {
-                    let fit = match (payload.pane_id, payload.size) {
-                        (Some(pane_id), Some(size)) => {
-                            Some((pane_id.try_into()?, size_from_protobuf(size)))
-                        },
-                        (None, None) => None,
-                        _ => return Err("Malformed set_tab_fit_payload payload"),
-                    };
-                    Ok(PluginCommand::SetTabFit {
-                        tab_id: payload.tab_id as usize,
-                        fit,
-                    })
-                },
-                _ => Err("Mismatched payload for SetTabFit"),
-            },
-            Some(CommandName::ExitMobileMode) => match protobuf_plugin_command.payload {
-                Some(_) => Err("ExitMobileMode should have no payload, found a payload"),
-                None => Ok(PluginCommand::ExitMobileMode),
-            },
-            Some(CommandName::SetShadowFocus) => match protobuf_plugin_command.payload {
-                Some(Payload::SetShadowFocusPayload(pane_id)) => {
-                    Ok(PluginCommand::SetShadowFocus(pane_id.try_into()?))
-                },
-                _ => Err("Mismatched payload for SetShadowFocus"),
             },
             Some(CommandName::DumpSessionLayout) => match protobuf_plugin_command.payload {
                 Some(Payload::DumpSessionLayoutPayload(payload)) => {
@@ -3485,26 +3444,6 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     ProtobufSetSoftKeyboardPayload { on },
                 )),
             }),
-            PluginCommand::SetTabFit { tab_id, fit } => {
-                let (pane_id, size) = match fit {
-                    Some((pane_id, size)) => {
-                        (Some(pane_id.try_into()?), Some(size_to_protobuf(size)))
-                    },
-                    None => (None, None),
-                };
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::SetTabFit as i32,
-                    payload: Some(Payload::SetTabFitPayload(ProtobufSetTabFitPayload {
-                        tab_id: tab_id as u32,
-                        pane_id,
-                        size,
-                    })),
-                })
-            },
-            PluginCommand::ExitMobileMode => Ok(ProtobufPluginCommand {
-                name: CommandName::ExitMobileMode as i32,
-                payload: None,
-            }),
             PluginCommand::DumpSessionLayout { tab_index } => Ok(ProtobufPluginCommand {
                 name: CommandName::DumpSessionLayout as i32,
                 payload: tab_index.map(|idx| {
@@ -3626,10 +3565,6 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::SendSigintToPaneId(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::SendSigintToPaneId as i32,
                 payload: Some(Payload::SendSigintToPaneIdPayload(pane_id.try_into()?)),
-            }),
-            PluginCommand::SetShadowFocus(pane_id) => Ok(ProtobufPluginCommand {
-                name: CommandName::SetShadowFocus as i32,
-                payload: Some(Payload::SetShadowFocusPayload(pane_id.try_into()?)),
             }),
             PluginCommand::SendSigkillToPaneId(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::SendSigkillToPaneId as i32,
@@ -5293,45 +5228,7 @@ impl From<OpenPluginPaneFloatingResponse> for ProtobufOpenPluginPaneFloatingResp
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{PaneId, PluginCommand};
-    use crate::pane_size::Size;
-
-    #[test]
-    fn set_tab_fit_set_protobuf_round_trip() {
-        let original = PluginCommand::SetTabFit {
-            tab_id: 7,
-            fit: Some((PaneId::Terminal(3), Size { rows: 24, cols: 80 })),
-        };
-        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
-        let decoded: PluginCommand = protobuf.try_into().expect("decode");
-        match decoded {
-            PluginCommand::SetTabFit { tab_id, fit } => {
-                assert_eq!(tab_id, 7);
-                assert_eq!(
-                    fit,
-                    Some((PaneId::Terminal(3), Size { rows: 24, cols: 80 }))
-                );
-            },
-            other => panic!("expected SetTabFit, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn set_tab_fit_clear_protobuf_round_trip() {
-        let original = PluginCommand::SetTabFit {
-            tab_id: 7,
-            fit: None,
-        };
-        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
-        let decoded: PluginCommand = protobuf.try_into().expect("decode");
-        match decoded {
-            PluginCommand::SetTabFit { tab_id, fit } => {
-                assert_eq!(tab_id, 7);
-                assert_eq!(fit, None);
-            },
-            other => panic!("expected SetTabFit, got {:?}", other),
-        }
-    }
+    use crate::data::PluginCommand;
 
     #[test]
     fn set_pane_frame_style_protobuf_round_trip() {

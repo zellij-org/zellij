@@ -73,7 +73,6 @@ pub struct TiledPanes {
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
-    stacked_pane_list: Rc<RefCell<bool>>,
     reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>>,
     default_mode_info: ModeInfo,
     style: Style,
@@ -101,7 +100,6 @@ impl TiledPanes {
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         stacked_resize: Rc<RefCell<bool>>,
-        stacked_pane_list: Rc<RefCell<bool>>,
         reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>>,
         fullscreen_covers_ui: Rc<RefCell<bool>>,
         session_is_mirrored: bool,
@@ -120,7 +118,6 @@ impl TiledPanes {
             mode_info,
             character_cell_size,
             stacked_resize,
-            stacked_pane_list,
             reserved_top_rows,
             default_mode_info,
             style,
@@ -1135,6 +1132,7 @@ impl TiledPanes {
         client_id_override: Option<ClientId>,
         help_text_visible: &HashMap<ClientId, bool>,
         mouse_scroll_resize: bool,
+        mouse_hover_tips: bool,
     ) -> Result<()> {
         let err_context = || "failed to render tiled panes";
 
@@ -1154,10 +1152,7 @@ impl TiledPanes {
         } else {
             self.active_panes
                 .iter()
-                .filter(|(client_id, _pane_id)| {
-                    connected_clients.contains(client_id)
-                        || self.active_panes.is_shadow_client(client_id)
-                })
+                .filter(|(client_id, _pane_id)| connected_clients.contains(client_id))
                 .map(|(client_id, pane_id)| (*client_id, *pane_id))
                 .collect()
         };
@@ -1263,6 +1258,7 @@ impl TiledPanes {
                     show_help_text,
                     omit_pane_title && reserved_rows_for_pane == 0,
                     mouse_scroll_resize,
+                    mouse_hover_tips,
                     self.dimmed_clients.clone(),
                 );
                 pane_contents_and_ui.set_frame_geom_override(visible_member_frame_override);
@@ -2709,22 +2705,13 @@ impl TiledPanes {
                 {
                     self.expand_pane_in_stack(next_active_pane_id);
                 }
-                let connected_clients: HashSet<ClientId> =
-                    self.connected_clients.borrow().iter().copied().collect();
                 for (client_id, active_pane_id) in active_panes {
                     if active_pane_id == pane_id {
-                        if connected_clients.contains(&client_id) {
-                            self.active_panes.insert(
-                                client_id,
-                                next_active_pane_id,
-                                &mut self.panes,
-                            );
-                            if let Some(last_active_pane_id) = last_active_pane_id {
-                                self.active_panes
-                                    .set_last_pane(client_id, last_active_pane_id);
-                            }
-                        } else {
-                            self.active_panes.remove_silent(&client_id);
+                        self.active_panes
+                            .insert(client_id, next_active_pane_id, &mut self.panes);
+                        if let Some(last_active_pane_id) = last_active_pane_id {
+                            self.active_panes
+                                .set_last_pane(client_id, last_active_pane_id);
                         }
                     }
                 }
@@ -2830,7 +2817,11 @@ impl TiledPanes {
 
     pub fn toggle_pane_fullscreen(&mut self, pane_id: PaneId) {
         if self.fullscreen_is_active.is_some() {
+            let was_no_ui = *self.fullscreen_covers_ui.borrow();
             self.unset_fullscreen();
+            if was_no_ui {
+                self.set_fullscreen(pane_id, false);
+            }
         } else {
             self.set_fullscreen(pane_id, false);
         }
@@ -3029,21 +3020,6 @@ impl TiledPanes {
     pub fn set_active_panes(&mut self, active_panes: ActivePanes) {
         self.active_panes = active_panes;
     }
-    pub fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) {
-        self.active_panes.insert_silent(client_id, pane_id);
-    }
-    pub fn clear_shadow_focus(&mut self, client_id: ClientId) -> Option<PaneId> {
-        self.active_panes.remove_silent(&client_id)
-    }
-    pub fn is_shadow_focus_client(&self, client_id: &ClientId) -> bool {
-        self.active_panes.is_shadow_client(client_id)
-    }
-    pub fn shadow_focus_clients(&self) -> Vec<ClientId> {
-        self.active_panes.iter_shadow_clients().copied().collect()
-    }
-    pub fn has_shadow_focus_on(&self, client_id: ClientId, pane_id: PaneId) -> bool {
-        self.active_panes.has_shadow_focus_on(client_id, pane_id)
-    }
     pub fn move_client_focus_to_existing_panes(&mut self) {
         let existing_pane_ids: Vec<PaneId> = self.panes.keys().copied().collect();
         let nonexisting_panes_that_are_focused = self
@@ -3063,17 +3039,10 @@ impl TiledPanes {
             .filter(|(_cid, pid)| **pid == from_pane_id)
             .map(|(cid, _pid)| *cid)
             .collect();
-        let connected_clients: HashSet<ClientId> =
-            self.connected_clients.borrow().iter().copied().collect();
         for client_id in clients_in_pane {
-            if connected_clients.contains(&client_id) {
-                self.active_panes.remove(&client_id, &mut self.panes);
-                self.active_panes
-                    .insert(client_id, to_pane_id, &mut self.panes);
-            } else {
-                self.active_panes.remove_silent(&client_id);
-                self.active_panes.insert_silent(client_id, to_pane_id);
-            }
+            self.active_panes.remove(&client_id, &mut self.panes);
+            self.active_panes
+                .insert(client_id, to_pane_id, &mut self.panes);
         }
     }
     fn reset_boundaries(&mut self) {

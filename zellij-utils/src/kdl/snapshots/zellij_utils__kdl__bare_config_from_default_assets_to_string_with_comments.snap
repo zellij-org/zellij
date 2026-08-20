@@ -11,6 +11,7 @@ keybinds clear-defaults=true {
         bind "down" { MoveFocus "down"; }
         bind "up" { MoveFocus "up"; }
         bind "right" { MoveFocus "right"; }
+        bind ";" { FocusLastPane; }
         bind "c" { SwitchToMode "renamepane"; PaneNameInput 0; }
         bind "d" { NewPane "down"; SwitchToMode "normal"; }
         bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "normal"; }
@@ -90,6 +91,7 @@ keybinds clear-defaults=true {
         bind "tab" { MovePane; }
     }
     scroll {
+        bind "c" { CopyLastCommandOutput; SwitchToMode "normal"; }
         bind "e" { EditScrollback; SwitchToMode "normal"; }
         bind "s" { SwitchToMode "entersearch"; SearchInput 0; }
     }
@@ -208,6 +210,8 @@ keybinds clear-defaults=true {
         bind "down" { ScrollDown; }
         bind "up" { ScrollUp; }
         bind "right" { PageScrollDown; }
+        bind "[" { ScrollToPreviousPrompt; }
+        bind "]" { ScrollToNextPrompt; }
         bind "Ctrl b" { PageScrollUp; }
         bind "Ctrl c" { ScrollToBottom; SwitchToMode "normal"; }
         bind "d" { HalfPageScrollDown; }
@@ -216,6 +220,7 @@ keybinds clear-defaults=true {
         bind "j" { ScrollDown; }
         bind "k" { ScrollUp; }
         bind "l" { PageScrollDown; }
+        bind "m" { SelectCommandAtScrollPosition; }
         bind "Ctrl s" { SwitchToMode "normal"; }
         bind "u" { HalfPageScrollUp; }
     }
@@ -268,7 +273,6 @@ plugins {
     filepicker location="zellij:strider" {
         cwd "/"
     }
-    mobile location="zellij:mobile"
     plugin-manager location="zellij:plugin-manager"
     session-manager location="zellij:session-manager"
     status-bar location="zellij:status-bar"
@@ -574,6 +578,10 @@ web_client {
 // default is true
 // mouse_hover_effects false
  
+// Whether to show mouse hover help-text tips (resize help and group shortcuts)
+// default is true
+// mouse_hover_tips false
+ 
 // Whether to show visual bell indicators (pane/tab frame flash and [!] suffix)
 // default is true
 // visual_bell true
@@ -585,6 +593,16 @@ web_client {
 // Whether clicking a pane to focus it also sends the click into the pane
 // default is false
 // mouse_click_through false
+ 
+// Whether triple-clicking inside command output marked by the shell (OSC 133) selects
+// the command and its output instead of the logical line
+// default is true
+// osc133_command_selection false
+ 
+// Characters that terminate a word when double-clicking to select it
+// whitespace is always a separator and need not be listed here
+// default is "[]{}<>()"
+// word_separators "[]{}<>()"
  
 // The ip address the web server should listen on when it starts
 // Default: "127.0.0.1"
@@ -610,21 +628,12 @@ web_client {
 // Note: This only applies to web clients at the moment.
 // client_async_worker_tasks 4
  
-// When attached clients land in the mobile UI plugin.
-// Options:
-//   - "web" (Default — web clients only, gated on mobile_threshold_cols/rows)
-//   - "always" (any client, gated on mobile_threshold_cols/rows)
-//   - "never"
-// 
-// mobile_layout "web"
- 
-// Column breakpoint for mobile_layout (web/always). 0 = always match.
-// Default: 60
-// mobile_threshold_cols 60
- 
-// Row breakpoint for mobile_layout (web/always). 0 = always match.
-// Default: 30
-// mobile_threshold_rows 30
+// Whether to let programs running inside panes read the paste buffer
+// (clipboard) with the OSC 52 escape sequence. When enabled, any program
+// in any pane - including one running on a remote machine over SSH - can
+// read the clipboard without the user being asked.
+// Default: false
+// dangerously_enable_paste_buffer_read false
  
 // How to handle a nested Zellij session detected inside a pane.
 // Options:
@@ -634,3 +643,14 @@ web_client {
 //   - "never" (never prompt or descend; do it manually)
 // 
 // nested_session_handling "ask"
+ 
+// Which escape sequence desktop notifications coming from panes are
+// forwarded to the host terminal with.
+// Options:
+//   - "auto" (Default — detect from the host terminal environment)
+//   - "osc9" (the legacy iTerm2 protocol, understood by most terminals)
+//   - "osc99" (kitty's notification protocol)
+//   - "bell" (ring the terminal bell instead)
+//   - "off" (do not forward notifications to the host terminal)
+// 
+// host_notification_protocol "auto"

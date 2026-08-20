@@ -187,6 +187,13 @@ pub struct ForwardSlot {
     pub reply_bytes: Vec<u8>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ClipboardForwardSlot {
+    pub token: u32,
+}
+
+pub const CLIENT_CLIPBOARD_FORWARD_TIMEOUT_MS: u64 = 30_000;
+
 /// Return value of `feed()`.
 #[derive(Debug, Clone, Default)]
 pub struct ParseOutput {
@@ -197,6 +204,7 @@ pub struct ParseOutput {
     /// single feed would indicate the host emitted two barriers, in which
     /// case only the first is honored.
     pub completed_forward: Option<(u32, Vec<u8>)>,
+    pub completed_clipboard_forward: Option<(u32, Vec<u8>)>,
     /// OSC 99 notification-response payloads (one per OSC 99 found in
     /// the chunk). Routed by the caller as
     /// `InputInstruction::DesktopNotificationResponse`. Lives here, not
@@ -215,6 +223,15 @@ pub struct ParseOutput {
     pub has_partial_state: bool,
 }
 
+fn is_user_input(event: &InputEvent) -> bool {
+    match event {
+        InputEvent::Key(_) | InputEvent::Paste(_) => true,
+        InputEvent::Mouse(mouse_event) => !mouse_event.mouse_buttons.is_empty(),
+        InputEvent::PixelMouse(mouse_event) => !mouse_event.mouse_buttons.is_empty(),
+        _ => false,
+    }
+}
+
 /// Cap on the size of an in-flight partial OSC/CSI buffer. Sized to
 /// pass legitimate OSC 52 clipboard payloads, which carry the entire
 /// clipboard base64-encoded and have no protocol-level limit (images,
@@ -231,7 +248,14 @@ const PASTE_END_MARKER: &[u8] = b"\x1b[201~";
 pub enum PendingPartial {
     None,
     LoneEsc,
+    BareIntroducer,
     ReplyInProgress,
+}
+
+impl PendingPartial {
+    pub fn uses_reply_flush_guard(&self) -> bool {
+        matches!(self, PendingPartial::ReplyInProgress)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -285,6 +309,7 @@ pub struct StdinAnsiParser {
     /// Active forwarding slot: `Some` while a forwarded query is in
     /// flight, `None` otherwise.
     active_forward: Option<ForwardSlot>,
+    active_clipboard_forward: Option<ClipboardForwardSlot>,
     /// Bytes of an OSC sequence whose terminator hasn't arrived yet.
     /// Carried across feed() calls so the next chunk can complete it.
     partial_osc: Vec<u8>,
@@ -312,6 +337,7 @@ impl StdinAnsiParser {
         StdinAnsiParser {
             inner: InputParser::new(),
             active_forward: None,
+            active_clipboard_forward: None,
             partial_osc: Vec::new(),
             partial_csi: Vec::new(),
             partial_paste: Vec::new(),
@@ -332,11 +358,13 @@ impl StdinAnsiParser {
     /// classified `HostReply` events.
     ///
     /// The server serializes forwarded queries globally (`forward_in_flight`
-    /// on `Screen`), so in a well-behaved session this is only ever called
-    /// when the slot is empty. The guards below catch a misbehaving server
-    /// or a race that reached through: debug builds panic so bugs surface
-    /// during testing, release builds log and clobber the previous slot
-    /// (whose accumulated bytes would otherwise silently leak).
+    /// on `Screen`), but its own backstop timeout can release that slot and
+    /// dispatch the next query before this client's per-slot timer has run,
+    /// so callers hand a still-open slot over with `take_active_forward`
+    /// first. The guards below catch a caller that skipped that handover:
+    /// debug builds panic so bugs surface during testing, release builds
+    /// log and clobber the previous slot (whose accumulated bytes would
+    /// otherwise silently leak).
     pub fn open_forward(&mut self, token: u32) {
         debug_assert!(
             self.active_forward.is_none(),
@@ -369,6 +397,47 @@ impl StdinAnsiParser {
             },
             _ => None,
         }
+    }
+
+    /// Close whatever forwarding window is currently open, whichever token
+    /// it belongs to, and return its token together with the bytes it
+    /// accumulated. Used to hand a slot the server has already given up on
+    /// over to the forward that replaced it, instead of clobbering it.
+    pub fn take_active_forward(&mut self) -> Option<(u32, Vec<u8>)> {
+        self.active_forward
+            .take()
+            .map(|slot| (slot.token, slot.reply_bytes))
+    }
+
+    pub fn open_clipboard_forward(&mut self, token: u32) {
+        debug_assert!(
+            self.active_clipboard_forward.is_none(),
+            "open_clipboard_forward({}) called while slot for token {:?} is still active",
+            token,
+            self.active_clipboard_forward.as_ref().map(|s| s.token),
+        );
+        self.active_clipboard_forward = Some(ClipboardForwardSlot { token });
+    }
+
+    pub fn close_clipboard_forward_on_timeout(&mut self, token: u32) -> Option<(u32, Vec<u8>)> {
+        match &self.active_clipboard_forward {
+            Some(slot) if slot.token == token => {
+                let slot = self.active_clipboard_forward.take().unwrap();
+                Some((slot.token, Vec::new()))
+            },
+            _ => None,
+        }
+    }
+
+    pub fn take_active_clipboard_forward(&mut self) -> Option<(u32, Vec<u8>)> {
+        self.active_clipboard_forward
+            .take()
+            .map(|slot| (slot.token, Vec::new()))
+    }
+
+    #[cfg(test)]
+    pub fn active_clipboard_forward_token(&self) -> Option<u32> {
+        self.active_clipboard_forward.as_ref().map(|s| s.token)
     }
 
     /// Currently-open slot's token, if any. Test-only inspector;
@@ -415,6 +484,15 @@ impl StdinAnsiParser {
                             .push(payload.get(3..).unwrap_or_default().to_vec());
                     } else if let Some(reply) = HostReply::from_osc_payload(&payload) {
                         out.replies.push(reply);
+                    }
+                    if payload.starts_with(b"52;") {
+                        if let Some(slot) = self.active_clipboard_forward.take() {
+                            let mut bytes = b"\x1b]".to_vec();
+                            bytes.extend_from_slice(&payload);
+                            bytes.extend_from_slice(b"\x1b\\");
+                            out.completed_clipboard_forward = Some((slot.token, bytes));
+                            continue;
+                        }
                     }
                     if let Some(slot) = self.active_forward.as_mut() {
                         // Re-serialize so the pane's pty sees a legal OSC.
@@ -467,7 +545,16 @@ impl StdinAnsiParser {
                 // input bytes that are NOT part of a classified reply. To
                 // produce that residue deterministically, we re-scan the
                 // buffer a second time below.
-                _ => {},
+                other => {
+                    if self.active_clipboard_forward.is_some()
+                        && is_user_input(&other)
+                        && out.completed_clipboard_forward.is_none()
+                    {
+                        if let Some(slot) = self.active_clipboard_forward.take() {
+                            out.completed_clipboard_forward = Some((slot.token, Vec::new()));
+                        }
+                    }
+                },
             }
         }
         // Produce the residue: replay the input through a scratch parser
@@ -499,26 +586,27 @@ impl StdinAnsiParser {
             PendingPartial::None
         } else if self.partial_csi.is_empty() && self.partial_osc == [0x1b] {
             PendingPartial::LoneEsc
+        } else if self.partial_csi.is_empty() && self.partial_osc == [0x1b, b']'] {
+            PendingPartial::BareIntroducer
+        } else if self.partial_osc.is_empty() && self.partial_csi == [0x1b, b'['] {
+            PendingPartial::BareIntroducer
         } else {
             PendingPartial::ReplyInProgress
         }
     }
 
-    pub fn finalize_lone_esc(&mut self) -> Vec<u8> {
-        if self.partial_csi.is_empty()
-            && self.partial_paste.is_empty()
-            && self.partial_osc.is_empty()
-            && self.nested_frame_extractor.partial_bytes() == [0x1b]
-        {
-            self.nested_frame_extractor.take_partial()
-        } else if self.partial_csi.is_empty()
-            && self.partial_paste.is_empty()
-            && self.nested_frame_extractor.partial_bytes().is_empty()
-            && self.partial_osc == [0x1b]
-        {
-            std::mem::take(&mut self.partial_osc)
-        } else {
-            Vec::new()
+    pub fn finalize_fast_partial(&mut self) -> Vec<u8> {
+        match self.pending_partial() {
+            PendingPartial::LoneEsc | PendingPartial::BareIntroducer => {
+                if !self.nested_frame_extractor.partial_bytes().is_empty() {
+                    self.nested_frame_extractor.take_partial()
+                } else if !self.partial_osc.is_empty() {
+                    std::mem::take(&mut self.partial_osc)
+                } else {
+                    std::mem::take(&mut self.partial_csi)
+                }
+            },
+            PendingPartial::None | PendingPartial::ReplyInProgress => Vec::new(),
         }
     }
 
@@ -859,6 +947,27 @@ pub fn schedule_forward_timeout<F>(
     runtime.spawn(async move {
         tokio::time::sleep(deadline).await;
         let payload = parser.lock().unwrap().close_forward_on_timeout(token);
+        if let Some((t, bytes)) = payload {
+            on_timeout(t, bytes);
+        }
+    });
+}
+
+pub fn schedule_clipboard_forward_timeout<F>(
+    runtime: &tokio::runtime::Handle,
+    parser: Arc<Mutex<StdinAnsiParser>>,
+    token: u32,
+    deadline: std::time::Duration,
+    on_timeout: F,
+) where
+    F: FnOnce(u32, Vec<u8>) + Send + 'static,
+{
+    runtime.spawn(async move {
+        tokio::time::sleep(deadline).await;
+        let payload = parser
+            .lock()
+            .unwrap()
+            .close_clipboard_forward_on_timeout(token);
         if let Some((t, bytes)) = payload {
             on_timeout(t, bytes);
         }

@@ -135,6 +135,7 @@ enum AnsiCode {
 }
 
 message Action {
+  reserved 140;
   oneof action_type {
     QuitAction quit = 1;
     WriteAction write = 2;
@@ -277,7 +278,6 @@ message Action {
     SetDarkThemeAction set_dark_theme = 137;
     SetLightThemeAction set_light_theme = 138;
     ToggleThemeAction toggle_theme = 139;
-    ToggleMobileModeAction toggle_mobile_mode = 140;
     FocusLastPaneAction focus_last_pane = 141;
     SetPaneFrameStyleAction set_pane_frame_style = 142;
     ToggleFocusNoUiFullscreenAction toggle_focus_no_ui_fullscreen = 143;
@@ -285,6 +285,10 @@ message Action {
     FocusHostSessionAction focus_host_session = 145;
     ToggleHostFullscreenAction toggle_host_fullscreen = 146;
     FocusGuestSessionAction focus_guest_session = 147;
+    ScrollToPreviousPromptAction scroll_to_previous_prompt = 148;
+    ScrollToNextPromptAction scroll_to_next_prompt = 149;
+    SelectCommandAtScrollPositionAction select_command_at_scroll_position = 150;
+    CopyLastCommandOutputAction copy_last_command_output = 151;
   }
 }
 
@@ -310,6 +314,10 @@ message ScrollUpAction {}
 message ScrollDownAction {}
 message ScrollToBottomAction {}
 message ScrollToTopAction {}
+message ScrollToPreviousPromptAction {}
+message ScrollToNextPromptAction {}
+message SelectCommandAtScrollPositionAction {}
+message CopyLastCommandOutputAction {}
 message PageScrollUpAction {}
 message PageScrollDownAction {}
 message HalfPageScrollUpAction {}
@@ -348,7 +356,6 @@ message CopyAction {}
 message ConfirmAction {}
 message DenyAction {}
 message ToggleMouseModeAction {}
-message ToggleMobileModeAction {}
 message PreviousSwapLayoutAction {}
 message NextSwapLayoutAction {}
 message TabLayoutInfo {
@@ -803,6 +810,7 @@ message CliAssets {
   optional uint32 max_panes = 9;
   bool force_run_layout_commands = 10;
   optional string cwd = 11;
+  map<string, string> host_terminal_env = 12;
 }
 
 message LayoutInfo {
@@ -1204,14 +1212,17 @@ message Options {
   optional bool mouse_click_through = 45;
   optional string theme_dark = 46;
   optional string theme_light = 47;
-  optional MobileLayout mobile_layout = 48;
-  optional uint32 mobile_threshold_cols = 49;
-  optional uint32 mobile_threshold_rows = 50;
+  reserved 48, 49, 50;
   optional string pane_frame_style = 51;
   optional bool stacked_pane_list = 52;
   optional NestedSessionHandling nested_session_handling = 53;
   optional bool mouse_scroll_resize = 54;
   optional bool support_kitty_graphics_protocol = 55;
+  optional bool osc133_command_selection = 56;
+  optional string word_separators = 57;
+  optional bool dangerously_enable_paste_buffer_read = 58;
+  optional bool mouse_hover_tips = 59;
+  optional string host_notification_protocol = 67;
 }
 
 enum OnForceClose {
@@ -1239,13 +1250,6 @@ enum WebSharing {
   WEB_SHARING_DISABLED = 3;
 }
 
-enum MobileLayout {
-  MOBILE_LAYOUT_UNSPECIFIED = 0;
-  MOBILE_LAYOUT_WEB = 1;
-  MOBILE_LAYOUT_ALWAYS = 2;
-  MOBILE_LAYOUT_NEVER = 3;
-}
-
 enum NestedSessionHandling {
   NESTED_SESSION_HANDLING_UNSPECIFIED = 0;
   NESTED_SESSION_HANDLING_ASK = 1;
@@ -1253,6 +1257,7 @@ enum NestedSessionHandling {
   NESTED_SESSION_HANDLING_DESCEND = 3;
   NESTED_SESSION_HANDLING_NEVER = 4;
 }
+
 
 // Pane-targeting action messages
 message ScrollUpByPaneIdAction { PaneId pane_id = 1; }

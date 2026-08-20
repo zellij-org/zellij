@@ -19,15 +19,20 @@ use zellij_utils::input::layout::{
     RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, TiledPaneLayout,
 };
 use zellij_utils::input::mouse::MouseEvent;
-use zellij_utils::input::options::{NestedSessionHandling, Options, PaneFrameStyle};
+use zellij_utils::input::options::{
+    HostNotificationProtocol, NestedSessionHandling, Options, PaneFrameStyle,
+    DEFAULT_WORD_SEPARATORS,
+};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
 
 use crate::background_jobs::BackgroundJob;
+use crate::notifications::NotificationProtocol;
 use crate::os_input_output::AsyncReader;
+use crate::panes::grid::PendingNotification;
 use crate::pty_writer::PtyWriteInstruction;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::env::set_var;
 use std::sync::{Arc, Mutex};
 
@@ -148,10 +153,37 @@ fn send_cli_action_to_server(
     }
 }
 
+fn route_arbitrary_action_to_server(
+    session_metadata: &SessionMetaData,
+    action: Action,
+    client_id: ClientId,
+) {
+    let senders = session_metadata.senders.clone();
+    let default_mode = session_metadata
+        .session_configuration
+        .get_client_configuration(&client_id)
+        .options
+        .default_mode
+        .unwrap_or(InputMode::Normal);
+    route_action(
+        action,
+        client_id,
+        None,
+        None,
+        senders,
+        None,
+        None,
+        default_mode,
+        None,
+    )
+    .unwrap();
+}
+
 #[derive(Clone, Default)]
 struct FakeInputOutput {
     fake_filesystem: Arc<Mutex<HashMap<String, String>>>,
     server_to_client_messages: Arc<Mutex<HashMap<ClientId, Vec<ServerToClientMsg>>>>,
+    tty_stdin_bytes: Arc<Mutex<BTreeMap<u32, Vec<u8>>>>,
 }
 
 impl ServerOsApi for FakeInputOutput {
@@ -174,8 +206,14 @@ impl ServerOsApi for FakeInputOutput {
     ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
-    fn write_to_tty_stdin(&self, _id: u32, _buf: &[u8]) -> Result<usize> {
-        unimplemented!()
+    fn write_to_tty_stdin(&self, id: u32, buf: &[u8]) -> Result<usize> {
+        self.tty_stdin_bytes
+            .lock()
+            .unwrap()
+            .entry(id)
+            .or_insert_with(Vec::new)
+            .extend_from_slice(buf);
+        Ok(buf.len())
     }
     fn tcdrain(&self, _id: u32) -> Result<()> {
         unimplemented!()
@@ -261,9 +299,32 @@ fn create_new_screen_with_kitty_graphics(
     mouse_hover_effects: bool,
     support_kitty_graphics_protocol: bool,
 ) -> Screen {
+    let (screen, _tty_stdin_bytes, _server_receiver) = create_new_screen_with_capture(
+        size,
+        advanced_mouse_actions,
+        mouse_hover_effects,
+        support_kitty_graphics_protocol,
+        true,
+    );
+    screen
+}
+
+type TtyStdinBytes = Arc<Mutex<BTreeMap<u32, Vec<u8>>>>;
+type ServerReceiver = Receiver<(ServerInstruction, ErrorContext)>;
+
+fn create_new_screen_with_capture(
+    size: Size,
+    advanced_mouse_actions: bool,
+    mouse_hover_effects: bool,
+    support_kitty_graphics_protocol: bool,
+    session_is_mirrored: bool,
+) -> (Screen, TtyStdinBytes, ServerReceiver) {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput::default();
+    let tty_stdin_bytes = fake_os_input.tty_stdin_bytes.clone();
     bus.os_input = Some(Box::new(fake_os_input));
+    let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::unbounded();
+    bus.senders.to_server = Some(SenderWithContext::new(to_server));
     let client_attributes = ClientAttributes {
         size,
         ..Default::default()
@@ -273,7 +334,6 @@ fn create_new_screen_with_kitty_graphics(
     mode_info.session_name = Some("zellij-test".into());
     let draw_pane_frames = PaneFrameStyle::None;
     let auto_layout = true;
-    let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
     let default_layout = Box::new(Layout::default());
     let default_layout_name = None;
@@ -322,8 +382,11 @@ fn create_new_screen_with_kitty_graphics(
         false,
         web_sharing,
         advanced_mouse_actions,
+        true,
+        DEFAULT_WORD_SEPARATORS.to_owned(),
         mouse_scroll_resize,
         mouse_hover_effects,
+        true,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -331,6 +394,15 @@ fn create_new_screen_with_kitty_graphics(
         web_server_port,
         NestedSessionHandling::default(),
     );
+    (
+        seed_first_client_size(screen, size),
+        tty_stdin_bytes,
+        server_receiver,
+    )
+}
+
+fn seed_first_client_size(mut screen: Screen, size: Size) -> Screen {
+    screen.set_client_size(1, size);
     screen
 }
 
@@ -714,6 +786,8 @@ impl MockScreen {
         config.options.pane_frame_style = Some(PaneFrameStyle::Full);
         config.options.stacked_pane_list = Some(false);
         let main_client_id = 1;
+
+        let _ = to_screen.send(ScreenInstruction::RecomputeTabSize(main_client_id, size));
 
         let received_background_jobs = Arc::new(Mutex::new(vec![]));
         std::thread::Builder::new()
@@ -1476,26 +1550,35 @@ fn update_screen_pixel_dimensions() {
     };
     let mut screen = create_new_screen(size, true, true);
     let initial_pixel_dimensions = screen.pixel_dimensions;
-    screen.update_pixel_dimensions(PixelDimensions {
-        character_cell_size: Some(SizeInPixels {
-            height: 10,
-            width: 5,
-        }),
-        text_area_size: None,
-    });
+    screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: Some(SizeInPixels {
+                height: 10,
+                width: 5,
+            }),
+            text_area_size: None,
+        },
+    );
     let pixel_dimensions_after_first_update = screen.pixel_dimensions;
-    screen.update_pixel_dimensions(PixelDimensions {
-        character_cell_size: None,
-        text_area_size: Some(SizeInPixels {
-            height: 100,
-            width: 50,
-        }),
-    });
+    screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: Some(SizeInPixels {
+                height: 100,
+                width: 50,
+            }),
+        },
+    );
     let pixel_dimensions_after_second_update = screen.pixel_dimensions;
-    screen.update_pixel_dimensions(PixelDimensions {
-        character_cell_size: None,
-        text_area_size: None,
-    });
+    screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: None,
+        },
+    );
     let pixel_dimensions_after_third_update = screen.pixel_dimensions;
     assert_eq!(
         initial_pixel_dimensions,
@@ -1543,6 +1626,63 @@ fn update_screen_pixel_dimensions() {
             }),
         },
         "empty update does not delete existing data",
+    );
+}
+
+#[test]
+fn character_cell_size_is_derived_from_the_reporting_client_size() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(size, true, true);
+    let client_id = 2;
+    screen.set_client_size(
+        client_id,
+        Size {
+            cols: 100,
+            rows: 50,
+        },
+    );
+
+    screen.update_pixel_dimensions(
+        client_id,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: Some(SizeInPixels {
+                height: 1050,
+                width: 900,
+            }),
+        },
+    );
+
+    assert_eq!(
+        *screen.character_cell_size.borrow(),
+        Some(SizeInPixels {
+            height: 21,
+            width: 9
+        }),
+        "The reported text area is divided by the grid size of the client that reported it"
+    );
+}
+
+#[test]
+fn character_cell_size_is_not_derived_for_a_client_of_unknown_size() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(size, true, true);
+
+    screen.update_pixel_dimensions(
+        2,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: Some(SizeInPixels {
+                height: 1050,
+                width: 900,
+            }),
+        },
+    );
+
+    assert_eq!(
+        *screen.character_cell_size.borrow(),
+        None,
+        "Without the reporting client's grid size the pixel report cannot be interpreted"
     );
 }
 
@@ -1878,6 +2018,96 @@ fn floating_pane_centers_large_pane_safely() {
     );
     assert!(active_pane.cols() <= 100, "width clamped to viewport");
     assert!(active_pane.rows() <= 30, "height clamped to viewport");
+}
+
+#[test]
+pub fn rename_active_pane_without_a_connected_client_reports_an_error() {
+    let size = Size {
+        cols: 130,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::RemoveClient(client_id));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::RenameActivePane(
+            "my-new-name".as_bytes().to_vec(),
+            client_id,
+            None,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let logged_instructions = received_server_instructions.lock().unwrap();
+    let reported_errors: Vec<&String> = logged_instructions
+        .iter()
+        .filter_map(|instruction| match instruction {
+            ServerInstruction::LogError(lines, _, _) => lines.first(),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        reported_errors
+            .iter()
+            .any(|error| error.contains("--pane-id")),
+        "renaming the focused pane with no client attached reports an error, got: {:?}",
+        reported_errors
+    );
+}
+
+#[test]
+pub fn rename_active_tab_without_a_connected_client_reports_an_error() {
+    let size = Size {
+        cols: 130,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::RemoveClient(client_id));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::UpdateTabName(
+        "my-new-tab-name".as_bytes().to_vec(),
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let logged_instructions = received_server_instructions.lock().unwrap();
+    let reported_errors: Vec<&String> = logged_instructions
+        .iter()
+        .filter_map(|instruction| match instruction {
+            ServerInstruction::LogError(lines, _, _) => lines.first(),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        reported_errors
+            .iter()
+            .any(|error| error.contains("--tab-id")),
+        "renaming the focused tab with no client attached reports an error, got: {:?}",
+        reported_errors
+    );
 }
 
 #[test]
@@ -3346,6 +3576,60 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
+}
+
+#[test]
+pub fn web_new_pane_in_tab_action_targets_requested_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+
+    // This is exactly the Action the web control bridge produces for the
+    // browser `NewPaneInTab { tab_id }` payload.
+    let action = Action::NewTiledPane {
+        direction: None,
+        command: None,
+        pane_name: None,
+        near_current_pane: false,
+        no_focus: false,
+        borderless: None,
+        tab_id: Some(0),
+    };
+    route_arbitrary_action_to_server(&session_metadata, action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+
+    let spawned_with_tab_index =
+        received_pty_instructions
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|i| match i {
+                PtyInstruction::SpawnTerminal(_, _, _, _, client_tab_index_or_pane_id, ..) => {
+                    matches!(
+                        client_tab_index_or_pane_id,
+                        ClientTabIndexOrPaneId::TabIndex(0)
+                    )
+                },
+                _ => false,
+            });
+    assert!(
+        spawned_with_tab_index,
+        "NewPaneInTab must spawn a terminal targeting the requested tab index; got {:?}",
+        *received_pty_instructions.lock().unwrap()
+    );
 }
 
 #[test]
@@ -5531,6 +5815,9 @@ fn create_new_screen_with_message_capture(
         web_sharing,
         true,
         true,
+        DEFAULT_WORD_SEPARATORS.to_owned(),
+        true,
+        true,
         true,
         visual_bell,
         false, // focus_follows_mouse
@@ -5539,7 +5826,7 @@ fn create_new_screen_with_message_capture(
         web_server_port,
         NestedSessionHandling::default(),
     );
-    (screen, messages)
+    (seed_first_client_size(screen, size), messages)
 }
 
 #[test]
@@ -8528,8 +8815,18 @@ impl ForwardCapture {
     fn drain_forward_queries(&self) -> Vec<(u32, Vec<u8>)> {
         let mut out = Vec::new();
         while let Ok((instr, _ctx)) = self.server_rx.try_recv() {
-            if let ServerInstruction::ForwardQueryToHost(token, bytes) = instr {
+            if let ServerInstruction::ForwardQueryToHost(token, bytes, _) = instr {
                 out.push((token, bytes));
+            }
+        }
+        out
+    }
+
+    fn drain_forward_queries_with_async(&self) -> Vec<(u32, Vec<u8>, bool)> {
+        let mut out = Vec::new();
+        while let Ok((instr, _ctx)) = self.server_rx.try_recv() {
+            if let ServerInstruction::ForwardQueryToHost(token, bytes, resolve_async) = instr {
+                out.push((token, bytes, resolve_async));
             }
         }
         out
@@ -8629,6 +8926,9 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         web_sharing,
         true,
         true,
+        DEFAULT_WORD_SEPARATORS.to_owned(),
+        true,
+        true,
         true,
         visual_bell,
         false, // focus_follows_mouse
@@ -8638,7 +8938,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         NestedSessionHandling::default(),
     );
     (
-        screen,
+        seed_first_client_size(screen, size),
         ForwardCapture {
             server_rx,
             pty_writer_rx,
@@ -8779,6 +9079,178 @@ fn handle_reply_dispatches_next_queued_forward() {
             .map(|e| e.pane_id),
         Some(second_pane)
     );
+}
+
+fn clipboard_query() -> HostQuery {
+    HostQuery::ClipboardContent {
+        selection: 'c',
+        terminator: OscTerminator::St,
+    }
+}
+
+#[test]
+fn clipboard_read_is_dropped_when_the_option_is_off() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+
+    screen.forward_host_query(PaneId::Terminal(3), clipboard_query());
+
+    assert!(
+        capture.drain_forward_queries().is_empty(),
+        "an opted-out clipboard read must never reach the host terminal"
+    );
+    assert!(screen.clipboard_forward_in_flight_token.is_none());
+    assert!(screen.pending_clipboard_forwards.is_empty());
+}
+
+#[test]
+fn clipboard_read_is_forwarded_asynchronously_when_enabled() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    let pane_id = PaneId::Terminal(5);
+
+    let token = screen.forward_host_query(pane_id, clipboard_query());
+
+    let forwards = capture.drain_forward_queries_with_async();
+    assert_eq!(
+        forwards,
+        vec![(token, b"\x1b]52;c;?\x1b\\".to_vec(), true)],
+        "the query must go out marked as async so the client omits its barrier"
+    );
+    assert_eq!(screen.clipboard_forward_in_flight_token, Some(token));
+    assert_eq!(
+        screen
+            .pending_clipboard_forwards
+            .get(&token)
+            .map(|e| e.pane_id),
+        Some(pane_id)
+    );
+    assert!(
+        screen.forward_in_flight_token.is_none(),
+        "the barrier-serialized slot must stay free"
+    );
+}
+
+#[test]
+fn a_pending_clipboard_read_does_not_block_other_host_queries() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    let clipboard_token = screen.forward_host_query(PaneId::Terminal(1), clipboard_query());
+    let colour_token = screen.forward_host_query(PaneId::Terminal(2), bg_query());
+
+    let forwards = capture.drain_forward_queries();
+    assert_eq!(
+        forwards.len(),
+        2,
+        "a colour query must dispatch while a clipboard prompt is pending"
+    );
+    assert_eq!(forwards[0].0, clipboard_token);
+    assert_eq!(forwards[1].0, colour_token);
+    assert_eq!(screen.forward_in_flight_token, Some(colour_token));
+    assert_eq!(
+        screen.clipboard_forward_in_flight_token,
+        Some(clipboard_token)
+    );
+}
+
+#[test]
+fn a_real_clipboard_reply_is_written_to_the_pane_verbatim() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    let token = screen.forward_host_query(PaneId::Terminal(8), clipboard_query());
+    let _ = capture.drain_forward_queries();
+
+    let reply = b"\x1b]52;c;aGVsbG8=\x1b\\".to_vec();
+    screen
+        .handle_forwarded_reply_from_host(token, reply.clone())
+        .expect("handler must not fail");
+
+    assert_eq!(capture.drain_pty_writes(), vec![(reply, 8)]);
+    assert!(screen.clipboard_forward_in_flight_token.is_none());
+    assert!(screen.pending_clipboard_forwards.is_empty());
+}
+
+#[test]
+fn an_unanswered_clipboard_read_resolves_as_an_empty_clipboard() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    let token = screen.forward_host_query(PaneId::Terminal(9), clipboard_query());
+    let _ = capture.drain_forward_queries();
+
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("handler must not fail");
+
+    assert_eq!(
+        capture.drain_pty_writes(),
+        vec![(b"\x1b]52;c;\x1b\\".to_vec(), 9)]
+    );
+}
+
+#[test]
+fn a_late_clipboard_reply_is_discarded() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    let token = screen.forward_host_query(PaneId::Terminal(9), clipboard_query());
+    let _ = capture.drain_forward_queries();
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("ok");
+    let _ = capture.drain_pty_writes();
+
+    screen
+        .handle_forwarded_reply_from_host(token, b"\x1b]52;c;bGF0ZQ==\x1b\\".to_vec())
+        .expect("ok");
+
+    assert!(
+        capture.drain_pty_writes().is_empty(),
+        "clipboard data arriving after the window closed must never reach the pane"
+    );
+}
+
+#[test]
+fn a_second_clipboard_read_waits_for_the_first() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    let first_token = screen.forward_host_query(PaneId::Terminal(1), clipboard_query());
+    let second_token = screen.forward_host_query(PaneId::Terminal(2), clipboard_query());
+
+    let forwards = capture.drain_forward_queries();
+    assert_eq!(
+        forwards.len(),
+        1,
+        "a host can only show one consent prompt at a time"
+    );
+    assert_eq!(forwards[0].0, first_token);
+    assert_eq!(screen.clipboard_forward_queue.len(), 1);
+    assert_eq!(screen.clipboard_forward_queue[0].token, second_token);
+}
+
+#[test]
+fn a_queued_clipboard_read_for_a_closed_pane_is_skipped() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    let first_token = screen.forward_host_query(PaneId::Terminal(1), clipboard_query());
+    screen.forward_host_query(PaneId::Terminal(2), clipboard_query());
+    let _ = capture.drain_forward_queries();
+
+    screen
+        .handle_forwarded_reply_from_host(first_token, Vec::new())
+        .expect("ok");
+
+    assert!(
+        capture.drain_forward_queries().is_empty(),
+        "the queued read belongs to a pane no tab owns"
+    );
+    assert!(screen.clipboard_forward_queue.is_empty());
+    assert!(screen.clipboard_forward_in_flight_token.is_none());
 }
 
 #[test]
@@ -9117,16 +9589,19 @@ fn empty_reply_falls_back_to_cached_pixel_dimensions() {
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
     let pane = PaneId::Terminal(1);
-    screen.update_pixel_dimensions(PixelDimensions {
-        character_cell_size: Some(SizeInPixels {
-            height: 19,
-            width: 9,
-        }),
-        text_area_size: Some(SizeInPixels {
-            height: 608,
-            width: 931,
-        }),
-    });
+    screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: Some(SizeInPixels {
+                height: 19,
+                width: 9,
+            }),
+            text_area_size: Some(SizeInPixels {
+                height: 608,
+                width: 931,
+            }),
+        },
+    );
 
     // CSI 14t — text-area pixels.
     let token = screen.forward_host_query(pane, HostQuery::TextAreaPixelSize);
@@ -9302,6 +9777,9 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         web_sharing,
         true,
         true,
+        DEFAULT_WORD_SEPARATORS.to_owned(),
+        true,
+        true,
         true,
         true,
         false,
@@ -9311,7 +9789,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         NestedSessionHandling::default(),
     );
     (
-        screen,
+        seed_first_client_size(screen, size),
         ThemeCapture {
             plugin_rx,
             pty_writer_rx,
@@ -9803,7 +10281,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
     };
     let mut mode_info = ModeInfo::default();
     mode_info.session_name = Some("zellij-test".into());
-    Screen::new(
+    let screen = Screen::new(
         bus,
         &client_attributes,
         None, // max_panes
@@ -9830,16 +10308,71 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         None,
         false,
         WebSharing::Off,
-        true,  // advanced_mouse_actions
-        true,  // mouse_scroll_resize
-        true,  // mouse_hover_effects
+        true, // advanced_mouse_actions
+        true,
+        DEFAULT_WORD_SEPARATORS.to_owned(),
+        true, // mouse_scroll_resize
+        true, // mouse_hover_effects
+        true,
         true,  // visual_bell
         false, // focus_follows_mouse
         false, // mouse_click_through
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         8080,
         NestedSessionHandling::default(),
-    )
+    );
+    seed_first_client_size(screen, size)
+}
+
+#[test]
+fn new_tabs_are_created_at_the_size_of_the_client_creating_them() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    let client_size = Size { cols: 80, rows: 24 };
+    screen.set_client_size(1, client_size);
+
+    new_tab(&mut screen, 1, 0);
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        client_size,
+        "A tab is created at the size of the client creating it"
+    );
+}
+
+#[test]
+fn applying_a_layout_to_an_existing_tab_keeps_its_viewer_derived_size() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    let client_size = Size { cols: 80, rows: 24 };
+    screen.set_client_size(1, client_size);
+    new_tab(&mut screen, 1, 0);
+
+    screen
+        .apply_layout(
+            TiledPaneLayout::default(),
+            vec![],
+            vec![(2, None)],
+            vec![],
+            HashMap::new(),
+            0,
+            true,
+            (1, false),
+            None,
+        )
+        .expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        client_size,
+        "Applying a layout to an existing tab does not resize it away from its viewers"
+    );
 }
 
 #[test]
@@ -9965,6 +10498,48 @@ fn switching_tabs_recomputes_source_and_destination() {
         screen.tabs.get(&0).unwrap().size,
         Size { cols: 80, rows: 24 },
         "Destination tab shrinks to fit the arriving smaller viewer"
+    );
+}
+
+#[test]
+fn creating_a_new_tab_recomputes_the_tab_its_creator_left() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+
+    screen.set_client_size(1, Size { cols: 80, rows: 24 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    screen.recompute_tab_size(0).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Pre-condition: both clients view tab 0, so it sizes to the smaller of them"
+    );
+
+    new_tab(&mut screen, 2, 1);
+
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "The new tab is created at the size of the client creating it"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "The tab its creator left grows back to fit the viewer it still has"
     );
 }
 
@@ -10137,6 +10712,56 @@ fn detaching_client_grows_vacated_tab_back() {
     );
 }
 
+#[test]
+fn closing_a_tab_resizes_the_tab_it_returns_to() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_new_screen(initial_size, true, true);
+    let client_id = 1;
+    let small_size = Size { cols: 80, rows: 24 };
+    let large_size = Size {
+        cols: 160,
+        rows: 50,
+    };
+
+    screen.set_client_size(client_id, small_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        small_size,
+        "Pre-condition: both tabs sized to the small client viewport"
+    );
+
+    screen.set_client_size(client_id, large_size);
+    screen.recompute_tab_size(1).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        large_size,
+        "Pre-condition: the active tab follows the client resize"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        small_size,
+        "Pre-condition: the background tab keeps its stale size until it is activated"
+    );
+
+    screen.close_tab_by_id(1).expect("TEST");
+
+    assert_eq!(
+        screen.get_active_tab(client_id).unwrap().position,
+        0,
+        "Focus returns to the previous tab"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        large_size,
+        "The tab we return to adopts the current client size"
+    );
+}
+
 fn add_second_pane_to_active_tab(screen: &mut Screen, pid: u32) {
     let active_tab = screen.get_active_tab_mut(1).unwrap();
     active_tab
@@ -10151,1263 +10776,6 @@ fn add_second_pane_to_active_tab(screen: &mut Screen, pid: u32) {
             None,
         )
         .unwrap();
-}
-
-fn setup_mobile_fit(screen: &mut Screen, client: ClientId, mobile_tab_idx: usize, plugin_id: u32) {
-    let run = RunPluginOrAlias::from_url("zellij:mobile", &None, None, None).unwrap();
-    // Bus::empty() has no to_plugin sender, but PluginPane::new requires one; leak the
-    // receiver so the injected sender's channel stays alive for the test's lifetime.
-    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
-    Box::leak(Box::new(plugin_receiver));
-    screen
-        .bus
-        .senders
-        .replace_to_plugin(SenderWithContext::new(to_plugin));
-    screen
-        .new_tab(
-            mobile_tab_idx,
-            (vec![], vec![]),
-            Some("Mobile".to_string()),
-            Some(client),
-        )
-        .expect("TEST");
-    let tab = screen.tabs.get_mut(&mobile_tab_idx).expect("mobile tab");
-    tab.new_pane(
-        PaneId::Plugin(plugin_id),
-        None,
-        Some(Run::Plugin(run)),
-        false,
-        true,
-        NewPanePlacement::NoPreference {
-            borderless: Some(true),
-        },
-        Some(client),
-        None,
-    )
-    .expect("TEST");
-    screen.mobile_state.register_tab(client, mobile_tab_idx);
-}
-
-#[test]
-fn fit_override_resizes_tab() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-
-    let mobile_client = 1;
-    setup_mobile_fit(&mut screen, mobile_client, 9, 100);
-    let size = Size { rows: 12, cols: 60 };
-    screen
-        .set_tab_fit(mobile_client, 0, PaneId::Terminal(1), size)
-        .expect("TEST");
-
-    assert_eq!(
-        screen.tabs.get(&0).unwrap().size,
-        screen.compute_fit_size(0).unwrap(),
-        "Tab adopts the server-derived fit size"
-    );
-    assert_eq!(screen.mobile_state.fit_owner(0), Some(mobile_client));
-    assert_eq!(screen.mobile_state.fit_pane(0), Some(PaneId::Terminal(1)));
-    assert_eq!(screen.mobile_state.fit_embedded_size(0), Some(size));
-}
-
-#[test]
-fn fit_cleared_when_target_pane_closes() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    add_second_pane_to_active_tab(&mut screen, 2);
-
-    let mobile_client = 1;
-    setup_mobile_fit(&mut screen, mobile_client, 9, 100);
-    screen
-        .set_tab_fit(
-            mobile_client,
-            0,
-            PaneId::Terminal(1),
-            Size { rows: 12, cols: 60 },
-        )
-        .expect("TEST");
-    assert!(
-        screen.mobile_state.has_fit(0),
-        "Pre-condition: fit installed on tab 0"
-    );
-
-    assert!(
-        !screen
-            .clear_fit_for_closed_pane(PaneId::Terminal(2))
-            .expect("TEST"),
-        "Closing a non-target pane does not clear the fit"
-    );
-    assert!(
-        screen.mobile_state.has_fit(0),
-        "Fit survives an unrelated pane close"
-    );
-
-    screen
-        .tabs
-        .get_mut(&0)
-        .unwrap()
-        .close_pane(PaneId::Terminal(1), false, None);
-    assert!(
-        screen
-            .clear_fit_for_closed_pane(PaneId::Terminal(1))
-            .expect("TEST"),
-        "Closing the target pane clears the fit"
-    );
-    assert!(
-        !screen.mobile_state.has_fit(0),
-        "Fit override is dropped once its target pane is gone"
-    );
-}
-
-#[test]
-fn fit_override_captures_fullscreen_state() {
-    let initial_size = Size { cols: 80, rows: 20 };
-
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    add_second_pane_to_active_tab(&mut screen, 2);
-    setup_mobile_fit(&mut screen, 1, 9, 100);
-    {
-        let tab = screen.get_active_tab_mut(1).unwrap();
-        tab.toggle_pane_fullscreen(PaneId::Terminal(1));
-        assert!(tab.is_fullscreen_active());
-    }
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
-        .expect("TEST");
-    assert!(
-        screen
-            .mobile_state
-            .fit_pane_was_fullscreen_before(0)
-            .expect("fit installed"),
-        "Pre-existing fullscreen recorded so exit/disconnect won't toggle it off"
-    );
-
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    add_second_pane_to_active_tab(&mut screen, 2);
-    setup_mobile_fit(&mut screen, 1, 9, 100);
-    assert!(
-        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
-        "Pre-condition: no fullscreen"
-    );
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
-        .expect("TEST");
-    assert!(
-        !screen
-            .mobile_state
-            .fit_pane_was_fullscreen_before(0)
-            .expect("fit installed"),
-        "Fit toggled fullscreen on itself; exit path will revert it"
-    );
-    assert!(
-        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
-        "Entering fit fullscreens the target pane"
-    );
-}
-
-#[test]
-fn exit_fit_reverts_size_and_fullscreen() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    add_second_pane_to_active_tab(&mut screen, 2);
-    screen.set_client_size(1, Size { cols: 80, rows: 20 });
-    screen.recompute_tab_size(0).expect("TEST");
-    setup_mobile_fit(&mut screen, 1, 9, 100);
-
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
-        .expect("TEST");
-    assert_eq!(
-        screen.tabs.get(&0).unwrap().size,
-        screen.compute_fit_size(0).unwrap(),
-        "Pre-condition: override installed"
-    );
-    assert!(screen.tabs.get(&0).unwrap().is_fullscreen_active());
-
-    assert!(screen.exit_fit_mode(1).expect("TEST"));
-
-    assert!(screen.mobile_state.fit_count() == 0, "Override cleared");
-    assert_eq!(
-        screen.tabs.get(&0).unwrap().size,
-        Size { cols: 80, rows: 20 },
-        "Tab grew back to its lone viewer's size"
-    );
-    assert!(
-        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
-        "Fit-induced fullscreen reverted on exit"
-    );
-}
-
-#[test]
-fn exit_fit_preserves_pre_fit_fullscreen() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    add_second_pane_to_active_tab(&mut screen, 2);
-    setup_mobile_fit(&mut screen, 1, 9, 100);
-    {
-        let tab = screen.get_active_tab_mut(1).unwrap();
-        tab.toggle_pane_fullscreen(PaneId::Terminal(1));
-    }
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
-        .expect("TEST");
-
-    screen.exit_fit_mode(1).expect("TEST");
-
-    assert!(screen.mobile_state.fit_count() == 0, "Override cleared");
-    assert!(
-        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
-        "Pre-existing fullscreen preserved across exit"
-    );
-}
-
-#[test]
-fn set_tab_fit_update_changes_tab_size() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    setup_mobile_fit(&mut screen, 1, 9, 100);
-
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
-        .expect("TEST");
-    let before = screen.tabs.get(&0).unwrap().size;
-
-    let new_size = Size { rows: 11, cols: 60 };
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), new_size)
-        .expect("TEST");
-
-    assert_eq!(
-        screen.tabs.get(&0).unwrap().size,
-        screen.compute_fit_size(0).unwrap(),
-        "Tab tracks the server-derived size for the new embedded size"
-    );
-    assert_eq!(
-        screen.tabs.get(&0).unwrap().size.rows,
-        before.rows - 1,
-        "One fewer embedded row shrinks the target tab by one row"
-    );
-    assert_eq!(screen.mobile_state.fit_embedded_size(0), Some(new_size));
-}
-
-#[test]
-fn disconnect_clears_fit_for_owning_client() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    screen.add_client(2, false).expect("TEST");
-    screen.set_client_size(1, Size { cols: 40, rows: 10 });
-    screen.set_client_size(2, Size { cols: 80, rows: 20 });
-    screen.recompute_tab_size(0).expect("TEST");
-    setup_mobile_fit(&mut screen, 1, 9, 100);
-
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
-        .expect("TEST");
-    assert_eq!(
-        screen.tabs.get(&0).unwrap().size,
-        screen.compute_fit_size(0).unwrap()
-    );
-
-    screen.remove_client(1).expect("TEST");
-
-    assert!(
-        screen.mobile_state.fit_count() == 0,
-        "Override owned by the leaving client cleared"
-    );
-    assert_eq!(
-        screen.tabs.get(&0).unwrap().size,
-        Size { cols: 80, rows: 20 },
-        "Tab grew back to fit the remaining viewer (client 2)"
-    );
-    assert!(
-        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
-        "Fit-induced fullscreen reverted on disconnect"
-    );
-}
-
-#[test]
-fn disconnect_only_clears_own_fits() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_non_mirrored_screen(initial_size);
-    new_tab(&mut screen, 1, 0);
-    new_tab(&mut screen, 2, 1);
-    screen.add_client(2, false).expect("TEST");
-    screen.set_client_size(1, Size { cols: 40, rows: 10 });
-    screen.set_client_size(2, Size { cols: 40, rows: 10 });
-    screen.switch_active_tab(0, None, true, 1).expect("TEST");
-    screen.switch_active_tab(1, None, true, 2).expect("TEST");
-    setup_mobile_fit(&mut screen, 1, 8, 100);
-    setup_mobile_fit(&mut screen, 2, 9, 101);
-    let size = Size { rows: 12, cols: 60 };
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), size)
-        .expect("TEST");
-    screen
-        .set_tab_fit(2, 1, PaneId::Terminal(2), size)
-        .expect("TEST");
-    let surviving_size = screen.compute_fit_size(1).unwrap();
-
-    screen.remove_client(1).expect("TEST");
-
-    assert!(
-        !screen.mobile_state.has_fit(0),
-        "Disconnecting client's entry cleared"
-    );
-    assert_eq!(
-        screen.mobile_state.fit_owner(1),
-        Some(2),
-        "Other client's entry survives"
-    );
-    assert_eq!(screen.mobile_state.fit_embedded_size(1), Some(size));
-    assert_eq!(
-        screen.tabs.get(&1).unwrap().size,
-        surviving_size,
-        "Tab still pinned to surviving client's override"
-    );
-}
-
-#[test]
-fn override_emits_display_clear() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    screen.add_client(2, false).expect("TEST");
-    screen.set_client_size(1, Size { cols: 40, rows: 10 });
-    screen.set_client_size(2, Size { cols: 80, rows: 20 });
-    screen.recompute_tab_size(0).expect("TEST");
-    setup_mobile_fit(&mut screen, 1, 9, 100);
-
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
-        .expect("TEST");
-
-    assert!(
-        screen
-            .tabs
-            .get(&0)
-            .unwrap()
-            .should_clear_display_before_rendering(),
-        "Tab must request a display-clear so a larger desktop viewer's \
-         viewport outside the fit area is wiped before the next render"
-    );
-}
-
-#[test]
-fn recompute_tab_size_short_circuit() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    screen.add_client(2, false).expect("TEST");
-    screen.set_client_size(1, Size { cols: 40, rows: 10 });
-    screen.set_client_size(2, Size { cols: 80, rows: 20 });
-    setup_mobile_fit(&mut screen, 1, 9, 100);
-
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
-        .expect("TEST");
-    let override_size = screen.compute_fit_size(0).unwrap();
-    assert_eq!(
-        screen.tabs.get(&0).unwrap().size,
-        override_size,
-        "Pre-condition: override active"
-    );
-
-    screen.set_client_size(
-        1,
-        Size {
-            cols: 100,
-            rows: 30,
-        },
-    );
-    screen.set_client_size(
-        2,
-        Size {
-            cols: 120,
-            rows: 40,
-        },
-    );
-    screen.recompute_tab_size(0).expect("TEST");
-
-    let after = screen.tabs.get(&0).unwrap().size;
-    assert_eq!(
-        after,
-        screen.compute_fit_size(0).unwrap(),
-        "Override wins against the min-of-viewers path"
-    );
-    assert!(
-        after.rows < 30 || after.cols < 100,
-        "Override is smaller than the min-of-viewers size"
-    );
-}
-
-#[test]
-fn fit_collision_last_writer_wins() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    add_second_pane_to_active_tab(&mut screen, 2);
-    screen.add_client(2, false).expect("TEST");
-    setup_mobile_fit(&mut screen, 1, 8, 100);
-    setup_mobile_fit(&mut screen, 2, 9, 101);
-
-    let size_a = Size { rows: 12, cols: 60 };
-    let size_b = Size { rows: 10, cols: 50 };
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), size_a)
-        .expect("TEST");
-    screen
-        .set_tab_fit(2, 0, PaneId::Terminal(2), size_b)
-        .expect("TEST");
-
-    assert_eq!(
-        screen.mobile_state.fit_owner(0),
-        Some(2),
-        "Second writer owns the entry"
-    );
-    assert_eq!(screen.mobile_state.fit_pane(0), Some(PaneId::Terminal(2)));
-    assert_eq!(screen.mobile_state.fit_embedded_size(0), Some(size_b));
-    assert_eq!(
-        screen.tabs.get(&0).unwrap().size,
-        screen.compute_fit_size(0).unwrap(),
-        "Tab size matches the second writer's override"
-    );
-}
-
-#[test]
-fn fit_update_after_collision_reclaims_ownership() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    add_second_pane_to_active_tab(&mut screen, 2);
-    screen.add_client(2, false).expect("TEST");
-    setup_mobile_fit(&mut screen, 1, 8, 100);
-    setup_mobile_fit(&mut screen, 2, 9, 101);
-
-    let size = Size { rows: 12, cols: 60 };
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), size)
-        .expect("TEST");
-    screen
-        .set_tab_fit(2, 0, PaneId::Terminal(2), size)
-        .expect("TEST");
-    assert_eq!(
-        screen.mobile_state.fit_owner(0),
-        Some(2),
-        "Pre-condition: client 2 displaced client 1"
-    );
-
-    let reclaim_size = Size { rows: 9, cols: 40 };
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), reclaim_size)
-        .expect("TEST");
-
-    assert_eq!(
-        screen.mobile_state.fit_owner(0),
-        Some(1),
-        "Ownership reattributed to caller"
-    );
-    assert_eq!(screen.mobile_state.fit_embedded_size(0), Some(reclaim_size));
-    assert_eq!(
-        screen.tabs.get(&0).unwrap().size,
-        screen.compute_fit_size(0).unwrap(),
-        "Tab size follows the reclaimed override"
-    );
-
-    screen.remove_client(2).expect("TEST");
-    assert!(
-        screen.mobile_state.has_fit(0),
-        "Override survives the original (now non-owning) client's disconnect"
-    );
-    screen.remove_client(1).expect("TEST");
-    assert!(
-        screen.mobile_state.fit_count() == 0,
-        "Override clears when the reclaim-owner disconnects"
-    );
-}
-
-#[test]
-fn fit_tab_close_cleans_state() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    new_tab(&mut screen, 2, 1);
-    setup_mobile_fit(&mut screen, 1, 9, 100);
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
-        .expect("TEST");
-    assert!(
-        screen.mobile_state.has_fit(0),
-        "Pre-condition: fit installed"
-    );
-
-    screen.close_tab_by_id(0).expect("TEST");
-
-    assert!(
-        !screen.mobile_state.has_fit(0),
-        "fit_states entry removed when its tab is closed"
-    );
-    assert!(
-        !screen.tabs.contains_key(&0),
-        "Pre-condition: tab is actually gone"
-    );
-}
-
-#[test]
-fn disconnect_safe_with_orphan_fit() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    add_second_pane_to_active_tab(&mut screen, 2);
-    setup_mobile_fit(&mut screen, 1, 9, 100);
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
-        .expect("TEST");
-
-    {
-        let tab = screen.get_active_tab_mut(1).unwrap();
-        tab.close_pane(PaneId::Terminal(1), false, None);
-    }
-    assert!(
-        screen.mobile_state.has_fit(0),
-        "Pre-condition: orphan entry present (cleanup deliberately skipped)"
-    );
-
-    screen
-        .remove_client(1)
-        .expect("Disconnect must not panic on dead pane_id");
-    assert!(
-        screen.mobile_state.fit_count() == 0,
-        "Disconnect cleanup clears the orphan"
-    );
-}
-
-#[test]
-fn fit_three_viewers_override_persists() {
-    let initial_size = Size {
-        cols: 200,
-        rows: 60,
-    };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    screen.add_client(2, false).expect("TEST");
-    screen.add_client(3, false).expect("TEST");
-    screen.set_client_size(1, Size { cols: 40, rows: 10 });
-    screen.set_client_size(
-        2,
-        Size {
-            cols: 100,
-            rows: 30,
-        },
-    );
-    screen.set_client_size(
-        3,
-        Size {
-            cols: 200,
-            rows: 60,
-        },
-    );
-    setup_mobile_fit(&mut screen, 1, 9, 100);
-    screen
-        .tabs
-        .get_mut(&9)
-        .unwrap()
-        .resize_whole_tab(Size { cols: 40, rows: 10 })
-        .expect("TEST");
-
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
-        .expect("TEST");
-    let override_size = screen.compute_fit_size(0).unwrap();
-    assert_eq!(
-        screen.tabs.get(&0).unwrap().size,
-        override_size,
-        "Override wins over the three viewers' minimum"
-    );
-    assert!(
-        override_size.rows < 60 && override_size.cols < 200,
-        "Override is smaller than the desktop viewers' size"
-    );
-
-    screen.remove_client(2).expect("TEST");
-    assert_eq!(
-        screen.tabs.get(&0).unwrap().size,
-        override_size,
-        "Override survives non-owner disconnect"
-    );
-    assert!(screen.mobile_state.has_fit(0));
-
-    screen.remove_client(1).expect("TEST");
-    assert!(screen.mobile_state.fit_count() == 0);
-    assert_eq!(
-        screen.tabs.get(&0).unwrap().size,
-        Size {
-            cols: 200,
-            rows: 60
-        },
-        "Tab grew to fit the surviving desktop client"
-    );
-}
-
-#[test]
-fn fit_resize_repush_updates_tab() {
-    let initial_size = Size { cols: 80, rows: 20 };
-    let mut screen = create_new_screen(initial_size, true, true);
-    new_tab(&mut screen, 1, 0);
-    setup_mobile_fit(&mut screen, 1, 9, 100);
-
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 12, cols: 60 })
-        .expect("TEST");
-    let before = screen.tabs.get(&0).unwrap().size;
-
-    screen
-        .set_tab_fit(1, 0, PaneId::Terminal(1), Size { rows: 11, cols: 60 })
-        .expect("TEST");
-
-    let after = screen.tabs.get(&0).unwrap().size;
-    assert_eq!(
-        after,
-        screen.compute_fit_size(0).unwrap(),
-        "Target tab tracks the re-derived fit size after the re-push"
-    );
-    assert_eq!(
-        after.rows,
-        before.rows - 1,
-        "One fewer embedded row shrinks the target tab by exactly one row"
-    );
-    assert_eq!(
-        screen.mobile_state.fit_embedded_size(0),
-        Some(Size { rows: 11, cols: 60 }),
-        "Stored embedded size follows the re-push"
-    );
-}
-
-#[test]
-pub fn render_report_writes_per_client_plugin_pane_contents_in_fallback() {
-    use crate::plugins::PluginRenderAsset;
-    use zellij_utils::data::PaneId as DataPaneId;
-
-    let size = Size { cols: 80, rows: 20 };
-    let mut initial_layout = TiledPaneLayout::default();
-    let mut plugin_pane_layout = TiledPaneLayout::default();
-    plugin_pane_layout.run = Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
-        _allow_exec_host_cmd: false,
-        location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
-        configuration: Default::default(),
-        ..Default::default()
-    })));
-    initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![plugin_pane_layout];
-
-    let mut mock_screen = MockScreen::new(size);
-    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
-
-    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
-    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
-    let plugin_thread = log_actions_in_thread!(
-        received_plugin_instructions,
-        PluginInstruction::Exit,
-        plugin_receiver
-    );
-
-    let first_client_id: ClientId = mock_screen.main_client_id;
-    let second_client_id: ClientId = 2;
-    let _ = mock_screen.to_screen.send(ScreenInstruction::AddClient(
-        second_client_id,
-        false,
-        size,
-        None,
-        None,
-    ));
-    std::thread::sleep(std::time::Duration::from_millis(50));
-
-    let plugin_id: u32 = 1;
-    let bytes_for_client_1 = b"client one render payload".to_vec();
-    let bytes_for_client_2 = b"client two render payload".to_vec();
-    let _ = mock_screen
-        .to_screen
-        .send(ScreenInstruction::PluginBytes(vec![
-            PluginRenderAsset::new(plugin_id, first_client_id, bytes_for_client_1.clone()),
-            PluginRenderAsset::new(plugin_id, second_client_id, bytes_for_client_2.clone()),
-        ]));
-    std::thread::sleep(std::time::Duration::from_millis(50));
-
-    let _ = mock_screen
-        .to_screen
-        .send(ScreenInstruction::PluginSubscribedToAnsiPaneContents(true));
-    std::thread::sleep(std::time::Duration::from_millis(200));
-
-    mock_screen.teardown(vec![plugin_thread, screen_thread]);
-
-    let captured = received_plugin_instructions.lock().unwrap();
-    let last_report = captured
-        .iter()
-        .rev()
-        .find_map(|i| match i {
-            PluginInstruction::PaneRenderReport(r) => Some(r.clone()),
-            _ => None,
-        })
-        .expect("expected at least one PaneRenderReport on the plugin bus");
-
-    let plugin_pane_id = DataPaneId::Plugin(plugin_id);
-    let client_1_contents = last_report
-        .all_pane_contents_with_ansi
-        .get(&first_client_id)
-        .and_then(|p| p.get(&plugin_pane_id))
-        .cloned()
-        .expect("client 1 must have plugin-pane contents in the report");
-    let client_2_contents = last_report
-        .all_pane_contents_with_ansi
-        .get(&second_client_id)
-        .and_then(|p| p.get(&plugin_pane_id))
-        .cloned()
-        .expect("client 2 must have plugin-pane contents in the report");
-
-    assert!(
-        !client_1_contents.viewport.is_empty(),
-        "client 1's plugin-pane viewport must not be empty — the fallback \
-         must read from the client's per-client grid, not return \
-         Default::default() via a `None` client_id lookup"
-    );
-    assert!(
-        !client_2_contents.viewport.is_empty(),
-        "client 2's plugin-pane viewport must not be empty — same reason \
-         as client 1, but this is the path that was broken pre-fix for \
-         the mobile-UI case"
-    );
-    assert_ne!(
-        client_1_contents.viewport, client_2_contents.viewport,
-        "per-client plugin grids must surface distinct viewports when \
-         distinct PluginBytes were delivered to each client"
-    );
-
-    let joined_viewport_1 = client_1_contents.viewport.join("");
-    let joined_viewport_2 = client_2_contents.viewport.join("");
-    assert!(
-        joined_viewport_1.contains("client one render payload"),
-        "client 1's viewport must contain its bytes; got {:?}",
-        joined_viewport_1
-    );
-    assert!(
-        joined_viewport_2.contains("client two render payload"),
-        "client 2's viewport must contain its bytes; got {:?}",
-        joined_viewport_2
-    );
-}
-
-const MOBILE_BASE_SIZE: Size = Size {
-    cols: 121,
-    rows: 40,
-};
-const MOBILE_SMALL: Size = Size { cols: 40, rows: 20 };
-const MOBILE_LARGE: Size = Size {
-    cols: 200,
-    rows: 200,
-};
-const MOBILE_THRESHOLDS: (u16, u16) = (60, 30);
-
-fn setup_mobile_screen() -> Screen {
-    let mut screen = create_new_screen(MOBILE_BASE_SIZE, true, true);
-    new_tab(&mut screen, 1, 0);
-    screen
-}
-
-#[test]
-fn reevaluate_mobile_routes_web_client_in_web_mode() {
-    use zellij_utils::input::options::MobileLayoutConfiguration;
-    let mut screen = setup_mobile_screen();
-    let client = 10;
-    screen
-        .add_client(client, /* is_web_client */ true)
-        .expect("TEST");
-
-    screen
-        .reevaluate_mobile_mode(
-            client,
-            MOBILE_SMALL,
-            MobileLayoutConfiguration::Web,
-            MOBILE_THRESHOLDS.0,
-            MOBILE_THRESHOLDS.1,
-        )
-        .expect("TEST");
-    assert!(
-        screen.is_in_mobile_mode(client),
-        "web client + small viewport in Web mode must enter mobile",
-    );
-    assert!(
-        screen.mobile_state.was_auto_entered(client),
-        "auto-entry must be marked so a later resize can auto-demote",
-    );
-}
-
-#[test]
-fn reevaluate_mobile_skips_terminal_client_in_web_mode() {
-    use zellij_utils::input::options::MobileLayoutConfiguration;
-    let mut screen = setup_mobile_screen();
-    let client = 11;
-    screen
-        .add_client(client, /* is_web_client */ false)
-        .expect("TEST");
-
-    screen
-        .reevaluate_mobile_mode(
-            client,
-            MOBILE_SMALL,
-            MobileLayoutConfiguration::Web,
-            MOBILE_THRESHOLDS.0,
-            MOBILE_THRESHOLDS.1,
-        )
-        .expect("TEST");
-    assert!(
-        !screen.is_in_mobile_mode(client),
-        "terminal client in Web mode must NOT enter mobile even with small viewport",
-    );
-}
-
-#[test]
-fn reevaluate_mobile_routes_terminal_client_in_always_mode() {
-    use zellij_utils::input::options::MobileLayoutConfiguration;
-    let mut screen = setup_mobile_screen();
-    let client = 12;
-    screen
-        .add_client(client, /* is_web_client */ false)
-        .expect("TEST");
-
-    screen
-        .reevaluate_mobile_mode(
-            client,
-            MOBILE_SMALL,
-            MobileLayoutConfiguration::Always,
-            MOBILE_THRESHOLDS.0,
-            MOBILE_THRESHOLDS.1,
-        )
-        .expect("TEST");
-    assert!(
-        screen.is_in_mobile_mode(client),
-        "Always mode must route terminal clients too on size match",
-    );
-}
-
-#[test]
-fn reevaluate_mobile_zero_threshold_forces_entry() {
-    use zellij_utils::input::options::MobileLayoutConfiguration;
-    let mut screen = setup_mobile_screen();
-    let client = 13;
-    screen
-        .add_client(client, /* is_web_client */ false)
-        .expect("TEST");
-
-    screen
-        .reevaluate_mobile_mode(
-            client,
-            MOBILE_LARGE,
-            MobileLayoutConfiguration::Always,
-            0,
-            0,
-        )
-        .expect("TEST");
-    assert!(
-        screen.is_in_mobile_mode(client),
-        "0 breakpoint under Always must route regardless of viewport size",
-    );
-}
-
-#[test]
-fn reevaluate_mobile_never_never_routes() {
-    use zellij_utils::input::options::MobileLayoutConfiguration;
-    let mut screen = setup_mobile_screen();
-    let client = 14;
-    screen
-        .add_client(client, /* is_web_client */ true)
-        .expect("TEST");
-
-    screen
-        .reevaluate_mobile_mode(
-            client,
-            MOBILE_SMALL,
-            MobileLayoutConfiguration::Never,
-            MOBILE_THRESHOLDS.0,
-            MOBILE_THRESHOLDS.1,
-        )
-        .expect("TEST");
-    assert!(
-        !screen.is_in_mobile_mode(client),
-        "Never must never auto-route, even for a small web client",
-    );
-}
-
-#[test]
-fn reevaluate_mobile_auto_demotes_after_growth() {
-    use zellij_utils::input::options::MobileLayoutConfiguration;
-    let mut screen = setup_mobile_screen();
-    let client = 15;
-    screen
-        .add_client(client, /* is_web_client */ true)
-        .expect("TEST");
-
-    screen
-        .reevaluate_mobile_mode(
-            client,
-            MOBILE_SMALL,
-            MobileLayoutConfiguration::Web,
-            MOBILE_THRESHOLDS.0,
-            MOBILE_THRESHOLDS.1,
-        )
-        .expect("TEST");
-    assert!(screen.is_in_mobile_mode(client));
-
-    screen
-        .reevaluate_mobile_mode(
-            client,
-            MOBILE_LARGE,
-            MobileLayoutConfiguration::Web,
-            MOBILE_THRESHOLDS.0,
-            MOBILE_THRESHOLDS.1,
-        )
-        .expect("TEST");
-    assert!(
-        !screen.is_in_mobile_mode(client),
-        "auto-entered client must auto-demote when viewport grows",
-    );
-}
-
-#[test]
-fn reevaluate_mobile_preserves_manual_entry_when_viewport_grows() {
-    use zellij_utils::input::options::MobileLayoutConfiguration;
-    let mut screen = setup_mobile_screen();
-    let client = 16;
-    screen
-        .add_client(client, /* is_web_client */ true)
-        .expect("TEST");
-
-    screen.enter_mobile_mode(client).expect("TEST");
-    assert!(screen.is_in_mobile_mode(client));
-    assert!(
-        !screen.mobile_state.was_auto_entered(client),
-        "manual entry must not be marked as auto",
-    );
-
-    screen
-        .reevaluate_mobile_mode(
-            client,
-            MOBILE_LARGE,
-            MobileLayoutConfiguration::Web,
-            MOBILE_THRESHOLDS.0,
-            MOBILE_THRESHOLDS.1,
-        )
-        .expect("TEST");
-    assert!(
-        screen.is_in_mobile_mode(client),
-        "manually-entered client must NOT be auto-demoted on resize",
-    );
-}
-
-#[test]
-fn enter_mobile_mode_populates_consolidated_state() {
-    let mut screen = setup_mobile_screen();
-    let client = 20;
-    screen
-        .add_client(client, /* is_web_client */ true)
-        .expect("TEST");
-
-    screen.enter_mobile_mode(client).expect("TEST");
-
-    assert!(
-        screen.mobile_state.is_in_mobile_mode(client),
-        "entering mobile mode must record the client's mobile tab",
-    );
-    assert_eq!(
-        screen.mobile_state.previous_tab(client),
-        Some(0),
-        "the seeded tab 0 must be stashed as the prior tab",
-    );
-    assert!(
-        screen.is_in_mobile_mode(client),
-        "is_in_mobile_mode must reflect the new mobile_state.tabs entry",
-    );
-    assert!(
-        !screen.mobile_state.was_auto_entered(client),
-        "manual enter_mobile_mode must not mark the client as auto-entered",
-    );
-}
-
-#[test]
-fn exit_mobile_mode_clears_all_consolidated_state() {
-    use zellij_utils::input::options::MobileLayoutConfiguration;
-    let mut screen = setup_mobile_screen();
-    let client = 21;
-    screen
-        .add_client(client, /* is_web_client */ true)
-        .expect("TEST");
-
-    screen
-        .reevaluate_mobile_mode(
-            client,
-            MOBILE_SMALL,
-            MobileLayoutConfiguration::Web,
-            MOBILE_THRESHOLDS.0,
-            MOBILE_THRESHOLDS.1,
-        )
-        .expect("TEST");
-    assert!(screen.mobile_state.is_in_mobile_mode(client));
-    assert!(screen.mobile_state.was_auto_entered(client));
-
-    screen.exit_mobile_mode(client).expect("TEST");
-
-    assert!(
-        !screen.mobile_state.is_in_mobile_mode(client),
-        "exit must remove the client's mobile tab entry",
-    );
-    assert!(
-        !screen.mobile_state.previous_tab(client).is_some(),
-        "exit must drop the stashed prior-tab entry",
-    );
-    assert!(
-        !screen.mobile_state.was_auto_entered(client),
-        "exit must clear the auto-entered marker",
-    );
-    assert!(
-        !screen.is_in_mobile_mode(client),
-        "client must no longer be in mobile mode after exit",
-    );
-}
-
-#[test]
-fn remove_client_clears_all_consolidated_state() {
-    use zellij_utils::input::options::MobileLayoutConfiguration;
-    let mut screen = setup_mobile_screen();
-    let client = 22;
-    screen
-        .add_client(client, /* is_web_client */ true)
-        .expect("TEST");
-
-    screen
-        .reevaluate_mobile_mode(
-            client,
-            MOBILE_SMALL,
-            MobileLayoutConfiguration::Web,
-            MOBILE_THRESHOLDS.0,
-            MOBILE_THRESHOLDS.1,
-        )
-        .expect("TEST");
-    assert!(screen.mobile_state.is_in_mobile_mode(client));
-    assert!(screen.mobile_state.was_auto_entered(client));
-
-    screen.remove_client(client).expect("TEST");
-
-    assert!(
-        !screen.mobile_state.is_in_mobile_mode(client),
-        "disconnect must remove the client's mobile tab entry",
-    );
-    assert!(
-        !screen.mobile_state.previous_tab(client).is_some(),
-        "disconnect must drop the stashed prior-tab entry",
-    );
-    assert!(
-        !screen.mobile_state.was_auto_entered(client),
-        "disconnect must clear the auto-entered marker",
-    );
-}
-
-#[test]
-fn mobile_state_tracks_clients_independently() {
-    let mut screen = setup_mobile_screen();
-    let client_a = 23;
-    let client_b = 24;
-    screen
-        .add_client(client_a, /* is_web_client */ true)
-        .expect("TEST");
-    screen
-        .add_client(client_b, /* is_web_client */ true)
-        .expect("TEST");
-
-    screen.enter_mobile_mode(client_a).expect("TEST");
-    screen.enter_mobile_mode(client_b).expect("TEST");
-
-    let tab_a = screen
-        .mobile_state
-        .mobile_tab_id(client_a)
-        .expect("client A must have a mobile tab");
-    let tab_b = screen
-        .mobile_state
-        .mobile_tab_id(client_b)
-        .expect("client B must have a mobile tab");
-    assert_ne!(
-        tab_a, tab_b,
-        "each mobile client must get its own dedicated tab",
-    );
-
-    screen.remove_client(client_a).expect("TEST");
-
-    assert!(
-        !screen.mobile_state.is_in_mobile_mode(client_a),
-        "removed client's entry must be gone",
-    );
-    assert!(
-        screen.mobile_state.is_in_mobile_mode(client_b),
-        "the other client's mobile state must be untouched",
-    );
-}
-
-#[test]
-fn render_gate_can_be_set_and_lifted() {
-    let mut screen = setup_mobile_screen();
-    let client = 40;
-
-    assert!(!screen.mobile_render_gate.is_gated(client));
-    screen.mobile_render_gate.gate(client);
-    assert!(screen.mobile_render_gate.is_gated(client));
-    screen.mobile_render_gate.ungate(client);
-    assert!(!screen.mobile_render_gate.is_gated(client));
-}
-
-#[test]
-fn remove_client_lifts_render_gate() {
-    let mut screen = setup_mobile_screen();
-    let client = 41;
-    screen
-        .add_client(client, /* is_web_client */ false)
-        .expect("TEST");
-    screen.mobile_render_gate.gate(client);
-
-    screen.remove_client(client).expect("TEST");
-
-    assert!(
-        !screen.mobile_render_gate.is_gated(client),
-        "a removed client must never stay gated",
-    );
-}
-
-#[test]
-fn exit_mobile_mode_lifts_render_gate() {
-    let mut screen = setup_mobile_screen();
-    let client = 42;
-    screen
-        .add_client(client, /* is_web_client */ true)
-        .expect("TEST");
-    screen.enter_mobile_mode(client).expect("TEST");
-    screen.mobile_render_gate.gate(client);
-
-    screen.exit_mobile_mode(client).expect("TEST");
-
-    assert!(
-        !screen.mobile_render_gate.is_gated(client),
-        "leaving mobile mode must never leave the client gated",
-    );
-}
-
-#[test]
-fn first_mobile_plugin_paint_lifts_only_the_owning_client() {
-    let mut screen = setup_mobile_screen();
-    let owner = 43;
-    let other = 44;
-    let mobile_tab_idx = 9;
-    let plugin_id = 900;
-    screen
-        .add_client(owner, /* is_web_client */ true)
-        .expect("TEST");
-    setup_mobile_fit(&mut screen, owner, mobile_tab_idx, plugin_id);
-    screen.mobile_render_gate.gate(owner);
-    screen.mobile_render_gate.gate(other);
-
-    screen.ungate_clients_for_mobile_plugin(plugin_id);
-
-    assert!(
-        !screen.mobile_render_gate.is_gated(owner),
-        "the client whose mobile plugin painted must be ungated",
-    );
-    assert!(
-        screen.mobile_render_gate.is_gated(other),
-        "a client unrelated to the painting plugin must stay gated",
-    );
-}
-
-fn capture_plugin_channel(screen: &mut Screen) -> Receiver<(PluginInstruction, ErrorContext)> {
-    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
-    screen
-        .bus
-        .senders
-        .replace_to_plugin(SenderWithContext::new(to_plugin));
-    plugin_receiver
-}
-
-fn drain_plugin_instructions(
-    receiver: &Receiver<(PluginInstruction, ErrorContext)>,
-) -> Vec<PluginInstruction> {
-    let mut instructions = vec![];
-    while let Ok((instruction, _err_ctx)) = receiver.try_recv() {
-        instructions.push(instruction);
-    }
-    instructions
-}
-
-#[test]
-fn entering_mobile_while_gated_holds_the_plugin_render() {
-    let mut screen = setup_mobile_screen();
-    let client = 50;
-    screen
-        .add_client(client, /* is_web_client */ true)
-        .expect("TEST");
-    let plugin_receiver = capture_plugin_channel(&mut screen);
-
-    screen.mobile_render_gate.gate(client); // SuppressRenderUntilMobile does this
-    screen.enter_mobile_mode(client).expect("TEST");
-
-    let sent = drain_plugin_instructions(&plugin_receiver);
-    assert!(
-        sent.iter()
-            .any(|i| matches!(i, PluginInstruction::HoldMobileRender(c) if *c == client)),
-        "entering mobile while gated must hold the plugin render; sent={sent:?}",
-    );
-}
-
-#[test]
-fn entering_mobile_without_a_gate_does_not_hold() {
-    let mut screen = setup_mobile_screen();
-    let client = 51;
-    screen
-        .add_client(client, /* is_web_client */ true)
-        .expect("TEST");
-    let plugin_receiver = capture_plugin_channel(&mut screen);
-
-    // No SuppressRenderUntilMobile: the client is not gated.
-    screen.enter_mobile_mode(client).expect("TEST");
-
-    let sent = drain_plugin_instructions(&plugin_receiver);
-    assert!(
-        !sent
-            .iter()
-            .any(|i| matches!(i, PluginInstruction::HoldMobileRender(_))),
-        "a non-gated client must not hold the plugin render; sent={sent:?}",
-    );
-}
-
-#[test]
-fn exiting_mobile_releases_the_plugin_render() {
-    let mut screen = setup_mobile_screen();
-    let client = 52;
-    screen
-        .add_client(client, /* is_web_client */ true)
-        .expect("TEST");
-    screen.enter_mobile_mode(client).expect("TEST");
-    let plugin_receiver = capture_plugin_channel(&mut screen);
-
-    screen.exit_mobile_mode(client).expect("TEST");
-
-    let sent = drain_plugin_instructions(&plugin_receiver);
-    assert!(
-        sent.iter()
-            .any(|i| matches!(i, PluginInstruction::ReleaseMobileRender(c) if *c == client)),
-        "exiting mobile must release the plugin render; sent={sent:?}",
-    );
 }
 
 fn decode_nested_frame(bytes: &[u8]) -> Option<zellij_utils::nested_session::NestedSessionMessage> {
@@ -11729,5 +11097,2043 @@ fn sixel_support_recomputed_on_client_detach() {
     assert_eq!(
         active_pane.drain_messages_to_pty(),
         vec![b"\x1b[?62;52c".to_vec()]
+    );
+}
+
+#[test]
+fn fit_disabled_excludes_web_client_from_min_size() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen
+        .add_client(2, /* is_web_client */ true)
+        .expect("TEST");
+    screen.set_client_size(1, Size { cols: 80, rows: 20 });
+    screen.set_client_size(2, Size { cols: 40, rows: 10 });
+
+    screen
+        .set_mobile_render_preferences(2, /* single_pane */ false, /* fit */ false)
+        .expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 20 },
+        "Fit-disabled web client is excluded from the min-size loop; tab stays at desktop size"
+    );
+}
+
+#[test]
+fn fit_disabled_ignores_client_on_another_tab() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(1, None, true, 2).expect("TEST");
+
+    screen
+        .set_mobile_render_preferences(1, /* single_pane */ false, /* fit */ false)
+        .expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 40, rows: 10 },
+        "A client on another tab is not a reference: fit is forced on and the mobile size drives layout"
+    );
+}
+
+#[test]
+fn fit_disabled_tab_repins_on_desktop_resize() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+
+    screen
+        .set_mobile_render_preferences(1, /* single_pane */ false, /* fit */ false)
+        .expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "Pre-condition: shared tab pinned to the initial desktop reference size"
+    );
+
+    // Desktop client resizes; the fit-disabled tab must re-pin to its new size.
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 120,
+            rows: 40,
+        },
+    );
+    screen.recompute_fit_disabled_tabs().expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 120,
+            rows: 40,
+        },
+        "Tab re-pins to the new desktop reference size after a desktop resize"
+    );
+}
+
+#[test]
+fn fit_disabled_reverts_when_reference_client_switches_tab() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+
+    screen
+        .set_mobile_render_preferences(1, /* single_pane */ false, /* fit */ false)
+        .expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "Pre-condition: tab is shared, so fit-disabled is honored"
+    );
+
+    // The reference client leaves the tab without disconnecting.
+    screen.switch_active_tab(1, None, true, 2).expect("TEST");
+    screen.log_and_report_session_state().expect("TEST");
+
+    assert!(
+        screen.mobile_web_prefs.get(&1).map(|prefs| prefs.fit) == Some(true),
+        "Fit reverts once no client shares the tab, without any disconnect"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 40, rows: 10 },
+        "The tab shrinks to the mobile size once nobody else is viewing it"
+    );
+}
+
+#[test]
+fn fit_disabled_allowed_when_only_other_client_is_web() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen
+        .add_client(1, /* is_web_client */ true)
+        .expect("TEST");
+    screen
+        .add_client(2, /* is_web_client */ true)
+        .expect("TEST");
+    screen.set_client_size(1, Size { cols: 80, rows: 20 });
+    screen.set_client_size(2, Size { cols: 40, rows: 10 });
+
+    screen
+        .set_mobile_render_preferences(2, /* single_pane */ false, /* fit */ false)
+        .expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 20 },
+        "A web client counts as a reference; fit-disabled is honored and the tab stays at the reference size"
+    );
+}
+
+#[test]
+fn fit_disabled_without_desktop_client_forces_enabled() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen
+        .add_client(1, /* is_web_client */ true)
+        .expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+
+    screen
+        .set_mobile_render_preferences(1, /* single_pane */ false, /* fit */ false)
+        .expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 40, rows: 10 },
+        "With no desktop client, fit is forced enabled and the mobile size drives layout"
+    );
+}
+
+#[test]
+fn desktop_disconnect_reverts_fit_disabled() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen
+        .add_client(2, /* is_web_client */ true)
+        .expect("TEST");
+    screen.set_client_size(1, Size { cols: 80, rows: 20 });
+    screen.set_client_size(2, Size { cols: 40, rows: 10 });
+
+    screen
+        .set_mobile_render_preferences(2, /* single_pane */ false, /* fit */ false)
+        .expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 20 },
+        "Pre-condition: fit-disabled excludes the mobile client"
+    );
+
+    screen.remove_client(1).expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 40, rows: 10 },
+        "Desktop disconnect reverts the mobile client to fit-enabled; its size now drives layout"
+    );
+}
+
+#[test]
+fn single_pane_fullscreens_active_pane_and_reverts() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    let client = 1;
+
+    screen
+        .set_mobile_render_preferences(client, /* single_pane */ true, /* fit */ true)
+        .expect("TEST");
+    assert!(
+        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Single-pane fullscreens the active pane"
+    );
+    assert!(
+        screen.tabs.get(&0).unwrap().fullscreen_covers_ui(),
+        "Single-pane hides the tab bar and status bar"
+    );
+
+    screen
+        .set_mobile_render_preferences(client, /* single_pane */ false, /* fit */ true)
+        .expect("TEST");
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Disabling single-pane reverts the fullscreen"
+    );
+}
+
+#[test]
+fn focus_pane_by_id_is_per_client_and_does_not_steal_global_focus() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(1, None, true, 2).expect("TEST");
+
+    assert_eq!(
+        screen.get_active_pane_id(&2),
+        Some(PaneId::Terminal(2)),
+        "Pre-condition: client 2 is focused on pane 2 (its own tab)"
+    );
+
+    // Client 1 focuses the pane living on client 2's tab.
+    screen
+        .focus_pane_with_id(PaneId::Terminal(2), false, false, 1)
+        .expect("TEST");
+
+    assert_eq!(
+        screen.get_active_pane_id(&1),
+        Some(PaneId::Terminal(2)),
+        "Client 1 now focuses the target pane"
+    );
+    assert_eq!(
+        screen.active_tab_ids.get(&2).copied(),
+        Some(1),
+        "Client 2's active tab is unchanged by client 1's per-client focus"
+    );
+    assert_eq!(
+        screen.get_active_pane_id(&2),
+        Some(PaneId::Terminal(2)),
+        "Client 2's focus is not stolen by client 1's per-client focus"
+    );
+}
+
+#[test]
+fn mobile_state_reports_single_pane_off_before_any_preference_is_sent() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen
+        .add_client(2, /* is_web_client */ true)
+        .expect("TEST");
+
+    screen.log_and_report_session_state().expect("TEST");
+
+    let msgs = messages.lock().unwrap();
+    let payload = msgs
+        .get(&2)
+        .expect("TEST")
+        .iter()
+        .find_map(|msg| match msg {
+            ServerToClientMsg::MobileState { payload } => Some(payload.clone()),
+            _ => None,
+        })
+        .expect("A web client receives a MobileState push");
+
+    assert!(
+        !payload.render_prefs.single_pane,
+        "A client that never sent preferences has nothing fullscreened, so single-pane must be reported off"
+    );
+    assert!(
+        payload.render_prefs.fit,
+        "Such a client participates in the tab min-size rule, so fit is reported on"
+    );
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Nothing is fullscreened for a client that never sent preferences"
+    );
+}
+
+#[test]
+fn single_pane_demotes_after_desktop_unfullscreen() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    let client = 1;
+
+    screen
+        .set_mobile_render_preferences(client, /* single_pane */ true, /* fit */ true)
+        .expect("TEST");
+    assert!(
+        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Pre-condition: single-pane fullscreen active"
+    );
+
+    // Simulate a desktop-initiated un-fullscreen on the same tab.
+    screen.tabs.get_mut(&0).unwrap().unset_fullscreen();
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Fullscreen cleared by the simulated desktop action"
+    );
+
+    screen.log_and_report_session_state().expect("TEST");
+
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Single-pane yields to the un-fullscreen instead of re-asserting it"
+    );
+    assert_eq!(
+        screen
+            .mobile_web_prefs
+            .get(&client)
+            .map(|prefs| prefs.single_pane),
+        Some(false),
+        "The client is demoted out of single-pane mode and reports it"
+    );
+    assert_eq!(
+        screen
+            .mobile_web_prefs
+            .get(&client)
+            .and_then(|prefs| prefs.fullscreened_pane),
+        None,
+        "The tracked fullscreen pane is cleared on demotion"
+    );
+}
+
+#[test]
+fn single_pane_demotion_disables_fit_when_tab_is_shared() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
+    screen.set_client_size(1, Size { cols: 40, rows: 10 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+
+    screen
+        .set_mobile_render_preferences(1, /* single_pane */ true, /* fit */ true)
+        .expect("TEST");
+
+    // Simulate a desktop-initiated un-fullscreen on the shared tab.
+    screen.tabs.get_mut(&0).unwrap().unset_fullscreen();
+    screen.log_and_report_session_state().expect("TEST");
+
+    assert_eq!(
+        screen.mobile_web_prefs.get(&1).map(|prefs| prefs.fit),
+        Some(false),
+        "Demotion also disables fit so the shared tab is not shrunk to the mobile size"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "The shared tab keeps the desktop size after the demotion"
+    );
+}
+
+#[test]
+fn single_pane_demotes_when_desktop_opens_a_pane() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    let mobile_client = 1;
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+
+    screen
+        .set_mobile_render_preferences(
+            mobile_client,
+            /* single_pane */ true,
+            /* fit */ true,
+        )
+        .expect("TEST");
+    assert!(
+        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Pre-condition: single-pane fullscreen active"
+    );
+
+    // The desktop client opens a pane in the shared tab, which drops fullscreen.
+    screen
+        .get_active_tab_mut(2)
+        .unwrap()
+        .new_pane(
+            PaneId::Terminal(3),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(2),
+            None,
+        )
+        .expect("TEST");
+    screen.log_and_report_session_state().expect("TEST");
+
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "The pane the desktop client opened stays visible"
+    );
+    assert_eq!(
+        screen
+            .mobile_web_prefs
+            .get(&mobile_client)
+            .map(|prefs| prefs.single_pane),
+        Some(false),
+        "The mobile client is demoted rather than hiding the new pane"
+    );
+}
+
+#[test]
+fn single_pane_follows_focus_to_newly_added_pane() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    let client = 1;
+
+    screen
+        .set_mobile_render_preferences(client, /* single_pane */ true, /* fit */ true)
+        .expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().fullscreen_pane_id(),
+        Some(PaneId::Terminal(2)),
+        "Pre-condition: single-pane fullscreens the current active pane"
+    );
+
+    add_second_pane_to_active_tab(&mut screen, 3);
+    screen.log_and_report_session_state().expect("TEST");
+
+    assert!(
+        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "A pane added in single-pane mode keeps a pane fullscreened"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().fullscreen_pane_id(),
+        Some(PaneId::Terminal(3)),
+        "The fullscreen follows focus to the newly added pane"
+    );
+    assert!(
+        screen.tabs.get(&0).unwrap().fullscreen_covers_ui(),
+        "The followed fullscreen still hides the tab bar and status bar"
+    );
+}
+
+#[test]
+fn single_pane_demotes_after_desktop_downgrades_to_regular_fullscreen() {
+    let initial_size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    let client = 1;
+
+    screen
+        .set_mobile_render_preferences(client, /* single_pane */ true, /* fit */ true)
+        .expect("TEST");
+    let fullscreen_pane_id = screen.tabs.get(&0).unwrap().fullscreen_pane_id().unwrap();
+
+    // A desktop client toggles regular fullscreen, downgrading the no-ui fullscreen.
+    screen
+        .tabs
+        .get_mut(&0)
+        .unwrap()
+        .toggle_pane_fullscreen(fullscreen_pane_id);
+    screen.log_and_report_session_state().expect("TEST");
+
+    assert!(
+        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "The regular fullscreen the desktop client asked for is kept"
+    );
+    assert!(
+        !screen.tabs.get(&0).unwrap().fullscreen_covers_ui(),
+        "Single-pane does not re-assert the no-ui fullscreen"
+    );
+    assert_eq!(
+        screen
+            .mobile_web_prefs
+            .get(&client)
+            .map(|prefs| prefs.single_pane),
+        Some(false),
+        "The client is demoted out of single-pane mode"
+    );
+}
+
+#[test]
+fn single_pane_survives_the_mobile_client_opening_its_own_pane_in_a_shared_tab() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    add_second_pane_to_active_tab(&mut screen, 2);
+    let mobile_client = 1;
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+
+    screen
+        .set_mobile_render_preferences(
+            mobile_client,
+            /* single_pane */ true,
+            /* fit */ true,
+        )
+        .expect("TEST");
+    assert!(
+        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Pre-condition: single-pane fullscreen active"
+    );
+
+    // The mobile client opens a pane of its own, which takes its focus.
+    screen
+        .get_active_tab_mut(mobile_client)
+        .unwrap()
+        .new_pane(
+            PaneId::Terminal(3),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(mobile_client),
+            None,
+        )
+        .expect("TEST");
+    screen.log_and_report_session_state().expect("TEST");
+
+    assert_eq!(
+        screen
+            .mobile_web_prefs
+            .get(&mobile_client)
+            .map(|prefs| prefs.single_pane),
+        Some(true),
+        "A pane the mobile client opened itself does not demote it out of single-pane mode"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().fullscreen_pane_id(),
+        Some(PaneId::Terminal(3)),
+        "The fullscreen follows the mobile client to the pane it just opened"
+    );
+    assert!(
+        screen.tabs.get(&0).unwrap().fullscreen_covers_ui(),
+        "The followed fullscreen still hides the tab bar and status bar"
+    );
+    assert_eq!(
+        screen
+            .mobile_web_prefs
+            .get(&mobile_client)
+            .map(|prefs| prefs.fit),
+        Some(true),
+        "Fit is untouched because there was no demotion"
+    );
+}
+
+#[test]
+fn single_pane_follows_the_mobile_client_into_a_new_tab() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    let mobile_client = 1;
+    screen
+        .add_client(2, /* is_web_client */ false)
+        .expect("TEST");
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+
+    screen
+        .set_mobile_render_preferences(
+            mobile_client,
+            /* single_pane */ true,
+            /* fit */ true,
+        )
+        .expect("TEST");
+    assert!(
+        screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "Pre-condition: single-pane fullscreen active"
+    );
+
+    new_tab(&mut screen, 2, 1);
+
+    assert_eq!(
+        screen
+            .mobile_web_prefs
+            .get(&mobile_client)
+            .map(|prefs| prefs.single_pane),
+        Some(true),
+        "Opening a tab keeps the mobile client in single-pane mode"
+    );
+    assert!(
+        !screen.tabs.get(&0).unwrap().is_fullscreen_active(),
+        "The tab the mobile client left is restored for the desktop client"
+    );
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().fullscreen_pane_id(),
+        Some(PaneId::Terminal(2)),
+        "The pane of the new tab is fullscreened for the mobile client"
+    );
+    assert!(
+        screen.tabs.get(&1).unwrap().fullscreen_covers_ui(),
+        "The new tab's fullscreen still hides the tab bar and status bar"
+    );
+}
+
+#[test]
+fn attaching_web_client_lands_on_the_first_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    assert_eq!(
+        screen.active_tab_ids.get(&1),
+        Some(&1),
+        "host client is on the second tab"
+    );
+
+    screen.add_client(2, true).expect("TEST");
+
+    assert_eq!(
+        screen.active_tab_ids.get(&2),
+        Some(&0),
+        "web client is on the first tab"
+    );
+}
+
+#[test]
+fn attaching_web_client_hides_the_floating_surface_of_the_first_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen
+        .tabs
+        .get_mut(&0)
+        .unwrap()
+        .new_floating_pane(PaneId::Terminal(2), None, None, false, true, None, None)
+        .unwrap();
+    assert!(screen.tabs.get(&0).unwrap().are_floating_panes_visible());
+
+    screen.add_client(2, true).expect("TEST");
+
+    assert!(
+        !screen.tabs.get(&0).unwrap().are_floating_panes_visible(),
+        "the floating surface is hidden"
+    );
+    assert_eq!(
+        screen.get_active_pane_id(&2),
+        Some(PaneId::Terminal(1)),
+        "web client is focused on a tiled pane"
+    );
+}
+
+#[test]
+fn attaching_web_client_does_not_touch_the_floating_surface_of_other_tabs() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen
+        .tabs
+        .get_mut(&1)
+        .unwrap()
+        .new_floating_pane(PaneId::Terminal(3), None, None, false, true, None, None)
+        .unwrap();
+
+    screen.add_client(2, true).expect("TEST");
+
+    assert!(
+        screen.tabs.get(&1).unwrap().are_floating_panes_visible(),
+        "the floating surface of the host tab is untouched"
+    );
+    assert_eq!(
+        screen.get_active_pane_id(&1),
+        Some(PaneId::Terminal(3)),
+        "host client keeps its floating focus"
+    );
+}
+
+#[test]
+fn attaching_terminal_client_follows_the_host_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen
+        .tabs
+        .get_mut(&1)
+        .unwrap()
+        .new_floating_pane(PaneId::Terminal(3), None, None, false, true, None, None)
+        .unwrap();
+
+    screen.add_client(2, false).expect("TEST");
+
+    assert_eq!(
+        screen.active_tab_ids.get(&2),
+        Some(&1),
+        "terminal client is on the host tab"
+    );
+    assert!(
+        screen.tabs.get(&1).unwrap().are_floating_panes_visible(),
+        "the floating surface remains visible"
+    );
+}
+
+#[test]
+fn attaching_web_watcher_follows_the_host_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+
+    screen.add_watcher_client(2).expect("TEST");
+    screen.add_client(2, true).expect("TEST");
+
+    assert_eq!(
+        screen.active_tab_ids.get(&2),
+        Some(&1),
+        "watcher client mirrors the host tab"
+    );
+}
+
+#[test]
+pub fn keep_scroll_position_when_exiting_scroll_mode() {
+    // Regression: leaving Scroll mode must not snap the pane back to the bottom.
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_instruction = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let scroll_up_cli_action = CliAction::ScrollUp { pane_id: None };
+    let mut pane_contents = String::new();
+    for i in 0..20 {
+        pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        pane_contents.as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // enter Scroll mode and scroll up some
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
+    send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
+    send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
+    send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
+    // leave Scroll mode: the pane should keep its scroll position
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_instruction, screen_thread]);
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let (_cursor_position, last_snapshot) = snapshots.last().unwrap();
+    assert_snapshot!(format!("{}", last_snapshot));
+}
+
+#[test]
+pub fn focusing_a_scrolled_pane_enters_scroll_mode() {
+    assert_focus_change_syncs_scroll_mode(InputMode::Normal);
+}
+
+#[test]
+pub fn focusing_a_scrolled_pane_enters_scroll_mode_with_locked_default() {
+    // Unlock-first users have Locked as their default mode; leaving a scrolled pane must
+    // return them to Locked (not Normal), and Scroll is entered from Locked.
+    assert_focus_change_syncs_scroll_mode(InputMode::Locked);
+}
+
+// Focusing a scrolled pane should put the client in Scroll mode, and focusing an
+// unscrolled pane should return it to the default mode. The switch must be routed through
+// the server (ServerInstruction::ChangeMode) like SwitchToMode is, so the client's
+// authoritative input mode used for keybind resolution (current_input_modes) is updated,
+// not just the mode_info used for rendering. Asserting on the emitted instruction catches
+// a desync where the status line flips but keys still resolve in the old mode. See #638.
+fn assert_focus_change_syncs_scroll_mode(default_mode: InputMode) {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.config.options.default_mode = Some(default_mode);
+    // Drive the connected client: focus and mode both hang off it.
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+
+    // Capture the mode-change instructions the screen sends to the server.
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let last_change_mode = || -> Option<InputMode> {
+        received_server_instructions
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find_map(|instruction| match instruction {
+                ServerInstruction::ChangeMode(cid, mode, _) if *cid == client_id => Some(*mode),
+                _ => None,
+            })
+    };
+
+    // Fill the first (left) pane, scroll it up in Scroll mode, then return to the default
+    // mode. The scroll position survives (see keep_scroll_position_when_exiting_scroll_mode),
+    // so the left pane is left scrolled while the client is back in its default mode; the
+    // right pane is unscrolled.
+    let mut pane_contents = String::new();
+    for i in 0..20 {
+        pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        pane_contents.as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    let scroll_up = CliAction::ScrollUp { pane_id: None };
+    for _ in 0..4 {
+        send_cli_action_to_server(&session_metadata, scroll_up.clone(), client_id);
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        default_mode,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // From the default mode, focus the unscrolled (right) pane: nothing to sync.
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::MoveFocus {
+            direction: Direction::Right,
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // Focus back to the scrolled (left) pane: the client should be switched to Scroll.
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::MoveFocus {
+            direction: Direction::Left,
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode(),
+        Some(InputMode::Scroll),
+        "focusing the scrolled pane should switch the client to Scroll mode",
+    );
+
+    // The mock has no server loop to round-trip ServerInstruction::ChangeMode back into the
+    // screen, so apply the mode the server would have set to advance mode_info to Scroll.
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // Focus the unscrolled (right) pane: the client should return to its default mode.
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::MoveFocus {
+            direction: Direction::Right,
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode(),
+        Some(default_mode),
+        "focusing the unscrolled pane should return the client to its default mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
+pub fn focusing_a_scrolled_pane_with_the_mouse_enters_scroll_mode() {
+    // Same sync as the keyboard path, but the focus change comes from a mouse click. Any
+    // mouse action that moves focus must sync the mode too. See #638.
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let last_change_mode = || -> Option<InputMode> {
+        received_server_instructions
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find_map(|instruction| match instruction {
+                ServerInstruction::ChangeMode(cid, mode, _) if *cid == client_id => Some(*mode),
+                _ => None,
+            })
+    };
+
+    // Fill and scroll the left pane, then return to Normal; its scroll position survives.
+    let mut pane_contents = String::new();
+    for i in 0..20 {
+        pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        pane_contents.as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    let scroll_up = CliAction::ScrollUp { pane_id: None };
+    for _ in 0..4 {
+        send_cli_action_to_server(&session_metadata, scroll_up.clone(), client_id);
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // The vertical split puts the left pane on the left half of the 80-column screen and the
+    // right pane on the right half. Click the unscrolled right pane, then click back on the
+    // scrolled left pane so the second click is a real focus change.
+    for &(line, column) in &[(5, 70), (5, 10)] {
+        let _ = mock_screen.to_screen.send(ScreenInstruction::MouseEvent(
+            MouseEvent::new_left_press_event(Position::new(line, column)),
+            client_id,
+            None,
+        ));
+        let _ = mock_screen.to_screen.send(ScreenInstruction::MouseEvent(
+            MouseEvent::new_left_release_event(Position::new(line, column)),
+            client_id,
+            None,
+        ));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert_eq!(
+        last_change_mode(),
+        Some(InputMode::Scroll),
+        "clicking the scrolled pane should switch the client to Scroll mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+fn last_change_mode_for_client(
+    received_server_instructions: &Arc<Mutex<Vec<ServerInstruction>>>,
+    client_id: ClientId,
+) -> Option<InputMode> {
+    received_server_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find_map(|instruction| match instruction {
+            ServerInstruction::ChangeMode(cid, mode, _) if *cid == client_id => Some(*mode),
+            _ => None,
+        })
+}
+
+fn fill_and_scroll_focused_pane(
+    to_screen: &SenderWithContext<ScreenInstruction>,
+    session_metadata: &SessionMetaData,
+    client_id: ClientId,
+) {
+    let mut pane_contents = String::new();
+    for i in 0..20 {
+        pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
+    }
+    let _ = to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        pane_contents.as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    let scroll_up = CliAction::ScrollUp { pane_id: None };
+    for _ in 0..4 {
+        send_cli_action_to_server(session_metadata, scroll_up.clone(), client_id);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(100));
+}
+
+#[test]
+pub fn toggling_floating_panes_syncs_scroll_mode() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::TogglePaneEmbedOrFloating { pane_id: None },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    fill_and_scroll_focused_pane(&mock_screen.to_screen, &session_metadata, client_id);
+
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::ToggleFloatingPanes { tab_id: None },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Normal),
+        "hiding the scrolled floating pane should return the client to its default mode",
+    );
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::ToggleFloatingPanes { tab_id: None },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Scroll),
+        "showing the scrolled floating pane should switch the client to Scroll mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
+pub fn switching_tabs_syncs_scroll_mode() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    fill_and_scroll_focused_pane(&mock_screen.to_screen, &session_metadata, client_id);
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::NewTab(
+        None,
+        None,
+        Some(TiledPaneLayout::default()),
+        vec![],
+        None,
+        (Some(vec![]), Some(vec![])),
+        None,
+        false,
+        true,
+        (client_id, false),
+        None,
+    ));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        TiledPaneLayout::default(),
+        vec![],
+        vec![(2, None)],
+        vec![],
+        HashMap::new(),
+        1,
+        true,
+        (client_id, false),
+        None,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::GoToTab { index: 1 },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Scroll),
+        "switching to the tab with the scrolled pane should switch the client to Scroll mode",
+    );
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::GoToTab { index: 2 },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Normal),
+        "switching to the tab with the unscrolled pane should return the client to its default mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
+pub fn closing_focused_pane_syncs_scroll_mode_on_fallback_pane() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.drop_all_pty_messages();
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    fill_and_scroll_focused_pane(&mock_screen.to_screen, &session_metadata, client_id);
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::MoveFocus {
+            direction: Direction::Right,
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::ClosePane { pane_id: None },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Scroll),
+        "focus falling back to the scrolled pane should switch the client to Scroll mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
+pub fn focus_pane_with_id_syncs_scroll_mode() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    fill_and_scroll_focused_pane(&mock_screen.to_screen, &session_metadata, client_id);
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::MoveFocus {
+            direction: Direction::Right,
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::FocusPaneWithId(
+            PaneId::Terminal(0),
+            false,
+            false,
+            client_id,
+            None,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Scroll),
+        "focusing the scrolled pane by id should switch the client to Scroll mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
+pub fn scrolling_the_focused_pane_syncs_scroll_mode() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    let mut pane_contents = String::new();
+    for i in 0..20 {
+        pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        pane_contents.as_bytes().to_vec(),
+    ));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::ScrollUp { pane_id: None },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Scroll),
+        "scrolling the focused pane up should switch the client to Scroll mode",
+    );
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::ScrollToBottom { pane_id: None },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Normal),
+        "scrolling the focused pane back to the bottom should return the client to its default mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
+pub fn scrolling_the_focused_pane_with_the_mouse_syncs_scroll_mode() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let client_id = mock_screen.main_client_id;
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    let mut pane_contents = String::new();
+    for i in 0..20 {
+        pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        pane_contents.as_bytes().to_vec(),
+    ));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::MouseEvent(
+        MouseEvent::new_scroll_up_event(Position::new(5, 10)),
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Scroll),
+        "wheel-scrolling the focused pane up should switch the client to Scroll mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
+pub fn scrolling_an_unfocused_pane_does_not_sync_scroll_mode() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let client_id = mock_screen.main_client_id;
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    let mut pane_contents = String::new();
+    for i in 0..20 {
+        pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        1,
+        pane_contents.as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::ScrollUpWithPaneId(
+            PaneId::Terminal(1),
+            None,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        None,
+        "scrolling a pane the client is not focused on should not change its mode",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+fn subscribe_pane_to_focus_events(screen: &mut Screen, client_id: ClientId, terminal_id: u32) {
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .handle_pty_bytes(terminal_id, Vec::from("\u{1b}[?1004h".as_bytes()))
+        .unwrap();
+}
+
+fn focus_events_written_to_pane(tty_stdin_bytes: &TtyStdinBytes, terminal_id: u32) -> String {
+    tty_stdin_bytes
+        .lock()
+        .unwrap()
+        .get(&terminal_id)
+        .map(|bytes| String::from_utf8_lossy(bytes).to_string())
+        .unwrap_or_default()
+}
+
+#[test]
+fn host_focus_changes_are_forwarded_to_the_active_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    subscribe_pane_to_focus_events(&mut screen, client_id, 1);
+    tty_stdin_bytes.lock().unwrap().clear();
+
+    screen.host_terminal_focus_changed(client_id, false);
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "\u{1b}[O",
+        "the active pane is told the host lost focus"
+    );
+
+    screen.host_terminal_focus_changed(client_id, true);
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "\u{1b}[O\u{1b}[I",
+        "the active pane is told the host regained focus"
+    );
+}
+
+#[test]
+fn repeated_host_focus_reports_are_not_forwarded_twice() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    subscribe_pane_to_focus_events(&mut screen, client_id, 1);
+    tty_stdin_bytes.lock().unwrap().clear();
+
+    screen.host_terminal_focus_changed(client_id, false);
+    screen.host_terminal_focus_changed(client_id, false);
+    screen.host_terminal_focus_changed(client_id, true);
+    screen.host_terminal_focus_changed(client_id, true);
+
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "\u{1b}[O\u{1b}[I",
+        "only transitions are forwarded"
+    );
+}
+
+#[test]
+fn host_focus_is_not_forwarded_to_a_pane_that_did_not_subscribe() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    tty_stdin_bytes.lock().unwrap().clear();
+
+    screen.host_terminal_focus_changed(client_id, false);
+    screen.host_terminal_focus_changed(client_id, true);
+
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "",
+        "a pane that did not enable focus tracking gets nothing"
+    );
+}
+
+#[test]
+fn host_focus_loss_is_withheld_while_another_client_is_still_focused() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let first_client_id = 1;
+    let second_client_id = 2;
+    let (mut screen, tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.set_client_size(second_client_id, size);
+    screen.add_client(second_client_id, false).unwrap();
+    subscribe_pane_to_focus_events(&mut screen, first_client_id, 1);
+    tty_stdin_bytes.lock().unwrap().clear();
+
+    screen.host_terminal_focus_changed(first_client_id, false);
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "",
+        "the pane is still focused by the second client"
+    );
+
+    screen.host_terminal_focus_changed(second_client_id, false);
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "\u{1b}[O",
+        "the pane loses focus once no client is focused on it"
+    );
+
+    screen.host_terminal_focus_changed(first_client_id, true);
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "\u{1b}[O\u{1b}[I",
+        "the pane regains focus with the first client"
+    );
+
+    screen.host_terminal_focus_changed(second_client_id, true);
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "\u{1b}[O\u{1b}[I",
+        "the pane is already focused, the second client changes nothing"
+    );
+}
+
+#[test]
+fn host_focus_changes_of_clients_on_different_panes_are_independent() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let first_client_id = 1;
+    let second_client_id = 2;
+    let second_pane_id = PaneId::Terminal(2);
+    let (mut screen, tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, false);
+    new_tab(&mut screen, 1, 0);
+    screen.set_client_size(second_client_id, size);
+    screen.add_client(second_client_id, false).unwrap();
+    {
+        let active_tab = screen.get_active_tab_mut(first_client_id).unwrap();
+        active_tab
+            .horizontal_split(second_pane_id, None, first_client_id, None, None)
+            .unwrap();
+        active_tab.move_focus_up(first_client_id).unwrap();
+    }
+    screen
+        .get_active_tab_mut(second_client_id)
+        .unwrap()
+        .move_focus_down(second_client_id)
+        .unwrap();
+    subscribe_pane_to_focus_events(&mut screen, first_client_id, 1);
+    subscribe_pane_to_focus_events(&mut screen, first_client_id, 2);
+    tty_stdin_bytes.lock().unwrap().clear();
+
+    screen.host_terminal_focus_changed(second_client_id, false);
+
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "",
+        "the pane of the still-focused client is untouched"
+    );
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 2),
+        "\u{1b}[O",
+        "only the pane of the unfocused client is told"
+    );
+}
+
+fn collect_forwarded_notifications(server_receiver: &ServerReceiver) -> String {
+    let mut output = String::new();
+    while let Ok((instruction, _)) = server_receiver.try_recv() {
+        if let ServerInstruction::Render(Some(client_map)) = instruction {
+            for (_client_id, content) in client_map {
+                output.push_str(&content);
+            }
+        }
+    }
+    output
+}
+
+fn screen_with_a_client_for_notifications(
+    host_notification_protocol: HostNotificationProtocol,
+    host_terminal_env: BTreeMap<String, String>,
+) -> (Screen, ServerReceiver) {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.set_host_notification_protocol(host_notification_protocol);
+    screen.set_client_host_terminal_env(1, host_terminal_env);
+    while server_receiver.try_recv().is_ok() {}
+    (screen, server_receiver)
+}
+
+fn kitty_env() -> BTreeMap<String, String> {
+    [("TERM".to_owned(), "xterm-kitty".to_owned())]
+        .into_iter()
+        .collect()
+}
+
+#[test]
+fn an_osc_9_notification_is_translated_for_an_osc_99_host() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Auto, kitty_env());
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc9 {
+            body: "the build finished".to_owned(),
+        }],
+        1,
+    );
+
+    assert!(
+        collect_forwarded_notifications(&server_receiver)
+            .contains("\u{1b}]99;;the build finished\u{7}"),
+        "an OSC 9 notification is re-rendered in the protocol the host speaks"
+    );
+}
+
+#[test]
+fn an_osc_99_notification_reaching_an_osc_9_host_is_translated_down() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Auto, BTreeMap::new());
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc99 {
+            payload: "i=1:d=0;the build finished".to_owned(),
+            terminator: "\u{7}".to_owned(),
+        }],
+        1,
+    );
+
+    assert!(
+        collect_forwarded_notifications(&server_receiver)
+            .contains("\u{1b}]9;the build finished\u{7}"),
+        "an unrecognized host is spoken to in the legacy protocol"
+    );
+}
+
+#[test]
+fn an_osc_99_notification_reaching_an_osc_99_host_keeps_its_namespaced_identifier() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Auto, kitty_env());
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc99 {
+            payload: "i=myid;the build finished".to_owned(),
+            terminator: "\u{7}".to_owned(),
+        }],
+        7,
+    );
+
+    let output = collect_forwarded_notifications(&server_receiver);
+    assert!(
+        output.contains("i=p7.myid") && output.contains("the build finished"),
+        "the identifier is namespaced with the pane id, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn the_configured_protocol_overrides_host_detection() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Osc9, kitty_env());
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc9 {
+            body: "the build finished".to_owned(),
+        }],
+        1,
+    );
+
+    let output = collect_forwarded_notifications(&server_receiver);
+    assert!(
+        output.contains("\u{1b}]9;the build finished\u{7}") && !output.contains("\u{1b}]99;"),
+        "a kitty host configured to osc9 is spoken to in osc9, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn a_host_configured_to_bell_gets_a_bell_instead_of_a_notification() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Bell, kitty_env());
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc777 {
+            title: "the title".to_owned(),
+            body: "the body".to_owned(),
+        }],
+        1,
+    );
+
+    let output = collect_forwarded_notifications(&server_receiver);
+    assert!(
+        output.contains("\u{7}") && !output.contains("\u{1b}]"),
+        "a bell is rung instead of a notification being sent, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn a_host_configured_to_off_is_not_sent_anything() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Off, kitty_env());
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc9 {
+            body: "the build finished".to_owned(),
+        }],
+        1,
+    );
+
+    assert_eq!(
+        collect_forwarded_notifications(&server_receiver),
+        "",
+        "notifications are suppressed entirely"
+    );
+}
+
+#[test]
+fn changing_the_configured_protocol_at_runtime_re_resolves_connected_clients() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Auto, kitty_env());
+    assert_eq!(
+        screen.notification_protocol_for_client(&1),
+        NotificationProtocol::Osc99,
+        "the kitty host is detected on connect"
+    );
+
+    screen.set_host_notification_protocol(HostNotificationProtocol::Bell);
+    assert_eq!(
+        screen.notification_protocol_for_client(&1),
+        NotificationProtocol::Bell,
+        "an already connected client picks up the new configuration"
+    );
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc9 {
+            body: "the build finished".to_owned(),
+        }],
+        1,
+    );
+    let output = collect_forwarded_notifications(&server_receiver);
+    assert!(
+        output.contains("\u{7}") && !output.contains("\u{1b}]"),
+        "the reconfigured protocol is the one actually spoken, got: {:?}",
+        output
+    );
+
+    screen.set_host_notification_protocol(HostNotificationProtocol::Auto);
+    assert_eq!(
+        screen.notification_protocol_for_client(&1),
+        NotificationProtocol::Osc99,
+        "returning to auto restores detection from the stored host environment"
+    );
+}
+
+#[test]
+fn each_client_is_spoken_to_in_the_protocol_of_its_own_host() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.set_client_size(2, size);
+    screen.add_client(2, false).unwrap();
+    screen.set_client_host_terminal_env(1, kitty_env());
+    screen.set_client_host_terminal_env(2, BTreeMap::new());
+    while server_receiver.try_recv().is_ok() {}
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc9 {
+            body: "the build finished".to_owned(),
+        }],
+        1,
+    );
+
+    let output = collect_forwarded_notifications(&server_receiver);
+    assert!(
+        output.contains("\u{1b}]99;;the build finished\u{7}"),
+        "the kitty client gets the kitty protocol, got: {:?}",
+        output
+    );
+    assert!(
+        output.contains("\u{1b}]9;the build finished\u{7}"),
+        "the other client gets the legacy protocol, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn a_client_that_never_reported_its_host_env_gets_the_configured_protocol() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+
+    assert_eq!(
+        screen.notification_protocol_for_client(&1),
+        NotificationProtocol::Osc9,
+        "an unknown host defaults to the legacy protocol"
+    );
+
+    screen.set_host_notification_protocol(HostNotificationProtocol::Off);
+    assert_eq!(
+        screen.notification_protocol_for_client(&1),
+        NotificationProtocol::Off,
+        "the configured protocol still applies without a reported host env"
+    );
+}
+
+#[test]
+fn a_departing_client_leaves_no_host_state_behind() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.set_client_size(2, size);
+    screen.add_client(2, false).unwrap();
+    screen.set_client_host_terminal_env(2, kitty_env());
+    screen.host_terminal_focus_changed(2, false);
+    assert!(screen.client_host_focused.contains_key(&2));
+    assert!(screen.client_notification_protocols.contains_key(&2));
+    assert!(screen.client_host_terminal_env.contains_key(&2));
+
+    screen.remove_client(2).unwrap();
+
+    assert!(
+        !screen.client_host_focused.contains_key(&2),
+        "focus state is forgotten"
+    );
+    assert!(
+        !screen.client_notification_protocols.contains_key(&2),
+        "the resolved notification protocol is forgotten"
+    );
+    assert!(
+        !screen.client_host_terminal_env.contains_key(&2),
+        "the reported host environment is forgotten"
+    );
+}
+
+#[test]
+fn a_client_whose_host_focus_was_never_reported_counts_as_focused() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    subscribe_pane_to_focus_events(&mut screen, 1, 1);
+    tty_stdin_bytes.lock().unwrap().clear();
+
+    screen.host_terminal_focus_changed(1, true);
+
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "",
+        "a client is assumed focused until told otherwise, so this is not a transition"
     );
 }

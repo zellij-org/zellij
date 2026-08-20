@@ -95,14 +95,7 @@ fn serialize_tab(
     match get_tiled_panes_layout_from_panegeoms(tiled_panes, None) {
         Some(tiled_panes_layout) => {
             let floating_panes_layout = get_floating_panes_layout_from_panegeoms(floating_panes);
-            let tiled_panes = if &tiled_panes_layout.children_split_direction
-                != &SplitDirection::default()
-                || tiled_panes_layout.children_are_stacked
-            {
-                vec![tiled_panes_layout]
-            } else {
-                tiled_panes_layout.children
-            };
+            let tiled_panes = tiled_panes_to_serialize(tiled_panes_layout);
             serialized_tab
                 .entries_mut()
                 .push(KdlEntry::new_prop("name", tab_name));
@@ -131,6 +124,23 @@ fn serialize_tab(
         None => {
             return None;
         },
+    }
+}
+
+fn tiled_panes_to_serialize(root: TiledPaneLayout) -> Vec<TiledPaneLayout> {
+    let root_is_leaf = root.children.is_empty() && root.external_children_index.is_none();
+    if root_is_leaf {
+        if root == TiledPaneLayout::default() {
+            vec![]
+        } else {
+            vec![root]
+        }
+    } else if &root.children_split_direction != &SplitDirection::default()
+        || root.children_are_stacked
+    {
+        vec![root]
+    } else {
+        root.children
     }
 }
 
@@ -499,11 +509,7 @@ fn serialize_new_tab_template(
     layout_children_node: &mut KdlDocument,
 ) {
     if let Some((tiled_panes, floating_panes)) = new_tab_template {
-        let tiled_panes = if &tiled_panes.children_split_direction != &SplitDirection::default() {
-            vec![tiled_panes]
-        } else {
-            tiled_panes.children
-        };
+        let tiled_panes = tiled_panes_to_serialize(tiled_panes);
         let mut new_tab_template_node = KdlNode::new("new_tab_template");
         let mut new_tab_template_children = KdlDocument::new();
 
@@ -534,12 +540,7 @@ fn serialize_swap_tiled_layouts(
         }
 
         for (layout_constraint, tiled_panes_layout) in swap_tiled_layout.0 {
-            let tiled_panes_layout =
-                if &tiled_panes_layout.children_split_direction != &SplitDirection::default() {
-                    vec![tiled_panes_layout]
-                } else {
-                    tiled_panes_layout.children
-                };
+            let tiled_panes_layout = tiled_panes_to_serialize(tiled_panes_layout);
             let mut layout_step_node = KdlNode::new("tab");
             let mut layout_step_node_children = KdlDocument::new();
             if let Some(layout_constraint_entry) = serialize_layout_constraint(layout_constraint) {
@@ -1356,6 +1357,152 @@ mod tests {
         };
         let kdl = serialize_session_layout(global_layout_manifest).unwrap();
         assert_snapshot!(kdl.0);
+    }
+
+    #[test]
+    fn can_serialize_tab_with_a_single_tiled_pane() {
+        use crate::input::command::RunCommand;
+        let tab_layout_manifest = TabLayoutManifest {
+            tiled_panes: vec![PaneLayoutManifest {
+                run: Some(Run::Command(RunCommand {
+                    command: PathBuf::from("/bin/sleep"),
+                    args: vec!["10000".to_owned()],
+                    ..Default::default()
+                })),
+                title: Some("my-only-pane".to_owned()),
+                geom: PaneGeom {
+                    x: 0,
+                    y: 0,
+                    rows: Dimension::fixed(10),
+                    cols: Dimension::fixed(10),
+                    stacked: None,
+                    is_pinned: false,
+                    logical_position: None,
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
+            ..Default::default()
+        };
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        expect![[r#"
+            layout {
+                tab name="Tab #1" {
+                    pane command="/bin/sleep" name="my-only-pane" {
+                        args "10000"
+                        start_suspended true
+                    }
+                }
+            }
+        "#]]
+        .assert_eq(&kdl.0);
+    }
+
+    #[test]
+    fn can_serialize_tab_with_a_single_tiled_pane_and_a_floating_pane() {
+        let tab_layout_manifest = TabLayoutManifest {
+            tiled_panes: vec![PaneLayoutManifest {
+                title: Some("my-only-tiled-pane".to_owned()),
+                geom: PaneGeom {
+                    x: 0,
+                    y: 0,
+                    rows: Dimension::fixed(10),
+                    cols: Dimension::fixed(10),
+                    stacked: None,
+                    is_pinned: false,
+                    logical_position: None,
+                },
+                ..Default::default()
+            }],
+            floating_panes: vec![PaneLayoutManifest {
+                title: Some("my-floating-pane".to_owned()),
+                geom: PaneGeom {
+                    x: 1,
+                    y: 1,
+                    rows: Dimension::fixed(5),
+                    cols: Dimension::fixed(5),
+                    stacked: None,
+                    is_pinned: false,
+                    logical_position: None,
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
+            ..Default::default()
+        };
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        expect![[r#"
+            layout {
+                tab name="Tab #1" {
+                    pane name="my-only-tiled-pane"
+                    floating_panes {
+                        pane name="my-floating-pane" {
+                            height 5
+                            width 5
+                            x 1
+                            y 1
+                        }
+                    }
+                }
+            }
+        "#]]
+        .assert_eq(&kdl.0);
+    }
+
+    #[test]
+    fn can_serialize_new_tab_template_with_a_single_pane() {
+        let tiled_panes_layout = TiledPaneLayout {
+            name: Some("my-only-template-pane".to_owned()),
+            ..Default::default()
+        };
+        let mut default_layout = Layout::default();
+        default_layout.template = Some((tiled_panes_layout, vec![]));
+        let global_layout_manifest = GlobalLayoutManifest {
+            default_layout: Box::new(default_layout),
+            ..Default::default()
+        };
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        expect![[r#"
+            layout {
+                new_tab_template {
+                    pane name="my-only-template-pane"
+                }
+            }
+        "#]]
+        .assert_eq(&kdl.0);
+    }
+
+    #[test]
+    fn can_serialize_swap_tiled_layout_with_a_single_pane() {
+        let tiled_panes_layout = TiledPaneLayout {
+            name: Some("my-only-swap-pane".to_owned()),
+            ..Default::default()
+        };
+        let mut swap_tiled_layout = BTreeMap::new();
+        swap_tiled_layout.insert(LayoutConstraint::NoConstraint, tiled_panes_layout);
+        let mut default_layout = Layout::default();
+        default_layout.swap_tiled_layouts = vec![(swap_tiled_layout, Some("my-swap".to_owned()))];
+        let global_layout_manifest = GlobalLayoutManifest {
+            default_layout: Box::new(default_layout),
+            ..Default::default()
+        };
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        expect![[r#"
+            layout {
+                swap_tiled_layout name="my-swap" {
+                    tab {
+                        pane name="my-only-swap-pane"
+                    }
+                }
+            }
+        "#]]
+        .assert_eq(&kdl.0);
     }
 
     #[test]

@@ -530,13 +530,13 @@ match pty
     },
     Err(err) => match err.downcast_ref::<ZellijError>() {
         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
-            // Do something now that this error occured.
+            // Do something now that this error occurred.
             // We can even access the values stored inside it, "terminal_id" in
             // this case
         },
         // You can check for other error variants here
         _ => {
-            // Some other error, which we haven't checked for, occured here.
+            // Some other error, which we haven't checked for, occurred here.
             // Now we can, for example, log it!
             Err::<(), _>(err).non_fatal(),
         },

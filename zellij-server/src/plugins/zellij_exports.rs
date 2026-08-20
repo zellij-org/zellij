@@ -53,7 +53,6 @@ use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
 use kdl::KdlDocument;
-use zellij_utils::pane_size::Size;
 
 use prost::Message;
 use zellij_utils::{
@@ -466,13 +465,6 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ListWindowsVolumes => list_windows_volumes(env),
                     PluginCommand::GetSessionList => get_session_list(env),
                     PluginCommand::SetSoftKeyboard(on) => set_soft_keyboard(env, on),
-                    PluginCommand::SetTabFit { tab_id, fit } => set_tab_fit(
-                        env,
-                        tab_id,
-                        fit.map(|(pane_id, size)| (pane_id.into(), size)),
-                    ),
-                    PluginCommand::ExitMobileMode => exit_mobile_mode(env),
-                    PluginCommand::SetShadowFocus(pane_id) => set_shadow_focus(env, pane_id.into()),
                     PluginCommand::DumpSessionLayout { tab_index } => {
                         dump_session_layout(env, tab_index)
                     },
@@ -868,15 +860,6 @@ fn unsubscribe(env: &PluginEnv, event_list: HashSet<EventType>) -> Result<()> {
         .lock()
         .to_anyhow()?
         .retain(|k| !event_list.contains(k));
-    if event_list.contains(&EventType::PaneRenderReportWithAnsi) {
-        let _ = env
-            .senders
-            .send_to_plugin(PluginInstruction::PluginSubscribedToEvents(
-                env.plugin_id,
-                env.client_id,
-                HashSet::new(), // empty set signals a recheck, not a new subscription
-            ));
-    }
     Ok(())
 }
 
@@ -4058,41 +4041,6 @@ fn set_soft_keyboard(env: &PluginEnv, on: bool) {
         .non_fatal();
 }
 
-fn set_shadow_focus(env: &PluginEnv, pane_id: PaneId) {
-    env.senders
-        .send_to_screen(ScreenInstruction::SetShadowFocus(env.client_id, pane_id))
-        .with_context(|| {
-            format!(
-                "failed to dispatch SetShadowFocus for plugin {}",
-                env.plugin_id
-            )
-        })
-        .non_fatal();
-}
-
-fn set_tab_fit(env: &PluginEnv, tab_id: usize, fit: Option<(PaneId, Size)>) {
-    env.senders
-        .send_to_screen(ScreenInstruction::SetTabFit {
-            client_id: env.client_id,
-            tab_id,
-            fit,
-        })
-        .with_context(|| format!("failed to dispatch SetTabFit for plugin {}", env.plugin_id))
-        .non_fatal();
-}
-
-fn exit_mobile_mode(env: &PluginEnv) {
-    env.senders
-        .send_to_screen(ScreenInstruction::ExitMobileMode(env.client_id, None))
-        .with_context(|| {
-            format!(
-                "failed to dispatch ExitMobileMode for plugin {}",
-                env.plugin_id
-            )
-        })
-        .non_fatal();
-}
-
 #[cfg(windows)]
 fn list_windows_volumes(env: &PluginEnv) {
     let send_plugin_instructions = env.senders.to_plugin.clone();
@@ -5628,9 +5576,7 @@ fn check_command_permission(
         | PluginCommand::HideFloatingPanes { .. }
         | PluginCommand::SetPaneRegexHighlights(..)
         | PluginCommand::ClearPaneHighlights(..)
-        | PluginCommand::SetSoftKeyboard(..)
-        | PluginCommand::SetTabFit { .. }
-        | PluginCommand::ExitMobileMode => PermissionType::ChangeApplicationState,
+        | PluginCommand::SetSoftKeyboard(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,

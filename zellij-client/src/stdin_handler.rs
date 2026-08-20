@@ -142,6 +142,15 @@ pub(crate) fn stdin_loop(
                                 },
                             );
                         }
+                        if let Some((token, reply_bytes)) = parse_output.completed_clipboard_forward
+                        {
+                            let _ = send_input_instructions.send(
+                                InputInstruction::ForwardedReplyFromHostComplete {
+                                    token,
+                                    reply_bytes,
+                                },
+                            );
+                        }
                         for payload in parse_output.desktop_notifications {
                             let _ = send_input_instructions
                                 .send(InputInstruction::DesktopNotificationResponse(payload));
@@ -150,7 +159,11 @@ pub(crate) fn stdin_loop(
                             let _ = send_input_instructions
                                 .send(InputInstruction::NestedSessionFrameFromHost(payload_bytes));
                         }
-                        let residue = parse_output.residue;
+                        let (residue, focus_changes) = extract_focus_reports(parse_output.residue);
+                        for focused in focus_changes {
+                            let _ = send_input_instructions
+                                .send(InputInstruction::HostTerminalFocusChanged(focused));
+                        }
                         if residue.is_empty() {
                             schedule_finalization(
                                 &stdin_ansi_parser,
@@ -224,6 +237,7 @@ pub(crate) fn stdin_loop(
                                 break 'stdin;
                             }
                         }
+                        realign_current_buffer(&mut current_buffer, &input_parser);
 
                         schedule_finalization(
                             &stdin_ansi_parser,
@@ -245,27 +259,12 @@ pub(crate) fn stdin_loop(
             },
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 let pending = stdin_ansi_parser.lock().unwrap().pending_partial();
-                match pending {
-                    PendingPartial::ReplyInProgress => {
-                        let elapsed = reply_in_progress_since
-                            .map(|since| since.elapsed())
-                            .unwrap_or_default();
-                        if elapsed >= PARTIAL_REPLY_FLUSH_GUARD {
-                            let drained = stdin_ansi_parser.lock().unwrap().finalize_force();
-                            drain_partial_to_keyboard(
-                                &mut input_parser,
-                                &mut current_buffer,
-                                send_input_instructions.clone(),
-                                drained,
-                            );
-                            needs_finalization = false;
-                            reply_in_progress_since = None;
-                        } else {
-                            needs_finalization = true;
-                        }
-                    },
-                    _ => {
-                        let drained = stdin_ansi_parser.lock().unwrap().finalize_lone_esc();
+                if pending.uses_reply_flush_guard() {
+                    let elapsed = reply_in_progress_since
+                        .map(|since| since.elapsed())
+                        .unwrap_or_default();
+                    if elapsed >= PARTIAL_REPLY_FLUSH_GUARD {
+                        let drained = stdin_ansi_parser.lock().unwrap().finalize_force();
                         drain_partial_to_keyboard(
                             &mut input_parser,
                             &mut current_buffer,
@@ -274,7 +273,19 @@ pub(crate) fn stdin_loop(
                         );
                         needs_finalization = false;
                         reply_in_progress_since = None;
-                    },
+                    } else {
+                        needs_finalization = true;
+                    }
+                } else {
+                    let drained = stdin_ansi_parser.lock().unwrap().finalize_fast_partial();
+                    drain_partial_to_keyboard(
+                        &mut input_parser,
+                        &mut current_buffer,
+                        send_input_instructions.clone(),
+                        drained,
+                    );
+                    needs_finalization = false;
+                    reply_in_progress_since = None;
                 }
             },
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -296,7 +307,7 @@ fn schedule_finalization(
     if fed_termwiz || pending != PendingPartial::None {
         *needs_finalization = true;
     }
-    if pending == PendingPartial::ReplyInProgress {
+    if pending.uses_reply_flush_guard() {
         if reply_in_progress_since.is_none() {
             *reply_in_progress_since = Some(Instant::now());
         }
@@ -330,6 +341,44 @@ fn drain_partial_to_keyboard(
             .send(InputInstruction::KeyEvent(input_event, raw_bytes))
             .unwrap();
     }
+    realign_current_buffer(current_buffer, input_parser);
+}
+
+fn extract_focus_reports(residue: Vec<u8>) -> (Vec<u8>, Vec<bool>) {
+    const FOCUS_GAINED: &[u8] = b"\x1b[I";
+    const FOCUS_LOST: &[u8] = b"\x1b[O";
+    if residue.len() < FOCUS_GAINED.len() {
+        return (residue, vec![]);
+    }
+    let mut remaining = Vec::with_capacity(residue.len());
+    let mut focus_changes = vec![];
+    let mut index = 0;
+    while index < residue.len() {
+        let rest = &residue[index..];
+        if rest.starts_with(FOCUS_GAINED) {
+            focus_changes.push(true);
+            index += FOCUS_GAINED.len();
+        } else if rest.starts_with(FOCUS_LOST) {
+            focus_changes.push(false);
+            index += FOCUS_LOST.len();
+        } else {
+            remaining.push(residue[index]);
+            index += 1;
+        }
+    }
+    (remaining, focus_changes)
+}
+
+/// Trim `current_buffer` to the parser's own buffered length so it can
+/// never drift from the parser's internal state: a trailing incomplete
+/// sequence is held by the parser (and mirrored here) until the next
+/// read completes it, while bytes already decoded into events are dropped.
+fn realign_current_buffer(current_buffer: &mut Vec<u8>, input_parser: &InputParser) {
+    let buffered = input_parser.buffered_len();
+    let excess = current_buffer.len().saturating_sub(buffered);
+    if excess > 0 {
+        current_buffer.drain(..excess);
+    }
 }
 
 /// Build the fire-and-forget host-query batch sent at client startup.
@@ -360,7 +409,53 @@ pub(crate) const PIXEL_SIZE_QUERY: &str = "\u{1b}[14t\u{1b}[16t";
 
 #[cfg(test)]
 mod tests {
-    use super::{build_startup_query_string, PIXEL_SIZE_QUERY};
+    use super::{
+        build_startup_query_string, extract_focus_reports, realign_current_buffer, InputParser,
+        PIXEL_SIZE_QUERY,
+    };
+
+    #[test]
+    fn realign_after_lone_paste_start_empties_the_buffer() {
+        let mut parser = InputParser::new();
+        parser.parse_with_consumed(b"\x1b[200~", |_, _| {}, true);
+        let mut current_buffer = b"\x1b[200~".to_vec();
+        realign_current_buffer(&mut current_buffer, &parser);
+        assert!(
+            current_buffer.is_empty(),
+            "the silently consumed paste-start bytes must not linger: {:?}",
+            current_buffer
+        );
+    }
+
+    #[test]
+    fn realign_drops_stale_bytes_from_the_front_and_keeps_the_pending_tail() {
+        let mut parser = InputParser::new();
+        parser.parse_with_consumed(b"\x1b[200~hel", |_, _| {}, true);
+        let mut current_buffer = b"\x1b[200~hel".to_vec();
+        realign_current_buffer(&mut current_buffer, &parser);
+        assert_eq!(
+            current_buffer, b"hel",
+            "the retained bytes must be the parser's pending tail, not the stale front"
+        );
+    }
+
+    #[test]
+    fn realign_is_a_no_op_when_nothing_was_consumed() {
+        let mut parser = InputParser::new();
+        parser.parse_with_consumed(b"\x1b[1;2", |_, _| {}, true);
+        let mut current_buffer = b"\x1b[1;2".to_vec();
+        realign_current_buffer(&mut current_buffer, &parser);
+        assert_eq!(current_buffer, b"\x1b[1;2");
+    }
+
+    #[test]
+    fn realign_tolerates_a_shorter_mirror_buffer() {
+        let mut parser = InputParser::new();
+        parser.parse_with_consumed(b"\x1b[1;2", |_, _| {}, true);
+        let mut current_buffer = b";2".to_vec();
+        realign_current_buffer(&mut current_buffer, &parser);
+        assert_eq!(current_buffer, b";2");
+    }
 
     #[test]
     fn pixel_size_query_probes_text_area_and_character_cell() {
@@ -379,6 +474,20 @@ mod tests {
             "startup query must not contain OSC 4 palette-register probes: {:?}",
             query
         );
+    }
+
+    #[test]
+    fn focus_reports_are_extracted_from_the_byte_stream() {
+        let (residue, focus_changes) = extract_focus_reports(b"a\x1b[Ib\x1b[Oc".to_vec());
+        assert_eq!(residue, b"abc".to_vec());
+        assert_eq!(focus_changes, vec![true, false]);
+    }
+
+    #[test]
+    fn a_stream_without_focus_reports_is_left_untouched() {
+        let (residue, focus_changes) = extract_focus_reports(b"\x1b[A\x1b[B".to_vec());
+        assert_eq!(residue, b"\x1b[A\x1b[B".to_vec());
+        assert!(focus_changes.is_empty());
     }
 
     #[test]

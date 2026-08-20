@@ -129,7 +129,6 @@ pub const BUILTIN_PLUGIN_NAMES: &[&str] = &[
     "multiple-select",
     "layout-manager",
     "link",
-    "mobile",
 ];
 
 #[cfg(not(target_family = "wasm"))]
@@ -194,7 +193,6 @@ mod not_wasm {
                 add_plugin!(assets, "multiple-select.wasm");
                 add_plugin!(assets, "layout-manager.wasm");
                 add_plugin!(assets, "link.wasm");
-                add_plugin!(assets, "mobile.wasm");
             }
             assets
         };

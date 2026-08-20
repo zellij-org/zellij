@@ -5,7 +5,7 @@ use crate::panes::kitty_graphics::{
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::panes::{
-    grid::Grid,
+    grid::{Grid, PendingNotification},
     nested_session_modal::GuestModalShortcuts,
     terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
@@ -731,6 +731,32 @@ impl Pane for TerminalPane {
         self.grid.move_viewport_down(count);
         self.set_should_render(true);
     }
+    fn scroll_to_previous_prompt(&mut self, _client_id: ClientId) {
+        if self.grid.scroll_to_previous_prompt() {
+            self.set_should_render(true);
+        }
+    }
+    fn scroll_to_next_prompt(&mut self, _client_id: ClientId) {
+        if self.grid.scroll_to_next_prompt() {
+            self.set_should_render(true);
+        }
+    }
+    fn select_command_at_scroll_position(&mut self, _client_id: ClientId) {
+        if self.grid.select_command_at_scroll_position() {
+            self.set_should_render(true);
+        }
+    }
+    fn copy_last_command_output(&mut self) -> Option<String> {
+        let (output, start, end) = self.grid.last_completed_command_output()?;
+        self.grid.set_command_output_flash(start, end);
+        self.set_should_render(true);
+        Some(output)
+    }
+    fn clear_command_output_flash(&mut self) {
+        if self.grid.clear_command_output_flash() {
+            self.set_should_render(true);
+        }
+    }
     fn clear_scroll(&mut self) {
         self.grid.reset_viewport();
         self.set_should_render(true);
@@ -875,12 +901,17 @@ impl Pane for TerminalPane {
         self.grid.pending_clipboard_update.take()
     }
 
-    fn drain_desktop_notifications(&mut self) -> Vec<(String, String)> {
+    fn drain_desktop_notifications(&mut self) -> Vec<PendingNotification> {
         self.grid.pending_desktop_notifications.drain(..).collect()
     }
 
     fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
         self.grid.pending_osc7_cwd.take()
+    }
+
+    fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
+        self.grid
+            .set_selection_options(osc133_command_selection, word_separators);
     }
 
     fn start_selection(&mut self, start: &Position, _client_id: ClientId) {

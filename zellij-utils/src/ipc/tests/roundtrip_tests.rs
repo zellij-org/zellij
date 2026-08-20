@@ -14,12 +14,13 @@ use crate::input::layout::{
 };
 use crate::input::mouse::{MouseEvent, MouseEventType};
 use crate::input::options::{
-    Clipboard, MobileLayoutConfiguration, NestedSessionHandling, OnForceClose, Options,
+    Clipboard, HostNotificationProtocol, NestedSessionHandling, OnForceClose, Options,
     PaneFrameStyle,
 };
 use crate::ipc::{
-    ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ResizeCause,
-    ServerToClientMsg,
+    ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
+    MobileRenderPrefsPayload, MobileSessionPayload, MobileSizePayload, MobileStatePayload,
+    MobileTabPayload, PaneReference, PixelDimensions, ServerToClientMsg,
 };
 use crate::pane_size::{Size, SizeInPixels};
 use crate::position::Position;
@@ -389,18 +390,15 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::TerminalResize {
         new_size: Size { cols: 80, rows: 24 },
-        cause: ResizeCause::Viewport,
     });
     test_client_roundtrip!(ClientToServerMsg::TerminalResize {
         new_size: Size {
             cols: 200,
             rows: 50
         },
-        cause: ResizeCause::Viewport,
     });
     test_client_roundtrip!(ClientToServerMsg::TerminalResize {
         new_size: Size { cols: 40, rows: 38 },
-        cause: ResizeCause::RenderingPreference,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets::default(),
@@ -423,6 +421,9 @@ fn test_client_messages() {
             max_panes: Some(4),
             force_run_layout_commands: true,
             cwd: Some(PathBuf::from("/path/to/cwd")),
+            host_terminal_env: [("TERM".to_owned(), "xterm-kitty".to_owned())]
+                .into_iter()
+                .collect(),
         },
         is_web_client: true,
     });
@@ -439,6 +440,9 @@ fn test_client_messages() {
             max_panes: Some(4),
             force_run_layout_commands: true,
             cwd: Some(PathBuf::from("/path/to/cwd")),
+            host_terminal_env: [("TERM".to_owned(), "xterm-kitty".to_owned())]
+                .into_iter()
+                .collect(),
         },
         is_web_client: true,
     });
@@ -496,13 +500,15 @@ fn test_client_messages() {
                 post_command_discovery_hook: Some("post_command_discovery_hook".to_owned()),
                 client_async_worker_tasks: Some(16),
                 mouse_hover_effects: Some(false),
+                mouse_hover_tips: Some(false),
                 visual_bell: Some(true),
                 focus_follows_mouse: Some(false),
                 mouse_click_through: Some(false),
-                mobile_layout: Some(MobileLayoutConfiguration::Always),
-                mobile_threshold_cols: Some(72),
-                mobile_threshold_rows: Some(40),
+                osc133_command_selection: Some(false),
+                word_separators: Some("[]{}<>():".to_owned()),
+                host_notification_protocol: Some(HostNotificationProtocol::Osc99),
                 nested_session_handling: Some(NestedSessionHandling::Fullscreen),
+                dangerously_enable_paste_buffer_read: Some(true),
             }),
             layout: None,
             terminal_window_size: Size { rows: 80, cols: 42 },
@@ -511,6 +517,9 @@ fn test_client_messages() {
             max_panes: Some(4),
             force_run_layout_commands: true,
             cwd: Some(PathBuf::from("/path/to/cwd")),
+            host_terminal_env: [("TERM".to_owned(), "xterm-kitty".to_owned())]
+                .into_iter()
+                .collect(),
         },
         is_web_client: true,
     });
@@ -1005,6 +1014,30 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::ScrollUp,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ScrollToPreviousPrompt,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ScrollToNextPrompt,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SelectCommandAtScrollPosition,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::CopyLastCommandOutput,
         terminal_id: Some(1),
         client_id: Some(100),
         is_cli_client: true,
@@ -3389,6 +3422,17 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::ClientExited);
     test_client_roundtrip!(ClientToServerMsg::KillSession);
     test_client_roundtrip!(ClientToServerMsg::ConnStatus);
+    test_client_roundtrip!(ClientToServerMsg::RequestSessionList);
+    test_client_roundtrip!(ClientToServerMsg::SetMobileRenderPreferences {
+        single_pane: true,
+        fit: false,
+    });
+    test_client_roundtrip!(ClientToServerMsg::SetMobileRenderPreferences {
+        single_pane: false,
+        fit: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::HostTerminalFocusChanged { focused: true });
+    test_client_roundtrip!(ClientToServerMsg::HostTerminalFocusChanged { focused: false });
     test_client_roundtrip!(ClientToServerMsg::WebServerStarted {
         base_url: "http://localhost:8080".to_string(),
     });
@@ -3866,20 +3910,108 @@ fn test_server_messages() {
     test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
         token: 0,
         query_bytes: vec![],
+        resolve_async: false,
     });
     test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
         token: 7,
         query_bytes: b"\x1b[14t".to_vec(),
+        resolve_async: false,
     });
     test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
         token: u32::MAX,
         query_bytes: (0u8..=255u8).collect(),
+        resolve_async: false,
+    });
+    test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
+        token: 12,
+        query_bytes: b"\x1b]52;c;?\x1b\\".to_vec(),
+        resolve_async: true,
     });
     test_server_roundtrip!(ServerToClientMsg::EmitNestedSessionFrame {
         payload_bytes: vec![],
     });
     test_server_roundtrip!(ServerToClientMsg::EmitNestedSessionFrame {
         payload_bytes: (0u8..=255u8).collect(),
+    });
+    test_server_roundtrip!(ServerToClientMsg::SetSoftKeyboard { on: true });
+    test_server_roundtrip!(ServerToClientMsg::SetSoftKeyboard { on: false });
+    test_server_roundtrip!(ServerToClientMsg::MobileState {
+        payload: MobileStatePayload {
+            session_name: String::new(),
+            now_secs: 0,
+            is_welcome_screen: false,
+            desktop_client_connected: false,
+            desktop_size: None,
+            active_pane: None,
+            tabs: vec![],
+            panes: vec![],
+            sessions: vec![],
+            render_prefs: MobileRenderPrefsPayload {
+                single_pane: true,
+                fit: true,
+                active_pane_is_fullscreen: false,
+            },
+        },
+    });
+    test_server_roundtrip!(ServerToClientMsg::MobileState {
+        payload: MobileStatePayload {
+            session_name: "my-session".to_string(),
+            now_secs: 1_700_000_000,
+            is_welcome_screen: true,
+            desktop_client_connected: true,
+            desktop_size: Some(MobileSizePayload {
+                cols: 200,
+                rows: 60,
+            }),
+            active_pane: Some(MobileActivePanePayload {
+                pane_id: 3,
+                is_plugin: true,
+                tab_position: 1,
+            }),
+            tabs: vec![
+                MobileTabPayload {
+                    position: 0,
+                    name: "Tab #1".to_string(),
+                    active: true,
+                },
+                MobileTabPayload {
+                    position: 1,
+                    name: "Tab #2".to_string(),
+                    active: false,
+                },
+            ],
+            panes: vec![
+                MobilePanePayload {
+                    tab_position: 0,
+                    pane_id: 1,
+                    is_plugin: false,
+                    title: "zsh".to_string(),
+                    is_floating: false,
+                    last_activity_secs_ago: 0,
+                },
+                MobilePanePayload {
+                    tab_position: 1,
+                    pane_id: 3,
+                    is_plugin: true,
+                    title: "welcome-screen".to_string(),
+                    is_floating: true,
+                    last_activity_secs_ago: 340,
+                },
+            ],
+            sessions: vec![MobileSessionPayload {
+                name: "other-session".to_string(),
+                web_clients_allowed: true,
+                tab_count: 2,
+                pane_count: 4,
+                connected_clients: 1,
+                creation_secs_ago: 3600,
+            }],
+            render_prefs: MobileRenderPrefsPayload {
+                single_pane: false,
+                fit: false,
+                active_pane_is_fullscreen: true,
+            },
+        },
     });
 }
 

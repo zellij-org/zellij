@@ -19,6 +19,8 @@ use crate::fake_pty::FakePtyHandle;
 use crate::fake_server_os_api::FakeServerOsApi;
 use crate::{keys, test_env};
 
+const GUEST_MODAL_TITLE: &str = "Nested Zellij session detected";
+
 pub struct TestRunner {
     size: Size,
     extra_config_kdl: String,
@@ -275,8 +277,18 @@ impl TestClient {
         self.fake_client_handle.client_screen.raw_bytes()
     }
 
+    pub fn received_server_messages(&self) -> Vec<String> {
+        self.fake_client_handle.received_server_messages()
+    }
+
     pub fn quit(mut self) {
         self.send_stdin(&keys::ctrl('q'));
+        self.join();
+    }
+
+    pub fn detach(mut self) {
+        self.send_stdin(&keys::ctrl('o'));
+        self.send_stdin(&keys::key('d'));
         self.join();
     }
 
@@ -362,6 +374,10 @@ impl TestSession {
         }
     }
 
+    pub fn main_client(&self) -> &TestClient {
+        &self.main_client
+    }
+
     pub fn send_stdin(&self, bytes: &[u8]) {
         self.main_client.send_stdin(bytes);
     }
@@ -401,11 +417,15 @@ impl TestSession {
         self.main_client.raw_bytes()
     }
 
+    pub fn received_server_messages(&self) -> Vec<String> {
+        self.main_client.received_server_messages()
+    }
+
     pub fn wait_for_app_load(&self) -> GridSnapshot {
         self.main_client.wait_until("app to load", |grid_snapshot| {
             (grid_snapshot.status_bar_appears() || grid_snapshot.contains("Descend:"))
                 && grid_snapshot.tab_bar_appears()
-                && grid_snapshot.cursor.is_some()
+                && (grid_snapshot.cursor.is_some() || grid_snapshot.contains(GUEST_MODAL_TITLE))
         })
     }
 
