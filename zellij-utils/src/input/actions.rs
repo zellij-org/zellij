@@ -545,6 +545,7 @@ pub enum Action {
         in_place: Option<bool>,
         cwd: Option<PathBuf>,
         pane_title: Option<String>,
+        client_local: bool,
     },
     ListClients,
     ListPanes {

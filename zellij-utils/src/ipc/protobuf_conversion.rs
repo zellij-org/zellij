@@ -1952,6 +1952,7 @@ impl From<crate::input::actions::Action>
                 in_place,
                 cwd,
                 pane_title,
+                client_local,
             } => ActionType::KeybindPipe(KeybindPipeAction {
                 name,
                 payload,
@@ -1969,6 +1970,7 @@ impl From<crate::input::actions::Action>
                 in_place,
                 cwd: cwd.map(|p| p.to_string_lossy().to_string()),
                 pane_title,
+                client_local,
             }),
             crate::input::actions::Action::ListClients => {
                 ActionType::ListClients(ListClientsAction {})
@@ -2878,6 +2880,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     in_place: keybind_pipe_action.in_place,
                     cwd: keybind_pipe_action.cwd.map(PathBuf::from),
                     pane_title: keybind_pipe_action.pane_title,
+                    client_local: keybind_pipe_action.client_local,
                 })
             },
             ActionType::ListClients(_) => Ok(crate::input::actions::Action::ListClients),

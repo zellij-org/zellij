@@ -1060,6 +1060,7 @@ impl TryFrom<ProtobufAction> for Action {
                     cwd: None,
                     pane_title: None,
                     plugin_id: None,
+                    client_local: false,
                 }),
             },
             Some(ProtobufActionName::NewStackedPane) => match protobuf_action.optional_payload {

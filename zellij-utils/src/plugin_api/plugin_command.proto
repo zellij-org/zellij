@@ -688,6 +688,7 @@ message MessageToPluginPayload {
   optional NewPluginArgs new_plugin_args = 6;
   optional uint32 destination_plugin_id = 7;
   optional FloatingPaneCoordinates floating_pane_coordinates = 8;
+  bool client_local = 9;
 }
 
 message NewPluginArgs {
