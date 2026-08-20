@@ -9147,3 +9147,20 @@ fn a_character_wider_than_two_columns_advances_the_cursor_by_its_full_width() {
     assert_eq!(row.width(), 4);
     assert_eq!(cursor_position(&grid), Some((4, 0)));
 }
+
+#[test]
+fn dump_screen_preserves_trailing_spaces_before_wrapped_continuation() {
+    let grid = create_grid_with_size_and_raw(3, 10, b"a   b     c");
+
+    assert_eq!(grid.dump_screen(false), "a   b     c");
+}
+
+#[test]
+fn dump_screen_with_ansi_preserves_trailing_spaces_before_wrapped_continuation() {
+    let grid = create_grid_with_size_and_raw(3, 10, b"\x1b[31ma   b     c\x1b[0m");
+    let ansi_escape = regex::Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+    let dumped = grid.dump_screen_with_ansi(false);
+    let stripped = ansi_escape.replace_all(&dumped, "").to_string();
+
+    assert_eq!(stripped, "a   b     c");
+}
