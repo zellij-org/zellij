@@ -10976,7 +10976,7 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::GoToTabWithId(tab_id, client_id, _completion_tx) => {
+            ScreenInstruction::GoToTabWithId(tab_id, client_id, mut _completion_tx) => {
                 let client_id_to_switch = client_id
                     .and_then(|cid| {
                         if screen.active_tab_ids.contains_key(&cid) {
@@ -11001,23 +11001,35 @@ pub(crate) fn screen_thread_main(
                             .push(tab_id);
                     } else {
                         log::error!("Tab with ID {} not found", tab_id);
+                        if let Some(ref mut c) = _completion_tx {
+                            c.set_exit_status(1);
+                            c.set_error_message(format!("Tab with id {} not found", tab_id));
+                        }
                     }
                 }
             },
-            ScreenInstruction::RenameTabWithId(tab_id, new_name, _completion_tx) => {
+            ScreenInstruction::RenameTabWithId(tab_id, new_name, mut _completion_tx) => {
                 // Use get_tab_by_id_mut() helper method
                 if let Some(tab) = screen.get_tab_by_id_mut(tab_id) {
                     tab.name = String::from_utf8_lossy(&new_name).to_string();
                     screen.log_and_report_session_state()?;
                 } else {
                     log::error!("Failed to find tab with ID: {}", tab_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
                 }
             },
-            ScreenInstruction::CloseTabWithId(tab_id, _completion_tx) => {
+            ScreenInstruction::CloseTabWithId(tab_id, mut _completion_tx) => {
                 if screen.get_tab_by_id(tab_id).is_some() {
                     screen.close_tab_by_id(tab_id).non_fatal();
                 } else {
                     log::error!("Failed to find tab with ID: {}", tab_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
                 }
             },
             ScreenInstruction::BreakPanesToTabWithId {
