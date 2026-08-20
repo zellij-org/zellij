@@ -27,6 +27,7 @@ keybinds {
         bind "j" "Down" { MoveFocus "Down"; }
         bind "k" "Up" { MoveFocus "Up"; }
         bind "p" { SwitchFocus; }
+        bind ";" { FocusLastPane; }
         bind "n" { NewPane; SwitchToMode "Normal"; }
         bind "d" { NewPane "Down"; SwitchToMode "Normal"; }
         bind "r" { NewPane "Right"; SwitchToMode "Normal"; }
