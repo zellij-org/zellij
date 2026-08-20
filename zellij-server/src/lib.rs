@@ -1510,6 +1510,11 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::DetachSession(client_ids, completion_tx) => {
+                let client_ids = if client_ids.is_empty() {
+                    session_state.read().unwrap().client_ids()
+                } else {
+                    client_ids
+                };
                 for client_id in &client_ids {
                     if let Some(session_data) = session_data.write().unwrap().as_mut() {
                         session_data.remove_key_passthrough_client(*client_id);
