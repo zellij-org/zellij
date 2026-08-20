@@ -11123,13 +11123,6 @@ pub(crate) fn screen_thread_main(
                     if let Some(tab_position) = screen.get_tab_position_by_id(tab_id) {
                         // switch_active_tab expects 0-based position
                         screen.switch_active_tab(tab_position, None, true, client_id)?;
-                        screen.render(None)?;
-
-                        screen
-                            .tab_history
-                            .entry(client_id)
-                            .or_insert_with(Vec::new)
-                            .push(tab_id);
                     } else {
                         log::error!("Tab with ID {} not found", tab_id);
                     }
