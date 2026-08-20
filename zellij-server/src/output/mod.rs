@@ -191,6 +191,11 @@ fn serialize_chunks_with_newlines(
             .with_context(err_context)?;
             chunk_width += t_character.width();
             vte_output.push(t_character.character);
+            if let Some(combining) = &t_character.combining_chars {
+                for &c in combining.iter() {
+                    vte_output.push(c);
+                }
+            }
         }
     }
     Ok(vte_output)
@@ -257,6 +262,11 @@ fn serialize_chunks(
             .with_context(err_context)?;
             chunk_width += t_character.width();
             vte_output.push(t_character.character);
+            if let Some(combining) = &t_character.combining_chars {
+                for &c in combining.iter() {
+                    vte_output.push(c);
+                }
+            }
         }
     }
     if let Some(sixel_image_store) = sixel_image_store {
