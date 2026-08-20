@@ -12,6 +12,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::rc::Rc;
+use unicode_properties::{GeneralCategoryGroup, UnicodeGeneralCategory};
 use unicode_width::UnicodeWidthChar;
 use zellij_utils::data::{
     HighlightLayer, HighlightStyle, HostTerminalThemeMode, RegexHighlight, Style,
@@ -780,6 +781,18 @@ pub struct Grid {
     osc133_command_selection: bool,
     command_output_flash: Option<Selection>,
     word_separators: String,
+}
+
+/// True for Unicode general category Mark (Mn, Mc, Me): the nonspacing and combining marks
+/// that modify the character they follow. Thai and Lao vowels and tone marks, Devanagari
+/// matras, Hebrew points, Arabic harakat and the emoji variation selectors are all marks.
+/// The zero width joiner is deliberately not one: joining emoji into a single cluster also
+/// requires recomputing the width of that cluster, which is a separate concern.
+fn is_combining_mark(character: char) -> bool {
+    matches!(
+        character.general_category_group(),
+        GeneralCategoryGroup::Mark
+    )
 }
 
 impl Grid {
@@ -2343,13 +2356,42 @@ impl Grid {
             },
         }
     }
+    /// Attach a zero width codepoint to the character preceding the cursor. Marks arriving
+    /// with no character to modify (at the start of a line, or before anything has been
+    /// printed) have nothing to attach to and are dropped, which is what every other terminal
+    /// does with them.
+    fn attach_combining_mark(&mut self, mark: char) {
+        if self.cursor.x == 0 {
+            return;
+        }
+        let y = self.cursor.y;
+        let x = self.cursor.x - 1;
+        let Some(row) = self.viewport.get_mut(y) else {
+            return;
+        };
+        // absolute_character_index maps a display column back to the character occupying it,
+        // so a mark following a wide character lands on that character rather than its
+        // second, empty column.
+        let index = row.absolute_character_index(x);
+        let Some(character) = row.columns.get_mut(index) else {
+            return;
+        };
+        character.add_combining_mark(mark);
+        self.output_buffer.update_line(y);
+    }
+
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
         let character_width = terminal_character.width();
-        // Drop zero-width Unicode/UTF-8 codepoints, like for example Variation Selectors.
-        // This breaks unicode grapheme segmentation, and is the reason why some characters
-        // aren't displayed correctly. Refer to this issue for more information:
-        //     https://github.com/zellij-org/zellij/issues/1538
+        // Zero width codepoints never get a cell of their own. Combining marks are attached to
+        // the character they modify so that the two render as a single grapheme cluster, which
+        // keeps the column count and the cursor position identical to the precomposed form of
+        // the same text. Everything else that happens to be zero width (controls, format
+        // characters such as the soft hyphen and the zero width joiner, fillers) has nothing
+        // to combine with and is dropped as before.
         if character_width == 0 {
+            if is_combining_mark(terminal_character.character) {
+                self.attach_combining_mark(terminal_character.character);
+            }
             return;
         }
         if self.cursor.x + character_width > self.width {

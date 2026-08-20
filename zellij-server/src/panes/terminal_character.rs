@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::convert::From;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
@@ -15,6 +17,7 @@ use crate::panes::alacritty_functions::parse_sgr_color;
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
     width: 1,
+    combining_marks: NO_COMBINING_MARKS,
     styles: RcCharacterStyles::Reset,
 };
 
@@ -917,16 +920,75 @@ impl Cursor {
     }
 }
 
+// Combining marks (Unicode nonspacing marks, variation selectors and zero width joiners) have
+// no width of their own, so they cannot occupy a cell. Rather than grow every cell to carry
+// them, each distinct cluster of marks is interned once and referred to by a 24 bit id that
+// fits in padding TerminalCharacter already had. Clusters are keyed by content, so repeated
+// text reuses ids and the table stays small: a session displaying Thai reuses a handful of
+// entries no matter how much text scrolls by.
+//
+// The interner is thread local, which is sound because TerminalCharacter holds an Rc and is
+// therefore !Send, so a cell can never be read from a thread other than the one that built it.
+const NO_COMBINING_MARKS: [u8; 3] = [0, 0, 0];
+// ponytail: the table is never evicted. Both ceilings below exist to bound it against
+// pathological input (Zalgo text, a fuzzer); a real session stays in the low hundreds. If
+// either is ever hit in practice, the fix is refcounting cluster ids against live cells.
+const MAX_COMBINING_MARK_CLUSTERS: usize = (1 << 24) - 1;
+const MAX_COMBINING_MARKS_PER_CHARACTER: usize = 8;
+
+thread_local! {
+    static COMBINING_MARK_CLUSTERS: RefCell<CombiningMarkInterner> =
+        RefCell::new(CombiningMarkInterner::default());
+}
+
+#[derive(Default)]
+struct CombiningMarkInterner {
+    ids: HashMap<Vec<char>, u32>,
+    clusters: Vec<Vec<char>>,
+}
+
+impl CombiningMarkInterner {
+    fn intern(&mut self, cluster: &[char]) -> Option<u32> {
+        if let Some(id) = self.ids.get(cluster) {
+            return Some(*id);
+        }
+        if self.clusters.len() >= MAX_COMBINING_MARK_CLUSTERS {
+            return None;
+        }
+        // ids are 1 based so that 0 can mean "this character has no combining marks"
+        let id = self.clusters.len() as u32 + 1;
+        self.clusters.push(cluster.to_vec());
+        self.ids.insert(cluster.to_vec(), id);
+        Some(id)
+    }
+    fn get(&self, id: u32) -> Option<&Vec<char>> {
+        self.clusters.get(id.checked_sub(1)? as usize)
+    }
+}
+
+fn combining_mark_id_to_bytes(id: u32) -> [u8; 3] {
+    [(id >> 16) as u8, (id >> 8) as u8, id as u8]
+}
+
+fn combining_mark_id_from_bytes(bytes: [u8; 3]) -> u32 {
+    ((bytes[0] as u32) << 16) | ((bytes[1] as u32) << 8) | bytes[2] as u32
+}
+
 #[derive(Clone, PartialEq)]
 pub struct TerminalCharacter {
     pub character: char,
-    pub styles: RcCharacterStyles,
     width: u8,
+    // A 24 bit id into the thread local interner of combining mark clusters, or
+    // NO_COMBINING_MARKS for the overwhelmingly common case of a character that has none.
+    // This deliberately occupies the three padding bytes that already sat between `width`
+    // and `styles`, so carrying combining marks costs no extra memory per cell.
+    combining_marks: [u8; 3],
+    pub styles: RcCharacterStyles,
 }
 
 // This size has significant memory and CPU implications for long lines,
 // be careful about allowing it to grow
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 const _: [(); 16] = [(); std::mem::size_of::<TerminalCharacter>()];
 
 impl TerminalCharacter {
@@ -941,6 +1003,7 @@ impl TerminalCharacter {
             character,
             styles,
             width: character.width().unwrap_or(0) as u8,
+            combining_marks: NO_COMBINING_MARKS,
         }
     }
 
@@ -955,17 +1018,53 @@ impl TerminalCharacter {
             character,
             styles,
             width: 1,
+            combining_marks: NO_COMBINING_MARKS,
         }
     }
 
     pub fn width(&self) -> usize {
         self.width as usize
     }
+
+    #[inline]
+    pub fn has_combining_marks(&self) -> bool {
+        self.combining_marks != NO_COMBINING_MARKS
+    }
+
+    /// The combining marks attached to this character, in the order they arrived.
+    pub fn combining_marks(&self) -> Vec<char> {
+        if !self.has_combining_marks() {
+            return Vec::new();
+        }
+        let id = combining_mark_id_from_bytes(self.combining_marks);
+        COMBINING_MARK_CLUSTERS
+            .with(|clusters| clusters.borrow().get(id).cloned())
+            .unwrap_or_default()
+    }
+
+    /// Attach a zero width combining mark to this character, so that it is rendered as one
+    /// grapheme cluster without consuming a column of its own.
+    pub fn add_combining_mark(&mut self, mark: char) {
+        let mut cluster = self.combining_marks();
+        if cluster.len() >= MAX_COMBINING_MARKS_PER_CHARACTER {
+            return;
+        }
+        cluster.push(mark);
+        if let Some(id) =
+            COMBINING_MARK_CLUSTERS.with(|clusters| clusters.borrow_mut().intern(&cluster))
+        {
+            self.combining_marks = combining_mark_id_to_bytes(id);
+        }
+    }
 }
 
 impl ::std::fmt::Debug for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.character)
+        write!(f, "{}", self.character)?;
+        for mark in self.combining_marks() {
+            write!(f, "{}", mark)?;
+        }
+        Ok(())
     }
 }
 

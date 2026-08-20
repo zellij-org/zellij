@@ -8918,7 +8918,10 @@ fn rendered_row(grid: &Grid, row_index: usize) -> String {
     grid.viewport[row_index]
         .columns
         .iter()
-        .map(|terminal_character| terminal_character.character)
+        .flat_map(|terminal_character| {
+            std::iter::once(terminal_character.character)
+                .chain(terminal_character.combining_marks())
+        })
         .collect()
 }
 
@@ -8982,17 +8985,48 @@ fn skin_tone_modifier_occupies_its_own_two_columns() {
 fn variation_selector_and_zero_width_joiner_do_not_advance_the_cursor() {
     let grid = create_grid_with_content("\u{26a0}\u{fe0f}\u{200d}\u{200b}");
 
-    assert_eq!(rendered_row(&grid, 0), "\u{26a0}");
+    // The variation selector is a combining mark and is kept, so the sign retains its emoji
+    // presentation rather than degrading to the text one. The zero width joiner and the zero
+    // width space are format characters with nothing to combine with, and are dropped.
+    assert_eq!(rendered_row(&grid, 0), "\u{26a0}\u{fe0f}");
     assert_eq!(grid.viewport[0].width(), 1);
     assert_eq!(cursor_position(&grid), Some((1, 0)));
 }
 
 #[test]
-fn combining_marks_are_dropped_and_do_not_advance_the_cursor() {
+fn combining_marks_attach_to_the_preceding_character_and_do_not_advance_the_cursor() {
     let grid = create_grid_with_content("e\u{301}a\u{300}\u{308}o\u{331}");
 
-    assert_eq!(rendered_row(&grid, 0), "eao");
+    assert_eq!(rendered_row(&grid, 0), "e\u{301}a\u{300}\u{308}o\u{331}");
     assert_eq!(grid.viewport[0].width(), 3);
+    assert_eq!(cursor_position(&grid), Some((3, 0)));
+}
+
+#[test]
+fn thai_vowels_and_tone_marks_are_preserved() {
+    // Thai writes its vowels and tone marks as zero width combining marks. Dropping them
+    // turns words into different words: ผู้ใหญ่ (adult) becomes ผใหญ, which is not a word.
+    let grid = create_grid_with_content("สวัสดีครับ");
+
+    assert_eq!(rendered_row(&grid, 0), "สวัสดีครับ");
+    // ten codepoints, three of which are marks, so seven columns
+    assert_eq!(grid.viewport[0].width(), 7);
+    assert_eq!(cursor_position(&grid), Some((7, 0)));
+}
+
+#[test]
+fn combining_marks_with_no_preceding_character_are_dropped() {
+    let grid = create_grid_with_content("\u{301}\u{300}a");
+
+    assert_eq!(rendered_row(&grid, 0), "a");
+    assert_eq!(cursor_position(&grid), Some((1, 0)));
+}
+
+#[test]
+fn a_combining_mark_attaches_to_a_wide_character_rather_than_its_second_column() {
+    let grid = create_grid_with_content("世\u{301}a");
+
+    assert_eq!(rendered_row(&grid, 0), "世\u{301}a");
     assert_eq!(cursor_position(&grid), Some((3, 0)));
 }
 
