@@ -29,6 +29,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use zellij_utils::errors::prelude::Context;
 use zellij_utils::errors::FatalError;
 use zellij_utils::shared::web_server_base_url;
 
@@ -879,12 +880,19 @@ pub fn start_remote_client(
 
     let reset_controlling_terminal_state = |e: String, exit_status: i32| {
         os_input.disable_mouse().non_fatal();
-        os_input.unset_raw_mode().unwrap();
+        os_input
+            .unset_raw_mode()
+            .context("failed to unset raw mode")
+            .non_fatal();
         os_input.restore_console_mode();
         let error = terminal_teardown_message(&e, full_screen_ws.rows, true);
         let mut stdout = os_input.get_stdout_writer();
-        stdout.write_all(error.as_bytes()).unwrap();
-        stdout.flush().unwrap();
+        let err_context = "failed to write teardown message to stdout";
+        stdout
+            .write_all(error.as_bytes())
+            .context(err_context)
+            .non_fatal();
+        stdout.flush().context(err_context).non_fatal();
         if exit_status == 0 {
             log::info!("{}", e);
         } else {
@@ -920,8 +928,12 @@ pub fn start_remote_client(
     } else {
         let clear_screen = "\u{1b}[2J";
         let mut stdout = os_input.get_stdout_writer();
-        stdout.write_all(clear_screen.as_bytes()).unwrap();
-        stdout.flush().unwrap();
+        let err_context = "failed to clear the screen on reconnect";
+        stdout
+            .write_all(clear_screen.as_bytes())
+            .context(err_context)
+            .non_fatal();
+        stdout.flush().context(err_context).non_fatal();
     }
 
     Ok(reconnect_to_session)
@@ -1370,7 +1382,10 @@ pub fn start_client(
 
     let handle_error = |backtrace: String| {
         os_input.disable_mouse().non_fatal();
-        os_input.unset_raw_mode().unwrap();
+        os_input
+            .unset_raw_mode()
+            .context("failed to unset raw mode")
+            .non_fatal();
         os_input.restore_console_mode();
         let error = terminal_teardown_message(
             &backtrace,
@@ -1378,8 +1393,12 @@ pub fn start_client(
             !explicitly_disable_kitty_keyboard_protocol,
         );
         let mut stdout = os_input.get_stdout_writer();
-        stdout.write_all(error.as_bytes()).unwrap();
-        stdout.flush().unwrap();
+        let err_context = "failed to write teardown message to stdout";
+        stdout
+            .write_all(error.as_bytes())
+            .context(err_context)
+            .non_fatal();
+        stdout.flush().context(err_context).non_fatal();
         std::process::exit(1);
     };
 
@@ -1614,16 +1633,27 @@ pub fn start_client(
 
         os_input.disable_mouse().non_fatal();
         info!("{}", exit_msg);
-        os_input.unset_raw_mode().unwrap();
+        os_input
+            .unset_raw_mode()
+            .context("failed to unset raw mode")
+            .non_fatal();
         os_input.restore_console_mode();
         let mut stdout = os_input.get_stdout_writer();
-        stdout.write_all(goodbye_message.as_bytes()).unwrap();
-        stdout.flush().unwrap();
+        let err_context = "failed to write the goodbye message to stdout";
+        stdout
+            .write_all(goodbye_message.as_bytes())
+            .context(err_context)
+            .non_fatal();
+        stdout.flush().context(err_context).non_fatal();
     } else {
         let clear_screen = "\u{1b}[2J";
         let mut stdout = os_input.get_stdout_writer();
-        stdout.write_all(clear_screen.as_bytes()).unwrap();
-        stdout.flush().unwrap();
+        let err_context = "failed to clear the screen on reconnect";
+        stdout
+            .write_all(clear_screen.as_bytes())
+            .context(err_context)
+            .non_fatal();
+        stdout.flush().context(err_context).non_fatal();
     }
 
     let _ = send_input_instructions.send(InputInstruction::Exit);
