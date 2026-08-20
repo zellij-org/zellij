@@ -5161,7 +5161,10 @@ impl Screen {
         }
     }
 
-    pub fn generate_and_report_tab_state(&mut self) -> Result<Vec<TabInfo>> {
+    pub fn generate_and_report_tab_state(
+        &mut self,
+        target_plugin: Option<(PluginId, ClientId)>,
+    ) -> Result<Vec<TabInfo>> {
         let mut plugin_updates = vec![];
         let mut tab_infos_for_screen_state = BTreeMap::new();
         for tab in self.tabs.values() {
@@ -5248,7 +5251,13 @@ impl Screen {
                 plugin_tab_updates.push(tab_info_for_plugins);
             }
             plugin_tab_updates.sort_by(|a, b| a.position.cmp(&b.position));
-            let target_plugin_ids = self.targeted_plugin_ids(*client_id, EventType::TabUpdate);
+            let target_plugin_ids = match target_plugin {
+                Some((plugin_id, target_client_id)) if target_client_id == *client_id => {
+                    vec![plugin_id]
+                },
+                Some(_) => vec![],
+                None => self.targeted_plugin_ids(*client_id, EventType::TabUpdate),
+            };
             for plugin_id in target_plugin_ids {
                 plugin_updates.push((
                     Some(plugin_id),
@@ -5263,7 +5272,10 @@ impl Screen {
             .context("failed to update tabs")?;
         Ok(tab_infos_for_screen_state.values().cloned().collect())
     }
-    fn generate_and_report_pane_state(&mut self) -> Result<PaneManifest> {
+    fn generate_and_report_pane_state(
+        &mut self,
+        target_plugin: Option<(PluginId, ClientId)>,
+    ) -> Result<PaneManifest> {
         let mut pane_manifest = PaneManifest::default();
         for tab in self.tabs.values() {
             pane_manifest.panes.insert(tab.position, tab.pane_infos());
@@ -5271,7 +5283,13 @@ impl Screen {
         let mut plugin_updates = vec![];
         let client_ids: Vec<ClientId> = self.active_tab_ids.keys().copied().collect();
         for client_id in client_ids {
-            let target_plugin_ids = self.targeted_plugin_ids(client_id, EventType::PaneUpdate);
+            let target_plugin_ids = match target_plugin {
+                Some((plugin_id, target_client_id)) if target_client_id == client_id => {
+                    vec![plugin_id]
+                },
+                Some(_) => vec![],
+                None => self.targeted_plugin_ids(client_id, EventType::PaneUpdate),
+            };
             for plugin_id in target_plugin_ids {
                 plugin_updates.push((
                     Some(plugin_id),
@@ -5288,6 +5306,16 @@ impl Screen {
         }
 
         Ok(pane_manifest)
+    }
+
+    fn report_pane_and_tab_state_to_plugin(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+    ) -> Result<()> {
+        self.generate_and_report_pane_state(Some((plugin_id, client_id)))?;
+        self.generate_and_report_tab_state(Some((plugin_id, client_id)))?;
+        Ok(())
     }
 
     fn collect_pane_list(&self, show_all: bool) -> Result<ListPanesResponse> {
@@ -5369,8 +5397,8 @@ impl Screen {
             .with_context(err_context)?;
         self.reconcile_all_single_pane_focus();
         // generate own session info
-        let pane_manifest = self.generate_and_report_pane_state()?;
-        let tab_infos = self.generate_and_report_tab_state()?;
+        let pane_manifest = self.generate_and_report_pane_state(None)?;
+        let tab_infos = self.generate_and_report_tab_state(None)?;
 
         // Lazy-load layouts on first call if cache is empty
         // After that, cache is updated by watcher via UpdateAvailableLayouts instruction
@@ -11265,8 +11293,8 @@ pub(crate) fn screen_thread_main(
                 let err_context = || "Failed to save session";
 
                 screen.update_active_pane_ids();
-                let pane_manifest = screen.generate_and_report_pane_state()?;
-                let tab_infos = screen.generate_and_report_tab_state()?;
+                let pane_manifest = screen.generate_and_report_pane_state(None)?;
+                let tab_infos = screen.generate_and_report_tab_state(None)?;
 
                 #[cfg(not(test))]
                 let (available_layouts, _layout_errors) = Layout::list_available_layouts(
@@ -12139,6 +12167,7 @@ pub(crate) fn screen_thread_main(
                     screen
                         .background_plugin_subscriptions
                         .insert((plugin_id, client_id), subscriptions);
+                    screen.report_pane_and_tab_state_to_plugin(plugin_id, client_id)?;
                 }
             },
             ScreenInstruction::ClearHintTextCache => {

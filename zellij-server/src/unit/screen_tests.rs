@@ -8075,6 +8075,87 @@ pub fn background_plugin_receives_broadcasts_regardless_of_active_tab() {
 }
 
 #[test]
+pub fn background_plugin_receives_initial_tab_update_after_subscription_race() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(None, vec![]);
+
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+
+    let mut existing_background_subscriptions = HashSet::new();
+    existing_background_subscriptions.insert(EventType::TabUpdate);
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::UpdateBackgroundPluginSubscriptions(
+            98,
+            mock_screen.main_client_id,
+            existing_background_subscriptions,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Reproduce the initial state request winning the race with subscription registration.
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::RequestStateUpdateForPlugins);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    let count_tab_updates = |instructions: &[PluginInstruction], plugin_id: u32| {
+        instructions
+            .iter()
+            .map(|instruction| {
+                if let PluginInstruction::Update(updates) = instruction {
+                    updates
+                        .iter()
+                        .filter(|(pid, _, event)| {
+                            pid == &Some(plugin_id) && matches!(event, Event::TabUpdate(..))
+                        })
+                        .count()
+                } else {
+                    0
+                }
+            })
+            .sum::<usize>()
+    };
+    let existing_plugin_tab_updates_before_new_subscription = {
+        let instructions = received_plugin_instructions.lock().unwrap();
+        count_tab_updates(&instructions, 98)
+    };
+
+    let mut background_subscriptions = HashSet::new();
+    background_subscriptions.insert(EventType::TabUpdate);
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::UpdateBackgroundPluginSubscriptions(
+            99,
+            mock_screen.main_client_id,
+            background_subscriptions,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    let received_plugin_instructions = received_plugin_instructions.lock().unwrap();
+    let received_initial_tab_update = count_tab_updates(&received_plugin_instructions, 99) > 0;
+    assert!(
+        received_initial_tab_update,
+        "Background plugin should receive TabUpdate after subscription registration: {:?}",
+        *received_plugin_instructions
+    );
+    assert_eq!(
+        count_tab_updates(&received_plugin_instructions, 98),
+        existing_plugin_tab_updates_before_new_subscription,
+        "Existing background plugins should not receive duplicate TabUpdates: {:?}",
+        *received_plugin_instructions
+    );
+}
+
+#[test]
 pub fn tab_switch_only_updates_active_tab_plugins() {
     // Tab 0: plugin pane 2 (from new_tab_with_plugins)
     // Tab 1: plugin pane 3 (from new_tab_with_plugins)
