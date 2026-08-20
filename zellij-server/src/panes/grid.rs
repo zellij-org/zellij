@@ -4834,7 +4834,6 @@ impl Perform for Grid {
                 } else if clear_type == 1 {
                     self.clear_all_before_cursor(char_to_replace);
                 } else if clear_type == 2 {
-                    self.set_scroll_region_to_viewport_size();
                     self.fill_viewport(char_to_replace);
                     if let Some(images_to_reap) = self.sixel_grid.clear() {
                         self.sixel_grid.reap_images(images_to_reap);
@@ -4883,9 +4882,14 @@ impl Perform for Grid {
                             self.bracketed_paste_mode = false;
                         },
                         1049 => {
+                            let mut main_screen_scroll_region = None;
                             if let Some(mut alternate_screen_state) =
                                 self.alternate_screen_state.take()
                             {
+                                main_screen_scroll_region = Some((
+                                    alternate_screen_state.scroll_region,
+                                    alternate_screen_state.screen_height,
+                                ));
                                 if let Some(image_ids_to_reap) = self.sixel_grid.clear() {
                                     // reap images before dropping the alternate_screen_state contents
                                     // - we can't implement a drop method for this because the store is
@@ -4905,6 +4909,23 @@ impl Perform for Grid {
                             self.alternate_screen_state = None;
                             self.clear_viewport_before_rendering = true;
                             self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
+                            if let Some(((saved_top, saved_bottom), saved_height)) =
+                                main_screen_scroll_region
+                            {
+                                let saved_viewport_bottom = saved_height.saturating_sub(1);
+                                let saved_bottom_margin =
+                                    saved_viewport_bottom.saturating_sub(saved_bottom);
+                                let current_viewport_bottom = self.height.saturating_sub(1);
+                                if current_viewport_bottom == 0 {
+                                    self.scroll_region = (0, 0);
+                                } else {
+                                    let restored_bottom = current_viewport_bottom
+                                        .saturating_sub(saved_bottom_margin)
+                                        .max(1);
+                                    let restored_top = saved_top.min(restored_bottom - 1);
+                                    self.scroll_region = (restored_top, restored_bottom);
+                                }
+                            }
                             self.mark_for_rerender();
                         },
                         25 => {
@@ -5016,6 +5037,8 @@ impl Perform for Grid {
                                 current_lines_above,
                                 current_viewport,
                                 current_cursor,
+                                self.scroll_region,
+                                self.height,
                                 alternate_sixelgrid,
                                 alternate_kittygrid,
                                 current_supports_kitty_keyboard_protocol,
@@ -5543,6 +5566,8 @@ pub struct AlternateScreenState {
     lines_above: VecDeque<Row>,
     viewport: VecDeque<Row>,
     cursor: Cursor,
+    scroll_region: (usize, usize),
+    screen_height: usize,
     sixel_grid: SixelGrid,
     kitty_grid: KittyGrid,
     supports_kitty_keyboard_protocol: bool,
@@ -5552,6 +5577,8 @@ impl AlternateScreenState {
         lines_above: VecDeque<Row>,
         viewport: VecDeque<Row>,
         cursor: Cursor,
+        scroll_region: (usize, usize),
+        screen_height: usize,
         sixel_grid: SixelGrid,
         kitty_grid: KittyGrid,
         supports_kitty_keyboard_protocol: bool,
@@ -5560,6 +5587,8 @@ impl AlternateScreenState {
             lines_above,
             viewport,
             cursor,
+            scroll_region,
+            screen_height,
             sixel_grid,
             kitty_grid,
             supports_kitty_keyboard_protocol,
