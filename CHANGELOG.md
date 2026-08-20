@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
-* fix: combining marks (Thai and Lao vowels and tone marks, Devanagari matras, Hebrew points, Arabic harakat, decomposed Latin accents, emoji variation selectors) were dropped instead of being attached to the character they modify
+* fix: combining marks (Thai and Lao vowels and tone marks, Devanagari matras, Hebrew points, Arabic harakat, decomposed Latin accents, emoji variation selectors) were dropped instead of being attached to the character they modify (https://github.com/zellij-org/zellij/pull/5500)
 
 ## [0.45.0] - 2026-08-20
 * feat: allow tabs to have different sizes if clients aren't focused on the same one (https://github.com/zellij-org/zellij/pull/5133)
