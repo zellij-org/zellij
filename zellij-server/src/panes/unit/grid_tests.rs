@@ -4691,6 +4691,59 @@ fn osc_10_set_and_query_pane_default_fg() {
 }
 
 #[test]
+fn osc_12_set_and_query_pane_cursor_color() {
+    let mut grid = create_grid_with_size_and_raw(10, 20, b"\x1b]12;#001a3a\x07");
+
+    assert_eq!(grid.pane_cursor_color, Some((0, 26, 58)));
+
+    // Query cursor color via OSC 12 — pane-scoped override is in place,
+    // so the query is answered locally with the color Zellij will apply
+    // when this pane is focused.
+    feed_bytes(&mut grid, b"\x1b]12;?\x07");
+
+    assert!(
+        grid.pending_forwarded_queries.is_empty(),
+        "OSC 12 query must not be forwarded when a pane cursor-color override is set"
+    );
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let reply = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
+    assert_eq!(reply, "\u{1b}]12;rgb:0000/1a1a/3a3a\u{7}");
+}
+
+#[test]
+fn osc_112_resets_pane_cursor_color() {
+    let mut grid = create_grid_with_size_and_raw(10, 20, b"\x1b]12;#00e000\x07");
+
+    assert_eq!(grid.pane_cursor_color, Some((0, 224, 0)));
+
+    feed_bytes(&mut grid, b"\x1b]112\x07");
+
+    assert_eq!(grid.pane_cursor_color, None);
+}
+
+#[test]
+fn cursor_color_osc_serializes_color_or_reset() {
+    let mut grid = create_grid_with_size_and_raw(10, 20, b"");
+
+    assert_eq!(grid.cursor_color_osc(), "\u{1b}]112\u{1b}\\");
+
+    feed_bytes(&mut grid, b"\x1b]12;#001a3a\x07");
+
+    assert_eq!(grid.cursor_color_osc(), "\u{1b}]12;#001a3a\u{1b}\\");
+}
+
+#[test]
+fn reset_terminal_state_clears_pane_cursor_color() {
+    let mut grid = create_grid_with_size_and_raw(10, 20, b"\x1b]12;#00e000\x07");
+
+    assert_eq!(grid.pane_cursor_color, Some((0, 224, 0)));
+
+    grid.reset_terminal_state();
+
+    assert_eq!(grid.pane_cursor_color, None);
+}
+
+#[test]
 fn osc_110_111_reset_pane_default_colors() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -6176,6 +6229,23 @@ fn osc_10_query_without_override_forwards_to_host() {
     assert!(matches!(
         grid.pending_forwarded_queries[0],
         crate::host_query::HostQuery::DefaultForeground { .. }
+    ));
+}
+
+#[test]
+fn osc_12_query_without_override_forwards_to_host() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    assert!(grid.pane_cursor_color.is_none());
+    parser.advance(&mut grid, b"\x1b]12;?\x07");
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "no override -> no local reply"
+    );
+    assert_eq!(grid.pending_forwarded_queries.len(), 1);
+    assert!(matches!(
+        grid.pending_forwarded_queries[0],
+        crate::host_query::HostQuery::CursorColor { .. }
     ));
 }
 

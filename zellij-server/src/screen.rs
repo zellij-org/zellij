@@ -4050,6 +4050,9 @@ impl Screen {
                     Vec::new()
                 }
             },
+            // Zellij does not cache the host's cursor color; if the live
+            // query times out, there is no reliable local value to return.
+            HostQuery::CursorColor { .. } => Vec::new(),
             HostQuery::PaletteRegister { index, terminator } => {
                 let codes = self.terminal_emulator_color_codes.borrow();
                 if let Some(color) = codes.get(&(*index as usize)) {
