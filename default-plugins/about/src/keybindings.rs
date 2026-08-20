@@ -7,6 +7,7 @@ use zellij_tile::prelude::*;
 pub enum Feature {
     NestedSessions,
     PaneFocus,
+    ScrollByCommand,
 }
 
 impl Feature {
@@ -14,6 +15,7 @@ impl Feature {
         match self {
             Feature::NestedSessions => "nested sessions",
             Feature::PaneFocus => "pane focus",
+            Feature::ScrollByCommand => "scrolling by command",
         }
     }
 }
@@ -228,6 +230,38 @@ pub fn expected_binds() -> Vec<ExpectedBind> {
             action: Action::FocusLastPane,
             description: "Focus the last focused pane",
             returns_to_base_mode: false,
+        },
+        ExpectedBind {
+            feature: Feature::ScrollByCommand,
+            mode: InputMode::Scroll,
+            key: KeyWithModifier::new(BareKey::Char('[')),
+            action: Action::ScrollToPreviousPrompt,
+            description: "Scroll to the previous command",
+            returns_to_base_mode: false,
+        },
+        ExpectedBind {
+            feature: Feature::ScrollByCommand,
+            mode: InputMode::Scroll,
+            key: KeyWithModifier::new(BareKey::Char(']')),
+            action: Action::ScrollToNextPrompt,
+            description: "Scroll to the next command",
+            returns_to_base_mode: false,
+        },
+        ExpectedBind {
+            feature: Feature::ScrollByCommand,
+            mode: InputMode::Scroll,
+            key: KeyWithModifier::new(BareKey::Char('m')),
+            action: Action::SelectCommandAtScrollPosition,
+            description: "Select the command at the scroll position",
+            returns_to_base_mode: false,
+        },
+        ExpectedBind {
+            feature: Feature::ScrollByCommand,
+            mode: InputMode::Scroll,
+            key: KeyWithModifier::new(BareKey::Char('c')),
+            action: Action::CopyLastCommandOutput,
+            description: "Copy the output of the last command",
+            returns_to_base_mode: true,
         },
     ]
 }

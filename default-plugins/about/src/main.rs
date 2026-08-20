@@ -237,6 +237,10 @@ impl App {
                 .keybinding_state
                 .borrow()
                 .has_missing_binds_for(Feature::PaneFocus),
+            PageKind::ScrollByCommand => self
+                .keybinding_state
+                .borrow()
+                .has_missing_binds_for(Feature::ScrollByCommand),
             _ => false,
         };
         is_confirmation_page && self.keybinding_state.borrow().status() == &ApplyStatus::NotApplied
@@ -263,7 +267,11 @@ impl App {
                 );
             },
             PageKind::PaneFocus => {
-                self.active_page = Page::new_pane_focus(
+                self.active_page =
+                    Page::new_pane_focus(self.keybinding_state.clone(), self.main_screen_builder());
+            },
+            PageKind::ScrollByCommand => {
+                self.active_page = Page::new_scroll_by_command(
                     self.keybinding_state.clone(),
                     self.main_screen_builder(),
                 );

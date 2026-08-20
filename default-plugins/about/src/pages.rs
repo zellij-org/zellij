@@ -6,13 +6,16 @@ use std::rc::Rc;
 use zellij_tile::prelude::actions::Action;
 
 use crate::active_component::{ActiveComponent, ClickAction};
-use crate::keybindings::{apply_missing_binds, ApplyStatus, Feature, KeybindingState};
+use crate::keybindings::{
+    apply_missing_binds, ApplyStatus, ExpectedBind, Feature, KeybindingState,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PageKind {
     MainScreen,
     NestedSessions,
     PaneFocus,
+    ScrollByCommand,
     UpdateKeybindings,
     Other,
 }
@@ -76,6 +79,17 @@ impl Page {
                     ))
                     .with_left_click_action(ClickAction::new_change_page({
                         move || Page::new_kitty_graphics()
+                    })),
+                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
+                        "Scroll By Command",
+                    )))
+                    .with_hover(TextOrCustomRender::Text(
+                        main_menu_item("Scroll By Command").selected(),
+                    ))
+                    .with_left_click_action(ClickAction::new_change_page({
+                        let keybinding_state = keybinding_state.clone();
+                        let main_screen_builder = main_screen_builder.clone();
+                        move || Page::new_scroll_by_command(keybinding_state, main_screen_builder)
                     })),
                     ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
                         "Mobile Web UI",
@@ -191,7 +205,9 @@ impl Page {
             .with_title(Text::new("Nested Sessions").color_range(0, ..))
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Zellij now detects when it is started inside another Zellij session."),
+                    Text::new(
+                        "Zellij now detects when it is started inside another Zellij session.",
+                    ),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
                     Text::new(format!(
@@ -203,13 +219,11 @@ impl Page {
                 ))]),
             ])
             .with_paragraph(option_lines);
-        if let Some(missing_binds_note) =
-            missing_binds_note(
-                &keybinding_state,
-                &main_screen_builder,
-                Feature::NestedSessions,
-            )
-        {
+        if let Some(missing_binds_note) = missing_binds_note(
+            &keybinding_state,
+            &main_screen_builder,
+            Feature::NestedSessions,
+        ) {
             page = page.with_paragraph(missing_binds_note);
         }
         page.with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
@@ -248,10 +262,59 @@ impl Page {
                     Text::new("the entire screen when hiding the UI."),
                 ))]),
             ]);
+        if let Some(missing_binds_note) =
+            missing_binds_note(&keybinding_state, &main_screen_builder, Feature::PaneFocus)
+        {
+            page = page.with_paragraph(missing_binds_note);
+        }
+        page.with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
+            esc_to_go_back_help()
+        }))
+    }
+    pub fn new_scroll_by_command(
+        keybinding_state: Rc<RefCell<KeybindingState>>,
+        main_screen_builder: Rc<dyn Fn() -> Page>,
+    ) -> Page {
+        let mut command_bind_lines = merged_bind_line(
+            &keybinding_state,
+            &[Action::ScrollToPreviousPrompt, Action::ScrollToNextPrompt],
+            "Scroll to the previous / next command",
+        );
+        command_bind_lines.extend(bind_lines(
+            &keybinding_state,
+            &[
+                Action::SelectCommandAtScrollPosition,
+                Action::CopyLastCommandOutput,
+            ],
+            "",
+        ));
+        let mut page = Page::new()
+            .with_kind(PageKind::ScrollByCommand)
+            .with_title(Text::new("Scroll By Command").color_range(0, ..))
+            .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
+                TextOrCustomRender::Text(
+                    Text::new(
+                        "Zellij can now navigate the commands marked by the shell (OSC 133):",
+                    )
+                    .color_substring(2, "OSC 133"),
+                ),
+            )])])
+            .with_paragraph(command_bind_lines)
+            .with_paragraph(vec![
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("- Hold <Alt> with the mouse wheel to scroll through commands.")
+                        .color_substring(3, "<Alt>"),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("- Triple-click to select an entire command.")
+                        .color_substring(2, "Triple-click"),
+                ))]),
+                opt_out_line("triple-click selection", "osc133_command_selection false"),
+            ]);
         if let Some(missing_binds_note) = missing_binds_note(
             &keybinding_state,
             &main_screen_builder,
-            Feature::PaneFocus,
+            Feature::ScrollByCommand,
         ) {
             page = page.with_paragraph(missing_binds_note);
         }
@@ -539,42 +602,40 @@ fn missing_binds_note(
     let has_missing_binds = keybinding_state.borrow().has_missing_binds_for(feature);
     let has_conflicts = keybinding_state.borrow().has_conflicts();
     match status {
-        ApplyStatus::NotApplied if has_missing_binds => {
-            Some(vec![ComponentLine::new(vec![
-                ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Note: these keybindings are not in your config file. Add them? (")
-                        .color_substring(2, "Note:"),
-                )),
-                ActiveComponent::new(TextOrCustomRender::Text(confirm_text()))
-                    .with_hover(TextOrCustomRender::CustomRender(
-                        Box::new(confirm_key_selected),
-                        Box::new(single_character_len),
-                    ))
-                    .with_left_click_action(ClickAction::new_change_page({
-                        let keybinding_state = keybinding_state.clone();
-                        let main_screen_builder = main_screen_builder.clone();
-                        move || {
-                            if has_conflicts {
-                                Page::new_update_keybindings(keybinding_state, main_screen_builder)
-                            } else {
-                                apply_missing_binds(&keybinding_state);
-                                Page::new_nested_sessions(keybinding_state, main_screen_builder)
-                            }
+        ApplyStatus::NotApplied if has_missing_binds => Some(vec![ComponentLine::new(vec![
+            ActiveComponent::new(TextOrCustomRender::Text(
+                Text::new("Note: these keybindings are not in your config file. Add them? (")
+                    .color_substring(2, "Note:"),
+            )),
+            ActiveComponent::new(TextOrCustomRender::Text(confirm_text()))
+                .with_hover(TextOrCustomRender::CustomRender(
+                    Box::new(confirm_key_selected),
+                    Box::new(single_character_len),
+                ))
+                .with_left_click_action(ClickAction::new_change_page({
+                    let keybinding_state = keybinding_state.clone();
+                    let main_screen_builder = main_screen_builder.clone();
+                    move || {
+                        if has_conflicts {
+                            Page::new_update_keybindings(keybinding_state, main_screen_builder)
+                        } else {
+                            apply_missing_binds(&keybinding_state);
+                            feature_page(feature, keybinding_state, main_screen_builder)
                         }
-                    })),
-                ActiveComponent::new(TextOrCustomRender::Text(Text::new("/"))),
-                ActiveComponent::new(TextOrCustomRender::Text(cancel_text()))
-                    .with_hover(TextOrCustomRender::CustomRender(
-                        Box::new(cancel_key_selected),
-                        Box::new(single_character_len),
-                    ))
-                    .with_left_click_action(ClickAction::new_change_page({
-                        let main_screen_builder = main_screen_builder.clone();
-                        move || main_screen_builder()
-                    })),
-                ActiveComponent::new(TextOrCustomRender::Text(Text::new(")"))),
-            ])])
-        },
+                    }
+                })),
+            ActiveComponent::new(TextOrCustomRender::Text(Text::new("/"))),
+            ActiveComponent::new(TextOrCustomRender::Text(cancel_text()))
+                .with_hover(TextOrCustomRender::CustomRender(
+                    Box::new(cancel_key_selected),
+                    Box::new(single_character_len),
+                ))
+                .with_left_click_action(ClickAction::new_change_page({
+                    let main_screen_builder = main_screen_builder.clone();
+                    move || main_screen_builder()
+                })),
+            ActiveComponent::new(TextOrCustomRender::Text(Text::new(")"))),
+        ])]),
         ApplyStatus::NotApplied => None,
         status => Some(vec![ComponentLine::new(vec![ActiveComponent::new(
             TextOrCustomRender::Text(keybinding_status_text(&status)),
@@ -582,11 +643,34 @@ fn missing_binds_note(
     }
 }
 
+fn feature_page(
+    feature: Feature,
+    keybinding_state: Rc<RefCell<KeybindingState>>,
+    main_screen_builder: Rc<dyn Fn() -> Page>,
+) -> Page {
+    match feature {
+        Feature::NestedSessions => Page::new_nested_sessions(keybinding_state, main_screen_builder),
+        Feature::PaneFocus => Page::new_pane_focus(keybinding_state, main_screen_builder),
+        Feature::ScrollByCommand => {
+            Page::new_scroll_by_command(keybinding_state, main_screen_builder)
+        },
+    }
+}
+
 fn option_title_line(title: &str) -> ComponentLine {
-    let title_without_number =
-        title.trim_start_matches(|character: char| character.is_ascii_digit() || character == '.' || character == ' ');
+    let title_without_number = title.trim_start_matches(|character: char| {
+        character.is_ascii_digit() || character == '.' || character == ' '
+    });
     ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
         Text::new(title).color_substring(2, title_without_number),
+    ))])
+}
+
+fn opt_out_line(what: &str, config_option: &str) -> ComponentLine {
+    ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+        Text::new(format!("  ↳ Opt out of {} with: {}", what, config_option))
+            .color_substring(1, "Opt out")
+            .color_substring(3, config_option),
     ))])
 }
 
@@ -633,6 +717,36 @@ fn bind_lines(
         .collect()
 }
 
+fn merged_bind_line(
+    keybinding_state: &Rc<RefCell<KeybindingState>>,
+    actions: &[Action],
+    description: &str,
+) -> Vec<ComponentLine> {
+    let keybinding_state = keybinding_state.borrow();
+    let binds: Vec<&ExpectedBind> = actions
+        .iter()
+        .filter_map(|action| keybinding_state.bind_for_action(action))
+        .collect();
+    let Some(first_bind) = binds.first() else {
+        return vec![];
+    };
+    let mode_name = first_bind.mode_name();
+    let key_texts: Vec<String> = binds.iter().map(|bind| bind.key_text()).collect();
+    let mut text = Text::new(format!(
+        "{} mode + {} - {}",
+        mode_name,
+        key_texts.join(" / "),
+        description
+    ))
+    .color_substring(3, &mode_name);
+    for key_text in &key_texts {
+        text = text.color_substring(3, key_text);
+    }
+    vec![ComponentLine::new(vec![ActiveComponent::new(
+        TextOrCustomRender::Text(text),
+    )])]
+}
+
 fn confirm_text() -> Text {
     Text::new("y").color_range(3, ..)
 }
@@ -662,7 +776,12 @@ fn feature_link(label: &'static str, target_page: ClickAction) -> ActiveComponen
     ))
     .with_hover(TextOrCustomRender::CustomRender(
         Box::new(move |x, y| {
-            print!("\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4m{}", y + 1, x + 1, hover_label);
+            print!(
+                "\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4m{}",
+                y + 1,
+                x + 1,
+                hover_label
+            );
             hover_label.chars().count()
         }),
         Box::new(move || label.chars().count()),
@@ -695,11 +814,8 @@ fn feature_sentence(
         let feature = *feature;
         sentence.push(feature_link(
             feature.label(),
-            ClickAction::new_change_page(move || match feature {
-                Feature::NestedSessions => {
-                    Page::new_nested_sessions(keybinding_state, main_screen_builder)
-                },
-                Feature::PaneFocus => Page::new_pane_focus(keybinding_state, main_screen_builder),
+            ClickAction::new_change_page(move || {
+                feature_page(feature, keybinding_state, main_screen_builder)
             }),
         ));
     }
