@@ -1,0 +1,7 @@
+zellij-client/assets/*.js           text eol=lf
+zellij-client/assets/*.css          text eol=lf
+zellij-client/assets/*.html         text eol=lf
+zellij-client/assets/*.json         text eol=lf
+zellij-client/assets/*.webmanifest  text eol=lf
+zellij-client/assets/*.ico          binary
+zellij-client/assets/*.png          binary
