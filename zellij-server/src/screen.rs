@@ -4224,8 +4224,13 @@ impl Screen {
             }
 
             let single_pane_names_changed = self.update_single_pane_tab_names();
-            if bell_state_changed || single_pane_names_changed {
+            if bell_state_changed {
                 self.log_and_report_session_state()?;
+            } else if single_pane_names_changed {
+                // Terminal titles can animate many times per second. The derived tab name is the
+                // only session state that changed, so avoid broadcasting full pane and session
+                // manifests for every animation frame.
+                self.generate_and_report_tab_state()?;
             }
         } else {
             // No regular clients, output is not dirty
