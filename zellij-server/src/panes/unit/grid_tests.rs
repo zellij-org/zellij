@@ -9147,3 +9147,26 @@ fn a_character_wider_than_two_columns_advances_the_cursor_by_its_full_width() {
     assert_eq!(row.width(), 4);
     assert_eq!(cursor_position(&grid), Some((4, 0)));
 }
+
+#[test]
+fn erase_to_end_of_line_after_wide_characters_preserves_background_to_line_end() {
+    use crate::panes::terminal_character::NamedColor;
+    // Use a wide character to exercise clearing a line that contains wide cells.
+    assert_eq!(crate::panes::TerminalCharacter::new('Ａ').width(), 2);
+
+    let content = "\x1b[44mAＡＡＡＡ\x1b[1;2H\x1b[K".as_bytes();
+    let grid = create_grid_with_size_and_raw(2, 10, content);
+
+    let lines = grid.as_character_lines();
+
+    assert_eq!(lines[0][0].character, 'A');
+
+    for cell in &lines[0] {
+        assert_eq!(
+            cell.styles.background,
+            Some(crate::panes::terminal_character::AnsiCode::NamedColor(
+                NamedColor::Blue
+            ))
+        );
+    }
+}
