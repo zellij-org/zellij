@@ -436,6 +436,11 @@ pub enum ScreenInstruction {
     ScrollDownAt(Position, ClientId, Option<NotificationEnd>),
     ScrollToBottom(ClientId, Option<NotificationEnd>),
     ScrollToTop(ClientId, Option<NotificationEnd>),
+    ScrollToPreviousPrompt(ClientId, Option<NotificationEnd>),
+    ScrollToNextPrompt(ClientId, Option<NotificationEnd>),
+    SelectCommandAtScrollPosition(ClientId, Option<NotificationEnd>),
+    CopyLastCommandOutput(ClientId, Option<NotificationEnd>),
+    ClearCommandOutputFlash(PaneId),
     PageScrollUp(ClientId, Option<NotificationEnd>),
     PageScrollDown(ClientId, Option<NotificationEnd>),
     HalfPageScrollUp(ClientId, Option<NotificationEnd>),
@@ -794,6 +799,7 @@ pub enum ScreenInstruction {
         advanced_mouse_actions: bool,
         mouse_scroll_resize: bool,
         mouse_hover_effects: bool,
+        mouse_hover_tips: bool,
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
@@ -1021,6 +1027,15 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
             ScreenInstruction::ScrollToBottom(..) => ScreenContext::ScrollToBottom,
             ScreenInstruction::ScrollToTop(..) => ScreenContext::ScrollToTop,
+            ScreenInstruction::ScrollToPreviousPrompt(..) => ScreenContext::ScrollToPreviousPrompt,
+            ScreenInstruction::ScrollToNextPrompt(..) => ScreenContext::ScrollToNextPrompt,
+            ScreenInstruction::SelectCommandAtScrollPosition(..) => {
+                ScreenContext::SelectCommandAtScrollPosition
+            },
+            ScreenInstruction::CopyLastCommandOutput(..) => ScreenContext::CopyLastCommandOutput,
+            ScreenInstruction::ClearCommandOutputFlash(..) => {
+                ScreenContext::ClearCommandOutputFlash
+            },
             ScreenInstruction::PageScrollUp(..) => ScreenContext::PageScrollUp,
             ScreenInstruction::PageScrollDown(..) => ScreenContext::PageScrollDown,
             ScreenInstruction::HalfPageScrollUp(..) => ScreenContext::HalfPageScrollUp,
@@ -1545,6 +1560,7 @@ pub(crate) struct Screen {
     word_separators: String,
     mouse_scroll_resize: bool,
     mouse_hover_effects: bool,
+    mouse_hover_tips: bool,
     visual_bell: bool,
     focus_follows_mouse: bool,
     mouse_click_through: bool,
@@ -1674,6 +1690,7 @@ impl Screen {
         word_separators: String,
         mouse_scroll_resize: bool,
         mouse_hover_effects: bool,
+        mouse_hover_tips: bool,
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
@@ -1742,6 +1759,7 @@ impl Screen {
             word_separators,
             mouse_scroll_resize,
             mouse_hover_effects,
+            mouse_hover_tips,
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
@@ -1921,6 +1939,12 @@ impl Screen {
             .map(|t| t.drain_connected_clients(clients_to_move));
 
         if let Some(client_mode_info_in_source_tab) = drained_clients {
+            let arriving_client_ids: Vec<ClientId> = client_mode_info_in_source_tab
+                .iter()
+                .map(|(client_id, _mode_info)| *client_id)
+                .collect();
+            let arriving_clients_overflow_destination =
+                self.clients_are_larger_than_tab(destination_tab_index, &arriving_client_ids);
             let destination_tab = self
                 .get_indexed_tab_mut(destination_tab_index)
                 .context("failed to get destination tab by index")
@@ -1934,7 +1958,7 @@ impl Screen {
                     .with_context(err_context)?;
             }
             destination_tab.set_force_render();
-            if destination_tab.has_stack_lists() {
+            if destination_tab.has_stack_lists() || arriving_clients_overflow_destination {
                 destination_tab.set_should_clear_display_before_rendering();
             }
             destination_tab.visible(true).with_context(err_context)?;
@@ -2283,6 +2307,20 @@ impl Screen {
             .and_then(|tab_id| self.tabs.get(tab_id))
             .map(|tab| tab.size)
             .unwrap_or_else(|| self.size_for_client(Some(client_id)))
+    }
+
+    fn clients_are_larger_than_tab(&self, tab_id: usize, client_ids: &[ClientId]) -> bool {
+        let Some(tab_size) = self.tabs.get(&tab_id).map(|tab| tab.size) else {
+            return false;
+        };
+        client_ids.iter().any(|client_id| {
+            self.client_sizes
+                .get(client_id)
+                .map(|client_size| {
+                    client_size.rows > tab_size.rows || client_size.cols > tab_size.cols
+                })
+                .unwrap_or(false)
+        })
     }
 
     pub fn recompute_tab_size(&mut self, tab_id: usize) -> Result<()> {
@@ -4320,6 +4358,24 @@ impl Screen {
         self.active_tab_ids.keys().next().copied()
     }
 
+    pub fn has_no_client_to_act_for(&self, client_id: ClientId) -> bool {
+        self.get_active_tab(client_id).is_err() && self.get_first_client_id().is_none()
+    }
+
+    pub fn report_no_client_to_act_for(
+        &self,
+        client_id: ClientId,
+        message: String,
+        completion_tx: Option<NotificationEnd>,
+    ) {
+        log::error!("{}", &message);
+        let _ = self.bus.senders.send_to_server(ServerInstruction::LogError(
+            vec![message],
+            client_id,
+            completion_tx,
+        ));
+    }
+
     /// Returns an immutable reference to this [`Screen`]'s previous active [`Tab`].
     /// Consumes the last entry in tab history.
     pub fn get_previous_tab(&mut self, client_id: ClientId) -> Result<Option<&Tab>> {
@@ -4705,6 +4761,7 @@ impl Screen {
             self.advanced_mouse_actions,
             self.mouse_scroll_resize,
             self.mouse_hover_effects,
+            self.mouse_hover_tips,
             self.focus_follows_mouse,
             self.mouse_click_through,
             self.web_server_ip,
@@ -4782,6 +4839,13 @@ impl Screen {
                 .iter()
                 .map(|c| (*c, self.get_active_pane_id(c)))
                 .collect();
+        let mut vacated_tab_ids: Vec<usize> = passthrough_affected_client_ids
+            .iter()
+            .filter_map(|affected_client_id| self.active_tab_ids.get(affected_client_id).copied())
+            .filter(|vacated_tab_id| *vacated_tab_id != tab_id)
+            .collect();
+        vacated_tab_ids.sort_unstable();
+        vacated_tab_ids.dedup();
 
         // move the relevant clients out of the current tab and place them in the new one
         let drained_clients = if should_change_client_focus {
@@ -4868,6 +4932,10 @@ impl Screen {
         }
 
         self.recompute_tab_size(tab_id).with_context(err_context)?;
+        for vacated_tab_id in vacated_tab_ids {
+            self.recompute_tab_size(vacated_tab_id)
+                .with_context(err_context)?;
+        }
 
         for (affected_client_id, old_pane_id) in passthrough_old_focused_panes {
             let new_pane_id = self.get_active_pane_id(&affected_client_id);
@@ -6702,6 +6770,7 @@ impl Screen {
         advanced_mouse_actions: bool,
         mouse_scroll_resize: bool,
         mouse_hover_effects: bool,
+        mouse_hover_tips: bool,
         visual_bell: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
@@ -6733,6 +6802,7 @@ impl Screen {
         self.advanced_mouse_actions = advanced_mouse_actions;
         self.mouse_scroll_resize = mouse_scroll_resize;
         self.mouse_hover_effects = mouse_hover_effects;
+        self.mouse_hover_tips = mouse_hover_tips;
         self.visual_bell = visual_bell;
         self.focus_follows_mouse = focus_follows_mouse;
         self.mouse_click_through = mouse_click_through;
@@ -6766,6 +6836,7 @@ impl Screen {
             tab.update_advanced_mouse_actions(advanced_mouse_actions);
             tab.update_mouse_scroll_resize(mouse_scroll_resize);
             tab.update_mouse_hover_effects(mouse_hover_effects);
+            tab.update_mouse_hover_tips(mouse_hover_tips);
             tab.update_focus_follows_mouse(focus_follows_mouse);
             tab.update_mouse_click_through(mouse_click_through);
             tab.update_selection_options(osc133_command_selection, self.word_separators.clone());
@@ -7072,10 +7143,11 @@ impl Screen {
             .ok()
             .and_then(|tab| tab.get_active_pane_id(client_id));
         let active_pane_was_scrolled = self.active_pane_is_scrolled(client_id);
-        match self
-            .get_active_tab_mut(client_id)
-            .and_then(|tab| tab.handle_mouse_event(&event, client_id))
-        {
+        let passthrough_pane_id = active_pane_id_before
+            .filter(|pane_id| self.should_route_keys_to_pane(client_id, *pane_id));
+        match self.get_active_tab_mut(client_id).and_then(|tab| {
+            tab.handle_mouse_event_with_passthrough(&event, client_id, passthrough_pane_id)
+        }) {
             Ok(mouse_effect) => {
                 let mut should_render = false;
                 if let Some(pane_id) = mouse_effect.group_toggle {
@@ -7924,6 +7996,7 @@ pub(crate) fn screen_thread_main(
         .unwrap_or_else(|| DEFAULT_WORD_SEPARATORS.to_owned());
     let mouse_scroll_resize = config_options.mouse_scroll_resize.unwrap_or(true);
     let mouse_hover_effects = config_options.mouse_hover_effects.unwrap_or(true);
+    let mouse_hover_tips = config_options.mouse_hover_tips.unwrap_or(true);
     let visual_bell = config_options.visual_bell.unwrap_or(true);
     let focus_follows_mouse = config_options.focus_follows_mouse.unwrap_or(false);
     let mouse_click_through = config_options.mouse_click_through.unwrap_or(false);
@@ -7974,6 +8047,7 @@ pub(crate) fn screen_thread_main(
         word_separators,
         mouse_scroll_resize,
         mouse_hover_effects,
+        mouse_hover_tips,
         visual_bell,
         focus_follows_mouse,
         mouse_click_through,
@@ -9015,6 +9089,52 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_if_scroll_changed(client_id, was_scrolled)?;
                 screen.render(None)?;
             },
+            ScreenInstruction::ScrollToPreviousPrompt(client_id, _completion_tx) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab
+                        .scroll_active_terminal_to_previous_prompt(client_id)
+                );
+                screen.render(None)?;
+            },
+            ScreenInstruction::ScrollToNextPrompt(client_id, _completion_tx) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab
+                        .scroll_active_terminal_to_next_prompt(client_id)
+                );
+                screen.render(None)?;
+            },
+            ScreenInstruction::SelectCommandAtScrollPosition(client_id, _completion_tx) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab
+                        .select_command_at_scroll_position(client_id)
+                );
+                screen.render(None)?;
+            },
+            ScreenInstruction::CopyLastCommandOutput(client_id, _completion_tx) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.copy_last_command_output(client_id),
+                    ?
+                );
+                screen.render(None)?;
+            },
+            ScreenInstruction::ClearCommandOutputFlash(pane_id) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.clear_command_output_flash(pane_id);
+                        break;
+                    }
+                }
+                screen.render(None)?;
+            },
             ScreenInstruction::MovePane(
                 client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
@@ -9729,14 +9849,17 @@ pub(crate) fn screen_thread_main(
                     }
                 }
             },
-            ScreenInstruction::UpdateTabName(
-                c,
-                client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
-            ) => {
-                screen.update_active_tab_name(c, client_id)?;
-                screen.render(None)?;
+            ScreenInstruction::UpdateTabName(c, client_id, completion_tx) => {
+                if screen.has_no_client_to_act_for(client_id) {
+                    screen.report_no_client_to_act_for(
+                        client_id,
+                        "Cannot rename the focused tab: no client is attached to this session. Target a tab explicitly with --tab-id.".to_owned(),
+                        completion_tx,
+                    );
+                } else {
+                    screen.update_active_tab_name(c, client_id)?;
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::UndoRenameTab(
                 client_id,
@@ -10946,16 +11069,24 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::RenameActivePane(new_name, client_id, _completion_tx) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab
-                        .rename_active_pane(new_name, client_id),
-                    ?
-                );
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
+            ScreenInstruction::RenameActivePane(new_name, client_id, completion_tx) => {
+                if screen.has_no_client_to_act_for(client_id) {
+                    screen.report_no_client_to_act_for(
+                        client_id,
+                        "Cannot rename the focused pane: no client is attached to this session. Target a pane explicitly with --pane-id.".to_owned(),
+                        completion_tx,
+                    );
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab
+                            .rename_active_pane(new_name, client_id),
+                        ?
+                    );
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
             },
             ScreenInstruction::RenameTab(
                 tab_index,
@@ -11299,6 +11430,7 @@ pub(crate) fn screen_thread_main(
                 advanced_mouse_actions,
                 mouse_scroll_resize,
                 mouse_hover_effects,
+                mouse_hover_tips,
                 visual_bell,
                 focus_follows_mouse,
                 mouse_click_through,
@@ -11330,6 +11462,7 @@ pub(crate) fn screen_thread_main(
                         advanced_mouse_actions,
                         mouse_scroll_resize,
                         mouse_hover_effects,
+                        mouse_hover_tips,
                         visual_bell,
                         focus_follows_mouse,
                         mouse_click_through,

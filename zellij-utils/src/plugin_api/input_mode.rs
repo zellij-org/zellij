@@ -52,7 +52,8 @@ impl TryFrom<InputMode> for ProtobufInputMode {
 impl TryFrom<ProtobufInputModeMessage> for InputMode {
     type Error = &'static str;
     fn try_from(protobuf_input_mode: ProtobufInputModeMessage) -> Result<Self, &'static str> {
-        ProtobufInputMode::from_i32(protobuf_input_mode.input_mode)
+        ProtobufInputMode::try_from(protobuf_input_mode.input_mode)
+            .ok()
             .and_then(|p| p.try_into().ok())
             .ok_or("Invalid input mode")
     }

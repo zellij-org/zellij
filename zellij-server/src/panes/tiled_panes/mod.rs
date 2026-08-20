@@ -73,7 +73,6 @@ pub struct TiledPanes {
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
-    stacked_pane_list: Rc<RefCell<bool>>,
     reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>>,
     default_mode_info: ModeInfo,
     style: Style,
@@ -101,7 +100,6 @@ impl TiledPanes {
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         stacked_resize: Rc<RefCell<bool>>,
-        stacked_pane_list: Rc<RefCell<bool>>,
         reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>>,
         fullscreen_covers_ui: Rc<RefCell<bool>>,
         session_is_mirrored: bool,
@@ -120,7 +118,6 @@ impl TiledPanes {
             mode_info,
             character_cell_size,
             stacked_resize,
-            stacked_pane_list,
             reserved_top_rows,
             default_mode_info,
             style,
@@ -1135,6 +1132,7 @@ impl TiledPanes {
         client_id_override: Option<ClientId>,
         help_text_visible: &HashMap<ClientId, bool>,
         mouse_scroll_resize: bool,
+        mouse_hover_tips: bool,
     ) -> Result<()> {
         let err_context = || "failed to render tiled panes";
 
@@ -1260,6 +1258,7 @@ impl TiledPanes {
                     show_help_text,
                     omit_pane_title && reserved_rows_for_pane == 0,
                     mouse_scroll_resize,
+                    mouse_hover_tips,
                     self.dimmed_clients.clone(),
                 );
                 pane_contents_and_ui.set_frame_geom_override(visible_member_frame_override);

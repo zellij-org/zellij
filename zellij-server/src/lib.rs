@@ -137,6 +137,7 @@ pub enum ServerInstruction {
     WebServerStarted(String), // String -> base_url
     FailedToStartWebServer(String),
     ClearMouseHelpText(ClientId),
+    ClearCommandOutputFlash(PaneId),
     /// Relay a forwarded-query dispatch from Screen to the server main
     /// loop. The main loop writes `ServerToClientMsg::ForwardQueryToHost`
     ForwardQueryToHost(u32, Vec<u8>, bool),
@@ -190,6 +191,9 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::SendWebClientsForbidden
             },
             ServerInstruction::ClearMouseHelpText(..) => ServerContext::ClearMouseHelpText,
+            ServerInstruction::ClearCommandOutputFlash(..) => {
+                ServerContext::ClearCommandOutputFlash
+            },
             ServerInstruction::ForwardQueryToHost(..) => ServerContext::ForwardQueryToHost,
             ServerInstruction::KeyPassthroughChanged(..) => ServerContext::KeyPassthroughChanged,
             ServerInstruction::EmitNestedSessionFrameToClient(..) => {
@@ -468,6 +472,7 @@ impl SessionMetaData {
                         .unwrap_or(true),
                     mouse_scroll_resize: new_config.options.mouse_scroll_resize.unwrap_or(true),
                     mouse_hover_effects: new_config.options.mouse_hover_effects.unwrap_or(true),
+                    mouse_hover_tips: new_config.options.mouse_hover_tips.unwrap_or(true),
                     visual_bell: new_config.options.visual_bell.unwrap_or(true),
                     focus_follows_mouse: new_config.options.focus_follows_mouse.unwrap_or(false),
                     mouse_click_through: new_config.options.mouse_click_through.unwrap_or(false),
@@ -1914,6 +1919,16 @@ pub fn start_server_impl(
                     .unwrap()
                     .senders
                     .send_to_screen(ScreenInstruction::ClearMouseHelpText(client_id))
+                    .unwrap();
+            },
+            ServerInstruction::ClearCommandOutputFlash(pane_id) => {
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_screen(ScreenInstruction::ClearCommandOutputFlash(pane_id))
                     .unwrap();
             },
             ServerInstruction::ForwardQueryToHost(token, query_bytes, resolve_async) => {

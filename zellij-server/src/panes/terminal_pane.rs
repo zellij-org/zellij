@@ -731,6 +731,32 @@ impl Pane for TerminalPane {
         self.grid.move_viewport_down(count);
         self.set_should_render(true);
     }
+    fn scroll_to_previous_prompt(&mut self, _client_id: ClientId) {
+        if self.grid.scroll_to_previous_prompt() {
+            self.set_should_render(true);
+        }
+    }
+    fn scroll_to_next_prompt(&mut self, _client_id: ClientId) {
+        if self.grid.scroll_to_next_prompt() {
+            self.set_should_render(true);
+        }
+    }
+    fn select_command_at_scroll_position(&mut self, _client_id: ClientId) {
+        if self.grid.select_command_at_scroll_position() {
+            self.set_should_render(true);
+        }
+    }
+    fn copy_last_command_output(&mut self) -> Option<String> {
+        let (output, start, end) = self.grid.last_completed_command_output()?;
+        self.grid.set_command_output_flash(start, end);
+        self.set_should_render(true);
+        Some(output)
+    }
+    fn clear_command_output_flash(&mut self) {
+        if self.grid.clear_command_output_flash() {
+            self.set_should_render(true);
+        }
+    }
     fn clear_scroll(&mut self) {
         self.grid.reset_viewport();
         self.set_should_render(true);

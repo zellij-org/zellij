@@ -2173,11 +2173,27 @@ Config {
                 bare_key: Char(
                     '[',
                 ),
+                key_modifiers: {},
+            }: [
+                ScrollToPreviousPrompt,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
                 PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {},
+            }: [
+                ScrollToNextPrompt,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -2198,6 +2214,17 @@ Config {
                 },
             }: [
                 PageScrollUp,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {},
+            }: [
+                CopyLastCommandOutput,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -2368,6 +2395,14 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {},
+            }: [
+                SelectCommandAtScrollPosition,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -2998,11 +3033,27 @@ Config {
                 bare_key: Char(
                     '[',
                 ),
+                key_modifiers: {},
+            }: [
+                ScrollToPreviousPrompt,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
                 PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {},
+            }: [
+                ScrollToNextPrompt,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -3190,6 +3241,14 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {},
+            }: [
+                SelectCommandAtScrollPosition,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -6069,6 +6128,7 @@ Config {
         advanced_mouse_actions: None,
         mouse_scroll_resize: None,
         mouse_hover_effects: None,
+        mouse_hover_tips: None,
         visual_bell: None,
         focus_follows_mouse: None,
         mouse_click_through: None,

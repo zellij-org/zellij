@@ -11,7 +11,7 @@ pub mod runner;
 pub mod test_env;
 
 pub use client_screen::{
-    col, CellStyle, ClientScreen, Coord, CoordBuilder, CursorPosition, GridSnapshot,
+    col, AnsiCode, CellStyle, ClientScreen, Coord, CoordBuilder, CursorPosition, GridSnapshot,
 };
 pub use fake_pty::FakePtyHandle;
 pub use harness::{

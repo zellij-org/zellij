@@ -97,6 +97,7 @@ pub struct FrameParams {
     pub stack_list_entry: Option<StackListEntry>,
     pub blank_title: bool,
     pub mouse_scroll_resize: bool,
+    pub mouse_hover_tips: bool,
     pub dimmed: bool,
     pub guest_choice_indicator: Option<GuestChoiceIndicator>,
 }
@@ -129,6 +130,7 @@ pub struct PaneFrame {
     stack_list_entry: Option<StackListEntry>,
     color_override: Option<PaletteColor>,
     mouse_scroll_resize: bool,
+    mouse_hover_tips: bool,
     dimmed: bool,
     guest_choice_indicator: Option<GuestChoiceIndicator>,
 }
@@ -167,6 +169,7 @@ impl PaneFrame {
             stack_list_entry: frame_params.stack_list_entry,
             color_override: None,
             mouse_scroll_resize: frame_params.mouse_scroll_resize,
+            mouse_hover_tips: frame_params.mouse_hover_tips,
             dimmed: frame_params.dimmed,
             guest_choice_indicator: frame_params.guest_choice_indicator,
         }
@@ -1327,7 +1330,7 @@ impl PaneFrame {
                             x,
                             y,
                         ));
-                    } else if self.show_help_text && self.is_main_client {
+                    } else if self.show_help_text && self.is_main_client && self.mouse_hover_tips {
                         let x = self.geom.x;
                         let y = self.geom.y + row;
                         character_chunks.push(CharacterChunk::new(
@@ -1336,7 +1339,10 @@ impl PaneFrame {
                             x,
                             y,
                         ));
-                    } else if self.mouse_is_hovering_over_pane && !self.is_main_client {
+                    } else if self.mouse_is_hovering_over_pane
+                        && !self.is_main_client
+                        && self.mouse_hover_tips
+                    {
                         let x = self.geom.x;
                         let y = self.geom.y + row;
                         character_chunks.push(CharacterChunk::new(
@@ -1479,6 +1485,7 @@ mod tests {
                 stack_list_entry: None,
                 blank_title: false,
                 mouse_scroll_resize,
+                mouse_hover_tips: true,
                 dimmed: false,
                 guest_choice_indicator: None,
             },

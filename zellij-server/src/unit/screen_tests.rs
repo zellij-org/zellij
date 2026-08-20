@@ -386,6 +386,7 @@ fn create_new_screen_with_capture(
         DEFAULT_WORD_SEPARATORS.to_owned(),
         mouse_scroll_resize,
         mouse_hover_effects,
+        true,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -2017,6 +2018,96 @@ fn floating_pane_centers_large_pane_safely() {
     );
     assert!(active_pane.cols() <= 100, "width clamped to viewport");
     assert!(active_pane.rows() <= 30, "height clamped to viewport");
+}
+
+#[test]
+pub fn rename_active_pane_without_a_connected_client_reports_an_error() {
+    let size = Size {
+        cols: 130,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::RemoveClient(client_id));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::RenameActivePane(
+            "my-new-name".as_bytes().to_vec(),
+            client_id,
+            None,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let logged_instructions = received_server_instructions.lock().unwrap();
+    let reported_errors: Vec<&String> = logged_instructions
+        .iter()
+        .filter_map(|instruction| match instruction {
+            ServerInstruction::LogError(lines, _, _) => lines.first(),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        reported_errors
+            .iter()
+            .any(|error| error.contains("--pane-id")),
+        "renaming the focused pane with no client attached reports an error, got: {:?}",
+        reported_errors
+    );
+}
+
+#[test]
+pub fn rename_active_tab_without_a_connected_client_reports_an_error() {
+    let size = Size {
+        cols: 130,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::RemoveClient(client_id));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::UpdateTabName(
+        "my-new-tab-name".as_bytes().to_vec(),
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let logged_instructions = received_server_instructions.lock().unwrap();
+    let reported_errors: Vec<&String> = logged_instructions
+        .iter()
+        .filter_map(|instruction| match instruction {
+            ServerInstruction::LogError(lines, _, _) => lines.first(),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        reported_errors
+            .iter()
+            .any(|error| error.contains("--tab-id")),
+        "renaming the focused tab with no client attached reports an error, got: {:?}",
+        reported_errors
+    );
 }
 
 #[test]
@@ -5727,6 +5818,7 @@ fn create_new_screen_with_message_capture(
         DEFAULT_WORD_SEPARATORS.to_owned(),
         true,
         true,
+        true,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -8837,6 +8929,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         DEFAULT_WORD_SEPARATORS.to_owned(),
         true,
         true,
+        true,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -9688,6 +9781,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         true,
         true,
         true,
+        true,
         false,
         false,
         web_server_ip,
@@ -10217,8 +10311,9 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         true, // advanced_mouse_actions
         true,
         DEFAULT_WORD_SEPARATORS.to_owned(),
-        true,  // mouse_scroll_resize
-        true,  // mouse_hover_effects
+        true, // mouse_scroll_resize
+        true, // mouse_hover_effects
+        true,
         true,  // visual_bell
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -10403,6 +10498,48 @@ fn switching_tabs_recomputes_source_and_destination() {
         screen.tabs.get(&0).unwrap().size,
         Size { cols: 80, rows: 24 },
         "Destination tab shrinks to fit the arriving smaller viewer"
+    );
+}
+
+#[test]
+fn creating_a_new_tab_recomputes_the_tab_its_creator_left() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+
+    screen.set_client_size(1, Size { cols: 80, rows: 24 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    screen.recompute_tab_size(0).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Pre-condition: both clients view tab 0, so it sizes to the smaller of them"
+    );
+
+    new_tab(&mut screen, 2, 1);
+
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "The new tab is created at the size of the client creating it"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "The tab its creator left grows back to fit the viewer it still has"
     );
 }
 

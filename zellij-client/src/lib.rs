@@ -43,7 +43,9 @@ use crate::web_client::control_message::{
     WebServerToWebClientControlMessage,
 };
 
+#[cfg(feature = "web_server_capability")]
 static ASYNC_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+#[cfg(feature = "web_server_capability")]
 use std::sync::OnceLock;
 
 const ENTER_ALTERNATE_SCREEN: &str = "\u{1b}[?1049h";
@@ -72,6 +74,7 @@ const QUERY_HOST_THEME: &str = "\u{1b}[?996n";
 ///
 /// The number of workers can be configured to any nonzero value. Passing zero or `None` will spawn
 /// one worker per physical CPU on the current machine.
+#[cfg(feature = "web_server_capability")]
 pub(crate) fn async_runtime(maybe_number_of_workers: Option<usize>) -> tokio::runtime::Handle {
     match tokio::runtime::Handle::try_current() {
         Ok(handle) => handle.clone(),
@@ -162,7 +165,7 @@ use zellij_utils::{
         config::Config,
         options::Options,
     },
-    ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ExitReason, IpcReceiveError, ServerToClientMsg},
     nested_session,
     pane_size::Size,
     vendored::termwiz::input::InputEvent,
@@ -1319,8 +1322,8 @@ pub fn start_client(
             let mut should_break = false;
             let mut consecutive_unknown_messages_received = 0;
             move || loop {
-                match os_input.recv_from_server() {
-                    Some((instruction, err_ctx)) => {
+                match os_input.try_recv_from_server() {
+                    Ok((instruction, err_ctx)) => {
                         consecutive_unknown_messages_received = 0;
                         err_ctx.update_thread_ctx();
                         if let ServerToClientMsg::Exit { .. } = instruction {
@@ -1331,12 +1334,26 @@ pub fn start_client(
                             break;
                         }
                     },
-                    None => {
+                    Err(IpcReceiveError::Disconnected) => {
+                        log::error!("Lost connection to the Zellij server");
+                        send_client_instructions
+                            .send(ClientInstruction::UnblockInputThread)
+                            .unwrap();
+                        send_client_instructions
+                            .send(ClientInstruction::Error(
+                                "Lost connection to the Zellij server".to_string(),
+                            ))
+                            .unwrap();
+                        break;
+                    },
+                    Err(IpcReceiveError::Undecodable) => {
                         consecutive_unknown_messages_received += 1;
                         send_client_instructions
                             .send(ClientInstruction::UnblockInputThread)
                             .unwrap();
-                        log::error!("Received unknown message from server");
+                        if consecutive_unknown_messages_received == 1 {
+                            log::error!("Received unknown message from server");
+                        }
                         if consecutive_unknown_messages_received >= 1000 {
                             send_client_instructions
                                 .send(ClientInstruction::Error(

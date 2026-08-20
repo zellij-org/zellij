@@ -286,6 +286,12 @@ impl TestClient {
         self.join();
     }
 
+    pub fn detach(mut self) {
+        self.send_stdin(&keys::ctrl('o'));
+        self.send_stdin(&keys::key('d'));
+        self.join();
+    }
+
     fn join(&mut self) -> Option<ConnectToSession> {
         self.thread.take().and_then(join_client_thread_with_timeout)
     }
@@ -366,6 +372,10 @@ impl TestSession {
             terminal_id,
             shared_ptys: self.fake_server_os_api.shared_ptys.clone(),
         }
+    }
+
+    pub fn main_client(&self) -> &TestClient {
+        &self.main_client
     }
 
     pub fn send_stdin(&self, bytes: &[u8]) {

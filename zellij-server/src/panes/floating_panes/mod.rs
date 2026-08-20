@@ -470,6 +470,7 @@ impl FloatingPanes {
         client_id_override: Option<ClientId>,
         help_text_visible: &HashMap<ClientId, bool>,
         mouse_scroll_resize: bool,
+        mouse_hover_tips: bool,
     ) -> Result<()> {
         let err_context = || "failed to render output";
         let mut connected_clients: HashSet<ClientId> =
@@ -584,6 +585,7 @@ impl FloatingPanes {
                 show_help_text,
                 false,
                 mouse_scroll_resize,
+                mouse_hover_tips,
                 self.dimmed_clients.clone(),
             );
             for client_id in &connected_clients {
