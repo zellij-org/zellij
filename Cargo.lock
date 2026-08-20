@@ -4984,7 +4984,7 @@ dependencies = [
 
 [[package]]
 name = "zellij"
-version = "0.45.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -5010,7 +5010,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-client"
-version = "0.45.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5056,7 +5056,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-integration-tests"
-version = "0.45.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5076,7 +5076,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-server"
-version = "0.45.0"
+version = "0.46.0"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -5126,7 +5126,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-tile"
-version = "0.45.0"
+version = "0.46.0"
 dependencies = [
  "prost",
  "serde",
@@ -5138,14 +5138,14 @@ dependencies = [
 
 [[package]]
 name = "zellij-tile-utils"
-version = "0.45.0"
+version = "0.46.0"
 dependencies = [
  "ansi_term",
 ]
 
 [[package]]
 name = "zellij-utils"
-version = "0.45.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "backtrace",
