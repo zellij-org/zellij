@@ -5392,7 +5392,9 @@ impl Screen {
         }
         let available_layouts = self.cached_layouts.clone();
         let creation_time = {
-            let sock_path = ZELLIJ_SOCK_DIR.join(&self.session_name);
+            // The socket is named by the stable session id, not the display name.
+            let session_id = zellij_utils::envs::get_session_id().unwrap_or_default();
+            let sock_path = ZELLIJ_SOCK_DIR.join(&session_id);
             std::fs::metadata(&sock_path)
                 .ok()
                 .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
@@ -11277,7 +11279,9 @@ pub(crate) fn screen_thread_main(
                 let available_layouts = vec![];
 
                 let creation_time = {
-                    let sock_path = ZELLIJ_SOCK_DIR.join(&screen.session_name);
+                    // The socket is named by the stable session id, not the display name.
+                    let session_id = zellij_utils::envs::get_session_id().unwrap_or_default();
+                    let sock_path = ZELLIJ_SOCK_DIR.join(&session_id);
                     std::fs::metadata(&sock_path)
                         .ok()
                         .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
@@ -11370,16 +11374,20 @@ pub(crate) fn screen_thread_main(
                         tab.rename_session(name.clone()).with_context(err_context)?;
                     }
 
-                    // rename socket file
-                    let old_socket_file_path = ZELLIJ_SOCK_DIR.join(&old_session_name);
-                    let new_socket_file_path = ZELLIJ_SOCK_DIR.join(&name);
-                    if let Err(e) = std::fs::rename(old_socket_file_path, new_socket_file_path) {
-                        log::error!("Failed to rename ipc socket: {:?}", e);
+                    // Update the display name in the registry. The socket/pipe
+                    // (named by the stable session id) is never renamed — that
+                    // is what makes rename work for Windows named pipes.
+                    let session_id = zellij_utils::envs::get_session_id().unwrap_or_default();
+                    if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
+                        if let Some(entry) = reg.find_by_id_mut(&session_id) {
+                            entry.display_name = name.clone();
+                        }
+                    }) {
+                        log::error!("Failed to update session registry: {:?}", e);
                     }
 
-                    // rename session_info folder (TODO: make this atomic, right now there is a
-                    // chance background_jobs will re-create this folder before it knows the
-                    // session was renamed)
+                    // rename session_info folder (still keyed by name in Stage A;
+                    // Stage B keys it by session id, dropping this move entirely)
                     let old_session_info_folder =
                         session_info_folder_for_session(&old_session_name);
                     let new_session_info_folder = session_info_folder_for_session(&name);

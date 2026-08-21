@@ -1,7 +1,7 @@
 use crate::{
     consts::{
         is_ipc_socket, session_info_folder_for_session, session_layout_cache_file_name,
-        ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
+        ZELLIJ_SESSIONS_KDL, ZELLIJ_SESSIONS_LOCK, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
     },
     data::SessionInfo,
     envs,
@@ -10,38 +10,500 @@ use crate::{
 };
 use anyhow;
 use humantime::format_duration;
+use kdl::{KdlDocument, KdlNode, KdlValue};
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use std::{fs, io, process};
 use suggest::Suggest;
+use uuid::Uuid;
+
+// ============================================================================
+// Session registry (`sessions.kdl`)
+//
+// Decouples the user-visible session name from the socket / named-pipe
+// filename. The socket/pipe is named by a stable `id` (a UUID for new sessions,
+// or the legacy session name for pre-registry sessions); `sessions.kdl` maps
+// `id -> display_name`. This is what lets a session be renamed without renaming
+// its socket/pipe — impossible for Windows named pipes (see PR #5103).
+// ============================================================================
+
+/// A single session entry in the registry.
+#[derive(Debug, Clone)]
+pub struct SessionEntry {
+    /// Stable identifier, also the socket/marker filename (a UUID for new
+    /// sessions, or the legacy session name for pre-registry sessions).
+    pub id: String,
+    /// User-visible session name.
+    pub display_name: String,
+    /// Server PID (only meaningful while `state == Running`).
+    pub pid: Option<u32>,
+    /// Running or exited.
+    pub state: SessionState,
+    /// Unix epoch seconds when the session was created.
+    pub created_at: Option<u64>,
+    /// Unix epoch seconds when the session exited (only for `Exited`).
+    pub exited_at: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionState {
+    Running,
+    Exited,
+}
+
+impl SessionState {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SessionState::Running => "running",
+            SessionState::Exited => "exited",
+        }
+    }
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "running" => Some(SessionState::Running),
+            "exited" => Some(SessionState::Exited),
+            _ => None,
+        }
+    }
+}
+
+/// Current time as unix epoch seconds.
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// A file's creation (or, failing that, modification) time as unix epoch seconds.
+fn file_created_epoch(path: &Path) -> Option<u64> {
+    std::fs::metadata(path)
+        .ok()
+        .and_then(|m| m.created().ok().or_else(|| m.modified().ok()))
+        .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+}
+
+/// Generate a new session identifier (UUID v4, hyphenated).
+pub fn generate_session_id() -> String {
+    Uuid::new_v4().as_hyphenated().to_string()
+}
+
+fn is_registry_file(file_name: &str) -> bool {
+    file_name == "sessions.kdl" || file_name == "sessions.kdl.lock"
+}
+
+/// The full session registry.
+#[derive(Debug, Clone, Default)]
+pub struct SessionRegistry {
+    pub sessions: Vec<SessionEntry>,
+}
+
+impl SessionRegistry {
+    pub fn new() -> Self {
+        Self {
+            sessions: Vec::new(),
+        }
+    }
+
+    /// Parse a `sessions.kdl` string into a registry.
+    pub fn from_kdl(raw: &str) -> Result<Self, String> {
+        let doc: KdlDocument = raw
+            .parse()
+            .map_err(|e| format!("Failed to parse sessions.kdl: {}", e))?;
+        let mut sessions = Vec::new();
+        for node in doc.nodes() {
+            if node.name().value() != "session" {
+                continue;
+            }
+            let id = node
+                .entries()
+                .iter()
+                .find(|e| e.name().is_none())
+                .and_then(|e| e.value().as_string())
+                .unwrap_or("")
+                .to_string();
+            if id.is_empty() {
+                continue;
+            }
+            let children = match node.children() {
+                Some(c) => c,
+                None => continue,
+            };
+            let child_string = |key: &str| -> Option<String> {
+                children
+                    .get(key)
+                    .and_then(|n| n.entries().iter().next())
+                    .and_then(|e| e.value().as_string())
+                    .map(|s| s.to_string())
+            };
+            let child_i64 = |key: &str| -> Option<i64> {
+                children
+                    .get(key)
+                    .and_then(|n| n.entries().iter().next())
+                    .and_then(|e| e.value().as_i64())
+            };
+            let display_name = child_string("display_name").unwrap_or_default();
+            let pid = child_i64("pid").map(|v| v as u32);
+            let state = child_string("state")
+                .as_deref()
+                .and_then(SessionState::from_str)
+                .unwrap_or(SessionState::Running);
+            let created_at = child_i64("created_at").map(|v| v as u64);
+            let exited_at = child_i64("exited_at").map(|v| v as u64);
+            sessions.push(SessionEntry {
+                id,
+                display_name,
+                pid,
+                state,
+                created_at,
+                exited_at,
+            });
+        }
+        Ok(SessionRegistry { sessions })
+    }
+
+    /// Serialize the registry to a KDL string.
+    pub fn to_kdl(&self) -> String {
+        let mut doc = KdlDocument::new();
+        for entry in &self.sessions {
+            let mut node = KdlNode::new("session");
+            node.push(KdlValue::String(entry.id.clone()));
+
+            let mut children = KdlDocument::new();
+            let mut push_child = |name: &str, value: KdlValue| {
+                let mut n = KdlNode::new(name);
+                n.push(value);
+                children.nodes_mut().push(n);
+            };
+
+            push_child("display_name", KdlValue::String(entry.display_name.clone()));
+            if let Some(pid) = entry.pid {
+                push_child("pid", KdlValue::Base10(pid as i64));
+            }
+            push_child("state", KdlValue::String(entry.state.as_str().to_string()));
+            if let Some(created_at) = entry.created_at {
+                push_child("created_at", KdlValue::Base10(created_at as i64));
+            }
+            if let Some(exited_at) = entry.exited_at {
+                push_child("exited_at", KdlValue::Base10(exited_at as i64));
+            }
+
+            node.set_children(children);
+            doc.nodes_mut().push(node);
+        }
+        doc.fmt();
+        doc.to_string()
+    }
+
+    /// Find a running session by display name.
+    pub fn find_running_by_name(&self, name: &str) -> Option<&SessionEntry> {
+        self.sessions
+            .iter()
+            .find(|s| s.display_name == name && s.state == SessionState::Running)
+    }
+
+    /// Find a session (any state) by display name.
+    pub fn find_by_name(&self, name: &str) -> Option<&SessionEntry> {
+        self.sessions.iter().find(|s| s.display_name == name)
+    }
+
+    /// Find a session by id.
+    pub fn find_by_id(&self, id: &str) -> Option<&SessionEntry> {
+        self.sessions.iter().find(|s| s.id == id)
+    }
+
+    /// Find a mutable session by id.
+    pub fn find_by_id_mut(&mut self, id: &str) -> Option<&mut SessionEntry> {
+        self.sessions.iter_mut().find(|s| s.id == id)
+    }
+
+    /// Iterate over running sessions.
+    pub fn running_sessions(&self) -> impl Iterator<Item = &SessionEntry> {
+        self.sessions
+            .iter()
+            .filter(|s| s.state == SessionState::Running)
+    }
+
+    /// Remove a session by id.
+    pub fn remove_by_id(&mut self, id: &str) {
+        self.sessions.retain(|s| s.id != id);
+    }
+
+    /// Resolve a running session display name to its socket path.
+    pub fn resolve_socket_path(&self, name: &str) -> Option<PathBuf> {
+        self.find_running_by_name(name)
+            .map(|entry| ZELLIJ_SOCK_DIR.join(&entry.id))
+    }
+}
+
+#[cfg(unix)]
+mod file_lock {
+    use std::fs::{File, OpenOptions};
+    use std::os::unix::io::AsRawFd;
+    use std::path::Path;
+
+    /// An advisory exclusive lock held for the lifetime of the value. The lock
+    /// is released when the file is dropped (fd closed → `flock` released).
+    pub struct FileLock {
+        _file: File,
+    }
+
+    impl FileLock {
+        pub fn exclusive(path: &Path) -> std::io::Result<Self> {
+            let file = OpenOptions::new().create(true).write(true).open(path)?;
+            let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+            if ret != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(FileLock { _file: file })
+        }
+    }
+}
+
+#[cfg(windows)]
+mod file_lock {
+    use std::fs::{File, OpenOptions};
+    use std::os::windows::io::AsRawHandle;
+    use std::path::Path;
+
+    /// An exclusive lock held for the lifetime of the value. The lock is
+    /// released when the file is dropped (handle closed → lock released).
+    pub struct FileLock {
+        _file: File,
+    }
+
+    impl FileLock {
+        pub fn exclusive(path: &Path) -> std::io::Result<Self> {
+            let file = OpenOptions::new().create(true).write(true).open(path)?;
+            let handle = file.as_raw_handle();
+            unsafe {
+                use windows_sys::Win32::Foundation::HANDLE;
+                use windows_sys::Win32::Storage::FileSystem::{LockFileEx, LOCKFILE_EXCLUSIVE_LOCK};
+                let mut overlapped: windows_sys::Win32::System::IO::OVERLAPPED =
+                    std::mem::zeroed();
+                let ret = LockFileEx(
+                    handle as HANDLE,
+                    LOCKFILE_EXCLUSIVE_LOCK,
+                    0,
+                    u32::MAX,
+                    u32::MAX,
+                    &mut overlapped,
+                );
+                if ret == 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+            }
+            Ok(FileLock { _file: file })
+        }
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+mod file_lock {
+    use std::fs::{File, OpenOptions};
+    use std::path::Path;
+
+    pub struct FileLock {
+        _file: File,
+    }
+
+    impl FileLock {
+        pub fn exclusive(path: &Path) -> std::io::Result<Self> {
+            let file = OpenOptions::new().create(true).write(true).open(path)?;
+            Ok(FileLock { _file: file })
+        }
+    }
+}
+
+use file_lock::FileLock;
+
+/// Ensure the socket dir exists so the lock/registry files can live in it.
+fn ensure_sock_dir() -> io::Result<()> {
+    fs::create_dir_all(&*ZELLIJ_SOCK_DIR)
+}
+
+/// Returns true if the session registry file exists on disk.
+pub fn registry_exists() -> bool {
+    ZELLIJ_SESSIONS_KDL.exists()
+}
+
+/// Read the registry from disk, returning an empty one if it's missing/corrupt.
+pub fn read_registry() -> SessionRegistry {
+    match fs::read_to_string(&*ZELLIJ_SESSIONS_KDL) {
+        Ok(raw) => SessionRegistry::from_kdl(&raw).unwrap_or_else(|e| {
+            log::error!("{}", e);
+            SessionRegistry::new()
+        }),
+        Err(_) => SessionRegistry::new(),
+    }
+}
+
+/// Ensure the registry exists, migrating from the legacy socket-named layout on
+/// first use. Returns the current registry.
+pub fn ensure_registry() -> SessionRegistry {
+    if registry_exists() {
+        read_registry()
+    } else {
+        migrate_legacy_sessions()
+    }
+}
+
+/// Migrate legacy (pre-registry) sessions into a new `sessions.kdl`.
+///
+/// Scans `ZELLIJ_SOCK_DIR` for old socket/marker files (named by session name)
+/// and the session-info cache for resurrectable sessions, creating registry
+/// entries with `id == existing_name` so lookups keep working without moving
+/// any files. Called once when `sessions.kdl` doesn't exist yet.
+pub fn migrate_legacy_sessions() -> SessionRegistry {
+    let mut registry = SessionRegistry::new();
+
+    // Live legacy sessions: socket/marker files named directly by session name.
+    if let Ok(files) = fs::read_dir(&*ZELLIJ_SOCK_DIR) {
+        for file in files.flatten() {
+            let file_name = match file.file_name().into_string() {
+                Ok(n) => n,
+                Err(_) => continue,
+            };
+            if is_registry_file(&file_name) {
+                continue;
+            }
+            let file_type = match file.file_type() {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+            if !is_ipc_socket(&file_type) {
+                continue;
+            }
+            if !assert_socket(&file_name) {
+                continue;
+            }
+            // The filename IS the legacy session name; keep it as the id so
+            // ipc_connect still finds it by joining ZELLIJ_SOCK_DIR with the id.
+            #[cfg(windows)]
+            let pid = fs::read_to_string(file.path())
+                .ok()
+                .and_then(|s| s.lines().next().and_then(|l| l.trim().parse::<u32>().ok()));
+            #[cfg(not(windows))]
+            let pid: Option<u32> = None;
+
+            registry.sessions.push(SessionEntry {
+                id: file_name.clone(),
+                display_name: file_name,
+                pid,
+                state: SessionState::Running,
+                created_at: file_created_epoch(&file.path()),
+                exited_at: None,
+            });
+        }
+    }
+
+    // Resurrectable legacy sessions from the (name-keyed) session-info cache.
+    if let Ok(dirs) = fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
+        for dir in dirs.flatten() {
+            let path = dir.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let session_name = match path.file_name().and_then(|f| f.to_str()) {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+            if registry.find_by_name(&session_name).is_some() {
+                continue;
+            }
+            let layout_file = session_layout_cache_file_name(&session_name);
+            if !Path::new(&layout_file).exists() {
+                continue;
+            }
+            let created_at = file_created_epoch(&layout_file);
+            // Legacy resurrectable entry: id == name so the (name-keyed) cache
+            // folder is still found by id.
+            registry.sessions.push(SessionEntry {
+                id: session_name.clone(),
+                display_name: session_name,
+                pid: None,
+                state: SessionState::Exited,
+                created_at,
+                exited_at: created_at,
+            });
+        }
+    }
+
+    if let Err(e) = write_registry(&registry) {
+        log::error!("Failed to write migrated session registry: {:?}", e);
+    }
+    registry
+}
+
+/// Write the session registry to disk, holding an exclusive lock.
+pub fn write_registry(registry: &SessionRegistry) -> io::Result<()> {
+    ensure_sock_dir()?;
+    let _lock = FileLock::exclusive(&ZELLIJ_SESSIONS_LOCK)?;
+    fs::write(&*ZELLIJ_SESSIONS_KDL, registry.to_kdl())
+}
+
+/// Read the registry under an exclusive lock, apply a mutation, and write it
+/// back. Returns the closure's return value.
+///
+/// The closure MUST NOT call back into the registry (`with_registry`,
+/// `write_registry`, `ensure_registry`) — the lock is not reentrant.
+pub fn with_registry<F, R>(f: F) -> io::Result<R>
+where
+    F: FnOnce(&mut SessionRegistry) -> R,
+{
+    ensure_sock_dir()?;
+    let _lock = FileLock::exclusive(&ZELLIJ_SESSIONS_LOCK)?;
+    let mut registry = match fs::read_to_string(&*ZELLIJ_SESSIONS_KDL) {
+        Ok(raw) => SessionRegistry::from_kdl(&raw).unwrap_or_default(),
+        Err(_) => SessionRegistry::new(),
+    };
+    let result = f(&mut registry);
+    fs::write(&*ZELLIJ_SESSIONS_KDL, registry.to_kdl())?;
+    Ok(result)
+}
+
+/// Register a new session in the registry. Returns the generated id (UUID).
+pub fn register_session(display_name: &str) -> io::Result<String> {
+    let id = generate_session_id();
+    let entry = SessionEntry {
+        id: id.clone(),
+        display_name: display_name.to_string(),
+        pid: None,
+        state: SessionState::Running,
+        created_at: Some(now_secs()),
+        exited_at: None,
+    };
+    with_registry(|reg| reg.sessions.push(entry))?;
+    Ok(id)
+}
+
+/// Resolve a session display name to its socket path via the registry.
+pub fn resolve_session_socket_path(name: &str) -> Option<PathBuf> {
+    ensure_registry().resolve_socket_path(name)
+}
 
 pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
-    match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
-        Ok(files) => {
-            let mut sessions = Vec::new();
-            files.for_each(|file| {
-                if let Ok(file) = file {
-                    let file_name = file.file_name().into_string().unwrap();
-                    // try to get creation time, fall back to modification time on platforms where it's not supported (e.g., musl)
-                    // for session creation time these are almost always identical (notable
-                    // exceptions are session name changes)
-                    let ctime = std::fs::metadata(&file.path())
-                        .ok()
-                        .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
-                        .and_then(|d| d.elapsed().ok())
-                        .unwrap_or_default();
-                    let duration = Duration::from_secs(ctime.as_secs());
-                    if is_ipc_socket(&file.file_type().unwrap()) && assert_socket(&file_name) {
-                        sessions.push((file_name, duration));
-                    }
-                }
-            });
-            Ok(sessions)
-        },
-        Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.kind()),
-        Err(_) => Ok(Vec::with_capacity(0)),
+    let registry = ensure_registry();
+    let mut sessions = Vec::new();
+    for entry in registry.running_sessions() {
+        // Probe liveness (and clean up stale sockets) via the id-named socket.
+        if !assert_socket(&entry.id) {
+            continue;
+        }
+        let sock_path = ZELLIJ_SOCK_DIR.join(&entry.id);
+        let ctime = std::fs::metadata(&sock_path)
+            .ok()
+            .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
+            .and_then(|d| d.elapsed().ok())
+            .unwrap_or_default();
+        sessions.push((
+            entry.display_name.clone(),
+            Duration::from_secs(ctime.as_secs()),
+        ));
     }
+    Ok(sessions)
 }
 
 pub fn get_resurrectable_sessions() -> Vec<(String, Duration)> {
@@ -119,25 +581,19 @@ pub fn get_resurrectable_session_names() -> Vec<String> {
 }
 
 pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
-    match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
-        Ok(files) => {
-            let mut sessions_with_mtime: Vec<(String, SystemTime)> = Vec::new();
-            for file in files {
-                let file = file?;
-                let file_name = file.file_name().into_string().unwrap();
-                let file_modified_at = file.metadata()?.modified()?;
-                if is_ipc_socket(&file.file_type()?) && assert_socket(&file_name) {
-                    sessions_with_mtime.push((file_name, file_modified_at));
-                }
-            }
-            sessions_with_mtime.sort_by_key(|x| x.1); // the oldest one will be the first
-
-            let sessions = sessions_with_mtime.iter().map(|x| x.0.clone()).collect();
-            Ok(sessions)
-        },
-        Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.into()),
-        Err(_) => Ok(Vec::with_capacity(0)),
+    let registry = ensure_registry();
+    let mut sessions_with_mtime: Vec<(String, SystemTime)> = Vec::new();
+    for entry in registry.running_sessions() {
+        if !assert_socket(&entry.id) {
+            continue;
+        }
+        let sock_path = ZELLIJ_SOCK_DIR.join(&entry.id);
+        if let Ok(mtime) = std::fs::metadata(&sock_path).and_then(|m| m.modified()) {
+            sessions_with_mtime.push((entry.display_name.clone(), mtime));
+        }
     }
+    sessions_with_mtime.sort_by_key(|x| x.1); // the oldest one will be the first
+    Ok(sessions_with_mtime.into_iter().map(|x| x.0).collect())
 }
 
 /// Probe a session socket to check if a server is alive.
@@ -294,7 +750,8 @@ pub fn get_active_session() -> ActiveSession {
 
 pub fn kill_session(name: &str) {
     use crate::consts::ipc_connect;
-    let path = &*ZELLIJ_SOCK_DIR.join(name);
+    let resolved = resolve_session_socket_path(name).unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name));
+    let path = &*resolved;
     match ipc_connect(path) {
         Ok(stream) => {
             // On Windows, the server uses a dual-pipe architecture: the main pipe
@@ -331,7 +788,9 @@ pub fn kill_session(name: &str) {
 pub fn delete_session(name: &str, force: bool) {
     if force {
         use crate::consts::ipc_connect;
-        let path = &*ZELLIJ_SOCK_DIR.join(name);
+        let resolved =
+            resolve_session_socket_path(name).unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name));
+        let path = &*resolved;
         let _ = ipc_connect(path).ok().map(|stream| {
             #[cfg(windows)]
             {
@@ -573,30 +1032,39 @@ pub fn read_live_session_states(
     sock_dir: &Path,
     session_info_cache_dir: &Path,
 ) -> BTreeMap<String, SessionInfo> {
-    let mut other_session_names: Vec<(String, Duration)> = vec![];
     let mut session_infos_on_machine = BTreeMap::new();
-    if let Ok(files) = fs::read_dir(sock_dir) {
-        files.for_each(|file| {
-            if let Ok(file) = file {
-                if let Ok(file_name) = file.file_name().into_string() {
-                    if file
-                        .file_type()
-                        .map(|file_type| is_ipc_socket(&file_type))
-                        .unwrap_or(false)
-                    {
-                        let creation_time = std::fs::metadata(&file.path())
-                            .ok()
-                            .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
-                            .and_then(|d| d.elapsed().ok())
-                            .unwrap_or_default();
-                        other_session_names.push((file_name, creation_time));
-                    }
-                }
-            }
-        });
-    }
-
-    for (session_name, creation_time) in other_session_names {
+    // The registry maps id-named sockets to their user-visible display names.
+    // For legacy or test sockets named directly after the session, the lookup
+    // misses and we fall back to the filename.
+    let registry = ensure_registry();
+    let files = match fs::read_dir(sock_dir) {
+        Ok(files) => files,
+        Err(_) => return session_infos_on_machine,
+    };
+    for file in files.flatten() {
+        let file_name = match file.file_name().into_string() {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+        if is_registry_file(&file_name) {
+            continue;
+        }
+        let is_socket = file
+            .file_type()
+            .map(|file_type| is_ipc_socket(&file_type))
+            .unwrap_or(false);
+        if !is_socket {
+            continue;
+        }
+        let session_name = registry
+            .find_by_id(&file_name)
+            .map(|e| e.display_name.clone())
+            .unwrap_or(file_name);
+        let creation_time = std::fs::metadata(file.path())
+            .ok()
+            .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
+            .and_then(|d| d.elapsed().ok())
+            .unwrap_or_default();
         let session_cache_file_name = session_info_cache_dir
             .join(&session_name)
             .join("session-metadata.kdl");
@@ -802,3 +1270,160 @@ const NOUNS: &[&'static str] = &[
     "yak",
     "zebra",
 ];
+
+#[cfg(test)]
+mod registry_tests {
+    use super::*;
+
+    const UUID_1: &str = "a3f7b9c1-e29b-41d4-a716-446655440001";
+    const UUID_2: &str = "550e8400-e29b-41d4-a716-446655440002";
+    const UUID_3: &str = "6ba7b810-9dad-41d4-80b4-00c04fd430c3";
+
+    fn running(id: &str, name: &str, pid: u32) -> SessionEntry {
+        SessionEntry {
+            id: id.to_string(),
+            display_name: name.to_string(),
+            pid: Some(pid),
+            state: SessionState::Running,
+            created_at: Some(1_700_000_000),
+            exited_at: None,
+        }
+    }
+
+    fn exited(id: &str, name: &str) -> SessionEntry {
+        SessionEntry {
+            id: id.to_string(),
+            display_name: name.to_string(),
+            pid: None,
+            state: SessionState::Exited,
+            created_at: Some(1_700_000_000),
+            exited_at: Some(1_700_000_500),
+        }
+    }
+
+    #[test]
+    fn kdl_roundtrip() {
+        let registry = SessionRegistry {
+            sessions: vec![
+                running(UUID_1, "my-session", 12345),
+                exited(UUID_2, "old-session"),
+            ],
+        };
+        let parsed = SessionRegistry::from_kdl(&registry.to_kdl()).unwrap();
+        assert_eq!(parsed.sessions.len(), 2);
+
+        let r = parsed.find_by_id(UUID_1).unwrap();
+        assert_eq!(r.display_name, "my-session");
+        assert_eq!(r.pid, Some(12345));
+        assert_eq!(r.state, SessionState::Running);
+        assert_eq!(r.created_at, Some(1_700_000_000));
+        assert!(r.exited_at.is_none());
+
+        let e = parsed.find_by_id(UUID_2).unwrap();
+        assert_eq!(e.state, SessionState::Exited);
+        assert!(e.pid.is_none());
+        assert_eq!(e.exited_at, Some(1_700_000_500));
+    }
+
+    #[test]
+    fn kdl_omits_pid_for_exited() {
+        let registry = SessionRegistry {
+            sessions: vec![exited(UUID_1, "dead")],
+        };
+        let kdl = registry.to_kdl();
+        assert!(
+            !kdl.contains("pid"),
+            "exited session should have no pid node: {}",
+            kdl
+        );
+        assert!(SessionRegistry::from_kdl(&kdl).unwrap().sessions[0]
+            .pid
+            .is_none());
+    }
+
+    #[test]
+    fn find_running_by_name_prefers_running() {
+        let registry = SessionRegistry {
+            sessions: vec![
+                exited(UUID_1, "foo"),
+                running(UUID_2, "foo", 100),
+                running(UUID_3, "bar", 200),
+            ],
+        };
+        let found = registry.find_running_by_name("foo").unwrap();
+        assert_eq!(found.id, UUID_2);
+        assert_eq!(found.state, SessionState::Running);
+        assert!(registry.find_running_by_name("missing").is_none());
+    }
+
+    #[test]
+    fn resolve_socket_path_uses_id() {
+        let registry = SessionRegistry {
+            sessions: vec![running(UUID_1, "my-session", 100)],
+        };
+        let path = registry.resolve_socket_path("my-session").unwrap();
+        assert!(path.ends_with(UUID_1));
+        assert!(registry.resolve_socket_path("nope").is_none());
+    }
+
+    #[test]
+    fn remove_by_id() {
+        let mut registry = SessionRegistry {
+            sessions: vec![
+                running(UUID_1, "a", 1),
+                running(UUID_2, "b", 2),
+                running(UUID_3, "c", 3),
+            ],
+        };
+        registry.remove_by_id(UUID_2);
+        assert_eq!(registry.sessions.len(), 2);
+        assert!(registry.find_by_id(UUID_2).is_none());
+        assert!(registry.find_by_id(UUID_1).is_some());
+    }
+
+    #[test]
+    fn running_sessions_filters_state() {
+        let registry = SessionRegistry {
+            sessions: vec![
+                running(UUID_1, "a", 1),
+                exited(UUID_2, "b"),
+                running(UUID_3, "c", 3),
+            ],
+        };
+        let names: Vec<_> = registry
+            .running_sessions()
+            .map(|e| e.display_name.clone())
+            .collect();
+        assert_eq!(names, vec!["a", "c"]);
+    }
+
+    #[test]
+    fn generated_id_is_uuid_shaped() {
+        let id = generate_session_id();
+        assert_eq!(id.len(), 36);
+        assert_eq!(id.as_bytes()[8], b'-');
+        assert_eq!(id.as_bytes()[13], b'-');
+        assert_eq!(id.as_bytes()[18], b'-');
+        assert_eq!(id.as_bytes()[23], b'-');
+    }
+
+    #[test]
+    fn session_state_str_roundtrip() {
+        assert_eq!(
+            SessionState::from_str(SessionState::Running.as_str()),
+            Some(SessionState::Running)
+        );
+        assert_eq!(
+            SessionState::from_str(SessionState::Exited.as_str()),
+            Some(SessionState::Exited)
+        );
+        assert_eq!(SessionState::from_str("bogus"), None);
+    }
+
+    #[test]
+    fn unknown_state_defaults_to_running() {
+        let kdl = "session \"id-x\" {\n    display_name \"x\"\n    state \"weird\"\n}";
+        let parsed = SessionRegistry::from_kdl(kdl).unwrap();
+        assert_eq!(parsed.sessions[0].state, SessionState::Running);
+    }
+}

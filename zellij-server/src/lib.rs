@@ -531,23 +531,31 @@ impl SessionMetaData {
 
 impl Drop for SessionMetaData {
     fn drop(&mut self) {
-        let _ = self.senders.send_to_pty(PtyInstruction::Exit);
+        // Force a final serialization so the session shows up as resurrectable
+        // even if it exited before the periodic serialization interval fired.
+        // The Screen -> Plugin -> PTY pipeline must drain fully before any thread
+        // sees its Exit, otherwise the disk write is lost — so we exit threads in
+        // pipeline order, joining each before queuing Exit on the next.
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::SerializeLayoutForResurrection);
         let _ = self.senders.send_to_screen(ScreenInstruction::Exit);
-        let _ = self.senders.send_to_plugin(PluginInstruction::Exit);
-        let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Exit);
-        let _ = self.senders.send_to_background_jobs(BackgroundJob::Exit);
         if let Some(screen_thread) = self.screen_thread.take() {
             let _ = screen_thread.join();
         }
-        if let Some(pty_thread) = self.pty_thread.take() {
-            let _ = pty_thread.join();
-        }
+        let _ = self.senders.send_to_plugin(PluginInstruction::Exit);
         if let Some(plugin_thread) = self.plugin_thread.take() {
             let _ = plugin_thread.join();
         }
+        let _ = self.senders.send_to_pty(PtyInstruction::Exit);
+        if let Some(pty_thread) = self.pty_thread.take() {
+            let _ = pty_thread.join();
+        }
+        let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Exit);
         if let Some(pty_writer_thread) = self.pty_writer_thread.take() {
             let _ = pty_writer_thread.join();
         }
+        let _ = self.senders.send_to_background_jobs(BackgroundJob::Exit);
         if let Some(background_jobs_thread) = self.background_jobs_thread.take() {
             let _ = background_jobs_thread.join();
         }
@@ -897,6 +905,24 @@ pub fn start_server_impl(
     install_panic_hook: bool,
 ) {
     envs::set_zellij("0".to_string());
+
+    // The socket/pipe filename is the stable session id, decoupled from the
+    // (renameable) display name. Publish it so the screen and background-jobs
+    // threads can key session-info cache and registry updates by id.
+    let session_id = socket_path
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_default();
+    envs::set_session_id(session_id.clone());
+
+    // Record the real server PID in the registry (post-daemonize on Unix).
+    if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
+        if let Some(entry) = reg.find_by_id_mut(&session_id) {
+            entry.pid = Some(std::process::id());
+        }
+    }) {
+        log::error!("Failed to update PID in session registry: {:?}", e);
+    }
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
@@ -2056,6 +2082,23 @@ pub fn start_server_impl(
 
     // Drop cached session data before exit.
     *session_data.write().unwrap() = None;
+
+    // Mark the session exited in the registry (clear PID, stamp exit time) so it
+    // is listed as resurrectable rather than running.
+    if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
+        if let Some(entry) = reg.find_by_id_mut(&session_id) {
+            entry.state = zellij_utils::sessions::SessionState::Exited;
+            entry.pid = None;
+            entry.exited_at = Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
+            );
+        }
+    }) {
+        log::error!("Failed to update session registry on exit: {:?}", e);
+    }
 
     drop(std::fs::remove_file(&socket_path));
 }
