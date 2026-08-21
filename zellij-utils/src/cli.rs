@@ -154,6 +154,10 @@ pub enum Command {
         "zellij [--session <OTHER SESSION NAME>] subscribe [OPTIONS] --pane-id..."
     ))]
     Subscribe(SubscribeCli),
+
+    /// Update zellij to the latest version (standalone binary only)
+    #[clap(name = "self-update", value_parser)]
+    SelfUpdate,
 }
 
 #[derive(Debug, Parser, Clone, Serialize, Deserialize)]

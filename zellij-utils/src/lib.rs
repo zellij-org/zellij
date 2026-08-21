@@ -36,6 +36,8 @@ pub mod nested_session;
 pub mod remote_session_tokens;
 #[cfg(not(target_family = "wasm"))]
 pub mod sessions;
+#[cfg(not(target_family = "wasm"))]
+pub mod self_update;
 #[cfg(all(not(target_family = "wasm"), feature = "web_server_capability"))]
 pub mod web_authentication_tokens;
 #[cfg(all(not(target_family = "wasm"), feature = "web_server_capability"))]
