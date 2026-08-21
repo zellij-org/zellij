@@ -1035,3 +1035,15 @@ pub fn get_config_options_from_cli_args(opts: &CliArgs) -> Result<Options, Strin
         .map(|(_, _, config_options, _, _)| config_options)
         .map_err(|e| e.to_string())
 }
+
+pub fn self_update() {
+    match zellij_utils::self_update::run() {
+        Ok(version) => {
+            println!("Updated zellij to {}", version);
+        },
+        Err(e) => {
+            eprintln!("Failed to update: {}", e);
+            std::process::exit(1);
+        },
+    }
+}

@@ -42,6 +42,7 @@ libc = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 base64 = { version = "0.22", default-features = false, features = ["std"] }
+self_update = { version = "0.44", features = ["rustls"] }
 tokio = { workspace = true }
 tokio-stream = { version = "0.1" }
 tokio-util = { version = "0.7", default-features = false, features = ["compat", "io"] }
