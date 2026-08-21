@@ -2099,6 +2099,11 @@ impl<'a> KdlLayoutParser<'a> {
         let mut floating_panes = vec![];
         self.assert_valid_tab_properties(layout_node)?;
         self.populate_floating_pane_children(layout_node, &mut floating_panes)?;
+        if let Some(cwd_prefix) = self.cwd_prefix(None)? {
+            for floating_pane in floating_panes.iter_mut() {
+                floating_pane.add_cwd_to_layout(&cwd_prefix);
+            }
+        }
         Ok(floating_panes)
     }
     fn populate_one_swap_floating_layout_with_template(
@@ -2364,10 +2369,7 @@ impl<'a> KdlLayoutParser<'a> {
         if let Some(children) = kdl_children_nodes!(child) {
             for child in children {
                 if kdl_name!(child) == "pane" {
-                    let mut pane_node = self.parse_floating_pane_node(child)?;
-                    if let Some(global_cwd) = &self.global_cwd {
-                        pane_node.add_cwd_to_layout(&global_cwd);
-                    }
+                    let pane_node = self.parse_floating_pane_node(child)?;
                     child_floating_panes.push(pane_node);
                 } else if let Some((pane_template, pane_template_kdl_node)) =
                     self.pane_templates.get(kdl_name!(child)).cloned()
