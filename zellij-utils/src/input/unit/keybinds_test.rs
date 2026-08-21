@@ -1,6 +1,6 @@
 use super::super::actions::*;
 use super::super::keybinds::*;
-use crate::data::{BareKey, Direction, KeyWithModifier};
+use crate::data::{BareKey, Direction, KeyWithModifier, LayoutInfo};
 use crate::input::config::Config;
 use insta::assert_snapshot;
 use strum::IntoEnumIterator;
@@ -593,4 +593,43 @@ fn error_received_on_unknown_key_instruction() {
     "#;
     let config_error = Config::from_kdl(config_contents, None).unwrap_err();
     assert_snapshot!(format!("{:?}", config_error));
+}
+
+#[test]
+fn switch_session_action_shell_expands_layout_path() {
+    let config_contents = r#"
+        layout_dir "/tmp/should_be_discarded"
+        keybinds {
+            normal {
+                bind "Ctrl g" { SwitchSession name="my_session" layout="~/path/to/layout.kdl"; }
+            }
+        }
+    "#;
+    let old_home = std::env::var("HOME").ok();
+    std::env::set_var("HOME", "/home/test_user");
+    let config = Config::from_kdl(config_contents, None).unwrap();
+    match old_home {
+        Some(home) => std::env::set_var("HOME", home),
+        None => std::env::remove_var("HOME"),
+    }
+    let ctrl_g_normal_mode_action = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Normal,
+        &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+    );
+    let layout = match ctrl_g_normal_mode_action {
+        Some(actions) => match &actions[0] {
+            Action::SwitchSession { layout, .. } => layout.clone(),
+            other => panic!("Expected a SwitchSession action, found: {:?}", other),
+        },
+        None => panic!("Expected a SwitchSession action to be bound to Ctrl g"),
+    };
+    match layout {
+        Some(LayoutInfo::File(path, _)) => {
+            assert_eq!(
+                path, "/home/test_user/path/to/layout.kdl",
+                "Tilde in layout path was shell expanded relative to $HOME"
+            );
+        },
+        other => panic!("Expected a LayoutInfo::File, found: {:?}", other),
+    }
 }
