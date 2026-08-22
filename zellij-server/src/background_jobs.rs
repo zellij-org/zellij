@@ -145,6 +145,7 @@ pub(crate) fn background_jobs_main(
     serialization_interval: Option<u64>,
     disable_session_metadata: bool,
     web_server_base_url: String,
+    session_id: String,
 ) -> Result<()> {
     let err_context = || "failed to write to pty".to_string();
     let mut running_jobs: HashMap<BackgroundJob, Instant> = HashMap::new();
@@ -212,6 +213,7 @@ pub(crate) fn background_jobs_main(
         let current_session_name = current_session_name.clone();
         let current_session_info = current_session_info.clone();
         let current_session_layout = current_session_layout.clone();
+        let session_id = session_id.clone();
         runtime.spawn(async move {
             let mut ticker = tokio::time::interval(std::time::Duration::from_millis(
                 SESSION_METADATA_WRITE_INTERVAL_MS,
@@ -222,13 +224,12 @@ pub(crate) fn background_jobs_main(
                 // Guard on the name (only set once the session is initialised),
                 // but key the cache folder by the stable session id.
                 let name = current_session_name.lock().unwrap().clone();
-                let id = zellij_utils::envs::get_session_id().unwrap_or_default();
-                if name.is_empty() || id.is_empty() {
+                if name.is_empty() || session_id.is_empty() {
                     continue;
                 }
                 let info = current_session_info.lock().unwrap().clone();
                 let layout = current_session_layout.lock().unwrap().clone();
-                write_session_state_to_disk(id, info, layout);
+                write_session_state_to_disk(session_id.clone(), info, layout);
             }
         });
     }
@@ -728,17 +729,16 @@ pub(crate) fn background_jobs_main(
                 // session-layout.kdl, which list-sessions uses to mark the
                 // session as resurrectable.
                 let name = current_session_name.lock().unwrap().clone();
-                let id = zellij_utils::envs::get_session_id().unwrap_or_default();
-                if !name.is_empty() && !id.is_empty() {
+                if !name.is_empty() && !session_id.is_empty() {
                     let info = current_session_info.lock().unwrap().clone();
                     let layout = current_session_layout.lock().unwrap().clone();
-                    write_session_state_to_disk(id.clone(), info, layout);
+                    write_session_state_to_disk(session_id.clone(), info, layout);
                 }
 
                 // Remove the metadata cache file so the session is no longer
                 // considered live (the layout file is kept for resurrection).
-                if !id.is_empty() {
-                    let _ = std::fs::remove_file(session_info_cache_file_name(&id));
+                if !session_id.is_empty() {
+                    let _ = std::fs::remove_file(session_info_cache_file_name(&session_id));
                 }
                 return Ok(());
             },

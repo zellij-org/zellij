@@ -211,7 +211,11 @@ pub(crate) struct Pty {
     terminal_foreground_cmds: HashMap<u32, Vec<String>>,
 }
 
-pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
+pub(crate) fn pty_thread_main(
+    mut pty: Pty,
+    layout: Box<Layout>,
+    session_id: String,
+) -> Result<()> {
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -793,7 +797,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 }
             },
             PtyInstruction::SaveSessionToDisk {
-                session_name,
+                // The cache is keyed by the server's own session id; the name in
+                // the instruction is no longer needed.
+                session_name: _,
                 session_info,
                 mut session_layout_metadata,
                 completion_tx: _completion_tx, // Dropped at end to signal completion
@@ -804,10 +810,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 ) {
                     Ok(kdl_and_files) => {
                         // Cache is keyed by the stable session id, not the name.
-                        let session_id = zellij_utils::envs::get_session_id()
-                            .unwrap_or_else(|_| session_name.clone());
                         write_session_state_to_disk(
-                            session_id,
+                            session_id.clone(),
                             session_info,
                             kdl_and_files.clone(),
                         );

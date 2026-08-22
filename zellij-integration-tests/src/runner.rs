@@ -448,6 +448,23 @@ impl TestSession {
         }
     }
 
+    /// Attach a new client to a session by an explicit name — used to verify
+    /// reattaching to a session by a name it was renamed to.
+    pub fn attach_client_by_name(&self, session_name: &str, size: Size) -> TestClient {
+        let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(size, None);
+        let thread = spawn_client_thread(
+            fake_client_os_api,
+            self.cli_args.clone(),
+            self.config.clone(),
+            self.config_options.clone(),
+            ClientInfo::Attach(session_name.to_string(), self.config_options.clone()),
+        );
+        TestClient {
+            fake_client_handle,
+            thread: Some(thread),
+        }
+    }
+
     pub fn attach_watcher(&self, size: Size) -> TestClient {
         let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(size, None);
         let thread = spawn_client_thread(
@@ -495,7 +512,10 @@ impl TestSession {
     }
 
     pub fn wait_for_serialized_session(&self) {
-        let layout_path = zellij_utils::consts::session_layout_cache_file_name(&self.session_name);
+        // The session-info cache is keyed by session id, not the display name.
+        let id = zellij_utils::sessions::resolve_session_id(&self.session_name)
+            .unwrap_or_else(|| self.session_name.clone());
+        let layout_path = zellij_utils::consts::session_layout_cache_file_name(&id);
         let session_dir = layout_path.parent().map(|parent| parent.to_path_buf());
         let deadline = std::time::Instant::now() + crate::default_timeout();
         loop {
@@ -518,7 +538,12 @@ impl TestSession {
     }
 
     pub fn resurrect(&mut self, size: Size) {
-        let layout_path = zellij_utils::consts::session_layout_cache_file_name(&self.session_name);
+        // The session-info cache is keyed by session id, not the display name.
+        // register_session reuses this id when resurrecting, so the resurrected
+        // server writes back to the same folder.
+        let id = zellij_utils::sessions::resolve_session_id(&self.session_name)
+            .unwrap_or_else(|| self.session_name.clone());
+        let layout_path = zellij_utils::consts::session_layout_cache_file_name(&id);
         assert!(
             layout_path.exists(),
             "no serialized layout to resurrect from at {}",

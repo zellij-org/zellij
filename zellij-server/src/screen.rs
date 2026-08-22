@@ -1536,6 +1536,8 @@ pub(crate) struct Screen {
     copy_options: CopyOptions,
     debug: bool,
     session_name: String,
+    /// Stable session id (socket/pipe filename), decoupled from `session_name`.
+    session_id: String,
     peer_sessions_cache: BTreeMap<String, SessionInfo>, // String is the session name, can
     // also be this session
     resurrectable_sessions_cache: BTreeMap<String, Duration>, // String is the session name,
@@ -1697,6 +1699,7 @@ impl Screen {
         web_server_ip: IpAddr,
         web_server_port: u16,
         nested_session_handling: NestedSessionHandling,
+        session_id: String,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -1735,6 +1738,7 @@ impl Screen {
             copy_options,
             debug,
             session_name,
+            session_id,
             peer_sessions_cache,
             default_layout,
             default_layout_name,
@@ -5393,8 +5397,7 @@ impl Screen {
         let available_layouts = self.cached_layouts.clone();
         let creation_time = {
             // The socket is named by the stable session id, not the display name.
-            let session_id = zellij_utils::envs::get_session_id().unwrap_or_default();
-            let sock_path = ZELLIJ_SOCK_DIR.join(&session_id);
+            let sock_path = ZELLIJ_SOCK_DIR.join(&self.session_id);
             std::fs::metadata(&sock_path)
                 .ok()
                 .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
@@ -7905,6 +7908,7 @@ pub(crate) fn screen_thread_main(
     config: Config,
     debug: bool,
     default_layout: Box<Layout>,
+    session_id: String,
 ) -> Result<()> {
     // Resolve `theme_dark` / `theme_light` to concrete `Styling` from the
     // bundled themes BEFORE `config.options` is moved out below. These
@@ -8056,6 +8060,7 @@ pub(crate) fn screen_thread_main(
         web_server_ip,
         web_server_port,
         nested_session_handling,
+        session_id,
     );
     screen.host_theme_dark_styling = host_theme_dark_styling;
     screen.host_theme_light_styling = host_theme_light_styling;
@@ -11280,8 +11285,7 @@ pub(crate) fn screen_thread_main(
 
                 let creation_time = {
                     // The socket is named by the stable session id, not the display name.
-                    let session_id = zellij_utils::envs::get_session_id().unwrap_or_default();
-                    let sock_path = ZELLIJ_SOCK_DIR.join(&session_id);
+                    let sock_path = ZELLIJ_SOCK_DIR.join(&screen.session_id);
                     std::fs::metadata(&sock_path)
                         .ok()
                         .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
@@ -11378,7 +11382,7 @@ pub(crate) fn screen_thread_main(
                     // are both named by the stable session id, so this is a
                     // pure registry update — which is what makes rename work for
                     // Windows named pipes (they cannot be renamed).
-                    let session_id = zellij_utils::envs::get_session_id().unwrap_or_default();
+                    let session_id = screen.session_id.clone();
                     if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
                         if let Some(entry) = reg.find_by_id_mut(&session_id) {
                             entry.display_name = name.clone();
