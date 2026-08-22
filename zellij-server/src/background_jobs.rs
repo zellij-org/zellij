@@ -723,20 +723,9 @@ pub(crate) fn background_jobs_main(
                     nested_guest_ping.store(false, Ordering::SeqCst);
                 }
 
-                // Flush the current layout to disk before shutting down so the
-                // session is resurrectable even if it exited before the periodic
-                // SESSION_METADATA_WRITE_INTERVAL_MS ticker fired. This writes
-                // session-layout.kdl, which list-sessions uses to mark the
-                // session as resurrectable.
-                let name = current_session_name.lock().unwrap().clone();
-                if !name.is_empty() && !session_id.is_empty() {
-                    let info = current_session_info.lock().unwrap().clone();
-                    let layout = current_session_layout.lock().unwrap().clone();
-                    write_session_state_to_disk(session_id.clone(), info, layout);
-                }
-
-                // Remove the metadata cache file so the session is no longer
-                // considered live (the layout file is kept for resurrection).
+                // Remove the metadata cache file (keyed by session id) so the
+                // session is no longer considered live; the layout file is kept
+                // for resurrection.
                 if !session_id.is_empty() {
                     let _ = std::fs::remove_file(session_info_cache_file_name(&session_id));
                 }
