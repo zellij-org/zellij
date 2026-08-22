@@ -417,8 +417,11 @@ fn spawn_server_error_message(e: io::Error) -> String {
     )
 }
 
-fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
-    let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
+/// Ensure the socket directory exists and is private (0700), and is short
+/// enough to hold a session id. On failure, tear down the terminal and exit
+/// with a helpful message.
+fn prepare_sock_dir(teardown: Option<TerminalTeardown>) {
+    let sock_dir = ZELLIJ_SOCK_DIR.clone();
     if let Err(e) = std::fs::create_dir_all(&sock_dir) {
         exit_after_startup_error(
             teardown,
@@ -449,9 +452,29 @@ fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
             ),
         );
     }
-    sock_dir.push(envs::get_session_name().unwrap());
-    check_ipc_pipe_length(&sock_dir);
-    sock_dir
+    zellij_utils::consts::check_sock_dir_length();
+}
+
+/// IPC pipe path for a NEW session: register it in the registry under a fresh
+/// id and return `ZELLIJ_SOCK_DIR/<id>`. The session name is read from the
+/// environment (set by the caller just before).
+fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
+    prepare_sock_dir(teardown);
+    let name = envs::get_session_name().unwrap();
+    let id = zellij_utils::sessions::register_session(&name).unwrap_or_else(|e| {
+        eprintln!("Failed to register session {:?}: {}", name, e);
+        std::process::exit(1);
+    });
+    ZELLIJ_SOCK_DIR.join(id)
+}
+
+/// IPC pipe path for an EXISTING session: resolve its id via the registry,
+/// falling back to the legacy name-based path for pre-registry sessions.
+fn resolve_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
+    prepare_sock_dir(teardown);
+    let name = envs::get_session_name().unwrap();
+    zellij_utils::sessions::resolve_session_socket_path(&name)
+        .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name))
 }
 
 /// Spawn the Zellij server process.
@@ -1002,7 +1025,7 @@ pub fn start_client(
         ClientInfo::Attach(name, config_options) => {
             envs::set_session_name(name.clone());
             os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe(Some(terminal_teardown));
+            let ipc_pipe = resolve_ipc_pipe(Some(terminal_teardown));
             let is_web_client = false;
 
             let cli_assets = CliAssets {
@@ -1053,7 +1076,7 @@ pub fn start_client(
         ClientInfo::Watch(name, _config_options) => {
             envs::set_session_name(name.clone());
             os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe(Some(terminal_teardown));
+            let ipc_pipe = resolve_ipc_pipe(Some(terminal_teardown));
             let is_web_client = false;
 
             (

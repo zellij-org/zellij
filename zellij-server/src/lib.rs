@@ -898,6 +898,25 @@ pub fn start_server_impl(
 ) {
     envs::set_zellij("0".to_string());
 
+    // The socket/pipe filename is the stable session id, decoupled from the
+    // (renameable) display name. It is threaded into the per-session threads
+    // (screen / pty / background_jobs) so they key the session-info cache and
+    // registry updates by id — NOT via a process-global, which would collide
+    // between the many sessions an integration test runs in one process.
+    let session_id = socket_path
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // Record the real server PID in the registry (post-daemonize on Unix).
+    if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
+        if let Some(entry) = reg.find_by_id_mut(&session_id) {
+            entry.pid = Some(std::process::id());
+        }
+    }) {
+        log::error!("Failed to update PID in session registry: {:?}", e);
+    }
+
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
     let session_data: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
@@ -1037,6 +1056,7 @@ pub fn start_server_impl(
                     config.clone(),
                     config.plugins.clone(),
                     client_id,
+                    session_id.clone(),
                 );
                 info!("FirstClientConnected: session initialized, spawning tabs");
                 let mut runtime_configuration = config.clone();
@@ -2057,6 +2077,23 @@ pub fn start_server_impl(
     // Drop cached session data before exit.
     *session_data.write().unwrap() = None;
 
+    // Mark the session exited in the registry (clear PID, stamp exit time) so it
+    // is listed as resurrectable rather than running.
+    if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
+        if let Some(entry) = reg.find_by_id_mut(&session_id) {
+            entry.state = zellij_utils::sessions::SessionState::Exited;
+            entry.pid = None;
+            entry.exited_at = Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
+            );
+        }
+    }) {
+        log::error!("Failed to update session registry on exit: {:?}", e);
+    }
+
     drop(std::fs::remove_file(&socket_path));
 }
 
@@ -2070,6 +2107,7 @@ fn init_session(
     mut config: Config,
     plugin_aliases: PluginAliases,
     client_id: ClientId,
+    session_id: String,
 ) -> SessionMetaData {
     config.options = config.options.merge(*config_options.clone());
 
@@ -2147,7 +2185,8 @@ fn init_session(
                 config_options.post_command_discovery_hook.clone(),
             );
 
-            move || pty_thread_main(pty, layout.clone()).fatal()
+            let session_id = session_id.clone();
+            move || pty_thread_main(pty, layout.clone(), session_id).fatal()
         })
         .unwrap();
 
@@ -2171,6 +2210,7 @@ fn init_session(
             let debug = cli_assets.is_debug;
             let layout = layout.clone();
             let config = config.clone();
+            let session_id = session_id.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -2179,6 +2219,7 @@ fn init_session(
                     config,
                     debug,
                     layout,
+                    session_id,
                 )
                 .fatal();
             }
@@ -2273,12 +2314,14 @@ fn init_session(
                 has_certificate,
                 enforce_https_for_localhost,
             );
+            let session_id = session_id.clone();
             move || {
                 background_jobs_main(
                     background_jobs_bus,
                     serialization_interval,
                     disable_session_metadata,
                     web_server_base_url,
+                    session_id,
                 )
                 .fatal()
             }
