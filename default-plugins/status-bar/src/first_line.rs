@@ -547,33 +547,30 @@ pub fn superkey(
     )
 }
 
+const CHAR_MAX: u32 = char::MAX as u32;
+
 pub fn to_char(kv: Vec<KeyWithModifier>) -> Option<KeyWithModifier> {
-    let key = kv
-        .iter()
-        .filter(|key| {
-            // These are general "keybindings" to get back to normal, they aren't interesting here.
-            !matches!(
-                key,
-                KeyWithModifier {
-                    bare_key: BareKey::Enter,
-                    ..
-                } | KeyWithModifier {
-                    bare_key: BareKey::Char(' '),
-                    ..
-                } | KeyWithModifier {
-                    bare_key: BareKey::Esc,
-                    ..
-                }
-            )
+    kv.iter()
+        .min_by_key(|key| {
+            let base_score = match key.bare_key {
+                // Give general "keybindings" that get back to normal less priority
+                // Otherwise prefer ascii over non-ascii
+                BareKey::Esc => CHAR_MAX + 3,
+                BareKey::Enter => CHAR_MAX + 2,
+                BareKey::Char(c) => {
+                    if c == ' ' {
+                        CHAR_MAX + 1
+                    } else {
+                        c as u32
+                    }
+                },
+                _ => 0,
+            };
+            // Prefer keys with less modifiers
+            let mod_score = key.key_modifiers.len();
+            (base_score, mod_score)
         })
-        .collect::<Vec<&KeyWithModifier>>()
-        .into_iter()
-        .next();
-    // Maybe the user bound one of the ignored keys?
-    if key.is_none() {
-        return kv.first().cloned();
-    }
-    key.cloned()
+        .cloned()
 }
 
 /// Get the [`KeyShortcut`] for a specific [`InputMode`].
