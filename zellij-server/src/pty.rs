@@ -211,11 +211,7 @@ pub(crate) struct Pty {
     terminal_foreground_cmds: HashMap<u32, Vec<String>>,
 }
 
-pub(crate) fn pty_thread_main(
-    mut pty: Pty,
-    layout: Box<Layout>,
-    session_id: String,
-) -> Result<()> {
+pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: String) -> Result<()> {
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));

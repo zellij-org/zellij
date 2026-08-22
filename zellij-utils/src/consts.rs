@@ -40,10 +40,12 @@ pub fn session_info_folder_for_session(session_id: &str) -> PathBuf {
     ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_id)
 }
 
-/// Length of a hyphenated UUID v4 string (e.g., "a3f7b9c1-e29b-41d4-a716-446655440000").
-pub const SESSION_ID_LENGTH: usize = 36;
+/// Length of a generated session id (hex chars). Kept short so the socket/pipe
+/// path stays within the platform limit (104 bytes on macOS) even under a long
+/// temp dir — a full 36-char UUID would overflow it. See `generate_session_id`.
+pub const SESSION_ID_LENGTH: usize = 12;
 
-/// Validate that `ZELLIJ_SOCK_DIR` is short enough to fit a UUID-based socket
+/// Validate that `ZELLIJ_SOCK_DIR` is short enough to fit an id-based socket
 /// filename within the platform's Unix domain socket path limit.
 ///
 /// Should be called once at startup. Exits with an error message if the
@@ -56,7 +58,7 @@ pub fn check_sock_dir_length() {
         let max_dir_len = ZELLIJ_SOCK_MAX_LENGTH.saturating_sub(1 + SESSION_ID_LENGTH + 1);
         eprintln!(
             "Error: the socket directory path is too long ({} bytes, max {}):\n  {}\n\n\
-             Session socket paths use UUIDs ({} bytes) as filenames, leaving\n\
+             Session socket paths use a {}-byte id as the filename, leaving\n\
              at most {} bytes for the directory.\n\
              To fix this, set a shorter socket directory, eg.:\n  \
              ZELLIJ_SOCKET_DIR=/tmp/zellij zellij",

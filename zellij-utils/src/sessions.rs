@@ -22,7 +22,7 @@ use uuid::Uuid;
 // Session registry (`sessions.kdl`)
 //
 // Decouples the user-visible session name from the socket / named-pipe
-// filename. The socket/pipe is named by a stable `id` (a UUID for new sessions,
+// filename. The socket/pipe is named by a stable `id` (a short random id for new sessions,
 // or the legacy session name for pre-registry sessions); `sessions.kdl` maps
 // `id -> display_name`. This is what lets a session be renamed without renaming
 // its socket/pipe — impossible for Windows named pipes (see PR #5103).
@@ -31,8 +31,8 @@ use uuid::Uuid;
 /// A single session entry in the registry.
 #[derive(Debug, Clone)]
 pub struct SessionEntry {
-    /// Stable identifier, also the socket/marker filename (a UUID for new
-    /// sessions, or the legacy session name for pre-registry sessions).
+    /// Stable identifier, also the socket/marker filename (a short random id for
+    /// new sessions, or the legacy session name for pre-registry sessions).
     pub id: String,
     /// User-visible session name.
     pub display_name: String,
@@ -85,9 +85,18 @@ fn file_created_epoch(path: &Path) -> Option<u64> {
         .map(|d| d.as_secs())
 }
 
-/// Generate a new session identifier (UUID v4, hyphenated).
+/// Generate a new session identifier: a short random hex string (48 bits of a
+/// UUID v4). Kept short — SESSION_ID_LENGTH bytes — so the socket/pipe path stays
+/// within the platform limit (104 bytes on macOS) even under a long temp dir; a
+/// full 36-char UUID would overflow it. `register_session` guards against the
+/// (astronomically unlikely) collision.
 pub fn generate_session_id() -> String {
-    Uuid::new_v4().as_hyphenated().to_string()
+    let bytes = Uuid::new_v4().into_bytes();
+    let mut id = String::with_capacity(crate::consts::SESSION_ID_LENGTH);
+    for byte in &bytes[..crate::consts::SESSION_ID_LENGTH / 2] {
+        id.push_str(&format!("{:02x}", byte));
+    }
+    id
 }
 
 fn is_registry_file(file_name: &str) -> bool {
@@ -297,7 +306,11 @@ mod file_lock {
 
     impl FileLock {
         pub fn exclusive(path: &Path) -> std::io::Result<Self> {
-            let file = OpenOptions::new().create(true).write(true).truncate(false).open(path)?;
+            let file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(false)
+                .open(path)?;
             let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
             if ret != 0 {
                 return Err(std::io::Error::last_os_error());
@@ -321,13 +334,18 @@ mod file_lock {
 
     impl FileLock {
         pub fn exclusive(path: &Path) -> std::io::Result<Self> {
-            let file = OpenOptions::new().create(true).write(true).truncate(false).open(path)?;
+            let file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(false)
+                .open(path)?;
             let handle = file.as_raw_handle();
             unsafe {
                 use windows_sys::Win32::Foundation::HANDLE;
-                use windows_sys::Win32::Storage::FileSystem::{LockFileEx, LOCKFILE_EXCLUSIVE_LOCK};
-                let mut overlapped: windows_sys::Win32::System::IO::OVERLAPPED =
-                    std::mem::zeroed();
+                use windows_sys::Win32::Storage::FileSystem::{
+                    LockFileEx, LOCKFILE_EXCLUSIVE_LOCK,
+                };
+                let mut overlapped: windows_sys::Win32::System::IO::OVERLAPPED = std::mem::zeroed();
                 let ret = LockFileEx(
                     handle as HANDLE,
                     LOCKFILE_EXCLUSIVE_LOCK,
@@ -356,7 +374,11 @@ mod file_lock {
 
     impl FileLock {
         pub fn exclusive(path: &Path) -> std::io::Result<Self> {
-            let file = OpenOptions::new().create(true).write(true).truncate(false).open(path)?;
+            let file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(false)
+                .open(path)?;
             Ok(FileLock { _file: file })
         }
     }
@@ -515,8 +537,8 @@ where
 {
     ensure_sock_dir()?;
     let _lock = FileLock::exclusive(&ZELLIJ_SESSIONS_LOCK)?;
-    let mut registry = load_registry_for_write(fs::read_to_string(&*ZELLIJ_SESSIONS_KDL))
-        .map_err(|e| {
+    let mut registry =
+        load_registry_for_write(fs::read_to_string(&*ZELLIJ_SESSIONS_KDL)).map_err(|e| {
             log::error!(
                 "Refusing to modify corrupt {}: {}",
                 ZELLIJ_SESSIONS_KDL.display(),
@@ -529,7 +551,7 @@ where
     Ok(result)
 }
 
-/// Register a new session in the registry. Returns the generated id (UUID).
+/// Register a new session in the registry. Returns the generated id.
 pub fn register_session(display_name: &str) -> io::Result<String> {
     with_registry(|reg| {
         // Resurrecting a dead session reuses its id (and therefore its id-keyed
@@ -546,7 +568,14 @@ pub fn register_session(display_name: &str) -> io::Result<String> {
             existing.created_at = Some(now_secs());
             return existing.id.clone();
         }
-        let id = generate_session_id();
+        // Generate a fresh id, guarding against the unlikely collision with an
+        // existing entry (the id space is short — see generate_session_id).
+        let id = loop {
+            let candidate = generate_session_id();
+            if !reg.sessions.iter().any(|s| s.id == candidate) {
+                break candidate;
+            }
+        };
         reg.sessions.push(SessionEntry {
             id: id.clone(),
             display_name: display_name.to_string(),
@@ -949,7 +978,10 @@ pub fn delete_session(name: &str, force: bool) {
     // treating the name as the id for legacy sessions).
     let id = resolve_session_id(name).unwrap_or_else(|| name.to_string());
     // Drop the registry entry (running or exited) so the id is not left dangling.
-    let _ = with_registry(|reg| reg.sessions.retain(|s| s.id != id && s.display_name != name));
+    let _ = with_registry(|reg| {
+        reg.sessions
+            .retain(|s| s.id != id && s.display_name != name)
+    });
     if let Err(e) = std::fs::remove_dir_all(session_info_folder_for_session(&id)) {
         if e.kind() == std::io::ErrorKind::NotFound {
             eprintln!("Session: {:?} not found.", name);
@@ -1542,13 +1574,16 @@ mod registry_tests {
     }
 
     #[test]
-    fn generated_id_is_uuid_shaped() {
+    fn generated_id_is_short_hex() {
         let id = generate_session_id();
-        assert_eq!(id.len(), 36);
-        assert_eq!(id.as_bytes()[8], b'-');
-        assert_eq!(id.as_bytes()[13], b'-');
-        assert_eq!(id.as_bytes()[18], b'-');
-        assert_eq!(id.as_bytes()[23], b'-');
+        assert_eq!(id.len(), crate::consts::SESSION_ID_LENGTH);
+        assert!(
+            id.bytes().all(|b| b.is_ascii_hexdigit()),
+            "id should be hex: {}",
+            id
+        );
+        // Two calls should differ (random).
+        assert_ne!(id, generate_session_id());
     }
 
     #[test]
@@ -1590,7 +1625,11 @@ mod registry_tests {
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .filter(|n| n.contains(".tmp."))
             .collect();
-        assert!(leftovers.is_empty(), "temp files left behind: {:?}", leftovers);
+        assert!(
+            leftovers.is_empty(),
+            "temp files left behind: {:?}",
+            leftovers
+        );
     }
 
     #[test]
