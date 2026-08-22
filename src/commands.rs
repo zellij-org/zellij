@@ -776,7 +776,10 @@ pub(crate) fn start_client(opts: CliArgs) {
                             }
                             ClientInfo::Resurrect(
                                 session_name.clone(),
-                                session_layout_cache_file_name(session_name.as_ref()),
+                                session_layout_cache_file_name(
+                                    &zellij_utils::sessions::resolve_session_id(session_name)
+                                        .unwrap_or_else(|| session_name.to_string()),
+                                ),
                                 force_run_commands,
                                 new_session_cwd.clone(),
                             )

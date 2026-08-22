@@ -219,13 +219,16 @@ pub(crate) fn background_jobs_main(
             ticker.tick().await;
             loop {
                 ticker.tick().await;
+                // Guard on the name (only set once the session is initialised),
+                // but key the cache folder by the stable session id.
                 let name = current_session_name.lock().unwrap().clone();
-                if name.is_empty() {
+                let id = zellij_utils::envs::get_session_id().unwrap_or_default();
+                if name.is_empty() || id.is_empty() {
                     continue;
                 }
                 let info = current_session_info.lock().unwrap().clone();
                 let layout = current_session_layout.lock().unwrap().clone();
-                write_session_state_to_disk(name, info, layout);
+                write_session_state_to_disk(id, info, layout);
             }
         });
     }
@@ -725,16 +728,18 @@ pub(crate) fn background_jobs_main(
                 // session-layout.kdl, which list-sessions uses to mark the
                 // session as resurrectable.
                 let name = current_session_name.lock().unwrap().clone();
-                if !name.is_empty() {
+                let id = zellij_utils::envs::get_session_id().unwrap_or_default();
+                if !name.is_empty() && !id.is_empty() {
                     let info = current_session_info.lock().unwrap().clone();
                     let layout = current_session_layout.lock().unwrap().clone();
-                    write_session_state_to_disk(name.clone(), info, layout);
+                    write_session_state_to_disk(id.clone(), info, layout);
                 }
 
                 // Remove the metadata cache file so the session is no longer
                 // considered live (the layout file is kept for resurrection).
-                let cache_file_name = session_info_cache_file_name(&name);
-                let _ = std::fs::remove_file(cache_file_name);
+                if !id.is_empty() {
+                    let _ = std::fs::remove_file(session_info_cache_file_name(&id));
+                }
                 return Ok(());
             },
         }
@@ -771,31 +776,29 @@ fn file_content_changed(path: &std::path::Path, new_content: &[u8]) -> bool {
 }
 
 pub fn write_session_state_to_disk(
-    current_session_name: String,
+    session_id: String,
     current_session_info: SessionInfo,
     current_session_layout: (String, BTreeMap<String, String>),
 ) {
-    let metadata_cache_file_name = session_info_cache_file_name(&current_session_name);
+    let metadata_cache_file_name = session_info_cache_file_name(&session_id);
     let (current_session_layout, layout_files_to_write) = current_session_layout;
     let new_metadata = current_session_info.to_string();
     if file_content_changed(&metadata_cache_file_name, new_metadata.as_bytes()) {
-        let _wrote_metadata_file = std::fs::create_dir_all(
-            session_info_folder_for_session(&current_session_name).as_path(),
-        )
-        .and_then(|_| std::fs::File::create(&metadata_cache_file_name))
-        .and_then(|mut f| write!(f, "{}", new_metadata));
+        let _wrote_metadata_file =
+            std::fs::create_dir_all(session_info_folder_for_session(&session_id).as_path())
+                .and_then(|_| std::fs::File::create(&metadata_cache_file_name))
+                .and_then(|mut f| write!(f, "{}", new_metadata));
     }
 
     if !current_session_layout.is_empty() {
-        let layout_cache_file_name = session_layout_cache_file_name(&current_session_name);
+        let layout_cache_file_name = session_layout_cache_file_name(&session_id);
         if file_content_changed(&layout_cache_file_name, current_session_layout.as_bytes()) {
-            let _wrote_layout_file = std::fs::create_dir_all(
-                session_info_folder_for_session(&current_session_name).as_path(),
-            )
-            .and_then(|_| std::fs::File::create(&layout_cache_file_name))
-            .and_then(|mut f| write!(f, "{}", current_session_layout));
+            let _wrote_layout_file =
+                std::fs::create_dir_all(session_info_folder_for_session(&session_id).as_path())
+                    .and_then(|_| std::fs::File::create(&layout_cache_file_name))
+                    .and_then(|mut f| write!(f, "{}", current_session_layout));
         }
-        let session_info_folder = session_info_folder_for_session(&current_session_name);
+        let session_info_folder = session_info_folder_for_session(&session_id);
         for (external_file_name, external_file_contents) in layout_files_to_write {
             let external_file_path = session_info_folder.join(&external_file_name);
             if file_content_changed(&external_file_path, external_file_contents.as_bytes()) {
@@ -850,6 +853,9 @@ fn find_resurrectable_sessions(
     session_infos_on_machine: &BTreeMap<String, SessionInfo>,
     session_info_cache_dir: &Path,
 ) -> BTreeMap<String, Duration> {
+    // Cache folders are keyed by session id; map each to its display name so we
+    // can compare against the (name-keyed) live set and report a readable name.
+    let registry = zellij_utils::sessions::ensure_registry();
     match fs::read_dir(session_info_cache_dir) {
         Ok(files_in_session_info_folder) => {
             let files_that_are_folders = files_in_session_info_folder
@@ -857,7 +863,11 @@ fn find_resurrectable_sessions(
                 .filter(|f| f.is_dir());
             files_that_are_folders
                 .filter_map(|folder_name| {
-                    let session_name = folder_name.file_name()?.to_str()?.to_owned();
+                    let id = folder_name.file_name()?.to_str()?.to_owned();
+                    let session_name = registry
+                        .find_by_id(&id)
+                        .map(|e| e.display_name.clone())
+                        .unwrap_or_else(|| id.clone());
                     if session_infos_on_machine.contains_key(&session_name) {
                         // this is not a dead session...
                         return None;

@@ -63,7 +63,7 @@ use zellij_utils::ipc::{
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::{clean_string_from_control_and_linebreak, detect_theme_hue};
 use zellij_utils::{
-    consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
+    consts::ZELLIJ_SOCK_DIR,
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
@@ -11362,7 +11362,6 @@ pub(crate) fn screen_thread_main(
                     }
                 } else {
                     let err_context = || format!("Failed to rename session");
-                    let old_session_name = screen.session_name.clone();
 
                     // update state
                     screen.session_name = name.clone();
@@ -11374,9 +11373,11 @@ pub(crate) fn screen_thread_main(
                         tab.rename_session(name.clone()).with_context(err_context)?;
                     }
 
-                    // Update the display name in the registry. The socket/pipe
-                    // (named by the stable session id) is never renamed — that
-                    // is what makes rename work for Windows named pipes.
+                    // Update the display name in the registry. Nothing on disk is
+                    // renamed: the socket/pipe and the session-info cache folder
+                    // are both named by the stable session id, so this is a
+                    // pure registry update — which is what makes rename work for
+                    // Windows named pipes (they cannot be renamed).
                     let session_id = zellij_utils::envs::get_session_id().unwrap_or_default();
                     if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
                         if let Some(entry) = reg.find_by_id_mut(&session_id) {
@@ -11384,17 +11385,6 @@ pub(crate) fn screen_thread_main(
                         }
                     }) {
                         log::error!("Failed to update session registry: {:?}", e);
-                    }
-
-                    // rename session_info folder (still keyed by name in Stage A;
-                    // Stage B keys it by session id, dropping this move entirely)
-                    let old_session_info_folder =
-                        session_info_folder_for_session(&old_session_name);
-                    let new_session_info_folder = session_info_folder_for_session(&name);
-                    if let Err(e) =
-                        std::fs::rename(old_session_info_folder, new_session_info_folder)
-                    {
-                        log::error!("Failed to rename session_info folder: {:?}", e);
                     }
 
                     // report

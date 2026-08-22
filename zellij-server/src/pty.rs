@@ -803,8 +803,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     session_layout_metadata.into(),
                 ) {
                     Ok(kdl_and_files) => {
+                        // Cache is keyed by the stable session id, not the name.
+                        let session_id = zellij_utils::envs::get_session_id()
+                            .unwrap_or_else(|_| session_name.clone());
                         write_session_state_to_disk(
-                            session_name,
+                            session_id,
                             session_info,
                             kdl_and_files.clone(),
                         );

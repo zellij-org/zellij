@@ -67,10 +67,10 @@ pub fn create_first_message(
     let resurrection_layout = resurrection_layout(&session_name).ok().flatten();
 
     let layout_info = if resurrection_layout.is_some() {
+        let id = zellij_utils::sessions::resolve_session_id(session_name)
+            .unwrap_or_else(|| session_name.to_string());
         Some(LayoutInfo::File(
-            session_layout_cache_file_name(&session_name)
-                .display()
-                .to_string(),
+            session_layout_cache_file_name(&id).display().to_string(),
             LayoutMetadata::default(),
         ))
     } else {

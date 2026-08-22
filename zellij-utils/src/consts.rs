@@ -25,16 +25,19 @@ pub static ZELLIJ_DEFAULT_THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets
 
 pub const CLIENT_SERVER_CONTRACT_VERSION: usize = 1;
 
-pub fn session_info_cache_file_name(session_name: &str) -> PathBuf {
-    session_info_folder_for_session(session_name).join("session-metadata.kdl")
+// The session-info cache is keyed by session id (a UUID for new sessions, or the
+// legacy session name for pre-registry sessions), NOT the user-visible display
+// name — so renaming a session never moves its cache folder.
+pub fn session_info_cache_file_name(session_id: &str) -> PathBuf {
+    session_info_folder_for_session(session_id).join("session-metadata.kdl")
 }
 
-pub fn session_layout_cache_file_name(session_name: &str) -> PathBuf {
-    session_info_folder_for_session(session_name).join("session-layout.kdl")
+pub fn session_layout_cache_file_name(session_id: &str) -> PathBuf {
+    session_info_folder_for_session(session_id).join("session-layout.kdl")
 }
 
-pub fn session_info_folder_for_session(session_name: &str) -> PathBuf {
-    ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_name)
+pub fn session_info_folder_for_session(session_id: &str) -> PathBuf {
+    ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_id)
 }
 
 /// Length of a hyphenated UUID v4 string (e.g., "a3f7b9c1-e29b-41d4-a716-446655440000").

@@ -91,7 +91,52 @@ pub fn generate_session_id() -> String {
 }
 
 fn is_registry_file(file_name: &str) -> bool {
-    file_name == "sessions.kdl" || file_name == "sessions.kdl.lock"
+    // Covers sessions.kdl, sessions.kdl.lock, sessions.kdl.bak, and the
+    // sessions.kdl.tmp.<pid> scratch files written by atomic_write. On Windows
+    // these are regular files that would otherwise look like socket markers.
+    file_name.starts_with("sessions.kdl")
+}
+
+/// The `<path>.bak` sibling used to keep the last good registry.
+fn backup_path(path: &Path) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".bak");
+    path.with_file_name(name)
+}
+
+/// Atomically replace `path` with `contents`: write a sibling temp file, flush
+/// it, back up the current file to `<path>.bak`, then rename over the target
+/// (atomic on the same filesystem). A crash mid-write leaves the old file (or
+/// its backup) intact rather than a truncated one.
+fn atomic_write(path: &Path, contents: &str) -> io::Result<()> {
+    use std::io::Write;
+    let mut tmp_name = path.file_name().unwrap_or_default().to_os_string();
+    tmp_name.push(format!(".tmp.{}", process::id()));
+    let tmp = path.with_file_name(tmp_name);
+    {
+        let mut f = fs::File::create(&tmp)?;
+        f.write_all(contents.as_bytes())?;
+        f.flush()?;
+        let _ = f.sync_all();
+    }
+    if path.exists() {
+        // Best-effort backup of the last good file before we replace it.
+        let _ = fs::copy(path, backup_path(path));
+    }
+    fs::rename(&tmp, path)
+}
+
+/// Load a registry for a read-modify-write. Unlike the read-only path, a
+/// corrupt (non-empty, unparseable) *existing* file is an error here: we must
+/// not overwrite real session data with an empty registry.
+fn load_registry_for_write(read: io::Result<String>) -> io::Result<SessionRegistry> {
+    match read {
+        Ok(raw) if raw.trim().is_empty() => Ok(SessionRegistry::new()),
+        Ok(raw) => SessionRegistry::from_kdl(&raw)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
+        Err(ref e) if e.kind() == io::ErrorKind::NotFound => Ok(SessionRegistry::new()),
+        Err(e) => Err(e),
+    }
 }
 
 /// The full session registry.
@@ -329,15 +374,26 @@ pub fn registry_exists() -> bool {
     ZELLIJ_SESSIONS_KDL.exists()
 }
 
-/// Read the registry from disk, returning an empty one if it's missing/corrupt.
+/// Read the registry from disk, returning an empty one if it's missing. A
+/// corrupt file falls back to the `.bak` backup before giving up empty.
 pub fn read_registry() -> SessionRegistry {
     match fs::read_to_string(&*ZELLIJ_SESSIONS_KDL) {
         Ok(raw) => SessionRegistry::from_kdl(&raw).unwrap_or_else(|e| {
-            log::error!("{}", e);
-            SessionRegistry::new()
+            log::error!(
+                "Corrupt {}: {}; falling back to backup",
+                ZELLIJ_SESSIONS_KDL.display(),
+                e
+            );
+            read_registry_backup().unwrap_or_default()
         }),
         Err(_) => SessionRegistry::new(),
     }
+}
+
+/// Try to read the last good registry from the `.bak` backup file.
+fn read_registry_backup() -> Option<SessionRegistry> {
+    let raw = fs::read_to_string(backup_path(&ZELLIJ_SESSIONS_KDL)).ok()?;
+    SessionRegistry::from_kdl(&raw).ok()
 }
 
 /// Ensure the registry exists, migrating from the legacy socket-named layout on
@@ -437,15 +493,19 @@ pub fn migrate_legacy_sessions() -> SessionRegistry {
     registry
 }
 
-/// Write the session registry to disk, holding an exclusive lock.
+/// Write the session registry to disk atomically, holding an exclusive lock.
 pub fn write_registry(registry: &SessionRegistry) -> io::Result<()> {
     ensure_sock_dir()?;
     let _lock = FileLock::exclusive(&ZELLIJ_SESSIONS_LOCK)?;
-    fs::write(&*ZELLIJ_SESSIONS_KDL, registry.to_kdl())
+    atomic_write(&ZELLIJ_SESSIONS_KDL, &registry.to_kdl())
 }
 
 /// Read the registry under an exclusive lock, apply a mutation, and write it
-/// back. Returns the closure's return value.
+/// back atomically. Returns the closure's return value.
+///
+/// If the existing file is present but corrupt, the mutation is aborted (an
+/// error is returned) rather than overwriting real session data with an empty
+/// registry.
 ///
 /// The closure MUST NOT call back into the registry (`with_registry`,
 /// `write_registry`, `ensure_registry`) — the lock is not reentrant.
@@ -455,28 +515,48 @@ where
 {
     ensure_sock_dir()?;
     let _lock = FileLock::exclusive(&ZELLIJ_SESSIONS_LOCK)?;
-    let mut registry = match fs::read_to_string(&*ZELLIJ_SESSIONS_KDL) {
-        Ok(raw) => SessionRegistry::from_kdl(&raw).unwrap_or_default(),
-        Err(_) => SessionRegistry::new(),
-    };
+    let mut registry = load_registry_for_write(fs::read_to_string(&*ZELLIJ_SESSIONS_KDL))
+        .map_err(|e| {
+            log::error!(
+                "Refusing to modify corrupt {}: {}",
+                ZELLIJ_SESSIONS_KDL.display(),
+                e
+            );
+            e
+        })?;
     let result = f(&mut registry);
-    fs::write(&*ZELLIJ_SESSIONS_KDL, registry.to_kdl())?;
+    atomic_write(&ZELLIJ_SESSIONS_KDL, &registry.to_kdl())?;
     Ok(result)
 }
 
 /// Register a new session in the registry. Returns the generated id (UUID).
 pub fn register_session(display_name: &str) -> io::Result<String> {
-    let id = generate_session_id();
-    let entry = SessionEntry {
-        id: id.clone(),
-        display_name: display_name.to_string(),
-        pid: None,
-        state: SessionState::Running,
-        created_at: Some(now_secs()),
-        exited_at: None,
-    };
-    with_registry(|reg| reg.sessions.push(entry))?;
-    Ok(id)
+    with_registry(|reg| {
+        // Resurrecting a dead session reuses its id (and therefore its id-keyed
+        // cache folder / layout), rather than orphaning the old folder under a
+        // fresh id.
+        if let Some(existing) = reg
+            .sessions
+            .iter_mut()
+            .find(|s| s.display_name == display_name && s.state == SessionState::Exited)
+        {
+            existing.state = SessionState::Running;
+            existing.pid = None;
+            existing.exited_at = None;
+            existing.created_at = Some(now_secs());
+            return existing.id.clone();
+        }
+        let id = generate_session_id();
+        reg.sessions.push(SessionEntry {
+            id: id.clone(),
+            display_name: display_name.to_string(),
+            pid: None,
+            state: SessionState::Running,
+            created_at: Some(now_secs()),
+            exited_at: None,
+        });
+        id
+    })
 }
 
 /// Resolve a session display name to its socket path via the registry.
@@ -484,14 +564,129 @@ pub fn resolve_session_socket_path(name: &str) -> Option<PathBuf> {
     ensure_registry().resolve_socket_path(name)
 }
 
-pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
+/// Resolve a session display name to its id via the registry (running first,
+/// then any state). Returns None if the name isn't in the registry — callers
+/// fall back to treating the name itself as the id (legacy sessions).
+pub fn resolve_session_id(name: &str) -> Option<String> {
     let registry = ensure_registry();
+    registry
+        .find_running_by_name(name)
+        .or_else(|| registry.find_by_name(name))
+        .map(|e| e.id.clone())
+}
+
+/// The display name for an id, or the id itself if it isn't in the registry
+/// (legacy / orphaned cache folders whose id is the old session name).
+fn display_name_for_id(registry: &SessionRegistry, id: &str) -> String {
+    registry
+        .find_by_id(id)
+        .map(|e| e.display_name.clone())
+        .unwrap_or_else(|| id.to_string())
+}
+
+/// Scan the session-info cache for folders that hold a resurrectable layout,
+/// returning (folder_id, age). The cache is keyed by session id.
+fn resurrectable_folder_entries() -> Vec<(String, Duration)> {
+    let Ok(dirs) = fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) else {
+        return vec![];
+    };
+    dirs.filter_map(|f| f.ok().map(|f| f.path()))
+        .filter(|p| p.is_dir())
+        .filter_map(|folder| {
+            let id = folder.file_name()?.to_str()?.to_owned();
+            let layout_file = folder.join("session-layout.kdl");
+            if !layout_file.exists() {
+                return None;
+            }
+            // Try creation time, fall back to modification time (e.g. musl).
+            let elapsed = std::fs::metadata(&layout_file)
+                .ok()
+                .and_then(|m| m.created().ok().or_else(|| m.modified().ok()))
+                .and_then(|t| t.elapsed().ok())
+                .map(|d| Duration::from_secs(d.as_secs()))
+                .unwrap_or_default();
+            Some((id, elapsed))
+        })
+        .collect()
+}
+
+/// What to do with a registry entry during reconciliation, given the current
+/// filesystem reality.
+#[derive(Debug, PartialEq, Eq)]
+enum ReconcileAction {
+    /// Keep the entry unchanged.
+    Keep,
+    /// The server is gone but a resurrection layout exists — mark it exited.
+    MarkExited,
+    /// The server is gone and nothing is resurrectable — drop the entry.
+    Drop,
+}
+
+fn reconcile_decision(
+    state: SessionState,
+    socket_alive: bool,
+    layout_exists: bool,
+) -> ReconcileAction {
+    match state {
+        SessionState::Running if socket_alive => ReconcileAction::Keep,
+        SessionState::Running if layout_exists => ReconcileAction::MarkExited,
+        SessionState::Running => ReconcileAction::Drop,
+        SessionState::Exited if layout_exists => ReconcileAction::Keep,
+        SessionState::Exited => ReconcileAction::Drop,
+    }
+}
+
+/// Reconcile the registry with the filesystem, bounding its growth: running
+/// entries whose socket is gone become exited (if a resurrection layout exists)
+/// or are dropped; exited entries whose layout is gone are dropped. Probing also
+/// cleans up stale socket files (via `assert_socket`). The file is only
+/// rewritten when something actually changed. Returns the reconciled registry.
+pub fn reconcile_registry() -> SessionRegistry {
+    // Make sure legacy sessions are migrated in before reconciling.
+    ensure_registry();
+    if let Err(e) = reconcile_locked() {
+        log::error!("Failed to reconcile session registry: {:?}", e);
+    }
+    read_registry()
+}
+
+fn reconcile_locked() -> io::Result<()> {
+    ensure_sock_dir()?;
+    let _lock = FileLock::exclusive(&ZELLIJ_SESSIONS_LOCK)?;
+    let mut registry = load_registry_for_write(fs::read_to_string(&*ZELLIJ_SESSIONS_KDL))?;
+    let mut changed = false;
+    registry.sessions.retain_mut(|e| {
+        let socket_alive = e.state == SessionState::Running && assert_socket(&e.id);
+        let layout_exists = session_layout_cache_file_name(&e.id).exists();
+        match reconcile_decision(e.state, socket_alive, layout_exists) {
+            ReconcileAction::Keep => true,
+            ReconcileAction::MarkExited => {
+                e.state = SessionState::Exited;
+                e.pid = None;
+                if e.exited_at.is_none() {
+                    e.exited_at = Some(now_secs());
+                }
+                changed = true;
+                true
+            },
+            ReconcileAction::Drop => {
+                changed = true;
+                false
+            },
+        }
+    });
+    if changed {
+        atomic_write(&ZELLIJ_SESSIONS_KDL, &registry.to_kdl())?;
+    }
+    Ok(())
+}
+
+pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
+    // Reconcile first: prunes dead entries and probes liveness, so the remaining
+    // running entries are known to be alive.
+    let registry = reconcile_registry();
     let mut sessions = Vec::new();
     for entry in registry.running_sessions() {
-        // Probe liveness (and clean up stale sockets) via the id-named socket.
-        if !assert_socket(&entry.id) {
-            continue;
-        }
         let sock_path = ZELLIJ_SOCK_DIR.join(&entry.id);
         let ctime = std::fs::metadata(&sock_path)
             .ok()
@@ -507,86 +702,25 @@ pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
 }
 
 pub fn get_resurrectable_sessions() -> Vec<(String, Duration)> {
-    match fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
-        Ok(files_in_session_info_folder) => {
-            let files_that_are_folders = files_in_session_info_folder
-                .filter_map(|f| f.ok().map(|f| f.path()))
-                .filter(|f| f.is_dir());
-            files_that_are_folders
-                .filter_map(|folder_name| {
-                    let layout_file_name =
-                        session_layout_cache_file_name(&folder_name.display().to_string());
-                    // Try to get creation time, fall back to modification time on platforms where it's not supported (e.g., musl)
-                    let ctime = std::fs::metadata(&layout_file_name)
-                        .ok()
-                        .and_then(|metadata| {
-                            metadata.created().ok().or_else(|| metadata.modified().ok())
-                        });
-                    let elapsed_duration = ctime
-                        .map(|ctime| {
-                            Duration::from_secs(ctime.elapsed().ok().unwrap_or_default().as_secs())
-                        })
-                        .unwrap_or_default();
-                    let session_name = folder_name
-                        .file_name()
-                        .map(|f| std::path::PathBuf::from(f).display().to_string())?;
-                    if std::path::Path::new(&layout_file_name).exists() {
-                        Some((session_name, elapsed_duration))
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        },
-        Err(e) => {
-            log::error!(
-                "Failed to read session_info cache folder: \"{:?}\": {:?}",
-                &*ZELLIJ_SESSION_INFO_CACHE_DIR,
-                e
-            );
-            vec![]
-        },
-    }
+    let registry = ensure_registry();
+    resurrectable_folder_entries()
+        .into_iter()
+        .map(|(id, elapsed)| (display_name_for_id(&registry, &id), elapsed))
+        .collect()
 }
 
 pub fn get_resurrectable_session_names() -> Vec<String> {
-    match fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
-        Ok(files_in_session_info_folder) => {
-            let files_that_are_folders = files_in_session_info_folder
-                .filter_map(|f| f.ok().map(|f| f.path()))
-                .filter(|f| f.is_dir());
-            files_that_are_folders
-                .filter_map(|folder_name| {
-                    let folder = folder_name.display().to_string();
-                    let resurrection_layout_file = session_layout_cache_file_name(&folder);
-                    if std::path::Path::new(&resurrection_layout_file).exists() {
-                        folder_name
-                            .file_name()
-                            .map(|f| format!("{}", f.to_string_lossy()))
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        },
-        Err(e) => {
-            log::error!(
-                "Failed to read session_info cache folder: \"{:?}\": {:?}",
-                &*ZELLIJ_SESSION_INFO_CACHE_DIR,
-                e
-            );
-            vec![]
-        },
-    }
+    let registry = ensure_registry();
+    resurrectable_folder_entries()
+        .into_iter()
+        .map(|(id, _)| display_name_for_id(&registry, &id))
+        .collect()
 }
 
 pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
-    let registry = ensure_registry();
+    let registry = reconcile_registry();
     let mut sessions_with_mtime: Vec<(String, SystemTime)> = Vec::new();
     for entry in registry.running_sessions() {
-        if !assert_socket(&entry.id) {
-            continue;
-        }
         let sock_path = ZELLIJ_SOCK_DIR.join(&entry.id);
         if let Ok(mtime) = std::fs::metadata(&sock_path).and_then(|m| m.modified()) {
             sessions_with_mtime.push((entry.display_name.clone(), mtime));
@@ -811,7 +945,12 @@ pub fn delete_session(name: &str, force: bool) {
             }
         });
     }
-    if let Err(e) = std::fs::remove_dir_all(session_info_folder_for_session(name)) {
+    // The cache folder is keyed by session id; resolve the name (fall back to
+    // treating the name as the id for legacy sessions).
+    let id = resolve_session_id(name).unwrap_or_else(|| name.to_string());
+    // Drop the registry entry (running or exited) so the id is not left dangling.
+    let _ = with_registry(|reg| reg.sessions.retain(|s| s.id != id && s.display_name != name));
+    if let Err(e) = std::fs::remove_dir_all(session_info_folder_for_session(&id)) {
         if e.kind() == std::io::ErrorKind::NotFound {
             eprintln!("Session: {:?} not found.", name);
             process::exit(2);
@@ -901,7 +1040,11 @@ pub fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
 
 // if the session is resurrecable, the returned layout is the one to be used to resurrect it
 pub fn resurrection_layout(session_name_to_resurrect: &str) -> Result<Option<Layout>, String> {
-    let layout_file_name = session_layout_cache_file_name(&session_name_to_resurrect);
+    // The layout cache is keyed by session id; resolve the name (fall back to
+    // treating the name as the id for legacy sessions).
+    let id = resolve_session_id(session_name_to_resurrect)
+        .unwrap_or_else(|| session_name_to_resurrect.to_string());
+    let layout_file_name = session_layout_cache_file_name(&id);
     let raw_layout = match std::fs::read_to_string(&layout_file_name) {
         Ok(raw_layout) => raw_layout,
         Err(_e) => {
@@ -1059,14 +1202,15 @@ pub fn read_live_session_states(
         let session_name = registry
             .find_by_id(&file_name)
             .map(|e| e.display_name.clone())
-            .unwrap_or(file_name);
+            .unwrap_or_else(|| file_name.clone());
         let creation_time = std::fs::metadata(file.path())
             .ok()
             .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
             .and_then(|d| d.elapsed().ok())
             .unwrap_or_default();
+        // The session-info cache is keyed by session id (the socket file name).
         let session_cache_file_name = session_info_cache_dir
-            .join(&session_name)
+            .join(&file_name)
             .join("session-metadata.kdl");
         if let Ok(raw_session_info) = fs::read_to_string(&session_cache_file_name) {
             if let Ok(mut session_info) =
@@ -1425,5 +1569,66 @@ mod registry_tests {
         let kdl = "session \"id-x\" {\n    display_name \"x\"\n    state \"weird\"\n}";
         let parsed = SessionRegistry::from_kdl(kdl).unwrap();
         assert_eq!(parsed.sessions[0].state, SessionState::Running);
+    }
+
+    #[test]
+    fn atomic_write_replaces_and_backs_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sessions.kdl");
+
+        atomic_write(&path, "first").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "first");
+        assert!(!backup_path(&path).exists(), "no backup on first write");
+
+        atomic_write(&path, "second").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "second");
+        assert_eq!(fs::read_to_string(backup_path(&path)).unwrap(), "first");
+
+        let leftovers: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains(".tmp."))
+            .collect();
+        assert!(leftovers.is_empty(), "temp files left behind: {:?}", leftovers);
+    }
+
+    #[test]
+    fn load_for_write_rejects_corrupt_but_accepts_empty_and_missing() {
+        // Corrupt, non-empty → error, so we never overwrite real data with empty.
+        let err = load_registry_for_write(Ok("node {".to_string())).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+
+        // Empty / whitespace-only → fresh empty registry.
+        assert!(load_registry_for_write(Ok("   \n".to_string()))
+            .unwrap()
+            .sessions
+            .is_empty());
+
+        // Missing file → fresh empty registry.
+        let notfound = io::Error::new(io::ErrorKind::NotFound, "nope");
+        assert!(load_registry_for_write(Err(notfound))
+            .unwrap()
+            .sessions
+            .is_empty());
+
+        // Any other IO error → propagated (don't silently start empty).
+        let denied = io::Error::new(io::ErrorKind::PermissionDenied, "denied");
+        assert!(load_registry_for_write(Err(denied)).is_err());
+    }
+
+    #[test]
+    fn reconcile_decisions() {
+        use ReconcileAction::*;
+        use SessionState::*;
+        // Running + live socket → keep, regardless of layout.
+        assert_eq!(reconcile_decision(Running, true, false), Keep);
+        assert_eq!(reconcile_decision(Running, true, true), Keep);
+        // Running + dead socket → exit if resurrectable, else drop.
+        assert_eq!(reconcile_decision(Running, false, true), MarkExited);
+        assert_eq!(reconcile_decision(Running, false, false), Drop);
+        // Exited → keep only while the resurrection layout exists.
+        assert_eq!(reconcile_decision(Exited, false, true), Keep);
+        assert_eq!(reconcile_decision(Exited, false, false), Drop);
     }
 }
