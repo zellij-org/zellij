@@ -59,7 +59,7 @@ impl SessionState {
             SessionState::Exited => "exited",
         }
     }
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "running" => Some(SessionState::Running),
             "exited" => Some(SessionState::Exited),
@@ -193,7 +193,7 @@ impl SessionRegistry {
             let pid = child_i64("pid").map(|v| v as u32);
             let state = child_string("state")
                 .as_deref()
-                .and_then(SessionState::from_str)
+                .and_then(SessionState::parse)
                 .unwrap_or(SessionState::Running);
             let created_at = child_i64("created_at").map(|v| v as u64);
             let exited_at = child_i64("exited_at").map(|v| v as u64);
@@ -297,7 +297,7 @@ mod file_lock {
 
     impl FileLock {
         pub fn exclusive(path: &Path) -> std::io::Result<Self> {
-            let file = OpenOptions::new().create(true).write(true).open(path)?;
+            let file = OpenOptions::new().create(true).write(true).truncate(false).open(path)?;
             let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
             if ret != 0 {
                 return Err(std::io::Error::last_os_error());
@@ -321,7 +321,7 @@ mod file_lock {
 
     impl FileLock {
         pub fn exclusive(path: &Path) -> std::io::Result<Self> {
-            let file = OpenOptions::new().create(true).write(true).open(path)?;
+            let file = OpenOptions::new().create(true).write(true).truncate(false).open(path)?;
             let handle = file.as_raw_handle();
             unsafe {
                 use windows_sys::Win32::Foundation::HANDLE;
@@ -356,7 +356,7 @@ mod file_lock {
 
     impl FileLock {
         pub fn exclusive(path: &Path) -> std::io::Result<Self> {
-            let file = OpenOptions::new().create(true).write(true).open(path)?;
+            let file = OpenOptions::new().create(true).write(true).truncate(false).open(path)?;
             Ok(FileLock { _file: file })
         }
     }
@@ -1554,14 +1554,14 @@ mod registry_tests {
     #[test]
     fn session_state_str_roundtrip() {
         assert_eq!(
-            SessionState::from_str(SessionState::Running.as_str()),
+            SessionState::parse(SessionState::Running.as_str()),
             Some(SessionState::Running)
         );
         assert_eq!(
-            SessionState::from_str(SessionState::Exited.as_str()),
+            SessionState::parse(SessionState::Exited.as_str()),
             Some(SessionState::Exited)
         );
-        assert_eq!(SessionState::from_str("bogus"), None);
+        assert_eq!(SessionState::parse("bogus"), None);
     }
 
     #[test]
