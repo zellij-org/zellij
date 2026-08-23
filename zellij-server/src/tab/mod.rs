@@ -6591,10 +6591,18 @@ impl Tab {
         Ok(())
     }
     pub fn visible(&mut self, visible: bool) -> Result<()> {
-        let pids_in_this_tab = self.tiled_panes.pane_ids().filter_map(|p| match p {
-            PaneId::Plugin(pid) => Some(pid),
-            _ => None,
-        });
+        // Floating panes must be included here as well: a plugin in a floating pane is just as
+        // hidden as a tiled one when its tab goes away, and plugins that idle on a timer (eg. the
+        // session-manager, which polls the session list once a second) keep that timer armed until
+        // they are told otherwise.
+        let pids_in_this_tab = self
+            .tiled_panes
+            .pane_ids()
+            .chain(self.floating_panes.pane_ids())
+            .filter_map(|p| match p {
+                PaneId::Plugin(pid) => Some(pid),
+                _ => None,
+            });
         let mut plugin_updates = vec![];
         for pid in pids_in_this_tab {
             plugin_updates.push((Some(*pid), None, Event::Visible(visible)));

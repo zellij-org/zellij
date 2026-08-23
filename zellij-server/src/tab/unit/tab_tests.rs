@@ -2,14 +2,16 @@ use super::Tab;
 use crate::pane_groups::PaneGroups;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
+use crate::plugins::PluginInstruction;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
 use crate::{os_input_output::ServerOsApi, panes::PaneId, thread_bus::ThreadSenders, ClientId};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
-use zellij_utils::channels::{unbounded, Receiver, SenderWithContext};
-use zellij_utils::data::{Direction, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
+use zellij_utils::channels::{unbounded, ChannelWithContext, Receiver, SenderWithContext};
+use zellij_utils::data::{Direction, Event, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
 use zellij_utils::errors::prelude::*;
+use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
 use zellij_utils::input::options::PaneFrameStyle;
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -150,11 +152,20 @@ fn tab_resize_right(tab: &mut Tab, id: ClientId) {
 }
 
 fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
+    create_new_tab_with_plugin_receiver(size, stacked_resize).0
+}
+
+fn create_new_tab_with_plugin_receiver(
+    size: Size,
+    stacked_resize: bool,
+) -> (Tab, Receiver<(PluginInstruction, ErrorContext)>) {
     let index = 0;
     let position = 0;
     let name = String::new();
     let os_api = Box::new(FakeInputOutput {});
-    let senders = ThreadSenders::default().silently_fail_on_send();
+    let mut senders = ThreadSenders::default().silently_fail_on_send();
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = unbounded();
+    senders.replace_to_plugin(SenderWithContext::new(to_plugin));
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let style = Style::default();
@@ -237,7 +248,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         None,
     )
     .unwrap();
-    tab
+    (tab, plugin_receiver)
 }
 
 fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
@@ -17630,4 +17641,46 @@ pub fn scroll_terminal_down_nonexistent_pane_id_is_a_noop() {
 
     let writes = drain_pty_writer(&rx);
     assert!(writes.is_empty());
+}
+
+#[test]
+fn floating_plugin_panes_are_notified_when_their_tab_is_hidden() {
+    // Regression test: Tab::visible() used to only walk the tiled panes, so a plugin living in a
+    // floating pane never learned that its tab had gone away. Plugins that idle on a timer (the
+    // session-manager re-reads the whole session list once a second) went on doing that work
+    // forever, even with no client attached to the session at all.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, true);
+    let plugin_pane_id = PaneId::Plugin(1);
+    tab.new_pane(
+        plugin_pane_id,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(None),
+        Some(1),
+        None,
+    )
+    .unwrap();
+
+    tab.visible(false).unwrap();
+
+    let mut told_the_floating_plugin = false;
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _client_id, event) in updates {
+                if pid == Some(1) && matches!(event, Event::Visible(false)) {
+                    told_the_floating_plugin = true;
+                }
+            }
+        }
+    }
+    assert!(
+        told_the_floating_plugin,
+        "a plugin in a floating pane should be sent Event::Visible(false) when its tab is hidden"
+    );
 }
