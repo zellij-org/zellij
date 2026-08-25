@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 824
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -135,6 +136,7 @@ Config {
         mouse_hover_effects: None,
         mouse_hover_tips: None,
         visual_bell: None,
+        confirm_quit: None,
         focus_follows_mouse: None,
         mouse_click_through: None,
         osc133_command_selection: None,

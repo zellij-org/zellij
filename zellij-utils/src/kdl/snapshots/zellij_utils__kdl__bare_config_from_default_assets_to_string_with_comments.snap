@@ -179,11 +179,11 @@ keybinds clear-defaults=true {
     shared_except "locked" "session" {
         bind "Ctrl o" { SwitchToMode "session"; }
     }
-    shared_except "locked" "scroll" "search" "tmux" {
-        bind "Ctrl b" { SwitchToMode "tmux"; }
-    }
     shared_except "locked" "scroll" "search" {
         bind "Ctrl s" { SwitchToMode "scroll"; }
+    }
+    shared_except "locked" "scroll" "search" "tmux" {
+        bind "Ctrl b" { SwitchToMode "tmux"; }
     }
     shared_except "locked" "tab" {
         bind "Ctrl t" { SwitchToMode "tab"; }
@@ -595,6 +595,11 @@ web_client {
 // Whether to show visual bell indicators (pane/tab frame flash and [!] suffix)
 // default is true
 // visual_bell true
+ 
+// Whether to show a confirmation prompt before quitting (e.g. with Ctrl+q / the Quit action)
+// Quitting exits the current client from the session; the session ends when the last client quits
+// default is true
+// confirm_quit true
  
 // Whether to focus panes on mouse hover
 // default is false

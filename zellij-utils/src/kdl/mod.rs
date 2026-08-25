@@ -2947,6 +2947,8 @@ impl Options {
             };
         let visual_bell =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "visual_bell").map(|(v, _)| v);
+        let confirm_quit =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "confirm_quit").map(|(v, _)| v);
         let focus_follows_mouse =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "focus_follows_mouse")
                 .map(|(v, _)| v);
@@ -3037,6 +3039,7 @@ impl Options {
             mouse_hover_effects,
             mouse_hover_tips,
             visual_bell,
+            confirm_quit,
             focus_follows_mouse,
             mouse_click_through,
             osc133_command_selection,
@@ -4460,6 +4463,34 @@ impl Options {
             None
         }
     }
+    fn confirm_quit_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Whether to show a confirmation prompt before quitting (e.g. with Ctrl+q / the Quit action)",
+            "// Quitting exits the current client from the session; the session ends when the last client quits",
+            "// default is true",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("confirm_quit");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(confirm_quit) = self.confirm_quit {
+            let mut node = create_node(confirm_quit);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(true);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn focus_follows_mouse_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}",
@@ -4934,6 +4965,9 @@ impl Options {
         }
         if let Some(visual_bell) = self.visual_bell_to_kdl(add_comments) {
             nodes.push(visual_bell);
+        }
+        if let Some(confirm_quit) = self.confirm_quit_to_kdl(add_comments) {
+            nodes.push(confirm_quit);
         }
         if let Some(focus_follows_mouse) = self.focus_follows_mouse_to_kdl(add_comments) {
             nodes.push(focus_follows_mouse);
@@ -7767,6 +7801,42 @@ fn scroll_mode_sync_round_trips_through_kdl() {
         deserialized_from_serialized.scroll_mode_sync,
         Some(false),
         "scroll_mode_sync survives a serialize/parse round trip"
+    );
+}
+
+#[test]
+fn confirm_quit_from_kdl() {
+    let fake_config = r##"
+        confirm_quit false
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Options::from_kdl(&document).unwrap();
+    assert_eq!(deserialized.confirm_quit, Some(false));
+
+    let empty_document: KdlDocument = "".parse().unwrap();
+    let deserialized_empty = Options::from_kdl(&empty_document).unwrap();
+    assert_eq!(
+        deserialized_empty.confirm_quit, None,
+        "an unspecified confirm_quit stays None so the default applies"
+    );
+}
+
+#[test]
+fn confirm_quit_round_trips_through_kdl() {
+    let fake_config = r##"
+        confirm_quit false
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Options::from_kdl(&document).unwrap();
+    let mut serialized = Options::to_kdl(&deserialized, false);
+    let mut fake_document = KdlDocument::new();
+    fake_document.nodes_mut().append(&mut serialized);
+    let deserialized_from_serialized =
+        Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(
+        deserialized_from_serialized.confirm_quit,
+        Some(false),
+        "confirm_quit survives a serialize/parse round trip"
     );
 }
 
