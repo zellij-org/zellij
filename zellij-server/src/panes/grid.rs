@@ -1951,8 +1951,8 @@ impl Grid {
     /// and emit one image chunk per horizontal run. Each cell selects
     /// an image via its fg color (plus interned id-msb), optionally a
     /// placement via its underline color, and an image row/column via
-    /// its interned entry. The scan is stateless -- whatever cells are
-    /// on screen right now define what is drawn -- so scrolling,
+    /// its interned entry. The scan is stateless: whatever cells are
+    /// on screen right now define what is drawn, so scrolling,
     /// erasing and overwriting placeholder cells need no extra
     /// lifecycle tracking.
     fn placeholder_kitty_chunks(
@@ -4158,7 +4158,7 @@ impl Grid {
             Ok(command) => {
                 let was_query = command.action == KittyAction::Query;
                 // U=1 marks a virtual placement: the image has no
-                // position of its own -- the placeholder cells the app
+                // position of its own. The placeholder cells the app
                 // prints are the placement, and the render pass paints
                 // matching image fragments wherever those cells are.
                 // Both protocol forms are supported: transmit-and-place

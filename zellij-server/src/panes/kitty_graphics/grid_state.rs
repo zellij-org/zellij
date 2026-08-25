@@ -265,7 +265,7 @@ impl KittyGrid {
     }
     /// Register a Unicode-placeholder (U=1) transmission (a=T/a=t):
     /// store the image and remember the placement's requested cell
-    /// size, but create no positioned placement -- the placeholder
+    /// size. No positioned placement is created; the placeholder
     /// cells the application draws are the placement.
     pub fn register_virtual_transmit(
         &mut self,
@@ -1278,8 +1278,8 @@ pub fn crop_rgba(
 }
 
 /// Scale `src` into a `box_w` x `box_h` canvas preserving its aspect
-/// ratio, centered, with transparent padding -- the fit the protocol
-/// specifies for Unicode-placeholder placements.
+/// ratio, centered, with transparent padding. This is the fit the
+/// protocol specifies for Unicode-placeholder placements.
 pub fn fit_rgba_into_box(
     src: &[u8],
     src_w: usize,
