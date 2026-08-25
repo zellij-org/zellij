@@ -27,7 +27,7 @@ use std::{
 
 use vte;
 use zellij_utils::{
-    consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
+    consts::{DEFAULT_SCROLL_BUFFER_SIZE, MAX_ROW_COLUMNS, SCROLL_BUFFER_SIZE},
     data::{Palette, PaletteColor, Styling},
     input::mouse::{MouseEvent, MouseEventType},
     input::options::DEFAULT_WORD_SEPARATORS,
@@ -469,8 +469,9 @@ fn bounded_push(
     vec: &mut VecDeque<Row>,
     sixel_grid: &mut SixelGrid,
     kitty_grid: &mut KittyGrid,
-    value: Row,
+    mut value: Row,
 ) -> Option<usize> {
+    value.truncate_to_max_columns(MAX_ROW_COLUMNS);
     let mut dropped_line_width = None;
     if vec.len() >= *SCROLL_BUFFER_SIZE.get().unwrap() {
         let line = vec.pop_front();
@@ -5984,6 +5985,14 @@ impl Row {
         }
         self.osc133_markers.retain(|marker| marker.column <= x);
         self.width = None;
+    }
+    pub fn truncate_to_max_columns(&mut self, max_columns: usize) {
+        if self.columns.len() > max_columns {
+            self.columns.truncate(max_columns);
+            self.osc133_markers
+                .retain(|marker| marker.column <= max_columns);
+            self.width = None;
+        }
     }
     pub fn position_accounting_for_widechars(&self, x: usize) -> usize {
         let mut position = x;

@@ -9318,3 +9318,47 @@ fn a_character_wider_than_two_columns_advances_the_cursor_by_its_full_width() {
     assert_eq!(row.width(), 4);
     assert_eq!(cursor_position(&grid), Some((4, 0)));
 }
+
+#[test]
+fn bounded_push_caps_the_columns_of_a_merged_canonical_row() {
+    use super::{bounded_push, KittyGrid, Row, SixelGrid};
+    use crate::panes::terminal_character::TerminalCharacter;
+    use std::collections::VecDeque;
+    use zellij_utils::consts::{DEFAULT_SCROLL_BUFFER_SIZE, MAX_ROW_COLUMNS};
+
+    let _ = SCROLL_BUFFER_SIZE.set(DEFAULT_SCROLL_BUFFER_SIZE);
+    let character_cell_size = Rc::new(RefCell::new(None));
+    let mut sixel_grid = SixelGrid::new(
+        character_cell_size.clone(),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+    );
+    let mut kitty_grid = KittyGrid::new(
+        character_cell_size,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+    );
+    let mut lines_above: VecDeque<Row> = VecDeque::new();
+
+    let overshoot = 2_000;
+    let mut row = Row::new().canonical();
+    row.columns
+        .push_back(TerminalCharacter::new_singlewidth('A'));
+    for _ in 1..MAX_ROW_COLUMNS + overshoot {
+        row.columns
+            .push_back(TerminalCharacter::new_singlewidth('x'));
+    }
+
+    bounded_push(&mut lines_above, &mut sixel_grid, &mut kitty_grid, row);
+
+    let stored = lines_above.back().expect("the row should have been pushed");
+    assert_eq!(
+        stored.columns.len(),
+        MAX_ROW_COLUMNS,
+        "a row entering scrollback should be capped at MAX_ROW_COLUMNS",
+    );
+    assert!(stored.is_canonical);
+    assert_eq!(
+        stored.columns.front().unwrap().character,
+        'A',
+        "the cap should shed the tail of the line, never its head",
+    );
+}
