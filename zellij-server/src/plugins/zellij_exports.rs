@@ -136,6 +136,7 @@ macro_rules! apply_action {
             $env.default_shell.clone(),
             None,
             $env.default_mode.clone(),
+            false, // plugin-initiated quits should not require confirmation
             None,
         ) {
             Ok((_, result)) => result,
@@ -400,6 +401,7 @@ fn run_context_menu_item(env: &PluginEnv, index: usize) {
                 default_shell.clone(),
                 None,
                 default_mode,
+                false, // plugin-initiated quits should not require confirmation
                 None,
             ) {
                 log::error!("Failed to run context menu action: {:?}", e);
@@ -1846,6 +1848,7 @@ fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, Str
             default_shell,
             None,
             default_mode,
+            false, // plugin-initiated quits should not require confirmation
             None,
         ) {
             Ok((_should_break, result)) => {
@@ -5472,6 +5475,7 @@ fn try_edit_layout(
         env.default_shell.clone(),
         None,
         env.default_mode.clone(),
+        false, // plugin-initiated quits should not require confirmation
         None,
     )
     .map(|_| ())

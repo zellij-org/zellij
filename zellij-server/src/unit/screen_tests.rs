@@ -149,6 +149,7 @@ fn send_cli_action_to_server(
             default_shell.clone(),
             None,
             default_mode,
+            false, // never prompt CLI actions for confirmation
             None,
         )
         .unwrap();
@@ -176,6 +177,7 @@ fn route_arbitrary_action_to_server(
         None,
         None,
         default_mode,
+        false, // never prompt CLI actions for confirmation
         None,
     )
     .unwrap();
@@ -5451,6 +5453,7 @@ pub fn set_pane_border_style_reports_an_unknown_pane() {
         None,
         None,
         InputMode::Normal,
+        false, // never prompt CLI actions for confirmation
         None,
     )
     .unwrap();
