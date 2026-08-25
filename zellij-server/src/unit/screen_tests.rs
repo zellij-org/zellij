@@ -147,6 +147,7 @@ fn send_cli_action_to_server(
             default_shell.clone(),
             None,
             default_mode,
+            false, // never prompt CLI actions for confirmation
             None,
         )
         .unwrap();
@@ -174,6 +175,7 @@ fn route_arbitrary_action_to_server(
         None,
         None,
         default_mode,
+        false, // never prompt CLI actions for confirmation
         None,
     )
     .unwrap();

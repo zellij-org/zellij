@@ -967,6 +967,8 @@ pub enum ScreenInstruction {
     FocusHostSession(ClientId, Option<NotificationEnd>),
     FocusGuestSession(ClientId, Option<NotificationEnd>),
     ToggleHostFullscreen(ClientId, Option<NotificationEnd>),
+    ShowQuitPrompt(ClientId),
+    HideQuitPrompt(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -1137,6 +1139,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MouseEvent(..) => ScreenContext::MouseEvent,
             ScreenInstruction::Copy(..) => ScreenContext::Copy,
             ScreenInstruction::ToggleTab(..) => ScreenContext::ToggleTab,
+            ScreenInstruction::ShowQuitPrompt(..) => ScreenContext::ShowQuitPrompt,
+            ScreenInstruction::HideQuitPrompt(..) => ScreenContext::HideQuitPrompt,
             ScreenInstruction::AddClient(..) => ScreenContext::AddClient,
             ScreenInstruction::RemoveClient(..) => ScreenContext::RemoveClient,
             ScreenInstruction::UpdateSearch(..) => ScreenContext::UpdateSearch,
@@ -1631,6 +1635,7 @@ pub(crate) struct Screen {
     client_notification_protocols: HashMap<ClientId, NotificationProtocol>,
     host_notification_protocol: HostNotificationProtocol,
     client_host_terminal_env: HashMap<ClientId, BTreeMap<String, String>>,
+    quit_prompt_clients: HashMap<ClientId, InputMode>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1799,6 +1804,7 @@ impl Screen {
             web_server_port,
             render_blocker: RenderBlocker::new(100),
             watcher_clients: HashMap::new(),
+            quit_prompt_clients: HashMap::new(),
             followed_client_id: None,
             cached_layouts: vec![],
             cached_layout_errors: vec![],
@@ -4620,6 +4626,55 @@ impl Screen {
         }
     }
 
+    /// Shows a "quit?" confirmation prompt for this client by switching it to
+    /// `InputMode::ConfirmQuit` so the status bar displays the prompt and its key hints.
+    pub fn show_quit_prompt(&mut self, client_id: ClientId) -> Result<()> {
+        let is_regular_client = self.connected_clients.borrow().contains_key(&client_id)
+            && !self.watcher_clients.contains_key(&client_id);
+        if is_regular_client {
+            let previous_mode = match self.mode_info.get(&client_id) {
+                Some(mode_info) => mode_info.mode,
+                None => self.default_mode_info.mode,
+            };
+            if self
+                .quit_prompt_clients
+                .insert(client_id, previous_mode)
+                .is_none()
+            {
+                // Route through the server like SwitchToMode does, so the client's
+                // authoritative input mode (current_input_modes, used for keybind
+                // resolution) stays in sync with the rendered status bar.
+                self.bus
+                    .senders
+                    .send_to_server(ServerInstruction::ChangeMode(
+                        client_id,
+                        InputMode::ConfirmQuit,
+                        None,
+                    ))
+                    .context("failed to switch to ConfirmQuit mode")?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Hides the quit confirmation prompt for this client by restoring the input mode
+    /// it was in before the prompt was shown.
+    pub fn hide_quit_prompt(&mut self, client_id: ClientId) -> Result<()> {
+        if let Some(previous_mode) = self.quit_prompt_clients.remove(&client_id) {
+            self.bus
+                .senders
+                .send_to_server(ServerInstruction::ChangeMode(
+                    client_id,
+                    previous_mode,
+                    None,
+                ))
+                .with_context(|| {
+                    format!("failed to restore mode after quit prompt for client {client_id}")
+                })?;
+        }
+        Ok(())
+    }
+
     /// Clear bell notification for the currently focused pane of the given client.
     /// Also cancels any running flash jobs if applicable.
     pub fn clear_bell_for_focused_pane(&mut self, client_id: ClientId) {
@@ -5171,6 +5226,7 @@ impl Screen {
         self.client_host_focused.remove(&client_id);
         self.client_notification_protocols.remove(&client_id);
         self.client_host_terminal_env.remove(&client_id);
+        self.quit_prompt_clients.remove(&client_id);
         self.revert_fit_disabled_without_reference_client()
             .with_context(err_context)?;
         if let Some(prev_tab_id) = previously_active_tab_id {
@@ -10163,6 +10219,12 @@ pub(crate) fn screen_thread_main(
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .copy_selection(client_id), ?);
                 screen.render(None)?;
+            },
+            ScreenInstruction::ShowQuitPrompt(client_id) => {
+                screen.show_quit_prompt(client_id)?;
+            },
+            ScreenInstruction::HideQuitPrompt(client_id) => {
+                screen.hide_quit_prompt(client_id)?;
             },
             ScreenInstruction::Exit => {
                 break;
