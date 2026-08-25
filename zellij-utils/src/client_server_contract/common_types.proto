@@ -770,6 +770,7 @@ enum InputMode {
   INPUT_MODE_MOVE = 12;
   INPUT_MODE_PROMPT = 13;
   INPUT_MODE_TMUX = 14;
+  INPUT_MODE_CONFIRM_QUIT = 15;
 }
 
 enum Direction {
@@ -1226,6 +1227,7 @@ message Options {
   optional string host_notification_protocol = 67;
   optional bool scroll_mode_sync = 68;
   optional ThemeHue explicit_theme_hue = 69;
+  optional bool confirm_quit = 70;
 }
 
 enum OnForceClose {

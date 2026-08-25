@@ -281,6 +281,14 @@ load_plugins {
 //
 // nested_session_handling "ask"
 
+// Whether to show a confirmation prompt before quitting (e.g. with Ctrl+q / the Quit action)
+// Quitting exits the current client from the session; the session ends when the last client quits
+// Options:
+//   - true (default)
+//   - false
+//
+// confirm_quit true
+
 //  Send a request for a simplified ui (without arrow fonts) to plugins
 //  Options:
 //    - true

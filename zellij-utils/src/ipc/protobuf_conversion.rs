@@ -975,6 +975,7 @@ impl From<crate::input::options::Options>
             post_command_discovery_hook: options.post_command_discovery_hook,
             client_async_worker_tasks: options.client_async_worker_tasks.map(|v| v as u64),
             visual_bell: options.visual_bell,
+            confirm_quit: options.confirm_quit,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
             osc133_command_selection: options.osc133_command_selection,
@@ -1113,6 +1114,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             post_command_discovery_hook: options.post_command_discovery_hook,
             client_async_worker_tasks: options.client_async_worker_tasks.map(|v| v as usize),
             visual_bell: options.visual_bell,
+            confirm_quit: options.confirm_quit,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
             osc133_command_selection: options.osc133_command_selection,
@@ -3496,6 +3498,7 @@ fn input_mode_to_proto_i32(mode: InputMode) -> i32 {
         InputMode::Move => ProtoInputMode::Move as i32,
         InputMode::Prompt => ProtoInputMode::Prompt as i32,
         InputMode::Tmux => ProtoInputMode::Tmux as i32,
+        InputMode::ConfirmQuit => ProtoInputMode::ConfirmQuit as i32,
     }
 }
 
@@ -3515,6 +3518,7 @@ fn proto_i32_to_input_mode(i: i32) -> Result<InputMode> {
         Some(ProtoInputMode::Move) => Ok(InputMode::Move),
         Some(ProtoInputMode::Prompt) => Ok(InputMode::Prompt),
         Some(ProtoInputMode::Tmux) => Ok(InputMode::Tmux),
+        Some(ProtoInputMode::ConfirmQuit) => Ok(InputMode::ConfirmQuit),
         _ => Err(anyhow!("Invalid InputMode value: {}", i)),
     }
 }

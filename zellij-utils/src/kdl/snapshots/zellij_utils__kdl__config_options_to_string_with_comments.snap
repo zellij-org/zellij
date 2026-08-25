@@ -306,6 +306,11 @@ web_sharing "disabled"
 // default is true
 // visual_bell true
  
+// Whether to show a confirmation prompt before quitting (e.g. with Ctrl+q / the Quit action)
+// Quitting exits the current client from the session; the session ends when the last client quits
+// default is true
+// confirm_quit true
+ 
 // Whether to focus panes on mouse hover
 // default is false
 // focus_follows_mouse false

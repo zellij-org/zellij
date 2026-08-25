@@ -506,6 +506,7 @@ fn test_client_messages() {
                 mouse_hover_effects: Some(false),
                 mouse_hover_tips: Some(false),
                 visual_bell: Some(true),
+                confirm_quit: Some(true),
                 focus_follows_mouse: Some(false),
                 mouse_click_through: Some(false),
                 osc133_command_selection: Some(false),
