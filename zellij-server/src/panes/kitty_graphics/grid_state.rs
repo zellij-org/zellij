@@ -1,5 +1,6 @@
 use super::parser::{DecodedImage, KittyCommand, KittyError, KittyErrorCode};
 use super::store::{InternalImageId, KittyImageStore};
+use super::NO_PLACEMENT_ID;
 use crate::panes::sixel::PixelRect;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -65,6 +66,26 @@ impl KittyReplyData {
     }
 }
 
+/// A Unicode-placeholder (U=1) image registration. It carries no
+/// position of its own: the application draws U+10EEEE placeholder
+/// cells (image id in the fg color, optional placement id in the
+/// underline color, row/column in combining diacritics) and the render
+/// pass paints the matching fragment of this image wherever those
+/// cells currently are.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct KittyVirtualPlacement {
+    pub internal_id: InternalImageId,
+    /// From the p= key; 0 when the application didn't specify one, in
+    /// which case cells that don't select a placement via underline
+    /// color match it.
+    pub placement_id: u32,
+    /// Requested size in cells from the c=/r= keys; 0 = derive from
+    /// the image's pixel size at render time.
+    pub columns: u32,
+    pub rows: u32,
+    pub placement_uid: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct KittyGrid {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
@@ -72,6 +93,7 @@ pub struct KittyGrid {
     image_ids: HashMap<u32, InternalImageId>,
     image_numbers: HashMap<u32, Vec<u32>>,
     placements: Vec<KittyPlacement>,
+    virtual_placements: HashMap<u32, Vec<KittyVirtualPlacement>>,
     next_synthetic_image_id: u32,
     front_drops: u64,
     merged_rows: u64,
@@ -121,6 +143,7 @@ impl KittyGrid {
             image_ids: HashMap::new(),
             image_numbers: HashMap::new(),
             placements: Vec::new(),
+            virtual_placements: HashMap::new(),
             next_synthetic_image_id: u32::MAX,
             front_drops: 0,
             merged_rows: 0,
@@ -206,6 +229,11 @@ impl KittyGrid {
                     }
                 }
                 self.placements = kept;
+                if let Some(previous_virtuals) = self.virtual_placements.remove(&pane_image_id) {
+                    for previous in previous_virtuals {
+                        store.remove_placement_ref(previous.internal_id);
+                    }
+                }
                 if store.get(old_internal).is_some() {
                     store.free(old_internal);
                 }
@@ -234,6 +262,125 @@ impl KittyGrid {
         self.image_ids.insert(pane_image_id, internal);
         self.kitty_image_store.borrow_mut().touch(internal);
         Ok(pane_image_id)
+    }
+    /// Register a Unicode-placeholder (U=1) transmission (a=T/a=t):
+    /// store the image and remember the placement's requested cell
+    /// size, but create no positioned placement -- the placeholder
+    /// cells the application draws are the placement.
+    pub fn register_virtual_transmit(
+        &mut self,
+        command: &KittyCommand,
+    ) -> Result<KittyReplyData, KittyError> {
+        let image = match command.image.clone() {
+            Some(image) => image,
+            None => return Err(einval(command, "missing image data")),
+        };
+        let pane_image_id = self.transmit(command, image)?;
+        let internal = match self.image_ids.get(&pane_image_id).copied() {
+            Some(internal) => internal,
+            None => return Err(enoent(command, "unknown image id")),
+        };
+        self.upsert_virtual_placement(pane_image_id, internal, command);
+        Ok(KittyReplyData {
+            image_id: Some(pane_image_id),
+            image_number: command.image_number,
+            placement_id: command.placement_id,
+            quiet: command.quiet,
+        })
+    }
+    /// Register a Unicode-placeholder (U=1) placement over an
+    /// already-transmitted image (a=p): the protocol's canonical
+    /// two-step flow is `a=t` with the data followed by `a=p,U=1` with
+    /// the placement geometry.
+    pub fn register_virtual_display(
+        &mut self,
+        command: &KittyCommand,
+    ) -> Result<KittyReplyData, KittyError> {
+        let (pane_image_id, internal) = self.resolve_display_target(command)?;
+        self.upsert_virtual_placement(pane_image_id, internal, command);
+        Ok(KittyReplyData {
+            image_id: Some(pane_image_id),
+            image_number: command.image_number,
+            placement_id: command.placement_id,
+            quiet: command.quiet,
+        })
+    }
+    fn delete_virtuals<F: Fn(u32, &KittyVirtualPlacement) -> bool>(
+        virtual_placements: &mut HashMap<u32, Vec<KittyVirtualPlacement>>,
+        store: &mut KittyImageStore,
+        free_image: bool,
+        matches: F,
+    ) {
+        for (image_id, placements) in virtual_placements.iter_mut() {
+            placements.retain(|placement| {
+                if matches(*image_id, placement) {
+                    if free_image {
+                        store.free(placement.internal_id);
+                    } else {
+                        store.remove_placement_ref(placement.internal_id);
+                    }
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+        virtual_placements.retain(|_, placements| !placements.is_empty());
+    }
+    fn upsert_virtual_placement(
+        &mut self,
+        pane_image_id: u32,
+        internal: InternalImageId,
+        command: &KittyCommand,
+    ) {
+        let placement_id = command.placement_id.unwrap_or(NO_PLACEMENT_ID);
+        let store = self.kitty_image_store.clone();
+        let placements = self.virtual_placements.entry(pane_image_id).or_default();
+        let mut reused_uid = None;
+        placements.retain(|placement| {
+            if placement.placement_id == placement_id {
+                store
+                    .borrow_mut()
+                    .remove_placement_ref(placement.internal_id);
+                reused_uid = Some(placement.placement_uid);
+                false
+            } else {
+                true
+            }
+        });
+        let placement_uid = match reused_uid {
+            Some(uid) => uid,
+            None => store.borrow_mut().next_placement_uid(),
+        };
+        store.borrow_mut().add_placement_ref(internal);
+        placements.push(KittyVirtualPlacement {
+            internal_id: internal,
+            placement_id,
+            columns: command.columns,
+            rows: command.rows,
+            placement_uid,
+        });
+    }
+    /// The virtual placement a placeholder cell selects: an exact
+    /// placement-id match when the cell's underline color names one,
+    /// otherwise the most recently registered placement of the image.
+    pub fn virtual_placement(
+        &self,
+        image_id: u32,
+        placement_id: u32,
+    ) -> Option<KittyVirtualPlacement> {
+        let placements = self.virtual_placements.get(&image_id)?;
+        if placement_id != NO_PLACEMENT_ID {
+            placements
+                .iter()
+                .find(|placement| placement.placement_id == placement_id)
+                .copied()
+        } else {
+            placements.last().copied()
+        }
+    }
+    pub fn has_virtual_placements(&self) -> bool {
+        !self.virtual_placements.is_empty()
     }
     pub fn resolve_display_target(
         &self,
@@ -559,6 +706,36 @@ impl KittyGrid {
                 }
             }
             self.placements = kept;
+            // Virtual (Unicode-placeholder) placements have no position,
+            // so of the delete specifiers only the id-addressed ones
+            // (d=i/n and the d=r id range) can match them.
+            match lower {
+                'i' | 'n' => {
+                    if let Some(target) = target_image_id {
+                        Self::delete_virtuals(
+                            &mut self.virtual_placements,
+                            &mut store,
+                            uppercase,
+                            |image_id, placement| {
+                                image_id == target
+                                    && command
+                                        .placement_id
+                                        .map(|placement_id| placement.placement_id == placement_id)
+                                        .unwrap_or(true)
+                            },
+                        );
+                    }
+                },
+                'r' => {
+                    Self::delete_virtuals(
+                        &mut self.virtual_placements,
+                        &mut store,
+                        uppercase,
+                        |image_id, _| image_id >= command.source_x && image_id <= command.source_y,
+                    );
+                },
+                _ => {},
+            }
         }
         if uppercase {
             match lower {
@@ -895,6 +1072,11 @@ impl KittyGrid {
         for placement in self.placements.drain(..) {
             store.free(placement.internal_id);
         }
+        for (_, previous_placements) in self.virtual_placements.drain() {
+            for previous in previous_placements {
+                store.free(previous.internal_id);
+            }
+        }
     }
     pub fn clear_visible_placements(&mut self, scrollback_size_in_lines: usize) {
         let cell_size = { *self.character_cell_size.borrow() };
@@ -1093,6 +1275,38 @@ pub fn crop_rgba(
         out.extend_from_slice(&src[row_start..row_end]);
     }
     out
+}
+
+/// Scale `src` into a `box_w` x `box_h` canvas preserving its aspect
+/// ratio, centered, with transparent padding -- the fit the protocol
+/// specifies for Unicode-placeholder placements.
+pub fn fit_rgba_into_box(
+    src: &[u8],
+    src_w: usize,
+    src_h: usize,
+    box_w: usize,
+    box_h: usize,
+) -> Vec<u8> {
+    if src_w == 0 || src_h == 0 || box_w == 0 || box_h == 0 {
+        return vec![0; box_w * box_h * 4];
+    }
+    let scale = f64::min(box_w as f64 / src_w as f64, box_h as f64 / src_h as f64);
+    let fit_w = std::cmp::max((src_w as f64 * scale).round() as usize, 1).min(box_w);
+    let fit_h = std::cmp::max((src_h as f64 * scale).round() as usize, 1).min(box_h);
+    let scaled = scale_rgba(src, src_w, src_h, fit_w, fit_h);
+    if fit_w == box_w && fit_h == box_h {
+        return scaled;
+    }
+    let mut canvas = vec![0; box_w * box_h * 4];
+    let offset_x = (box_w - fit_w) / 2;
+    let offset_y = (box_h - fit_h) / 2;
+    for row in 0..fit_h {
+        let src_start = row * fit_w * 4;
+        let dst_start = ((row + offset_y) * box_w + offset_x) * 4;
+        canvas[dst_start..dst_start + fit_w * 4]
+            .copy_from_slice(&scaled[src_start..src_start + fit_w * 4]);
+    }
+    canvas
 }
 
 pub fn scale_rgba(src: &[u8], src_w: usize, src_h: usize, dst_w: usize, dst_h: usize) -> Vec<u8> {
