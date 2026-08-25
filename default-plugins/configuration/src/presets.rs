@@ -129,9 +129,9 @@ keybinds clear-defaults=true {{
     session {{
         bind "o" {{ SwitchToMode "Normal"; }}
         bind "d" {{ Detach; }}
-        bind "]" {{ FocusHostSession; SwitchToMode "Normal"; }}
-        bind "[" {{ FocusGuestSession; SwitchToMode "Normal"; }}
-        bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
+        bind "]" {{ FocusHostSession; SwitchToMode "Locked"; }}
+        bind "[" {{ FocusGuestSession; SwitchToMode "Locked"; }}
+        bind "f" {{ ToggleHostFullscreen; SwitchToMode "Locked"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
