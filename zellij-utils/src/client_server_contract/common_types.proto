@@ -817,6 +817,7 @@ enum InputMode {
   INPUT_MODE_MOVE = 12;
   INPUT_MODE_PROMPT = 13;
   INPUT_MODE_TMUX = 14;
+  INPUT_MODE_CONFIRM_QUIT = 15;
 }
 
 enum Direction {
@@ -1286,6 +1287,7 @@ message Options {
   optional string keybinds_secondary = 73;
   optional string keybinds_unlock = 74;
   optional bool context_menu_enabled = 75;
+  optional bool confirm_quit = 76;
 }
 
 enum OnForceClose {

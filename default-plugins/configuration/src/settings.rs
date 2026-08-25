@@ -699,6 +699,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "false",
             Everyone,
         ),
+        SettingKey::ConfirmQuit => info(
+            "Confirm quit",
+            Sessions,
+            "Ask for confirmation before quitting with Ctrl+q / the Quit action",
+            Toggle,
+            "true",
+            Everyone,
+        ),
         SettingKey::PostCommandDiscoveryHook => info(
             "Command discovery hook",
             Sessions,
@@ -944,7 +952,7 @@ pub fn section(key: SettingKey) -> &'static str {
         | ScrollbackLinesToSerialize
         | SerializationInterval
         | PostCommandDiscoveryHook => "Resurrection",
-        MirrorSession | OnForceClose | DisableSessionMetadata => "Behaviour",
+        MirrorSession | OnForceClose | DisableSessionMetadata | ConfirmQuit => "Behaviour",
         WebServer
         | WebSharing
         | WebServerIp

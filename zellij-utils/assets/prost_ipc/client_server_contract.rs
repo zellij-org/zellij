@@ -2174,6 +2174,8 @@ pub struct Options {
     pub keybinds_unlock: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="75")]
     pub context_menu_enabled: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="76")]
+    pub confirm_quit: ::core::option::Option<bool>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -2673,6 +2675,7 @@ pub enum InputMode {
     Move = 12,
     Prompt = 13,
     Tmux = 14,
+    ConfirmQuit = 15,
 }
 impl InputMode {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2696,6 +2699,7 @@ impl InputMode {
             InputMode::Move => "INPUT_MODE_MOVE",
             InputMode::Prompt => "INPUT_MODE_PROMPT",
             InputMode::Tmux => "INPUT_MODE_TMUX",
+            InputMode::ConfirmQuit => "INPUT_MODE_CONFIRM_QUIT",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2716,6 +2720,7 @@ impl InputMode {
             "INPUT_MODE_MOVE" => Some(Self::Move),
             "INPUT_MODE_PROMPT" => Some(Self::Prompt),
             "INPUT_MODE_TMUX" => Some(Self::Tmux),
+            "INPUT_MODE_CONFIRM_QUIT" => Some(Self::ConfirmQuit),
             _ => None,
         }
     }

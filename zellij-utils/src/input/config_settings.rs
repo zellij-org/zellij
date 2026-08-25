@@ -152,6 +152,7 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         mouse_hover_effects,
         mouse_hover_tips,
         visual_bell,
+        confirm_quit,
         focus_follows_mouse,
         mouse_click_through,
         context_menu_enabled,
@@ -272,6 +273,7 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         ),
         (SettingKey::MouseHoverTips, display_text(mouse_hover_tips)),
         (SettingKey::VisualBell, display_text(visual_bell)),
+        (SettingKey::ConfirmQuit, display_text(confirm_quit)),
         (
             SettingKey::FocusFollowsMouse,
             display_text(focus_follows_mouse),
@@ -605,6 +607,7 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::MouseHoverEffects => options.mouse_hover_effects = from.mouse_hover_effects,
         SettingKey::MouseHoverTips => options.mouse_hover_tips = from.mouse_hover_tips,
         SettingKey::VisualBell => options.visual_bell = from.visual_bell,
+        SettingKey::ConfirmQuit => options.confirm_quit = from.confirm_quit,
         SettingKey::FocusFollowsMouse => options.focus_follows_mouse = from.focus_follows_mouse,
         SettingKey::MouseClickThrough => options.mouse_click_through = from.mouse_click_through,
         SettingKey::ContextMenuEnabled => options.context_menu_enabled = from.context_menu_enabled,

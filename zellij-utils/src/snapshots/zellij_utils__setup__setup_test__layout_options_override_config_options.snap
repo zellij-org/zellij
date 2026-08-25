@@ -56,6 +56,7 @@ Options {
     mouse_hover_effects: None,
     mouse_hover_tips: None,
     visual_bell: None,
+    confirm_quit: None,
     focus_follows_mouse: None,
     mouse_click_through: None,
     context_menu_enabled: None,
