@@ -1636,6 +1636,7 @@ let els = null;
 let activityTimer = null;
 let initialized = false;
 let standalone = null;
+let standaloneRefreshInFlight = false;
 
 function initMobileUi(context) {
     ctx = context;
@@ -1773,9 +1774,10 @@ function showStandaloneSessionMenu({ fetchSessions }) {
 }
 
 async function refreshStandaloneSessions() {
-    if (!standalone) {
+    if (!standalone || standaloneRefreshInFlight) {
         return;
     }
+    standaloneRefreshInFlight = true;
     try {
         const sessions = await standalone.fetchSessions();
         if (!standalone) {
@@ -1785,7 +1787,10 @@ async function refreshStandaloneSessions() {
         state.data.now_secs = Math.floor(Date.now() / 1000);
         state.dataReceivedAt = Date.now();
         render();
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+        standaloneRefreshInFlight = false;
+    }
 }
 
 function finishStandalone(outcome) {
