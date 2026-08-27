@@ -33,6 +33,7 @@ pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     italic: Some(AnsiCode::Reset),
     link_anchor: Some(LinkAnchor::End),
     styled_underlines_enabled: false,
+    text_sizing: None,
 };
 
 // Prefer to use RcCharacterStyles::default() where it makes sense
@@ -52,6 +53,7 @@ pub const DEFAULT_STYLES: CharacterStyles = CharacterStyles {
     italic: None,
     link_anchor: None,
     styled_underlines_enabled: false,
+    text_sizing: None,
 };
 
 thread_local! {
@@ -226,6 +228,92 @@ pub struct CharacterStyles {
     pub italic: Option<AnsiCode>,
     pub link_anchor: Option<LinkAnchor>,
     pub styled_underlines_enabled: bool,
+    /// Kitty's OSC 66 text sizing metadata for this character.
+    ///
+    /// This is not an SGR style and is intentionally ignored by `Display`; the
+    /// output serializer wraps the character in OSC 66 directly.
+    pub text_sizing: Option<TextSizing>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TextSizing {
+    scale: u8,
+    width: u8,
+    numerator: u8,
+    denominator: u8,
+    vertical_alignment: u8,
+    horizontal_alignment: u8,
+}
+
+impl TextSizing {
+    pub fn parse(metadata: &str) -> Option<Self> {
+        let mut sizing = TextSizing {
+            scale: 1,
+            width: 0,
+            numerator: 0,
+            denominator: 0,
+            vertical_alignment: 0,
+            horizontal_alignment: 0,
+        };
+        for entry in metadata.split(':').filter(|entry| !entry.is_empty()) {
+            let (key, value) = entry.split_once('=')?;
+            let value = value.parse::<u8>().ok()?;
+            match key {
+                "s" if (1..=7).contains(&value) => sizing.scale = value,
+                "w" if value <= 7 => sizing.width = value,
+                "n" if value <= 15 => sizing.numerator = value,
+                "d" if value <= 15 => sizing.denominator = value,
+                "v" if value <= 2 => sizing.vertical_alignment = value,
+                "h" if value <= 2 => sizing.horizontal_alignment = value,
+                _ => return None,
+            }
+        }
+        if sizing.denominator == 0 {
+            if sizing.numerator != 0 {
+                return None;
+            }
+        } else if sizing.numerator >= sizing.denominator {
+            return None;
+        }
+        Some(sizing)
+    }
+
+    pub fn width_is_explicit(self) -> bool {
+        self.width != 0
+    }
+
+    pub fn cell_width(self, character: char) -> usize {
+        let unscaled_width = if self.width == 0 {
+            character.width().unwrap_or(0)
+        } else {
+            self.width as usize
+        };
+        unscaled_width * self.scale as usize
+    }
+}
+
+impl Display for TextSizing {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut separator = "";
+        macro_rules! write_value {
+            ($key:literal, $value:expr) => {
+                if $value != 0 {
+                    write!(f, "{}{}={}", separator, $key, $value)?;
+                    separator = ":";
+                }
+            };
+        }
+        if self.scale != 1 {
+            write_value!("s", self.scale);
+        }
+        write_value!("w", self.width);
+        write_value!("n", self.numerator);
+        write_value!("d", self.denominator);
+        write_value!("v", self.vertical_alignment);
+        write_value!("h", self.horizontal_alignment);
+        let _ = separator;
+        Ok(())
+    }
 }
 
 impl PartialEq for CharacterStyles {
@@ -243,6 +331,7 @@ impl PartialEq for CharacterStyles {
             && self.dim == other.dim
             && self.italic == other.italic
             && self.link_anchor == other.link_anchor
+            && self.text_sizing == other.text_sizing
     }
 }
 
@@ -317,6 +406,7 @@ impl CharacterStyles {
         self.dim = None;
         self.italic = None;
         self.link_anchor = None;
+        self.text_sizing = None;
     }
     pub fn update_and_return_diff(
         &mut self,
@@ -955,6 +1045,15 @@ impl TerminalCharacter {
             character,
             styles,
             width: 1,
+        }
+    }
+
+    #[inline]
+    pub fn new_styled_with_width(character: char, styles: RcCharacterStyles, width: usize) -> Self {
+        TerminalCharacter {
+            character,
+            styles,
+            width: width.min(u8::MAX as usize) as u8,
         }
     }
 
