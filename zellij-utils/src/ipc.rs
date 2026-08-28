@@ -302,6 +302,7 @@ pub enum ServerToClientMsg {
     MobileState {
         payload: MobileStatePayload,
     },
+    ToggleMouseMode,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
