@@ -145,6 +145,47 @@ pub fn apply_pipe_message_to_plugin(
     plugin_render_assets: &mut Vec<PluginRenderAsset>,
     senders: &ThreadSenders,
 ) -> Result<()> {
+    let result = apply_pipe_message_to_plugin_inner(
+        plugin_id,
+        client_id,
+        running_plugin,
+        pipe_message,
+        plugin_render_assets,
+        senders,
+    );
+    if result.is_err() {
+        release_pipe_of_crashed_plugin(plugin_id, client_id, pipe_message, senders);
+    }
+    result
+}
+
+fn release_pipe_of_crashed_plugin(
+    plugin_id: PluginId,
+    client_id: ClientId,
+    pipe_message: &PipeMessage,
+    senders: &ThreadSenders,
+) {
+    if let PipeSource::Cli(pipe_id) = &pipe_message.source {
+        let mut pipe_state_changes = HashMap::new();
+        pipe_state_changes.insert(pipe_id.to_owned(), PipeStateChange::NoChange);
+        let plugin_render_asset =
+            PluginRenderAsset::new(plugin_id, client_id, vec![]).with_pipes(pipe_state_changes);
+        let _ = senders
+            .send_to_plugin(PluginInstruction::UnblockCliPipes(vec![
+                plugin_render_asset,
+            ]))
+            .context("failed to unblock input pipe of crashed plugin");
+    }
+}
+
+fn apply_pipe_message_to_plugin_inner(
+    plugin_id: PluginId,
+    client_id: ClientId,
+    running_plugin: &mut RunningPlugin,
+    pipe_message: &PipeMessage,
+    plugin_render_assets: &mut Vec<PluginRenderAsset>,
+    senders: &ThreadSenders,
+) -> Result<()> {
     let instance = &running_plugin.instance;
     let rows = running_plugin.rows;
     let columns = running_plugin.columns;

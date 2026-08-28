@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow setting explicit_theme_hue (light/dark) (https://github.com/zellij-org/zellij/pull/5536)
 * fix: input mode updates when switching tabs (https://github.com/zellij-org/zellij/pull/5535)
 * feat: allow starting a session with an initial command, eg. `zellij attach -a my-session -- htop` (https://github.com/zellij-org/zellij/pull/5543)
+* fix: release a CLI pipe when the plugin handling it crashes, instead of blocking the `zellij pipe` client until the plugin is unloaded (https://github.com/zellij-org/zellij/pull/5537)
 
 ## [0.45.0] - 2026-08-20
 * feat: allow tabs to have different sizes if clients aren't focused on the same one (https://github.com/zellij-org/zellij/pull/5133)

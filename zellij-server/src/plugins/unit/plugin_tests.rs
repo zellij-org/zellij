@@ -13211,3 +13211,91 @@ pub fn reconfiguration_resends_keybinds_to_opted_in_plugins() {
         last_render
     );
 }
+
+#[test]
+#[ignore]
+pub fn cli_pipe_is_released_when_plugin_panics_while_handling_it() {
+    let temp_folder = tempdir().unwrap();
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, server_receiver, screen_receiver, teardown) =
+        create_plugin_thread_with_server_receiver(Some(plugin_host_folder), None);
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+        ..Default::default()
+    });
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ReadCliPipes,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+    let received_server_instruction = Arc::new(Mutex::new(vec![]));
+    let server_thread = log_actions_in_thread!(
+        received_server_instruction,
+        ServerInstruction::UnblockCliPipeInput,
+        server_receiver,
+        1
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        false,
+        plugin_title,
+        run_plugin,
+        Some(tab_index),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::CliPipe {
+        pipe_id: "input_pipe_id".to_owned(),
+        name: "panic_while_handling_pipe".to_owned(),
+        payload: None,
+        plugin: None,
+        args: None,
+        configuration: None,
+        floating: None,
+        pane_id_to_replace: None,
+        pane_title: None,
+        cwd: None,
+        skip_cache: false,
+        cli_client_id: client_id,
+    });
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+    let unblocked = received_server_instruction.lock().unwrap().iter().any(
+        |i| matches!(i, ServerInstruction::UnblockCliPipeInput(pipe_name) if pipe_name == "input_pipe_id"),
+    );
+    teardown();
+    let _ = server_thread.join();
+    assert!(
+        unblocked,
+        "a plugin panicking while handling a CLI pipe must release that pipe when it crashes, \
+         otherwise the `zellij pipe` client stays blocked until the plugin is unloaded"
+    );
+}
