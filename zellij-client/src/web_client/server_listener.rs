@@ -255,6 +255,7 @@ pub fn zellij_server_listener(
                             Some(ServerToClientMsg::PaneRenderUpdate { .. }) => {},
                             Some(ServerToClientMsg::SubscribedPaneClosed { .. }) => {},
                             Some(ServerToClientMsg::EmitNestedSessionFrame { .. }) => {},
+                            Some(ServerToClientMsg::ToggleMouseMode) => {},
                             Some(ServerToClientMsg::ForwardQueryToHost { token, .. }) => {
                                 // Reply immediately with empty reply_bytes.
                                 // This is the existing convention that signals

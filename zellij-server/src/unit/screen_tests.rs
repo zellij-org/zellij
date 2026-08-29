@@ -179,6 +179,37 @@ fn route_arbitrary_action_to_server(
     .unwrap();
 }
 
+#[test]
+fn toggle_mouse_mode_action_is_forwarded_to_the_triggering_client() {
+    let client_id = 7;
+    let fake_os_input = FakeInputOutput::default();
+    let messages = fake_os_input.server_to_client_messages.clone();
+    let senders = ThreadSenders {
+        should_silently_fail: true,
+        ..Default::default()
+    };
+
+    let started_at = std::time::Instant::now();
+    route_action(
+        Action::ToggleMouseMode,
+        client_id,
+        None,
+        None,
+        senders,
+        None,
+        None,
+        InputMode::Normal,
+        Some(Box::new(fake_os_input)),
+    )
+    .unwrap();
+
+    assert!(started_at.elapsed() < std::time::Duration::from_millis(500));
+    assert_eq!(
+        messages.lock().unwrap().get(&client_id),
+        Some(&vec![ServerToClientMsg::ToggleMouseMode])
+    );
+}
+
 #[derive(Clone, Default)]
 struct FakeInputOutput {
     fake_filesystem: Arc<Mutex<HashMap<String, String>>>,
