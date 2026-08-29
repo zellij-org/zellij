@@ -2,6 +2,8 @@ use super::super::Grid;
 use crate::panes::grid::SixelImageStore;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::link_handler::LinkHandler;
+use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
+use base64::engine::Engine as _;
 use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -4601,8 +4603,6 @@ fn single_click_drag_selection_preserved_after_scroll() {
 
 #[test]
 fn osc_11_set_and_query_pane_default_bg() {
-    use crate::panes::terminal_character::AnsiCode;
-
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -4649,8 +4649,6 @@ fn osc_11_set_and_query_pane_default_bg() {
 
 #[test]
 fn osc_10_set_and_query_pane_default_fg() {
-    use crate::panes::terminal_character::AnsiCode;
-
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -4694,8 +4692,6 @@ fn osc_10_set_and_query_pane_default_fg() {
 
 #[test]
 fn osc_110_111_reset_pane_default_colors() {
-    use crate::panes::terminal_character::AnsiCode;
-
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -6659,7 +6655,7 @@ fn kitty_apc(control: &str, payload: &[u8]) -> Vec<u8> {
     out.extend_from_slice(control.as_bytes());
     if !payload.is_empty() {
         out.push(b';');
-        out.extend_from_slice(base64::encode(payload).as_bytes());
+        out.extend_from_slice(BASE64_ENCODER.encode(payload).as_bytes());
     }
     out.extend_from_slice(b"\x1b\\");
     out
@@ -7293,7 +7289,7 @@ fn kitty_yazi_kgpold_stream_roundtrip() {
     let mut vte_parser = vte::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     let raster = rgb_raster(2, 2);
-    let full_b64 = base64::encode(&raster);
+    let full_b64 = BASE64_ENCODER.encode(&raster);
     let (b64_chunk_one, b64_chunk_two) = full_b64.split_at(8);
     let mut stream = Vec::new();
     stream.extend_from_slice(
@@ -7624,7 +7620,7 @@ fn kitty_reply_icat_detection_sequence() {
         format!(
             "\x1b_Gt=t,a=q,i=2,s=1,v=1,f=24,S={};{}\x1b\\",
             path_bytes.len(),
-            base64::encode(path_bytes)
+            BASE64_ENCODER.encode(path_bytes)
         )
         .as_bytes(),
     );
@@ -7634,7 +7630,7 @@ fn kitty_reply_icat_detection_sequence() {
         &mut interceptor,
         format!(
             "\x1b_Gt=s,a=q,i=3,s=1,v=1,f=24,S=3;{}\x1b\\",
-            base64::encode(b"/some-shm")
+            BASE64_ENCODER.encode(b"/some-shm")
         )
         .as_bytes(),
     );
@@ -8771,4 +8767,590 @@ fn sixel_dcs_is_not_confused_with_xtgettcap() {
         grid.pending_messages_to_pty.is_empty(),
         "a sixel image must not produce an XTGETTCAP reply"
     );
+}
+
+#[test]
+fn ech_over_wide_character_preserves_background_on_padding_cell() {
+    use crate::panes::terminal_character::NamedColor;
+    // Use a wide character to exercise replacement of a wide cell.
+    assert_eq!(crate::panes::TerminalCharacter::new('Ａ').width(), 2);
+
+    let content = "\x1b[44mＡ\x1b[1;1H\x1b[1X".as_bytes();
+    let grid = create_grid_with_size_and_raw(2, 4, content);
+
+    let lines = grid.as_character_lines();
+
+    assert_eq!(lines[0][0].character, ' ');
+    assert_eq!(lines[0][1].character, ' ');
+
+    assert_eq!(
+        lines[0][0].styles.background,
+        Some(crate::panes::terminal_character::AnsiCode::NamedColor(
+            NamedColor::Blue
+        ))
+    );
+    assert_eq!(
+        lines[0][1].styles.background,
+        Some(crate::panes::terminal_character::AnsiCode::NamedColor(
+            NamedColor::Blue
+        ))
+    );
+}
+
+#[test]
+fn osc_9_notification_is_parsed() {
+    use crate::panes::grid::PendingNotification;
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]9;the build finished\x07");
+    assert_eq!(
+        grid.pending_desktop_notifications,
+        vec![PendingNotification::Osc9 {
+            body: "the build finished".to_owned()
+        }]
+    );
+}
+
+#[test]
+fn osc_9_notification_with_semicolons_keeps_the_whole_body() {
+    use crate::panes::grid::PendingNotification;
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]9;done: 1;2;3\x07");
+    assert_eq!(
+        grid.pending_desktop_notifications,
+        vec![PendingNotification::Osc9 {
+            body: "done: 1;2;3".to_owned()
+        }]
+    );
+}
+
+#[test]
+fn an_empty_osc_9_notification_is_ignored() {
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]9;\x07");
+    assert!(grid.pending_desktop_notifications.is_empty());
+}
+
+#[test]
+fn osc_777_notification_is_parsed() {
+    use crate::panes::grid::PendingNotification;
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]777;notify;the title;the body\x07");
+    assert_eq!(
+        grid.pending_desktop_notifications,
+        vec![PendingNotification::Osc777 {
+            title: "the title".to_owned(),
+            body: "the body".to_owned()
+        }]
+    );
+}
+
+#[test]
+fn an_osc_777_notification_body_may_contain_semicolons() {
+    use crate::panes::grid::PendingNotification;
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]777;notify;title;a;b;c\x07");
+    assert_eq!(
+        grid.pending_desktop_notifications,
+        vec![PendingNotification::Osc777 {
+            title: "title".to_owned(),
+            body: "a;b;c".to_owned()
+        }]
+    );
+}
+
+#[test]
+fn an_osc_777_non_notify_subcommand_is_ignored() {
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]777;precmd;something\x07");
+    assert!(grid.pending_desktop_notifications.is_empty());
+}
+
+#[test]
+fn an_osc_777_notification_without_a_body_is_kept() {
+    use crate::panes::grid::PendingNotification;
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]777;notify;just a title\x07");
+    assert_eq!(
+        grid.pending_desktop_notifications,
+        vec![PendingNotification::Osc777 {
+            title: "just a title".to_owned(),
+            body: String::new()
+        }]
+    );
+}
+
+#[test]
+fn a_notification_carries_its_title_and_body_across_protocols() {
+    use crate::panes::grid::PendingNotification;
+    assert_eq!(
+        PendingNotification::Osc9 {
+            body: "body".to_owned()
+        }
+        .title_and_body(),
+        (String::new(), "body".to_owned())
+    );
+    assert_eq!(
+        PendingNotification::Osc777 {
+            title: "title".to_owned(),
+            body: "body".to_owned()
+        }
+        .title_and_body(),
+        ("title".to_owned(), "body".to_owned())
+    );
+    assert_eq!(
+        PendingNotification::Osc99 {
+            payload: "i=1;the title".to_owned(),
+            terminator: "\u{7}".to_owned(),
+            wants_report: false,
+            display: Some(("the title".to_owned(), "the body".to_owned())),
+        }
+        .title_and_body(),
+        ("the title".to_owned(), "the body".to_owned())
+    );
+}
+
+fn osc99_display(grid: &Grid, index: usize) -> Option<(String, String)> {
+    use crate::panes::grid::PendingNotification;
+    match grid.pending_desktop_notifications.get(index) {
+        Some(PendingNotification::Osc99 { display, .. }) => display.clone(),
+        other => panic!("expected an OSC 99 notification, got: {:?}", other),
+    }
+}
+
+#[test]
+fn an_osc_9_conemu_progress_report_is_not_a_notification() {
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]9;4;0;0\x1b\\");
+    vte_parser.advance(&mut grid, b"\x1b]9;4;1;50\x07");
+    assert!(
+        grid.pending_desktop_notifications.is_empty(),
+        "progress reports are not desktop notifications, got: {:?}",
+        grid.pending_desktop_notifications
+    );
+}
+
+#[test]
+fn other_osc_9_conemu_subcommands_are_not_notifications() {
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]9;9;/home/user\x07");
+    vte_parser.advance(&mut grid, b"\x1b]9;3;a tab title\x07");
+    assert!(
+        grid.pending_desktop_notifications.is_empty(),
+        "ConEmu subcommands are not desktop notifications, got: {:?}",
+        grid.pending_desktop_notifications
+    );
+}
+
+#[test]
+fn an_osc_9_notification_starting_with_a_number_is_still_a_notification() {
+    use crate::panes::grid::PendingNotification;
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]9;4 tests failed;in 2 crates\x07");
+    assert_eq!(
+        grid.pending_desktop_notifications,
+        vec![PendingNotification::Osc9 {
+            body: "4 tests failed;in 2 crates".to_owned()
+        }]
+    );
+}
+
+#[test]
+fn an_osc_99_notification_is_assembled_from_its_chunks() {
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]99;i=1:d=0;Hello world\x1b\\");
+    vte_parser.advance(&mut grid, b"\x1b]99;i=1:p=body;This is cool\x1b\\");
+    assert_eq!(
+        osc99_display(&grid, 0),
+        None,
+        "an unfinished notification has nothing to show yet"
+    );
+    assert_eq!(
+        osc99_display(&grid, 1),
+        Some(("Hello world".to_owned(), "This is cool".to_owned())),
+        "the finished notification carries all of its chunks"
+    );
+}
+
+#[test]
+fn an_osc_99_notification_payload_may_be_base64_encoded() {
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]99;i=1:e=1;dGhlIGJ1aWxkIGZpbmlzaGVk\x1b\\");
+    assert_eq!(
+        osc99_display(&grid, 0),
+        Some(("the build finished".to_owned(), String::new()))
+    );
+}
+
+#[test]
+fn osc_99_requests_that_display_nothing_are_not_downgraded() {
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]99;i=1:p=close;\x1b\\");
+    vte_parser.advance(&mut grid, b"\x1b]99;i=2:p=?;\x1b\\");
+    vte_parser.advance(&mut grid, b"\x1b]99;i=3:p=alive;\x1b\\");
+    assert_eq!(osc99_display(&grid, 0), None, "a close shows nothing");
+    assert_eq!(osc99_display(&grid, 1), None, "a query shows nothing");
+    assert_eq!(
+        osc99_display(&grid, 2),
+        None,
+        "a liveness poll shows nothing"
+    );
+}
+
+#[test]
+fn the_report_intent_of_an_osc_99_notification_is_remembered() {
+    use crate::panes::grid::PendingNotification;
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]99;i=1:a=report;the build finished\x1b\\");
+    vte_parser.advance(&mut grid, b"\x1b]99;i=1:p=close;\x1b\\");
+    let wants_report: Vec<bool> = grid
+        .pending_desktop_notifications
+        .iter()
+        .map(|notification| match notification {
+            PendingNotification::Osc99 { wants_report, .. } => *wants_report,
+            other => panic!("expected an OSC 99 notification, got: {:?}", other),
+        })
+        .collect();
+    assert_eq!(
+        wants_report,
+        vec![true, true],
+        "a close request inherits the intent of the notification it closes"
+    );
+}
+
+#[test]
+fn an_explicit_action_replaces_the_remembered_report_intent() {
+    use crate::panes::grid::PendingNotification;
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]99;i=1:a=report;the build started\x1b\\");
+    vte_parser.advance(&mut grid, b"\x1b]99;i=1:a=focus;the build finished\x1b\\");
+    vte_parser.advance(&mut grid, b"\x1b]99;i=1:p=close;\x1b\\");
+    let wants_report: Vec<bool> = grid
+        .pending_desktop_notifications
+        .iter()
+        .map(|notification| match notification {
+            PendingNotification::Osc99 { wants_report, .. } => *wants_report,
+            other => panic!("expected an OSC 99 notification, got: {:?}", other),
+        })
+        .collect();
+    assert_eq!(
+        wants_report,
+        vec![true, false, false],
+        "an escape that states its own action decides, and is remembered from then on"
+    );
+}
+
+#[test]
+fn an_osc_99_notification_is_finished_by_a_payload_it_cannot_show() {
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, b"\x1b]99;i=1:d=0;the build finished\x1b\\");
+    vte_parser.advance(&mut grid, b"\x1b]99;i=1:p=buttons:d=1;retry\x1b\\");
+    assert_eq!(
+        osc99_display(&grid, 1),
+        Some(("the build finished".to_owned(), String::new())),
+        "the assembled text is shown even when the last chunk carries buttons"
+    );
+}
+
+#[test]
+fn the_notification_state_remembered_per_pane_is_bounded() {
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    for index in 0..1000 {
+        vte_parser.advance(
+            &mut grid,
+            format!("\x1b]99;i={}:a=report;notification\x1b\\", index).as_bytes(),
+        );
+    }
+    assert!(
+        grid.notification_tracker.known_ids.len() <= 256
+            && grid.notification_tracker.wants_report.len() <= 256
+            && grid.notification_tracker.assemblies.is_empty(),
+        "an app sending endless notifications does not grow the pane's state without bound"
+    );
+}
+
+#[test]
+fn a_single_notification_being_assembled_is_bounded() {
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vte::Parser::new();
+    let chunk = "\u{5efa}".repeat(300);
+    for _ in 0..100 {
+        vte_parser.advance(
+            &mut grid,
+            format!("\x1b]99;i=1:d=0;{}\x1b\\", chunk).as_bytes(),
+        );
+    }
+
+    let assembled_bytes = grid
+        .notification_tracker
+        .assemblies
+        .get("1")
+        .map(|assembly| assembly.title.len())
+        .unwrap_or(0);
+    assert!(
+        assembled_bytes <= 4096,
+        "an app streaming an endless single notification does not grow the pane's state without \
+         bound, got {} bytes",
+        assembled_bytes
+    );
+
+    vte_parser.advance(&mut grid, b"\x1b]99;i=1:d=1;\x1b\\");
+    let last_notification = grid.pending_desktop_notifications.len() - 1;
+    let (title, _body) =
+        osc99_display(&grid, last_notification).expect("the truncated notification is still shown");
+    assert_eq!(
+        title,
+        "\u{5efa}".repeat(1365),
+        "the assembled text is truncated on a character boundary"
+    );
+}
+
+fn rendered_row(grid: &Grid, row_index: usize) -> String {
+    grid.viewport[row_index]
+        .columns
+        .iter()
+        .map(|terminal_character| terminal_character.character)
+        .collect()
+}
+
+fn cursor_position(grid: &Grid) -> Option<(usize, usize)> {
+    grid.cursor_coordinates().map(|(x, y, _)| (x, y))
+}
+
+#[test]
+fn cjk_characters_occupy_two_columns_each() {
+    let grid = create_grid_with_content("\u{4f60}\u{597d}\u{4e16}\u{754c}");
+
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns.len(), 4);
+    assert!(row
+        .columns
+        .iter()
+        .all(|terminal_character| terminal_character.width() == 2));
+    assert_eq!(row.width(), 8);
+    assert_eq!(cursor_position(&grid), Some((8, 0)));
+}
+
+#[test]
+fn kana_and_hangul_syllables_occupy_two_columns_each() {
+    let grid = create_grid_with_content("\u{30c6}\u{30ad}\u{d55c}\u{ad6d}");
+
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns.len(), 4);
+    assert_eq!(row.width(), 8);
+    assert_eq!(cursor_position(&grid), Some((8, 0)));
+}
+
+#[test]
+fn zwj_emoji_sequence_keeps_one_wide_cell_per_emoji() {
+    let grid =
+        create_grid_with_content("\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f466}");
+
+    let row = &grid.viewport[0];
+    assert_eq!(
+        rendered_row(&grid, 0),
+        "\u{1f468}\u{1f469}\u{1f467}\u{1f466}"
+    );
+    assert_eq!(row.width(), 8);
+    assert_eq!(cursor_position(&grid), Some((8, 0)));
+}
+
+#[test]
+fn skin_tone_modifier_occupies_its_own_two_columns() {
+    let grid = create_grid_with_content("\u{1f44b}\u{1f3fd}");
+
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns.len(), 2);
+    assert!(row
+        .columns
+        .iter()
+        .all(|terminal_character| terminal_character.width() == 2));
+    assert_eq!(row.width(), 4);
+    assert_eq!(cursor_position(&grid), Some((4, 0)));
+}
+
+#[test]
+fn variation_selector_and_zero_width_joiner_do_not_advance_the_cursor() {
+    let grid = create_grid_with_content("\u{26a0}\u{fe0f}\u{200d}\u{200b}");
+
+    assert_eq!(rendered_row(&grid, 0), "\u{26a0}");
+    assert_eq!(grid.viewport[0].width(), 1);
+    assert_eq!(cursor_position(&grid), Some((1, 0)));
+}
+
+#[test]
+fn combining_marks_are_dropped_and_do_not_advance_the_cursor() {
+    let grid = create_grid_with_content("e\u{301}a\u{300}\u{308}o\u{331}");
+
+    assert_eq!(rendered_row(&grid, 0), "eao");
+    assert_eq!(grid.viewport[0].width(), 3);
+    assert_eq!(cursor_position(&grid), Some((3, 0)));
+}
+
+#[test]
+fn precomposed_and_decomposed_forms_occupy_the_same_number_of_columns() {
+    let precomposed = create_grid_with_content("\u{e9}cole");
+    let decomposed = create_grid_with_content("e\u{301}cole");
+
+    assert_eq!(precomposed.viewport[0].width(), 5);
+    assert_eq!(decomposed.viewport[0].width(), 5);
+    assert_eq!(cursor_position(&precomposed), cursor_position(&decomposed));
+}
+
+#[test]
+fn ambiguous_width_characters_occupy_one_column_each() {
+    let grid = create_grid_with_content("\u{b1}\u{b0}\u{2192}\u{3b1}\u{203b}\u{d7}\u{f7}");
+
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns.len(), 7);
+    assert!(row
+        .columns
+        .iter()
+        .all(|terminal_character| terminal_character.width() == 1));
+    assert_eq!(row.width(), 7);
+    assert_eq!(cursor_position(&grid), Some((7, 0)));
+}
+
+#[test]
+fn box_drawing_characters_occupy_one_column_each() {
+    let grid = create_grid_with_content(
+        "\u{250c}\u{2500}\u{252c}\u{2510}\u{2502}\u{251c}\u{253c}\u{2524}\u{2514}\u{2534}\u{2518}\u{2554}\u{2550}\u{2557}\u{2588}\u{2589}",
+    );
+
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns.len(), 16);
+    assert!(row
+        .columns
+        .iter()
+        .all(|terminal_character| terminal_character.width() == 1));
+    assert_eq!(row.width(), 16);
+    assert_eq!(cursor_position(&grid), Some((16, 0)));
+}
+
+#[test]
+fn a_wide_character_that_does_not_fit_the_last_column_wraps_whole() {
+    let grid = create_grid_with_size_and_raw(4, 6, "abcde\u{4e16}".as_bytes());
+
+    assert_eq!(rendered_row(&grid, 0), "abcde");
+    assert_eq!(grid.viewport[0].width(), 5);
+    assert_eq!(rendered_row(&grid, 1), "\u{4e16}");
+    assert_eq!(cursor_position(&grid), Some((2, 1)));
+}
+
+#[test]
+fn a_wide_character_ending_exactly_on_the_last_column_stays_on_its_row() {
+    let grid = create_grid_with_size_and_raw(4, 6, "abcd\u{4e16}".as_bytes());
+
+    assert_eq!(rendered_row(&grid, 0), "abcd\u{4e16}");
+    assert_eq!(grid.viewport[0].width(), 6);
+    assert_eq!(grid.viewport.len(), 1);
+    assert_eq!(cursor_position(&grid), None);
+}
+
+#[test]
+fn ech_over_the_leading_half_of_a_wide_character_blanks_both_columns() {
+    let grid =
+        create_grid_with_size_and_raw(3, 10, "\u{4e16}\u{754c}abc\u{1b}[1;1H\u{1b}[1X".as_bytes());
+
+    let lines = grid.as_character_lines();
+    assert_eq!(lines[0][0].character, ' ');
+    assert_eq!(lines[0][1].character, ' ');
+    assert_eq!(lines[0][2].character, '\u{754c}');
+    assert_eq!(lines[0][3].character, 'a');
+    assert_eq!(lines[0][4].character, 'b');
+    assert_eq!(lines[0][5].character, 'c');
+}
+
+#[test]
+fn ech_over_a_wide_character_keeps_the_background_of_the_padding_cell() {
+    use crate::panes::terminal_character::NamedColor;
+
+    let grid = create_grid_with_size_and_raw(
+        3,
+        10,
+        "\u{1b}[44m\u{4e16}\u{754c}\u{1b}[1;1H\u{1b}[1X".as_bytes(),
+    );
+
+    let lines = grid.as_character_lines();
+    assert_eq!(
+        lines[0][0].styles.background,
+        Some(crate::panes::terminal_character::AnsiCode::NamedColor(
+            NamedColor::Blue
+        ))
+    );
+    assert_eq!(
+        lines[0][1].styles.background,
+        Some(crate::panes::terminal_character::AnsiCode::NamedColor(
+            NamedColor::Blue
+        ))
+    );
+}
+
+#[test]
+fn cursor_forward_past_content_pads_the_row_before_a_wide_character() {
+    let grid =
+        create_grid_with_size_and_raw(6, 20, "\u{1b}[2B\r\u{1b}[4C\u{4e16}\u{754c}".as_bytes());
+
+    assert_eq!(rendered_row(&grid, 2), "    \u{4e16}\u{754c}");
+    assert_eq!(grid.viewport[2].width(), 8);
+    assert_eq!(cursor_position(&grid), Some((8, 2)));
+}
+
+#[test]
+fn yijing_and_trigram_symbols_are_wide_under_the_new_width_tables() {
+    let grid = create_grid_with_content("\u{2630}\u{2637}\u{268a}\u{4dc0}\u{4dff}");
+
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns.len(), 5);
+    assert!(row
+        .columns
+        .iter()
+        .all(|terminal_character| terminal_character.width() == 2));
+    assert_eq!(row.width(), 10);
+    assert_eq!(cursor_position(&grid), Some((10, 0)));
+}
+
+#[test]
+fn halfwidth_katakana_sound_marks_are_zero_width_under_the_new_width_tables() {
+    let grid = create_grid_with_content("\u{ff76}\u{ff9e}\u{ff8a}\u{ff9f}");
+
+    assert_eq!(rendered_row(&grid, 0), "\u{ff76}\u{ff8a}");
+    assert_eq!(grid.viewport[0].width(), 2);
+    assert_eq!(cursor_position(&grid), Some((2, 0)));
+}
+
+#[test]
+fn soft_hyphen_and_hangul_filler_are_zero_width_under_the_new_width_tables() {
+    let grid = create_grid_with_content("a\u{ad}b\u{3164}c");
+
+    assert_eq!(rendered_row(&grid, 0), "abc");
+    assert_eq!(grid.viewport[0].width(), 3);
+    assert_eq!(cursor_position(&grid), Some((3, 0)));
+}
+
+#[test]
+fn a_character_wider_than_two_columns_advances_the_cursor_by_its_full_width() {
+    let grid = create_grid_with_content("\u{17d8}x");
+
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns.len(), 2);
+    assert_eq!(row.columns[0].width(), 3);
+    assert_eq!(row.width(), 4);
+    assert_eq!(cursor_position(&grid), Some((4, 0)));
 }

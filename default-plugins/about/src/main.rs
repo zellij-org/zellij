@@ -1,4 +1,5 @@
 mod active_component;
+mod keybindings;
 mod pages;
 mod tips;
 use zellij_tile::prelude::*;
@@ -12,7 +13,8 @@ use std::rc::Rc;
 use tips::MAX_TIP_INDEX;
 
 use crate::active_component::ActiveComponent;
-use crate::pages::{ComponentLine, TextOrCustomRender};
+use crate::keybindings::{apply_missing_binds, ApplyStatus, Feature, KeybindingState};
+use crate::pages::{ComponentLine, PageKind, TextOrCustomRender};
 
 const UI_ROWS: usize = 20;
 const UI_COLUMNS: usize = 90;
@@ -23,6 +25,7 @@ struct App {
     link_executable: Rc<RefCell<String>>,
     zellij_version: Rc<RefCell<String>>,
     base_mode: Rc<RefCell<InputMode>>,
+    keybinding_state: Rc<RefCell<KeybindingState>>,
     tab_rows: usize,
     tab_columns: usize,
     own_plugin_id: Option<u32>,
@@ -38,16 +41,19 @@ impl Default for App {
         let link_executable = Rc::new(RefCell::new("".to_owned()));
         let zellij_version = Rc::new(RefCell::new("".to_owned()));
         let base_mode = Rc::new(RefCell::new(Default::default()));
+        let keybinding_state = Rc::new(RefCell::new(Default::default()));
         App {
             active_page: Page::new_main_screen(
                 link_executable.clone(),
                 "".to_owned(),
                 base_mode.clone(),
                 false,
+                keybinding_state.clone(),
             ),
             link_executable,
             zellij_version,
             base_mode,
+            keybinding_state,
             tab_rows: 0,
             tab_columns: 0,
             own_plugin_id: None,
@@ -95,19 +101,20 @@ impl ZellijPlugin for App {
                 self.tip_index,
             )
         } else {
-            Page::new_main_screen(
-                self.link_executable.clone(),
-                self.zellij_version.borrow().clone(),
-                self.base_mode.clone(),
-                self.is_release_notes,
-            )
+            self.main_screen()
         };
     }
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
             Event::FailedToWriteConfigToDisk(file_path) => {
-                if self.waiting_for_config_to_be_written {
+                if self.applying_keybindings() {
+                    self.keybinding_state
+                        .borrow_mut()
+                        .set_status(ApplyStatus::Failed(file_path));
+                    self.refresh_active_page();
+                    should_render = true;
+                } else if self.waiting_for_config_to_be_written {
                     let error = match file_path {
                         Some(file_path) => {
                             format!("Failed to write config to disk at: {}", file_path)
@@ -120,7 +127,13 @@ impl ZellijPlugin for App {
                 }
             },
             Event::ConfigWasWrittenToDisk => {
-                if self.waiting_for_config_to_be_written {
+                if self.applying_keybindings() {
+                    self.keybinding_state
+                        .borrow_mut()
+                        .set_status(ApplyStatus::Applied);
+                    self.refresh_active_page();
+                    should_render = true;
+                } else if self.waiting_for_config_to_be_written {
                     close_self();
                 }
             },
@@ -133,6 +146,18 @@ impl ZellijPlugin for App {
             Event::ModeUpdate(mode_info) => {
                 if let Some(base_mode) = mode_info.base_mode {
                     should_render = self.update_base_mode(base_mode);
+                }
+                let base_mode_changed = self
+                    .keybinding_state
+                    .borrow_mut()
+                    .set_base_mode(mode_info.base_mode.unwrap_or(InputMode::Normal));
+                let missing_keybindings_changed = self
+                    .keybinding_state
+                    .borrow_mut()
+                    .update_from_keybinds(&mode_info.keybinds);
+                if base_mode_changed || missing_keybindings_changed {
+                    self.refresh_active_page();
+                    should_render = true;
                 }
             },
             Event::RunCommandResult(exit_code, _stdout, _stderr, context) => {
@@ -170,6 +195,93 @@ impl ZellijPlugin for App {
 }
 
 impl App {
+    fn main_screen(&self) -> Page {
+        Page::new_main_screen(
+            self.link_executable.clone(),
+            self.zellij_version.borrow().clone(),
+            self.base_mode.clone(),
+            self.is_release_notes,
+            self.keybinding_state.clone(),
+        )
+    }
+    fn main_screen_builder(&self) -> Rc<dyn Fn() -> Page> {
+        let link_executable = self.link_executable.clone();
+        let zellij_version = self.zellij_version.clone();
+        let base_mode = self.base_mode.clone();
+        let keybinding_state = self.keybinding_state.clone();
+        let is_release_notes = self.is_release_notes;
+        Rc::new(move || {
+            Page::new_main_screen(
+                link_executable.clone(),
+                zellij_version.borrow().clone(),
+                base_mode.clone(),
+                is_release_notes,
+                keybinding_state.clone(),
+            )
+        })
+    }
+    fn update_keybindings_screen(&self) -> Page {
+        Page::new_update_keybindings(self.keybinding_state.clone(), self.main_screen_builder())
+    }
+    fn applying_keybindings(&self) -> bool {
+        self.keybinding_state.borrow().status() == &ApplyStatus::Applying
+    }
+    fn awaiting_keybinding_confirmation(&self) -> bool {
+        let is_confirmation_page = match self.active_page.kind {
+            PageKind::UpdateKeybindings => true,
+            PageKind::NestedSessions => self
+                .keybinding_state
+                .borrow()
+                .has_missing_binds_for(Feature::NestedSessions),
+            PageKind::PaneFocus => self
+                .keybinding_state
+                .borrow()
+                .has_missing_binds_for(Feature::PaneFocus),
+            PageKind::ScrollByCommand => self
+                .keybinding_state
+                .borrow()
+                .has_missing_binds_for(Feature::ScrollByCommand),
+            _ => false,
+        };
+        is_confirmation_page && self.keybinding_state.borrow().status() == &ApplyStatus::NotApplied
+    }
+    fn confirm_keybindings(&mut self) {
+        let needs_conflict_confirmation = self.active_page.kind != PageKind::UpdateKeybindings
+            && self.keybinding_state.borrow().has_conflicts();
+        if needs_conflict_confirmation {
+            self.active_page = self.update_keybindings_screen();
+        } else {
+            apply_missing_binds(&self.keybinding_state);
+            self.refresh_active_page();
+        }
+    }
+    fn refresh_active_page(&mut self) {
+        match self.active_page.kind {
+            PageKind::MainScreen => {
+                self.active_page = self.main_screen();
+            },
+            PageKind::NestedSessions => {
+                self.active_page = Page::new_nested_sessions(
+                    self.keybinding_state.clone(),
+                    self.main_screen_builder(),
+                );
+            },
+            PageKind::PaneFocus => {
+                self.active_page =
+                    Page::new_pane_focus(self.keybinding_state.clone(), self.main_screen_builder());
+            },
+            PageKind::ScrollByCommand => {
+                self.active_page = Page::new_scroll_by_command(
+                    self.keybinding_state.clone(),
+                    self.main_screen_builder(),
+                );
+            },
+            PageKind::UpdateKeybindings => {
+                self.active_page = self.update_keybindings_screen();
+            },
+            PageKind::Other => {},
+        }
+    }
     pub fn change_own_title(&mut self) {
         if let Some(own_plugin_id) = self.own_plugin_id {
             if self.is_release_notes {
@@ -240,16 +352,30 @@ impl App {
             self.waiting_for_config_to_be_written = true;
             let save_configuration = true;
             reconfigure("show_startup_tips false".to_owned(), save_configuration);
+        } else if key.bare_key == BareKey::Char('u')
+            && key.has_no_modifiers()
+            && !self.is_startup_tip
+            && self.keybinding_state.borrow().has_missing_binds()
+        {
+            self.active_page = self.update_keybindings_screen();
+            should_render = true;
+        } else if key.bare_key == BareKey::Char('y')
+            && key.has_no_modifiers()
+            && self.awaiting_keybinding_confirmation()
+        {
+            self.confirm_keybindings();
+            should_render = true;
+        } else if key.bare_key == BareKey::Char('n')
+            && key.has_no_modifiers()
+            && self.awaiting_keybinding_confirmation()
+        {
+            self.active_page = self.main_screen();
+            should_render = true;
         } else if key.bare_key == BareKey::Esc && key.has_no_modifiers() {
             if self.active_page.is_main_screen {
                 close_self();
             } else {
-                self.active_page = Page::new_main_screen(
-                    self.link_executable.clone(),
-                    self.zellij_version.borrow().clone(),
-                    self.base_mode.clone(),
-                    self.is_release_notes,
-                );
+                self.active_page = self.main_screen();
                 should_render = true;
             }
         } else if key.bare_key == BareKey::Char('?')

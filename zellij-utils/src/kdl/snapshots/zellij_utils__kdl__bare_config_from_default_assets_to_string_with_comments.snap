@@ -11,6 +11,7 @@ keybinds clear-defaults=true {
         bind "down" { MoveFocus "down"; }
         bind "up" { MoveFocus "up"; }
         bind "right" { MoveFocus "right"; }
+        bind ";" { FocusLastPane; }
         bind "c" { SwitchToMode "renamepane"; PaneNameInput 0; }
         bind "d" { NewPane "down"; SwitchToMode "normal"; }
         bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "normal"; }
@@ -90,6 +91,7 @@ keybinds clear-defaults=true {
         bind "tab" { MovePane; }
     }
     scroll {
+        bind "c" { CopyLastCommandOutput; SwitchToMode "normal"; }
         bind "e" { EditScrollback; SwitchToMode "normal"; }
         bind "s" { SwitchToMode "entersearch"; SearchInput 0; }
     }
@@ -208,6 +210,8 @@ keybinds clear-defaults=true {
         bind "down" { ScrollDown; }
         bind "up" { ScrollUp; }
         bind "right" { PageScrollDown; }
+        bind "[" { ScrollToPreviousPrompt; }
+        bind "]" { ScrollToNextPrompt; }
         bind "Ctrl b" { PageScrollUp; }
         bind "Ctrl c" { ScrollToBottom; SwitchToMode "normal"; }
         bind "d" { HalfPageScrollDown; }
@@ -216,6 +220,7 @@ keybinds clear-defaults=true {
         bind "j" { ScrollDown; }
         bind "k" { ScrollUp; }
         bind "l" { PageScrollDown; }
+        bind "m" { SelectCommandAtScrollPosition; }
         bind "Ctrl s" { SwitchToMode "normal"; }
         bind "u" { HalfPageScrollUp; }
     }
@@ -316,6 +321,12 @@ web_client {
 // Requires `theme_dark` to also be set; otherwise `theme` is used.
 // 
 // theme_light "solarized-light"
+ 
+// Pin the session to a dark or light appearance, ignoring what the
+// host terminal reports. When unset, the host terminal decides.
+// Options: dark, light
+// 
+// explicit_theme_hue "dark"
  
 // Choose the base input mode of zellij.
 // Default: normal
@@ -569,9 +580,17 @@ web_client {
 // default is true
 // mouse_scroll_resize false
  
+// Whether scrolling a pane implicitly enters and exits Scroll mode
+// default is true
+// scroll_mode_sync false
+ 
 // Whether to enable mouse hover visual effects (frame highlight and help text)
 // default is true
 // mouse_hover_effects false
+ 
+// Whether to show mouse hover help-text tips (resize help and group shortcuts)
+// default is true
+// mouse_hover_tips false
  
 // Whether to show visual bell indicators (pane/tab frame flash and [!] suffix)
 // default is true
@@ -634,3 +653,14 @@ web_client {
 //   - "never" (never prompt or descend; do it manually)
 // 
 // nested_session_handling "ask"
+ 
+// Which escape sequence desktop notifications coming from panes are
+// forwarded to the host terminal with.
+// Options:
+//   - "auto" (Default — detect from the host terminal environment)
+//   - "osc9" (the legacy iTerm2 protocol, understood by most terminals)
+//   - "osc99" (kitty's notification protocol)
+//   - "bell" (ring the terminal bell instead)
+//   - "off" (do not forward notifications to the host terminal)
+// 
+// host_notification_protocol "auto"

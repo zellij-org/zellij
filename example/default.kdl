@@ -82,6 +82,10 @@ keybinds {
         bind "Ctrl b" "PageUp" "Left" "h" { PageScrollUp; }
         bind "d" { HalfPageScrollDown; }
         bind "u" { HalfPageScrollUp; }
+        bind "[" { ScrollToPreviousPrompt; }
+        bind "]" { ScrollToNextPrompt; }
+        bind "m" { SelectCommandAtScrollPosition; }
+        bind "c" { CopyLastCommandOutput; SwitchToMode "Normal"; }
         // uncomment this and adjust key if using copy_on_select=false
         // bind "Alt c" { Copy; }
     }
@@ -94,6 +98,9 @@ keybinds {
         bind "Ctrl b" "PageUp" "Left" "h" { PageScrollUp; }
         bind "d" { HalfPageScrollDown; }
         bind "u" { HalfPageScrollUp; }
+        bind "[" { ScrollToPreviousPrompt; }
+        bind "]" { ScrollToNextPrompt; }
+        bind "m" { SelectCommandAtScrollPosition; }
         bind "n" { Search "down"; }
         bind "p" { Search "up"; }
         bind "c" { SearchToggleOption "CaseSensitivity"; }
@@ -533,10 +540,20 @@ load_plugins {
 //
 // mouse_scroll_resize false
 
+// Whether scrolling a pane implicitly enters and exits Scroll mode
+// Default: true
+//
+// scroll_mode_sync false
+
 // Whether to enable mouse hover visual effects (frame highlight and help text)
 // Default: true
 //
 // mouse_hover_effects false
+
+// Whether to show mouse hover help-text tips (resize help and group shortcuts)
+// Default: true
+//
+// mouse_hover_tips false
 
 // Whether to output OSC8 hyperlink sequences
 // Default: true

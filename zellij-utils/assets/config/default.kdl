@@ -27,6 +27,7 @@ keybinds {
         bind "j" "Down" { MoveFocus "Down"; }
         bind "k" "Up" { MoveFocus "Up"; }
         bind "p" { SwitchFocus; }
+        bind ";" { FocusLastPane; }
         bind "n" { NewPane; SwitchToMode "Normal"; }
         bind "d" { NewPane "Down"; SwitchToMode "Normal"; }
         bind "r" { NewPane "Right"; SwitchToMode "Normal"; }
@@ -82,6 +83,10 @@ keybinds {
         bind "Ctrl b" "PageUp" "Left" "h" { PageScrollUp; }
         bind "d" { HalfPageScrollDown; }
         bind "u" { HalfPageScrollUp; }
+        bind "[" { ScrollToPreviousPrompt; }
+        bind "]" { ScrollToNextPrompt; }
+        bind "m" { SelectCommandAtScrollPosition; }
+        bind "c" { CopyLastCommandOutput; SwitchToMode "Normal"; }
         // uncomment this and adjust key if using copy_on_select=false
         // bind "Alt c" { Copy; }
     }
@@ -94,6 +99,9 @@ keybinds {
         bind "Ctrl b" "PageUp" "Left" "h" { PageScrollUp; }
         bind "d" { HalfPageScrollDown; }
         bind "u" { HalfPageScrollUp; }
+        bind "[" { ScrollToPreviousPrompt; }
+        bind "]" { ScrollToNextPrompt; }
+        bind "m" { SelectCommandAtScrollPosition; }
         bind "n" { Search "down"; }
         bind "p" { Search "up"; }
         bind "c" { SearchToggleOption "CaseSensitivity"; }
@@ -296,6 +304,14 @@ load_plugins {
 //
 // pane_frames true
 
+// Set the pane frame style when pane_frames is enabled
+// Options:
+//   - titles (default - draw a title above each pane)
+//   - full (draw a full frame around each pane)
+//   - none (equivalent to pane_frames false)
+//
+// pane_frame_style "titles"
+
 // Toggle between having Zellij lay out panes according to a predefined set of layouts whenever possible
 // Options:
 //   - true (default)
@@ -350,6 +366,21 @@ load_plugins {
 // Default: default
 //
 // theme "default"
+
+// Themes to use when the host terminal reports a dark or light color palette.
+// Both must be set for automatic switching to take place, otherwise `theme`
+// remains authoritative. Until the host terminal reports (or if it never does),
+// the dark theme is used.
+//
+// theme_dark "nightfox"
+// theme_light "dayfox"
+
+// Pin the session to a dark or light appearance, ignoring what the host
+// terminal reports. Resolved before the first render. When unset, the host
+// terminal decides.
+// Options: dark, light
+//
+// explicit_theme_hue "dark"
 
 // The name of the default layout to load on startup
 // Default: "default"
@@ -551,10 +582,20 @@ load_plugins {
 //
 // mouse_scroll_resize false
 
+// Whether scrolling a pane implicitly enters and exits Scroll mode
+// Default: true
+//
+// scroll_mode_sync false
+
 // Whether to enable mouse hover visual effects (frame highlight and help text)
 // Default: true
 //
 // mouse_hover_effects false
+
+// Whether to show mouse hover help-text tips (resize help and group shortcuts)
+// Default: true
+//
+// mouse_hover_tips false
 
 // Whether triple-clicking inside command output marked by the shell (OSC 133) selects
 // the command and its output instead of the logical line

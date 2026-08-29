@@ -148,7 +148,7 @@ fn discard_result<T>(_arg: anyhow::Result<T>) {}
 impl<T> FatalError<T> for anyhow::Result<T> {
     fn non_fatal(self) {
         if self.is_err() {
-            discard_result(self.context("a non-fatal error occured").to_log());
+            discard_result(self.context("a non-fatal error occurred").to_log());
         }
     }
 
@@ -156,7 +156,7 @@ impl<T> FatalError<T> for anyhow::Result<T> {
         if let Ok(val) = self {
             val
         } else {
-            self.context("a fatal error occured")
+            self.context("a fatal error occurred")
                 .expect("Program terminates")
         }
     }
@@ -273,6 +273,11 @@ pub enum ScreenContext {
     ScrollDownAt,
     ScrollToBottom,
     ScrollToTop,
+    ScrollToPreviousPrompt,
+    ScrollToNextPrompt,
+    SelectCommandAtScrollPosition,
+    CopyLastCommandOutput,
+    ClearCommandOutputFlash,
     PageScrollUp,
     PageScrollDown,
     HalfPageScrollUp,
@@ -348,6 +353,9 @@ pub enum ScreenContext {
     AddRedPaneFrameColorOverride,
     ClearPaneFrameColorOverride,
     SetTabBellFlash,
+    HostTerminalFocusChanged,
+    SetClientHostTerminalEnv,
+    ForwardDesktopNotifications,
     PreviousSwapLayout,
     NextSwapLayout,
     OverrideLayout,
@@ -621,6 +629,7 @@ pub enum ServerContext {
     FailedToStartWebServer,
     SendWebClientsForbidden,
     ClearMouseHelpText,
+    ClearCommandOutputFlash,
     ForwardQueryToHost,
     KeyPassthroughChanged,
     EmitNestedSessionFrameToClient,
@@ -650,6 +659,7 @@ pub enum BackgroundJobContext {
     HighlightPanesWithMessage,
     QueryZellijWebServerStatus,
     ClearHelpText,
+    ClearCommandOutputFlash,
     FlashPaneBell,
     StopFlashPaneBell,
     FlashTabBell,
@@ -733,7 +743,7 @@ open an issue on GitHub:
     #[error("Pane size remains unchanged")]
     PaneSizeUnchanged,
 
-    #[error("an error occured")]
+    #[error("an error occurred")]
     GenericError { source: anyhow::Error },
 
     #[error("Client {client_id} is too slow to handle incoming messages")]
@@ -840,7 +850,7 @@ mod not_wasm {
         error!(
             "{}",
             format!(
-                "Panic occured:
+                "Panic occurred:
              thread: {}
              location: {}
              message: {}",

@@ -31,6 +31,7 @@ message ClientToServerMsg {
     SixelSupportMsg sixel_support = 24;
     RequestSessionListMsg request_session_list = 25;
     SetMobileRenderPreferencesMsg set_mobile_render_preferences = 26;
+    HostTerminalFocusChangedMsg host_terminal_focus_changed = 27;
   }
 }
 
@@ -134,6 +135,10 @@ enum HostTerminalThemeIndication {
 
 message SoftKeyboardVisibilityChangedMsg {
   bool visible = 1;
+}
+
+message HostTerminalFocusChangedMsg {
+  bool focused = 1;
 }
 
 message NestedSessionFrameFromHostMsg {

@@ -20,16 +20,19 @@ use zellij_utils::input::layout::{
 };
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::{
-    NestedSessionHandling, Options, PaneFrameStyle, DEFAULT_WORD_SEPARATORS,
+    HostNotificationProtocol, NestedSessionHandling, Options, PaneFrameStyle,
+    DEFAULT_WORD_SEPARATORS,
 };
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
 
 use crate::background_jobs::BackgroundJob;
+use crate::notifications::NotificationProtocol;
 use crate::os_input_output::AsyncReader;
+use crate::panes::grid::PendingNotification;
 use crate::pty_writer::PtyWriteInstruction;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::env::set_var;
 use std::sync::{Arc, Mutex};
 
@@ -180,6 +183,7 @@ fn route_arbitrary_action_to_server(
 struct FakeInputOutput {
     fake_filesystem: Arc<Mutex<HashMap<String, String>>>,
     server_to_client_messages: Arc<Mutex<HashMap<ClientId, Vec<ServerToClientMsg>>>>,
+    tty_stdin_bytes: Arc<Mutex<BTreeMap<u32, Vec<u8>>>>,
 }
 
 impl ServerOsApi for FakeInputOutput {
@@ -202,8 +206,14 @@ impl ServerOsApi for FakeInputOutput {
     ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
-    fn write_to_tty_stdin(&self, _id: u32, _buf: &[u8]) -> Result<usize> {
-        unimplemented!()
+    fn write_to_tty_stdin(&self, id: u32, buf: &[u8]) -> Result<usize> {
+        self.tty_stdin_bytes
+            .lock()
+            .unwrap()
+            .entry(id)
+            .or_insert_with(Vec::new)
+            .extend_from_slice(buf);
+        Ok(buf.len())
     }
     fn tcdrain(&self, _id: u32) -> Result<()> {
         unimplemented!()
@@ -289,9 +299,32 @@ fn create_new_screen_with_kitty_graphics(
     mouse_hover_effects: bool,
     support_kitty_graphics_protocol: bool,
 ) -> Screen {
+    let (screen, _tty_stdin_bytes, _server_receiver) = create_new_screen_with_capture(
+        size,
+        advanced_mouse_actions,
+        mouse_hover_effects,
+        support_kitty_graphics_protocol,
+        true,
+    );
+    screen
+}
+
+type TtyStdinBytes = Arc<Mutex<BTreeMap<u32, Vec<u8>>>>;
+type ServerReceiver = Receiver<(ServerInstruction, ErrorContext)>;
+
+fn create_new_screen_with_capture(
+    size: Size,
+    advanced_mouse_actions: bool,
+    mouse_hover_effects: bool,
+    support_kitty_graphics_protocol: bool,
+    session_is_mirrored: bool,
+) -> (Screen, TtyStdinBytes, ServerReceiver) {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput::default();
+    let tty_stdin_bytes = fake_os_input.tty_stdin_bytes.clone();
     bus.os_input = Some(Box::new(fake_os_input));
+    let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::unbounded();
+    bus.senders.to_server = Some(SenderWithContext::new(to_server));
     let client_attributes = ClientAttributes {
         size,
         ..Default::default()
@@ -301,7 +334,6 @@ fn create_new_screen_with_kitty_graphics(
     mode_info.session_name = Some("zellij-test".into());
     let draw_pane_frames = PaneFrameStyle::None;
     let auto_layout = true;
-    let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
     let default_layout = Box::new(Layout::default());
     let default_layout_name = None;
@@ -353,7 +385,9 @@ fn create_new_screen_with_kitty_graphics(
         true,
         DEFAULT_WORD_SEPARATORS.to_owned(),
         mouse_scroll_resize,
+        true,
         mouse_hover_effects,
+        true,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -361,7 +395,11 @@ fn create_new_screen_with_kitty_graphics(
         web_server_port,
         NestedSessionHandling::default(),
     );
-    seed_first_client_size(screen, size)
+    (
+        seed_first_client_size(screen, size),
+        tty_stdin_bytes,
+        server_receiver,
+    )
 }
 
 fn seed_first_client_size(mut screen: Screen, size: Size) -> Screen {
@@ -1981,6 +2019,96 @@ fn floating_pane_centers_large_pane_safely() {
     );
     assert!(active_pane.cols() <= 100, "width clamped to viewport");
     assert!(active_pane.rows() <= 30, "height clamped to viewport");
+}
+
+#[test]
+pub fn rename_active_pane_without_a_connected_client_reports_an_error() {
+    let size = Size {
+        cols: 130,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::RemoveClient(client_id));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::RenameActivePane(
+            "my-new-name".as_bytes().to_vec(),
+            client_id,
+            None,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let logged_instructions = received_server_instructions.lock().unwrap();
+    let reported_errors: Vec<&String> = logged_instructions
+        .iter()
+        .filter_map(|instruction| match instruction {
+            ServerInstruction::LogError(lines, _, _) => lines.first(),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        reported_errors
+            .iter()
+            .any(|error| error.contains("--pane-id")),
+        "renaming the focused pane with no client attached reports an error, got: {:?}",
+        reported_errors
+    );
+}
+
+#[test]
+pub fn rename_active_tab_without_a_connected_client_reports_an_error() {
+    let size = Size {
+        cols: 130,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::RemoveClient(client_id));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::UpdateTabName(
+        "my-new-tab-name".as_bytes().to_vec(),
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let logged_instructions = received_server_instructions.lock().unwrap();
+    let reported_errors: Vec<&String> = logged_instructions
+        .iter()
+        .filter_map(|instruction| match instruction {
+            ServerInstruction::LogError(lines, _, _) => lines.first(),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        reported_errors
+            .iter()
+            .any(|error| error.contains("--tab-id")),
+        "renaming the focused tab with no client attached reports an error, got: {:?}",
+        reported_errors
+    );
 }
 
 #[test]
@@ -5691,6 +5819,8 @@ fn create_new_screen_with_message_capture(
         DEFAULT_WORD_SEPARATORS.to_owned(),
         true,
         true,
+        true,
+        true,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -8013,6 +8143,59 @@ pub fn tab_switch_only_updates_active_tab_plugins() {
 }
 
 #[test]
+pub fn closing_tab_updates_input_modes_of_destination_tab_plugins() {
+    let size = Size { cols: 80, rows: 10 };
+
+    let mut mock_screen = MockScreen::new(size);
+    let client_id = mock_screen.main_client_id;
+    mock_screen.new_tab_with_plugins(vec![2]);
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let instructions_before_close = received_plugin_instructions.lock().unwrap().len();
+
+    let close_tab = CliAction::CloseTab { tab_id: None };
+    send_cli_action_to_server(&session_metadata, close_tab, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    let instructions = received_plugin_instructions.lock().unwrap();
+    let instructions_after_close = &instructions[instructions_before_close..];
+    let mut mode_updates_received: Vec<(u32, ClientId)> = vec![];
+    for instruction in instructions_after_close.iter() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, cid, event) in updates {
+                if let Event::ModeUpdate(..) = event {
+                    if let (Some(pid), Some(cid)) = (pid, cid) {
+                        mode_updates_received.push((*pid, *cid));
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(
+        mode_updates_received.contains(&(2, client_id)),
+        "Plugin 2 in the tab focus returned to should receive a ModeUpdate for client {}, got: {:?}",
+        client_id,
+        mode_updates_received
+    );
+}
+
+#[test]
 pub fn inactive_tab_plugins_get_fresh_state_on_activation() {
     // Tab 0: plugin pane 2 (from new_tab_with_plugins)
     // Tab 1: terminal panes only (from run, client starts here)
@@ -8801,6 +8984,8 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         DEFAULT_WORD_SEPARATORS.to_owned(),
         true,
         true,
+        true,
+        true,
         visual_bell,
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -9585,6 +9770,19 @@ impl ThemeCapture {
         }
         out
     }
+    fn drain_visible_events(&self) -> Vec<(Option<u32>, bool)> {
+        let mut out = Vec::new();
+        while let Ok((instr, _ctx)) = self.plugin_rx.try_recv() {
+            if let PluginInstruction::Update(updates) = instr {
+                for (pid, _cid, ev) in updates {
+                    if let Event::Visible(is_visible) = ev {
+                        out.push((pid, is_visible));
+                    }
+                }
+            }
+        }
+        out
+    }
     fn drain_pty_writes(&self) -> Vec<(Vec<u8>, u32)> {
         let mut out = Vec::new();
         while let Ok((instr, _ctx)) = self.pty_writer_rx.try_recv() {
@@ -9594,6 +9792,41 @@ impl ThemeCapture {
         }
         out
     }
+}
+
+#[test]
+fn reattaching_a_client_restores_floating_pane_visibility_notifications() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, capture) = create_new_screen_with_theme_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .new_pane(
+            PaneId::Plugin(2),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::Floating(None),
+            Some(1),
+            None,
+        )
+        .unwrap();
+
+    screen.remove_client(1).expect("TEST");
+    screen.add_client(1, false).expect("TEST");
+    let _ = capture.drain_visible_events();
+    screen.get_active_tab_mut(1).unwrap().hide_floating_panes();
+
+    assert!(
+        capture.drain_visible_events().contains(&(Some(2), false)),
+        "a floating plugin must still be told when its surface is hidden after a reattach, \
+         otherwise plugins idling on a timer keep working while off screen"
+    );
 }
 
 fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
@@ -9649,6 +9882,8 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         true,
         true,
         DEFAULT_WORD_SEPARATORS.to_owned(),
+        true,
+        true,
         true,
         true,
         true,
@@ -9857,6 +10092,296 @@ fn color_palette_mode_query_skips_plugin_panes() {
     assert!(
         capture.drain_pty_writes().is_empty(),
         "plugin panes have no VT pty — they get Event::HostTerminalThemeChanged instead"
+    );
+}
+
+fn styling_with_background(color: (u8, u8, u8)) -> zellij_utils::data::Styling {
+    let mut styling = zellij_utils::data::Styling::default();
+    styling.text_unselected.background = zellij_utils::data::PaletteColor::Rgb(color);
+    styling
+}
+
+const TEST_DARK_BG: (u8, u8, u8) = (17, 17, 17);
+const TEST_LIGHT_BG: (u8, u8, u8) = (238, 238, 238);
+
+fn create_new_screen_with_dark_and_light_themes(size: Size) -> (Screen, ThemeCapture) {
+    let (mut screen, capture) = create_new_screen_with_theme_capture(size);
+    screen.host_theme_dark_styling = Some(styling_with_background(TEST_DARK_BG));
+    screen.host_theme_light_styling = Some(styling_with_background(TEST_LIGHT_BG));
+    (screen, capture)
+}
+
+#[test]
+fn explicit_theme_hue_resolves_the_session_appearance() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_dark_and_light_themes(size);
+
+    screen
+        .apply_configured_explicit_theme_hue(Some(zellij_utils::data::ThemeHue::Light))
+        .expect("explicit hue applied");
+
+    assert_eq!(
+        screen.host_terminal_theme_mode,
+        Some(zellij_utils::data::HostTerminalThemeMode::Light),
+        "an explicit hue must become the session's effective mode"
+    );
+    assert_eq!(
+        screen.style.colors.text_unselected.background,
+        zellij_utils::data::PaletteColor::Rgb(TEST_LIGHT_BG),
+        "Screen's own style must track the swap so later panes inherit it"
+    );
+    let events = capture.drain_plugin_events();
+    assert!(
+        events.iter().any(|e| matches!(
+            e,
+            Event::HostTerminalThemeChanged(zellij_utils::data::HostTerminalThemeMode::Light)
+        )),
+        "plugins must learn the resolved mode, got: {:?}",
+        events
+    );
+}
+
+#[test]
+fn dark_and_light_themes_without_an_explicit_hue_default_to_dark() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_dark_and_light_themes(size);
+
+    screen
+        .resolve_default_theme_mode()
+        .expect("default resolved");
+
+    assert_eq!(
+        screen.host_terminal_theme_mode,
+        Some(zellij_utils::data::HostTerminalThemeMode::Dark),
+    );
+    assert_eq!(
+        screen.style.colors.text_unselected.background,
+        zellij_utils::data::PaletteColor::Rgb(TEST_DARK_BG),
+        "a configured dark/light pair must resolve to the dark theme rather than \
+         to the unrelated static theme"
+    );
+    assert!(
+        capture.drain_plugin_events().iter().any(|e| matches!(
+            e,
+            Event::HostTerminalThemeChanged(zellij_utils::data::HostTerminalThemeMode::Dark)
+        )),
+        "the resolved mode is real state and must reach plugins"
+    );
+}
+
+#[test]
+fn the_default_dark_mode_still_yields_to_the_host_terminal() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_dark_and_light_themes(size);
+    screen
+        .resolve_default_theme_mode()
+        .expect("default resolved");
+
+    screen
+        .update_host_terminal_theme_mode(zellij_utils::data::HostTerminalThemeMode::Light)
+        .expect("host report applied");
+
+    assert_eq!(
+        screen.host_terminal_theme_mode,
+        Some(zellij_utils::data::HostTerminalThemeMode::Light),
+        "the default is not a pin - the host terminal remains authoritative"
+    );
+    assert_eq!(
+        screen.style.colors.text_unselected.background,
+        zellij_utils::data::PaletteColor::Rgb(TEST_LIGHT_BG),
+    );
+}
+
+#[test]
+fn no_default_mode_without_both_themes_configured() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_theme_capture(size);
+    screen.host_theme_dark_styling = Some(styling_with_background(TEST_DARK_BG));
+
+    screen
+        .resolve_default_theme_mode()
+        .expect("nothing to resolve");
+
+    assert_eq!(
+        screen.host_terminal_theme_mode, None,
+        "a lone theme_dark leaves the static theme authoritative, so the mode \
+         stays genuinely unknown"
+    );
+    assert!(
+        capture.drain_plugin_events().is_empty(),
+        "no synthetic event may be emitted while the mode is unknown"
+    );
+}
+
+#[test]
+fn the_default_does_not_override_an_explicit_hue() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_dark_and_light_themes(size);
+    screen
+        .apply_configured_explicit_theme_hue(Some(zellij_utils::data::ThemeHue::Light))
+        .expect("explicit hue applied");
+
+    screen
+        .resolve_default_theme_mode()
+        .expect("default is a no-op here");
+
+    assert_eq!(
+        screen.host_terminal_theme_mode,
+        Some(zellij_utils::data::HostTerminalThemeMode::Light),
+    );
+}
+
+#[test]
+fn explicit_theme_hue_outranks_ambient_host_reports() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_dark_and_light_themes(size);
+    screen
+        .apply_configured_explicit_theme_hue(Some(zellij_utils::data::ThemeHue::Light))
+        .expect("explicit hue applied");
+    let _ = capture.drain_plugin_events();
+
+    screen
+        .update_host_terminal_theme_mode(zellij_utils::data::HostTerminalThemeMode::Dark)
+        .expect("ambient report absorbed");
+
+    assert_eq!(
+        screen.host_terminal_theme_mode,
+        Some(zellij_utils::data::HostTerminalThemeMode::Light),
+        "the pinned mode must survive an ambient report to the contrary"
+    );
+    assert_eq!(
+        screen.style.colors.text_unselected.background,
+        zellij_utils::data::PaletteColor::Rgb(TEST_LIGHT_BG),
+        "the palette must not be swapped while pinned"
+    );
+    assert!(
+        capture.drain_plugin_events().is_empty(),
+        "a suppressed report is not a mode change and must not reach plugins"
+    );
+}
+
+#[test]
+fn manual_theme_action_pins_the_session() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_dark_and_light_themes(size);
+    let mut completion_tx = None;
+
+    screen
+        .apply_manual_host_terminal_theme_mode(
+            zellij_utils::data::HostTerminalThemeMode::Dark,
+            &mut completion_tx,
+        )
+        .expect("manual switch ok");
+    let _ = capture.drain_plugin_events();
+
+    screen
+        .update_host_terminal_theme_mode(zellij_utils::data::HostTerminalThemeMode::Light)
+        .expect("ambient report absorbed");
+
+    assert_eq!(
+        screen.host_terminal_theme_mode,
+        Some(zellij_utils::data::HostTerminalThemeMode::Dark),
+        "a deliberate choice must not be reverted by the host terminal"
+    );
+    assert!(
+        capture.drain_plugin_events().is_empty(),
+        "no mode change occurred, so no plugin event may be emitted"
+    );
+}
+
+#[test]
+fn removing_explicit_theme_hue_hands_authority_back_to_the_host() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_dark_and_light_themes(size);
+    screen
+        .apply_configured_explicit_theme_hue(Some(zellij_utils::data::ThemeHue::Light))
+        .expect("explicit hue applied");
+    screen
+        .update_host_terminal_theme_mode(zellij_utils::data::HostTerminalThemeMode::Dark)
+        .expect("ambient report recorded while pinned");
+    let _ = capture.drain_plugin_events();
+
+    screen
+        .apply_configured_explicit_theme_hue(None)
+        .expect("unpinned");
+
+    assert_eq!(
+        screen.host_terminal_theme_mode,
+        Some(zellij_utils::data::HostTerminalThemeMode::Dark),
+        "unpinning must restore the ambient report that was suppressed"
+    );
+    assert_eq!(
+        screen.style.colors.text_unselected.background,
+        zellij_utils::data::PaletteColor::Rgb(TEST_DARK_BG),
+        "the palette must follow the restored mode"
+    );
+}
+
+#[test]
+fn pinning_the_current_hue_repaints_the_resolved_palette() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_dark_and_light_themes(size);
+    screen
+        .update_host_terminal_theme_mode(zellij_utils::data::HostTerminalThemeMode::Dark)
+        .expect("host report applied");
+    screen.style.colors = styling_with_background((1, 2, 3));
+
+    screen
+        .apply_configured_explicit_theme_hue(Some(zellij_utils::data::ThemeHue::Dark))
+        .expect("explicit hue applied");
+
+    assert_eq!(
+        screen.style.colors.text_unselected.background,
+        zellij_utils::data::PaletteColor::Rgb(TEST_DARK_BG),
+        "pinning the hue the session is already in must still resolve the palette, \
+         otherwise a reconfigure leaves the session painted with the static theme"
+    );
+}
+
+#[test]
+fn unpinning_back_to_the_current_hue_repaints_the_resolved_palette() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_dark_and_light_themes(size);
+    screen
+        .update_host_terminal_theme_mode(zellij_utils::data::HostTerminalThemeMode::Dark)
+        .expect("host report applied");
+    screen
+        .apply_configured_explicit_theme_hue(Some(zellij_utils::data::ThemeHue::Dark))
+        .expect("explicit hue applied");
+    screen.style.colors = styling_with_background((1, 2, 3));
+
+    screen
+        .apply_configured_explicit_theme_hue(None)
+        .expect("unpinned");
+
+    assert_eq!(
+        screen.style.colors.text_unselected.background,
+        zellij_utils::data::PaletteColor::Rgb(TEST_DARK_BG),
+        "unpinning to the mode the session is already in must still resolve the palette"
+    );
+}
+
+#[test]
+fn effective_theme_mode_is_reasserted_after_a_theme_definition_change() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_dark_and_light_themes(size);
+    screen
+        .update_host_terminal_theme_mode(zellij_utils::data::HostTerminalThemeMode::Light)
+        .expect("host report applied");
+
+    let new_light = styling_with_background((250, 250, 250));
+    screen.host_theme_light_styling = Some(new_light);
+    screen.style.colors = styling_with_background((1, 2, 3));
+
+    screen
+        .reapply_effective_theme_mode()
+        .expect("mode reasserted");
+
+    assert_eq!(
+        screen.style.colors.text_unselected.background,
+        zellij_utils::data::PaletteColor::Rgb((250, 250, 250)),
+        "the session's mode must be re-resolved against the new definitions \
+         instead of falling back to the static theme"
     );
 }
 
@@ -10181,8 +10706,10 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         true, // advanced_mouse_actions
         true,
         DEFAULT_WORD_SEPARATORS.to_owned(),
-        true,  // mouse_scroll_resize
-        true,  // mouse_hover_effects
+        true, // mouse_scroll_resize
+        true,
+        true, // mouse_hover_effects
+        true,
         true,  // visual_bell
         false, // focus_follows_mouse
         false, // mouse_click_through
@@ -10367,6 +10894,48 @@ fn switching_tabs_recomputes_source_and_destination() {
         screen.tabs.get(&0).unwrap().size,
         Size { cols: 80, rows: 24 },
         "Destination tab shrinks to fit the arriving smaller viewer"
+    );
+}
+
+#[test]
+fn creating_a_new_tab_recomputes_the_tab_its_creator_left() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+
+    screen.set_client_size(1, Size { cols: 80, rows: 24 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    screen.recompute_tab_size(0).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Pre-condition: both clients view tab 0, so it sizes to the smaller of them"
+    );
+
+    new_tab(&mut screen, 2, 1);
+
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "The new tab is created at the size of the client creating it"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "The tab its creator left grows back to fit the viewer it still has"
     );
 }
 
@@ -12320,6 +12889,50 @@ pub fn focus_pane_with_id_syncs_scroll_mode() {
 }
 
 #[test]
+pub fn scrolling_syncs_scroll_mode_for_a_client_that_never_changed_mode() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.config.options.default_mode = Some(InputMode::Locked);
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    let mut pane_contents = String::new();
+    for i in 0..20 {
+        pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        pane_contents.as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::ScrollUp { pane_id: None },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Scroll),
+        "a client that never switched modes should still enter Scroll mode when scrolling",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
 pub fn scrolling_the_focused_pane_syncs_scroll_mode() {
     let size = Size { cols: 80, rows: 10 };
     let mut initial_layout = TiledPaneLayout::default();
@@ -12436,6 +13049,89 @@ pub fn scrolling_the_focused_pane_with_the_mouse_syncs_scroll_mode() {
 }
 
 #[test]
+pub fn scrolling_does_not_sync_scroll_mode_when_disabled_in_the_config() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.config.options.scroll_mode_sync = Some(false);
+    let client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    let mut pane_contents = String::new();
+    for i in 0..20 {
+        pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        pane_contents.as_bytes().to_vec(),
+    ));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Normal,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    received_server_instructions.lock().unwrap().clear();
+
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::ScrollUp { pane_id: None },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        None,
+        "scrolling the focused pane up should not change the mode when scroll_mode_sync is false",
+    );
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::MouseEvent(
+        MouseEvent::new_scroll_up_event(Position::new(5, 10)),
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        None,
+        "wheel-scrolling the focused pane should not change the mode when scroll_mode_sync is false",
+    );
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    received_server_instructions.lock().unwrap().clear();
+    send_cli_action_to_server(
+        &session_metadata,
+        CliAction::ScrollToBottom { pane_id: None },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        None,
+        "scrolling back to the bottom should not leave Scroll mode when scroll_mode_sync is false",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
 pub fn scrolling_an_unfocused_pane_does_not_sync_scroll_mode() {
     let size = Size { cols: 80, rows: 10 };
     let mut initial_layout = TiledPaneLayout::default();
@@ -12476,4 +13172,597 @@ pub fn scrolling_an_unfocused_pane_does_not_sync_scroll_mode() {
     );
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+fn subscribe_pane_to_focus_events(screen: &mut Screen, client_id: ClientId, terminal_id: u32) {
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .handle_pty_bytes(terminal_id, Vec::from("\u{1b}[?1004h".as_bytes()))
+        .unwrap();
+}
+
+fn focus_events_written_to_pane(tty_stdin_bytes: &TtyStdinBytes, terminal_id: u32) -> String {
+    tty_stdin_bytes
+        .lock()
+        .unwrap()
+        .get(&terminal_id)
+        .map(|bytes| String::from_utf8_lossy(bytes).to_string())
+        .unwrap_or_default()
+}
+
+#[test]
+fn host_focus_changes_are_forwarded_to_the_active_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    subscribe_pane_to_focus_events(&mut screen, client_id, 1);
+    tty_stdin_bytes.lock().unwrap().clear();
+
+    screen.host_terminal_focus_changed(client_id, false);
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "\u{1b}[O",
+        "the active pane is told the host lost focus"
+    );
+
+    screen.host_terminal_focus_changed(client_id, true);
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "\u{1b}[O\u{1b}[I",
+        "the active pane is told the host regained focus"
+    );
+}
+
+#[test]
+fn repeated_host_focus_reports_are_not_forwarded_twice() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    subscribe_pane_to_focus_events(&mut screen, client_id, 1);
+    tty_stdin_bytes.lock().unwrap().clear();
+
+    screen.host_terminal_focus_changed(client_id, false);
+    screen.host_terminal_focus_changed(client_id, false);
+    screen.host_terminal_focus_changed(client_id, true);
+    screen.host_terminal_focus_changed(client_id, true);
+
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "\u{1b}[O\u{1b}[I",
+        "only transitions are forwarded"
+    );
+}
+
+#[test]
+fn host_focus_is_not_forwarded_to_a_pane_that_did_not_subscribe() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    tty_stdin_bytes.lock().unwrap().clear();
+
+    screen.host_terminal_focus_changed(client_id, false);
+    screen.host_terminal_focus_changed(client_id, true);
+
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "",
+        "a pane that did not enable focus tracking gets nothing"
+    );
+}
+
+#[test]
+fn host_focus_loss_is_withheld_while_another_client_is_still_focused() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let first_client_id = 1;
+    let second_client_id = 2;
+    let (mut screen, tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.set_client_size(second_client_id, size);
+    screen.add_client(second_client_id, false).unwrap();
+    subscribe_pane_to_focus_events(&mut screen, first_client_id, 1);
+    tty_stdin_bytes.lock().unwrap().clear();
+
+    screen.host_terminal_focus_changed(first_client_id, false);
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "",
+        "the pane is still focused by the second client"
+    );
+
+    screen.host_terminal_focus_changed(second_client_id, false);
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "\u{1b}[O",
+        "the pane loses focus once no client is focused on it"
+    );
+
+    screen.host_terminal_focus_changed(first_client_id, true);
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "\u{1b}[O\u{1b}[I",
+        "the pane regains focus with the first client"
+    );
+
+    screen.host_terminal_focus_changed(second_client_id, true);
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "\u{1b}[O\u{1b}[I",
+        "the pane is already focused, the second client changes nothing"
+    );
+}
+
+#[test]
+fn host_focus_changes_of_clients_on_different_panes_are_independent() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let first_client_id = 1;
+    let second_client_id = 2;
+    let second_pane_id = PaneId::Terminal(2);
+    let (mut screen, tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, false);
+    new_tab(&mut screen, 1, 0);
+    screen.set_client_size(second_client_id, size);
+    screen.add_client(second_client_id, false).unwrap();
+    {
+        let active_tab = screen.get_active_tab_mut(first_client_id).unwrap();
+        active_tab
+            .horizontal_split(second_pane_id, None, first_client_id, None, None)
+            .unwrap();
+        active_tab.move_focus_up(first_client_id).unwrap();
+    }
+    screen
+        .get_active_tab_mut(second_client_id)
+        .unwrap()
+        .move_focus_down(second_client_id)
+        .unwrap();
+    subscribe_pane_to_focus_events(&mut screen, first_client_id, 1);
+    subscribe_pane_to_focus_events(&mut screen, first_client_id, 2);
+    tty_stdin_bytes.lock().unwrap().clear();
+
+    screen.host_terminal_focus_changed(second_client_id, false);
+
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "",
+        "the pane of the still-focused client is untouched"
+    );
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 2),
+        "\u{1b}[O",
+        "only the pane of the unfocused client is told"
+    );
+}
+
+fn collect_forwarded_notifications(server_receiver: &ServerReceiver) -> String {
+    let mut output = String::new();
+    while let Ok((instruction, _)) = server_receiver.try_recv() {
+        if let ServerInstruction::Render(Some(client_map)) = instruction {
+            for (_client_id, content) in client_map {
+                output.push_str(&content);
+            }
+        }
+    }
+    output
+}
+
+fn screen_with_a_client_for_notifications(
+    host_notification_protocol: HostNotificationProtocol,
+    host_terminal_env: BTreeMap<String, String>,
+) -> (Screen, ServerReceiver) {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.set_host_notification_protocol(host_notification_protocol);
+    screen.set_client_host_terminal_env(1, host_terminal_env);
+    while server_receiver.try_recv().is_ok() {}
+    (screen, server_receiver)
+}
+
+fn kitty_env() -> BTreeMap<String, String> {
+    [("TERM".to_owned(), "xterm-kitty".to_owned())]
+        .into_iter()
+        .collect()
+}
+
+#[test]
+fn an_osc_9_notification_is_translated_for_an_osc_99_host() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Auto, kitty_env());
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc9 {
+            body: "the build finished".to_owned(),
+        }],
+        1,
+    );
+
+    assert!(
+        collect_forwarded_notifications(&server_receiver)
+            .contains("\u{1b}]99;;the build finished\u{7}"),
+        "an OSC 9 notification is re-rendered in the protocol the host speaks"
+    );
+}
+
+#[test]
+fn an_osc_99_notification_reaching_an_osc_9_host_is_translated_down() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Auto, BTreeMap::new());
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc99 {
+            payload: "i=1;the build finished".to_owned(),
+            terminator: "\u{7}".to_owned(),
+            wants_report: false,
+            display: Some(("the build finished".to_owned(), String::new())),
+        }],
+        1,
+    );
+
+    assert!(
+        collect_forwarded_notifications(&server_receiver)
+            .contains("\u{1b}]9;the build finished\u{7}"),
+        "an unrecognized host is spoken to in the legacy protocol"
+    );
+}
+
+#[test]
+fn an_osc_99_request_with_nothing_to_show_is_not_sent_to_an_osc_9_host() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Auto, BTreeMap::new());
+
+    screen.forward_desktop_notifications(
+        vec![
+            PendingNotification::Osc99 {
+                payload: "i=1:d=0;the build".to_owned(),
+                terminator: "\u{7}".to_owned(),
+                wants_report: false,
+                display: None,
+            },
+            PendingNotification::Osc99 {
+                payload: "i=1:p=close;".to_owned(),
+                terminator: "\u{7}".to_owned(),
+                wants_report: false,
+                display: None,
+            },
+        ],
+        1,
+    );
+
+    assert_eq!(
+        collect_forwarded_notifications(&server_receiver),
+        "",
+        "unfinished chunks and closes have no legacy equivalent to send"
+    );
+}
+
+#[test]
+fn an_osc_99_notification_reaching_an_osc_99_host_keeps_its_namespaced_identifier() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Auto, kitty_env());
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc99 {
+            payload: "i=myid;the build finished".to_owned(),
+            terminator: "\u{7}".to_owned(),
+            wants_report: false,
+            display: Some(("the build finished".to_owned(), String::new())),
+        }],
+        7,
+    );
+
+    let output = collect_forwarded_notifications(&server_receiver);
+    assert!(
+        output.contains("i=p7.myid") && output.contains("the build finished"),
+        "the identifier is namespaced with the pane id, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn the_configured_protocol_overrides_host_detection() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Osc9, kitty_env());
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc9 {
+            body: "the build finished".to_owned(),
+        }],
+        1,
+    );
+
+    let output = collect_forwarded_notifications(&server_receiver);
+    assert!(
+        output.contains("\u{1b}]9;the build finished\u{7}") && !output.contains("\u{1b}]99;"),
+        "a kitty host configured to osc9 is spoken to in osc9, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn a_host_configured_to_bell_gets_a_bell_instead_of_a_notification() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Bell, kitty_env());
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc777 {
+            title: "the title".to_owned(),
+            body: "the body".to_owned(),
+        }],
+        1,
+    );
+
+    let output = collect_forwarded_notifications(&server_receiver);
+    assert!(
+        output.contains("\u{7}") && !output.contains("\u{1b}]"),
+        "a bell is rung instead of a notification being sent, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn a_host_configured_to_off_is_not_sent_anything() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Off, kitty_env());
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc9 {
+            body: "the build finished".to_owned(),
+        }],
+        1,
+    );
+
+    assert_eq!(
+        collect_forwarded_notifications(&server_receiver),
+        "",
+        "notifications are suppressed entirely"
+    );
+}
+
+#[test]
+fn changing_the_configured_protocol_at_runtime_re_resolves_connected_clients() {
+    let (mut screen, server_receiver) =
+        screen_with_a_client_for_notifications(HostNotificationProtocol::Auto, kitty_env());
+    assert_eq!(
+        screen.notification_protocol_for_client(&1),
+        NotificationProtocol::Osc99,
+        "the kitty host is detected on connect"
+    );
+
+    screen.set_host_notification_protocol(HostNotificationProtocol::Bell);
+    assert_eq!(
+        screen.notification_protocol_for_client(&1),
+        NotificationProtocol::Bell,
+        "an already connected client picks up the new configuration"
+    );
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc9 {
+            body: "the build finished".to_owned(),
+        }],
+        1,
+    );
+    let output = collect_forwarded_notifications(&server_receiver);
+    assert!(
+        output.contains("\u{7}") && !output.contains("\u{1b}]"),
+        "the reconfigured protocol is the one actually spoken, got: {:?}",
+        output
+    );
+
+    screen.set_host_notification_protocol(HostNotificationProtocol::Auto);
+    assert_eq!(
+        screen.notification_protocol_for_client(&1),
+        NotificationProtocol::Osc99,
+        "returning to auto restores detection from the stored host environment"
+    );
+}
+
+#[test]
+fn each_client_is_spoken_to_in_the_protocol_of_its_own_host() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.set_client_size(2, size);
+    screen.add_client(2, false).unwrap();
+    screen.set_client_host_terminal_env(1, kitty_env());
+    screen.set_client_host_terminal_env(2, BTreeMap::new());
+    while server_receiver.try_recv().is_ok() {}
+
+    screen.forward_desktop_notifications(
+        vec![PendingNotification::Osc9 {
+            body: "the build finished".to_owned(),
+        }],
+        1,
+    );
+
+    let output = collect_forwarded_notifications(&server_receiver);
+    assert!(
+        output.contains("\u{1b}]99;;the build finished\u{7}"),
+        "the kitty client gets the kitty protocol, got: {:?}",
+        output
+    );
+    assert!(
+        output.contains("\u{1b}]9;the build finished\u{7}"),
+        "the other client gets the legacy protocol, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn a_client_that_never_reported_its_host_env_gets_the_configured_protocol() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+
+    assert_eq!(
+        screen.notification_protocol_for_client(&1),
+        NotificationProtocol::Osc9,
+        "an unknown host defaults to the legacy protocol"
+    );
+
+    screen.set_host_notification_protocol(HostNotificationProtocol::Off);
+    assert_eq!(
+        screen.notification_protocol_for_client(&1),
+        NotificationProtocol::Off,
+        "the configured protocol still applies without a reported host env"
+    );
+}
+
+#[test]
+fn a_departing_client_leaves_no_host_state_behind() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.set_client_size(2, size);
+    screen.add_client(2, false).unwrap();
+    screen.set_client_host_terminal_env(2, kitty_env());
+    screen.host_terminal_focus_changed(2, false);
+    assert!(screen.client_host_focused.contains_key(&2));
+    assert!(screen.client_notification_protocols.contains_key(&2));
+    assert!(screen.client_host_terminal_env.contains_key(&2));
+
+    screen.remove_client(2).unwrap();
+
+    assert!(
+        !screen.client_host_focused.contains_key(&2),
+        "focus state is forgotten"
+    );
+    assert!(
+        !screen.client_notification_protocols.contains_key(&2),
+        "the resolved notification protocol is forgotten"
+    );
+    assert!(
+        !screen.client_host_terminal_env.contains_key(&2),
+        "the reported host environment is forgotten"
+    );
+}
+
+#[test]
+fn a_client_whose_host_focus_was_never_reported_counts_as_focused() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    subscribe_pane_to_focus_events(&mut screen, 1, 1);
+    tty_stdin_bytes.lock().unwrap().clear();
+
+    screen.host_terminal_focus_changed(1, true);
+
+    assert_eq!(
+        focus_events_written_to_pane(&tty_stdin_bytes, 1),
+        "",
+        "a client is assumed focused until told otherwise, so this is not a transition"
+    );
+}
+
+fn resize_pty_pixel_dimensions(
+    instruction: &PtyWriteInstruction,
+) -> Option<(Option<u16>, Option<u16>)> {
+    match instruction {
+        PtyWriteInstruction::ResizePty(_terminal_id, _cols, _rows, width, height) => {
+            Some((*width, *height))
+        },
+        _ => None,
+    }
+}
+
+#[test]
+pub fn reported_pixel_dimensions_are_applied_to_existing_ptys() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_writer_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyWriteInstruction::Exit,
+        pty_writer_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let instruction_count_before_reply = received_pty_instructions.lock().unwrap().len();
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::TerminalPixelDimensions(
+            mock_screen.main_client_id,
+            PixelDimensions {
+                character_cell_size: Some(SizeInPixels {
+                    height: 21,
+                    width: 8,
+                }),
+                text_area_size: None,
+            },
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
+
+    let received_pty_instructions = received_pty_instructions.lock().unwrap();
+    let (before_reply, after_reply) =
+        received_pty_instructions.split_at(instruction_count_before_reply);
+    let resizes_before_reply: Vec<(Option<u16>, Option<u16>)> = before_reply
+        .iter()
+        .filter_map(resize_pty_pixel_dimensions)
+        .collect();
+    let resizes_after_reply: Vec<(Option<u16>, Option<u16>)> = after_reply
+        .iter()
+        .filter_map(resize_pty_pixel_dimensions)
+        .collect();
+    assert!(
+        !resizes_before_reply.is_empty()
+            && resizes_before_reply
+                .iter()
+                .all(|dimensions| dimensions == &(None, None)),
+        "panes are created before the host reports its pixel dimensions, got: {:?}",
+        resizes_before_reply
+    );
+    assert!(
+        !resizes_after_reply.is_empty()
+            && resizes_after_reply
+                .iter()
+                .all(|(width, height)| width.is_some() && height.is_some()),
+        "existing ptys are resized with pixel dimensions once these are reported, got: {:?}",
+        resizes_after_reply
+    );
 }

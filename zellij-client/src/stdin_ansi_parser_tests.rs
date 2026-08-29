@@ -311,14 +311,14 @@ fn lone_trailing_esc_is_buffered_then_finalized_as_residue() {
         "lone ESC must mark has_partial_state so the caller schedules a finalize tick"
     );
     assert_eq!(p.pending_partial(), PendingPartial::LoneEsc);
-    let drained = p.finalize_lone_esc();
+    let drained = p.finalize_fast_partial();
     assert_eq!(
         drained,
         vec![0x1b],
         "finalize must release the parked ESC as keyboard residue"
     );
     // Subsequent finalize is a no-op once the parker is empty.
-    assert!(p.finalize_lone_esc().is_empty());
+    assert!(p.finalize_fast_partial().is_empty());
     assert_eq!(p.pending_partial(), PendingPartial::None);
 }
 
@@ -375,6 +375,30 @@ fn osc_99_routes_into_desktop_notifications() {
     assert!(out.replies.is_empty(), "OSC 99 is not a HostReply variant");
     assert_eq!(out.desktop_notifications.len(), 1);
     assert_eq!(out.desktop_notifications[0], b"notification body".to_vec());
+}
+
+#[test]
+fn osc_99_does_not_leak_into_an_open_forwarding_window() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(7);
+    let mut chunk = Vec::new();
+    chunk.extend_from_slice(b"\x1b]99;i=p1.myid;\x1b\\");
+    chunk.extend_from_slice(b"\x1b]11;rgb:1111/1111/1111\x1b\\");
+    chunk.extend_from_slice(b"\x1b[c");
+    let out = parser.feed(&chunk);
+    assert_eq!(out.desktop_notifications.len(), 1);
+    let (token, reply_bytes) = out.completed_forward.unwrap();
+    assert_eq!(token, 7);
+    assert!(
+        reply_bytes.windows(4).any(|w| w == b"]11;"),
+        "the reply the pane asked for is forwarded: {:?}",
+        reply_bytes
+    );
+    assert!(
+        !reply_bytes.windows(4).any(|w| w == b"]99;"),
+        "the notification response is not: {:?}",
+        reply_bytes
+    );
 }
 
 #[test]
@@ -885,6 +909,9 @@ fn kitty_kbd_event_does_not_wedge_subsequent_forward_reply() {
 
 use crate::keyboard_parser::{KittyKeyboardParser, KittyParseOutcome};
 use zellij_utils::data::BareKey;
+use zellij_utils::vendored::termwiz::input::{
+    InputEvent, InputParser, KeyCode, KeyEvent, Modifiers,
+};
 
 fn assert_held_across_idle(parser: &mut StdinAnsiParser) {
     assert_eq!(
@@ -893,7 +920,7 @@ fn assert_held_across_idle(parser: &mut StdinAnsiParser) {
         "a payload-bearing partial must report ReplyInProgress while held"
     );
     assert!(
-        parser.finalize_lone_esc().is_empty(),
+        parser.finalize_fast_partial().is_empty(),
         "the short idle finalize must NOT drain a reply-in-progress partial"
     );
     assert_eq!(
@@ -1047,19 +1074,26 @@ fn kitty_keyboard_variants_whole_and_fragmented() {
                 split,
                 r1.residue
             );
+            let expected_class = if split == 2 {
+                PendingPartial::BareIntroducer
+            } else {
+                PendingPartial::ReplyInProgress
+            };
             assert_eq!(
                 p.pending_partial(),
-                PendingPartial::ReplyInProgress,
-                "{} split at {}: prefix must be held",
+                expected_class,
+                "{} split at {}: unexpected partial classification",
                 pretty,
                 split
             );
-            assert!(
-                p.finalize_lone_esc().is_empty(),
-                "{} split at {}: idle must not drain the held key",
-                pretty,
-                split
-            );
+            if split > 2 {
+                assert!(
+                    p.finalize_fast_partial().is_empty(),
+                    "{} split at {}: idle must not drain the held key",
+                    pretty,
+                    split
+                );
+            }
             let r2 = p.feed(&seq[split..]);
             let mut combined = r1.residue.clone();
             combined.extend_from_slice(&r2.residue);
@@ -1076,6 +1110,181 @@ fn kitty_keyboard_variants_whole_and_fragmented() {
             );
         }
     }
+}
+
+fn keys_from_flushed_bytes(bytes: &[u8]) -> Vec<InputEvent> {
+    let mut parser = InputParser::new();
+    parser.parse_as_vec(bytes, false)
+}
+
+fn alt_char(c: char) -> InputEvent {
+    InputEvent::Key(KeyEvent {
+        key: KeyCode::Char(c),
+        modifiers: Modifiers::ALT,
+    })
+}
+
+#[test]
+fn a_bare_osc_introducer_is_fast_flushed_as_alt_close_bracket() {
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(b"\x1b]");
+    assert!(
+        out.residue.is_empty(),
+        "the introducer parks until disambiguated: {:?}",
+        out.residue
+    );
+    assert_eq!(
+        p.pending_partial(),
+        PendingPartial::BareIntroducer,
+        "a body-less ESC ] belongs to the fast-flush class"
+    );
+    assert!(
+        !p.pending_partial().uses_reply_flush_guard(),
+        "a bare introducer must not wait behind the long reply guard"
+    );
+    let drained = p.finalize_fast_partial();
+    assert_eq!(
+        drained,
+        b"\x1b]".to_vec(),
+        "the fast finalize must release the introducer"
+    );
+    assert_eq!(
+        p.pending_partial(),
+        PendingPartial::None,
+        "the parser holds nothing after the fast flush"
+    );
+    assert_eq!(
+        keys_from_flushed_bytes(&drained),
+        vec![alt_char(']')],
+        "the flushed bytes must decode as Alt+], not garbage"
+    );
+}
+
+#[test]
+fn a_bare_csi_introducer_is_fast_flushed_as_alt_open_bracket() {
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(b"\x1b[");
+    assert!(
+        out.residue.is_empty(),
+        "the introducer parks until disambiguated: {:?}",
+        out.residue
+    );
+    assert_eq!(
+        p.pending_partial(),
+        PendingPartial::BareIntroducer,
+        "a body-less ESC [ belongs to the fast-flush class"
+    );
+    assert!(!p.pending_partial().uses_reply_flush_guard());
+    let drained = p.finalize_fast_partial();
+    assert_eq!(drained, b"\x1b[".to_vec());
+    assert_eq!(p.pending_partial(), PendingPartial::None);
+    assert_eq!(
+        keys_from_flushed_bytes(&drained),
+        vec![alt_char('[')],
+        "the flushed bytes must decode as Alt+[, not garbage"
+    );
+}
+
+#[test]
+fn an_introducer_with_a_body_byte_keeps_the_long_reply_guard() {
+    for prefix in [b"\x1b]4".as_ref(), b"\x1b[?".as_ref()] {
+        let pretty = String::from_utf8_lossy(prefix).replace('\x1b', "ESC");
+        let mut p = StdinAnsiParser::new();
+        let out = p.feed(prefix);
+        assert!(out.residue.is_empty(), "{}: must not leak", pretty);
+        assert_eq!(
+            p.pending_partial(),
+            PendingPartial::ReplyInProgress,
+            "{}: one body byte crosses the tier boundary",
+            pretty
+        );
+        assert!(p.pending_partial().uses_reply_flush_guard());
+        assert!(
+            p.finalize_fast_partial().is_empty(),
+            "{}: the fast flush must not touch a payload-bearing partial",
+            pretty
+        );
+        assert_eq!(p.pending_partial(), PendingPartial::ReplyInProgress);
+    }
+}
+
+#[test]
+fn the_flush_path_is_selected_by_classification_not_by_wall_clock() {
+    let cases: Vec<(&[u8], PendingPartial, bool)> = vec![
+        (b"\x1b", PendingPartial::LoneEsc, false),
+        (b"\x1b[", PendingPartial::BareIntroducer, false),
+        (b"\x1b]", PendingPartial::BareIntroducer, false),
+        (b"\x1b[1;5", PendingPartial::ReplyInProgress, true),
+        (b"\x1b]4;1;rg", PendingPartial::ReplyInProgress, true),
+    ];
+    for (bytes, expected_class, guarded) in cases {
+        let pretty = String::from_utf8_lossy(bytes).replace('\x1b', "ESC");
+        let mut p = StdinAnsiParser::new();
+        let _ = p.feed(bytes);
+        assert_eq!(
+            p.pending_partial(),
+            expected_class,
+            "{}: unexpected classification",
+            pretty
+        );
+        assert_eq!(
+            p.pending_partial().uses_reply_flush_guard(),
+            guarded,
+            "{}: the guard tier is decided by the classification alone",
+            pretty
+        );
+        assert_eq!(
+            p.finalize_fast_partial().is_empty(),
+            guarded,
+            "{}: the fast finalize drains exactly the unguarded classes",
+            pretty
+        );
+    }
+}
+
+#[test]
+fn an_osc_reply_fragmented_at_exactly_the_introducer_is_still_stripped() {
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(b"\x1b]");
+    assert!(r1.residue.is_empty(), "the introducer must not leak");
+    assert_eq!(p.pending_partial(), PendingPartial::BareIntroducer);
+
+    let r2 = p.feed(b"4;1;rgb:1111/2222/3333\x1b\\");
+    assert!(
+        r2.residue.is_empty(),
+        "a reply rejoined before any idle finalize must never leak as keys: {:?}",
+        r2.residue
+    );
+    assert_eq!(r2.replies.len(), 1, "the rejoined OSC 4 classifies once");
+    match &r2.replies[0] {
+        HostReply::ColorRegisters(regs) => {
+            assert_eq!(regs[0].0, 1);
+            assert_eq!(regs[0].1, "rgb:1111/2222/3333");
+        },
+        other => panic!("expected ColorRegisters, got {:?}", other),
+    }
+    assert_eq!(p.pending_partial(), PendingPartial::None);
+}
+
+#[test]
+fn a_csi_report_fragmented_at_exactly_the_introducer_is_still_stripped() {
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(b"\x1b[");
+    assert!(r1.residue.is_empty());
+    assert_eq!(p.pending_partial(), PendingPartial::BareIntroducer);
+
+    let r2 = p.feed(b"?2026;1$y");
+    assert!(
+        r2.residue.is_empty(),
+        "a DECRPM rejoined before any idle finalize must not leak: {:?}",
+        r2.residue
+    );
+    assert_eq!(r2.replies.len(), 1);
+    match &r2.replies[0] {
+        HostReply::SynchronizedOutput(Some(_)) => {},
+        other => panic!("unexpected reply: {:?}", other),
+    }
+    assert_eq!(p.pending_partial(), PendingPartial::None);
 }
 
 #[test]

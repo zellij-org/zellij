@@ -152,6 +152,8 @@ pub enum InputEvent {
         final_byte: u8,
         raw: Vec<u8>,
     },
+    FocusGained,
+    FocusLost,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1553,6 +1555,9 @@ impl InputParser {
                 modifiers: Modifiers::NONE,
             }),
         );
+        map.insert(b"\x1b[I", InputEvent::FocusGained);
+        map.insert(b"\x1b[O", InputEvent::FocusLost);
+
         map.insert(
             b"\x1b[",
             InputEvent::Key(KeyEvent {
@@ -3175,5 +3180,57 @@ mod test {
             panic!("wrong variant");
         };
         assert_eq!(&raw[..], bytes, "raw must be byte-identical to input");
+    }
+
+    #[test]
+    fn focus_reports_decode_as_focus_events() {
+        let mut p = InputParser::new();
+        assert_eq!(
+            p.parse_as_vec(b"\x1b[I", MAYBE_MORE),
+            vec![InputEvent::FocusGained],
+        );
+        assert_eq!(
+            p.parse_as_vec(b"\x1b[O", MAYBE_MORE),
+            vec![InputEvent::FocusLost],
+        );
+    }
+
+    #[test]
+    fn focus_report_split_across_reads_still_decodes_as_one_event() {
+        let mut p = InputParser::new();
+        assert_eq!(p.parse_as_vec(b"\x1b[", MAYBE_MORE), vec![]);
+        assert_eq!(
+            p.parse_as_vec(b"I", MAYBE_MORE),
+            vec![InputEvent::FocusGained],
+        );
+    }
+
+    #[test]
+    fn focus_reports_never_degrade_into_literal_characters() {
+        let mut p = InputParser::new();
+        let events = p.parse_as_vec(b"\x1b[O\x1b[I", MAYBE_MORE);
+        assert_eq!(
+            events,
+            vec![InputEvent::FocusLost, InputEvent::FocusGained],
+            "a focus report must not decode as Alt+[ plus a literal I/O keystroke"
+        );
+    }
+
+    #[test]
+    fn alt_bracket_is_still_recognized_for_other_following_bytes() {
+        let mut p = InputParser::new();
+        assert_eq!(
+            p.parse_as_vec(b"\x1b[x", MAYBE_MORE),
+            vec![
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Char('['),
+                    modifiers: Modifiers::ALT,
+                }),
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Char('x'),
+                    modifiers: Modifiers::NONE,
+                }),
+            ],
+        );
     }
 }

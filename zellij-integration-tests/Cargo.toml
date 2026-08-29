@@ -9,8 +9,8 @@ version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-zellij-client = { path = "../zellij-client", version = "0.45.0" }
-zellij-server = { path = "../zellij-server", version = "0.45.0" }
+zellij-client = { path = "../zellij-client", version = "0.46.0" }
+zellij-server = { path = "../zellij-server", version = "0.46.0" }
 zellij-utils = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
@@ -23,4 +23,5 @@ tokio = { workspace = true }
 vte = { workspace = true }
 
 [dev-dependencies]
+base64 = { version = "0.22", default-features = false, features = ["std"] }
 tempfile = { workspace = true }

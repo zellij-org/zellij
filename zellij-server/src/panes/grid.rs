@@ -44,83 +44,214 @@ const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
     GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
 );
 
-/// Rewrites OSC 99 metadata for multiplexer forwarding:
-///
-/// 1. Namespaces the `i=` value with a pane ID prefix and flags so responses
-///    can be routed back to the originating pane.
-///    Format: `i=p<pane_id>[r][q].<original_id>`
-///    - `r` flag: app requested `a=report` — activation response should be
-///      written back to the pane's PTY
-///    - `q` flag: this is a capability query (`p=?`) — response must be
-///      written back to the pane's PTY
-///    - Neither: activation response used only for focus routing, not forwarded
-///
-/// 2. Ensures `a=report` is always present so the host terminal sends the
-///    activation response back to Zellij (needed for pane focus routing).
-///
-/// If no `i=` key is present, one is added with an empty original ID.
-pub(crate) fn namespace_notification_id(metadata: &str, pane_id: u32) -> String {
+const MAX_TRACKED_NOTIFICATION_IDS: usize = 256;
+const MAX_NOTIFICATION_ASSEMBLY_BYTES: usize = 4096;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PendingNotification {
+    Osc99 {
+        payload: String,
+        terminator: String,
+        wants_report: bool,
+        display: Option<(String, String)>,
+    },
+    Osc9 {
+        body: String,
+    },
+    Osc777 {
+        title: String,
+        body: String,
+    },
+}
+
+impl PendingNotification {
+    pub fn title_and_body(&self) -> (String, String) {
+        match self {
+            PendingNotification::Osc99 { display, .. } => display.clone().unwrap_or_default(),
+            PendingNotification::Osc9 { body } => (String::new(), body.clone()),
+            PendingNotification::Osc777 { title, body } => (title.clone(), body.clone()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Osc99PayloadType {
+    Title,
+    Body,
+    Close,
+    Query,
+    Alive,
+    Other,
+}
+
+impl Osc99PayloadType {
+    pub(crate) fn from_metadata_value(value: &str) -> Self {
+        match value {
+            "title" => Osc99PayloadType::Title,
+            "body" => Osc99PayloadType::Body,
+            "close" => Osc99PayloadType::Close,
+            "?" => Osc99PayloadType::Query,
+            "alive" => Osc99PayloadType::Alive,
+            _ => Osc99PayloadType::Other,
+        }
+    }
+    pub(crate) fn is_control_request(&self) -> bool {
+        matches!(
+            self,
+            Osc99PayloadType::Close | Osc99PayloadType::Query | Osc99PayloadType::Alive
+        )
+    }
+}
+
+pub(crate) fn split_osc99_payload(payload: &str) -> (&str, &str) {
+    match payload.find(';') {
+        Some(idx) => (
+            payload.get(..idx).unwrap_or_default(),
+            payload.get(idx + 1..).unwrap_or_default(),
+        ),
+        None => (payload, ""),
+    }
+}
+
+pub(crate) fn parse_osc99_metadata(metadata: &str) -> BTreeMap<&str, &str> {
+    metadata
+        .split(':')
+        .filter_map(|kv| kv.split_once('='))
+        .collect()
+}
+
+fn action_wants_report(action_value: &str) -> bool {
+    action_value.split(',').any(|value| value == "report")
+}
+
+#[derive(Debug, Clone, Default)]
+struct NotificationAssembly {
+    title: String,
+    body: String,
+}
+
+fn append_bounded(destination: &mut String, payload: &str) {
+    let remaining = MAX_NOTIFICATION_ASSEMBLY_BYTES.saturating_sub(destination.len());
+    if remaining == 0 {
+        return;
+    }
+    if payload.len() <= remaining {
+        destination.push_str(payload);
+        return;
+    }
+    let mut truncate_at = remaining;
+    while truncate_at > 0 && !payload.is_char_boundary(truncate_at) {
+        truncate_at -= 1;
+    }
+    destination.push_str(&payload[..truncate_at]);
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NotificationTracker {
+    wants_report: HashMap<String, bool>,
+    assemblies: HashMap<String, NotificationAssembly>,
+    known_ids: VecDeque<String>,
+}
+
+impl NotificationTracker {
+    fn remember(&mut self, id: &str) {
+        if self.known_ids.iter().any(|known| known == id) {
+            return;
+        }
+        self.known_ids.push_back(id.to_owned());
+        while self.known_ids.len() > MAX_TRACKED_NOTIFICATION_IDS {
+            if let Some(evicted) = self.known_ids.pop_front() {
+                self.wants_report.remove(&evicted);
+                self.assemblies.remove(&evicted);
+            }
+        }
+    }
+    fn wants_report(&mut self, id: &str, action: Option<&str>) -> bool {
+        match action {
+            Some(action_value) => {
+                let wants_report = action_wants_report(action_value);
+                if !id.is_empty() {
+                    self.remember(id);
+                    self.wants_report.insert(id.to_owned(), wants_report);
+                }
+                wants_report
+            },
+            None => self.wants_report.get(id).copied().unwrap_or(false),
+        }
+    }
+    fn assemble(
+        &mut self,
+        id: &str,
+        payload_type: Osc99PayloadType,
+        is_done: bool,
+        payload: String,
+    ) -> Option<(String, String)> {
+        if payload_type == Osc99PayloadType::Close {
+            self.assemblies.remove(id);
+            return None;
+        }
+        if payload_type.is_control_request() {
+            return None;
+        }
+        if !payload.is_empty() {
+            self.remember(id);
+            let assembly = self.assemblies.entry(id.to_owned()).or_default();
+            match payload_type {
+                Osc99PayloadType::Title => append_bounded(&mut assembly.title, &payload),
+                Osc99PayloadType::Body => append_bounded(&mut assembly.body, &payload),
+                _ => {},
+            }
+        }
+        if !is_done {
+            return None;
+        }
+        let assembly = self.assemblies.remove(id)?;
+        if assembly.title.is_empty() && assembly.body.is_empty() {
+            None
+        } else {
+            Some((assembly.title, assembly.body))
+        }
+    }
+}
+
+pub(crate) fn namespace_notification_id(
+    metadata: &str,
+    pane_id: u32,
+    wants_report: bool,
+) -> String {
+    let flags = if wants_report { "r" } else { "" };
     let mut found_id = false;
     let mut found_action = false;
-    let mut app_wants_report = false;
-    let mut is_query = false;
-    let result = metadata
-        .split(':')
-        .map(|kv| {
-            if kv.starts_with("i=") {
-                found_id = true;
-                // Defer i= rewriting until we know the flags
-                kv.to_string()
-            } else if let Some(action_value) = kv.strip_prefix("a=") {
-                found_action = true;
-                app_wants_report = action_value.split(',').any(|v| v == "report");
-                if app_wants_report {
-                    kv.to_string()
-                } else {
-                    format!("a={},report", action_value)
-                }
-            } else if kv == "p=?" {
-                is_query = true;
-                kv.to_string()
+    let mut payload_type = Osc99PayloadType::Title;
+    let mut parts: Vec<String> = Vec::new();
+    for kv in metadata.split(':') {
+        if kv.is_empty() {
+            continue;
+        }
+        if let Some(id_value) = kv.strip_prefix("i=") {
+            found_id = true;
+            parts.push(format!("i=p{}{}.{}", pane_id, flags, id_value));
+        } else if let Some(action_value) = kv.strip_prefix("a=") {
+            found_action = true;
+            if action_wants_report(action_value) {
+                parts.push(kv.to_owned());
             } else {
-                kv.to_string()
+                parts.push(format!("a={},report", action_value));
             }
-        })
-        .collect::<Vec<_>>()
-        .join(":");
-
-    // Build flags suffix
-    let mut flags = String::new();
-    if app_wants_report {
-        flags.push('r');
-    }
-    if is_query {
-        flags.push('q');
-    }
-
-    // Rewrite i= with pane ID and flags
-    let result = result
-        .split(':')
-        .map(|kv| {
-            if let Some(id_value) = kv.strip_prefix("i=") {
-                format!("i=p{}{}.{}", pane_id, flags, id_value)
-            } else {
-                kv.to_string()
+        } else {
+            if let Some(payload_value) = kv.strip_prefix("p=") {
+                payload_type = Osc99PayloadType::from_metadata_value(payload_value);
             }
-        })
-        .collect::<Vec<_>>()
-        .join(":");
-
-    let result = if !found_id {
-        format!("i=p{}{}.:{}", pane_id, flags, result)
-    } else {
-        result
-    };
-    if !found_action {
-        format!("{}:a=report", result)
-    } else {
-        result
+            parts.push(kv.to_owned());
+        }
     }
+    if !found_id {
+        parts.insert(0, format!("i=p{}{}.", pane_id, flags));
+    }
+    if !found_action && !payload_type.is_control_request() {
+        parts.push("a=focus,report".to_owned());
+    }
+    parts.join(":")
 }
 
 use vte::{Params, Perform};
@@ -719,9 +850,8 @@ pub struct Grid {
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
     pub pending_osc7_cwd: Option<std::path::PathBuf>,
-    /// Pending desktop notifications: (payload, terminator)
-    /// Payload is the semicolon-joined params after "99", terminator is "\x07" or "\x1b\\"
-    pub pending_desktop_notifications: Vec<(String, String)>,
+    pub pending_desktop_notifications: Vec<PendingNotification>,
+    notification_tracker: NotificationTracker,
     /// Whitelisted host-terminal queries intercepted from the app running
     /// in this pane (CSI 14t / 16t pixel-dim queries, OSC 10;? / 11;? /
     /// 4;N;? color queries). Each entry is the raw byte sequence that
@@ -757,6 +887,7 @@ pub struct Grid {
     pub cached_hover_tooltip: Option<String>,
     osc133_markers_seen: bool,
     osc133_command_selection: bool,
+    command_output_flash: Option<Selection>,
     word_separators: String,
 }
 
@@ -1106,6 +1237,7 @@ impl Grid {
             pending_clipboard_update: None,
             pending_osc7_cwd: None,
             pending_desktop_notifications: Vec::new(),
+            notification_tracker: NotificationTracker::default(),
             pending_forwarded_queries: Vec::new(),
             pending_nested_session_messages: Vec::new(),
             ui_component_bytes: None,
@@ -1128,6 +1260,7 @@ impl Grid {
             cached_hover_tooltip: None,
             osc133_markers_seen: false,
             osc133_command_selection: true,
+            command_output_flash: None,
             word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
         }
     }
@@ -1411,6 +1544,9 @@ impl Grid {
                 .saturating_sub(transferred_rows_height);
 
             self.selection.move_down(1);
+            if let Some(command_output_flash) = self.command_output_flash.as_mut() {
+                command_output_flash.move_down(1);
+            }
             // Move all search-selections down one line as well
             found_something = self
                 .search_results
@@ -1472,6 +1608,9 @@ impl Grid {
             self.kitty_reanchor_all_from_pixels();
 
             self.selection.move_up(1);
+            if let Some(command_output_flash) = self.command_output_flash.as_mut() {
+                command_output_flash.move_up(1);
+            }
             // Move all search-selections up one line as well
             found_something =
                 self.search_results
@@ -1932,6 +2071,27 @@ impl Grid {
                     }
                 }
             }
+            if let Some(command_output_flash) = self.command_output_flash {
+                if command_output_flash.contains_row(character_chunk.y.saturating_sub(content_y)) {
+                    let foreground_color = match style.colors.text_unselected.emphasis_0 {
+                        PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                        PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                    };
+                    character_chunk.add_selection_and_colors(
+                        HighlightSelection {
+                            selection: command_output_flash,
+                            bg: None,
+                            fg: Some(foreground_color),
+                            bold: false,
+                            italic: false,
+                            underline: false,
+                            layer: HighlightLayer::ActionFeedback,
+                        },
+                        content_x,
+                        content_y,
+                    );
+                }
+            }
             // Apply pre-computed plugin highlight selections to this chunk.
             for hs in &plugin_highlight_selections {
                 if hs
@@ -1972,7 +2132,7 @@ impl Grid {
         self.reset_terminal_state();
         self.mark_for_rerender();
     }
-    /// Dumps all lines above terminal vieport and the viewport itself to a string
+    /// Dumps all lines above terminal viewport and the viewport itself to a string
     pub fn dump_screen(&self, full: bool) -> String {
         let viewport: String = dump_screen!(self.viewport);
         if !full {
@@ -3076,12 +3236,20 @@ impl Grid {
         self.mark_for_rerender();
     }
     pub fn get_selected_text(&self) -> Option<String> {
-        if self.selection.is_empty() {
+        self.text_in_selection(&self.selection)
+    }
+    pub fn text_in_range(&self, start: Position, end: Position) -> Option<String> {
+        let mut range_selection = Selection::default();
+        range_selection.set_start_and_end_positions(start, end);
+        self.text_in_selection(&range_selection)
+    }
+    fn text_in_selection(&self, text_selection: &Selection) -> Option<String> {
+        if text_selection.is_empty() {
             return None;
         }
         let mut selection: Vec<String> = vec![];
 
-        let sorted_selection = self.selection.sorted();
+        let sorted_selection = text_selection.sorted();
         let (start, end) = (sorted_selection.start, sorted_selection.end);
 
         for l in sorted_selection.line_indices() {
@@ -3298,7 +3466,7 @@ impl Grid {
                         selection_start = Some(marker_position(line, marker.column));
                         break 'backward;
                     },
-                    Osc133MarkerKind::Prompt | Osc133MarkerKind::End => {
+                    Osc133MarkerKind::Prompt | Osc133MarkerKind::End(_) => {
                         latest_output?;
                         break 'backward;
                     },
@@ -3323,6 +3491,195 @@ impl Grid {
         let selection_end = selection_end?;
 
         Some((selection_start, selection_end))
+    }
+
+    fn osc133_marker_position(line: isize, column: usize) -> Position {
+        Position::new(line as i32, column.min(u16::MAX as usize) as u16)
+    }
+
+    fn previous_prompt_line_delta(&self) -> Option<usize> {
+        if !self.osc133_markers_seen {
+            return None;
+        }
+        let first_line = -(self.lines_above.len() as isize);
+        let mut input_candidate: Option<usize> = None;
+        let mut display_delta = 0;
+        for line in (first_line..0).rev() {
+            let Some(row) = self.row_at(line) else {
+                continue;
+            };
+            display_delta += calculate_row_display_height(row.width(), self.width);
+            for marker in row.osc133_markers.iter().rev() {
+                match marker.kind {
+                    Osc133MarkerKind::Prompt => return Some(display_delta),
+                    Osc133MarkerKind::Input => {
+                        if input_candidate.is_none() {
+                            input_candidate = Some(display_delta);
+                        }
+                    },
+                    Osc133MarkerKind::Output | Osc133MarkerKind::End(_) => {
+                        if let Some(candidate) = input_candidate {
+                            return Some(candidate);
+                        }
+                    },
+                }
+            }
+        }
+        input_candidate
+    }
+
+    fn next_prompt_line_delta(&self) -> Option<usize> {
+        if !self.osc133_markers_seen {
+            return None;
+        }
+        let last_line = (self.viewport.len() + self.lines_below.len()) as isize - 1;
+        for line in 1..=last_line {
+            let Some(row) = self.row_at(line) else {
+                continue;
+            };
+            for marker in row.osc133_markers.iter() {
+                match marker.kind {
+                    Osc133MarkerKind::Prompt | Osc133MarkerKind::Input => {
+                        let reachable_delta = (line as usize).min(self.lines_below.len());
+                        return (reachable_delta > 0).then_some(reachable_delta);
+                    },
+                    Osc133MarkerKind::Output | Osc133MarkerKind::End(_) => {},
+                }
+            }
+        }
+        None
+    }
+
+    pub fn scroll_to_previous_prompt(&mut self) -> bool {
+        let delta = self.previous_prompt_line_delta();
+        match delta {
+            Some(delta) => {
+                self.move_viewport_up(delta);
+                true
+            },
+            None => false,
+        }
+    }
+
+    pub fn scroll_to_next_prompt(&mut self) -> bool {
+        let delta = self.next_prompt_line_delta();
+        match delta {
+            Some(delta) => {
+                self.move_viewport_down(delta);
+                true
+            },
+            None => false,
+        }
+    }
+
+    fn osc133_command_at_scroll_position(&self) -> Option<(Position, Position)> {
+        if let Some(command) = self.osc133_command_around_position(&Position::new(0, 0)) {
+            return Some(command);
+        }
+        for line in 0..self.viewport.len() as isize {
+            let Some(row) = self.row_at(line) else {
+                continue;
+            };
+            for marker in row.osc133_markers.iter() {
+                if marker.kind != Osc133MarkerKind::Output {
+                    continue;
+                }
+                let anchor = Self::osc133_marker_position(line, marker.column);
+                if let Some(command) = self.osc133_command_around_position(&anchor) {
+                    return Some(command);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn select_command_at_scroll_position(&mut self) -> bool {
+        let Some((start_position, end_position)) = self.osc133_command_at_scroll_position() else {
+            return false;
+        };
+        let old_selection = self.selection;
+        self.selection
+            .set_start_and_end_positions(start_position, end_position);
+        self.selection.finalize();
+        let current_selection = self.selection;
+        self.update_selected_lines(&old_selection, &current_selection);
+        self.mark_for_rerender();
+        true
+    }
+
+    fn command_output_text(&self, start: Position, end: Position) -> Option<String> {
+        let output = self.text_in_range(start, end)?;
+        let output = output
+            .strip_prefix('\n')
+            .map(String::from)
+            .unwrap_or(output);
+        if output.trim().is_empty() {
+            return None;
+        }
+        Some(output)
+    }
+
+    pub fn last_completed_command_output(&self) -> Option<(String, Position, Position)> {
+        if !self.osc133_markers_seen {
+            return None;
+        }
+        let first_line = -(self.lines_above.len() as isize);
+        let last_line = (self.viewport.len() + self.lines_below.len()) as isize - 1;
+        let mut command_boundary: Option<Position> = None;
+        for line in (first_line..=last_line).rev() {
+            let Some(row) = self.row_at(line) else {
+                continue;
+            };
+            for marker in row.osc133_markers.iter().rev() {
+                let marker_position = Self::osc133_marker_position(line, marker.column);
+                if marker.kind == Osc133MarkerKind::Output {
+                    if let Some(output_end) = command_boundary {
+                        if let Some(output) = self.command_output_text(marker_position, output_end)
+                        {
+                            return Some((output, marker_position, output_end));
+                        }
+                    }
+                }
+                command_boundary = Some(marker_position);
+            }
+        }
+        None
+    }
+
+    pub fn set_command_output_flash(&mut self, start: Position, end: Position) {
+        let mut flash = Selection::default();
+        flash.set_start_and_end_positions(start, end);
+        flash.finalize();
+        self.command_output_flash = Some(flash);
+        self.output_buffer.update_all_lines();
+        self.mark_for_rerender();
+    }
+
+    pub fn clear_command_output_flash(&mut self) -> bool {
+        if self.command_output_flash.take().is_none() {
+            return false;
+        }
+        self.output_buffer.update_all_lines();
+        self.mark_for_rerender();
+        true
+    }
+
+    #[cfg(test)]
+    pub fn osc133_end_exit_codes(&self) -> Vec<Option<i32>> {
+        let first_line = -(self.lines_above.len() as isize);
+        let last_line = (self.viewport.len() + self.lines_below.len()) as isize - 1;
+        let mut exit_codes = vec![];
+        for line in first_line..=last_line {
+            let Some(row) = self.row_at(line) else {
+                continue;
+            };
+            for marker in row.osc133_markers.iter() {
+                if let Osc133MarkerKind::End(exit_code) = marker.kind {
+                    exit_codes.push(exit_code);
+                }
+            }
+        }
+        exit_codes
     }
 
     fn update_selected_lines(&mut self, old_selection: &Selection, new_selection: &Selection) {
@@ -4366,7 +4723,12 @@ impl Perform for Grid {
                     b"A" | b"P" => Some(Osc133MarkerKind::Prompt),
                     b"B" | b"I" => Some(Osc133MarkerKind::Input),
                     b"C" => Some(Osc133MarkerKind::Output),
-                    b"D" => Some(Osc133MarkerKind::End),
+                    b"D" => Some(Osc133MarkerKind::End(
+                        params
+                            .get(2)
+                            .and_then(|exit_code| std::str::from_utf8(exit_code).ok())
+                            .and_then(|exit_code| exit_code.trim().parse::<i32>().ok()),
+                    )),
                     _ => None,
                 });
                 if let (Some(marker), Some(row)) = (marker, self.viewport.get_mut(self.cursor.y)) {
@@ -4479,9 +4841,78 @@ impl Perform for Grid {
                         .collect::<Vec<&str>>()
                         .join(";");
                     if !payload.is_empty() {
-                        // Store raw payload and terminator; namespacing applied at Tab level
+                        let (metadata, rest) = split_osc99_payload(&payload);
+                        let metadata = parse_osc99_metadata(metadata);
+                        let id = metadata.get("i").copied().unwrap_or_default();
+                        let payload_type = metadata
+                            .get("p")
+                            .map(|value| Osc99PayloadType::from_metadata_value(value))
+                            .unwrap_or(Osc99PayloadType::Title);
+                        let is_done = metadata.get("d").copied().unwrap_or("1") != "0";
+                        let decoded = if metadata.get("e").copied() == Some("1") {
+                            BASE64_DECODER
+                                .decode(rest.as_bytes())
+                                .map(|decoded| String::from_utf8_lossy(&decoded).into_owned())
+                                .unwrap_or_else(|_| rest.to_owned())
+                        } else {
+                            rest.to_owned()
+                        };
+                        let wants_report = self
+                            .notification_tracker
+                            .wants_report(id, metadata.get("a").copied());
+                        let display =
+                            self.notification_tracker
+                                .assemble(id, payload_type, is_done, decoded);
                         self.pending_desktop_notifications
-                            .push((payload, terminator.to_string()));
+                            .push(PendingNotification::Osc99 {
+                                payload,
+                                terminator: terminator.to_string(),
+                                wants_report,
+                                display,
+                            });
+                    }
+                }
+            },
+
+            b"9" => {
+                if params.len() > 1 {
+                    let is_conemu_subcommand = params.len() > 2
+                        && params
+                            .get(1)
+                            .and_then(|param| str::from_utf8(param).ok())
+                            .and_then(|param| param.parse::<u8>().ok())
+                            .map(|subcommand| (1..=12).contains(&subcommand))
+                            .unwrap_or(false);
+                    let body = params
+                        .get(1..)
+                        .unwrap_or_default()
+                        .iter()
+                        .flat_map(|x| str::from_utf8(x))
+                        .collect::<Vec<&str>>()
+                        .join(";");
+                    if !body.is_empty() && !is_conemu_subcommand {
+                        self.pending_desktop_notifications
+                            .push(PendingNotification::Osc9 { body });
+                    }
+                }
+            },
+
+            b"777" => {
+                let parts: Vec<&str> = params
+                    .get(1..)
+                    .unwrap_or_default()
+                    .iter()
+                    .flat_map(|x| str::from_utf8(x))
+                    .collect();
+                if parts.first().map(|s| *s) == Some("notify") {
+                    let title = parts.get(1).map(|s| s.to_string()).unwrap_or_default();
+                    let body = parts
+                        .get(2..)
+                        .map(|rest| rest.join(";"))
+                        .unwrap_or_default();
+                    if !title.is_empty() || !body.is_empty() {
+                        self.pending_desktop_notifications
+                            .push(PendingNotification::Osc777 { title, body });
                     }
                 }
             },
@@ -5310,7 +5741,7 @@ enum Osc133MarkerKind {
     Prompt,
     Input,
     Output,
-    End,
+    End(Option<i32>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -5541,11 +5972,14 @@ impl Row {
             let overwrite_end = x + character.width().max(terminal_character_width);
             self.osc133_markers
                 .retain(|marker| marker.column < x || marker.column >= overwrite_end);
+
+            let mut padding_character = EMPTY_TERMINAL_CHARACTER;
+            padding_character.styles = terminal_character.styles.clone();
             let character = std::mem::replace(character, terminal_character);
             let excess_width = character.width().saturating_sub(terminal_character_width);
             for _ in 0..excess_width {
                 self.columns
-                    .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
+                    .insert(absolute_x_index, padding_character.clone());
             }
         }
         self.width = None;

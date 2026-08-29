@@ -61,6 +61,37 @@ async function login(token, rememberMe) {
     return true;
 }
 
+let pendingAuthentication = null;
+let authenticationGeneration = 0;
+
+/**
+ * Authenticate, coalescing concurrent callers onto a single prompt.
+ *
+ * Any number of requests may be rejected at once - the session menu polls while
+ * the page is still booting, for example. Each one asking the user separately
+ * would stack a dialog per rejection, so the first caller owns the prompt and
+ * the rest await its result. They all resume together once it settles, and
+ * retry against the credentials it established.
+ *
+ * @returns {Promise<boolean>} true when the login succeeded
+ */
+function authenticate() {
+    if (!pendingAuthentication) {
+        pendingAuthentication = (async () => {
+            try {
+                const { token, remember } = await waitForSecurityToken();
+                return await login(token, remember);
+            } finally {
+                // Cleared before the awaiting callers run, so a later rejection
+                // opens a fresh prompt rather than reusing this settled one.
+                authenticationGeneration += 1;
+                pendingAuthentication = null;
+            }
+        })();
+    }
+    return pendingAuthentication;
+}
+
 /**
  * Perform a request, authenticating and retrying for as long as it is rejected.
  * @param {string} url - Absolute URL to request
@@ -69,6 +100,8 @@ async function login(token, rememberMe) {
  */
 export async function authorizedFetch(url, options = {}) {
     while (true) {
+        const generation = authenticationGeneration;
+
         const response = await fetch(url, {
             credentials: "include",
             ...options,
@@ -85,8 +118,14 @@ export async function authorizedFetch(url, options = {}) {
             );
         }
 
-        const { token, remember } = await waitForSecurityToken();
-        await login(token, remember);
+        // A request in flight across an authentication was answered against the
+        // credentials of the moment it was sent, so its rejection says nothing
+        // about the ones we hold now. Retry it before asking the user again.
+        if (authenticationGeneration !== generation) {
+            continue;
+        }
+
+        await authenticate();
     }
 }
 

@@ -7,6 +7,7 @@ use base64::engine::general_purpose::{
 use base64::engine::{DecodePaddingMode, Engine as _};
 use prost::Message;
 use std::str::FromStr;
+use std::time::{Duration, Instant};
 
 const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
     &BASE64_STANDARD_ALPHABET,
@@ -19,6 +20,7 @@ pub const NESTED_FRAME_TERMINATOR: &[u8] = b"\x1b\\";
 
 pub const REANNOUNCE_SILENCE_MS: u64 = 3000;
 pub const REANNOUNCE_CHECK_INTERVAL_MS: u64 = 1000;
+pub const MAX_UNACKED_ANNOUNCES: usize = 5;
 
 pub fn reannounce_silence_ms() -> u64 {
     std::env::var("ZELLIJ_NESTED_REANNOUNCE_SILENCE_MS")
@@ -32,6 +34,64 @@ pub fn reannounce_check_interval_ms() -> u64 {
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(REANNOUNCE_CHECK_INTERVAL_MS)
+}
+
+pub fn max_unacked_announces() -> usize {
+    std::env::var("ZELLIJ_NESTED_MAX_UNACKED_ANNOUNCES")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(MAX_UNACKED_ANNOUNCES)
+}
+
+pub struct ReannounceScheduler {
+    last_heard_from_host: Instant,
+    host_contacted: bool,
+    announces_without_host_contact: usize,
+    silence: Duration,
+    budget: usize,
+}
+
+impl ReannounceScheduler {
+    pub fn new(now: Instant) -> Self {
+        ReannounceScheduler::with_settings(
+            now,
+            Duration::from_millis(reannounce_silence_ms()),
+            max_unacked_announces(),
+        )
+    }
+    pub fn with_settings(now: Instant, silence: Duration, budget: usize) -> Self {
+        ReannounceScheduler {
+            last_heard_from_host: now,
+            host_contacted: false,
+            announces_without_host_contact: 1,
+            silence,
+            budget,
+        }
+    }
+    pub fn note_host_contact(&mut self, now: Instant) -> bool {
+        self.last_heard_from_host = now;
+        let first_contact = !self.host_contacted;
+        self.host_contacted = true;
+        first_contact
+    }
+    pub fn on_tick(&mut self, now: Instant) -> bool {
+        if self.budget_exhausted() {
+            return false;
+        }
+        if now.duration_since(self.last_heard_from_host) < self.silence {
+            return false;
+        }
+        if !self.host_contacted {
+            self.announces_without_host_contact += 1;
+        }
+        true
+    }
+    pub fn host_contacted(&self) -> bool {
+        self.host_contacted
+    }
+    pub fn budget_exhausted(&self) -> bool {
+        !self.host_contacted && self.announces_without_host_contact >= self.budget
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,7 +164,7 @@ fn capabilities_from_proto(capabilities: &[i32]) -> Vec<NestedSessionCapability>
     capabilities
         .iter()
         .filter_map(
-            |capability| match proto::NestedCapability::from_i32(*capability) {
+            |capability| match proto::NestedCapability::try_from(*capability).ok() {
                 Some(proto::NestedCapability::NestedControl) => {
                     Some(NestedSessionCapability::NestedControl)
                 },
@@ -125,7 +185,7 @@ fn direction_to_proto(direction: Option<Direction>) -> i32 {
 }
 
 fn direction_from_proto(direction: i32) -> Option<Direction> {
-    match proto::NestedDirection::from_i32(direction) {
+    match proto::NestedDirection::try_from(direction).ok() {
         Some(proto::NestedDirection::Left) => Some(Direction::Left),
         Some(proto::NestedDirection::Right) => Some(Direction::Right),
         Some(proto::NestedDirection::Up) => Some(Direction::Up),
@@ -476,5 +536,58 @@ mod tests {
     #[test]
     fn empty_payload_is_rejected() {
         assert_eq!(decode_payload(&[]), None);
+    }
+
+    fn test_scheduler(now: Instant) -> ReannounceScheduler {
+        ReannounceScheduler::with_settings(now, Duration::from_millis(3000), 5)
+    }
+
+    #[test]
+    fn unacked_announces_stop_at_the_budget() {
+        let start = Instant::now();
+        let mut scheduler = test_scheduler(start);
+        let mut announces = 1;
+        for tick in 1..=30 {
+            if scheduler.on_tick(start + Duration::from_millis(tick * 1000)) {
+                announces += 1;
+            }
+        }
+        assert_eq!(announces, 5);
+        assert!(scheduler.budget_exhausted());
+        assert!(!scheduler.host_contacted());
+    }
+
+    #[test]
+    fn silence_threshold_is_respected_before_announcing() {
+        let start = Instant::now();
+        let mut scheduler = test_scheduler(start);
+        assert!(!scheduler.on_tick(start + Duration::from_millis(1000)));
+        assert!(!scheduler.on_tick(start + Duration::from_millis(2999)));
+        assert!(scheduler.on_tick(start + Duration::from_millis(3000)));
+    }
+
+    #[test]
+    fn host_contact_lifts_the_budget_and_resets_the_silence_window() {
+        let start = Instant::now();
+        let mut scheduler = test_scheduler(start);
+        for tick in 1..=30 {
+            scheduler.on_tick(start + Duration::from_millis(tick * 1000));
+        }
+        assert!(scheduler.budget_exhausted());
+        assert!(scheduler.note_host_contact(start + Duration::from_millis(31_000)));
+        assert!(scheduler.host_contacted());
+        assert!(!scheduler.budget_exhausted());
+        assert!(!scheduler.on_tick(start + Duration::from_millis(32_000)));
+        for tick in 34..=100 {
+            assert!(scheduler.on_tick(start + Duration::from_millis(tick * 1000)));
+        }
+    }
+
+    #[test]
+    fn repeated_host_contact_is_only_first_contact_once() {
+        let start = Instant::now();
+        let mut scheduler = test_scheduler(start);
+        assert!(scheduler.note_host_contact(start));
+        assert!(!scheduler.note_host_contact(start + Duration::from_millis(1000)));
     }
 }

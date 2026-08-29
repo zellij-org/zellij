@@ -1,9 +1,11 @@
 use crate::ipc::{
-    ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg,
+    ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
+    ServerToClientMsg,
 };
 use crate::pane_size::Size;
 use interprocess::local_socket::{prelude::*, ListenerOptions};
 
+use std::io::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 static IPC_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -275,6 +277,96 @@ fn receiver_returns_none_on_closed_connection() {
 
     let msg = receiver.recv_client_msg();
     assert!(msg.is_none(), "should return None after connection closed");
+}
+
+#[test]
+fn receiver_reports_disconnect_distinctly_from_undecodable_message() {
+    let (_guard, name) = new_ipc();
+    let listener = bind_listener(&name);
+
+    let client = std::thread::spawn({
+        let name = name.clone();
+        move || {
+            let stream = connect_stream(&name);
+            let mut sender: IpcSenderWithContext<ClientToServerMsg> =
+                IpcSenderWithContext::new(stream);
+            sender
+                .send_client_msg(ClientToServerMsg::ConnStatus)
+                .expect("send failed");
+        }
+    });
+
+    let stream = listener.incoming().next().unwrap().expect("accept failed");
+    let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
+        IpcReceiverWithContext::new(stream);
+
+    client.join().expect("client thread panicked");
+
+    assert!(
+        receiver.try_recv_client_msg().is_ok(),
+        "should receive the sent message"
+    );
+
+    assert!(
+        matches!(
+            receiver.try_recv_client_msg(),
+            Err(IpcReceiveError::Disconnected)
+        ),
+        "a closed connection should be reported as a disconnect, not as an unreadable message"
+    );
+    assert!(
+        matches!(
+            receiver.try_recv_client_msg(),
+            Err(IpcReceiveError::Disconnected)
+        ),
+        "a closed connection should keep reporting a disconnect"
+    );
+}
+
+#[test]
+fn receiver_recovers_from_an_undecodable_message() {
+    let (_guard, name) = new_ipc();
+    let listener = bind_listener(&name);
+
+    let client = std::thread::spawn({
+        let name = name.clone();
+        move || {
+            let mut stream = connect_stream(&name);
+            stream
+                .write_all(&0u32.to_le_bytes())
+                .expect("write of empty frame failed");
+            stream.flush().expect("flush failed");
+            let mut sender: IpcSenderWithContext<ClientToServerMsg> =
+                IpcSenderWithContext::new(stream);
+            sender
+                .send_client_msg(ClientToServerMsg::ConnStatus)
+                .expect("send failed");
+        }
+    });
+
+    let stream = listener.incoming().next().unwrap().expect("accept failed");
+    let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
+        IpcReceiverWithContext::new(stream);
+
+    assert!(
+        matches!(
+            receiver.try_recv_client_msg(),
+            Err(IpcReceiveError::Undecodable)
+        ),
+        "a frame carrying no known message should be reported as unreadable"
+    );
+
+    let (msg, _ctx) = match receiver.try_recv_client_msg() {
+        Ok(received) => received,
+        Err(e) => panic!("the connection should survive an unreadable message: {}", e),
+    };
+    assert!(
+        matches!(msg, ClientToServerMsg::ConnStatus),
+        "should be ConnStatus, got: {:?}",
+        msg
+    );
+
+    client.join().expect("client thread panicked");
 }
 
 #[cfg(unix)]

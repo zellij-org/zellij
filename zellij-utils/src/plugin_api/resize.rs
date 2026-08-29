@@ -12,7 +12,7 @@ impl TryFrom<ProtobufResize> for Resize {
         if protobuf_resize.direction.is_some() {
             return Err("Resize cannot have a direction");
         }
-        match ResizeAction::from_i32(protobuf_resize.resize_action) {
+        match ResizeAction::try_from(protobuf_resize.resize_action).ok() {
             Some(ResizeAction::Increase) => Ok(Resize::Increase),
             Some(ResizeAction::Decrease) => Ok(Resize::Decrease),
             None => Err("No resize action for the given index"),
@@ -38,7 +38,7 @@ impl TryFrom<ProtobufResize> for ResizeStrategy {
     fn try_from(protobuf_resize: ProtobufResize) -> Result<Self, &'static str> {
         let direction = match protobuf_resize
             .direction
-            .and_then(|r| ResizeDirection::from_i32(r))
+            .and_then(|r| ResizeDirection::try_from(r).ok())
         {
             Some(ResizeDirection::Left) => Some(Direction::Left),
             Some(ResizeDirection::Right) => Some(Direction::Right),
@@ -46,7 +46,7 @@ impl TryFrom<ProtobufResize> for ResizeStrategy {
             Some(ResizeDirection::Down) => Some(Direction::Down),
             None => None,
         };
-        let resize = match ResizeAction::from_i32(protobuf_resize.resize_action) {
+        let resize = match ResizeAction::try_from(protobuf_resize.resize_action).ok() {
             Some(ResizeAction::Increase) => Resize::Increase,
             Some(ResizeAction::Decrease) => Resize::Decrease,
             None => return Err("No resize action for the given index"),
@@ -81,7 +81,7 @@ impl TryFrom<ResizeStrategy> for ProtobufResize {
 impl TryFrom<ProtobufMoveDirection> for Direction {
     type Error = &'static str;
     fn try_from(protobuf_move_direction: ProtobufMoveDirection) -> Result<Self, &'static str> {
-        match ResizeDirection::from_i32(protobuf_move_direction.direction) {
+        match ResizeDirection::try_from(protobuf_move_direction.direction).ok() {
             Some(ResizeDirection::Left) => Ok(Direction::Left),
             Some(ResizeDirection::Right) => Ok(Direction::Right),
             Some(ResizeDirection::Up) => Ok(Direction::Up),

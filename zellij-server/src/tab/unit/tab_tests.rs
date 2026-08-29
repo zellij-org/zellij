@@ -2,14 +2,16 @@ use super::Tab;
 use crate::pane_groups::PaneGroups;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
+use crate::plugins::PluginInstruction;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
 use crate::{os_input_output::ServerOsApi, panes::PaneId, thread_bus::ThreadSenders, ClientId};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
-use zellij_utils::channels::{unbounded, Receiver, SenderWithContext};
-use zellij_utils::data::{Direction, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
+use zellij_utils::channels::{unbounded, ChannelWithContext, Receiver, SenderWithContext};
+use zellij_utils::data::{Direction, Event, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
 use zellij_utils::errors::prelude::*;
+use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
 use zellij_utils::input::options::PaneFrameStyle;
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -150,11 +152,20 @@ fn tab_resize_right(tab: &mut Tab, id: ClientId) {
 }
 
 fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
+    create_new_tab_with_plugin_receiver(size, stacked_resize).0
+}
+
+fn create_new_tab_with_plugin_receiver(
+    size: Size,
+    stacked_resize: bool,
+) -> (Tab, Receiver<(PluginInstruction, ErrorContext)>) {
     let index = 0;
     let position = 0;
     let name = String::new();
     let os_api = Box::new(FakeInputOutput {});
-    let senders = ThreadSenders::default().silently_fail_on_send();
+    let mut senders = ThreadSenders::default().silently_fail_on_send();
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = unbounded();
+    senders.replace_to_plugin(SenderWithContext::new(to_plugin));
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let style = Style::default();
@@ -220,7 +231,8 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -236,7 +248,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         None,
     )
     .unwrap();
-    tab
+    (tab, plugin_receiver)
 }
 
 fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
@@ -310,7 +322,8 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -406,7 +419,8 @@ fn create_new_tab_with_cell_size(
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -875,6 +889,82 @@ pub fn cannot_split_panes_horizontally_when_active_pane_is_too_small() {
         tab.tiled_panes.panes.len(),
         1,
         "Tab still has only one pane"
+    );
+}
+
+#[test]
+pub fn split_in_direction_without_a_connected_client_still_creates_the_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.remove_client(1);
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Tiled {
+            direction: Some(Direction::Down),
+            borderless: None,
+        },
+        None,
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        tab.tiled_panes.panes.len(),
+        2,
+        "the pane is created even though no client is attached"
+    );
+}
+
+#[test]
+pub fn split_in_direction_without_a_connected_client_splits_the_existing_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.remove_client(1);
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Tiled {
+            direction: Some(Direction::Right),
+            borderless: None,
+        },
+        None,
+        None,
+    )
+    .unwrap();
+    let first_pane_geom = tab
+        .tiled_panes
+        .panes
+        .get(&PaneId::Terminal(1))
+        .unwrap()
+        .position_and_size();
+    let new_pane_geom = tab
+        .tiled_panes
+        .panes
+        .get(&PaneId::Terminal(2))
+        .unwrap()
+        .position_and_size();
+    assert_eq!(first_pane_geom.x, 0, "the existing pane keeps its position");
+    assert!(
+        new_pane_geom.x > first_pane_geom.x,
+        "the new pane is placed to the right of the existing one"
+    );
+    assert_eq!(
+        first_pane_geom.y, new_pane_geom.y,
+        "both panes share the same row"
     );
 }
 
@@ -2348,6 +2438,119 @@ pub fn opening_scrollback_editor_on_fullscreen_pane_retargets_fullscreen() {
             size.rows,
         );
     }
+}
+
+#[test]
+pub fn opening_scrollback_editor_on_fullscreen_floating_pane_retargets_fullscreen() {
+    let client_id = 1;
+    let mut tab = create_tab_with_two_floating_panes();
+    let viewport = *tab.viewport.borrow();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(client_id)
+        .expect("a floating pane is focused");
+    let original_geom = tab
+        .floating_panes
+        .get(&active_pane_id)
+        .expect("focused floating pane exists")
+        .position_and_size();
+
+    tab.toggle_active_pane_fullscreen(client_id);
+    assert_eq!(
+        tab.floating_panes.fullscreen_pane_id(),
+        Some(active_pane_id),
+        "fullscreen tracks the original floating pane",
+    );
+
+    let editor_pane_id = PaneId::Terminal(99);
+    tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
+        .unwrap();
+    assert_eq!(
+        tab.floating_panes.fullscreen_pane_id(),
+        Some(editor_pane_id),
+        "fullscreen now tracks the editor pane id, not the suppressed one",
+    );
+    let editor_geom = floating_pane_geom(&tab, editor_pane_id);
+    assert_eq!(
+        editor_geom.cols.as_usize(),
+        viewport.cols,
+        "the editor pane covers the viewport cols",
+    );
+    assert_eq!(
+        editor_geom.rows.as_usize(),
+        viewport.rows,
+        "the editor pane covers the viewport rows",
+    );
+
+    tab.toggle_active_pane_fullscreen(client_id);
+    assert!(
+        !tab.floating_panes.fullscreen_is_active(),
+        "fullscreen is cleared after the second toggle",
+    );
+    let editor_pane = tab
+        .floating_panes
+        .get(&editor_pane_id)
+        .expect("editor pane is present in floating panes");
+    assert!(
+        editor_pane.geom_override().is_none(),
+        "editor pane no longer carries the fullscreen geom_override",
+    );
+    assert_eq!(
+        editor_pane.position_and_size(),
+        original_geom,
+        "editor pane falls back to the replaced pane's original geometry",
+    );
+}
+
+#[test]
+pub fn closing_fullscreen_floating_scrollback_editor_restores_geometry() {
+    let client_id = 1;
+    let mut tab = create_tab_with_two_floating_panes();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(client_id)
+        .expect("a floating pane is focused");
+    let original_geom = tab
+        .floating_panes
+        .get(&active_pane_id)
+        .expect("focused floating pane exists")
+        .position_and_size();
+
+    let editor_pane_id = PaneId::Terminal(99);
+    tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
+        .unwrap();
+    tab.toggle_active_pane_fullscreen(client_id);
+    assert_eq!(
+        tab.floating_panes.fullscreen_pane_id(),
+        Some(editor_pane_id),
+        "fullscreen tracks the editor pane",
+    );
+
+    tab.close_pane(editor_pane_id, false, None);
+    assert_eq!(
+        tab.floating_panes.fullscreen_pane_id(),
+        Some(active_pane_id),
+        "fullscreen now tracks the restored suppressed pane",
+    );
+
+    tab.toggle_active_pane_fullscreen(client_id);
+    assert!(
+        !tab.floating_panes.fullscreen_is_active(),
+        "fullscreen is cleared after the second toggle",
+    );
+    let restored_pane = tab
+        .floating_panes
+        .get(&active_pane_id)
+        .expect("restored pane is present");
+    assert!(
+        restored_pane.geom_override().is_none(),
+        "restored pane no longer carries the fullscreen geom_override",
+    );
+    assert_eq!(
+        restored_pane.position_and_size(),
+        original_geom,
+        "restored pane is back to its original geometry",
+    );
 }
 
 #[test]
@@ -17551,4 +17754,160 @@ pub fn scroll_terminal_down_nonexistent_pane_id_is_a_noop() {
 
     let writes = drain_pty_writer(&rx);
     assert!(writes.is_empty());
+}
+
+#[test]
+fn floating_plugin_panes_are_notified_when_their_tab_is_hidden() {
+    // Regression test: Tab::visible() used to only walk the tiled panes, so a plugin living in a
+    // floating pane never learned that its tab had gone away. Plugins that idle on a timer (the
+    // session-manager re-reads the whole session list once a second) went on doing that work
+    // forever, even with no client attached to the session at all.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, true);
+    let plugin_pane_id = PaneId::Plugin(1);
+    tab.new_pane(
+        plugin_pane_id,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(None),
+        Some(1),
+        None,
+    )
+    .unwrap();
+
+    tab.visible(false).unwrap();
+
+    let mut told_the_floating_plugin = false;
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _client_id, event) in updates {
+                if pid == Some(1) && matches!(event, Event::Visible(false)) {
+                    told_the_floating_plugin = true;
+                }
+            }
+        }
+    }
+    assert!(
+        told_the_floating_plugin,
+        "a plugin in a floating pane should be sent Event::Visible(false) when its tab is hidden"
+    );
+}
+
+fn drain_visible_events(
+    plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+) -> Vec<(Option<u32>, bool)> {
+    let mut visible_events = vec![];
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _client_id, event) in updates {
+                if let Event::Visible(is_visible) = event {
+                    visible_events.push((pid, is_visible));
+                }
+            }
+        }
+    }
+    visible_events
+}
+
+fn tab_with_floating_plugin_pane(
+    plugin_pid: u32,
+) -> (Tab, Receiver<(PluginInstruction, ErrorContext)>) {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, true);
+    tab.new_pane(
+        PaneId::Plugin(plugin_pid),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(None),
+        Some(1),
+        None,
+    )
+    .unwrap();
+    (tab, plugin_receiver)
+}
+
+#[test]
+fn floating_plugin_panes_are_notified_when_the_floating_surface_is_hidden() {
+    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    drain_visible_events(&plugin_receiver);
+
+    tab.hide_floating_panes();
+
+    assert_eq!(
+        drain_visible_events(&plugin_receiver),
+        vec![(Some(1), false)],
+        "a plugin in a floating pane should be sent Event::Visible(false) when the floating surface is hidden"
+    );
+}
+
+#[test]
+fn floating_plugin_panes_are_notified_when_the_floating_surface_is_shown() {
+    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    tab.hide_floating_panes();
+    drain_visible_events(&plugin_receiver);
+
+    tab.show_floating_panes();
+
+    assert_eq!(
+        drain_visible_events(&plugin_receiver),
+        vec![(Some(1), true)],
+        "a plugin in a floating pane should be sent Event::Visible(true) when the floating surface is shown"
+    );
+}
+
+#[test]
+fn toggling_the_floating_surface_twice_does_not_repeat_the_visibility_event() {
+    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    drain_visible_events(&plugin_receiver);
+
+    tab.hide_floating_panes();
+    tab.hide_floating_panes();
+    tab.show_floating_panes();
+    tab.show_floating_panes();
+
+    assert_eq!(
+        drain_visible_events(&plugin_receiver),
+        vec![(Some(1), false), (Some(1), true)],
+        "only actual visibility transitions of the floating surface should be reported"
+    );
+}
+
+#[test]
+fn floating_surface_toggles_in_a_hidden_tab_do_not_notify_plugins() {
+    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    tab.visible(false).unwrap();
+    drain_visible_events(&plugin_receiver);
+
+    tab.hide_floating_panes();
+    tab.show_floating_panes();
+
+    assert!(
+        drain_visible_events(&plugin_receiver).is_empty(),
+        "a plugin in a hidden tab should not be told it became visible because the floating surface was toggled"
+    );
+}
+
+#[test]
+fn floating_plugin_panes_are_not_shown_again_when_their_tab_returns_with_the_surface_hidden() {
+    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    tab.hide_floating_panes();
+    tab.visible(false).unwrap();
+    drain_visible_events(&plugin_receiver);
+
+    tab.visible(true).unwrap();
+
+    assert!(
+        !drain_visible_events(&plugin_receiver).contains(&(Some(1), true)),
+        "a plugin whose floating surface is hidden should not be told it is visible when its tab returns"
+    );
 }

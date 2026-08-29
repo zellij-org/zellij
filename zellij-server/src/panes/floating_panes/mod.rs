@@ -212,9 +212,17 @@ impl FloatingPanes {
             .and_then(|removed_pane| {
                 let removed_pane_id = removed_pane.pid();
                 let with_pane_id = with_pane.pid();
-                let removed_pane_geom = removed_pane.current_geom();
+                let removed_pane_geom = removed_pane.position_and_size();
+                let removed_pane_geom_override = removed_pane.geom_override();
                 with_pane.set_geom(removed_pane_geom);
+                match removed_pane_geom_override {
+                    Some(geom_override) => with_pane.set_geom_override(geom_override),
+                    None => with_pane.reset_size_and_position_override(),
+                };
                 self.panes.insert(with_pane_id, with_pane);
+                if self.fullscreen_pane_id == Some(pane_id) {
+                    self.fullscreen_pane_id = Some(with_pane_id);
+                }
                 let z_index = self
                     .z_indices
                     .iter()
@@ -272,6 +280,9 @@ impl FloatingPanes {
     }
     pub fn panes_are_visible(&self) -> bool {
         self.show_panes && !*self.fullscreen_covers_ui.borrow()
+    }
+    pub fn panes_are_shown(&self) -> bool {
+        self.show_panes
     }
     pub fn has_active_panes(&self) -> bool {
         !self.active_panes.is_empty()
@@ -470,6 +481,7 @@ impl FloatingPanes {
         client_id_override: Option<ClientId>,
         help_text_visible: &HashMap<ClientId, bool>,
         mouse_scroll_resize: bool,
+        mouse_hover_tips: bool,
     ) -> Result<()> {
         let err_context = || "failed to render output";
         let mut connected_clients: HashSet<ClientId> =
@@ -584,6 +596,7 @@ impl FloatingPanes {
                 show_help_text,
                 false,
                 mouse_scroll_resize,
+                mouse_hover_tips,
                 self.dimmed_clients.clone(),
             );
             for client_id in &connected_clients {

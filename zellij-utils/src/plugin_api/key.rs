@@ -16,7 +16,9 @@ impl TryFrom<ProtobufMainKey> for BareKey {
         match protobuf_main_key {
             ProtobufMainKey::Char(character) => Ok(BareKey::Char(char_index_to_char(character))),
             ProtobufMainKey::Key(key_index) => {
-                let key = ProtobufNamedKey::from_i32(key_index).ok_or("invalid_key")?;
+                let key = ProtobufNamedKey::try_from(key_index)
+                    .ok()
+                    .ok_or("invalid_key")?;
                 Ok(named_key_to_bare_key(key))
             },
         }
@@ -87,14 +89,16 @@ impl TryFrom<ProtobufKey> for KeyWithModifier {
         let mut key_modifiers = BTreeSet::new();
         if let Some(main_modifier) = protobuf_key.modifier {
             key_modifiers.insert(
-                ProtobufKeyModifier::from_i32(main_modifier)
+                ProtobufKeyModifier::try_from(main_modifier)
+                    .ok()
                     .ok_or("invalid key modifier")?
                     .try_into()?,
             );
         }
         for key_modifier in protobuf_key.additional_modifiers {
             key_modifiers.insert(
-                ProtobufKeyModifier::from_i32(key_modifier)
+                ProtobufKeyModifier::try_from(key_modifier)
+                    .ok()
                     .ok_or("invalid key modifier")?
                     .try_into()?,
             );

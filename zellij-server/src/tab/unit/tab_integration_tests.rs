@@ -1,13 +1,13 @@
 use super::{Output, Tab};
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
-use crate::screen::CopyOptions;
+use crate::screen::{CopyOptions, ScreenInstruction};
 use crate::Arc;
 use zellij_utils::input::options::PaneFrameStyle;
 
 use crate::{
     os_input_output::ServerOsApi, pane_groups::PaneGroups, panes::PaneId,
-    plugins::PluginInstruction, thread_bus::ThreadSenders, ClientId, ServerInstruction,
+    plugins::PluginInstruction, thread_bus::ThreadSenders, ClientId,
 };
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
@@ -278,7 +278,8 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -376,6 +377,7 @@ fn create_new_tab_with_stacked_pane_list(
         advanced_mouse_actions,
         mouse_scroll_resize,
         true,
+        true,
         false,
         false,
         web_server_ip,
@@ -468,7 +470,8 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -578,7 +581,8 @@ fn create_new_tab_with_swap_layouts(
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -685,7 +689,8 @@ fn create_new_tab_with_os_api(
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -778,7 +783,8 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -885,7 +891,8 @@ fn create_new_tab_with_mock_pty_writer(
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -983,7 +990,8 @@ fn create_new_tab_with_sixel_support(
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -1563,6 +1571,51 @@ fn new_stacked_pane() {
         Palette::default(),
     );
     assert_snapshot!(snapshot);
+}
+
+fn sorted_kitty_visible_pane_ids(tab: &Tab) -> Vec<PaneId> {
+    let mut pane_ids: Vec<PaneId> = tab.kitty_visible_pane_ids().into_iter().collect();
+    pane_ids.sort();
+    pane_ids
+}
+
+#[test]
+fn kitty_visible_panes_exclude_collapsed_stack_members() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    for i in 2..4 {
+        tab.new_pane(
+            PaneId::Terminal(i),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under: None,
+                borderless: None,
+            },
+            Some(client_id),
+            None,
+        )
+        .unwrap();
+    }
+    let visible_before_focus_change = sorted_kitty_visible_pane_ids(&tab);
+    tab.move_focus_up(client_id).unwrap();
+    let visible_after_focus_change = sorted_kitty_visible_pane_ids(&tab);
+    assert_eq!(
+        visible_before_focus_change,
+        vec![PaneId::Terminal(3)],
+        "only the expanded stack member is kitty visible"
+    );
+    assert_eq!(
+        visible_after_focus_change,
+        vec![PaneId::Terminal(2)],
+        "kitty visibility follows the expanded stack member"
+    );
 }
 
 #[test]
@@ -4990,6 +5043,40 @@ fn tab_with_layout_that_has_floating_panes() {
 }
 
 #[test]
+fn titles_frame_style_with_fixed_size_pane() {
+    let layout = r#"
+        layout {
+            pane split_direction="horizontal" {
+                pane name="foo" {
+                    size 7
+                }
+                pane
+            }
+        }
+    "#;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
+    tab.set_pane_frames(PaneFrameStyle::Titles);
+    tab.handle_pty_bytes(0, Vec::from("I am the fixed size pane".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(1, Vec::from("I am the flexible pane".as_bytes()))
+        .unwrap();
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
 fn tab_with_nested_layout() {
     let layout = r#"
         layout {
@@ -6340,9 +6427,9 @@ fn focus_last_stacked_pane() {
         None,
     )
     .unwrap();
-    tab.move_focus_right(client_id);
-    tab.move_focus_up(client_id);
-    tab.move_focus_up(client_id);
+    tab.move_focus_right(client_id).unwrap();
+    tab.move_focus_up(client_id).unwrap();
+    tab.move_focus_up(client_id).unwrap();
     tab.focus_last_pane(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -11961,6 +12048,257 @@ fn test_right_alt_click_ungroups_panes() {
 }
 
 #[test]
+fn alt_click_is_forwarded_to_a_pane_the_client_is_descended_into() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1002h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+
+    let effect = tab
+        .handle_mouse_event_with_passthrough(
+            &MouseEvent::new_left_press_with_alt_event(Position::new(5, 71)),
+            client_id,
+            Some(PaneId::Terminal(1)),
+        )
+        .unwrap();
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec!["\u{1b}[<8;71;5M".to_string()],
+        "the alt bit must survive into the SGR report written to the descended pane"
+    );
+    assert!(
+        effect.group_toggle.is_none(),
+        "an alt click inside a descended pane must not toggle a host pane group"
+    );
+    assert!(
+        effect.group_add.is_none(),
+        "an alt click inside a descended pane must not add to a host pane group"
+    );
+    assert!(
+        !effect.ungroup,
+        "an alt click inside a descended pane must not ungroup host panes"
+    );
+}
+
+#[test]
+fn alt_click_still_groups_a_mouse_tracking_pane_the_client_is_not_descended_into() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1002h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+
+    let effect = tab
+        .handle_mouse_event_with_passthrough(
+            &MouseEvent::new_left_press_with_alt_event(Position::new(5, 71)),
+            client_id,
+            None,
+        )
+        .unwrap();
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(
+        effect.group_toggle,
+        Some(PaneId::Terminal(1)),
+        "without a descend, alt click keeps grouping panes even when the pane tracks the mouse"
+    );
+    assert!(
+        pty_instruction_bus.clone_output().is_empty(),
+        "without a descend, nothing should be written to the pane"
+    );
+}
+
+#[test]
+fn alt_wheel_up_is_forwarded_to_a_pane_the_client_is_descended_into() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1002h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+
+    tab.handle_mouse_event_with_passthrough(
+        &MouseEvent::new_alt_scroll_up_event(Position::new(5, 71)),
+        client_id,
+        Some(PaneId::Terminal(1)),
+    )
+    .unwrap();
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec!["\u{1b}[<72;71;5M".to_string()],
+        "alt wheel over a descended pane must reach the guest instead of jumping prompts"
+    );
+}
+
+#[test]
+fn alt_wheel_over_a_mouse_tracking_pane_is_forwarded_instead_of_jumping_prompts() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1002h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+    let mut content = String::new();
+    for i in 0..20 {
+        content.push_str(&format!(
+            "\u{1b}]133;A\u{7}$ \u{1b}]133;B\u{7}cmd{i}\u{1b}]133;C\u{7}\r\nout{i}\u{1b}]133;D;0\u{7}\r\n"
+        ));
+    }
+    tab.handle_pty_bytes(1, Vec::from(content.as_bytes()))
+        .unwrap();
+
+    tab.handle_mouse_event_with_passthrough(
+        &MouseEvent::new_alt_scroll_up_event(Position::new(5, 71)),
+        client_id,
+        None,
+    )
+    .unwrap();
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec!["\u{1b}[<72;71;5M".to_string()],
+        "a pane that tracks the mouse receives alt wheel just like a plain wheel"
+    );
+    assert!(
+        !tab.get_pane_with_id(PaneId::Terminal(1))
+            .map(|pane| pane.is_scrolled())
+            .unwrap_or(false),
+        "a forwarded alt wheel must not also scroll the host pane"
+    );
+}
+
+#[test]
+fn alt_wheel_jumps_between_prompts_of_the_pane_below_the_cursor() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+
+    let mut content = String::new();
+    for i in 0..20 {
+        content.push_str(&format!(
+            "\u{1b}]133;A\u{7}$ \u{1b}]133;B\u{7}cmd{i}\u{1b}]133;C\u{7}\r\nout{i}\u{1b}]133;D;0\u{7}\r\n"
+        ));
+    }
+    tab.handle_pty_bytes(1, Vec::from(content.as_bytes()))
+        .unwrap();
+
+    let pane_is_scrolled = |tab: &Tab| {
+        tab.get_pane_with_id(PaneId::Terminal(1))
+            .map(|pane| pane.is_scrolled())
+            .unwrap_or(false)
+    };
+    assert!(!pane_is_scrolled(&tab));
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_alt_scroll_up_event(Position::new(10, 60)),
+        client_id,
+    )
+    .unwrap();
+    assert!(
+        pane_is_scrolled(&tab),
+        "alt wheel up must jump to the previous prompt"
+    );
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_alt_scroll_down_event(Position::new(10, 60)),
+        client_id,
+    )
+    .unwrap();
+    assert!(
+        !pane_is_scrolled(&tab),
+        "alt wheel down must jump back towards the bottom of the buffer"
+    );
+}
+
+#[test]
+fn alt_wheel_is_swallowed_when_advanced_mouse_actions_are_disabled() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.update_advanced_mouse_actions(false);
+
+    let mut content = String::new();
+    for i in 0..20 {
+        content.push_str(&format!(
+            "\u{1b}]133;A\u{7}$ \u{1b}]133;B\u{7}cmd{i}\u{1b}]133;C\u{7}\r\nout{i}\u{1b}]133;D;0\u{7}\r\n"
+        ));
+    }
+    tab.handle_pty_bytes(1, Vec::from(content.as_bytes()))
+        .unwrap();
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_alt_scroll_up_event(Position::new(10, 60)),
+        client_id,
+    )
+    .unwrap();
+
+    assert!(
+        !tab.get_pane_with_id(PaneId::Terminal(1))
+            .map(|pane| pane.is_scrolled())
+            .unwrap_or(false),
+        "alt wheel must be swallowed when advanced mouse actions are disabled"
+    );
+}
+
+#[test]
 fn test_scroll_wheel_up_scrolls_pane() {
     let size = Size {
         cols: 121,
@@ -13299,6 +13637,101 @@ fn resize_hint_text_tracks_mouse_scroll_resize_updates() {
 }
 
 #[test]
+fn hint_text_suppressed_when_mouse_hover_tips_disabled() {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+
+    tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
+        .unwrap();
+    tab.mouse_help_text_visible.insert(client_id, true);
+
+    let enabled_resize_hints = tab.resolve_hint_text(client_id);
+    assert!(!enabled_resize_hints.is_empty());
+    assert!(enabled_resize_hints
+        .values()
+        .all(|hint| hint.text.contains("drag borders")));
+
+    tab.update_mouse_hover_tips(false);
+    assert!(tab.resolve_hint_text(client_id).is_empty());
+
+    tab.mouse_hover_pane_id
+        .insert(client_id, PaneId::Terminal(1));
+    assert!(tab.resolve_hint_text(client_id).is_empty());
+
+    tab.update_mouse_hover_tips(true);
+    let hover_hints = tab.resolve_hint_text(client_id);
+    assert!(!hover_hints.is_empty());
+    assert!(hover_hints.values().all(|hint| hint.text.contains("group")));
+
+    tab.update_mouse_hover_tips(false);
+    assert!(tab.resolve_hint_text(client_id).is_empty());
+
+    tab.hold_pane(PaneId::Terminal(2), Some(0), false, RunCommand::default());
+    let held_hints = tab.resolve_hint_text(client_id);
+    assert!(!held_hints.is_empty());
+    assert!(held_hints.values().all(|hint| hint.text.contains("re-run")));
+}
+
+#[test]
+fn plugin_hover_tooltip_still_renders_when_mouse_hover_tips_disabled() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+
+    tab.update_mouse_hover_tips(false);
+
+    tab.handle_pty_bytes(1, Vec::from("hover here tooltipped bar\n".as_bytes()))
+        .unwrap();
+
+    let highlights = vec![RegexHighlight {
+        pattern: "tooltipped".into(),
+        style: HighlightStyle::None,
+        layer: HighlightLayer::Tool,
+        context: BTreeMap::new(),
+        on_hover: true,
+        bold: false,
+        italic: true,
+        underline: true,
+        tooltip_text: Some("Tool Tooltip".to_string()),
+    }];
+    tab.set_plugin_regex_highlights_for_pane(
+        PaneId::Terminal(1),
+        20,
+        highlights,
+        &Style::default(),
+    );
+
+    let hover_position = Position::new(1, 12);
+    let _effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_buttonless_motion(hover_position),
+            client_id,
+        )
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert!(
+        snapshot.contains("Tool Tooltip"),
+        "the plugin hover tooltip must survive mouse_hover_tips false:\n{}",
+        snapshot
+    );
+}
+
+#[test]
 fn in_place_pane_with_close_replaced_pane_false_restores_original() {
     // When an in-place pane is closed and close_replaced_pane=false (the default),
     // the pane that was replaced is restored to its original position.
@@ -13507,7 +13940,8 @@ fn create_new_tab_with_plugin_receiver(
         currently_marking_pane_group,
         advanced_mouse_actions,
         mouse_scroll_resize,
-        true,  // mouse_hover_effects
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
@@ -15226,23 +15660,20 @@ fn mouse_click_through_respects_live_toggle() {
 // OSC 99 Desktop Notification Integration Tests
 // ========================================================================
 
-/// Creates a Tab with a real `to_server` sender so that `ServerInstruction::Render`
-/// calls from `forward_desktop_notifications` can be captured on the receiver.
 fn create_new_tab_with_server_receiver(
     size: Size,
     default_mode: ModeInfo,
-) -> (Tab, Receiver<(ServerInstruction, ErrorContext)>) {
+) -> (Tab, Receiver<(ScreenInstruction, ErrorContext)>) {
     set_session_name("test".into());
     let index = 0;
     let position = 0;
     let name = String::new();
     let os_api = Box::new(FakeInputOutput::default());
 
-    // Set up real server channel to capture ServerInstruction::Render
-    let (server_sender, server_receiver) = channels::unbounded();
-    let server_sender = SenderWithContext::new(server_sender);
+    let (screen_sender, screen_receiver) = channels::unbounded();
+    let screen_sender = SenderWithContext::new(screen_sender);
     let mut senders = ThreadSenders::default().silently_fail_on_send();
-    senders.to_server = Some(server_sender);
+    senders.to_screen = Some(screen_sender);
 
     let max_panes = None;
     let client_id = 1;
@@ -15292,9 +15723,10 @@ fn create_new_tab_with_server_receiver(
         WebSharing::Off,
         current_group,
         currently_marking_pane_group,
-        true,  // advanced_mouse_actions
-        true,  // mouse_scroll_resize
-        true,  // mouse_hover_effects
+        true, // advanced_mouse_actions
+        true, // mouse_scroll_resize
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
@@ -15310,17 +15742,40 @@ fn create_new_tab_with_server_receiver(
         None,
     )
     .unwrap();
-    (tab, server_receiver)
+    (tab, screen_receiver)
 }
 
-/// Helper: collect all ServerInstruction::Render messages from the receiver,
-/// concatenate the per-client strings, and return the combined output.
-fn collect_render_output(receiver: &Receiver<(ServerInstruction, ErrorContext)>) -> String {
+fn collect_render_output(receiver: &Receiver<(ScreenInstruction, ErrorContext)>) -> String {
+    use crate::panes::grid::{namespace_notification_id, PendingNotification};
     let mut output = String::new();
     while let Ok((instruction, _)) = receiver.try_recv() {
-        if let ServerInstruction::Render(Some(client_map)) = instruction {
-            for (_client_id, content) in client_map {
-                output.push_str(&content);
+        if let ScreenInstruction::ForwardDesktopNotifications {
+            pane_id,
+            notifications,
+        } = instruction
+        {
+            for notification in notifications {
+                if let PendingNotification::Osc99 {
+                    payload,
+                    terminator,
+                    wants_report,
+                    ..
+                } = notification
+                {
+                    let (metadata, rest) = match payload.find(';') {
+                        Some(idx) => (
+                            payload.get(..idx).unwrap_or_default(),
+                            payload.get(idx..).unwrap_or_default(),
+                        ),
+                        None => (payload.as_str(), ""),
+                    };
+                    let namespaced_metadata =
+                        namespace_notification_id(metadata, pane_id, wants_report);
+                    output.push_str(&format!(
+                        "\u{1b}]99;{}{}{}",
+                        namespaced_metadata, rest, terminator
+                    ));
+                }
             }
         }
     }
@@ -15438,6 +15893,27 @@ fn osc99_multiple_notifications_forwarded() {
 }
 
 #[test]
+fn osc99_chunks_of_one_notification_share_an_identifier() {
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, server_receiver) = create_new_tab_with_server_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(
+        1,
+        Vec::from("\x1b]99;i=chunked:a=report:d=0;Hello\x07\x1b]99;i=chunked:p=body;World\x07"),
+    )
+    .unwrap();
+
+    let output = collect_render_output(&server_receiver);
+
+    assert_eq!(
+        output.matches("i=p1r.chunked").count(),
+        2,
+        "both chunks address the same notification, got: {:?}",
+        output
+    );
+}
+
+#[test]
 fn osc99_notification_mixed_with_regular_output() {
     // OSC 99 embedded in regular terminal output should be extracted and forwarded
     let size = Size { cols: 80, rows: 24 };
@@ -15543,7 +16019,11 @@ fn osc99_grid_parses_and_stores_notification() {
         "Should have one pending notification"
     );
 
-    let (ref payload, ref _terminator) = grid.pending_desktop_notifications.first().unwrap();
+    let notification = grid.pending_desktop_notifications.first().unwrap();
+    let payload = match notification {
+        crate::panes::grid::PendingNotification::Osc99 { payload, .. } => payload.clone(),
+        other => panic!("Expected an OSC 99 notification, got: {:?}", other),
+    };
     assert!(
         payload.contains("i=gridtest"),
         "Payload should contain i=gridtest, got: {:?}",
@@ -15562,7 +16042,7 @@ fn osc99_namespace_denormalize_roundtrip() {
     let pane_id: u32 = 42;
 
     // Namespace — a=report means 'r' flag is set
-    let namespaced = namespace_notification_id(original_metadata, pane_id);
+    let namespaced = namespace_notification_id(original_metadata, pane_id, true);
     assert!(
         namespaced.contains("i=p42r.mynotif"),
         "Should namespace to i=p42r.mynotif (a=report → 'r' flag), got: {:?}",
@@ -15570,19 +16050,22 @@ fn osc99_namespace_denormalize_roundtrip() {
     );
 
     // Simulate a response with the namespaced ID
-    let response_payload = format!("i=p42r.mynotif:p=close;activated");
+    let response_payload = format!("i=p42r.mynotif;activated");
     let result = denormalize_notification_response(response_payload.as_bytes());
     assert!(result.is_some(), "Should successfully denormalize");
 
-    let (terminal_id, app_wants_report, is_query, response_bytes) = result.unwrap();
-    assert_eq!(terminal_id, 42, "Should extract pane_id 42");
+    let response = result.unwrap();
+    assert_eq!(response.terminal_id, 42, "Should extract pane_id 42");
     assert!(
-        app_wants_report,
-        "'r' flag in i=p42r.mynotif means app_wants_report should be true"
+        response.forward_to_pane,
+        "'r' flag in i=p42r.mynotif means the response goes back to the app"
     );
-    assert!(!is_query, "No 'q' flag means is_query should be false");
+    assert!(
+        response.focus_pane,
+        "an activation report focuses the originating pane"
+    );
 
-    let response_str = String::from_utf8_lossy(&response_bytes);
+    let response_str = String::from_utf8_lossy(&response.bytes);
     assert!(
         response_str.contains("i=mynotif"),
         "Should restore original i=mynotif, got: {:?}",
@@ -15613,7 +16096,7 @@ fn osc99_namespace_without_identifier_adds_default() {
 
     // With a=report → 'r' flag
     let metadata = "p=title:a=report";
-    let namespaced = namespace_notification_id(metadata, 7);
+    let namespaced = namespace_notification_id(metadata, 7, true);
     assert!(
         namespaced.contains("i=p7r.:"),
         "Should add default i=p7r. when no i= present (a=report → 'r' flag), got: {:?}",
@@ -15622,7 +16105,7 @@ fn osc99_namespace_without_identifier_adds_default() {
 
     // Without a=report → no 'r' flag
     let metadata = "p=title";
-    let namespaced = namespace_notification_id(metadata, 7);
+    let namespaced = namespace_notification_id(metadata, 7, false);
     assert!(
         namespaced.contains("i=p7.:"),
         "Should add default i=p7. when no i= and no a=report, got: {:?}",
@@ -15631,11 +16114,41 @@ fn osc99_namespace_without_identifier_adds_default() {
 }
 
 #[test]
+fn osc99_namespace_does_not_leave_empty_metadata_entries() {
+    use crate::panes::grid::namespace_notification_id;
+
+    let namespaced = namespace_notification_id("", 1, false);
+    assert_eq!(
+        namespaced, "i=p1.:a=focus,report",
+        "an empty metadata section produces no empty key=value entries"
+    );
+}
+
+#[test]
+fn osc99_namespace_is_stable_across_the_escapes_of_one_notification() {
+    use crate::panes::grid::namespace_notification_id;
+
+    let notification = namespace_notification_id("i=myid:a=report", 4, true);
+    let close = namespace_notification_id("i=myid:p=close", 4, true);
+    assert!(
+        notification.contains("i=p4r.myid") && close.contains("i=p4r.myid"),
+        "a close request addresses the same identifier the notification got, got: {:?} and {:?}",
+        notification,
+        close
+    );
+    assert!(
+        !close.contains("a="),
+        "a close request is not turned into something the host reports on, got: {:?}",
+        close
+    );
+}
+
+#[test]
 fn osc99_namespace_ensures_report_action() {
     use crate::panes::grid::namespace_notification_id;
 
     // a=focus → a=focus,report
-    let result = namespace_notification_id("i=test:p=title:a=focus", 1);
+    let result = namespace_notification_id("i=test:p=title:a=focus", 1, false);
     assert!(
         result.contains("a=focus,report"),
         "a=focus should be augmented with report, got: {:?}",
@@ -15643,7 +16156,7 @@ fn osc99_namespace_ensures_report_action() {
     );
 
     // a=report → unchanged
-    let result = namespace_notification_id("i=test:p=title:a=report", 1);
+    let result = namespace_notification_id("i=test:p=title:a=report", 1, true);
     assert!(
         result.contains("a=report"),
         "a=report should be preserved, got: {:?}",
@@ -15656,18 +16169,17 @@ fn osc99_namespace_ensures_report_action() {
     );
 
     // a=focus,report → unchanged
-    let result = namespace_notification_id("i=test:p=title:a=focus,report", 1);
+    let result = namespace_notification_id("i=test:p=title:a=focus,report", 1, true);
     assert!(
         result.contains("a=focus,report"),
         "a=focus,report should be preserved, got: {:?}",
         result
     );
 
-    // No a= key → a=report added
-    let result = namespace_notification_id("i=test:p=title", 1);
+    let result = namespace_notification_id("i=test:p=title", 1, false);
     assert!(
-        result.contains("a=report"),
-        "Missing a= should get a=report appended, got: {:?}",
+        result.contains("a=focus,report"),
+        "Missing a= should keep the protocol's default focus action, got: {:?}",
         result
     );
 }
@@ -15677,21 +16189,21 @@ fn osc99_report_flag_roundtrip() {
     use crate::panes::grid::namespace_notification_id;
     use crate::screen::denormalize_notification_response;
 
-    // App sends a=report → namespaced with 'r' flag → denormalize returns app_wants_report=true
-    let namespaced = namespace_notification_id("i=myid:p=title:a=report", 5);
+    let namespaced = namespace_notification_id("i=myid:p=title:a=report", 5, true);
     assert!(
         namespaced.contains("i=p5r.myid"),
         "a=report should produce 'r' flag in namespace, got: {:?}",
         namespaced
     );
     let response = format!("i=p5r.myid;activated");
-    let (pane_id, wants_report, _is_query, _bytes) =
-        denormalize_notification_response(response.as_bytes()).unwrap();
-    assert_eq!(pane_id, 5);
-    assert!(wants_report, "Should detect 'r' flag as app_wants_report");
+    let response = denormalize_notification_response(response.as_bytes()).unwrap();
+    assert_eq!(response.terminal_id, 5);
+    assert!(
+        response.forward_to_pane,
+        "Should detect 'r' flag and hand the report to the app"
+    );
 
-    // App sends a=focus (no report) → namespaced without 'r' flag → denormalize returns false
-    let namespaced = namespace_notification_id("i=myid:p=title:a=focus", 5);
+    let namespaced = namespace_notification_id("i=myid:p=title:a=focus", 5, false);
     assert!(
         namespaced.contains("i=p5.myid"),
         "a=focus should NOT produce 'r' flag, got: {:?}",
@@ -15703,58 +16215,91 @@ fn osc99_report_flag_roundtrip() {
         namespaced
     );
     let response = format!("i=p5.myid;activated");
-    let (pane_id, wants_report, _is_query, _bytes) =
-        denormalize_notification_response(response.as_bytes()).unwrap();
-    assert_eq!(pane_id, 5);
-    assert!(!wants_report, "No 'r' flag means app did not want report");
+    let response = denormalize_notification_response(response.as_bytes()).unwrap();
+    assert_eq!(response.terminal_id, 5);
+    assert!(
+        !response.forward_to_pane,
+        "No 'r' flag means the app is not handed a report it never asked for"
+    );
+    assert!(
+        response.focus_pane,
+        "the pane is still focused when the notification is clicked"
+    );
 }
 
 #[test]
-fn osc99_query_flag_roundtrip() {
+fn osc99_query_response_is_handed_to_the_pane_without_focusing_it() {
     use crate::panes::grid::namespace_notification_id;
     use crate::screen::denormalize_notification_response;
 
-    // Capability query (p=?) gets 'q' flag
-    let namespaced = namespace_notification_id("i=qid:p=?", 3);
-    assert!(
-        namespaced.contains("i=p3q.qid"),
-        "p=? should produce 'q' flag, got: {:?}",
-        namespaced
+    let namespaced = namespace_notification_id("i=qid:p=?", 3, false);
+    assert_eq!(
+        namespaced, "i=p3.qid:p=?",
+        "a query is namespaced and otherwise left alone"
     );
-    let response = format!("i=p3q.qid;p=title,body");
-    let (pane_id, wants_report, is_query, _bytes) =
-        denormalize_notification_response(response.as_bytes()).unwrap();
-    assert_eq!(pane_id, 3);
-    assert!(!wants_report);
-    assert!(is_query, "Should detect 'q' flag");
+    let response = format!("i=p3.qid:p=?;a=focus,report:p=title,body");
+    let response = denormalize_notification_response(response.as_bytes()).unwrap();
+    assert_eq!(response.terminal_id, 3);
+    assert!(
+        response.forward_to_pane,
+        "the app is waiting for the answer to its query"
+    );
+    assert!(
+        !response.focus_pane,
+        "answering a query is not the user clicking a notification"
+    );
+    assert!(
+        String::from_utf8_lossy(&response.bytes).contains("i=qid:p=?"),
+        "the app's own identifier is restored, got: {:?}",
+        String::from_utf8_lossy(&response.bytes)
+    );
+}
 
-    // Both flags: a=report + p=? (unlikely but valid)
-    let namespaced = namespace_notification_id("i=both:p=?:a=report", 3);
-    assert!(
-        namespaced.contains("i=p3rq.both"),
-        "Both flags should be present, got: {:?}",
-        namespaced
-    );
-    let response = format!("i=p3rq.both;p=title,body");
-    let (pane_id, wants_report, is_query, _bytes) =
-        denormalize_notification_response(response.as_bytes()).unwrap();
-    assert_eq!(pane_id, 3);
-    assert!(wants_report);
-    assert!(is_query);
+#[test]
+fn osc99_close_report_does_not_steal_focus() {
+    use crate::screen::denormalize_notification_response;
 
-    // Regular notification (no p=?, no a=report) — no flags
-    let namespaced = namespace_notification_id("i=plain:p=title:a=focus", 3);
+    let response = denormalize_notification_response(b"i=p3.myid:p=close;").unwrap();
+    assert_eq!(response.terminal_id, 3);
     assert!(
-        namespaced.contains("i=p3.plain"),
-        "No flags expected, got: {:?}",
-        namespaced
+        response.forward_to_pane,
+        "close events only arrive when the app asked for them with c=1"
     );
-    let response = format!("i=p3.plain;activated");
-    let (pane_id, wants_report, is_query, _bytes) =
-        denormalize_notification_response(response.as_bytes()).unwrap();
-    assert_eq!(pane_id, 3);
-    assert!(!wants_report);
-    assert!(!is_query);
+    assert!(
+        !response.focus_pane,
+        "dismissing a notification is not activating it"
+    );
+}
+
+#[test]
+fn osc99_liveness_answer_is_restricted_to_the_asking_pane() {
+    use crate::screen::denormalize_notification_response;
+
+    let response =
+        denormalize_notification_response(b"i=p3.myid:p=alive;p3.one,p4r.other,p3r.two").unwrap();
+    let restored = String::from_utf8_lossy(&response.bytes).to_string();
+    assert!(
+        restored.contains(";one,two"),
+        "the pane's own identifiers are restored, got: {:?}",
+        restored
+    );
+    assert!(
+        !restored.contains("other"),
+        "identifiers belonging to other panes are not disclosed, got: {:?}",
+        restored
+    );
+}
+
+#[test]
+fn osc99_response_to_an_unidentified_notification_uses_the_protocol_default() {
+    use crate::screen::denormalize_notification_response;
+
+    let response = denormalize_notification_response(b"i=p3r.;activated").unwrap();
+    assert!(
+        String::from_utf8_lossy(&response.bytes).contains("i=0"),
+        "an app that sent no identifier is answered with i=0, got: {:?}",
+        String::from_utf8_lossy(&response.bytes)
+    );
 }
 
 #[test]
@@ -15786,4 +16331,37 @@ fn hidden_cursor_still_emits_cup_for_host_terminal_positioning() {
         !client_output.contains("\u{1b}[?25h"),
         "Show-cursor sequence must not be present when app has hidden the cursor"
     );
+}
+
+#[test]
+fn host_focus_events_only_reach_panes_that_asked_for_them() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let tty_stdin_bytes = Arc::new(Mutex::new(BTreeMap::new()));
+    let os_api = Box::new(FakeInputOutput {
+        tty_stdin_bytes: tty_stdin_bytes.clone(),
+        ..Default::default()
+    });
+    let mut tab = create_new_tab_with_os_api(size, ModeInfo::default(), &os_api);
+    let pane_id = PaneId::Terminal(1);
+
+    tab.send_host_focus_event_to_pane(pane_id, false);
+    assert!(
+        tty_stdin_bytes.lock().unwrap().is_empty(),
+        "a pane that did not subscribe to focus events receives nothing"
+    );
+
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1004h".as_bytes()))
+        .unwrap();
+    tab.send_host_focus_event_to_pane(pane_id, false);
+    tab.send_host_focus_event_to_pane(pane_id, true);
+
+    let written = tty_stdin_bytes
+        .lock()
+        .unwrap()
+        .get(&1)
+        .map(|bytes| String::from_utf8_lossy(bytes).to_string());
+    assert_eq!(written, Some("\u{1b}[O\u{1b}[I".to_owned()));
 }

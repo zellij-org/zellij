@@ -762,6 +762,9 @@ pub(crate) fn plugin_thread_main(
                 if events.contains(&EventType::InitialKeybinds) {
                     wasm_bridge.send_initial_keybinds_to_plugin(plugin_id, client_id);
                 }
+                if events.contains(&EventType::HostTerminalThemeChanged) {
+                    wasm_bridge.send_host_terminal_theme_mode_to_plugin(plugin_id, client_id);
+                }
                 if events.contains(&EventType::HintText) {
                     let _ = bus
                         .senders

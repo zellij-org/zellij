@@ -1,0 +1,28 @@
+---
+source: zellij-integration-tests/tests/clients.rs
+expression: normalized(&tab_region(&second_grid))
+---
+ Zellij (test)  Tab #1 [ ] Tab #2  + 
+ [ FOCUSED USER:   ]       Pane #1                         │ [ MY FOCUS ]              Pane #2
+$ oneone                                                   │$ threethree█
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+                                                           │
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...

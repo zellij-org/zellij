@@ -10,6 +10,7 @@ pub struct ActiveComponent {
     text_hover: Option<TextOrCustomRender>,
     left_click_action: Option<ClickAction>,
     last_rendered_coordinates: Option<ComponentCoordinates>,
+    keyboard_selectable: bool,
     pub is_active: bool,
 }
 
@@ -21,17 +22,32 @@ impl ActiveComponent {
             left_click_action: None,
             is_active: false,
             last_rendered_coordinates: None,
+            keyboard_selectable: false,
         }
     }
     pub fn with_hover(mut self, text_hover: TextOrCustomRender) -> Self {
         self.text_hover = Some(text_hover);
         self
     }
+    pub fn keyboard_selectable(mut self) -> Self {
+        self.keyboard_selectable = true;
+        self
+    }
+    pub fn is_keyboard_selectable(&self) -> bool {
+        self.keyboard_selectable
+    }
     pub fn with_left_click_action(mut self, left_click_action: ClickAction) -> Self {
         self.left_click_action = Some(left_click_action);
         self
     }
-    pub fn render(&mut self, x: usize, y: usize, rows: usize, columns: usize) -> usize {
+    pub fn render(
+        &mut self,
+        x: usize,
+        y: usize,
+        rows: usize,
+        columns: usize,
+        extend_hit_area_to_end_of_line: bool,
+    ) -> usize {
         let mut component_width = 0;
         match self.text_hover.as_mut() {
             Some(text) if self.is_active => {
@@ -43,7 +59,12 @@ impl ActiveComponent {
                 component_width += text_len;
             },
         }
-        self.last_rendered_coordinates = Some(ComponentCoordinates::new(x, y, 1, columns));
+        let hit_area_width = if extend_hit_area_to_end_of_line {
+            columns
+        } else {
+            component_width
+        };
+        self.last_rendered_coordinates = Some(ComponentCoordinates::new(x, y, 1, hit_area_width));
         component_width
     }
     pub fn left_click_action(&mut self) -> Option<Page> {
@@ -53,16 +74,6 @@ impl ActiveComponent {
                 self.left_click_action =
                     Some(ClickAction::OpenLink(link.clone(), executable.clone()));
                 run_command(&[&executable.borrow(), &link], Default::default());
-                None
-            },
-            Some(ClickAction::LaunchPlugin(plugin_url)) => {
-                open_plugin_pane_floating(
-                    &plugin_url,
-                    Default::default(),
-                    None,
-                    Default::default(),
-                );
-                self.left_click_action = Some(ClickAction::LaunchPlugin(plugin_url));
                 None
             },
             None => None,
@@ -135,7 +146,6 @@ impl ComponentCoordinates {
 pub enum ClickAction {
     ChangePage(Box<dyn FnOnce() -> Page>),
     OpenLink(String, Rc<RefCell<String>>), // (destination, executable)
-    LaunchPlugin(String),                  // plugin URL (e.g. "zellij:share")
 }
 
 impl std::fmt::Debug for ClickAction {
@@ -144,9 +154,6 @@ impl std::fmt::Debug for ClickAction {
             ClickAction::ChangePage(_) => write!(f, "ChangePage"),
             ClickAction::OpenLink(destination, executable) => {
                 write!(f, "OpenLink: {}, {:?}", destination, executable)
-            },
-            ClickAction::LaunchPlugin(url) => {
-                write!(f, "LaunchPlugin: {}", url)
             },
         }
     }
@@ -161,8 +168,5 @@ impl ClickAction {
     }
     pub fn new_open_link(destination: String, executable: Rc<RefCell<String>>) -> Self {
         ClickAction::OpenLink(destination, executable)
-    }
-    pub fn new_launch_plugin(plugin_url: String) -> Self {
-        ClickAction::LaunchPlugin(plugin_url)
     }
 }

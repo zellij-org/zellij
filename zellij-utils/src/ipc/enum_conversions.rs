@@ -123,8 +123,9 @@ pub fn bare_key_to_proto_i32(key: BareKey) -> i32 {
 }
 
 pub fn bare_key_from_proto_i32(value: i32) -> Result<BareKey> {
-    let proto_key =
-        ProtoBareKey::from_i32(value).ok_or_else(|| anyhow!("Invalid BareKey value: {}", value))?;
+    let proto_key = ProtoBareKey::try_from(value)
+        .ok()
+        .ok_or_else(|| anyhow!("Invalid BareKey value: {}", value))?;
     proto_key.try_into()
 }
 
@@ -133,7 +134,8 @@ pub fn key_modifier_to_proto_i32(modifier: KeyModifier) -> i32 {
 }
 
 pub fn key_modifier_from_proto_i32(value: i32) -> Result<KeyModifier> {
-    let proto_modifier = ProtoKeyModifier::from_i32(value)
+    let proto_modifier = ProtoKeyModifier::try_from(value)
+        .ok()
         .ok_or_else(|| anyhow!("Invalid KeyModifier value: {}", value))?;
     proto_modifier.try_into()
 }

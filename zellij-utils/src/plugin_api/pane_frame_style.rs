@@ -44,6 +44,6 @@ mod tests {
 
     #[test]
     fn unknown_pane_frame_style_value_is_rejected() {
-        assert!(ProtobufPaneFrameStyle::from_i32(99).is_none());
+        assert!(ProtobufPaneFrameStyle::try_from(99).is_err());
     }
 }

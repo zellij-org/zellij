@@ -73,7 +73,6 @@ pub struct TiledPanes {
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
-    stacked_pane_list: Rc<RefCell<bool>>,
     reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>>,
     default_mode_info: ModeInfo,
     style: Style,
@@ -101,7 +100,6 @@ impl TiledPanes {
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         stacked_resize: Rc<RefCell<bool>>,
-        stacked_pane_list: Rc<RefCell<bool>>,
         reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>>,
         fullscreen_covers_ui: Rc<RefCell<bool>>,
         session_is_mirrored: bool,
@@ -120,7 +118,6 @@ impl TiledPanes {
             mode_info,
             character_cell_size,
             stacked_resize,
-            stacked_pane_list,
             reserved_top_rows,
             default_mode_info,
             style,
@@ -567,10 +564,23 @@ impl TiledPanes {
     }
     pub fn rendered_pane_ids(&self) -> Vec<PaneId> {
         self.panes
-            .keys()
-            .filter(|pane_id| !self.panes_to_hide.contains(pane_id))
-            .copied()
+            .iter()
+            .filter(|(pane_id, pane)| {
+                if self.panes_to_hide.contains(pane_id) {
+                    return false;
+                }
+                let geom = pane.current_geom();
+                !(geom.is_stacked() && geom.rows.is_fixed())
+            })
+            .map(|(pane_id, _pane)| *pane_id)
             .collect()
+    }
+    pub fn resize_pty_all_panes(&mut self) -> Result<()> {
+        for pane in self.panes.values_mut() {
+            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)
+                .with_context(|| format!("failed to resize PTY in pane {:?}", pane.pid()))?;
+        }
+        Ok(())
     }
     pub fn relayout(&mut self, direction: SplitDirection) {
         let mut pane_grid = TiledPaneGrid::new(
@@ -668,6 +678,7 @@ impl TiledPanes {
                 let mut position_and_size = pane.current_geom();
                 let is_stacked = position_and_size.is_stacked();
                 let is_flexible = !position_and_size.rows.is_fixed();
+                let is_one_liner_in_stack = is_stacked && !is_flexible;
                 let pane_is_borderless = pane.borderless();
                 if let Some(position_and_size_of_stack) = position_and_size
                     .stacked
@@ -678,7 +689,7 @@ impl TiledPanes {
                 let (pane_columns_offset, pane_rows_offset) =
                     pane_content_offset(&position_and_size, pane_viewport);
                 let reserve_title_row = if draws_titles {
-                    !pane_is_borderless && is_flexible && !single_selectable_tiled_pane
+                    !pane_is_borderless && !single_selectable_tiled_pane && !is_one_liner_in_stack
                 } else {
                     is_stacked && is_flexible
                 };
@@ -1135,6 +1146,7 @@ impl TiledPanes {
         client_id_override: Option<ClientId>,
         help_text_visible: &HashMap<ClientId, bool>,
         mouse_scroll_resize: bool,
+        mouse_hover_tips: bool,
     ) -> Result<()> {
         let err_context = || "failed to render tiled panes";
 
@@ -1260,6 +1272,7 @@ impl TiledPanes {
                     show_help_text,
                     omit_pane_title && reserved_rows_for_pane == 0,
                     mouse_scroll_resize,
+                    mouse_hover_tips,
                     self.dimmed_clients.clone(),
                 );
                 pane_contents_and_ui.set_frame_geom_override(visible_member_frame_override);

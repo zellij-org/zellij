@@ -91,6 +91,12 @@ fn dispatch_termwiz_event(
                 is_kitty_keyboard_protocol: false,
             });
         },
+        InputEvent::FocusGained => {
+            os_input.send_to_server(ClientToServerMsg::HostTerminalFocusChanged { focused: true });
+        },
+        InputEvent::FocusLost => {
+            os_input.send_to_server(ClientToServerMsg::HostTerminalFocusChanged { focused: false });
+        },
         InputEvent::Mouse(mouse_event) => {
             let mouse_event = from_termwiz(mouse_old_event, mouse_event);
             let action = Action::MouseEvent { event: mouse_event };
@@ -452,6 +458,65 @@ mod tests {
             },
             other => panic!("expected Key message, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn focus_reports_are_not_typed_into_the_session() {
+        let os_input = RecordingOsInput::default();
+        let mut mouse_old_event = MouseEvent::new();
+        let mut session = super::StdinSession::new(false);
+
+        parse_stdin(
+            b"\x1b[O",
+            Box::new(os_input.clone()),
+            &mut mouse_old_event,
+            &mut session,
+        );
+        parse_stdin(
+            b"\x1b[I",
+            Box::new(os_input.clone()),
+            &mut mouse_old_event,
+            &mut session,
+        );
+
+        let sent = os_input.take_sent_messages();
+        assert_eq!(
+            sent,
+            vec![
+                ClientToServerMsg::HostTerminalFocusChanged { focused: false },
+                ClientToServerMsg::HostTerminalFocusChanged { focused: true },
+            ],
+            "focus reports must become focus messages, never key events"
+        );
+    }
+
+    #[test]
+    fn fragmented_focus_report_resolves_across_frames() {
+        let os_input = RecordingOsInput::default();
+        let mut mouse_old_event = MouseEvent::new();
+        let mut session = super::StdinSession::new(false);
+
+        parse_stdin(
+            b"\x1b[",
+            Box::new(os_input.clone()),
+            &mut mouse_old_event,
+            &mut session,
+        );
+        assert!(
+            os_input.take_sent_messages().is_empty(),
+            "an incomplete focus report must not emit anything on frame 1"
+        );
+
+        parse_stdin(
+            b"I",
+            Box::new(os_input.clone()),
+            &mut mouse_old_event,
+            &mut session,
+        );
+        assert_eq!(
+            os_input.take_sent_messages(),
+            vec![ClientToServerMsg::HostTerminalFocusChanged { focused: true }],
+        );
     }
 
     /// Plain printable bytes that aren't a Kitty sequence must NOT be

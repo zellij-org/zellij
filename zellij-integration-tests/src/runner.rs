@@ -7,8 +7,8 @@ use std::time::Duration;
 use zellij_client::os_input_output::SignalEvent;
 use zellij_client::ClientInfo;
 use zellij_utils::cli::{CliAction, CliArgs};
-use zellij_utils::data::{ConnectToSession, LayoutInfo};
-use zellij_utils::input::actions::Action;
+use zellij_utils::data::{CommandOrPlugin, ConnectToSession, LayoutInfo};
+use zellij_utils::input::actions::{Action, RunCommandAction};
 use zellij_utils::input::options::Options;
 use zellij_utils::pane_size::Size;
 use zellij_utils::setup::Setup;
@@ -25,6 +25,7 @@ pub struct TestRunner {
     size: Size,
     extra_config_kdl: String,
     layout: Option<LayoutInfo>,
+    initial_panes: Option<Vec<CommandOrPlugin>>,
     env: std::collections::HashMap<String, String>,
     stdout_tap: Option<crossbeam::channel::Sender<Vec<u8>>>,
     skip_concurrency_slot: bool,
@@ -36,6 +37,7 @@ impl TestRunner {
             size,
             extra_config_kdl: String::new(),
             layout: None,
+            initial_panes: None,
             env: std::collections::HashMap::new(),
             stdout_tap: None,
             skip_concurrency_slot: false,
@@ -53,9 +55,15 @@ impl TestRunner {
         self
     }
 
-    pub fn as_nested_guest(mut self, host_session_name: &str) -> Self {
-        self.env
-            .insert("ZELLIJ".to_string(), host_session_name.to_string());
+    pub fn with_initial_command(mut self, command: &[&str]) -> Self {
+        let mut command: Vec<String> = command.iter().map(|part| part.to_string()).collect();
+        let run_command_action = RunCommandAction {
+            command: PathBuf::from(command.remove(0)),
+            args: command,
+            hold_on_close: true,
+            ..Default::default()
+        };
+        self.initial_panes = Some(vec![CommandOrPlugin::Command(run_command_action)]);
         self
     }
 
@@ -70,6 +78,54 @@ impl TestRunner {
     }
 
     pub fn start(self) -> TestSession {
+        let (session_context, fake_client_os_api, fake_client_handle, client_info) = self.boot();
+        let client_thread = spawn_client_thread(
+            fake_client_os_api,
+            session_context.cli_args.clone(),
+            session_context.config.clone(),
+            session_context.config_options.clone(),
+            client_info,
+        );
+        session_context.into_session(TestClient {
+            fake_client_handle,
+            thread: Some(client_thread),
+        })
+    }
+
+    pub fn start_in_background(self) -> BackgroundTestSession {
+        let (session_context, fake_client_os_api, _fake_client_handle, client_info) = self.boot();
+        let cli_args = session_context.cli_args.clone();
+        let config = session_context.config.clone();
+        let config_options = session_context.config_options.clone();
+        let detaching_client_thread = std::thread::Builder::new()
+            .name("in_process_zellij_detached_client".to_string())
+            .spawn(move || {
+                let start_detached_and_exit = true;
+                zellij_client::start_client(
+                    Box::new(fake_client_os_api),
+                    cli_args,
+                    config,
+                    config_options,
+                    client_info,
+                    None,
+                    None,
+                    false,
+                    start_detached_and_exit,
+                );
+            })
+            .unwrap();
+        join_detaching_client_thread_with_timeout(detaching_client_thread);
+        BackgroundTestSession { session_context }
+    }
+
+    fn boot(
+        self,
+    ) -> (
+        SessionContext,
+        FakeClientOsApi,
+        FakeClientHandle,
+        ClientInfo,
+    ) {
         test_env::init();
         let session_name = test_env::unique_session_name();
         let config_path = test_env::write_config(&session_name, &self.extra_config_kdl);
@@ -99,28 +155,111 @@ impl TestRunner {
             fake_client_handle.client_screen.set_stdout_tap(stdout_tap);
         }
         let layout_info = self.layout.or(default_layout_info);
+        let client_info =
+            ClientInfo::New(session_name.clone(), layout_info, None, self.initial_panes);
+
+        (
+            SessionContext {
+                session_name,
+                size: self.size,
+                cli_args,
+                config,
+                config_options,
+                fake_server_os_api,
+                server_thread,
+                concurrency_slot,
+            },
+            fake_client_os_api,
+            fake_client_handle,
+            client_info,
+        )
+    }
+}
+
+struct SessionContext {
+    session_name: String,
+    size: Size,
+    cli_args: CliArgs,
+    config: zellij_utils::input::config::Config,
+    config_options: Options,
+    fake_server_os_api: FakeServerOsApi,
+    server_thread: Arc<Mutex<Option<JoinHandle<()>>>>,
+    concurrency_slot: Option<test_env::ConcurrencySlot>,
+}
+
+impl SessionContext {
+    fn into_session(self, main_client: TestClient) -> TestSession {
+        TestSession {
+            session_name: self.session_name,
+            size: self.size,
+            cli_args: self.cli_args,
+            config: self.config,
+            config_options: self.config_options,
+            fake_server_os_api: self.fake_server_os_api,
+            server_thread: self.server_thread,
+            main_client,
+            _concurrency_slot: self.concurrency_slot,
+        }
+    }
+}
+
+pub struct BackgroundTestSession {
+    session_context: SessionContext,
+}
+
+impl BackgroundTestSession {
+    pub fn session_name(&self) -> &str {
+        &self.session_context.session_name
+    }
+
+    pub fn expect_pty_spawn(&self) -> FakePtyHandle {
+        expect_pty_spawn(&self.session_context.fake_server_os_api)
+    }
+
+    pub fn attach(self, size: Size) -> TestSession {
+        let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(size, None);
         let client_thread = spawn_client_thread(
             fake_client_os_api,
-            cli_args.clone(),
-            config.clone(),
-            config_options.clone(),
-            ClientInfo::New(session_name.clone(), layout_info, None),
+            self.session_context.cli_args.clone(),
+            self.session_context.config.clone(),
+            self.session_context.config_options.clone(),
+            ClientInfo::Attach(
+                self.session_context.session_name.clone(),
+                self.session_context.config_options.clone(),
+            ),
         );
+        self.session_context.into_session(TestClient {
+            fake_client_handle,
+            thread: Some(client_thread),
+        })
+    }
+}
 
-        TestSession {
-            session_name,
-            size: self.size,
-            cli_args,
-            config,
-            config_options,
-            fake_server_os_api,
-            server_thread,
-            main_client: TestClient {
-                fake_client_handle,
-                thread: Some(client_thread),
-            },
-            _concurrency_slot: concurrency_slot,
-        }
+fn expect_pty_spawn(fake_server_os_api: &FakeServerOsApi) -> FakePtyHandle {
+    let terminal_id = fake_server_os_api
+        .shared_ptys
+        .wait_for("a pty spawn", |fake_pty_registry| {
+            fake_pty_registry.spawn_queue.pop_front()
+        });
+    FakePtyHandle {
+        terminal_id,
+        shared_ptys: fake_server_os_api.shared_ptys.clone(),
+    }
+}
+
+fn join_detaching_client_thread_with_timeout(join_handle: JoinHandle<()>) {
+    let (done_tx, done_rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("detaching_client_join_watchdog".to_string())
+        .spawn(move || {
+            let result = join_handle.join();
+            let _ = done_tx.send(result);
+        })
+        .unwrap();
+    match done_rx.recv_timeout(CLIENT_JOIN_TIMEOUT) {
+        Ok(Ok(())) => {},
+        Ok(Err(_)) => panic!("detaching client thread panicked"),
+        Err(_) => panic!("timed out starting a session in the background"),
     }
 }
 
@@ -286,6 +425,12 @@ impl TestClient {
         self.join();
     }
 
+    pub fn detach(mut self) {
+        self.send_stdin(&keys::ctrl('o'));
+        self.send_stdin(&keys::key('d'));
+        self.join();
+    }
+
     fn join(&mut self) -> Option<ConnectToSession> {
         self.thread.take().and_then(join_client_thread_with_timeout)
     }
@@ -356,16 +501,11 @@ impl TestSession {
     }
 
     pub fn expect_pty_spawn(&self) -> FakePtyHandle {
-        let terminal_id = self
-            .fake_server_os_api
-            .shared_ptys
-            .wait_for("a pty spawn", |fake_pty_registry| {
-                fake_pty_registry.spawn_queue.pop_front()
-            });
-        FakePtyHandle {
-            terminal_id,
-            shared_ptys: self.fake_server_os_api.shared_ptys.clone(),
-        }
+        expect_pty_spawn(&self.fake_server_os_api)
+    }
+
+    pub fn main_client(&self) -> &TestClient {
+        &self.main_client
     }
 
     pub fn send_stdin(&self, bytes: &[u8]) {

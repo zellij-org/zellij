@@ -79,7 +79,7 @@ source instead:
 cargo build --release --target wasm32-wasip1 \
   -p status-bar -p tab-bar -p compact-bar -p strider -p session-manager \
   -p configuration -p plugin-manager -p about -p share -p multiple-select \
-  -p layout-manager -p link -p mobile
+  -p layout-manager -p link
 
 # 2. install the resulting artifacts from <target-dir>/wasm32-wasip1/release/*.wasm
 #    into $PREFIX/share/zellij/plugins/

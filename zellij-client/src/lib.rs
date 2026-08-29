@@ -43,12 +43,16 @@ use crate::web_client::control_message::{
     WebServerToWebClientControlMessage,
 };
 
+#[cfg(feature = "web_server_capability")]
 static ASYNC_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+#[cfg(feature = "web_server_capability")]
 use std::sync::OnceLock;
 
 const ENTER_ALTERNATE_SCREEN: &str = "\u{1b}[?1049h";
 const EXIT_ALTERNATE_SCREEN: &str = "\u{1b}[?1049l";
 const ENABLE_BRACKETED_PASTE: &str = "\u{1b}[?2004h";
+const ENABLE_FOCUS_REPORTING: &str = "\u{1b}[?1004h";
+const DISABLE_FOCUS_REPORTING: &str = "\u{1b}[?1004l";
 const RESET_STYLE: &str = "\u{1b}[m";
 const SHOW_CURSOR: &str = "\u{1b}[?25h";
 const ENTER_KITTY_KEYBOARD_MODE: &str = "\u{1b}[>1u";
@@ -70,6 +74,7 @@ const QUERY_HOST_THEME: &str = "\u{1b}[?996n";
 ///
 /// The number of workers can be configured to any nonzero value. Passing zero or `None` will spawn
 /// one worker per physical CPU on the current machine.
+#[cfg(feature = "web_server_capability")]
 pub(crate) fn async_runtime(maybe_number_of_workers: Option<usize>) -> tokio::runtime::Handle {
     match tokio::runtime::Handle::try_current() {
         Ok(handle) => handle.clone(),
@@ -152,11 +157,17 @@ use zellij_utils::cli::CliArgs;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
-    data::{ClientId, ConnectToSession, KeyWithModifier, LayoutInfo, LayoutMetadata},
+    data::{
+        ClientId, CommandOrPlugin, ConnectToSession, KeyWithModifier, LayoutInfo, LayoutMetadata,
+    },
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{cli_assets::CliAssets, config::Config, options::Options},
-    ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
+    input::{
+        cli_assets::{host_terminal_env, CliAssets},
+        config::Config,
+        options::Options,
+    },
+    ipc::{ClientToServerMsg, ExitReason, IpcReceiveError, ServerToClientMsg},
     nested_session,
     pane_size::Size,
     vendored::termwiz::input::InputEvent,
@@ -375,9 +386,10 @@ fn exit_after_startup_error(teardown: Option<TerminalTeardown>, message: String)
                 ""
             };
             let rendered = format!(
-                "{}{}{}{}{}\r\n{}\n",
+                "{}{}{}{}{}{}\r\n{}\n",
                 kitty_exit,
                 DISABLE_HOST_THEME_NOTIFY,
+                DISABLE_FOCUS_REPORTING,
                 EXIT_ALTERNATE_SCREEN,
                 RESET_STYLE,
                 SHOW_CURSOR,
@@ -493,7 +505,12 @@ pub fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
 #[derive(Debug, Clone)]
 pub enum ClientInfo {
     Attach(String, Options),
-    New(String, Option<LayoutInfo>, Option<PathBuf>), // PathBuf -> explicit cwd
+    New(
+        String,
+        Option<LayoutInfo>,
+        Option<PathBuf>,
+        Option<Vec<CommandOrPlugin>>,
+    ), // PathBuf -> explicit cwd
     Resurrect(String, PathBuf, bool, Option<PathBuf>), // (name, path_to_layout, force_run_commands, cwd)
     Watch(String, Options),                            // Watch mode (read-only)
 }
@@ -502,21 +519,27 @@ impl ClientInfo {
     pub fn get_session_name(&self) -> &str {
         match self {
             Self::Attach(ref name, _) => name,
-            Self::New(ref name, _layout_info, _layout_cwd) => name,
+            Self::New(ref name, _layout_info, _layout_cwd, _initial_panes) => name,
             Self::Resurrect(ref name, _, _, _) => name,
             Self::Watch(ref name, _) => name,
         }
     }
     pub fn set_layout_info(&mut self, new_layout_info: LayoutInfo) {
         match self {
-            ClientInfo::New(_, layout_info, _) => *layout_info = Some(new_layout_info),
+            ClientInfo::New(_, layout_info, _, _) => *layout_info = Some(new_layout_info),
             _ => {},
         }
     }
     pub fn set_cwd(&mut self, new_cwd: PathBuf) {
         match self {
-            ClientInfo::New(_, _, cwd) => *cwd = Some(new_cwd),
+            ClientInfo::New(_, _, cwd, _) => *cwd = Some(new_cwd),
             ClientInfo::Resurrect(_, _, _, cwd) => *cwd = Some(new_cwd),
+            _ => {},
+        }
+    }
+    pub fn set_initial_panes(&mut self, new_initial_panes: Vec<CommandOrPlugin>) {
+        match self {
+            ClientInfo::New(_, _, _, initial_panes) => *initial_panes = Some(new_initial_panes),
             _ => {},
         }
     }
@@ -538,6 +561,7 @@ pub(crate) enum InputInstruction {
         reply_bytes: Vec<u8>,
     },
     NestedSessionFrameFromHost(Vec<u8>),
+    HostTerminalFocusChanged(bool),
     Exit,
 }
 
@@ -546,6 +570,7 @@ pub async fn run_remote_client_terminal_loop(
     os_input: Box<dyn ClientOsApi>,
     mut connections: remote_attach::WebSocketConnections,
     nested_session_name: Option<String>,
+    host_contacted: Arc<std::sync::atomic::AtomicBool>,
 ) -> Result<Option<ConnectToSession>, RemoteClientError> {
     use crate::os_input_output::{AsyncSignals, AsyncStdin};
 
@@ -581,7 +606,8 @@ pub async fn run_remote_client_terminal_loop(
     }
 
     let mut nested_frame_extractor = nested_session::NestedFrameExtractor::new();
-    let mut last_heard_from_host = std::time::Instant::now();
+    let mut reannounce_scheduler =
+        nested_session::ReannounceScheduler::new(std::time::Instant::now());
     let mut reannounce_check = tokio::time::interval(std::time::Duration::from_millis(
         nested_session::reannounce_check_interval_ms(),
     ));
@@ -595,7 +621,8 @@ pub async fn run_remote_client_terminal_loop(
                     Ok(buf) if !buf.is_empty() => {
                         let (cleaned, nested_frames) = nested_frame_extractor.extract(&buf);
                         for payload_bytes in nested_frames {
-                            last_heard_from_host = std::time::Instant::now();
+                            reannounce_scheduler.note_host_contact(std::time::Instant::now());
+                            host_contacted.store(true, std::sync::atomic::Ordering::Relaxed);
                             match nested_session::decode_payload(&payload_bytes) {
                                 Some(nested_session::NestedSessionMessage::Ping) => {
                                     let mut stdout = os_input.get_stdout_writer();
@@ -642,9 +669,7 @@ pub async fn run_remote_client_terminal_loop(
 
             _ = reannounce_check.tick() => {
                 if let Some(session_name) = &nested_session_name {
-                    if last_heard_from_host.elapsed()
-                        >= std::time::Duration::from_millis(nested_session::reannounce_silence_ms())
-                    {
+                    if reannounce_scheduler.on_tick(std::time::Instant::now()) {
                         let announce = nested_session::NestedSessionMessage::Announce {
                             session_name: session_name.clone(),
                             capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
@@ -799,7 +824,6 @@ pub fn start_remote_client(
 ) -> Result<Option<ConnectToSession>, RemoteClientError> {
     info!("Starting Zellij client!");
 
-    let is_nested_inside_zellij_pane = os_input.env_variable("ZELLIJ").is_some();
     let remote_session_name = remote_session_url
         .trim_end_matches('/')
         .rsplit('/')
@@ -842,16 +866,16 @@ pub fn start_remote_client(
 
     os_input.set_raw_mode();
     stdout.write_all(ENABLE_BRACKETED_PASTE.as_bytes()).unwrap();
-    if is_nested_inside_zellij_pane {
-        let announce = nested_session::NestedSessionMessage::Announce {
-            session_name: remote_session_name.clone(),
-            capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
-        };
-        stdout
-            .write_all(&nested_session::encode_frame(&announce))
-            .unwrap();
-        let _ = stdout.flush();
-    }
+    stdout.write_all(ENABLE_FOCUS_REPORTING.as_bytes()).unwrap();
+    let announce = nested_session::NestedSessionMessage::Announce {
+        session_name: remote_session_name.clone(),
+        capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
+    };
+    stdout
+        .write_all(&nested_session::encode_frame(&announce))
+        .unwrap();
+    let _ = stdout.flush();
+    let host_contacted = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     std::panic::set_hook({
         use zellij_utils::errors::handle_panic;
@@ -881,18 +905,14 @@ pub fn start_remote_client(
         std::process::exit(exit_status);
     };
 
-    let nested_session_name = if is_nested_inside_zellij_pane {
-        Some(remote_session_name.clone())
-    } else {
-        None
-    };
     runtime.block_on(run_remote_client_terminal_loop(
         os_input.clone(),
         connections,
-        nested_session_name,
+        Some(remote_session_name.clone()),
+        host_contacted.clone(),
     ))?;
 
-    if is_nested_inside_zellij_pane {
+    if host_contacted.load(std::sync::atomic::Ordering::Relaxed) {
         let mut stdout = os_input.get_stdout_writer();
         let _ = stdout.write_all(&nested_session::encode_frame(
             &nested_session::NestedSessionMessage::Bye,
@@ -932,7 +952,6 @@ pub fn start_client(
     }
     info!("Starting Zellij client!");
 
-    let is_nested_inside_zellij_pane = os_input.env_variable("ZELLIJ").is_some();
     let own_session_name = info.get_session_name().to_owned();
 
     let explicitly_disable_kitty_keyboard_protocol = config_options
@@ -1024,6 +1043,8 @@ pub fn start_client(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: false,
                 cwd: None,
+                host_terminal_env: host_terminal_env(),
+                initial_panes: None,
             };
             (
                 ClientToServerMsg::AttachClient {
@@ -1069,6 +1090,8 @@ pub fn start_client(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: force_run_commands,
                 cwd,
+                host_terminal_env: host_terminal_env(),
+                initial_panes: None,
             };
 
             os_input.update_session_name(name);
@@ -1093,7 +1116,7 @@ pub fn start_client(
                 ipc_pipe,
             )
         },
-        ClientInfo::New(name, layout_info, layout_cwd) => {
+        ClientInfo::New(name, layout_info, layout_cwd, initial_panes) => {
             envs::set_session_name(name.clone());
 
             let cli_assets = CliAssets {
@@ -1125,6 +1148,8 @@ pub fn start_client(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: false,
                 cwd: layout_cwd,
+                host_terminal_env: host_terminal_env(),
+                initial_panes,
             };
 
             os_input.update_session_name(name);
@@ -1159,22 +1184,19 @@ pub fn start_client(
     os_input.set_raw_mode();
     let mut stdout = os_input.get_stdout_writer();
     stdout.write_all(ENABLE_BRACKETED_PASTE.as_bytes()).unwrap();
-    let nested_reannounce = if is_nested_inside_zellij_pane {
-        let announce = nested_session::NestedSessionMessage::Announce {
-            session_name: own_session_name.clone(),
-            capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
-        };
-        stdout
-            .write_all(&nested_session::encode_frame(&announce))
-            .unwrap();
-        let _ = stdout.flush();
-        Some(crate::nested_reannounce::NestedReannounce::spawn(
-            os_input.clone(),
-            own_session_name.clone(),
-        ))
-    } else {
-        None
+    stdout.write_all(ENABLE_FOCUS_REPORTING.as_bytes()).unwrap();
+    let announce = nested_session::NestedSessionMessage::Announce {
+        session_name: own_session_name.clone(),
+        capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
     };
+    stdout
+        .write_all(&nested_session::encode_frame(&announce))
+        .unwrap();
+    let _ = stdout.flush();
+    let nested_reannounce = crate::nested_reannounce::NestedReannounce::spawn(
+        os_input.clone(),
+        own_session_name.clone(),
+    );
 
     let (send_client_instructions, receive_client_instructions): ChannelWithContext<
         ClientInstruction,
@@ -1306,8 +1328,8 @@ pub fn start_client(
             let mut should_break = false;
             let mut consecutive_unknown_messages_received = 0;
             move || loop {
-                match os_input.recv_from_server() {
-                    Some((instruction, err_ctx)) => {
+                match os_input.try_recv_from_server() {
+                    Ok((instruction, err_ctx)) => {
                         consecutive_unknown_messages_received = 0;
                         err_ctx.update_thread_ctx();
                         if let ServerToClientMsg::Exit { .. } = instruction {
@@ -1318,12 +1340,26 @@ pub fn start_client(
                             break;
                         }
                     },
-                    None => {
+                    Err(IpcReceiveError::Disconnected) => {
+                        log::error!("Lost connection to the Zellij server");
+                        send_client_instructions
+                            .send(ClientInstruction::UnblockInputThread)
+                            .unwrap();
+                        send_client_instructions
+                            .send(ClientInstruction::Error(
+                                "Lost connection to the Zellij server".to_string(),
+                            ))
+                            .unwrap();
+                        break;
+                    },
+                    Err(IpcReceiveError::Undecodable) => {
                         consecutive_unknown_messages_received += 1;
                         send_client_instructions
                             .send(ClientInstruction::UnblockInputThread)
                             .unwrap();
-                        log::error!("Received unknown message from server");
+                        if consecutive_unknown_messages_received == 1 {
+                            log::error!("Received unknown message from server");
+                        }
                         if consecutive_unknown_messages_received >= 1000 {
                             send_client_instructions
                                 .send(ClientInstruction::Error(
@@ -1550,7 +1586,7 @@ pub fn start_client(
                 let _ = out.flush();
             },
             ClientInstruction::EmitNestedSessionFrame(payload_bytes) => {
-                if is_nested_inside_zellij_pane {
+                if nested_reannounce.host_contacted() {
                     let frame = nested_session::encode_frame_from_payload(&payload_bytes);
                     let mut out = os_input.get_stdout_writer();
                     let _ = out.write_all(&frame);
@@ -1561,13 +1597,11 @@ pub fn start_client(
         }
     }
 
-    if let Some(nested_reannounce) = &nested_reannounce {
-        nested_reannounce.stop();
-    }
+    nested_reannounce.stop();
 
     router_thread.join().unwrap();
 
-    if is_nested_inside_zellij_pane {
+    if nested_reannounce.host_contacted() {
         let mut stdout = os_input.get_stdout_writer();
         let _ = stdout.write_all(&nested_session::encode_frame(
             &nested_session::NestedSessionMessage::Bye,
@@ -1633,6 +1667,8 @@ pub fn start_server_detached(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: force_run_commands,
                 cwd,
+                host_terminal_env: host_terminal_env(),
+                initial_panes: None,
             };
 
             os_input.update_session_name(name);
@@ -1657,7 +1693,7 @@ pub fn start_server_detached(
                 ipc_pipe,
             )
         },
-        ClientInfo::New(name, layout_info, layout_cwd) => {
+        ClientInfo::New(name, layout_info, layout_cwd, initial_panes) => {
             envs::set_session_name(name.clone());
 
             let cli_assets = CliAssets {
@@ -1690,6 +1726,8 @@ pub fn start_server_detached(
                 max_panes: cli_args.max_panes,
                 force_run_layout_commands: false,
                 cwd: layout_cwd,
+                host_terminal_env: host_terminal_env(),
+                initial_panes,
             };
 
             os_input.update_session_name(name);
@@ -1731,9 +1769,10 @@ fn terminal_teardown_message(message: &str, rows: usize, include_kitty_exit: boo
         ""
     };
     format!(
-        "{}{}{}{}{}{}{}\n",
+        "{}{}{}{}{}{}{}{}\n",
         kitty_exit,
         DISABLE_HOST_THEME_NOTIFY,
+        DISABLE_FOCUS_REPORTING,
         EXIT_ALTERNATE_SCREEN,
         RESET_STYLE,
         SHOW_CURSOR,

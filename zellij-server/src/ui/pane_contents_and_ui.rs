@@ -40,6 +40,7 @@ pub struct PaneContentsAndUi<'a> {
     stack_list_entry_stack_is_focused: bool,
     blank_title: bool,
     mouse_scroll_resize: bool,
+    mouse_hover_tips: bool,
     dimmed_for_clients: HashSet<ClientId>,
 }
 
@@ -59,6 +60,7 @@ impl<'a> PaneContentsAndUi<'a> {
         show_help_text: bool,
         omit_title: bool,
         mouse_scroll_resize: bool,
+        mouse_hover_tips: bool,
         dimmed_for_clients: HashSet<ClientId>,
     ) -> Self {
         let mut focused_clients: Vec<ClientId> = active_panes
@@ -97,6 +99,7 @@ impl<'a> PaneContentsAndUi<'a> {
             stack_list_entry_stack_is_focused: false,
             blank_title: false,
             mouse_scroll_resize,
+            mouse_hover_tips,
             dimmed_for_clients,
         }
     }
@@ -380,6 +383,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 stack_list_entry: stack_list_entry.clone(),
                 blank_title: self.blank_title,
                 mouse_scroll_resize: self.mouse_scroll_resize,
+                mouse_hover_tips: self.mouse_hover_tips,
                 dimmed: frame_is_dimmed,
                 guest_choice_indicator,
             }
@@ -408,6 +412,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 stack_list_entry,
                 blank_title: self.blank_title,
                 mouse_scroll_resize: self.mouse_scroll_resize,
+                mouse_hover_tips: self.mouse_hover_tips,
                 dimmed: frame_is_dimmed,
                 guest_choice_indicator,
             }

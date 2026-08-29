@@ -14,7 +14,8 @@ use crate::input::layout::{
 };
 use crate::input::mouse::{MouseEvent, MouseEventType};
 use crate::input::options::{
-    Clipboard, NestedSessionHandling, OnForceClose, Options, PaneFrameStyle,
+    Clipboard, HostNotificationProtocol, NestedSessionHandling, OnForceClose, Options,
+    PaneFrameStyle,
 };
 use crate::ipc::{
     ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
@@ -420,6 +421,10 @@ fn test_client_messages() {
             max_panes: Some(4),
             force_run_layout_commands: true,
             cwd: Some(PathBuf::from("/path/to/cwd")),
+            host_terminal_env: [("TERM".to_owned(), "xterm-kitty".to_owned())]
+                .into_iter()
+                .collect(),
+            initial_panes: None,
         },
         is_web_client: true,
     });
@@ -436,6 +441,10 @@ fn test_client_messages() {
             max_panes: Some(4),
             force_run_layout_commands: true,
             cwd: Some(PathBuf::from("/path/to/cwd")),
+            host_terminal_env: [("TERM".to_owned(), "xterm-kitty".to_owned())]
+                .into_iter()
+                .collect(),
+            initial_panes: None,
         },
         is_web_client: true,
     });
@@ -449,6 +458,7 @@ fn test_client_messages() {
                 theme: Some("theme".to_owned()),
                 theme_dark: Some("theme_dark".to_owned()),
                 theme_light: Some("theme_light".to_owned()),
+                explicit_theme_hue: Some(crate::data::ThemeHue::Light),
                 default_mode: Some(InputMode::Normal),
                 default_shell: Some(PathBuf::from("default_shell")),
                 default_cwd: Some(PathBuf::from("default_cwd")),
@@ -485,6 +495,7 @@ fn test_client_messages() {
                 show_release_notes: Some(true),
                 advanced_mouse_actions: Some(true),
                 mouse_scroll_resize: Some(true),
+                scroll_mode_sync: Some(true),
                 web_server_ip: Some("1.1.1.1".parse().unwrap()),
                 web_server_port: Some(8080),
                 web_server_cert: Some(PathBuf::from("web_server_cert")),
@@ -493,11 +504,13 @@ fn test_client_messages() {
                 post_command_discovery_hook: Some("post_command_discovery_hook".to_owned()),
                 client_async_worker_tasks: Some(16),
                 mouse_hover_effects: Some(false),
+                mouse_hover_tips: Some(false),
                 visual_bell: Some(true),
                 focus_follows_mouse: Some(false),
                 mouse_click_through: Some(false),
                 osc133_command_selection: Some(false),
                 word_separators: Some("[]{}<>():".to_owned()),
+                host_notification_protocol: Some(HostNotificationProtocol::Osc99),
                 nested_session_handling: Some(NestedSessionHandling::Fullscreen),
                 dangerously_enable_paste_buffer_read: Some(true),
             }),
@@ -508,6 +521,19 @@ fn test_client_messages() {
             max_panes: Some(4),
             force_run_layout_commands: true,
             cwd: Some(PathBuf::from("/path/to/cwd")),
+            host_terminal_env: [("TERM".to_owned(), "xterm-kitty".to_owned())]
+                .into_iter()
+                .collect(),
+            initial_panes: Some(vec![
+                CommandOrPlugin::Command(RunCommandAction {
+                    command: PathBuf::from("htop"),
+                    args: vec!["-d".to_owned(), "5".to_owned()],
+                    cwd: Some(PathBuf::from("/path/to/cwd")),
+                    hold_on_close: true,
+                    ..Default::default()
+                }),
+                CommandOrPlugin::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin::default())),
+            ]),
         },
         is_web_client: true,
     });
@@ -1002,6 +1028,30 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::ScrollUp,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ScrollToPreviousPrompt,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ScrollToNextPrompt,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SelectCommandAtScrollPosition,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::CopyLastCommandOutput,
         terminal_id: Some(1),
         client_id: Some(100),
         is_cli_client: true,
@@ -3395,6 +3445,8 @@ fn test_client_messages() {
         single_pane: false,
         fit: true,
     });
+    test_client_roundtrip!(ClientToServerMsg::HostTerminalFocusChanged { focused: true });
+    test_client_roundtrip!(ClientToServerMsg::HostTerminalFocusChanged { focused: false });
     test_client_roundtrip!(ClientToServerMsg::WebServerStarted {
         base_url: "http://localhost:8080".to_string(),
     });

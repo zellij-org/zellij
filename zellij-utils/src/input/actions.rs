@@ -25,6 +25,50 @@ use std::str::FromStr;
 
 use crate::position::Position;
 
+pub fn initial_panes_from_cli(
+    initial_command: Vec<String>,
+    initial_plugin: Option<String>,
+    cwd: Option<PathBuf>,
+    caller_cwd: PathBuf,
+    close_on_exit: bool,
+    start_suspended: bool,
+) -> Option<Vec<CommandOrPlugin>> {
+    if let Some(plugin_url) = initial_plugin {
+        let plugin = match RunPluginLocation::parse(&plugin_url, cwd.clone()) {
+            Ok(location) => RunPluginOrAlias::RunPlugin(RunPlugin {
+                _allow_exec_host_cmd: false,
+                location,
+                configuration: Default::default(),
+                initial_cwd: cwd,
+            }),
+            Err(_) => {
+                let mut plugin_alias = PluginAlias::new(&plugin_url, &None, cwd);
+                plugin_alias.set_caller_cwd_if_not_set(Some(caller_cwd));
+                RunPluginOrAlias::Alias(plugin_alias)
+            },
+        };
+        Some(vec![CommandOrPlugin::Plugin(plugin)])
+    } else if !initial_command.is_empty() {
+        let mut initial_command = initial_command;
+        let (command, args) = (
+            PathBuf::from(initial_command.remove(0)),
+            initial_command.into_iter().collect(),
+        );
+        let run_command_action = RunCommandAction {
+            command,
+            args,
+            cwd,
+            direction: None,
+            hold_on_close: !close_on_exit,
+            hold_on_start: start_suspended,
+            ..Default::default()
+        };
+        Some(vec![CommandOrPlugin::Command(run_command_action)])
+    } else {
+        None
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ResizeDirection {
     Left,
@@ -202,6 +246,10 @@ pub enum Action {
     ScrollDownAt {
         position: Position,
     },
+    ScrollToPreviousPrompt,
+    ScrollToNextPrompt,
+    SelectCommandAtScrollPosition,
+    CopyLastCommandOutput,
     /// Scroll down to bottom in focus pane.
     ScrollToBottom,
     /// Scroll up to top in focus pane.
@@ -1474,44 +1522,14 @@ impl Action {
                     None
                 };
 
-                // Parse initial_panes from initial_command or initial_plugin
-                let initial_panes = if let Some(plugin_url) = initial_plugin {
-                    let plugin = match RunPluginLocation::parse(&plugin_url, cwd.clone()) {
-                        Ok(location) => RunPluginOrAlias::RunPlugin(RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location,
-                            configuration: Default::default(),
-                            initial_cwd: cwd.clone(),
-                        }),
-                        Err(_) => {
-                            let mut plugin_alias =
-                                PluginAlias::new(&plugin_url, &None, cwd.clone());
-                            plugin_alias.set_caller_cwd_if_not_set(Some(current_dir.clone()));
-                            RunPluginOrAlias::Alias(plugin_alias)
-                        },
-                    };
-                    Some(vec![CommandOrPlugin::Plugin(plugin)])
-                } else if !initial_command.is_empty() {
-                    let mut command: Vec<String> = initial_command.clone();
-                    let (command, args) = (
-                        PathBuf::from(command.remove(0)),
-                        command.into_iter().collect(),
-                    );
-                    let hold_on_close = !close_on_exit;
-                    let hold_on_start = start_suspended;
-                    let run_command_action = RunCommandAction {
-                        command,
-                        args,
-                        cwd: cwd.clone(),
-                        direction: None,
-                        hold_on_close,
-                        hold_on_start,
-                        ..Default::default()
-                    };
-                    Some(vec![CommandOrPlugin::Command(run_command_action)])
-                } else {
-                    None
-                };
+                let initial_panes = initial_panes_from_cli(
+                    initial_command,
+                    initial_plugin,
+                    cwd.clone(),
+                    current_dir.clone(),
+                    close_on_exit,
+                    start_suspended,
+                );
                 if let Some(raw_layout) = layout_string {
                     let layout_source_name = "layout-string".to_owned();
                     let path_to_raw_layout = layout_source_name.clone();

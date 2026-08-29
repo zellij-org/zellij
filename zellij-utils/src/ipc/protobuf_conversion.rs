@@ -8,7 +8,8 @@ use crate::{
         ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg,
         EmitNestedSessionFrameMsg, ExitMsg, ExitReason as ProtoExitReason,
         FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
-        ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalThemeChangedMsg,
+        ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalFocusChangedMsg,
+        HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, KittyGraphicsSupportMsg,
         LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg, MobileActivePaneMsg,
@@ -179,6 +180,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     SetMobileRenderPreferencesMsg { single_pane, fit },
                 )
             },
+            ClientToServerMsg::HostTerminalFocusChanged { focused } => {
+                client_to_server_msg::Message::HostTerminalFocusChanged(
+                    HostTerminalFocusChangedMsg { focused },
+                )
+            },
         };
 
         ProtoClientToServerMsg {
@@ -314,7 +320,8 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 })
             },
             Some(client_to_server_msg::Message::HostTerminalThemeChanged(msg)) => {
-                let proto_mode = ProtoHostTerminalThemeIndication::from_i32(msg.mode)
+                let proto_mode = ProtoHostTerminalThemeIndication::try_from(msg.mode)
+                    .ok()
                     .ok_or_else(|| anyhow!("Unknown HostTerminalThemeIndication: {}", msg.mode))?;
                 Ok(ClientToServerMsg::HostTerminalThemeChanged {
                     mode: proto_mode.into(),
@@ -347,6 +354,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 Ok(ClientToServerMsg::SetMobileRenderPreferences {
                     single_pane: msg.single_pane,
                     fit: msg.fit,
+                })
+            },
+            Some(client_to_server_msg::Message::HostTerminalFocusChanged(msg)) => {
+                Ok(ClientToServerMsg::HostTerminalFocusChanged {
+                    focused: msg.focused,
                 })
             },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
@@ -588,7 +600,8 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                 Ok(ServerToClientMsg::UnblockInputThread)
             },
             Some(server_to_client_msg::Message::Exit(exit)) => {
-                let proto_exit_reason = ProtoExitReason::from_i32(exit.exit_reason)
+                let proto_exit_reason = ProtoExitReason::try_from(exit.exit_reason)
+                    .ok()
                     .ok_or_else(|| anyhow!("Invalid exit_reason"))?;
 
                 let exit_reason = match proto_exit_reason {
@@ -831,6 +844,11 @@ impl From<crate::input::cli_assets::CliAssets>
             max_panes: cli_assets.max_panes.map(|m| m as u32),
             force_run_layout_commands: cli_assets.force_run_layout_commands,
             cwd: cli_assets.cwd.map(|p| p.to_string_lossy().to_string()),
+            host_terminal_env: cli_assets.host_terminal_env.into_iter().collect(),
+            initial_panes: cli_assets
+                .initial_panes
+                .map(|panes| panes.into_iter().map(|p| p.into()).collect())
+                .unwrap_or_default(),
         }
     }
 }
@@ -860,6 +878,18 @@ impl TryFrom<crate::client_server_contract::client_server_contract::CliAssets>
             max_panes: cli_assets.max_panes.map(|m| m as usize),
             force_run_layout_commands: cli_assets.force_run_layout_commands,
             cwd: cli_assets.cwd.map(PathBuf::from),
+            host_terminal_env: cli_assets.host_terminal_env.into_iter().collect(),
+            initial_panes: if cli_assets.initial_panes.is_empty() {
+                None
+            } else {
+                Some(
+                    cli_assets
+                        .initial_panes
+                        .into_iter()
+                        .map(|p| p.try_into())
+                        .collect::<Result<Vec<_>>>()?,
+                )
+            },
         })
     }
 }
@@ -930,7 +960,9 @@ impl From<crate::input::options::Options>
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
             mouse_scroll_resize: options.mouse_scroll_resize,
+            scroll_mode_sync: options.scroll_mode_sync,
             mouse_hover_effects: options.mouse_hover_effects,
+            mouse_hover_tips: options.mouse_hover_tips,
             web_server_ip: options.web_server_ip.map(|ip| ip.to_string()),
             web_server_port: options.web_server_port.map(|p| p as u32),
             web_server_cert: options
@@ -947,6 +979,9 @@ impl From<crate::input::options::Options>
             mouse_click_through: options.mouse_click_through,
             osc133_command_selection: options.osc133_command_selection,
             word_separators: options.word_separators,
+            host_notification_protocol: options
+                .host_notification_protocol
+                .map(|p| p.as_str().to_owned()),
             pane_frame_style: options.pane_frame_style.map(|s| match s {
                 crate::input::options::PaneFrameStyle::Full => "full".to_owned(),
                 crate::input::options::PaneFrameStyle::Titles => "titles".to_owned(),
@@ -962,6 +997,13 @@ impl From<crate::input::options::Options>
                     },
                     NestedSessionHandling::Descend => ProtoNestedSessionHandling::Descend as i32,
                     NestedSessionHandling::Never => ProtoNestedSessionHandling::Never as i32,
+                }
+            }),
+            explicit_theme_hue: options.explicit_theme_hue.map(|hue| {
+                use crate::client_server_contract::client_server_contract::ThemeHue as ProtoThemeHue;
+                match hue {
+                    crate::data::ThemeHue::Dark => ProtoThemeHue::Dark as i32,
+                    crate::data::ThemeHue::Light => ProtoThemeHue::Light as i32,
                 }
             }),
         }
@@ -1005,7 +1047,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             mirror_session: options.mirror_session,
             on_force_close: options
                 .on_force_close
-                .map(|o| match ProtoOnForceClose::from_i32(o) {
+                .map(|o| match ProtoOnForceClose::try_from(o).ok() {
                     Some(ProtoOnForceClose::Quit) => Ok(crate::input::options::OnForceClose::Quit),
                     Some(ProtoOnForceClose::Detach) => {
                         Ok(crate::input::options::OnForceClose::Detach)
@@ -1017,7 +1059,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             copy_command: options.copy_command,
             copy_clipboard: options
                 .copy_clipboard
-                .map(|c| match ProtoClipboard::from_i32(c) {
+                .map(|c| match ProtoClipboard::try_from(c).ok() {
                     Some(ProtoClipboard::System) => Ok(crate::input::options::Clipboard::System),
                     Some(ProtoClipboard::Primary) => Ok(crate::input::options::Clipboard::Primary),
                     _ => Err(anyhow!("Invalid Clipboard value: {}", c)),
@@ -1042,7 +1084,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             web_server: options.web_server,
             web_sharing: options
                 .web_sharing
-                .map(|w| match ProtoWebSharing::from_i32(w) {
+                .map(|w| match ProtoWebSharing::try_from(w).ok() {
                     Some(ProtoWebSharing::On) => Ok(crate::data::WebSharing::On),
                     Some(ProtoWebSharing::Off) => Ok(crate::data::WebSharing::Off),
                     Some(ProtoWebSharing::Disabled) => Ok(crate::data::WebSharing::Disabled),
@@ -1056,7 +1098,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
             mouse_scroll_resize: options.mouse_scroll_resize,
+            scroll_mode_sync: options.scroll_mode_sync,
             mouse_hover_effects: options.mouse_hover_effects,
+            mouse_hover_tips: options.mouse_hover_tips,
             web_server_ip: options
                 .web_server_ip
                 .map(|ip| ip.parse())
@@ -1073,9 +1117,16 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             mouse_click_through: options.mouse_click_through,
             osc133_command_selection: options.osc133_command_selection,
             word_separators: options.word_separators,
+            host_notification_protocol: options
+                .host_notification_protocol
+                .map(|p| {
+                    p.parse::<crate::input::options::HostNotificationProtocol>()
+                        .map_err(|e| anyhow!(e))
+                })
+                .transpose()?,
             nested_session_handling: options
                 .nested_session_handling
-                .map(|n| match ProtoNestedSessionHandling::from_i32(n) {
+                .map(|n| match ProtoNestedSessionHandling::try_from(n).ok() {
                     Some(ProtoNestedSessionHandling::Ask) => {
                         Ok(crate::input::options::NestedSessionHandling::Ask)
                     },
@@ -1089,6 +1140,17 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                         Ok(crate::input::options::NestedSessionHandling::Never)
                     },
                     _ => Err(anyhow!("Invalid NestedSessionHandling value: {}", n)),
+                })
+                .transpose()?,
+            explicit_theme_hue: options
+                .explicit_theme_hue
+                .map(|hue| {
+                    use crate::client_server_contract::client_server_contract::ThemeHue as ProtoThemeHue;
+                    match ProtoThemeHue::try_from(hue).ok() {
+                        Some(ProtoThemeHue::Dark) => Ok(crate::data::ThemeHue::Dark),
+                        Some(ProtoThemeHue::Light) => Ok(crate::data::ThemeHue::Light),
+                        _ => Err(anyhow!("Invalid ThemeHue value: {}", hue)),
+                    }
                 })
                 .transpose()?,
         })
@@ -1118,6 +1180,7 @@ impl From<crate::input::actions::Action>
             CloseTerminalPaneAction,
             ConfirmAction,
             CopyAction,
+            CopyLastCommandOutputAction,
             CurrentTabInfoAction,
             DenyAction,
             DetachAction,
@@ -1199,6 +1262,8 @@ impl From<crate::input::actions::Action>
             ScrollDownByPaneIdAction,
             ScrollToBottomAction,
             ScrollToBottomByPaneIdAction,
+            ScrollToNextPromptAction,
+            ScrollToPreviousPromptAction,
             ScrollToTopAction,
             ScrollToTopByPaneIdAction,
             ScrollUpAction,
@@ -1208,6 +1273,7 @@ impl From<crate::input::actions::Action>
             SearchAction,
             SearchInputAction,
             SearchToggleOptionAction,
+            SelectCommandAtScrollPositionAction,
             SetDarkThemeAction,
             SetLightThemeAction,
             SetPaneBorderlessAction,
@@ -1384,6 +1450,18 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::ScrollToTop => {
                 ActionType::ScrollToTop(ScrollToTopAction {})
+            },
+            crate::input::actions::Action::ScrollToPreviousPrompt => {
+                ActionType::ScrollToPreviousPrompt(ScrollToPreviousPromptAction {})
+            },
+            crate::input::actions::Action::ScrollToNextPrompt => {
+                ActionType::ScrollToNextPrompt(ScrollToNextPromptAction {})
+            },
+            crate::input::actions::Action::SelectCommandAtScrollPosition => {
+                ActionType::SelectCommandAtScrollPosition(SelectCommandAtScrollPositionAction {})
+            },
+            crate::input::actions::Action::CopyLastCommandOutput => {
+                ActionType::CopyLastCommandOutput(CopyLastCommandOutputAction {})
             },
             crate::input::actions::Action::PageScrollUp => {
                 ActionType::PageScrollUp(PageScrollUpAction {})
@@ -2271,6 +2349,18 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::ScrollUp(_) => Ok(crate::input::actions::Action::ScrollUp),
+            ActionType::ScrollToPreviousPrompt(_) => {
+                Ok(crate::input::actions::Action::ScrollToPreviousPrompt)
+            },
+            ActionType::ScrollToNextPrompt(_) => {
+                Ok(crate::input::actions::Action::ScrollToNextPrompt)
+            },
+            ActionType::SelectCommandAtScrollPosition(_) => {
+                Ok(crate::input::actions::Action::SelectCommandAtScrollPosition)
+            },
+            ActionType::CopyLastCommandOutput(_) => {
+                Ok(crate::input::actions::Action::CopyLastCommandOutput)
+            },
             ActionType::ScrollUpAt(scroll_action) => {
                 Ok(crate::input::actions::Action::ScrollUpAt {
                     position: scroll_action
@@ -3410,7 +3500,7 @@ fn input_mode_to_proto_i32(mode: InputMode) -> i32 {
 }
 
 fn proto_i32_to_input_mode(i: i32) -> Result<InputMode> {
-    match ProtoInputMode::from_i32(i) {
+    match ProtoInputMode::try_from(i).ok() {
         Some(ProtoInputMode::Normal) => Ok(InputMode::Normal),
         Some(ProtoInputMode::Locked) => Ok(InputMode::Locked),
         Some(ProtoInputMode::Resize) => Ok(InputMode::Resize),

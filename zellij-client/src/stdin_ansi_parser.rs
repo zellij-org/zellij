@@ -248,7 +248,14 @@ const PASTE_END_MARKER: &[u8] = b"\x1b[201~";
 pub enum PendingPartial {
     None,
     LoneEsc,
+    BareIntroducer,
     ReplyInProgress,
+}
+
+impl PendingPartial {
+    pub fn uses_reply_flush_guard(&self) -> bool {
+        matches!(self, PendingPartial::ReplyInProgress)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -475,6 +482,7 @@ impl StdinAnsiParser {
                     if payload.starts_with(b"99;") {
                         out.desktop_notifications
                             .push(payload.get(3..).unwrap_or_default().to_vec());
+                        continue;
                     } else if let Some(reply) = HostReply::from_osc_payload(&payload) {
                         out.replies.push(reply);
                     }
@@ -579,26 +587,27 @@ impl StdinAnsiParser {
             PendingPartial::None
         } else if self.partial_csi.is_empty() && self.partial_osc == [0x1b] {
             PendingPartial::LoneEsc
+        } else if self.partial_csi.is_empty() && self.partial_osc == [0x1b, b']'] {
+            PendingPartial::BareIntroducer
+        } else if self.partial_osc.is_empty() && self.partial_csi == [0x1b, b'['] {
+            PendingPartial::BareIntroducer
         } else {
             PendingPartial::ReplyInProgress
         }
     }
 
-    pub fn finalize_lone_esc(&mut self) -> Vec<u8> {
-        if self.partial_csi.is_empty()
-            && self.partial_paste.is_empty()
-            && self.partial_osc.is_empty()
-            && self.nested_frame_extractor.partial_bytes() == [0x1b]
-        {
-            self.nested_frame_extractor.take_partial()
-        } else if self.partial_csi.is_empty()
-            && self.partial_paste.is_empty()
-            && self.nested_frame_extractor.partial_bytes().is_empty()
-            && self.partial_osc == [0x1b]
-        {
-            std::mem::take(&mut self.partial_osc)
-        } else {
-            Vec::new()
+    pub fn finalize_fast_partial(&mut self) -> Vec<u8> {
+        match self.pending_partial() {
+            PendingPartial::LoneEsc | PendingPartial::BareIntroducer => {
+                if !self.nested_frame_extractor.partial_bytes().is_empty() {
+                    self.nested_frame_extractor.take_partial()
+                } else if !self.partial_osc.is_empty() {
+                    std::mem::take(&mut self.partial_osc)
+                } else {
+                    std::mem::take(&mut self.partial_csi)
+                }
+            },
+            PendingPartial::None | PendingPartial::ReplyInProgress => Vec::new(),
         }
     }
 

@@ -1,0 +1,6 @@
+---
+source: zellij-integration-tests/tests/initial_command.rs
+expression: normalized(&grid_snapshot)
+---
+initial-command output
+█

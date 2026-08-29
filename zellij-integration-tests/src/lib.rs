@@ -11,7 +11,7 @@ pub mod runner;
 pub mod test_env;
 
 pub use client_screen::{
-    col, CellStyle, ClientScreen, Coord, CoordBuilder, CursorPosition, GridSnapshot,
+    col, AnsiCode, CellStyle, ClientScreen, Coord, CoordBuilder, CursorPosition, GridSnapshot,
 };
 pub use fake_pty::FakePtyHandle;
 pub use harness::{
@@ -23,7 +23,10 @@ pub use nested::{
     host_descended_bar_with_ascend_keys_settled, wait_for_settled_composite,
     NestedDepthThreeHarness, NestedHarness,
 };
-pub use runner::{assert_same_rendered_grid, normalized, TestClient, TestRunner, TestSession};
+pub use runner::{
+    assert_same_rendered_grid, normalized, BackgroundTestSession, TestClient, TestRunner,
+    TestSession,
+};
 pub use zellij_utils::data::LayoutInfo;
 pub use zellij_utils::pane_size::Size;
 

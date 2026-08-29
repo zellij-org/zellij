@@ -32,6 +32,12 @@ theme "dracula"
 // 
 // theme_light "solarized-light"
  
+// Pin the session to a dark or light appearance, ignoring what the
+// host terminal reports. When unset, the host terminal decides.
+// Options: dark, light
+// 
+// explicit_theme_hue "dark"
+ 
 // Choose the base input mode of zellij.
 // Default: normal
 // 
@@ -284,9 +290,17 @@ web_sharing "disabled"
 // default is true
 // mouse_scroll_resize false
  
+// Whether scrolling a pane implicitly enters and exits Scroll mode
+// default is true
+// scroll_mode_sync false
+ 
 // Whether to enable mouse hover visual effects (frame highlight and help text)
 // default is true
 // mouse_hover_effects false
+ 
+// Whether to show mouse hover help-text tips (resize help and group shortcuts)
+// default is true
+// mouse_hover_tips false
  
 // Whether to show visual bell indicators (pane/tab frame flash and [!] suffix)
 // default is true
@@ -349,3 +363,14 @@ web_sharing "disabled"
 //   - "never" (never prompt or descend; do it manually)
 // 
 // nested_session_handling "ask"
+ 
+// Which escape sequence desktop notifications coming from panes are
+// forwarded to the host terminal with.
+// Options:
+//   - "auto" (Default — detect from the host terminal environment)
+//   - "osc9" (the legacy iTerm2 protocol, understood by most terminals)
+//   - "osc99" (kitty's notification protocol)
+//   - "bell" (ring the terminal bell instead)
+//   - "off" (do not forward notifications to the host terminal)
+// 
+// host_notification_protocol "auto"

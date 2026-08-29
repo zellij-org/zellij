@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.45.1] - 2026-08-28
+* fix: nested-session detection over SSH (https://github.com/zellij-org/zellij/pull/5522)
+* fix: some issues with notification parsing (eg. neovim notification on save) (https://github.com/zellij-org/zellij/pull/5523)
+* fix: kitty image size on startup and clearing with stacked unlisted full framed panes (https://github.com/zellij-org/zellij/pull/5526)
+* fix: focus event in remote attach (https://github.com/zellij-org/zellij/pull/5527)
+* fix: editing scrollback issue with a fullscreen floating pane (https://github.com/zellij-org/zellij/pull/5528)
+* feat: allow opting-out of scroll mode sync (https://github.com/zellij-org/zellij/pull/5532)
+* fix: save space for title row in fixed-layout panes in titles only mode (https://github.com/zellij-org/zellij/pull/5533)
+* fix: properly fire visibility event to plugins when their tab/floating-layer is hidden/shown (https://github.com/zellij-org/zellij/pull/5518 and https://github.com/zellij-org/zellij/pull/5534)
+* feat: allow setting explicit_theme_hue (light/dark) (https://github.com/zellij-org/zellij/pull/5536)
+* fix: input mode updates when switching tabs (https://github.com/zellij-org/zellij/pull/5535)
+* feat: allow starting a session with an initial command, eg. `zellij attach -a my-session -- htop` (https://github.com/zellij-org/zellij/pull/5543)
+* fix: release a CLI pipe when the plugin handling it crashes, instead of blocking the `zellij pipe` client until the plugin is unloaded (https://github.com/zellij-org/zellij/pull/5537)
+
+## [0.45.0] - 2026-08-20
 * feat: allow tabs to have different sizes if clients aren't focused on the same one (https://github.com/zellij-org/zellij/pull/5133)
 * feat: PWA support for the web client (manifest + icons + iOS meta tags) so the page can be installed as a standalone app (https://github.com/zellij-org/zellij/pull/5184)
 * feat: mobile UI (https://github.com/zellij-org/zellij/pull/5241 and https://github.com/zellij-org/zellij/pull/5441)
@@ -35,9 +51,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: implement support for the kitty graphics protocol to display images in the terminal (https://github.com/zellij-org/zellij/pull/5428)
 * fix: only advertise Sixel support if the attached terminal also supports it (https://github.com/zellij-org/zellij/pull/5432)
 * fix: properly unbundle plugin wasm executables when stripping them (to assist distro packagers) (https://github.com/zellij-org/zellij/pull/5433)
-* feat: support OSC133, triple-mouse-click to mark whole command, configurable double-click word boundaries (https://github.com/zellij-org/zellij/pull/5460)
+* feat: support OSC133, triple-mouse-click to mark whole command, configurable double-click word boundaries (https://github.com/zellij-org/zellij/pull/5460 and https://github.com/zellij-org/zellij/pull/5492)
 * fix(scroll): keep a pane's scroll position when leaving scroll mode, and re-enter scroll mode when focusing a scrolled pane (https://github.com/zellij-org/zellij/pull/5299)
 * feat: allow opting-in to reading paste buffer (default false) (https://github.com/zellij-org/zellij/pull/5472)
+* feat: support additional notification protocols (OSC9 + OSC777), forward host gain/lost focus messages (https://github.com/zellij-org/zellij/pull/5485)
 
 ## [0.44.3] - 2026-05-13
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)
