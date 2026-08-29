@@ -674,6 +674,10 @@ impl SessionState {
     pub fn associate_pipe_with_client(&mut self, pipe_id: String, client_id: ClientId) {
         self.pipes.insert(pipe_id, client_id);
     }
+    /// Drop a pipe association once the pipe has been unblocked (ie. it is done).
+    pub fn remove_pipe(&mut self, pipe_id: &str) -> Option<ClientId> {
+        self.pipes.remove(pipe_id)
+    }
     /// Remove a client and return any host-query tokens that had
     /// been dispatched to this client and were still awaiting a
     /// reply. Callers must synthesize an empty reply for each token
@@ -796,6 +800,21 @@ mod session_state_tests {
         let mut s = SessionState::new();
         s.clients.insert(id, None);
         s
+    }
+
+    #[test]
+    fn unblocking_a_pipe_drops_its_association() {
+        let mut s = with_client(1);
+        // every `zellij pipe` invocation uses a fresh uuid, so associations that are
+        // never removed grow without bound for the lifetime of the server
+        for i in 0..100 {
+            s.associate_pipe_with_client(format!("pipe-{i}"), 1);
+        }
+        assert_eq!(s.pipes.len(), 100);
+        for i in 0..100 {
+            assert_eq!(s.remove_pipe(&format!("pipe-{i}")), Some(1));
+        }
+        assert!(s.pipes.is_empty());
     }
 
     #[test]
@@ -1297,7 +1316,9 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::UnblockCliPipeInput(pipe_name) => {
-                let pipe = session_state.read().unwrap().get_pipe(&pipe_name);
+                // an unblocked pipe is done, so drop its client association - otherwise every
+                // `zellij pipe` invocation leaks an entry keyed by a fresh uuid
+                let pipe = session_state.write().unwrap().remove_pipe(&pipe_name);
                 match pipe {
                     Some(client_id) => {
                         send_to_client!(
