@@ -1303,6 +1303,7 @@ impl From<crate::input::actions::Action>
             TogglePaneEmbedOrFloatingAction,
             TogglePaneEmbedOrFloatingByPaneIdAction,
             TogglePaneFramesAction,
+            ToggleStackListOrientationAction,
             TogglePaneInGroupAction,
             TogglePanePinnedAction,
             TogglePanePinnedByPaneIdAction,
@@ -1483,6 +1484,9 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::TogglePaneFrames => {
                 ActionType::TogglePaneFrames(TogglePaneFramesAction {})
+            },
+            crate::input::actions::Action::ToggleStackListOrientation => {
+                ActionType::ToggleStackListOrientation(ToggleStackListOrientationAction {})
             },
             crate::input::actions::Action::SetPaneFrameStyle(style) => {
                 let style = match style {
@@ -2393,6 +2397,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::ToggleFocusNoUiFullscreen)
             },
             ActionType::TogglePaneFrames(_) => Ok(crate::input::actions::Action::TogglePaneFrames),
+            ActionType::ToggleStackListOrientation(_) => {
+                Ok(crate::input::actions::Action::ToggleStackListOrientation)
+            },
             ActionType::SetPaneFrameStyle(set_pane_frame_style_action) => {
                 let style = crate::input::options::PaneFrameStyle::from_str(
                     &set_pane_frame_style_action.style,

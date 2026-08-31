@@ -1143,6 +1143,7 @@ pub enum ActionName {
     ScrollToNextPrompt = 111,
     SelectCommandAtScrollPosition = 112,
     CopyLastCommandOutput = 113,
+    ToggleStackListOrientation = 114,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1262,6 +1263,7 @@ impl ActionName {
             ActionName::ScrollToNextPrompt => "ScrollToNextPrompt",
             ActionName::SelectCommandAtScrollPosition => "SelectCommandAtScrollPosition",
             ActionName::CopyLastCommandOutput => "CopyLastCommandOutput",
+            ActionName::ToggleStackListOrientation => "ToggleStackListOrientation",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1378,6 +1380,7 @@ impl ActionName {
             "ScrollToNextPrompt" => Some(Self::ScrollToNextPrompt),
             "SelectCommandAtScrollPosition" => Some(Self::SelectCommandAtScrollPosition),
             "CopyLastCommandOutput" => Some(Self::CopyLastCommandOutput),
+            "ToggleStackListOrientation" => Some(Self::ToggleStackListOrientation),
             _ => None,
         }
     }

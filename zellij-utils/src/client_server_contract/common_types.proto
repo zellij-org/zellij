@@ -289,6 +289,7 @@ message Action {
     ScrollToNextPromptAction scroll_to_next_prompt = 149;
     SelectCommandAtScrollPositionAction select_command_at_scroll_position = 150;
     CopyLastCommandOutputAction copy_last_command_output = 151;
+    ToggleStackListOrientationAction toggle_stack_list_orientation = 152;
   }
 }
 
@@ -325,6 +326,7 @@ message HalfPageScrollDownAction {}
 message ToggleFocusFullscreenAction {}
 message ToggleFocusNoUiFullscreenAction {}
 message TogglePaneFramesAction {}
+message ToggleStackListOrientationAction {}
 message SetPaneFrameStyleAction {
   string style = 1;
 }

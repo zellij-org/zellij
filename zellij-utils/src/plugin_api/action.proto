@@ -509,6 +509,7 @@ enum ActionName {
     ScrollToNextPrompt = 111;
     SelectCommandAtScrollPosition = 112;
     CopyLastCommandOutput = 113;
+    ToggleStackListOrientation = 114;
 }
 
 message Position {
