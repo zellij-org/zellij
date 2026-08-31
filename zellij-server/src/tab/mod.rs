@@ -279,6 +279,9 @@ pub(crate) struct Tab {
     stack_lists: HashMap<StackListId, StackList>,
     stack_list_of_member: HashMap<PaneId, StackListId>,
     stack_list_parked_pairs: HashMap<PaneId, PaneId>,
+    // remembers a stack list's orientation across a degroupify->classic->groupify cycle
+    // (e.g. adding a pane to the stack), keyed by the classic in-grid stack id
+    stack_list_orientation_memory: HashMap<usize, StackListOrientation>,
     next_stack_list_id: StackListId,
     stack_list_session_is_mirrored: bool,
     max_panes: Option<usize>,
@@ -1137,6 +1140,7 @@ impl Tab {
             stack_lists: HashMap::new(),
             stack_list_of_member: HashMap::new(),
             stack_list_parked_pairs: HashMap::new(),
+            stack_list_orientation_memory: HashMap::new(),
             next_stack_list_id: 0,
             stack_list_session_is_mirrored: session_is_mirrored,
             name: name.clone(),
@@ -1303,7 +1307,8 @@ impl Tab {
                     .cols
                     .as_usize()
                     .saturating_sub(offset.left + offset.right);
-                let horizontal_entry_overhead = 2 + 4;
+                // matches render_stack_list_entry chrome: one blank column each side.
+                let horizontal_entry_overhead = 2;
                 let column = point.column();
                 if column < entry_x {
                     return pane_id;
@@ -1752,8 +1757,8 @@ impl Tab {
         }
     }
     fn degroupify(&mut self, stack_list_id: StackListId) {
-        let (members, visible) = match self.stack_lists.get(&stack_list_id) {
-            Some(list) => (list.members.clone(), list.visible),
+        let (members, visible, orientation) = match self.stack_lists.get(&stack_list_id) {
+            Some(list) => (list.members.clone(), list.visible, list.orientation),
             None => return,
         };
         let n = members.len();
@@ -1765,6 +1770,12 @@ impl Tab {
         if geoms.len() != n {
             log::error!("degroupify: could not compute classic stack geoms");
             return;
+        }
+        // remember orientation keyed by the classic stack id so a following groupify_all
+        // (e.g. after adding a pane to the stack) can restore it instead of defaulting.
+        if let Some(classic_stack_id) = geoms.first().and_then(|g| g.stacked) {
+            self.stack_list_orientation_memory
+                .insert(classic_stack_id, orientation);
         }
         for (i, member) in members.iter().enumerate() {
             let mut geom = geoms[i];
@@ -1827,10 +1838,15 @@ impl Tab {
             }
         }
         let mut converted_any = false;
-        for (_stack_id, mut members) in stacks {
+        for (stack_id, mut members) in stacks {
             if members.len() < 2 {
                 continue;
             }
+            // restore a remembered orientation for this classic stack id, else default
+            let orientation = self
+                .stack_list_orientation_memory
+                .remove(&stack_id)
+                .unwrap_or_default();
             members.sort_by_key(|(y, _, _)| *y);
             let representative = members[0].1;
             let rect = match self.tiled_panes.position_and_size_of_stack(&representative) {
@@ -1879,12 +1895,14 @@ impl Tab {
                 StackList {
                     members: ordered_ids,
                     visible,
-                    orientation: StackListOrientation::default(),
+                    orientation,
                 },
             );
             self.refresh_or_dissolve_stack_list(stack_list_id);
             converted_any = true;
         }
+        // drop any stale remembered orientations for stacks that were not re-formed
+        self.stack_list_orientation_memory.clear();
         if converted_any {
             self.set_force_render();
             self.set_should_clear_display_before_rendering();
@@ -1982,9 +2000,9 @@ impl Tab {
                 .max()
                 .unwrap_or(0);
             let stack_is_focused = active_panes.values().any(|p_id| *p_id == list.visible);
-            // must match render_stack_list_entry's per-entry chrome: "> " marker (2) plus the
-            // two vertical borders and their padding (2 * (1 + corner_padding) = 4).
-            let horizontal_entry_overhead = 2 + 4;
+            // must match render_stack_list_entry's per-entry chrome: one blank column of
+            // padding on each side of the label (no marker, no borders).
+            let horizontal_entry_overhead = 2;
             let mut horizontal_x = entry_x;
             for (rank, member) in list.members.iter().enumerate() {
                 let member_label_width = if *member == list.visible {
