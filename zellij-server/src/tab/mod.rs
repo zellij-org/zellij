@@ -230,10 +230,20 @@ pub type SuppressedPanes = HashMap<PaneId, (bool, Box<dyn Pane>)>; // bool => is
 
 pub type StackListId = usize;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StackListOrientation {
+    /// Tab headers stacked one-per-row in the pane's top-left (upstream default).
+    #[default]
+    Vertical,
+    /// Tab headers laid side-by-side on a single row, IDE terminal-tab style.
+    Horizontal,
+}
+
 #[derive(Debug, Clone)]
 pub struct StackList {
     pub members: Vec<PaneId>,
     pub visible: PaneId,
+    pub orientation: StackListOrientation,
 }
 
 impl StackList {
@@ -1273,11 +1283,52 @@ impl Tab {
             return pane_id;
         };
         let geom = pane.current_geom();
-        if point.line() < geom.y as isize {
-            return pane_id;
+        match list.orientation {
+            StackListOrientation::Vertical => {
+                if point.line() < geom.y as isize {
+                    return pane_id;
+                }
+                let rank = (point.line() - geom.y as isize) as usize;
+                list.members.get(rank).copied().unwrap_or(pane_id)
+            },
+            StackListOrientation::Horizontal => {
+                // the tab bar is a single row; the clicked member is decided by the column,
+                // walking the same per-tab widths render_stack_list_headers lays out.
+                if point.line() != geom.y as isize {
+                    return pane_id;
+                }
+                let offset = pane.get_content_offset();
+                let entry_x = geom.x + offset.left;
+                let entry_cols = geom
+                    .cols
+                    .as_usize()
+                    .saturating_sub(offset.left + offset.right);
+                let horizontal_entry_overhead = 2 + 4;
+                let column = point.column();
+                if column < entry_x {
+                    return pane_id;
+                }
+                let mut tab_x = entry_x;
+                for member in &list.members {
+                    let label_width = if *member == list.visible {
+                        self.tiled_panes.get_pane(*member).map(|p| &**p)
+                    } else {
+                        self.suppressed_panes.get(member).map(|(_, p)| &**p)
+                    }
+                    .map(|p| p.stack_list_entry_label().width())
+                    .unwrap_or(0);
+                    let tab_width = (label_width + horizontal_entry_overhead).min(entry_cols);
+                    if tab_x + tab_width > entry_x + entry_cols {
+                        break;
+                    }
+                    if column < tab_x + tab_width {
+                        return *member;
+                    }
+                    tab_x += tab_width;
+                }
+                pane_id
+            },
         }
-        let rank = (point.line() - geom.y as isize) as usize;
-        list.members.get(rank).copied().unwrap_or(pane_id)
     }
     pub fn suppressed_stack_list_members(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.suppressed_panes
@@ -1378,16 +1429,22 @@ impl Tab {
         }
     }
     fn refresh_or_dissolve_stack_list(&mut self, stack_list_id: StackListId) {
-        let (member_count, visible) = match self.stack_lists.get(&stack_list_id) {
-            Some(list) => (list.members.len(), list.visible),
+        let (member_count, visible, orientation) = match self.stack_lists.get(&stack_list_id) {
+            Some(list) => (list.members.len(), list.visible, list.orientation),
             None => return,
         };
         if member_count <= 1 {
             self.dissolve_stack_list(stack_list_id);
         } else {
+            // vertical reserves one row per member plus a padding row; horizontal packs every
+            // tab onto a single row, so it only needs one reserved row for the tab bar.
+            let reserved_rows = match orientation {
+                StackListOrientation::Vertical => member_count + 1,
+                StackListOrientation::Horizontal => 1,
+            };
             self.reserved_top_rows
                 .borrow_mut()
-                .insert(visible, member_count + 1);
+                .insert(visible, reserved_rows);
             self.tiled_panes.reapply_pane_frames();
             self.resize_stack_list_hidden_members(stack_list_id);
         }
@@ -1482,7 +1539,12 @@ impl Tab {
         self.tiled_panes.move_client_focus_to_existing_panes();
         self.set_force_render();
     }
-    fn move_focus_within_stack_list(&mut self, client_id: ClientId, down: bool) -> bool {
+    fn move_focus_within_stack_list(
+        &mut self,
+        client_id: ClientId,
+        down: bool,
+        axis: StackListOrientation,
+    ) -> bool {
         let active_pane_id = match self.tiled_panes.get_active_pane_id(client_id) {
             Some(id) => id,
             None => return false,
@@ -1496,6 +1558,11 @@ impl Tab {
                 Some(l) => l,
                 None => return false,
             };
+            // only intercept the arrow axis that matches how the tabs are laid out, so the
+            // cross-axis arrows still move focus to neighbouring panes as usual.
+            if list.orientation != axis {
+                return false;
+            }
             if list.visible != active_pane_id {
                 return false;
             }
@@ -1516,6 +1583,30 @@ impl Tab {
             }
         };
         self.select_stack_list_member(stack_list_id, target_member, Some(client_id))
+    }
+    pub fn toggle_stack_list_orientation(&mut self, client_id: ClientId) -> bool {
+        let active_pane_id = match self.tiled_panes.get_active_pane_id(client_id) {
+            Some(id) => id,
+            None => return false,
+        };
+        let stack_list_id = match self.stack_list_id_of_member(&active_pane_id) {
+            Some(id) => id,
+            None => return false,
+        };
+        match self.stack_lists.get_mut(&stack_list_id) {
+            Some(list) => {
+                list.orientation = match list.orientation {
+                    StackListOrientation::Vertical => StackListOrientation::Horizontal,
+                    StackListOrientation::Horizontal => StackListOrientation::Vertical,
+                };
+            },
+            None => return false,
+        }
+        // recompute reserved rows and hidden-member geometry for the new layout.
+        self.refresh_or_dissolve_stack_list(stack_list_id);
+        self.set_force_render();
+        self.set_should_clear_display_before_rendering();
+        true
     }
     fn close_stack_list_member(&mut self, id: PaneId, exit_status: Option<i32>) -> bool {
         match self.remove_stack_list_member(id) {
@@ -1788,6 +1879,7 @@ impl Tab {
                 StackList {
                     members: ordered_ids,
                     visible,
+                    orientation: StackListOrientation::default(),
                 },
             );
             self.refresh_or_dissolve_stack_list(stack_list_id);
@@ -1890,11 +1982,41 @@ impl Tab {
                 .max()
                 .unwrap_or(0);
             let stack_is_focused = active_panes.values().any(|p_id| *p_id == list.visible);
+            // must match render_stack_list_entry's per-entry chrome: "> " marker (2) plus the
+            // two vertical borders and their padding (2 * (1 + corner_padding) = 4).
+            let horizontal_entry_overhead = 2 + 4;
+            let mut horizontal_x = entry_x;
             for (rank, member) in list.members.iter().enumerate() {
+                let member_label_width = if *member == list.visible {
+                    self.tiled_panes.get_pane(*member).map(|p| &**p)
+                } else {
+                    self.suppressed_panes.get(member).map(|(_, p)| &**p)
+                }
+                .map(|pane| pane.stack_list_entry_label().width())
+                .unwrap_or(0);
                 let mut header_geom = rect;
-                header_geom.x = entry_x;
-                header_geom.cols.set_inner(entry_cols);
-                header_geom.y = rect.y + rank;
+                let entry_width = match list.orientation {
+                    StackListOrientation::Vertical => {
+                        header_geom.x = entry_x;
+                        header_geom.cols.set_inner(entry_cols);
+                        header_geom.y = rect.y + rank;
+                        widest_member_title
+                    },
+                    StackListOrientation::Horizontal => {
+                        // each tab is only as wide as its own label plus chrome, packed left to
+                        // right on a single row; stop once we run out of horizontal space.
+                        let tab_width = (member_label_width + horizontal_entry_overhead)
+                            .min(entry_cols);
+                        if horizontal_x + tab_width > entry_x + entry_cols {
+                            break;
+                        }
+                        header_geom.x = horizontal_x;
+                        header_geom.cols.set_inner(tab_width);
+                        header_geom.y = rect.y;
+                        horizontal_x += tab_width;
+                        member_label_width
+                    },
+                };
                 header_geom.rows = Dimension::fixed(1);
                 header_geom.stacked = None;
                 let pane_box = if *member == list.visible {
@@ -1927,7 +2049,7 @@ impl Tab {
                 );
                 pane_contents_and_ui.set_frame_geom_override(Some(header_geom));
                 pane_contents_and_ui.set_stack_list_entry(
-                    Some(widest_member_title),
+                    Some(entry_width),
                     *member == list.visible,
                     stack_is_focused,
                 );
@@ -1941,17 +2063,21 @@ impl Tab {
                     )?;
                 }
             }
-            let mut padding_row = Vec::with_capacity(entry_cols);
-            for _ in 0..entry_cols {
-                padding_row.push(EMPTY_TERMINAL_CHARACTER);
+            // the vertical list draws a padding row below its stacked headers; the horizontal
+            // tab bar is a single row and needs no trailing padding.
+            if list.orientation == StackListOrientation::Vertical {
+                let mut padding_row = Vec::with_capacity(entry_cols);
+                for _ in 0..entry_cols {
+                    padding_row.push(EMPTY_TERMINAL_CHARACTER);
+                }
+                let padding_chunk =
+                    CharacterChunk::new(padding_row, entry_x, rect.y + list.members.len());
+                output.add_character_chunks_to_multiple_clients(
+                    vec![padding_chunk],
+                    connected_clients.iter().copied(),
+                    None,
+                )?;
             }
-            let padding_chunk =
-                CharacterChunk::new(padding_row, entry_x, rect.y + list.members.len());
-            output.add_character_chunks_to_multiple_clients(
-                vec![padding_chunk],
-                connected_clients.iter().copied(),
-                None,
-            )?;
         }
         Ok(())
     }
@@ -6067,6 +6193,15 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 return Ok(self.focus_pane_left_fullscreen(client_id));
             }
+            if self.stacked_pane_list_is_active()
+                && self.move_focus_within_stack_list(
+                    client_id,
+                    false,
+                    StackListOrientation::Horizontal,
+                )
+            {
+                return Ok(true);
+            }
             Ok(self.tiled_panes.move_focus_left(client_id))
         }
     }
@@ -6089,7 +6224,7 @@ impl Tab {
                 return Ok(self.focus_pane_down_fullscreen(client_id));
             }
             if self.stacked_pane_list_is_active()
-                && self.move_focus_within_stack_list(client_id, true)
+                && self.move_focus_within_stack_list(client_id, true, StackListOrientation::Vertical)
             {
                 return Ok(true);
             }
@@ -6115,7 +6250,11 @@ impl Tab {
                 return Ok(self.focus_pane_up_fullscreen(client_id));
             }
             if self.stacked_pane_list_is_active()
-                && self.move_focus_within_stack_list(client_id, false)
+                && self.move_focus_within_stack_list(
+                    client_id,
+                    false,
+                    StackListOrientation::Vertical,
+                )
             {
                 return Ok(true);
             }
@@ -6140,6 +6279,15 @@ impl Tab {
             }
             if self.tiled_panes.fullscreen_is_active() {
                 return Ok(self.focus_pane_right_fullscreen(client_id));
+            }
+            if self.stacked_pane_list_is_active()
+                && self.move_focus_within_stack_list(
+                    client_id,
+                    true,
+                    StackListOrientation::Horizontal,
+                )
+            {
+                return Ok(true);
             }
             Ok(self.tiled_panes.move_focus_right(client_id))
         }

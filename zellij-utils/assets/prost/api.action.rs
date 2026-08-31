@@ -1273,6 +1273,7 @@ pub enum ActionName {
     HideBars = 151,
     ShowBars = 152,
     HideBarByPaneId = 153,
+    ToggleStackListOrientation = 154,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1432,6 +1433,7 @@ impl ActionName {
             ActionName::HideBars => "HideBars",
             ActionName::ShowBars => "ShowBars",
             ActionName::HideBarByPaneId => "HideBarByPaneId",
+            ActionName::ToggleStackListOrientation => "ToggleStackListOrientation",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1588,6 +1590,7 @@ impl ActionName {
             "HideBars" => Some(Self::HideBars),
             "ShowBars" => Some(Self::ShowBars),
             "HideBarByPaneId" => Some(Self::HideBarByPaneId),
+            "ToggleStackListOrientation" => Some(Self::ToggleStackListOrientation),
             _ => None,
         }
     }

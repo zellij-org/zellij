@@ -342,6 +342,12 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("TogglePaneFrames should not have a payload"),
                 None => Ok(Action::TogglePaneFrames),
             },
+            Some(ProtobufActionName::ToggleStackListOrientation) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleStackListOrientation should not have a payload"),
+                    None => Ok(Action::ToggleStackListOrientation),
+                }
+            },
             Some(ProtobufActionName::SetPaneFrameStyle) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::SetPaneFrameStylePayload(payload)) => {
                     match ProtobufPaneFrameStyle::try_from(payload.pane_frame_style).ok() {
@@ -1776,6 +1782,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::TogglePaneFrames => Ok(ProtobufAction {
                 name: ProtobufActionName::TogglePaneFrames as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleStackListOrientation => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleStackListOrientation as i32,
                 optional_payload: None,
             }),
             Action::SetPaneFrameStyle(pane_frame_style) => Ok(ProtobufAction {

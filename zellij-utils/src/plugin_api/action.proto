@@ -596,6 +596,7 @@ enum ActionName {
     HideBars = 151;
     ShowBars = 152;
     HideBarByPaneId = 153;
+    ToggleStackListOrientation = 154;
 }
 
 message Position {

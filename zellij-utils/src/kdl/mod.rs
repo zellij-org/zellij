@@ -102,6 +102,7 @@ pub fn action_without_arguments(
         "ToggleFocusFullscreen" => Ok(Action::ToggleFocusFullscreen),
         "ToggleFocusNoUiFullscreen" => Ok(Action::ToggleFocusNoUiFullscreen),
         "TogglePaneFrames" => Ok(Action::TogglePaneFrames),
+        "ToggleStackListOrientation" => Ok(Action::ToggleStackListOrientation),
         "ToggleActiveSyncTab" => Ok(Action::ToggleActiveSyncTab),
         "TogglePaneEmbedOrFloating" => Ok(Action::TogglePaneEmbedOrFloating),
         "ToggleFloatingPanes" => Ok(Action::ToggleFloatingPanes),
@@ -820,6 +821,9 @@ impl Action {
             Action::ToggleFocusFullscreen => Some(KdlNode::new("ToggleFocusFullscreen")),
             Action::ToggleFocusNoUiFullscreen => Some(KdlNode::new("ToggleFocusNoUiFullscreen")),
             Action::TogglePaneFrames => Some(KdlNode::new("TogglePaneFrames")),
+            Action::ToggleStackListOrientation => {
+                Some(KdlNode::new("ToggleStackListOrientation"))
+            },
             Action::SetPaneFrameStyle(style) => {
                 let mut node = KdlNode::new("SetPaneFrameStyle");
                 let style = match style {
@@ -1908,6 +1912,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "TogglePaneFrames" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "ToggleStackListOrientation" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "ToggleActiveSyncTab" => {
