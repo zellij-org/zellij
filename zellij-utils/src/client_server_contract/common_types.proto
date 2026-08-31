@@ -357,6 +357,7 @@ message Action {
     ShowBarsAction show_bars = 191;
     HideBarByPaneIdAction hide_bar_by_pane_id = 192;
     PasteFromClipboardByPaneIdAction paste_from_clipboard_by_pane_id = 193;
+    ToggleStackListOrientationAction toggle_stack_list_orientation = 194;
   }
 }
 
@@ -393,6 +394,7 @@ message HalfPageScrollDownAction {}
 message ToggleFocusFullscreenAction {}
 message ToggleFocusNoUiFullscreenAction {}
 message TogglePaneFramesAction {}
+message ToggleStackListOrientationAction {}
 message SetPaneFrameStyleAction {
   string style = 1;
 }

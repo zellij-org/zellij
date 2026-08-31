@@ -274,6 +274,8 @@ pub enum Action {
     ToggleFocusNoUiFullscreen,
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
+    /// Flip the focused stacked-list between vertical (title list) and horizontal (IDE tab bar)
+    ToggleStackListOrientation,
     SetPaneFrameStyle(PaneFrameStyle),
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
     ToggleActiveSyncTab,

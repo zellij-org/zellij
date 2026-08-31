@@ -493,6 +493,7 @@ pub enum ScreenInstruction {
     ToggleActiveTerminalFullscreen(ClientId, Option<NotificationEnd>),
     ToggleActiveTerminalNoUiFullscreen(ClientId, Option<NotificationEnd>),
     TogglePaneFrames(Option<NotificationEnd>),
+    ToggleStackListOrientation(ClientId),
     SetPaneFrameStyle(PaneFrameStyle, Option<NotificationEnd>),
     SetSelectable(PaneId, bool),
     ShowPluginCursor(u32, ClientId, Option<(usize, usize)>),
@@ -1352,6 +1353,9 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::ToggleActiveTerminalNoUiFullscreen
             },
             ScreenInstruction::TogglePaneFrames(..) => ScreenContext::TogglePaneFrames,
+            ScreenInstruction::ToggleStackListOrientation(..) => {
+                ScreenContext::ToggleStackListOrientation
+            },
             ScreenInstruction::SetPaneFrameStyle(..) => ScreenContext::SetPaneFrameStyle,
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
             ScreenInstruction::ShowPluginCursor(..) => ScreenContext::ShowPluginCursor,
@@ -12705,6 +12709,13 @@ pub(crate) fn screen_thread_main(
                     tab.set_pane_frames(screen.pane_frame_style);
                     tab.update_input_modes()?;
                 }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ToggleStackListOrientation(client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| {
+                    tab.toggle_stack_list_orientation(client_id);
+                });
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },

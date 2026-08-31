@@ -841,6 +841,11 @@ fn route_action_with_origin(
                 )))
                 .with_context(err_context)?;
         },
+        Action::ToggleStackListOrientation => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleStackListOrientation(client_id))
+                .with_context(err_context)?;
+        },
         Action::SetPaneFrameStyle(pane_frame_style) => {
             senders
                 .send_to_screen(ScreenInstruction::SetPaneFrameStyle(
