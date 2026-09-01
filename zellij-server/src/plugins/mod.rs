@@ -173,12 +173,14 @@ pub enum PluginInstruction {
         cli_client_id: ClientId,
         plugin_and_client_id: Option<(u32, ClientId)>,
         notification_end: Option<NotificationEnd>,
+        client_local: bool,
     },
     CachePluginEvents {
         plugin_id: PluginId,
     },
     MessageFromPlugin {
         source_plugin_id: u32,
+        source_client_id: ClientId,
         message: MessageToPlugin,
     },
     UnblockCliPipes(Vec<PluginRenderAsset>),
@@ -981,7 +983,19 @@ pub(crate) fn plugin_thread_main(
                         );
                     },
                 }
-                wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone(), None)?;
+                // CliPipe target filtering: never send CLI pipes to disconnected client plugin instances.
+                pipe_messages.retain(|(_plugin_id, client_id, _pipe_message)| {
+                    client_id
+                        .map(|client_id| wasm_bridge.client_is_connected(&client_id))
+                        .unwrap_or(false)
+                });
+                if pipe_messages.is_empty() {
+                    let _ = bus
+                        .senders
+                        .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_id));
+                } else {
+                    wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone(), None)?;
+                }
             },
             PluginInstruction::KeybindPipe {
                 name,
@@ -997,6 +1011,7 @@ pub(crate) fn plugin_thread_main(
                 cli_client_id,
                 plugin_and_client_id,
                 notification_end,
+                client_local,
             } => {
                 let should_float = floating.unwrap_or(true);
                 let mut pipe_messages = vec![];
@@ -1046,6 +1061,11 @@ pub(crate) fn plugin_thread_main(
                         },
                     }
                 }
+                if client_local {
+                    pipe_messages.retain(|(_, target_client_id, _)| {
+                        *target_client_id == Some(cli_client_id)
+                    });
+                }
                 wasm_bridge.pipe_messages(
                     pipe_messages,
                     shutdown_send.clone(),
@@ -1057,6 +1077,7 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::MessageFromPlugin {
                 source_plugin_id,
+                source_client_id,
                 message,
             } => {
                 let mut pipe_messages = vec![];
@@ -1105,9 +1126,10 @@ pub(crate) fn plugin_thread_main(
                     },
                     (None, Some(destination_plugin_id)) => {
                         let is_private = true;
+                        let target_client_id = message.client_local.then_some(source_client_id);
                         pipe_messages.push((
                             Some(destination_plugin_id),
-                            None,
+                            target_client_id,
                             PipeMessage::new(
                                 PipeSource::Plugin(source_plugin_id),
                                 message.message_name,
@@ -1120,9 +1142,10 @@ pub(crate) fn plugin_thread_main(
                     (Some(plugin_url), Some(destination_plugin_id)) => {
                         log::warn!("Message contains both a destination plugin url: {plugin_url} and a destination plugin id: {destination_plugin_id}, ignoring the url and prioritizing the id");
                         let is_private = true;
+                        let target_client_id = message.client_local.then_some(source_client_id);
                         pipe_messages.push((
                             Some(destination_plugin_id),
-                            None,
+                            target_client_id,
                             PipeMessage::new(
                                 PipeSource::Plugin(source_plugin_id),
                                 message.message_name,
@@ -1143,6 +1166,11 @@ pub(crate) fn plugin_thread_main(
                             &mut pipe_messages,
                         );
                     },
+                }
+                if message.client_local {
+                    pipe_messages.retain(|(_, target_client_id, _)| {
+                        *target_client_id == Some(source_client_id)
+                    });
                 }
                 wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone(), None)?;
             },

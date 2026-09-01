@@ -1298,6 +1298,7 @@ impl Action {
                 cwd,
                 pane_title,
                 plugin_id,
+                client_local,
             } => {
                 if plugin_id.is_some() {
                     log::warn!("Not serializing temporary keybinding MessagePluginId");
@@ -1327,6 +1328,11 @@ impl Action {
                     let mut launch_new_node = KdlNode::new("launch_new");
                     launch_new_node.push(KdlValue::Bool(true));
                     node_children.nodes_mut().push(launch_new_node);
+                }
+                if *client_local {
+                    let mut client_local_node = KdlNode::new("client_local");
+                    client_local_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(client_local_node);
                 }
                 if *skip_cache {
                     let mut skip_cache_node = KdlNode::new("skip_cache");
@@ -2257,6 +2263,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let skip_cache = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "skip_cache"))
                     .unwrap_or(false);
+                let client_local = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "client_local"))
+                    .unwrap_or(false);
                 let should_float = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "floating"))
                     .unwrap_or(false);
@@ -2298,6 +2307,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     cwd,
                     pane_title: title,
                     plugin_id: None,
+                    client_local,
                 })
             },
             "MessagePluginId" => {
@@ -2337,6 +2347,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     cwd: None,
                     pane_title: None,
                     plugin_id,
+                    client_local: false,
                 })
             },
             "TogglePanePinned" => Ok(Action::TogglePanePinned),
