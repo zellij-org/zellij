@@ -3,7 +3,7 @@ use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
 use crate::screen::{CopyOptions, ScreenInstruction};
 use crate::Arc;
-use zellij_utils::input::options::PaneFrameStyle;
+use zellij_utils::input::options::{PaneFrameStyle, StackListOrientation};
 
 use crate::{
     os_input_output::ServerOsApi, pane_groups::PaneGroups, panes::PaneId,
@@ -249,6 +249,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -347,6 +348,7 @@ fn create_new_tab_with_stacked_pane_list(
         character_cell_info,
         stacked_resize,
         stacked_pane_list,
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -441,6 +443,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -548,6 +551,7 @@ fn create_new_tab_with_swap_layouts(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -660,6 +664,7 @@ fn create_new_tab_with_os_api(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -754,6 +759,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -862,6 +868,7 @@ fn create_new_tab_with_mock_pty_writer(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -961,6 +968,7 @@ fn create_new_tab_with_sixel_support(
         character_cell_size,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -13911,6 +13919,7 @@ fn create_new_tab_with_plugin_receiver(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -15696,6 +15705,7 @@ fn create_new_tab_with_server_receiver(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,

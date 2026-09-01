@@ -21,7 +21,7 @@ use zellij_utils::input::layout::{
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::{
     HostNotificationProtocol, NestedSessionHandling, Options, PaneFrameStyle,
-    DEFAULT_WORD_SEPARATORS,
+    StackListOrientation, DEFAULT_WORD_SEPARATORS,
 };
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
@@ -378,6 +378,7 @@ fn create_new_screen_with_capture(
         support_kitty_graphics_protocol,
         stacked_resize,
         false,
+        StackListOrientation::default(),
         None,
         false,
         web_sharing,
@@ -5811,6 +5812,7 @@ fn create_new_screen_with_message_capture(
         true, // support_kitty_graphics_protocol
         stacked_resize,
         false,
+        StackListOrientation::default(),
         None,
         false,
         web_sharing,
@@ -8976,6 +8978,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         true, // support_kitty_graphics_protocol
         stacked_resize,
         false,
+        StackListOrientation::default(),
         None,
         false,
         web_sharing,
@@ -9876,6 +9879,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         true,
         true,
         false,
+        StackListOrientation::default(),
         None,
         false,
         web_sharing,
@@ -10700,6 +10704,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         true,  // support_kitty_graphics_protocol
         true,  // stacked_resize
         false,
+        StackListOrientation::default(),
         None,
         false,
         WebSharing::Off,

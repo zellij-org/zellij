@@ -54,7 +54,7 @@ use zellij_utils::input::keybinds::{shortcut_for_action, Keybinds};
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::options::{
     Clipboard, HostNotificationProtocol, NestedSessionHandling, PaneFrameStyle,
-    DEFAULT_WORD_SEPARATORS,
+    StackListOrientation, DEFAULT_WORD_SEPARATORS,
 };
 use zellij_utils::ipc::{
     ExitReason, MobileActivePanePayload, MobilePanePayload, MobileSessionPayload,
@@ -1534,6 +1534,7 @@ pub(crate) struct Screen {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
     stacked_pane_list: Rc<RefCell<bool>>,
+    default_stack_list_orientation: StackListOrientation,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     kitty_image_store: Rc<RefCell<KittyImageStore>>,
     kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
@@ -1716,6 +1717,7 @@ impl Screen {
         support_kitty_graphics_protocol: bool,
         stacked_resize: bool,
         stacked_pane_list: bool,
+        default_stack_list_orientation: StackListOrientation,
         default_editor: Option<PathBuf>,
         web_clients_allowed: bool,
         web_sharing: WebSharing,
@@ -1746,6 +1748,7 @@ impl Screen {
             character_cell_size: Rc::new(RefCell::new(None)),
             stacked_resize: Rc::new(RefCell::new(stacked_resize)),
             stacked_pane_list: Rc::new(RefCell::new(stacked_pane_list)),
+            default_stack_list_orientation,
             sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
             kitty_image_store: Rc::new(RefCell::new(KittyImageStore::default())),
             kitty_host_capabilities: Rc::new(RefCell::new(HashMap::new())),
@@ -4808,6 +4811,7 @@ impl Screen {
             self.character_cell_size.clone(),
             self.stacked_resize.clone(),
             self.stacked_pane_list.clone(),
+            self.default_stack_list_orientation,
             self.sixel_image_store.clone(),
             self.kitty_image_store.clone(),
             self.bus
@@ -8120,6 +8124,9 @@ pub(crate) fn screen_thread_main(
         .unwrap_or(true);
     let stacked_resize = config_options.stacked_resize.unwrap_or(true);
     let stacked_pane_list = config_options.stacked_pane_list.unwrap_or(true);
+    let default_stack_list_orientation = config_options
+        .default_stack_list_orientation
+        .unwrap_or_default();
     let web_clients_allowed = config_options
         .web_sharing
         .map(|s| s.web_clients_allowed())
@@ -8177,6 +8184,7 @@ pub(crate) fn screen_thread_main(
         support_kitty_graphics_protocol,
         stacked_resize,
         stacked_pane_list,
+        default_stack_list_orientation,
         default_editor,
         web_clients_allowed,
         web_sharing,
