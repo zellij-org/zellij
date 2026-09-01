@@ -51,6 +51,8 @@ pub enum HostQuery {
     DefaultForeground { terminator: OscTerminator },
     /// `OSC 11 ; ? <term>` — default background colour.
     DefaultBackground { terminator: OscTerminator },
+    /// `OSC 12 ; ? <term>` — cursor colour.
+    CursorColor { terminator: OscTerminator },
     /// `OSC 4 ; N ; ? <term>` — palette register `N`.
     PaletteRegister {
         index: u8,
@@ -86,6 +88,11 @@ impl HostQuery {
             },
             HostQuery::DefaultBackground { terminator } => {
                 let mut v = b"\x1b]11;?".to_vec();
+                v.extend_from_slice(terminator.as_bytes());
+                v
+            },
+            HostQuery::CursorColor { terminator } => {
+                let mut v = b"\x1b]12;?".to_vec();
                 v.extend_from_slice(terminator.as_bytes());
                 v
             },
@@ -169,6 +176,24 @@ mod tests {
             }
             .to_query_bytes(),
             b"\x1b]11;?\x1b\\",
+        );
+    }
+
+    #[test]
+    fn cursor_color_mirrors_terminator() {
+        assert_eq!(
+            HostQuery::CursorColor {
+                terminator: OscTerminator::St,
+            }
+            .to_query_bytes(),
+            b"\x1b]12;?\x1b\\",
+        );
+        assert_eq!(
+            HostQuery::CursorColor {
+                terminator: OscTerminator::Bel,
+            }
+            .to_query_bytes(),
+            b"\x1b]12;?\x07",
         );
     }
 
