@@ -26,7 +26,7 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::mousebinds::Mousebinds;
-use zellij_utils::input::options::DEFAULT_WORD_SEPARATORS;
+use zellij_utils::input::options::{StackListOrientation, DEFAULT_WORD_SEPARATORS};
 use zellij_utils::position::Position;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
@@ -230,15 +230,6 @@ pub type SuppressedPanes = HashMap<PaneId, (bool, Box<dyn Pane>)>; // bool => is
 
 pub type StackListId = usize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum StackListOrientation {
-    /// Tab headers stacked one-per-row in the pane's top-left (upstream default).
-    #[default]
-    Vertical,
-    /// Tab headers laid side-by-side on a single row, IDE terminal-tab style.
-    Horizontal,
-}
-
 #[derive(Debug, Clone)]
 pub struct StackList {
     pub members: Vec<PaneId>,
@@ -282,6 +273,8 @@ pub(crate) struct Tab {
     // remembers a stack list's orientation across a degroupify->classic->groupify cycle
     // (e.g. adding a pane to the stack), keyed by the classic in-grid stack id
     stack_list_orientation_memory: HashMap<usize, StackListOrientation>,
+    // config-provided default orientation for newly-formed stack lists
+    default_stack_list_orientation: StackListOrientation,
     next_stack_list_id: StackListId,
     stack_list_session_is_mirrored: bool,
     max_panes: Option<usize>,
@@ -1026,6 +1019,7 @@ impl Tab {
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         stacked_resize: Rc<RefCell<bool>>,
         stacked_pane_list: Rc<RefCell<bool>>,
+        default_stack_list_orientation: StackListOrientation,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
         kitty_image_store: Rc<RefCell<KittyImageStore>>,
         os_api: Box<dyn ServerOsApi>,
@@ -1141,6 +1135,7 @@ impl Tab {
             stack_list_of_member: HashMap::new(),
             stack_list_parked_pairs: HashMap::new(),
             stack_list_orientation_memory: HashMap::new(),
+            default_stack_list_orientation,
             next_stack_list_id: 0,
             stack_list_session_is_mirrored: session_is_mirrored,
             name: name.clone(),
@@ -1846,7 +1841,7 @@ impl Tab {
             let orientation = self
                 .stack_list_orientation_memory
                 .remove(&stack_id)
-                .unwrap_or_default();
+                .unwrap_or(self.default_stack_list_orientation);
             members.sort_by_key(|(y, _, _)| *y);
             let representative = members[0].1;
             let rect = match self.tiled_panes.position_and_size_of_stack(&representative) {

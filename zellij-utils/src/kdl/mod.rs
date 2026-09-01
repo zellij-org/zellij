@@ -26,7 +26,7 @@ use crate::input::layout::{
 };
 use crate::input::mousebinds::{MouseBehaviour, MouseBinding, MouseBindingKind};
 use crate::input::options::{
-    Clipboard, OnForceClose, Options, PaneFrameStyle, DEFAULT_WORD_SEPARATORS,
+    Clipboard, OnForceClose, Options, PaneFrameStyle, StackListOrientation, DEFAULT_WORD_SEPARATORS,
 };
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
@@ -3404,6 +3404,18 @@ impl Options {
         let stacked_pane_list =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "stacked_pane_list")
                 .map(|(v, _)| v);
+        let default_stack_list_orientation = match kdl_property_first_arg_as_string_or_error!(
+            kdl_options,
+            "default_stack_list_orientation"
+        ) {
+            Some((string, entry)) => Some(StackListOrientation::from_str(string).map_err(|_| {
+                kdl_parsing_error!(
+                    format!("Invalid value for default_stack_list_orientation: '{}'", string),
+                    entry
+                )
+            })?),
+            None => None,
+        };
         let show_startup_tips =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_startup_tips")
                 .map(|(v, _)| v);
@@ -3602,6 +3614,7 @@ impl Options {
             web_sharing,
             stacked_resize,
             stacked_pane_list,
+            default_stack_list_orientation,
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
@@ -4977,6 +4990,42 @@ impl Options {
             None
         }
     }
+    fn default_stack_list_orientation_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Default orientation for new tabbed stacked-pane lists",
+            "//   - vertical (default)",
+            "//   - horizontal",
+            "// ",
+        );
+
+        let orientation_as_str = |orientation: &StackListOrientation| -> &'static str {
+            match orientation {
+                StackListOrientation::Vertical => "vertical",
+                StackListOrientation::Horizontal => "horizontal",
+            }
+        };
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("default_stack_list_orientation");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(orientation) = &self.default_stack_list_orientation {
+            let mut node = create_node(orientation_as_str(orientation));
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("vertical");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn show_startup_tips_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -5831,6 +5880,11 @@ impl Options {
         }
         if let Some(stacked_pane_list) = self.stacked_pane_list_to_kdl(add_comments) {
             nodes.push(stacked_pane_list);
+        }
+        if let Some(default_stack_list_orientation) =
+            self.default_stack_list_orientation_to_kdl(add_comments)
+        {
+            nodes.push(default_stack_list_orientation);
         }
         if let Some(show_startup_tips) = self.show_startup_tips_to_kdl(add_comments) {
             nodes.push(show_startup_tips);

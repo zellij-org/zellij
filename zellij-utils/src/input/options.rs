@@ -169,6 +169,31 @@ impl FromStr for PaneFrameStyle {
     }
 }
 
+/// Orientation of the tabbed stacked-pane list: `Vertical` draws one title per
+/// row (upstream default), `Horizontal` packs titles onto a single IDE-style tab bar.
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StackListOrientation {
+    #[default]
+    Vertical,
+    Horizontal,
+}
+
+impl FromStr for StackListOrientation {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "vertical" => Ok(StackListOrientation::Vertical),
+            "horizontal" => Ok(StackListOrientation::Horizontal),
+            e => Err(format!(
+                "Unknown stack list orientation: '{}' (expected 'vertical' or 'horizontal')",
+                e
+            )
+            .into()),
+        }
+    }
+}
+
 #[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize, Args)]
 /// Options that can be set either through the config file,
 /// or cli flags - cli flags should take precedence over the config file
@@ -436,6 +461,12 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub stacked_pane_list: Option<bool>,
+
+    /// Default orientation for new tabbed stacked-pane lists
+    /// ("vertical" or "horizontal"), default is vertical
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
+    #[serde(default)]
+    pub default_stack_list_orientation: Option<StackListOrientation>,
 
     /// Whether to show startup tips when starting a new session
     /// default is true
@@ -757,6 +788,9 @@ impl Options {
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
         let stacked_pane_list = other.stacked_pane_list.or(self.stacked_pane_list);
+        let default_stack_list_orientation = other
+            .default_stack_list_orientation
+            .or(self.default_stack_list_orientation);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
@@ -817,6 +851,7 @@ impl Options {
             .or(self.mode_hints_when_bars_hidden);
 
         Options {
+            default_stack_list_orientation,
             simplified_ui,
             theme,
             theme_dark,
@@ -982,6 +1017,9 @@ impl Options {
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
         let stacked_pane_list = other.stacked_pane_list.or(self.stacked_pane_list);
+        let default_stack_list_orientation = other
+            .default_stack_list_orientation
+            .or(self.default_stack_list_orientation);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
@@ -1045,6 +1083,7 @@ impl Options {
         );
 
         Options {
+            default_stack_list_orientation,
             simplified_ui,
             theme,
             theme_dark,

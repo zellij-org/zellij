@@ -1329,6 +1329,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 .transpose()?,
             stacked_resize: options.stacked_resize,
             stacked_pane_list: options.stacked_pane_list,
+            default_stack_list_orientation: None,
             dangerously_enable_paste_buffer_read: options.dangerously_enable_paste_buffer_read,
             session_indicator: options.session_indicator,
             swap_layout_notification: options.swap_layout_notification,

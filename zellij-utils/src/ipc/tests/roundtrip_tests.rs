@@ -545,6 +545,7 @@ fn test_client_messages() {
                 web_sharing: Some(WebSharing::On),
                 stacked_resize: Some(true),
                 stacked_pane_list: Some(true),
+                default_stack_list_orientation: None,
                 show_startup_tips: Some(true),
                 show_release_notes: Some(true),
                 advanced_mouse_actions: Some(true),
