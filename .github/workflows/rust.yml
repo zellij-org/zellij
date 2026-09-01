@@ -137,7 +137,7 @@ jobs:
           rustflags: ""
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@v2.85.4
         with:
           tool: cargo-nextest
 
