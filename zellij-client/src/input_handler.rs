@@ -294,6 +294,9 @@ impl InputHandler {
                     self.os_input
                         .send_to_server(ClientToServerMsg::HostTerminalFocusChanged { focused });
                 },
+                Ok((InputInstruction::ToggleMouseMode, _error_context)) => {
+                    self.dispatch_action(Action::ToggleMouseMode, None);
+                },
                 Ok((InputInstruction::Exit, _error_context)) => {
                     self.should_exit = true;
                 },

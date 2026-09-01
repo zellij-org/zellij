@@ -179,6 +179,37 @@ fn route_arbitrary_action_to_server(
     .unwrap();
 }
 
+#[test]
+fn toggle_mouse_mode_action_is_forwarded_to_the_triggering_client() {
+    let client_id = 7;
+    let fake_os_input = FakeInputOutput::default();
+    let messages = fake_os_input.server_to_client_messages.clone();
+    let senders = ThreadSenders {
+        should_silently_fail: true,
+        ..Default::default()
+    };
+
+    let started_at = std::time::Instant::now();
+    route_action(
+        Action::ToggleMouseMode,
+        client_id,
+        None,
+        None,
+        senders,
+        None,
+        None,
+        InputMode::Normal,
+        Some(Box::new(fake_os_input)),
+    )
+    .unwrap();
+
+    assert!(started_at.elapsed() < std::time::Duration::from_millis(500));
+    assert_eq!(
+        messages.lock().unwrap().get(&client_id),
+        Some(&vec![ServerToClientMsg::ToggleMouseMode])
+    );
+}
+
 #[derive(Clone, Default)]
 struct FakeInputOutput {
     fake_filesystem: Arc<Mutex<HashMap<String, String>>>,
@@ -6082,6 +6113,29 @@ fn subscriber_removed_on_remove_client() {
 }
 
 #[test]
+fn removing_client_clears_pane_focus() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+
+    let pane_is_focused = |screen: &Screen| {
+        screen
+            .tabs
+            .get(&0)
+            .unwrap()
+            .pane_infos()
+            .iter()
+            .any(|pane_info| pane_info.id == 1 && pane_info.is_focused)
+    };
+
+    assert!(pane_is_focused(&screen));
+    screen.remove_client(1).expect("TEST");
+    assert!(!pane_is_focused(&screen));
+    screen.add_client(1, false).expect("TEST");
+    assert!(pane_is_focused(&screen));
+}
+
+#[test]
 fn subscriber_removed_when_all_panes_closed() {
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
@@ -7892,6 +7946,102 @@ fn subscriber_ansi_and_plain_receive_different_content() {
         },
         other => panic!("Expected PaneRenderUpdate, got {:?}", other),
     }
+}
+
+#[test]
+pub fn repeated_single_pane_title_changes_only_report_tab_state() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.config.options.pane_frame_style = Some(PaneFrameStyle::Titles);
+    mock_screen.drop_all_pty_messages();
+    let screen_thread = mock_screen.run(None, vec![]);
+
+    let mut subscriptions = HashSet::new();
+    subscriptions.insert(EventType::TabUpdate);
+    subscriptions.insert(EventType::PaneUpdate);
+    subscriptions.insert(EventType::SessionUpdate);
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::UpdateBackgroundPluginSubscriptions(
+            99,
+            mock_screen.main_client_id,
+            subscriptions,
+        ));
+
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        b"\x1b]0;spinner-0\x07".to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    received_plugin_instructions.lock().unwrap().clear();
+    mock_screen.received_background_jobs.lock().unwrap().clear();
+
+    for frame in 1..=3 {
+        let title = format!("\x1b]0;spinner-{frame}\x07");
+        let _ = mock_screen
+            .to_screen
+            .send(ScreenInstruction::PtyBytes(0, title.into_bytes()));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    let instructions = received_plugin_instructions.lock().unwrap();
+    let mut tab_updates = vec![];
+    let mut pane_update_count = 0;
+    let mut session_update_count = 0;
+    for instruction in instructions.iter() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (plugin_id, _client_id, event) in updates {
+                if *plugin_id != Some(99) {
+                    continue;
+                }
+                match event {
+                    Event::TabUpdate(tabs) => tab_updates.push(tabs.clone()),
+                    Event::PaneUpdate(_) => pane_update_count += 1,
+                    Event::SessionUpdate(_, _) => session_update_count += 1,
+                    _ => {},
+                }
+            }
+        }
+    }
+
+    assert!(
+        tab_updates
+            .iter()
+            .any(|tabs| { tabs.iter().any(|tab| tab.name == "spinner-3" && tab.active) }),
+        "the final animated title should still reach TabUpdate subscribers: {tab_updates:?}"
+    );
+    assert_eq!(
+        pane_update_count, 0,
+        "cosmetic title frames must not broadcast full pane manifests"
+    );
+    assert_eq!(
+        session_update_count, 0,
+        "cosmetic title frames must not broadcast full session manifests"
+    );
+
+    let background_jobs = mock_screen.received_background_jobs.lock().unwrap();
+    assert!(
+        !background_jobs
+            .iter()
+            .any(|job| matches!(job, BackgroundJob::ReportSessionInfo(..))),
+        "cosmetic title frames must not report full session info: {background_jobs:?}"
+    );
+    assert!(
+        !background_jobs
+            .iter()
+            .any(|job| matches!(job, BackgroundJob::QueryZellijWebServerStatus)),
+        "cosmetic title frames must not query web-server status: {background_jobs:?}"
+    );
 }
 
 #[test]
