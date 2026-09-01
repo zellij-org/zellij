@@ -329,8 +329,27 @@ fn move_plugin_to_assets(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
             .with_context(err_context);
     }
 
-    // This is a plugin we want to move
+    // Only copy the plugin when its contents changed. Unconditionally copying it updates the
+    // asset's modification time, causing Cargo to rebuild zellij-utils and its dependent crates.
     let from = plugin.as_path();
     let to = asset_name.as_path();
+    if files_are_equal(from, to).with_context(err_context)? {
+        return Ok(());
+    }
     sh.copy_file(from, to).with_context(err_context)
+}
+
+fn files_are_equal(first: &Path, second: &Path) -> std::io::Result<bool> {
+    let first_metadata = std::fs::metadata(first)?;
+    let second_metadata = match std::fs::metadata(second) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    };
+
+    if first_metadata.len() != second_metadata.len() {
+        return Ok(false);
+    }
+
+    Ok(std::fs::read(first)? == std::fs::read(second)?)
 }
