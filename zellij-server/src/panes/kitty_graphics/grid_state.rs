@@ -392,8 +392,13 @@ impl KittyGrid {
                 width: source_w,
                 height: source_h,
             },
-            emit_x: 0,
-            emit_y: 0,
+            // emit_{x,y} is the offset into the raster that will be transmitted to the
+            // host terminal. A scaled placement transmits a variant that crop_rgba has
+            // already cut to the source rectangle, so it starts at the origin; an
+            // unscaled one transmits the whole image, so the source rectangle has to be
+            // forwarded for the host to apply it.
+            emit_x: if is_scaled { 0 } else { source_x },
+            emit_y: if is_scaled { 0 } else { source_y },
             scaled_px: if is_scaled {
                 Some((dst_w, dst_h))
             } else {
