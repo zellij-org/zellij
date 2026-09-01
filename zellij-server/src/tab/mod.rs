@@ -2493,6 +2493,7 @@ impl Tab {
             ),
             NewPanePlacement::Tiled {
                 direction: None,
+                split_size: _,
                 borderless,
             } => self.new_tiled_pane(
                 pid,
@@ -2506,6 +2507,7 @@ impl Tab {
             ),
             NewPanePlacement::Tiled {
                 direction: Some(direction),
+                split_size: _, // TODO: implement split_size handling
                 borderless,
             } => {
                 let is_vertical = direction == Direction::Left || direction == Direction::Right;

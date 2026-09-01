@@ -1090,6 +1090,7 @@ impl Action {
             },
             CliAction::NewPane {
                 direction,
+                split_size,
                 command,
                 plugin,
                 cwd,
@@ -1190,6 +1191,7 @@ impl Action {
                     } else {
                         NewPanePlacement::Tiled {
                             direction,
+                            split_size: split_size.clone(),
                             borderless,
                         }
                     };
