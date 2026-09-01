@@ -54,6 +54,10 @@ impl TerminalBytes {
         loop {
             match self.async_reader.read(&mut buf).await {
                 Ok(0) => break, // EOF
+                Err(err) if is_pty_closed_error(&err) => {
+                    log::debug!("PTY closed while reading terminal bytes: {}", err);
+                    break;
+                },
                 Err(err) => {
                     log::error!("{}", err);
                     break;
@@ -105,4 +109,15 @@ impl TerminalBytes {
             .context("failed to block on sending message to screen")?;
         Ok(sent_at.elapsed())
     }
+}
+
+#[cfg(unix)]
+fn is_pty_closed_error(err: &std::io::Error) -> bool {
+    // On Unix/Linux, reading from the PTY master can return EIO when the
+    // slave side has been closed. Treat it as an EOF-like condition.
+    err.raw_os_error() == Some(libc::EIO)
+}
+#[cfg(not(unix))]
+fn is_pty_closed_error(_: &std::io::Error) -> bool {
+    false
 }
