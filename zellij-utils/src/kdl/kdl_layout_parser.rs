@@ -421,11 +421,29 @@ impl<'a> KdlLayoutParser<'a> {
         name: &'static str,
     ) -> Result<Option<PathBuf>, ConfigError> {
         match kdl_get_string_property_or_child_value_with_error!(kdl_node, name) {
-            Some(s) => match shellexpand::full(s) {
-                Ok(s) => Ok(Some(PathBuf::from(s.as_ref()))),
-                Err(e) => Err(kdl_parsing_error!(e.to_string(), kdl_node)),
-            },
+            Some(s) => Ok(Some(Self::expand_path_or_fallback(s))),
             None => Ok(None),
+        }
+    }
+    /// Expand `~` and environment variables in a path-like string.
+    ///
+    /// A literal `$` that doesn't correspond to a real environment variable (eg. a
+    /// directory legitimately named `$foo`) is common in the wild, most notably in
+    /// resurrection layouts that zellij itself serializes verbatim from real cwds.
+    /// In that case we intentionally don't turn a shell-expansion failure into a hard
+    /// parsing error - we fall back to the original, unexpanded string so the layout
+    /// can still be loaded.
+    fn expand_path_or_fallback(s: &str) -> PathBuf {
+        match shellexpand::full(s) {
+            Ok(expanded) => PathBuf::from(expanded.as_ref()),
+            Err(e) => {
+                log::warn!(
+                    "Failed to shell-expand path \"{}\" ({}), using it as-is",
+                    s,
+                    e
+                );
+                PathBuf::from(s)
+            },
         }
     }
     fn parse_pane_command(
