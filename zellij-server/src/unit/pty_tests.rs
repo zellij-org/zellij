@@ -436,9 +436,9 @@ fn osc7_emits_cwd_changed() {
     assert_eq!(events[0].0, PaneId::Terminal(1));
     assert_eq!(events[0].1, PathBuf::from("/tmp/new"));
     assert_eq!(
-        pty.terminal_cwds.get(&1),
+        pty.osc7_terminal_cwds.get(&1),
         Some(&PathBuf::from("/tmp/new")),
-        "cache should be updated"
+        "OSC 7 cache should be updated"
     );
 }
 
@@ -447,12 +447,15 @@ fn osc7_no_event_when_unchanged() {
     let mock = MockOsApi::new();
     let (mut pty, rx) = make_pty_with_plugin_receiver(mock);
     pty.id_to_child_pid.insert(1, 100);
-    pty.terminal_cwds.insert(1, PathBuf::from("/same"));
+    pty.osc7_terminal_cwds.insert(1, PathBuf::from("/same"));
 
     pty.notify_cwd_from_osc7(1, PathBuf::from("/same"));
 
     let events = collect_cwd_changed_events(&rx);
-    assert!(events.is_empty(), "no event when osc7 path matches cache");
+    assert!(
+        events.is_empty(),
+        "no event when osc7 path matches OSC 7 cache"
+    );
 }
 
 #[test]
@@ -491,4 +494,82 @@ fn osc7_then_poll_skips_terminal() {
         cwd_events.is_empty() && cmd_events.is_empty(),
         "poll after osc7 should skip terminal since flag was cleared"
     );
+}
+
+#[test]
+fn osc7_cache_is_not_overwritten_by_os_cwd_poll() {
+    let mock = MockOsApi::new();
+    let child_pid = 100;
+    mock.set_cwd(child_pid, PathBuf::from("/from-proc"));
+    let (mut pty, rx) = make_pty_with_plugin_receiver(mock);
+    set_active_terminal(&mut pty, 1, child_pid);
+
+    pty.notify_cwd_from_osc7(1, PathBuf::from("/from-osc7"));
+    let _ = collect_cwd_changed_events(&rx);
+
+    pty.pane_activity_flags
+        .get(&1)
+        .unwrap()
+        .store(true, Ordering::Relaxed);
+    pty.update_and_report_cwds();
+
+    assert_eq!(
+        pty.osc7_terminal_cwds.get(&1),
+        Some(&PathBuf::from("/from-osc7")),
+        "OS cwd polling must not overwrite the OSC 7 cache"
+    );
+    assert_eq!(
+        pty.terminal_cwds.get(&1),
+        Some(&PathBuf::from("/from-proc")),
+        "OS cwd should still be tracked separately"
+    );
+    assert!(
+        collect_cwd_changed_events(&rx).is_empty(),
+        "OS cwd polling must not report a different cwd while OSC 7 is authoritative"
+    );
+}
+
+#[test]
+fn preferred_terminal_cwd_uses_osc7_before_os_cwd() {
+    let mock = MockOsApi::new();
+    let child_pid = 100;
+    mock.set_cwd(child_pid, PathBuf::from("/from-proc"));
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
+    set_active_terminal(&mut pty, 1, child_pid);
+    pty.terminal_cwds.insert(1, PathBuf::from("/cached-proc"));
+    pty.osc7_terminal_cwds
+        .insert(1, PathBuf::from("/from-osc7"));
+
+    assert_eq!(
+        pty.preferred_terminal_cwd(&1),
+        Some(PathBuf::from("/from-osc7"))
+    );
+}
+
+#[test]
+fn preferred_terminal_cwd_falls_back_to_os_cwd_without_osc7() {
+    let mock = MockOsApi::new();
+    let child_pid = 100;
+    mock.set_cwd(child_pid, PathBuf::from("/from-proc"));
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
+    set_active_terminal(&mut pty, 1, child_pid);
+    pty.terminal_cwds.insert(1, PathBuf::from("/cached-proc"));
+
+    assert_eq!(
+        pty.preferred_terminal_cwd(&1),
+        Some(PathBuf::from("/from-proc"))
+    );
+}
+
+#[test]
+fn close_pane_removes_osc7_cwd_cache() {
+    let mock = MockOsApi::new();
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
+    set_active_terminal(&mut pty, 1, 100);
+    pty.osc7_terminal_cwds
+        .insert(1, PathBuf::from("/from-osc7"));
+
+    pty.close_pane(PaneId::Terminal(1)).unwrap();
+
+    assert!(!pty.osc7_terminal_cwds.contains_key(&1));
 }
