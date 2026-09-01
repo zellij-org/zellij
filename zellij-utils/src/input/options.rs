@@ -434,6 +434,8 @@ pub enum Clipboard {
     System,
     #[serde(alias = "primary")]
     Primary,
+    #[serde(alias = "both")]
+    Both,
 }
 
 impl Default for Clipboard {
@@ -494,6 +496,7 @@ impl FromStr for Clipboard {
         match s {
             "System" | "system" => Ok(Self::System),
             "Primary" | "primary" => Ok(Self::Primary),
+            "Both" | "both" => Ok(Self::Both),
             _ => Err(format!("No such clipboard: {}", s)),
         }
     }

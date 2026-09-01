@@ -930,6 +930,7 @@ impl From<crate::input::options::Options>
             copy_clipboard: options.copy_clipboard.map(|c| match c {
                 crate::input::options::Clipboard::System => ProtoClipboard::System as i32,
                 crate::input::options::Clipboard::Primary => ProtoClipboard::Primary as i32,
+                crate::input::options::Clipboard::Both => ProtoClipboard::Both as i32,
             }),
             copy_on_select: options.copy_on_select,
             osc8_hyperlinks: options.osc8_hyperlinks,
@@ -1062,6 +1063,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 .map(|c| match ProtoClipboard::try_from(c).ok() {
                     Some(ProtoClipboard::System) => Ok(crate::input::options::Clipboard::System),
                     Some(ProtoClipboard::Primary) => Ok(crate::input::options::Clipboard::Primary),
+                    Some(ProtoClipboard::Both) => Ok(crate::input::options::Clipboard::Both),
                     _ => Err(anyhow!("Invalid Clipboard value: {}", c)),
                 })
                 .transpose()?,

@@ -2917,6 +2917,7 @@ pub enum Clipboard {
     Unspecified = 0,
     System = 1,
     Primary = 2,
+    Both = 3,
 }
 impl Clipboard {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2928,6 +2929,7 @@ impl Clipboard {
             Clipboard::Unspecified => "CLIPBOARD_UNSPECIFIED",
             Clipboard::System => "CLIPBOARD_SYSTEM",
             Clipboard::Primary => "CLIPBOARD_PRIMARY",
+            Clipboard::Both => "CLIPBOARD_BOTH",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2936,6 +2938,7 @@ impl Clipboard {
             "CLIPBOARD_UNSPECIFIED" => Some(Self::Unspecified),
             "CLIPBOARD_SYSTEM" => Some(Self::System),
             "CLIPBOARD_PRIMARY" => Some(Self::Primary),
+            "CLIPBOARD_BOTH" => Some(Self::Both),
             _ => None,
         }
     }
