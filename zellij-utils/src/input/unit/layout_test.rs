@@ -1952,6 +1952,26 @@ fn can_load_swap_layouts_from_a_different_file() {
 }
 
 #[test]
+fn negative_swap_layout_pane_constraints_are_rejected() {
+    for constraint in ["max_panes", "min_panes", "exact_panes"] {
+        let kdl_layout = format!(
+            r#"
+                layout {{
+                    swap_tiled_layout {{
+                        tab {constraint}=-1 {{
+                            pane
+                        }}
+                    }}
+                }}
+            "#
+        );
+        assert!(
+            Layout::from_kdl(&kdl_layout, Some("layout_file_name".into()), None, None).is_err()
+        );
+    }
+}
+
+#[test]
 fn can_define_stacked_children_for_pane_node() {
     let kdl_layout = r#"
         layout {

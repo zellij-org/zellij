@@ -2032,14 +2032,32 @@ impl<'a> KdlLayoutParser<'a> {
         let mut constraint_count = 0;
         let mut constraint = None;
         if let Some(max_panes) = max_panes {
+            if max_panes < 0 {
+                return Err(kdl_parsing_error!(
+                    "max_panes should be a non-negative number".to_owned(),
+                    layout_node
+                ));
+            }
             constraint_count += 1;
             constraint = Some(LayoutConstraint::MaxPanes(max_panes as usize));
         }
         if let Some(min_panes) = min_panes {
+            if min_panes < 0 {
+                return Err(kdl_parsing_error!(
+                    "min_panes should be a non-negative number".to_owned(),
+                    layout_node
+                ));
+            }
             constraint_count += 1;
             constraint = Some(LayoutConstraint::MinPanes(min_panes as usize));
         }
         if let Some(exact_panes) = exact_panes {
+            if exact_panes < 0 {
+                return Err(kdl_parsing_error!(
+                    "exact_panes should be a non-negative number".to_owned(),
+                    layout_node
+                ));
+            }
             constraint_count += 1;
             constraint = Some(LayoutConstraint::ExactPanes(exact_panes as usize));
         }
