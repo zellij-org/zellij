@@ -11437,3 +11437,20 @@ fn a_url_with_a_suggestion_after_the_cursor_waits_until_the_line_is_final() {
         vec!["http://www.example.org".to_owned()]
     );
 }
+
+#[test]
+fn truncate_cuts_at_a_character_boundary_not_a_display_column() {
+    // `x` is a display column, so cutting `columns` at it keeps a wide
+    // character whose leading half sits before the cut.
+    for (content, x, expected) in [
+        ("\u{65e5}\u{672c}", 2, "\u{65e5}"),
+        ("a\u{65e5}\u{672c}", 3, "a\u{65e5}"),
+        ("\u{65e5}\u{672c}", 1, ""),
+        ("\u{65e5}\u{672c}", 0, ""),
+        ("ab", 1, "a"),
+    ] {
+        let mut row = row_from_str(content);
+        row.truncate(x);
+        assert_eq!(row_to_string(&row), expected, "content={content:?}, x={x}");
+    }
+}
