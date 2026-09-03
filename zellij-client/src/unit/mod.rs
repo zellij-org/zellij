@@ -3,4 +3,7 @@
 mod terminal_loop_tests;
 
 #[cfg(test)]
+mod render_output_tests;
+
+#[cfg(test)]
 mod teardown_tests;

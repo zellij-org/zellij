@@ -29,7 +29,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use zellij_utils::errors::FatalError;
+use zellij_utils::errors::prelude::*;
 use zellij_utils::shared::web_server_base_url;
 
 #[cfg(feature = "web_server_capability")]
@@ -172,6 +172,21 @@ use zellij_utils::{
     pane_size::Size,
     vendored::termwiz::input::InputEvent,
 };
+
+fn write_render_output(
+    stdout: &mut dyn Write,
+    output: &[u8],
+    synchronised_output: Option<SyncOutput>,
+) -> io::Result<()> {
+    if let Some(sync) = synchronised_output {
+        stdout.write_all(sync.start_seq())?;
+    }
+    stdout.write_all(output)?;
+    if let Some(sync) = synchronised_output {
+        stdout.write_all(sync.end_seq())?;
+    }
+    stdout.flush()
+}
 
 /// Instructions related to the client-side application
 #[derive(Debug, Clone)]
@@ -706,37 +721,19 @@ pub async fn run_remote_client_terminal_loop(
                 match terminal_msg {
                     Some(Ok(Message::Text(text))) => {
                         let mut stdout = os_input.get_stdout_writer();
-                        if let Some(sync) = synchronised_output {
-                            stdout
-                                .write_all(sync.start_seq())
-                                .expect("cannot write to stdout");
-                        }
-                        stdout
-                            .write_all(text.as_bytes())
-                            .expect("cannot write to stdout");
-                        if let Some(sync) = synchronised_output {
-                            stdout
-                                .write_all(sync.end_seq())
-                                .expect("cannot write to stdout");
-                        }
-                        stdout.flush().expect("could not flush");
+                        write_render_output(
+                            stdout.as_mut(),
+                            text.as_bytes(),
+                            synchronised_output,
+                        )
+                        .context("failed to render remote client output")
+                        .non_fatal();
                     }
                     Some(Ok(Message::Binary(data))) => {
                         let mut stdout = os_input.get_stdout_writer();
-                        if let Some(sync) = synchronised_output {
-                            stdout
-                                .write_all(sync.start_seq())
-                                .expect("cannot write to stdout");
-                        }
-                        stdout
-                            .write_all(&data)
-                            .expect("cannot write to stdout");
-                        if let Some(sync) = synchronised_output {
-                            stdout
-                                .write_all(sync.end_seq())
-                                .expect("cannot write to stdout");
-                        }
-                        stdout.flush().expect("could not flush");
+                        write_render_output(stdout.as_mut(), &data, synchronised_output)
+                            .context("failed to render remote client output")
+                            .non_fatal();
                     }
                     Some(Ok(Message::Close(_))) => {
                         break;
@@ -1417,20 +1414,9 @@ pub fn start_client(
             },
             ClientInstruction::Render(output) => {
                 let mut stdout = os_input.get_stdout_writer();
-                if let Some(sync) = synchronised_output {
-                    stdout
-                        .write_all(sync.start_seq())
-                        .expect("cannot write to stdout");
-                }
-                stdout
-                    .write_all(output.as_bytes())
-                    .expect("cannot write to stdout");
-                if let Some(sync) = synchronised_output {
-                    stdout
-                        .write_all(sync.end_seq())
-                        .expect("cannot write to stdout");
-                }
-                stdout.flush().expect("could not flush");
+                write_render_output(stdout.as_mut(), output.as_bytes(), synchronised_output)
+                    .context("failed to render client output")
+                    .non_fatal();
             },
             ClientInstruction::UnblockInputThread => {
                 command_is_executing.unblock_input_thread();
