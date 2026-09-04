@@ -235,6 +235,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
@@ -271,6 +272,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -334,6 +336,7 @@ fn create_new_tab_with_stacked_pane_list(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
@@ -370,6 +373,7 @@ fn create_new_tab_with_stacked_pane_list(
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -429,6 +433,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
@@ -465,6 +470,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -537,6 +543,7 @@ fn create_new_tab_with_swap_layouts(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
@@ -577,6 +584,7 @@ fn create_new_tab_with_swap_layouts(
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -650,6 +658,7 @@ fn create_new_tab_with_os_api(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
@@ -686,6 +695,7 @@ fn create_new_tab_with_os_api(
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -745,6 +755,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
@@ -781,6 +792,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -854,6 +866,7 @@ fn create_new_tab_with_mock_pty_writer(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
@@ -890,6 +903,7 @@ fn create_new_tab_with_mock_pty_writer(
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -954,6 +968,7 @@ fn create_new_tab_with_sixel_support(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
@@ -990,6 +1005,7 @@ fn create_new_tab_with_sixel_support(
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -14850,6 +14866,7 @@ fn create_new_tab_with_plugin_receiver(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
@@ -14886,6 +14903,7 @@ fn create_new_tab_with_plugin_receiver(
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -16677,6 +16695,7 @@ fn create_new_tab_with_server_receiver(
         false, // debug
         true,  // arrow_fonts
         true,  // styled_underlines
+        true,  // search_auto_jump_on_input
         true,  // osc8_hyperlinks
         false, // explicitly_disable_kitty_keyboard_protocol
         None,
