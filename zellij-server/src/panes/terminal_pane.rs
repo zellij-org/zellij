@@ -1374,13 +1374,14 @@ impl TerminalPane {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        search_auto_jump_on_input: bool,
         osc8_hyperlinks: bool,
         explicitly_disable_keyboard_protocol: bool,
         mut notification_end: Option<NotificationEnd>,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
-        let grid = Grid::new(
+        let mut grid = Grid::new(
             position_and_size.rows.as_usize(),
             position_and_size.cols.as_usize(),
             terminal_emulator_colors,
@@ -1396,6 +1397,7 @@ impl TerminalPane {
             osc8_hyperlinks,
             explicitly_disable_keyboard_protocol,
         );
+        grid.update_search_auto_jump_on_input(search_auto_jump_on_input);
         if let Some(notification_end) = notification_end.as_mut() {
             notification_end.set_affected_pane_id(PaneId::Terminal(pid));
         }

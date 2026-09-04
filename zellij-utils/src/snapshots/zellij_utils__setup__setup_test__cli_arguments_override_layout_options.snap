@@ -34,6 +34,7 @@ Options {
     serialize_pane_viewport: None,
     scrollback_lines_to_serialize: None,
     styled_underlines: None,
+    search_auto_jump_on_input: None,
     serialization_interval: None,
     disable_session_metadata: None,
     support_kitty_keyboard_protocol: None,
