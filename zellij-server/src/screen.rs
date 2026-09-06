@@ -900,6 +900,7 @@ pub enum ScreenInstruction {
     ToggleGroupMarking(ClientId, Option<NotificationEnd>),
     SessionSharingStatusChange(bool),
     SetMouseSelectionSupport(PaneId, bool),
+    SetPaneCollapsed(PaneId, bool),
     InterceptKeyPresses(PluginId, ClientId),
     ClearKeyPressesIntercepts(ClientId),
     ReplacePaneWithExistingPane(PaneId, PaneId, bool, Option<NotificationEnd>), // bool -> suppress_replaced_pane
@@ -1272,6 +1273,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SetMouseSelectionSupport(..) => {
                 ScreenContext::SetMouseSelectionSupport
             },
+            ScreenInstruction::SetPaneCollapsed(..) => ScreenContext::SetPaneCollapsed,
             ScreenInstruction::InterceptKeyPresses(..) => ScreenContext::InterceptKeyPresses,
             ScreenInstruction::ClearKeyPressesIntercepts(..) => {
                 ScreenContext::ClearKeyPressesIntercepts
@@ -9568,6 +9570,30 @@ pub(crate) fn screen_thread_main(
                     pending_events_waiting_for_tab.push(
                         ScreenInstruction::SetMouseSelectionSupport(pid, selection_support),
                     );
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::SetPaneCollapsed(pid, collapsed) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found_pane = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pid) {
+                        tab.set_pane_collapsed(pid, collapsed);
+                        found_pane = true;
+                        break;
+                    }
+                }
+                if !found_pane {
+                    // a plugin can ask for this before its pane has been placed in a tab. Unlike
+                    // the other deferred instructions this one is sent whenever the plugin's
+                    // content comes and goes, so only the last word on a given pane is worth
+                    // keeping and the queue stays one entry deep per pane
+                    pending_events_waiting_for_tab.retain(|event| {
+                        !matches!(event, ScreenInstruction::SetPaneCollapsed(pending_pid, _) if *pending_pid == pid)
+                    });
+                    pending_events_waiting_for_tab
+                        .push(ScreenInstruction::SetPaneCollapsed(pid, collapsed));
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;

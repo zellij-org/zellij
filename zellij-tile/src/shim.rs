@@ -2687,6 +2687,23 @@ pub fn set_self_mouse_selection_support(selection_support: bool) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Give this plugin's pane back to its neighbors while it has nothing to draw, or take it
+/// again when it does.
+///
+/// Intended for a plugin mounted in a layout as a bar, whose content is sometimes empty: the
+/// row a layout reserves for it stays reserved otherwise, and shows as a blank line. While
+/// collapsed the pane keeps its place in the layout and simply takes no space, so expanding
+/// restores the exact geometry the layout asked for. Calling it with the size the pane is
+/// already at does nothing.
+///
+/// Has no effect on a floating pane, which takes no space from its neighbors to begin with.
+pub fn set_self_collapsed(collapsed: bool) {
+    let plugin_command = PluginCommand::SetSelfCollapsed(collapsed);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn generate_web_login_token(
     token_label: Option<String>,
     read_only: bool,
