@@ -1,5 +1,7 @@
-use crate::data::{Direction, KeyWithModifier};
+use crate::data::{Direction, InputMode, KeyWithModifier, KeybindsVec};
 use crate::nested_session_contract::nested_session_contract as proto;
+use crate::plugin_api::event::{keybinds_from_protobuf, keybinds_to_protobuf};
+use crate::plugin_api::generated_api::api::event::InitialKeybindsPayload as ProtobufInitialKeybindsPayload;
 use base64::alphabet::STANDARD as BASE64_STANDARD_ALPHABET;
 use base64::engine::general_purpose::{
     GeneralPurpose, GeneralPurposeConfig, STANDARD as BASE64_STANDARD,
@@ -97,6 +99,10 @@ impl ReannounceScheduler {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NestedSessionCapability {
     NestedControl,
+    /// The peer can report its input mode and keybindings to its host, through
+    /// [`NestedSessionMessage::GuestModeUpdate`] and
+    /// [`NestedSessionMessage::GuestKeybindsUpdate`].
+    HintReporting,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -133,6 +139,16 @@ pub enum NestedSessionMessage {
         ascend_keys: Vec<KeyWithModifier>,
         descend_keys: Vec<KeyWithModifier>,
     },
+    /// Sent by a guest to its host whenever the guest's input mode changes.
+    GuestModeUpdate {
+        mode: InputMode,
+    },
+    /// Sent by a host to ask a guest for its full keybinding table.
+    RequestGuestKeybinds,
+    /// A guest's answer to [`NestedSessionMessage::RequestGuestKeybinds`].
+    GuestKeybindsUpdate {
+        keybinds: KeybindsVec,
+    },
 }
 
 fn keys_to_proto(keys: &[KeyWithModifier]) -> Vec<String> {
@@ -156,6 +172,7 @@ fn capabilities_to_proto(capabilities: &[NestedSessionCapability]) -> Vec<i32> {
         .iter()
         .map(|capability| match capability {
             NestedSessionCapability::NestedControl => proto::NestedCapability::NestedControl as i32,
+            NestedSessionCapability::HintReporting => proto::NestedCapability::HintReporting as i32,
         })
         .collect()
 }
@@ -168,10 +185,41 @@ fn capabilities_from_proto(capabilities: &[i32]) -> Vec<NestedSessionCapability>
                 Some(proto::NestedCapability::NestedControl) => {
                     Some(NestedSessionCapability::NestedControl)
                 },
+                Some(proto::NestedCapability::HintReporting) => {
+                    Some(NestedSessionCapability::HintReporting)
+                },
                 _ => None,
             },
         )
         .collect()
+}
+
+/// An [`InputMode`] is written to the wire under the name [`InputMode::from_str`] reads,
+/// so that a mode one side does not know about is rejected rather than misread, and so
+/// that adding a mode needs no change to this contract.
+fn mode_to_proto(mode: InputMode) -> String {
+    format!("{:?}", mode)
+}
+
+fn mode_from_proto(mode: &str) -> Option<InputMode> {
+    InputMode::from_str(mode).ok()
+}
+
+/// Keybindings travel as an encoded plugin-API payload rather than as part of this
+/// contract, so that describing them here does not mean restating the whole `Action`
+/// schema. Anything the reading side cannot understand is dropped, which is what lets a
+/// host and a guest built from different Zellij versions still exchange the bindings they
+/// have in common.
+fn keybinds_to_proto(keybinds: KeybindsVec) -> Vec<u8> {
+    let payload = ProtobufInitialKeybindsPayload {
+        keybinds: keybinds_to_protobuf(keybinds).unwrap_or_default(),
+    };
+    payload.encode_to_vec()
+}
+
+fn keybinds_from_proto(payload_bytes: &[u8]) -> Option<KeybindsVec> {
+    let payload = ProtobufInitialKeybindsPayload::decode(payload_bytes).ok()?;
+    Some(keybinds_from_protobuf(payload.keybinds))
 }
 
 fn direction_to_proto(direction: Option<Direction>) -> i32 {
@@ -242,6 +290,19 @@ impl From<NestedSessionMessage> for proto::NestedSessionMessage {
                 ascend_keys: keys_to_proto(&ascend_keys),
                 descend_keys: keys_to_proto(&descend_keys),
             }),
+            NestedSessionMessage::GuestModeUpdate { mode } => {
+                Payload::GuestModeUpdate(proto::GuestModeUpdate {
+                    mode: mode_to_proto(mode),
+                })
+            },
+            NestedSessionMessage::RequestGuestKeybinds => {
+                Payload::RequestGuestKeybinds(proto::RequestGuestKeybinds {})
+            },
+            NestedSessionMessage::GuestKeybindsUpdate { keybinds } => {
+                Payload::GuestKeybindsUpdate(proto::GuestKeybindsUpdate {
+                    keybinds_payload: keybinds_to_proto(keybinds),
+                })
+            },
         };
         proto::NestedSessionMessage {
             payload: Some(payload),
@@ -293,6 +354,18 @@ impl TryFrom<proto::NestedSessionMessage> for NestedSessionMessage {
                     ascend_keys: keys_from_proto(&shortcut_update.ascend_keys),
                     descend_keys: keys_from_proto(&shortcut_update.descend_keys),
                 })
+            },
+            Some(Payload::GuestModeUpdate(guest_mode_update)) => {
+                let mode = mode_from_proto(&guest_mode_update.mode).ok_or(())?;
+                Ok(NestedSessionMessage::GuestModeUpdate { mode })
+            },
+            Some(Payload::RequestGuestKeybinds(_)) => {
+                Ok(NestedSessionMessage::RequestGuestKeybinds)
+            },
+            Some(Payload::GuestKeybindsUpdate(guest_keybinds_update)) => {
+                let keybinds =
+                    keybinds_from_proto(&guest_keybinds_update.keybinds_payload).ok_or(())?;
+                Ok(NestedSessionMessage::GuestKeybindsUpdate { keybinds })
             },
             None => Err(()),
         }
