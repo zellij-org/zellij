@@ -62,17 +62,23 @@ use std::time::Duration;
 /// Converts a keybinding table into the protobuf form used wherever keybindings cross the
 /// plugin boundary.
 ///
-/// An individual action that has no protobuf representation is dropped, so that one
-/// unrepresentable action does not cost the caller the whole binding.
-pub fn keybinds_to_protobuf(
-    keybinds: KeybindsVec,
-) -> Result<Vec<ProtobufInputModeKeybinds>, &'static str> {
+/// Anything that has no protobuf representation is dropped rather than failing the whole
+/// table: an unrepresentable action costs only that action, an unrepresentable key only
+/// that binding, and an unrepresentable mode only that mode. The reader
+/// ([`keybinds_from_protobuf`]) drops on the same terms, so a table survives the trip
+/// between builds that do not share every mode, key and action, minus whatever they do not
+/// have in common.
+pub fn keybinds_to_protobuf(keybinds: KeybindsVec) -> Vec<ProtobufInputModeKeybinds> {
     let mut protobuf_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
     for (input_mode, input_mode_keybinds) in keybinds {
-        let mode: ProtobufInputMode = input_mode.try_into()?;
+        let Ok(mode) = ProtobufInputMode::try_from(input_mode) else {
+            continue;
+        };
         let mut key_binds: Vec<ProtobufKeyBind> = vec![];
         for (key, actions) in input_mode_keybinds {
-            let protobuf_key: ProtobufKey = key.try_into()?;
+            let Ok(protobuf_key) = ProtobufKey::try_from(key) else {
+                continue;
+            };
             let mut protobuf_actions: Vec<ProtobufAction> = vec![];
             for action in actions {
                 if let Ok(protobuf_action) = action.try_into() {
@@ -89,7 +95,7 @@ pub fn keybinds_to_protobuf(
             key_bind: key_binds,
         });
     }
-    Ok(protobuf_keybinds)
+    protobuf_keybinds
 }
 
 /// Converts a keybinding table back out of its protobuf form.
@@ -1299,12 +1305,12 @@ impl TryFrom<Event> for ProtobufEvent {
                     NestedSessionKeybindsPayload {
                         pane_id: Some(pane_id.try_into()?),
                         session_name,
-                        keybinds: keybinds_to_protobuf(keybinds)?,
+                        keybinds: keybinds_to_protobuf(keybinds),
                     },
                 )),
             }),
             Event::InitialKeybinds(keybinds) => {
-                let protobuf_keybinds = keybinds_to_protobuf(keybinds)?;
+                let protobuf_keybinds = keybinds_to_protobuf(keybinds);
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::InitialKeybinds as i32,
                     payload: Some(event::Payload::InitialKeybindsPayload(
@@ -2164,7 +2170,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             .iter()
             .map(|key| key.to_kdl())
             .collect();
-        let protobuf_input_mode_keybinds = keybinds_to_protobuf(mode_info.keybinds)?;
+        let protobuf_input_mode_keybinds = keybinds_to_protobuf(mode_info.keybinds);
         Ok(ProtobufModeUpdatePayload {
             current_mode: current_mode as i32,
             style: Some(style),
@@ -3396,4 +3402,87 @@ impl TryFrom<SelectedText> for ProtobufSelectedText {
             end: Some(selected_text.end.try_into()?),
         })
     }
+}
+
+#[test]
+fn serialize_nested_session_mode_update_event() {
+    use prost::Message;
+    let nested_session_mode_update_event = Event::NestedSessionModeUpdate {
+        pane_id: PaneId::Terminal(3),
+        session_name: Some("guest session".to_owned()),
+        mode: InputMode::Pane,
+        base_mode: Some(InputMode::Locked),
+    };
+    let protobuf_event: ProtobufEvent =
+        nested_session_mode_update_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent =
+        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(
+        nested_session_mode_update_event, deserialized_event,
+        "Event properly serialized/deserialized without change"
+    );
+}
+
+#[test]
+fn serialize_nested_session_keybinds_event() {
+    use crate::data::BareKey;
+    use prost::Message;
+    let nested_session_keybinds_event = Event::NestedSessionKeybinds {
+        pane_id: PaneId::Terminal(3),
+        session_name: Some("guest session".to_owned()),
+        keybinds: vec![
+            (
+                InputMode::Normal,
+                vec![(
+                    KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+                    vec![Action::SwitchToMode {
+                        input_mode: InputMode::Pane,
+                    }],
+                )],
+            ),
+            (
+                InputMode::Pane,
+                vec![(
+                    KeyWithModifier::new(BareKey::Char('x')),
+                    vec![Action::CloseFocus],
+                )],
+            ),
+        ],
+    };
+    let protobuf_event: ProtobufEvent = nested_session_keybinds_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent =
+        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(
+        nested_session_keybinds_event, deserialized_event,
+        "Event properly serialized/deserialized without change"
+    );
+}
+
+#[test]
+fn a_key_with_no_protobuf_form_costs_only_its_own_binding() {
+    use crate::data::BareKey;
+    // Only f1 through f12 have a protobuf representation.
+    let unrepresentable_key = KeyWithModifier::new(BareKey::F(20));
+    let representable_key = KeyWithModifier::new(BareKey::Char('x'));
+    let keybinds = vec![(
+        InputMode::Normal,
+        vec![
+            (unrepresentable_key, vec![Action::CloseFocus]),
+            (representable_key.clone(), vec![Action::CloseFocus]),
+        ],
+    )];
+
+    let converted = keybinds_from_protobuf(keybinds_to_protobuf(keybinds));
+
+    assert_eq!(
+        converted,
+        vec![(
+            InputMode::Normal,
+            vec![(representable_key, vec![Action::CloseFocus])]
+        )]
+    );
 }
