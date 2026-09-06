@@ -213,7 +213,7 @@ fn mode_from_proto(mode: &str) -> Option<InputMode> {
 /// have in common.
 fn keybinds_to_proto(keybinds: KeybindsVec) -> Vec<u8> {
     let payload = ProtobufInitialKeybindsPayload {
-        keybinds: keybinds_to_protobuf(keybinds).unwrap_or_default(),
+        keybinds: keybinds_to_protobuf(keybinds),
     };
     payload.encode_to_vec()
 }
