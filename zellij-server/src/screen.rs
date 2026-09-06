@@ -41,10 +41,10 @@ use crate::route::NotificationEnd;
 use log::{debug, warn};
 use zellij_utils::data::{
     CommandOrPlugin, Direction, EventType, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
-    HostTerminalThemeMode, KeyWithModifier, LayoutInfo, LayoutWithError, ListPanesResponse,
-    ListTabsResponse, NewPanePlacement, PaneContents, PaneInfo, PaneListEntry, PaneManifest,
-    PaneRenderReport, PaneScrollbackResponse, PluginPermission, RegexHighlight, Resize,
-    ResizeStrategy, SessionInfo, Styling, TabInfo, ThemeHue, WebSharing,
+    HostTerminalThemeMode, KeyWithModifier, KeybindsVec, LayoutInfo, LayoutWithError,
+    ListPanesResponse, ListTabsResponse, NewPanePlacement, PaneContents, PaneInfo, PaneListEntry,
+    PaneManifest, PaneRenderReport, PaneScrollbackResponse, PluginPermission, RegexHighlight,
+    Resize, ResizeStrategy, SessionInfo, Styling, TabInfo, ThemeHue, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
@@ -4119,14 +4119,7 @@ impl Screen {
                 }
             },
             NestedSessionMessage::RequestGuestKeybinds => {
-                let keybinds = self.default_mode_info.keybinds.clone();
-                let payload =
-                    nested_session::encode_payload(&NestedSessionMessage::GuestKeybindsUpdate {
-                        keybinds,
-                    });
-                let _ = self.bus.senders.send_to_server(
-                    ServerInstruction::EmitNestedSessionFrameToClient(client_id, payload),
-                );
+                self.report_keybinds_to_host(client_id);
                 // The host asked because it is about to render our hints, so send the current
                 // mode too rather than making it wait for the next mode change.
                 let (current_mode, base_mode) = self.current_mode_for_client(client_id);
@@ -6202,6 +6195,38 @@ impl Screen {
             ))
     }
 
+    /// The keybindings a client is typing against, falling back to the configured defaults
+    /// for a client that has not been given a table of its own yet.
+    ///
+    /// A client can carry its own table: `reconfigure` with `write_to_disk` unset rebinds
+    /// only the client that asked for it, leaving the rest of the session on the defaults.
+    fn keybinds_for_client(&self, client_id: ClientId) -> KeybindsVec {
+        self.mode_info
+            .get(&client_id)
+            .map(|mode_info| mode_info.keybinds.clone())
+            .unwrap_or_else(|| self.default_mode_info.keybinds.clone())
+    }
+
+    /// While this session runs nested inside a host, tell the host what we are bound to.
+    ///
+    /// Sent in answer to a host's request, and again whenever a reconfigure rewrites the
+    /// table, since a host that has already been told once has no way of noticing that the
+    /// bindings it is drawing have gone stale.
+    fn report_keybinds_to_host(&mut self, client_id: ClientId) {
+        if self.nested_via_client_id != Some(client_id) {
+            return;
+        }
+        let payload = nested_session::encode_payload(&NestedSessionMessage::GuestKeybindsUpdate {
+            keybinds: self.keybinds_for_client(client_id),
+        });
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::EmitNestedSessionFrameToClient(
+                client_id, payload,
+            ));
+    }
+
     /// While this session runs nested inside a host, tell the host about our input mode.
     ///
     /// Host plugins use this to render the hints of the session the user is actually driving.
@@ -7137,6 +7162,12 @@ impl Screen {
             tab.update_input_modes()?;
         }
         self.broadcast_nested_shortcuts();
+        // A reconfigure rewrites the keybindings and the base mode without going through
+        // `change_mode`, so a host that is drawing our hints would otherwise keep drawing
+        // the table we had before the config was reloaded.
+        let (current_mode, base_mode) = self.current_mode_for_client(client_id);
+        self.report_mode_to_host(client_id, current_mode, base_mode);
+        self.report_keybinds_to_host(client_id);
         Ok(())
     }
     pub fn update_host_terminal_theme_mode(&mut self, mode: HostTerminalThemeMode) -> Result<()> {
