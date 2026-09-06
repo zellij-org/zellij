@@ -497,12 +497,17 @@ impl NestedFrameExtractor {
 mod tests {
     use super::*;
     use crate::data::BareKey;
+    use crate::input::actions::Action;
+    use strum::IntoEnumIterator;
 
     fn all_message_arms() -> Vec<NestedSessionMessage> {
         vec![
             NestedSessionMessage::Announce {
                 session_name: "guest".to_owned(),
-                capabilities: vec![NestedSessionCapability::NestedControl],
+                capabilities: vec![
+                    NestedSessionCapability::NestedControl,
+                    NestedSessionCapability::HintReporting,
+                ],
             },
             NestedSessionMessage::FocusHost {
                 direction: Some(Direction::Left),
@@ -513,7 +518,10 @@ mod tests {
             NestedSessionMessage::Bye,
             NestedSessionMessage::AnnounceAck {
                 ancestry: vec!["outer".to_owned(), "middle".to_owned()],
-                capabilities: vec![NestedSessionCapability::NestedControl],
+                capabilities: vec![
+                    NestedSessionCapability::NestedControl,
+                    NestedSessionCapability::HintReporting,
+                ],
                 descend_keys: vec![
                     KeyWithModifier::new(BareKey::Char('o')).with_ctrl_modifier(),
                     KeyWithModifier::new(BareKey::Down),
@@ -535,6 +543,46 @@ mod tests {
                 ],
                 descend_keys: vec![],
             },
+            NestedSessionMessage::GuestModeUpdate {
+                mode: InputMode::Locked,
+            },
+            NestedSessionMessage::RequestGuestKeybinds,
+            NestedSessionMessage::GuestKeybindsUpdate {
+                keybinds: sample_keybinds(),
+            },
+        ]
+    }
+
+    fn sample_keybinds() -> KeybindsVec {
+        vec![
+            (
+                InputMode::Normal,
+                vec![(
+                    KeyWithModifier::new(BareKey::Char('p')).with_ctrl_modifier(),
+                    vec![Action::SwitchToMode {
+                        input_mode: InputMode::Pane,
+                    }],
+                )],
+            ),
+            (
+                InputMode::Pane,
+                vec![
+                    (
+                        KeyWithModifier::new(BareKey::Char('n')),
+                        vec![Action::NewPane {
+                            direction: None,
+                            pane_name: None,
+                            start_suppressed: false,
+                        }],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Esc),
+                        vec![Action::SwitchToMode {
+                            input_mode: InputMode::Normal,
+                        }],
+                    ),
+                ],
+            ),
         ]
     }
 
@@ -609,6 +657,59 @@ mod tests {
     #[test]
     fn empty_payload_is_rejected() {
         assert_eq!(decode_payload(&[]), None);
+    }
+
+    #[test]
+    fn guest_mode_update_roundtrip_preserves_every_input_mode() {
+        for mode in InputMode::iter() {
+            let message = NestedSessionMessage::GuestModeUpdate { mode };
+            assert_eq!(
+                decode_payload(&encode_payload(&message)),
+                Some(message),
+                "input mode {:?} did not survive the round trip",
+                mode
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_input_mode_name_is_rejected() {
+        let payload = proto::NestedSessionMessage {
+            payload: Some(proto::nested_session_message::Payload::GuestModeUpdate(
+                proto::GuestModeUpdate {
+                    mode: "ModeFromAFutureZellij".to_owned(),
+                },
+            )),
+        }
+        .encode_to_vec();
+        assert_eq!(decode_payload(&payload), None);
+    }
+
+    #[test]
+    fn guest_keybinds_update_preserves_modes_keys_and_actions() {
+        let message = NestedSessionMessage::GuestKeybindsUpdate {
+            keybinds: sample_keybinds(),
+        };
+        assert_eq!(decode_payload(&encode_payload(&message)), Some(message));
+    }
+
+    #[test]
+    fn empty_keybinds_survive_the_roundtrip() {
+        let message = NestedSessionMessage::GuestKeybindsUpdate { keybinds: vec![] };
+        assert_eq!(decode_payload(&encode_payload(&message)), Some(message));
+    }
+
+    #[test]
+    fn undecodable_keybinds_payload_is_rejected() {
+        let payload = proto::NestedSessionMessage {
+            payload: Some(proto::nested_session_message::Payload::GuestKeybindsUpdate(
+                proto::GuestKeybindsUpdate {
+                    keybinds_payload: vec![0xff, 0xff, 0xff, 0xff],
+                },
+            )),
+        }
+        .encode_to_vec();
+        assert_eq!(decode_payload(&payload), None);
     }
 
     fn test_scheduler(now: Instant) -> ReannounceScheduler {
