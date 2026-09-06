@@ -338,6 +338,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ToggleFocusFullscreen => toggle_focus_fullscreen(env),
                     PluginCommand::ToggleFocusNoUiFullscreen => toggle_focus_no_ui_fullscreen(env),
                     PluginCommand::FocusHostSession => focus_host_session(env),
+                    PluginCommand::RequestNestedSessionKeybinds(pane_id) => {
+                        request_nested_session_keybinds(env, pane_id.into())
+                    },
                     PluginCommand::TogglePaneFrames => toggle_pane_frames(env),
                     PluginCommand::SetPaneFrameStyle(pane_frame_style) => {
                         set_pane_frame_style(env, pane_frame_style)
@@ -3161,6 +3164,18 @@ fn focus_host_session(env: &PluginEnv) {
         .non_fatal();
 }
 
+fn request_nested_session_keybinds(env: &PluginEnv, pane_id: PaneId) {
+    env.senders
+        .send_to_screen(ScreenInstruction::RequestNestedSessionKeybinds(pane_id))
+        .with_context(|| {
+            format!(
+                "failed to request nested session keybindings from plugin {}",
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
 fn toggle_pane_frames(env: &PluginEnv) {
     let error_msg = || format!("failed to toggle full screen in plugin {}", env.name());
     let action = Action::TogglePaneFrames;
@@ -5595,6 +5610,7 @@ fn check_command_permission(
         | PluginCommand::CurrentSessionLastSavedTime
         | PluginCommand::GetPaneInfo(..)
         | PluginCommand::GetTabInfo(..)
+        | PluginCommand::RequestNestedSessionKeybinds(..)
         | PluginCommand::GetSessionList => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure

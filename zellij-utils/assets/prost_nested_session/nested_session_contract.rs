@@ -2,7 +2,7 @@
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NestedSessionMessage {
-    #[prost(oneof="nested_session_message::Payload", tags="1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14")]
+    #[prost(oneof="nested_session_message::Payload", tags="1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17")]
     pub payload: ::core::option::Option<nested_session_message::Payload>,
 }
 /// Nested message and enum types in `NestedSessionMessage`.
@@ -34,6 +34,12 @@ pub mod nested_session_message {
         Ping(super::Ping),
         #[prost(message, tag="14")]
         ShortcutUpdate(super::ShortcutUpdate),
+        #[prost(message, tag="15")]
+        GuestModeUpdate(super::GuestModeUpdate),
+        #[prost(message, tag="16")]
+        RequestGuestKeybinds(super::RequestGuestKeybinds),
+        #[prost(message, tag="17")]
+        GuestKeybindsUpdate(super::GuestKeybindsUpdate),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -108,11 +114,44 @@ pub struct AncestryUpdate {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Ping {
 }
+/// Sent by a guest to its host whenever the guest's input mode changes, so the host
+/// knows which of the guest's keybindings currently apply. `base_mode` is the mode the
+/// guest returns to, empty when the guest does not report one; a host needs it to tell
+/// which of the guest's bindings are inherited from its base mode rather than specific to
+/// the mode it is in now.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GuestModeUpdate {
+    #[prost(string, tag="1")]
+    pub mode: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub base_mode: ::prost::alloc::string::String,
+}
+/// Sent by a host to ask a guest for its full keybinding table.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RequestGuestKeybinds {
+}
+/// A guest's answer to RequestGuestKeybinds.
+///
+/// The table is carried as an encoded plugin-API `InitialKeybindsPayload` rather than
+/// being redescribed here, because describing keybindings natively would mean pulling the
+/// whole `Action` schema into this contract. Protobuf's unknown-field and unknown-enum
+/// handling means a host and a guest built from different Zellij versions still exchange
+/// everything they both understand.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GuestKeybindsUpdate {
+    #[prost(bytes="vec", tag="1")]
+    pub keybinds_payload: ::prost::alloc::vec::Vec<u8>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum NestedCapability {
     Unspecified = 0,
     NestedControl = 1,
+    /// The peer can report its input mode and keybindings to its host.
+    HintReporting = 2,
 }
 impl NestedCapability {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -123,6 +162,7 @@ impl NestedCapability {
         match self {
             NestedCapability::Unspecified => "NESTED_CAPABILITY_UNSPECIFIED",
             NestedCapability::NestedControl => "NESTED_CAPABILITY_NESTED_CONTROL",
+            NestedCapability::HintReporting => "NESTED_CAPABILITY_HINT_REPORTING",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -130,6 +170,7 @@ impl NestedCapability {
         match value {
             "NESTED_CAPABILITY_UNSPECIFIED" => Some(Self::Unspecified),
             "NESTED_CAPABILITY_NESTED_CONTROL" => Some(Self::NestedControl),
+            "NESTED_CAPABILITY_HINT_REPORTING" => Some(Self::HintReporting),
             _ => None,
         }
     }

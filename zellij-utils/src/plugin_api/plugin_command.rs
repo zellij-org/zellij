@@ -114,8 +114,9 @@ pub use super::generated_api::api::{
         RegexHighlight as ProtobufRegexHighlight, ReloadPluginPayload, RenameLayoutPayload,
         RenameLayoutResponse as ProtobufRenameLayoutResponse, RenameTabWithIdPayload,
         RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
-        RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePaneIdWithDirectionPayload,
-        ResizePayload, RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
+        RequestNestedSessionKeybindsPayload, RequestPluginPermissionPayload,
+        RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
+        RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
         RunActionPayload, RunCommandPayload, RunningCommand as ProtobufRunningCommand,
         SaveLayoutPayload, SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
@@ -2493,6 +2494,18 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::CurrentSessionLastSavedTime) => {
                 Ok(PluginCommand::CurrentSessionLastSavedTime)
             },
+            Some(CommandName::RequestNestedSessionKeybinds) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::RequestNestedSessionKeybindsPayload(payload)) => {
+                        let pane_id = payload
+                            .pane_id
+                            .ok_or("Malformed pane_id for RequestNestedSessionKeybinds")
+                            .and_then(|pane_id| pane_id.try_into())?;
+                        Ok(PluginCommand::RequestNestedSessionKeybinds(pane_id))
+                    },
+                    _ => Err("Malformed payload for RequestNestedSessionKeybinds"),
+                }
+            },
             Some(CommandName::GetPaneInfo) => match protobuf_plugin_command.payload {
                 Some(Payload::GetPaneInfoPayload(get_pane_info_payload)) => {
                     let pane_id = get_pane_info_payload
@@ -4278,6 +4291,17 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     CurrentSessionLastSavedTimePayload {},
                 )),
             }),
+            PluginCommand::RequestNestedSessionKeybinds(pane_id) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::RequestNestedSessionKeybinds as i32,
+                    payload: Some(Payload::RequestNestedSessionKeybindsPayload(
+                        RequestNestedSessionKeybindsPayload {
+                            pane_id: Some(protobuf_pane_id),
+                        },
+                    )),
+                })
+            },
             PluginCommand::GetPaneInfo(pane_id) => {
                 let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
                 Ok(ProtobufPluginCommand {

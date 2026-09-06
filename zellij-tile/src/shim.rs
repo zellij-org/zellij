@@ -1305,6 +1305,23 @@ pub fn focus_host_session() {
     unsafe { host_run_plugin_command() };
 }
 
+/// Ask the nested session running in `pane_id` for its keybindings.
+///
+/// The answer arrives as an [`Event::NestedSessionKeybinds`], so subscribe to that event
+/// before asking. A nested session running a Zellij too old to report its keybindings
+/// never answers, so treat the bindings as unavailable until the event arrives rather
+/// than waiting on it.
+///
+/// Requires the `ReadApplicationState` permission.
+///
+/// [`Event::NestedSessionKeybinds`]: zellij_utils::data::Event::NestedSessionKeybinds
+pub fn request_nested_session_keybinds(pane_id: PaneId) {
+    let plugin_command = PluginCommand::RequestNestedSessionKeybinds(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Toggle the UI pane frames on or off
 pub fn toggle_pane_frames() {
     let plugin_command = PluginCommand::TogglePaneFrames;
