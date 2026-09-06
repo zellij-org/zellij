@@ -72,6 +72,8 @@ enum EventType {
     SoftKeyboardVisibilityChanged = 47;
     HintText = 48;
     ActivePaneScroll = 49;
+    NestedSessionModeUpdate = 50;
+    NestedSessionKeybinds = 51;
 }
 
 message EventNameList {
@@ -123,7 +125,21 @@ message Event {
     SoftKeyboardVisibilityChangedPayload soft_keyboard_visibility_changed_payload = 41;
     HintTextPayload hint_text_payload = 42;
     ActivePaneScrollPayload active_pane_scroll_payload = 43;
+    NestedSessionModeUpdatePayload nested_session_mode_update_payload = 44;
+    NestedSessionKeybindsPayload nested_session_keybinds_payload = 45;
   }
+}
+
+message NestedSessionModeUpdatePayload {
+  PaneId pane_id = 1;
+  optional string session_name = 2;
+  input_mode.InputMode mode = 3;
+}
+
+message NestedSessionKeybindsPayload {
+  PaneId pane_id = 1;
+  optional string session_name = 2;
+  repeated InputModeKeybinds keybinds = 3;
 }
 
 message HintTextPayload {

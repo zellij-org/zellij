@@ -1040,6 +1040,27 @@ pub enum Event {
     SoftKeyboardVisibilityChanged(bool),
     HintText(BTreeMap<usize, StyledText>),
     ActivePaneScroll(Option<(usize, usize)>),
+    /// The current input mode of a nested session running inside one of this session's
+    /// panes, sent whenever that mode changes.
+    ///
+    /// `pane_id` is the pane hosting the nested session, and `session_name` is that
+    /// session's own name when it has announced one. Together they let a plugin tell
+    /// several nested sessions apart.
+    NestedSessionModeUpdate {
+        pane_id: PaneId,
+        session_name: Option<String>,
+        mode: InputMode,
+    },
+    /// The keybindings of a nested session running inside one of this session's panes,
+    /// sent in answer to [`PluginCommand::RequestNestedSessionKeybinds`].
+    ///
+    /// Bindings that this session's build cannot represent are omitted, so a nested
+    /// session running a different Zellij version reports what both sides understand.
+    NestedSessionKeybinds {
+        pane_id: PaneId,
+        session_name: Option<String>,
+        keybinds: KeybindsVec,
+    },
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -3690,6 +3711,12 @@ pub enum PluginCommand {
     DeleteAllDeadSessionsAndReply,     // no payload; sends a response back
     SetSoftKeyboard(bool),
     FocusHostSession,
+    /// Ask the nested session running in the given pane for its keybindings.
+    ///
+    /// The answer arrives as an [`Event::NestedSessionKeybinds`]. A nested session running
+    /// a Zellij too old to report them does not answer, so a plugin should treat the
+    /// bindings as unavailable until the event arrives rather than waiting on it.
+    RequestNestedSessionKeybinds(PaneId),
 }
 
 // Response type for plugin API methods that open a pane in a new tab

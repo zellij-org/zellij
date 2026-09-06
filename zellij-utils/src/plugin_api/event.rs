@@ -614,6 +614,35 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for HighlightClicked Event"),
             },
+            Some(ProtobufEventType::NestedSessionModeUpdate) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::NestedSessionModeUpdatePayload(payload)) => {
+                    let pane_id = payload
+                        .pane_id
+                        .ok_or("Malformed payload for the NestedSessionModeUpdate Event")?;
+                    let mode: InputMode = ProtobufInputMode::try_from(payload.mode)
+                        .map_err(|_| "Malformed InputMode in the NestedSessionModeUpdate Event")?
+                        .try_into()?;
+                    Ok(Event::NestedSessionModeUpdate {
+                        pane_id: PaneId::try_from(pane_id)?,
+                        session_name: payload.session_name,
+                        mode,
+                    })
+                },
+                _ => Err("Malformed payload for the NestedSessionModeUpdate Event"),
+            },
+            Some(ProtobufEventType::NestedSessionKeybinds) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::NestedSessionKeybindsPayload(payload)) => {
+                    let pane_id = payload
+                        .pane_id
+                        .ok_or("Malformed payload for the NestedSessionKeybinds Event")?;
+                    Ok(Event::NestedSessionKeybinds {
+                        pane_id: PaneId::try_from(pane_id)?,
+                        session_name: payload.session_name,
+                        keybinds: keybinds_from_protobuf(payload.keybinds),
+                    })
+                },
+                _ => Err("Malformed payload for the NestedSessionKeybinds Event"),
+            },
             Some(ProtobufEventType::InitialKeybinds) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::InitialKeybindsPayload(p)) => {
                     Ok(Event::InitialKeybinds(keybinds_from_protobuf(p.keybinds)))
@@ -1232,6 +1261,37 @@ impl TryFrom<Event> for ProtobufEvent {
                     payload: Some(event::Payload::ActivePaneScrollPayload(payload)),
                 })
             },
+            Event::NestedSessionModeUpdate {
+                pane_id,
+                session_name,
+                mode,
+            } => {
+                let protobuf_mode: ProtobufInputMode = mode.try_into()?;
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::NestedSessionModeUpdate as i32,
+                    payload: Some(event::Payload::NestedSessionModeUpdatePayload(
+                        NestedSessionModeUpdatePayload {
+                            pane_id: Some(pane_id.try_into()?),
+                            session_name,
+                            mode: protobuf_mode as i32,
+                        },
+                    )),
+                })
+            },
+            Event::NestedSessionKeybinds {
+                pane_id,
+                session_name,
+                keybinds,
+            } => Ok(ProtobufEvent {
+                name: ProtobufEventType::NestedSessionKeybinds as i32,
+                payload: Some(event::Payload::NestedSessionKeybindsPayload(
+                    NestedSessionKeybindsPayload {
+                        pane_id: Some(pane_id.try_into()?),
+                        session_name,
+                        keybinds: keybinds_to_protobuf(keybinds)?,
+                    },
+                )),
+            }),
             Event::InitialKeybinds(keybinds) => {
                 let protobuf_keybinds = keybinds_to_protobuf(keybinds)?;
                 Ok(ProtobufEvent {
@@ -2205,6 +2265,8 @@ impl TryFrom<ProtobufEventType> for EventType {
             },
             ProtobufEventType::HintText => EventType::HintText,
             ProtobufEventType::ActivePaneScroll => EventType::ActivePaneScroll,
+            ProtobufEventType::NestedSessionModeUpdate => EventType::NestedSessionModeUpdate,
+            ProtobufEventType::NestedSessionKeybinds => EventType::NestedSessionKeybinds,
         })
     }
 }
@@ -2263,6 +2325,8 @@ impl TryFrom<EventType> for ProtobufEventType {
             },
             EventType::HintText => ProtobufEventType::HintText,
             EventType::ActivePaneScroll => ProtobufEventType::ActivePaneScroll,
+            EventType::NestedSessionModeUpdate => ProtobufEventType::NestedSessionModeUpdate,
+            EventType::NestedSessionKeybinds => ProtobufEventType::NestedSessionKeybinds,
         })
     }
 }

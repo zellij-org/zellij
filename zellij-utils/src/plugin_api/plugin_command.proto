@@ -218,6 +218,7 @@ enum CommandName {
   NewPane = 226;
   ToggleFocusNoUiFullscreen = 227;
   FocusHostSession = 228;
+  RequestNestedSessionKeybinds = 229;
 }
 
 message PluginCommand {
@@ -378,7 +379,12 @@ message PluginCommand {
     NewTiledPaneInTabPayload new_tiled_pane_in_tab_payload = 169;
     SetPaneFrameStylePayload set_pane_frame_style_payload = 170;
     ToggleFloatingPanesPayload toggle_floating_panes_payload = 171;
+    RequestNestedSessionKeybindsPayload request_nested_session_keybinds_payload = 172;
   }
+}
+
+message RequestNestedSessionKeybindsPayload {
+  PaneId pane_id = 1;
 }
 
 message SetPaneFrameStylePayload {
