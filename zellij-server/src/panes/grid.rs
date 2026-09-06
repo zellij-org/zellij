@@ -469,7 +469,7 @@ macro_rules! dump_screen {
             if line.is_canonical && !is_first {
                 buf.push_str("\n");
             }
-            let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
+            let s: String = line.to_text();
             // Replace the spaces at the end of the line. Sometimes, the lines are
             // collected with spaces until the end of the panel.
             buf.push_str(&s.trim_end_matches(' '));
@@ -496,7 +496,7 @@ macro_rules! dump_screen_with_ansi {
                 .columns
                 .iter()
                 .rposition(|tc| {
-                    let space = tc.character == ' ';
+                    let space = tc.character == ' ' && !tc.has_combining_marks();
                     let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
                     !space || styled // it's, something drawable
                 })
@@ -509,7 +509,7 @@ macro_rules! dump_screen_with_ansi {
                     write!(buf, "{}", tc.styles).unwrap();
                     last_styles = Some(tc.styles.clone());
                 }
-                buf.push(tc.character);
+                tc.push_cluster_to(&mut buf);
             }
             is_first = false;
         }
@@ -3242,7 +3242,7 @@ impl Grid {
             let mut terminal_col = 0;
             for terminal_character in &row.columns {
                 if (start_column..end_column).contains(&terminal_col) {
-                    line_selection.push(terminal_character.character);
+                    terminal_character.push_cluster_to(&mut line_selection);
                 }
 
                 terminal_col += terminal_character.width();
@@ -4276,13 +4276,13 @@ impl Grid {
     ) -> PaneContents {
         let mut viewport: Vec<String> = Vec::with_capacity(self.viewport.len());
         for row in &self.viewport {
-            let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+            let s: String = row.to_text();
             viewport.push(s);
         }
         let mut contents = if get_full_scrollback {
             let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
             for row in &self.lines_above {
-                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+                let s: String = row.to_text();
                 lines_above_viewport.push(s);
             }
             // Truncate to last N lines if max specified (Some(0) means "all" — no truncation)
@@ -4294,7 +4294,7 @@ impl Grid {
             }
             let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
             for row in &self.lines_below {
-                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+                let s: String = row.to_text();
                 lines_below_viewport.push(s);
             }
             PaneContents::new_with_scrollback(
@@ -4325,7 +4325,7 @@ impl Grid {
                 .columns
                 .iter()
                 .rposition(|tc| {
-                    let space = tc.character == ' ';
+                    let space = tc.character == ' ' && !tc.has_combining_marks();
                     let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
                     !space || styled
                 })
@@ -4337,7 +4337,7 @@ impl Grid {
                     write!(buf, "{}", tc.styles).unwrap();
                     last_styles = Some(tc.styles.clone());
                 }
-                buf.push(tc.character);
+                tc.push_cluster_to(&mut buf);
             }
             if last_styles.is_some() {
                 buf.push_str("\u{1b}[m");
@@ -5683,6 +5683,15 @@ impl Row {
             bg_color: None,
             osc133_markers: vec![],
         }
+    }
+    /// The text of this row, each cell rendered as its full cluster: the character together with
+    /// any combining marks attached to it.
+    pub fn to_text(&self) -> String {
+        let mut buf = String::with_capacity(self.columns.len());
+        for terminal_character in &self.columns {
+            terminal_character.push_cluster_to(&mut buf);
+        }
+        buf
     }
     pub fn from_columns(columns: VecDeque<TerminalCharacter>) -> Self {
         Row {

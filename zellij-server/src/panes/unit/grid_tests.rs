@@ -9044,6 +9044,54 @@ fn hangul_conjoining_jamo_attach_to_the_leading_consonant() {
 }
 
 #[test]
+fn dumping_the_screen_keeps_the_combining_marks_it_shows() {
+    // The grid attaches marks to the character they modify, so every path that reads the text
+    // back out has to emit the whole cluster. `zellij action dump-screen` handing back the base
+    // characters alone would turn สวัสดี back into สวสด, which is not the word on the screen.
+    let grid = create_grid_with_content("\u{e2a}\u{e27}\u{e31}\u{e2a}\u{e14}\u{e35}");
+
+    assert_eq!(
+        grid.dump_screen(false).trim_end(),
+        "\u{e2a}\u{e27}\u{e31}\u{e2a}\u{e14}\u{e35}"
+    );
+}
+
+#[test]
+fn copying_a_selection_keeps_the_combining_marks_it_covers() {
+    let mut grid = create_grid_with_content("\u{e2a}\u{e27}\u{e31}\u{e2a}\u{e14}\u{e35}");
+
+    // The six code points occupy four columns: the two marks ride along with the character
+    // before them rather than taking a column of their own. Selecting the first two columns
+    // takes ส and ว, and ว keeps its ั.
+    grid.start_selection(&Position::new(0, 0));
+    grid.end_selection(&Position::new(0, 2));
+
+    assert_eq!(grid.get_selected_text().unwrap(), "\u{e2a}\u{e27}\u{e31}");
+}
+
+#[test]
+fn serializing_pane_contents_keeps_the_combining_marks() {
+    // A session that is serialized and resurrected has to come back with the text it had.
+    let grid = create_grid_with_content("\u{e2a}\u{e27}\u{e31}\u{e2a}\u{e14}\u{e35}");
+
+    let contents = grid.pane_contents(false, None);
+
+    assert_eq!(
+        contents.viewport[0].trim_end(),
+        "\u{e2a}\u{e27}\u{e31}\u{e2a}\u{e14}\u{e35}"
+    );
+}
+
+#[test]
+fn a_blank_carrying_a_combining_mark_is_not_trailing_whitespace() {
+    // Trailing blanks are trimmed off a dumped line. A space that a mark attached to is not one:
+    // dropping it would drop the mark with it.
+    let grid = create_grid_with_content("a \u{308}");
+
+    assert_eq!(grid.dump_screen(false).trim_end_matches('\n'), "a \u{308}");
+}
+
+#[test]
 fn precomposed_and_decomposed_forms_occupy_the_same_number_of_columns() {
     let precomposed = create_grid_with_content("\u{e9}cole");
     let decomposed = create_grid_with_content("e\u{301}cole");

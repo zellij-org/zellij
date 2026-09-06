@@ -1042,6 +1042,17 @@ impl TerminalCharacter {
             .unwrap_or_default()
     }
 
+    /// Append this cell as the cluster the screen renders it as: the character followed by any
+    /// combining marks attached to it. Every path that reads text back out of the grid -- dumping
+    /// a screen, serializing a session, copying a selection -- has to go through this, or it hands
+    /// back the base characters alone and silently strips the marks the grid took care to keep.
+    pub fn push_cluster_to(&self, buf: &mut String) {
+        buf.push(self.character);
+        if self.has_combining_marks() {
+            buf.extend(self.combining_marks());
+        }
+    }
+
     /// Attach a zero width combining mark to this character, so that it is rendered as one
     /// grapheme cluster without consuming a column of its own.
     pub fn add_combining_mark(&mut self, mark: char) {
@@ -1060,11 +1071,9 @@ impl TerminalCharacter {
 
 impl ::std::fmt::Debug for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.character)?;
-        for mark in self.combining_marks() {
-            write!(f, "{}", mark)?;
-        }
-        Ok(())
+        let mut cluster = String::new();
+        self.push_cluster_to(&mut cluster);
+        write!(f, "{}", cluster)
     }
 }
 
