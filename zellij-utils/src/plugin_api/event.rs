@@ -622,10 +622,15 @@ impl TryFrom<ProtobufEvent> for Event {
                     let mode: InputMode = ProtobufInputMode::try_from(payload.mode)
                         .map_err(|_| "Malformed InputMode in the NestedSessionModeUpdate Event")?
                         .try_into()?;
+                    let base_mode = payload
+                        .base_mode
+                        .and_then(|base_mode| ProtobufInputMode::try_from(base_mode).ok())
+                        .and_then(|base_mode| InputMode::try_from(base_mode).ok());
                     Ok(Event::NestedSessionModeUpdate {
                         pane_id: PaneId::try_from(pane_id)?,
                         session_name: payload.session_name,
                         mode,
+                        base_mode,
                     })
                 },
                 _ => Err("Malformed payload for the NestedSessionModeUpdate Event"),
@@ -1265,8 +1270,13 @@ impl TryFrom<Event> for ProtobufEvent {
                 pane_id,
                 session_name,
                 mode,
+                base_mode,
             } => {
                 let protobuf_mode: ProtobufInputMode = mode.try_into()?;
+                let protobuf_base_mode = base_mode
+                    .map(ProtobufInputMode::try_from)
+                    .transpose()?
+                    .map(|base_mode| base_mode as i32);
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::NestedSessionModeUpdate as i32,
                     payload: Some(event::Payload::NestedSessionModeUpdatePayload(
@@ -1274,6 +1284,7 @@ impl TryFrom<Event> for ProtobufEvent {
                             pane_id: Some(pane_id.try_into()?),
                             session_name,
                             mode: protobuf_mode as i32,
+                            base_mode: protobuf_base_mode,
                         },
                     )),
                 })

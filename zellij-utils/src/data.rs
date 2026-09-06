@@ -1050,6 +1050,10 @@ pub enum Event {
         pane_id: PaneId,
         session_name: Option<String>,
         mode: InputMode,
+        /// The mode the nested session returns to, when it reports one. A plugin needs it
+        /// to tell which of that session's bindings are inherited from its base mode
+        /// rather than specific to the mode it is in now.
+        base_mode: Option<InputMode>,
     },
     /// The keybindings of a nested session running inside one of this session's panes,
     /// sent in answer to [`PluginCommand::RequestNestedSessionKeybinds`].

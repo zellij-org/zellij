@@ -66,8 +66,16 @@ fn the_guest_answers_a_keybinding_request_with_its_table_and_current_mode() {
     );
     nested.guest_to_host().wait_for_after(
         since,
-        "the guest to send its current mode alongside the keybinding table",
-        |message| matches!(message, NestedSessionMessage::GuestModeUpdate { .. }),
+        "the guest to send its current mode and base mode alongside the keybinding table",
+        |message| {
+            matches!(
+                message,
+                NestedSessionMessage::GuestModeUpdate {
+                    base_mode: Some(_),
+                    ..
+                }
+            )
+        },
     );
 }
 
@@ -88,7 +96,8 @@ fn the_guest_reports_its_mode_as_the_user_switches_modes_inside_it() {
             matches!(
                 message,
                 NestedSessionMessage::GuestModeUpdate {
-                    mode: InputMode::Pane
+                    mode: InputMode::Pane,
+                    ..
                 }
             )
         },
@@ -103,7 +112,8 @@ fn the_guest_reports_its_mode_as_the_user_switches_modes_inside_it() {
             matches!(
                 message,
                 NestedSessionMessage::GuestModeUpdate {
-                    mode: InputMode::Normal
+                    mode: InputMode::Normal,
+                    ..
                 }
             )
         },

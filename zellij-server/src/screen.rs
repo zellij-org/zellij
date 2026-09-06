@@ -3191,7 +3191,7 @@ impl Screen {
                 self.guest_ascend_keys.insert(pane_id, ascend_keys);
                 self.refresh_nested_ascend_keys_for_pane(pane_id);
             },
-            NestedSessionMessage::GuestModeUpdate { mode } => {
+            NestedSessionMessage::GuestModeUpdate { mode, base_mode } => {
                 if !self.nested_guest_tracker.is_tracked(pane_id) {
                     log::debug!(
                         "ignoring nested mode update from non-live guest pane {:?}",
@@ -3210,6 +3210,7 @@ impl Screen {
                             pane_id: pane_id.into(),
                             session_name,
                             mode,
+                            base_mode,
                         },
                     )]));
             },
@@ -4122,12 +4123,15 @@ impl Screen {
                 );
                 // The host asked because it is about to render our hints, so send the current
                 // mode too rather than making it wait for the next mode change.
-                let current_mode = self
+                let (current_mode, base_mode) = self
                     .mode_info
                     .get(&client_id)
-                    .map(|mode_info| mode_info.mode)
-                    .unwrap_or(self.default_mode_info.mode);
-                self.report_mode_to_host(client_id, current_mode);
+                    .map(|mode_info| (mode_info.mode, mode_info.base_mode))
+                    .unwrap_or((
+                        self.default_mode_info.mode,
+                        self.default_mode_info.base_mode,
+                    ));
+                self.report_mode_to_host(client_id, current_mode, base_mode);
             },
             NestedSessionMessage::FullscreenState { fullscreen } => {
                 self.host_fullscreen = fullscreen;
@@ -6183,7 +6187,7 @@ impl Screen {
                 .send_to_plugin(PluginInstruction::Update(bg_updates))
                 .context("failed to update background plugins with mode info")?;
         }
-        self.report_mode_to_host(client_id, mode_info.mode);
+        self.report_mode_to_host(client_id, mode_info.mode, mode_info.base_mode);
         Ok(())
     }
 
@@ -6192,12 +6196,24 @@ impl Screen {
     /// Host plugins use this to render the hints of the session the user is actually driving.
     /// The update is sent on every mode change rather than only while the host is descended
     /// into us, so the host already knows the right mode the moment focus arrives.
-    fn report_mode_to_host(&mut self, client_id: ClientId, mode: InputMode) {
+    fn report_mode_to_host(
+        &mut self,
+        client_id: ClientId,
+        mode: InputMode,
+        base_mode: Option<InputMode>,
+    ) {
         if self.nested_via_client_id != Some(client_id) {
             return;
         }
-        let payload =
-            nested_session::encode_payload(&NestedSessionMessage::GuestModeUpdate { mode });
+        // A client that has not switched modes yet carries no base mode of its own, so fall
+        // back the way the rest of Screen does: the configured default mode is the base.
+        let base_mode = base_mode
+            .or(self.default_mode_info.base_mode)
+            .unwrap_or(self.default_mode_info.mode);
+        let payload = nested_session::encode_payload(&NestedSessionMessage::GuestModeUpdate {
+            mode,
+            base_mode: Some(base_mode),
+        });
         let _ = self
             .bus
             .senders

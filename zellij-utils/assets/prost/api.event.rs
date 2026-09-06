@@ -115,6 +115,8 @@ pub struct NestedSessionModeUpdatePayload {
     pub session_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(enumeration="super::input_mode::InputMode", tag="3")]
     pub mode: i32,
+    #[prost(enumeration="super::input_mode::InputMode", optional, tag="4")]
+    pub base_mode: ::core::option::Option<i32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

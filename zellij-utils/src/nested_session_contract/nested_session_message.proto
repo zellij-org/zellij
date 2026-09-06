@@ -85,9 +85,13 @@ message Ping {
 }
 
 // Sent by a guest to its host whenever the guest's input mode changes, so the host
-// knows which of the guest's keybindings currently apply.
+// knows which of the guest's keybindings currently apply. `base_mode` is the mode the
+// guest returns to, empty when the guest does not report one; a host needs it to tell
+// which of the guest's bindings are inherited from its base mode rather than specific to
+// the mode it is in now.
 message GuestModeUpdate {
   string mode = 1;
+  string base_mode = 2;
 }
 
 // Sent by a host to ask a guest for its full keybinding table.
