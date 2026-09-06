@@ -136,6 +136,7 @@ pub use super::generated_api::api::{
         SetFloatingPanePinnedPayload, SetPaneBorderStylePayload, SetPaneBorderlessPayload,
         SetPaneColorPayload, SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
         SetPaneRegexHighlightsPayload, SetPopupSizePayload, SetSelectableSlotPayload,
+        SetSelfCollapsedPayload,
         SetSelfMouseSelectionSupportPayload,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
         ShowCursorPayload, ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
@@ -2441,6 +2442,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     _ => Err("SetSelfMouseSelectionSupport requires a payload"),
                 }
             },
+            Some(CommandName::SetSelfCollapsed) => match protobuf_plugin_command.payload {
+                Some(Payload::SetSelfCollapsedPayload(set_self_collapsed_payload)) => Ok(
+                    PluginCommand::SetSelfCollapsed(set_self_collapsed_payload.collapsed),
+                ),
+                _ => Err("SetSelfCollapsed requires a payload"),
+            },
             Some(CommandName::GenerateWebLoginToken) => match protobuf_plugin_command.payload {
                 Some(Payload::GenerateWebLoginTokenPayload(generate_web_login_token_payload)) => {
                     Ok(PluginCommand::GenerateWebLoginToken(
@@ -4431,6 +4438,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
+            PluginCommand::SetSelfCollapsed(collapsed) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetSelfCollapsed as i32,
+                payload: Some(Payload::SetSelfCollapsedPayload(SetSelfCollapsedPayload {
+                    collapsed,
+                })),
+            }),
             PluginCommand::GenerateWebLoginToken(token_label, read_only) => {
                 Ok(ProtobufPluginCommand {
                     name: CommandName::GenerateWebLoginToken as i32,

@@ -247,6 +247,7 @@ enum CommandName {
   ReplyToPrompt = 253;
   WriteThemeFile = 254;
   DeleteThemeFile = 255;
+  SetSelfCollapsed = 256;
 }
 
 message PluginCommand {
@@ -434,6 +435,7 @@ message PluginCommand {
     ReplyToPromptPayload reply_to_prompt_payload = 196;
     WriteThemeFilePayload write_theme_file_payload = 197;
     string delete_theme_file_payload = 198;
+    SetSelfCollapsedPayload set_self_collapsed_payload = 199;
   }
 }
 
@@ -650,6 +652,10 @@ message SlotCommandResponse {
 
 message GetNestedSessionKeybindsPayload {
   PaneId pane_id = 1;
+}
+
+message SetSelfCollapsedPayload {
+  bool collapsed = 1;
 }
 
 message SetPaneFrameStylePayload {
