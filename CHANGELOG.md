@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: screen surface stability (https://github.com/zellij-org/zellij/pull/5683)
 * feat: right-click menu, interactive configuration, popups, notifications (https://github.com/zellij-org/zellij/pull/5685)
 * fix: preserve order of command panes when changing swap layouts (https://github.com/zellij-org/zellij/pull/5687)
+* feat: let a plugin give its layout space back while it has nothing to draw, so a bar plugin does not hold an empty row (https://github.com/zellij-org/zellij/issues/5588)
 
 ## [0.45.1] - 2026-08-28
 * fix: nested-session detection over SSH (https://github.com/zellij-org/zellij/pull/5522)
