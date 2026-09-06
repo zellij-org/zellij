@@ -48,7 +48,10 @@ impl NestedReannounce {
                     }
                     let announce = NestedSessionMessage::Announce {
                         session_name: session_name.clone(),
-                        capabilities: vec![NestedSessionCapability::NestedControl],
+                        capabilities: vec![
+                            NestedSessionCapability::NestedControl,
+                            NestedSessionCapability::HintReporting,
+                        ],
                     };
                     let mut stdout = os_input.get_stdout_writer();
                     if stdout
