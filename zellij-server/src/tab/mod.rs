@@ -5655,6 +5655,24 @@ impl Tab {
     pub fn set_mouse_selection_support(&mut self, pane_id: PaneId, selection_support: bool) {
         MouseHandler::set_mouse_selection_support(self, pane_id, selection_support);
     }
+    /// Hand a tiled pane's space to its neighbors, or take it back.
+    ///
+    /// A pane that has nothing to show, such as a status bar whose content is empty, would
+    /// otherwise keep the row a layout reserved for it and draw it blank. Collapsing takes it
+    /// out of the layout's arithmetic without taking it out of the layout, so expanding puts it
+    /// back at the size the layout asked for.
+    ///
+    /// Floating panes take no space from their neighbors, so there is nothing to give back.
+    pub fn set_pane_collapsed(&mut self, pane_id: PaneId, collapsed: bool) {
+        if !self.tiled_panes.panes_contain(&pane_id) {
+            return;
+        }
+        if !self.tiled_panes.set_pane_collapsed(pane_id, collapsed) {
+            return;
+        }
+        let size = self.size;
+        self.resize_whole_tab(size).non_fatal();
+    }
     pub fn close_pane(
         &mut self,
         id: PaneId,
