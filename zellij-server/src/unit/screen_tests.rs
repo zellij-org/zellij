@@ -11229,7 +11229,8 @@ pub fn nested_guest_announce_gets_announce_ack_with_ancestry() {
         zellij_utils::nested_session::NestedSessionMessage::AnnounceAck {
             ancestry: vec!["zellij-test".to_owned()],
             capabilities: vec![
-                zellij_utils::nested_session::NestedSessionCapability::NestedControl
+                zellij_utils::nested_session::NestedSessionCapability::NestedControl,
+                zellij_utils::nested_session::NestedSessionCapability::HintReporting
             ],
             descend_keys: vec![],
         }
