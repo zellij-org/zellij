@@ -1,4 +1,4 @@
-use crate::data::{Direction, InputMode, KeyWithModifier, KeybindsVec};
+use crate::data::{BareKey, Direction, InputMode, KeyWithModifier, KeybindsVec};
 use crate::nested_session_contract::nested_session_contract as proto;
 use crate::plugin_api::event::{keybinds_from_protobuf, keybinds_to_protobuf};
 use crate::plugin_api::generated_api::api::event::InitialKeybindsPayload as ProtobufInitialKeybindsPayload;
@@ -220,7 +220,24 @@ fn keybinds_to_proto(keybinds: KeybindsVec) -> Vec<u8> {
 
 fn keybinds_from_proto(payload_bytes: &[u8]) -> Option<KeybindsVec> {
     let payload = ProtobufInitialKeybindsPayload::decode(payload_bytes).ok()?;
-    Some(keybinds_from_protobuf(payload.keybinds))
+    let mut keybinds = keybinds_from_protobuf(payload.keybinds);
+    for (_mode, bindings) in keybinds.iter_mut() {
+        bindings.retain(|(key, _actions)| !binds_a_control_character(key));
+    }
+    Some(keybinds)
+}
+
+/// Whether a binding is on a raw control character.
+///
+/// Nothing this side can read is authenticated: a guest's frames travel in the terminal
+/// stream of the pane it runs in, so any program with that pane can write them. A host that
+/// draws these bindings puts their keys on its own screen, and a control character there is
+/// a terminal escape in the host's output rather than a key anyone could press. Zellij
+/// spells the control keys that do exist as their own [`BareKey`] variants ([`BareKey::Esc`],
+/// [`BareKey::Tab`], [`BareKey::Enter`], [`BareKey::Backspace`]), so a `Char` holding one
+/// describes no real binding and is dropped.
+fn binds_a_control_character(key: &KeyWithModifier) -> bool {
+    matches!(key.bare_key, BareKey::Char(character) if character.is_control())
 }
 
 fn direction_to_proto(direction: Option<Direction>) -> i32 {
@@ -761,6 +778,32 @@ mod tests {
     fn empty_keybinds_survive_the_roundtrip() {
         let message = NestedSessionMessage::GuestKeybindsUpdate { keybinds: vec![] };
         assert_eq!(decode_payload(&encode_payload(&message)), Some(message));
+    }
+
+    #[test]
+    fn a_binding_on_a_control_character_is_dropped_without_losing_the_rest() {
+        let mut keybinds = sample_keybinds();
+        // A key nobody can press, and an escape in the output of any host that draws it.
+        keybinds[0].1.push((
+            KeyWithModifier::new(BareKey::Char('\u{1b}')),
+            vec![Action::Quit],
+        ));
+        let bindings_in_normal_mode = keybinds[0].1.len();
+
+        let decoded = decode_payload(&encode_payload(
+            &NestedSessionMessage::GuestKeybindsUpdate { keybinds },
+        ));
+        let Some(NestedSessionMessage::GuestKeybindsUpdate { keybinds: decoded }) = decoded else {
+            panic!("expected a keybinding table, got {:?}", decoded);
+        };
+
+        assert_eq!(decoded[0].1.len(), bindings_in_normal_mode - 1);
+        assert!(!decoded.iter().flat_map(|(_mode, bindings)| bindings).any(
+            |(key, _actions)| matches!(key.bare_key, BareKey::Char(character)
+                if character.is_control())
+        ));
+        // The mode it shared a table with is otherwise untouched.
+        assert_eq!(decoded[1], sample_keybinds()[1]);
     }
 
     #[test]
