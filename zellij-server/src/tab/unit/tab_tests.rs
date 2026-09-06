@@ -17981,7 +17981,8 @@ fn a_collapsed_pane_keeps_the_geometry_it_will_come_back_to() {
     assert_eq!(
         geom_of(&tab, PaneId::Terminal(2)),
         before,
-        "a collapsed pane is out of the solve, so nothing should be writing geometry to it"
+        "a collapsed pane holds no space, but it still describes where it will come back, \
+         so collapsing on its own must not move it"
     );
 }
 
@@ -18047,4 +18048,68 @@ fn collapsing_a_pane_that_is_not_in_the_tab_does_nothing() {
         ),
         before
     );
+}
+
+/// The shape a bar plugin actually has: a full-width pane with a one-row pane pinned
+/// under it, the way `pane size=1 borderless` in a layout arrives.
+fn tab_with_a_one_row_bar_under_a_pane(size: Size) -> Tab {
+    let mut layout = TiledPaneLayout::default();
+    layout.children_split_direction = SplitDirection::Horizontal;
+    let mut bar = TiledPaneLayout::default();
+    bar.split_size = Some(SplitSize::Fixed(1));
+    layout.children = vec![TiledPaneLayout::default(), bar];
+    create_new_tab_with_layout(size, layout)
+}
+
+#[test]
+fn a_collapsed_pane_follows_the_tab_when_it_is_resized() {
+    let mut tab = tab_with_a_one_row_bar_under_a_pane(Size {
+        cols: 121,
+        rows: 20,
+    });
+    let main_pane = PaneId::Terminal(0);
+    let bar = PaneId::Terminal(1);
+    tab.set_pane_collapsed(bar, true);
+
+    // the tab changes shape, the way a nested session's does when its host expands it
+    // over the whole display and takes its own bars off the screen with it
+    tab.resize_whole_tab(Size {
+        cols: 118,
+        rows: 23,
+    })
+    .unwrap();
+
+    // being left out of the solve is what keeps a collapsed pane from holding space, but
+    // it must not leave the pane describing a tab that no longer exists: the solver reads
+    // the layout tree back off pane geometry, so a stale one breaks the next solve
+    assert_eq!(
+        geom_of(&tab, bar).y,
+        22,
+        "the collapsed bar should still be tracking the bottom of the tab"
+    );
+    assert_eq!(
+        geom_of(&tab, bar).cols.as_usize(),
+        118,
+        "the collapsed bar should still be tracking the width of the tab"
+    );
+    assert_eq!(
+        geom_of(&tab, main_pane).rows.as_usize(),
+        23,
+        "the pane that stayed should hold every row of the resized tab"
+    );
+
+    tab.set_pane_collapsed(bar, false);
+
+    assert_eq!(
+        geom_of(&tab, main_pane).rows.as_usize(),
+        22,
+        "the pane that stayed should give the row back"
+    );
+    assert_eq!(
+        geom_of(&tab, bar).y,
+        22,
+        "the bar should come back on the bottom row, not partway up the pane above it"
+    );
+    assert_eq!(geom_of(&tab, bar).rows.as_usize(), 1);
+    assert_eq!(geom_of(&tab, bar).cols.as_usize(), 118);
 }

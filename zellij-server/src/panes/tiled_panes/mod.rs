@@ -3043,11 +3043,11 @@ impl TiledPanes {
     /// anything.
     ///
     /// A collapsed pane drops out of the constraint solve, so its neighbors grow over the
-    /// space it held. It keeps its geometry untouched while it is out, since the solver only
-    /// ever writes to the panes it can see, which is what lets expanding restore exactly the
-    /// size the layout asked for rather than an approximation of it.
+    /// space it held. It keeps its size constraint the whole time, so expanding gives back
+    /// exactly the row or column the layout asked for rather than an approximation of it.
     ///
-    /// The caller relays out the tab afterwards.
+    /// The caller relays out the tab afterwards, which is also where the pane's geometry is
+    /// kept current: see `take_collapsed_panes`.
     pub fn set_pane_collapsed(&mut self, pane_id: PaneId, collapsed: bool) -> bool {
         let changed = if collapsed {
             self.collapsed_panes.insert(pane_id)
@@ -3081,6 +3081,44 @@ impl TiledPanes {
     }
     pub fn pane_is_collapsed(&self, pane_id: &PaneId) -> bool {
         self.collapsed_panes.contains(pane_id)
+    }
+    /// Let the collapsed panes take part in the next solve, and hand them back so the caller
+    /// can collapse them again over the result.
+    ///
+    /// Being filtered out of the solve is what stops a collapsed pane from holding space, but
+    /// it also means nothing writes geometry to it, so across a resize or a relayout it would
+    /// be left describing a display area that no longer exists. That is worse than merely
+    /// stale: the solver reconstructs the layout tree from where the panes currently sit, so
+    /// one pane in the wrong place gives the next solve a tree that does not match the screen.
+    /// Solving with them and then collapsing again over the answer keeps their geometry
+    /// current for the moment they are expanded.
+    ///
+    /// Paired with `restore_collapsed_panes`. Nesting is safe: the inner call finds nothing
+    /// left to take and restores nothing.
+    pub fn take_collapsed_panes(&mut self) -> HashSet<PaneId> {
+        let collapsed = std::mem::take(&mut self.collapsed_panes);
+        if !collapsed.is_empty() {
+            self.refresh_panes_to_hide();
+        }
+        collapsed
+    }
+    /// Put back what `take_collapsed_panes` took, and say whether there was anything to put
+    /// back. The caller solves again when there was, so the neighbors reclaim the space.
+    ///
+    /// A pane that closed while the set was out of the struct never reached
+    /// `forget_collapsed_pane`, so anything that is no longer here is dropped on the way in.
+    pub fn restore_collapsed_panes(&mut self, collapsed: HashSet<PaneId>) -> bool {
+        let panes = &self.panes;
+        let still_here: HashSet<PaneId> = collapsed
+            .into_iter()
+            .filter(|pane_id| panes.contains_key(pane_id))
+            .collect();
+        if still_here.is_empty() {
+            return false;
+        }
+        self.collapsed_panes = still_here;
+        self.refresh_panes_to_hide();
+        true
     }
     pub fn add_to_hidden_panels(&mut self, pid: PaneId) {
         self.panes_to_hide.insert(pid);
