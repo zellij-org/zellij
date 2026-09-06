@@ -227,6 +227,7 @@ enum CommandName {
   HideSlot = 234;
   ShowSlot = 235;
   CloseSlot = 236;
+  SetSelfCollapsed = 237;
 }
 
 message PluginCommand {
@@ -395,6 +396,7 @@ message PluginCommand {
     uint32 hide_slot_payload = 177;
     ShowSlotPayload show_slot_payload = 178;
     uint32 close_slot_payload = 179;
+    SetSelfCollapsedPayload set_self_collapsed_payload = 180;
   }
 }
 
@@ -414,6 +416,10 @@ message SlotCommandResponse {
 
 message GetNestedSessionKeybindsPayload {
   PaneId pane_id = 1;
+}
+
+message SetSelfCollapsedPayload {
+  bool collapsed = 1;
 }
 
 message SetPaneFrameStylePayload {
