@@ -786,12 +786,26 @@ pub struct Grid {
 /// True for Unicode general category Mark (Mn, Mc, Me): the nonspacing and combining marks
 /// that modify the character they follow. Thai and Lao vowels and tone marks, Devanagari
 /// matras, Hebrew points, Arabic harakat and the emoji variation selectors are all marks.
+/// Also true for the medial vowels and final consonants of Hangul Jamo, which are letters
+/// rather than marks but conjoin with the leading consonant before them just the same.
 /// The zero width joiner is deliberately not one: joining emoji into a single cluster also
 /// requires recomputing the width of that cluster, which is a separate concern.
 fn is_combining_mark(character: char) -> bool {
     matches!(
         character.general_category_group(),
         GeneralCategoryGroup::Mark
+    ) || is_hangul_conjoining_jamo_vowel_or_final(character)
+}
+
+/// The medial vowels (jungseong) and final consonants (jongseong) of the Hangul Jamo block
+/// and its Extended-B block. Unicode classifies them as letters, but they have zero width
+/// because they never stand alone: a decomposed syllable is one leading consonant followed
+/// by them, and the three render as one wide grapheme cluster. Dropping them turned Korean
+/// into a row of leading consonants, which is the form macOS hands a terminal for file names.
+fn is_hangul_conjoining_jamo_vowel_or_final(character: char) -> bool {
+    matches!(
+        character,
+        '\u{1160}'..='\u{11FF}' | '\u{D7B0}'..='\u{D7C6}' | '\u{D7CB}'..='\u{D7FB}'
     )
 }
 

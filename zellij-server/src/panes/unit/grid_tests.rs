@@ -9031,6 +9031,19 @@ fn a_combining_mark_attaches_to_a_wide_character_rather_than_its_second_column()
 }
 
 #[test]
+fn hangul_conjoining_jamo_attach_to_the_leading_consonant() {
+    // A decomposed syllable is a leading consonant followed by a medial vowel and a final
+    // consonant. All three are letters rather than marks, and the vowel and the final are
+    // zero width because they conjoin with the consonant before them, so they attach as
+    // marks do: 한 as U+1112 U+1161 U+11AB is one wide cell, not one cell and two dropped
+    // code points. This is the shape macOS hands a terminal for every file name.
+    let grid = create_grid_with_content("\u{1112}\u{1161}\u{11ab}a");
+
+    assert_eq!(rendered_row(&grid, 0), "\u{1112}\u{1161}\u{11ab}a");
+    assert_eq!(cursor_position(&grid), Some((3, 0)));
+}
+
+#[test]
 fn precomposed_and_decomposed_forms_occupy_the_same_number_of_columns() {
     let precomposed = create_grid_with_content("\u{e9}cole");
     let decomposed = create_grid_with_content("e\u{301}cole");
