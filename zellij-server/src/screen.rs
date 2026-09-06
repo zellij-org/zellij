@@ -4105,6 +4105,12 @@ impl Screen {
                 let _ = self.bus.senders.send_to_server(
                     ServerInstruction::EmitNestedSessionFrameToClient(client_id, payload),
                 );
+                // Report the mode we are already in rather than waiting for the first mode
+                // change. Without this the host would have no idea we exist until the user
+                // happened to switch modes inside us, and a host plugin that wants our
+                // keybindings would have nothing to ask about.
+                let (current_mode, base_mode) = self.current_mode_for_client(client_id);
+                self.report_mode_to_host(client_id, current_mode, base_mode);
             },
             NestedSessionMessage::ShortcutUpdate { descend_keys, .. } => {
                 if self.host_descend_keys != descend_keys {
@@ -4123,14 +4129,7 @@ impl Screen {
                 );
                 // The host asked because it is about to render our hints, so send the current
                 // mode too rather than making it wait for the next mode change.
-                let (current_mode, base_mode) = self
-                    .mode_info
-                    .get(&client_id)
-                    .map(|mode_info| (mode_info.mode, mode_info.base_mode))
-                    .unwrap_or((
-                        self.default_mode_info.mode,
-                        self.default_mode_info.base_mode,
-                    ));
+                let (current_mode, base_mode) = self.current_mode_for_client(client_id);
                 self.report_mode_to_host(client_id, current_mode, base_mode);
             },
             NestedSessionMessage::FullscreenState { fullscreen } => {
@@ -6189,6 +6188,18 @@ impl Screen {
         }
         self.report_mode_to_host(client_id, mode_info.mode, mode_info.base_mode);
         Ok(())
+    }
+
+    /// The input mode and base mode a client is in, falling back to the configured defaults
+    /// for a client that has not been given a mode of its own yet.
+    fn current_mode_for_client(&self, client_id: ClientId) -> (InputMode, Option<InputMode>) {
+        self.mode_info
+            .get(&client_id)
+            .map(|mode_info| (mode_info.mode, mode_info.base_mode))
+            .unwrap_or((
+                self.default_mode_info.mode,
+                self.default_mode_info.base_mode,
+            ))
     }
 
     /// While this session runs nested inside a host, tell the host about our input mode.

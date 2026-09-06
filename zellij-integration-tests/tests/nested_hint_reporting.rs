@@ -40,6 +40,29 @@ fn both_sides_advertise_hint_reporting_during_the_handshake() {
 }
 
 #[test]
+fn the_guest_reports_its_mode_as_soon_as_the_handshake_completes() {
+    let nested = NestedHarness::start(TERMINAL_SIZE);
+    nested.wait_for_guest_to_announce();
+    nested.wait_for_host_to_acknowledge_guest();
+
+    // Nothing has driven the guest yet, so this frame can only be the unprompted report the
+    // guest makes on contact. A host plugin needs it: until one arrives, the host has no way
+    // of knowing which of its panes holds a session it could ask for keybindings.
+    nested.guest_to_host().wait_for(
+        "the guest to report its starting mode without being asked",
+        |message| {
+            matches!(
+                message,
+                NestedSessionMessage::GuestModeUpdate {
+                    mode: InputMode::Normal,
+                    base_mode: Some(_),
+                }
+            )
+        },
+    );
+}
+
+#[test]
 fn the_guest_answers_a_keybinding_request_with_its_table_and_current_mode() {
     let nested = NestedHarness::start(TERMINAL_SIZE);
     nested.wait_for_guest_to_announce();
