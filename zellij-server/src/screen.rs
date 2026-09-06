@@ -573,6 +573,7 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         message: NestedSessionMessage,
     },
+    RequestNestedSessionKeybinds(PaneId),
     GuestModalChoice {
         client_id: ClientId,
         pane_id: PaneId,
@@ -1114,6 +1115,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::NestedSessionMessageFromHost { .. } => {
                 ScreenContext::NestedSessionMessageFromHost
             },
+            ScreenInstruction::RequestNestedSessionKeybinds(..) => {
+                ScreenContext::RequestNestedSessionKeybinds
+            },
             ScreenInstruction::GuestModalChoice { .. } => ScreenContext::GuestModalChoice,
             ScreenInstruction::ForwardedReplyFromHost { .. } => {
                 ScreenContext::ForwardedReplyFromHost
@@ -1615,6 +1619,9 @@ pub(crate) struct Screen {
     dimmed_clients: HashSet<ClientId>,
     nested_guest_choices: HashMap<(ClientId, PaneId), NestedGuestChoice>,
     guest_ascend_keys: HashMap<PaneId, Vec<KeyWithModifier>>,
+    /// What each nested guest said it can do when it announced itself, so this session
+    /// does not ask a guest for something it cannot answer.
+    guest_capabilities: HashMap<PaneId, Vec<NestedSessionCapability>>,
     host_descend_keys: Vec<KeyWithModifier>,
     host_descended: bool,
     host_terminal_theme_mode: Option<HostTerminalThemeMode>,
@@ -1822,6 +1829,7 @@ impl Screen {
             dimmed_clients: HashSet::new(),
             nested_guest_choices: HashMap::new(),
             guest_ascend_keys: HashMap::new(),
+            guest_capabilities: HashMap::new(),
             host_descend_keys: vec![],
             host_descended: false,
             host_terminal_theme_mode: None,
@@ -3109,8 +3117,11 @@ impl Screen {
         message: NestedSessionMessage,
     ) {
         match message {
-            NestedSessionMessage::Announce { session_name, .. } => {
-                self.handle_nested_guest_announce(pane_id, session_name);
+            NestedSessionMessage::Announce {
+                session_name,
+                capabilities,
+            } => {
+                self.handle_nested_guest_announce(pane_id, session_name, capabilities);
             },
             NestedSessionMessage::Pong => {
                 self.nested_guest_tracker.on_pong(pane_id, Instant::now());
@@ -3180,6 +3191,50 @@ impl Screen {
                 self.guest_ascend_keys.insert(pane_id, ascend_keys);
                 self.refresh_nested_ascend_keys_for_pane(pane_id);
             },
+            NestedSessionMessage::GuestModeUpdate { mode } => {
+                if !self.nested_guest_tracker.is_tracked(pane_id) {
+                    log::debug!(
+                        "ignoring nested mode update from non-live guest pane {:?}",
+                        pane_id
+                    );
+                    return;
+                }
+                let session_name = self.guest_session_name_on_pane(pane_id);
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::Update(vec![(
+                        None,
+                        None,
+                        Event::NestedSessionModeUpdate {
+                            pane_id: pane_id.into(),
+                            session_name,
+                            mode,
+                        },
+                    )]));
+            },
+            NestedSessionMessage::GuestKeybindsUpdate { keybinds } => {
+                if !self.nested_guest_tracker.is_tracked(pane_id) {
+                    log::debug!(
+                        "ignoring nested keybinding update from non-live guest pane {:?}",
+                        pane_id
+                    );
+                    return;
+                }
+                let session_name = self.guest_session_name_on_pane(pane_id);
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::Update(vec![(
+                        None,
+                        None,
+                        Event::NestedSessionKeybinds {
+                            pane_id: pane_id.into(),
+                            session_name,
+                            keybinds,
+                        },
+                    )]));
+            },
             NestedSessionMessage::ToggleHostFullscreen { fullscreen } => {
                 if !self.nested_guest_tracker.is_tracked(pane_id) {
                     log::debug!(
@@ -3210,7 +3265,59 @@ impl Screen {
         }
     }
 
-    fn handle_nested_guest_announce(&mut self, pane_id: PaneId, guest_session_name: String) {
+    fn guest_session_name_on_pane(&self, pane_id: PaneId) -> Option<String> {
+        self.tabs
+            .values()
+            .find(|tab| tab.has_pane_with_pid(&pane_id))
+            .and_then(|tab| tab.guest_session_name_on_pane(pane_id))
+    }
+
+    /// Ask the nested guest running in `pane_id` to report its full keybinding table.
+    ///
+    /// The guest answers asynchronously with a `GuestKeybindsUpdate` frame, which arrives back
+    /// here and is forwarded to plugins as `Event::NestedSessionKeybinds`. Guests that did not
+    /// advertise the `HintReporting` capability cannot answer, so we skip them rather than
+    /// writing a frame they would ignore.
+    pub fn request_nested_session_keybinds(&mut self, pane_id: PaneId) {
+        let terminal_id = match pane_id {
+            PaneId::Terminal(terminal_id) => terminal_id,
+            PaneId::Plugin(_) => return,
+        };
+        if !self.nested_guest_tracker.is_tracked(pane_id) {
+            log::debug!(
+                "ignoring keybinding request for non-live guest pane {:?}",
+                pane_id
+            );
+            return;
+        }
+        let guest_supports_hint_reporting = self
+            .guest_capabilities
+            .get(&pane_id)
+            .map(|capabilities| capabilities.contains(&NestedSessionCapability::HintReporting))
+            .unwrap_or(false);
+        if !guest_supports_hint_reporting {
+            log::debug!(
+                "nested guest in pane {:?} does not report hints, dropping keybinding request",
+                pane_id
+            );
+            return;
+        }
+        let _ = self
+            .bus
+            .senders
+            .send_to_pty_writer(PtyWriteInstruction::Write(
+                nested_session::encode_frame(&NestedSessionMessage::RequestGuestKeybinds),
+                terminal_id,
+                None,
+            ));
+    }
+
+    fn handle_nested_guest_announce(
+        &mut self,
+        pane_id: PaneId,
+        guest_session_name: String,
+        guest_capabilities: Vec<NestedSessionCapability>,
+    ) {
         use crate::nested_guest::AnnounceKind;
         let terminal_id = match pane_id {
             PaneId::Terminal(terminal_id) => terminal_id,
@@ -3248,11 +3355,15 @@ impl Screen {
                 return;
             },
         }
+        self.guest_capabilities.insert(pane_id, guest_capabilities);
         let mut ancestry = self.nested_ancestry.clone();
         ancestry.push(self.session_name.clone());
         let announce_ack = NestedSessionMessage::AnnounceAck {
             ancestry,
-            capabilities: vec![NestedSessionCapability::NestedControl],
+            capabilities: vec![
+                NestedSessionCapability::NestedControl,
+                NestedSessionCapability::HintReporting,
+            ],
             descend_keys: self.own_descend_shortcut(),
         };
         let _ = self
@@ -3450,6 +3561,7 @@ impl Screen {
     pub fn clear_nested_guest(&mut self, pane_id: PaneId) {
         self.nested_guest_tracker.remove(pane_id);
         self.guest_ascend_keys.remove(&pane_id);
+        self.guest_capabilities.remove(&pane_id);
         let _ = self
             .bus
             .senders
@@ -3998,6 +4110,24 @@ impl Screen {
                     self.host_descend_keys = descend_keys;
                     self.update_all_clients_nesting_mode_info();
                 }
+            },
+            NestedSessionMessage::RequestGuestKeybinds => {
+                let keybinds = self.default_mode_info.keybinds.clone();
+                let payload =
+                    nested_session::encode_payload(&NestedSessionMessage::GuestKeybindsUpdate {
+                        keybinds,
+                    });
+                let _ = self.bus.senders.send_to_server(
+                    ServerInstruction::EmitNestedSessionFrameToClient(client_id, payload),
+                );
+                // The host asked because it is about to render our hints, so send the current
+                // mode too rather than making it wait for the next mode change.
+                let current_mode = self
+                    .mode_info
+                    .get(&client_id)
+                    .map(|mode_info| mode_info.mode)
+                    .unwrap_or(self.default_mode_info.mode);
+                self.report_mode_to_host(client_id, current_mode);
             },
             NestedSessionMessage::FullscreenState { fullscreen } => {
                 self.host_fullscreen = fullscreen;
@@ -6053,7 +6183,27 @@ impl Screen {
                 .send_to_plugin(PluginInstruction::Update(bg_updates))
                 .context("failed to update background plugins with mode info")?;
         }
+        self.report_mode_to_host(client_id, mode_info.mode);
         Ok(())
+    }
+
+    /// While this session runs nested inside a host, tell the host about our input mode.
+    ///
+    /// Host plugins use this to render the hints of the session the user is actually driving.
+    /// The update is sent on every mode change rather than only while the host is descended
+    /// into us, so the host already knows the right mode the moment focus arrives.
+    fn report_mode_to_host(&mut self, client_id: ClientId, mode: InputMode) {
+        if self.nested_via_client_id != Some(client_id) {
+            return;
+        }
+        let payload =
+            nested_session::encode_payload(&NestedSessionMessage::GuestModeUpdate { mode });
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::EmitNestedSessionFrameToClient(
+                client_id, payload,
+            ));
     }
     // Keep the client's mode in sync with the pane it just focused: entering a scrolled
     // pane switches to Scroll so its position is navigable, leaving it returns to the
@@ -10087,6 +10237,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::NestedSessionMessageFromHost { client_id, message } => {
                 screen.handle_nested_session_message_from_host(client_id, message);
+            },
+            ScreenInstruction::RequestNestedSessionKeybinds(pane_id) => {
+                screen.request_nested_session_keybinds(pane_id);
             },
             ScreenInstruction::GuestModalChoice {
                 client_id,
