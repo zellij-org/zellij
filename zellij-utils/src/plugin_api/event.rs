@@ -43,10 +43,10 @@ pub use super::generated_api::api::{
 #[allow(hidden_glob_reexports)]
 use crate::data::{
     ClientId, ClientInfo, CopyDestination, Event, EventType, FileMetadata, HostTerminalThemeMode,
-    InputMode, KeyWithModifier, LayoutInfo, LayoutMetadata, ModeInfo, Mouse, PaneContents, PaneId,
-    PaneInfo, PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus,
-    PluginCapabilities, PluginInfo, SelectedText, SessionInfo, Style, StyledText, TabInfo,
-    TabMetadata, WebServerStatus, WebSharing,
+    InputMode, KeyWithModifier, KeybindsVec, LayoutInfo, LayoutMetadata, ModeInfo, Mouse,
+    PaneContents, PaneId, PaneInfo, PaneManifest, PaneMetadata, PaneScrollbackResponse,
+    PermissionStatus, PluginCapabilities, PluginInfo, SelectedText, SessionInfo, Style, StyledText,
+    TabInfo, TabMetadata, WebServerStatus, WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -58,6 +58,70 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
+
+/// Converts a keybinding table into the protobuf form used wherever keybindings cross the
+/// plugin boundary.
+///
+/// An individual action that has no protobuf representation is dropped, so that one
+/// unrepresentable action does not cost the caller the whole binding.
+pub fn keybinds_to_protobuf(
+    keybinds: KeybindsVec,
+) -> Result<Vec<ProtobufInputModeKeybinds>, &'static str> {
+    let mut protobuf_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
+    for (input_mode, input_mode_keybinds) in keybinds {
+        let mode: ProtobufInputMode = input_mode.try_into()?;
+        let mut key_binds: Vec<ProtobufKeyBind> = vec![];
+        for (key, actions) in input_mode_keybinds {
+            let protobuf_key: ProtobufKey = key.try_into()?;
+            let mut protobuf_actions: Vec<ProtobufAction> = vec![];
+            for action in actions {
+                if let Ok(protobuf_action) = action.try_into() {
+                    protobuf_actions.push(protobuf_action);
+                }
+            }
+            key_binds.push(ProtobufKeyBind {
+                key: Some(protobuf_key),
+                action: protobuf_actions,
+            });
+        }
+        protobuf_keybinds.push(ProtobufInputModeKeybinds {
+            mode: mode as i32,
+            key_bind: key_binds,
+        });
+    }
+    Ok(protobuf_keybinds)
+}
+
+/// Converts a keybinding table back out of its protobuf form.
+///
+/// Anything that cannot be understood is dropped rather than failing the whole table: a
+/// mode, key, or action a given build does not know about simply does not appear. This
+/// keeps a table readable across builds that do not share every mode and action.
+pub fn keybinds_from_protobuf(protobuf_keybinds: Vec<ProtobufInputModeKeybinds>) -> KeybindsVec {
+    protobuf_keybinds
+        .into_iter()
+        .filter_map(|input_mode_keybinds| {
+            let input_mode: InputMode = ProtobufInputMode::try_from(input_mode_keybinds.mode)
+                .ok()?
+                .try_into()
+                .ok()?;
+            let key_binds = input_mode_keybinds
+                .key_bind
+                .into_iter()
+                .filter_map(|key_bind| {
+                    let key: KeyWithModifier = key_bind.key?.try_into().ok()?;
+                    let actions: Vec<Action> = key_bind
+                        .action
+                        .into_iter()
+                        .filter_map(|action| action.try_into().ok())
+                        .collect();
+                    Some((key, actions))
+                })
+                .collect();
+            Some((input_mode, key_binds))
+        })
+        .collect()
+}
 
 impl TryFrom<ProtobufEvent> for Event {
     type Error = &'static str;
@@ -552,31 +616,7 @@ impl TryFrom<ProtobufEvent> for Event {
             },
             Some(ProtobufEventType::InitialKeybinds) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::InitialKeybindsPayload(p)) => {
-                    let keybinds = p
-                        .keybinds
-                        .into_iter()
-                        .filter_map(|imk| {
-                            let mode: InputMode = ProtobufInputMode::try_from(imk.mode)
-                                .ok()?
-                                .try_into()
-                                .ok()?;
-                            let key_binds: Vec<(KeyWithModifier, Vec<Action>)> = imk
-                                .key_bind
-                                .into_iter()
-                                .filter_map(|kb| {
-                                    let key: KeyWithModifier = kb.key?.try_into().ok()?;
-                                    let actions: Vec<Action> = kb
-                                        .action
-                                        .into_iter()
-                                        .filter_map(|a| a.try_into().ok())
-                                        .collect();
-                                    Some((key, actions))
-                                })
-                                .collect();
-                            Some((mode, key_binds))
-                        })
-                        .collect();
-                    Ok(Event::InitialKeybinds(keybinds))
+                    Ok(Event::InitialKeybinds(keybinds_from_protobuf(p.keybinds)))
                 },
                 _ => Err("Malformed payload for InitialKeybinds Event"),
             },
@@ -1193,28 +1233,7 @@ impl TryFrom<Event> for ProtobufEvent {
                 })
             },
             Event::InitialKeybinds(keybinds) => {
-                let mut protobuf_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
-                for (input_mode, input_mode_keybinds) in keybinds {
-                    let mode: ProtobufInputMode = input_mode.try_into()?;
-                    let mut key_binds: Vec<ProtobufKeyBind> = vec![];
-                    for (key, actions) in input_mode_keybinds {
-                        let protobuf_key: ProtobufKey = key.try_into()?;
-                        let mut protobuf_actions: Vec<ProtobufAction> = vec![];
-                        for action in actions {
-                            if let Ok(protobuf_action) = action.try_into() {
-                                protobuf_actions.push(protobuf_action);
-                            }
-                        }
-                        key_binds.push(ProtobufKeyBind {
-                            key: Some(protobuf_key),
-                            action: protobuf_actions,
-                        });
-                    }
-                    protobuf_keybinds.push(ProtobufInputModeKeybinds {
-                        mode: mode as i32,
-                        key_bind: key_binds,
-                    });
-                }
+                let protobuf_keybinds = keybinds_to_protobuf(keybinds)?;
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::InitialKeybinds as i32,
                     payload: Some(event::Payload::InitialKeybindsPayload(
@@ -1950,31 +1969,8 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
         let base_mode: Option<InputMode> = protobuf_mode_update_payload
             .base_mode
             .and_then(|b_m| ProtobufInputMode::try_from(b_m).ok()?.try_into().ok());
-        let keybinds: Vec<(InputMode, Vec<(KeyWithModifier, Vec<Action>)>)> =
-            protobuf_mode_update_payload
-                .keybinds
-                .iter_mut()
-                .filter_map(|k| {
-                    let input_mode: InputMode = ProtobufInputMode::try_from(k.mode)
-                        .ok()
-                        .ok_or("Malformed InputMode in the ModeUpdate Event")
-                        .ok()?
-                        .try_into()
-                        .ok()?;
-                    let mut keybinds: Vec<(KeyWithModifier, Vec<Action>)> = vec![];
-                    for mut protobuf_keybind in k.key_bind.drain(..) {
-                        let key: KeyWithModifier = protobuf_keybind.key.unwrap().try_into().ok()?;
-                        let mut actions: Vec<Action> = vec![];
-                        for action in protobuf_keybind.action.drain(..) {
-                            if let Ok(action) = action.try_into() {
-                                actions.push(action);
-                            }
-                        }
-                        keybinds.push((key, actions));
-                    }
-                    Some((input_mode, keybinds))
-                })
-                .collect();
+        let keybinds: KeybindsVec =
+            keybinds_from_protobuf(std::mem::take(&mut protobuf_mode_update_payload.keybinds));
         let style: Style = protobuf_mode_update_payload
             .style
             .and_then(|m| m.try_into().ok())
@@ -2097,30 +2093,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             .iter()
             .map(|key| key.to_kdl())
             .collect();
-        let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
-        for (input_mode, input_mode_keybinds) in mode_info.keybinds {
-            let mode: ProtobufInputMode = input_mode.try_into()?;
-            let mut keybinds: Vec<ProtobufKeyBind> = vec![];
-            for (key, actions) in input_mode_keybinds {
-                let protobuf_key: ProtobufKey = key.try_into()?;
-                let mut protobuf_actions: Vec<ProtobufAction> = vec![];
-                for action in actions {
-                    if let Ok(protobuf_action) = action.try_into() {
-                        protobuf_actions.push(protobuf_action);
-                    }
-                }
-                let key_bind = ProtobufKeyBind {
-                    key: Some(protobuf_key),
-                    action: protobuf_actions,
-                };
-                keybinds.push(key_bind);
-            }
-            let input_mode_keybind = ProtobufInputModeKeybinds {
-                mode: mode as i32,
-                key_bind: keybinds,
-            };
-            protobuf_input_mode_keybinds.push(input_mode_keybind);
-        }
+        let protobuf_input_mode_keybinds = keybinds_to_protobuf(mode_info.keybinds)?;
         Ok(ProtobufModeUpdatePayload {
             current_mode: current_mode as i32,
             style: Some(style),
