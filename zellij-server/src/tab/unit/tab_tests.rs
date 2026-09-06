@@ -17911,3 +17911,140 @@ fn floating_plugin_panes_are_not_shown_again_when_their_tab_returns_with_the_sur
         "a plugin whose floating surface is hidden should not be told it is visible when its tab returns"
     );
 }
+
+fn tab_with_a_pane_above_a_pane() -> Tab {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    tab
+}
+
+fn geom_of(tab: &Tab, pane_id: PaneId) -> PaneGeom {
+    tab.tiled_panes
+        .panes
+        .get(&pane_id)
+        .unwrap()
+        .position_and_size()
+}
+
+#[test]
+fn collapsing_a_pane_gives_its_rows_to_its_neighbor() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    let rows_before = geom_of(&tab, PaneId::Terminal(1)).rows.as_usize();
+
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+
+    assert_eq!(
+        geom_of(&tab, PaneId::Terminal(1)).rows.as_usize(),
+        20,
+        "the pane that stayed should hold every row the tab has"
+    );
+    assert!(
+        rows_before < 20,
+        "the two panes should have been sharing the rows to begin with"
+    );
+}
+
+#[test]
+fn expanding_a_pane_restores_the_geometry_it_had() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    let before = (
+        geom_of(&tab, PaneId::Terminal(1)),
+        geom_of(&tab, PaneId::Terminal(2)),
+    );
+
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+    tab.set_pane_collapsed(PaneId::Terminal(2), false);
+
+    // exact equality rather than a row count: the point of collapsing instead of suppressing
+    // is that the layout comes back as it was, position and constraint included
+    assert_eq!(
+        (
+            geom_of(&tab, PaneId::Terminal(1)),
+            geom_of(&tab, PaneId::Terminal(2))
+        ),
+        before
+    );
+}
+
+#[test]
+fn a_collapsed_pane_keeps_the_geometry_it_will_come_back_to() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    let before = geom_of(&tab, PaneId::Terminal(2));
+
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+
+    assert_eq!(
+        geom_of(&tab, PaneId::Terminal(2)),
+        before,
+        "a collapsed pane is out of the solve, so nothing should be writing geometry to it"
+    );
+}
+
+#[test]
+fn collapsing_a_pane_that_is_already_collapsed_does_nothing() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+    let after_first = geom_of(&tab, PaneId::Terminal(1));
+
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+
+    assert_eq!(geom_of(&tab, PaneId::Terminal(1)), after_first);
+}
+
+#[test]
+fn a_collapsed_pane_is_still_collapsed_after_a_fullscreen_comes_and_goes() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+    tab.focus_pane_with_id(PaneId::Terminal(1), false, false, 1)
+        .unwrap();
+
+    // fullscreen rebuilds the hidden set from scratch, so a collapse that lived only there
+    // would be handed its rows back on the way out
+    tab.toggle_active_pane_fullscreen(1);
+    tab.toggle_active_pane_fullscreen(1);
+
+    assert!(tab.tiled_panes.pane_is_collapsed(&PaneId::Terminal(2)));
+    assert_eq!(
+        geom_of(&tab, PaneId::Terminal(1)).rows.as_usize(),
+        20,
+        "the pane that stayed should still hold every row"
+    );
+}
+
+#[test]
+fn closing_a_collapsed_pane_forgets_that_it_was_collapsed() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+
+    tab.close_pane(PaneId::Terminal(2), false, None);
+
+    assert!(
+        !tab.tiled_panes.pane_is_collapsed(&PaneId::Terminal(2)),
+        "a pane id Zellij hands out again must not arrive already invisible"
+    );
+}
+
+#[test]
+fn collapsing_a_pane_that_is_not_in_the_tab_does_nothing() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    let before = (
+        geom_of(&tab, PaneId::Terminal(1)),
+        geom_of(&tab, PaneId::Terminal(2)),
+    );
+
+    tab.set_pane_collapsed(PaneId::Terminal(99), true);
+
+    assert!(!tab.tiled_panes.pane_is_collapsed(&PaneId::Terminal(99)));
+    assert_eq!(
+        (
+            geom_of(&tab, PaneId::Terminal(1)),
+            geom_of(&tab, PaneId::Terminal(2))
+        ),
+        before
+    );
+}
