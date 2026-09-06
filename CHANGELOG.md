@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* feat: report a nested session's input mode and keybindings to its host, so host plugins can show hints for the session the user is actually typing into (https://github.com/zellij-org/zellij/issues/5561)
 * fix: forward OSC7 (cwd changes) to host terminal (https://github.com/zellij-org/zellij/pull/4867)
 * performance: reduce server memory usage by not copying the builtin plugins onto the heap (https://github.com/zellij-org/zellij/pull/5622)
 * feat: upstream Yazelix graphics and stacked-pane fixes, named swap-layout selection and configurable pane-border styles (https://github.com/zellij-org/zellij/pull/5630)
