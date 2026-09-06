@@ -2106,11 +2106,24 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
+        // a new layout places every pane, so the collapsed ones take part and are collapsed
+        // again over the result. See TiledPanes::take_collapsed_panes.
+        let collapsed_panes_to_restore = self.tiled_panes.take_collapsed_panes();
         self.dissolve_stack_lists_for_classic_mutation();
         let layout_candidate = self
             .swap_layouts
             .swap_tiled_panes(&self.tiled_panes, search_backwards);
-        self.apply_tiled_layout_candidate(layout_candidate)
+        let result = self.apply_tiled_layout_candidate(layout_candidate);
+        self.restore_collapsed_panes_after_relayout(collapsed_panes_to_restore);
+        result
+    }
+    /// The second half of `TiledPanes::take_collapsed_panes`: collapse the panes again over
+    /// the layout that was just applied, and let the rest of the layout take their rows.
+    fn restore_collapsed_panes_after_relayout(&mut self, collapsed_panes: HashSet<PaneId>) {
+        if self.tiled_panes.restore_collapsed_panes(collapsed_panes) {
+            let display_area = *self.display_area.borrow();
+            self.tiled_panes.resize(display_area);
+        }
     }
     fn apply_tiled_layout_candidate(
         &mut self,
@@ -2175,10 +2188,14 @@ impl Tab {
         pane_count
     }
     pub fn apply_tiled_swap_layout(&mut self, layout_name: &str) -> Result<bool> {
+        // taken before the candidate is chosen, so the layout is sized for the collapsed
+        // panes too, the same as relayout_tiled_panes
+        let collapsed_panes_to_restore = self.tiled_panes.take_collapsed_panes();
         let Some((position, layout_candidate)) = self
             .swap_layouts
             .tiled_layout_candidate_by_name(layout_name, self.settled_tiled_pane_count())
         else {
+            self.restore_collapsed_panes_after_relayout(collapsed_panes_to_restore);
             return Ok(false);
         };
         if self.tiled_panes.fullscreen_is_active() {
@@ -2187,7 +2204,9 @@ impl Tab {
         self.dissolve_stack_lists_for_classic_mutation();
         self.swap_layouts
             .set_current_tiled_layout_position(position);
-        self.apply_tiled_layout_candidate(Some(layout_candidate))?;
+        let result = self.apply_tiled_layout_candidate(Some(layout_candidate));
+        self.restore_collapsed_panes_after_relayout(collapsed_panes_to_restore);
+        result?;
         Ok(true)
     }
     pub fn apply_floating_swap_layout(&mut self, layout_name: &str) -> Result<bool> {
@@ -5532,6 +5551,9 @@ impl Tab {
         // resize so the user-visible state is preserved. Without this, hidden
         // panes retain stale geometry from before the resize and the layout
         // solver fails when fullscreen is later toggled off.
+        // Collapsed panes come along for the same reason, and are collapsed again below once
+        // the new geometry is theirs. See TiledPanes::take_collapsed_panes.
+        let collapsed_panes_to_restore = self.tiled_panes.take_collapsed_panes();
         let fullscreen_pane_to_restore = self.tiled_panes.fullscreen_pane_id();
         let fullscreen_covered_ui = self.tiled_panes.fullscreen_covers_ui();
         if fullscreen_pane_to_restore.is_some() {
@@ -5560,6 +5582,13 @@ impl Tab {
         {
             self.swap_layouts.set_is_tiled_damaged();
             let _ = self.relayout_tiled_panes(false);
+        }
+        if self
+            .tiled_panes
+            .restore_collapsed_panes(collapsed_panes_to_restore)
+        {
+            // solve once more, now without them, so their neighbors take the space back
+            self.tiled_panes.resize(new_screen_size);
         }
         self.set_should_clear_display_before_rendering();
         LayoutApplier::offset_viewport(
