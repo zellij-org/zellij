@@ -660,6 +660,24 @@ mod tests {
     }
 
     #[test]
+    fn a_capability_the_reading_side_does_not_know_is_dropped() {
+        // A peer built from a newer Zellij may advertise capabilities this side has never
+        // heard of. Those must be ignored without taking the known ones down with them.
+        let capabilities = capabilities_from_proto(&[
+            proto::NestedCapability::HintReporting as i32,
+            9999,
+            proto::NestedCapability::NestedControl as i32,
+        ]);
+        assert_eq!(
+            capabilities,
+            vec![
+                NestedSessionCapability::HintReporting,
+                NestedSessionCapability::NestedControl,
+            ]
+        );
+    }
+
+    #[test]
     fn guest_mode_update_roundtrip_preserves_every_input_mode() {
         for mode in InputMode::iter() {
             let message = NestedSessionMessage::GuestModeUpdate { mode };
