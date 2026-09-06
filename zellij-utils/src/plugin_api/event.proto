@@ -134,6 +134,7 @@ message NestedSessionModeUpdatePayload {
   PaneId pane_id = 1;
   optional string session_name = 2;
   input_mode.InputMode mode = 3;
+  optional input_mode.InputMode base_mode = 4;
 }
 
 message NestedSessionKeybindsPayload {
