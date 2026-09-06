@@ -9585,7 +9585,13 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 if !found_pane {
-                    // a plugin can ask for this before its pane has been placed in a tab
+                    // a plugin can ask for this before its pane has been placed in a tab. Unlike
+                    // the other deferred instructions this one is sent whenever the plugin's
+                    // content comes and goes, so only the last word on a given pane is worth
+                    // keeping and the queue stays one entry deep per pane
+                    pending_events_waiting_for_tab.retain(|event| {
+                        !matches!(event, ScreenInstruction::SetPaneCollapsed(pending_pid, _) if *pending_pid == pid)
+                    });
                     pending_events_waiting_for_tab
                         .push(ScreenInstruction::SetPaneCollapsed(pid, collapsed));
                 }
