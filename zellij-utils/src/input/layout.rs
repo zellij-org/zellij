@@ -1029,10 +1029,10 @@ impl TiledPaneLayout {
             {
                 if let Some(position) = run_instructions.iter().position(|i| {
                     match i {
-                        // this is because a bare CWD instruction should be overidden by a terminal
+                        // this is because a bare CWD instruction should be overridden by a terminal
                         // in run_instructions_to_ignore (for cases where the cwd for example comes
                         // from a global layout cwd and the pane is actually just a bare pane that
-                        // wants to be overidden)
+                        // wants to be overridden)
                         Some(Run::Cwd(_)) | None => true,
                         _ => false,
                     }
@@ -1420,7 +1420,7 @@ impl Layout {
                 // how a path would look for an executable.
                 // See the gh issue for more: https://github.com/zellij-org/zellij/issues/1412#issuecomment-1131559720
                 if layout_path.extension().is_some() || layout_path.components().count() > 1 {
-                    // We look localy!
+                    // We look locally!
                     Layout::stringified_from_path(layout_path)
                 } else {
                     // We look in the default dir

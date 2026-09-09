@@ -3159,7 +3159,7 @@ impl Tab {
         pid: PaneId,
         pane_id_to_replace: PaneId,
     ) -> Result<()> {
-        // this method creates a new pane from pid and replaces it with the pane iwth the given pane_id_to_replace
+        // this method creates a new pane from pid and replaces it with the pane with the given pane_id_to_replace
         // the pane with the given pane_id_to_replace is then suppressed (hidden and not rendered) until the current
         // created pane is closed, in which case it will be replaced back by it
         let err_context = || format!("failed to suppress pane");
@@ -7122,7 +7122,7 @@ impl Tab {
                 self.floating_panes.focus_pane_for_all_clients(pane_id);
             },
             None => {
-                log::error!("Could not find suppressed pane wiht id: {:?}", pane_id);
+                log::error!("Could not find suppressed pane with id: {:?}", pane_id);
             },
         }
     }
@@ -7873,7 +7873,7 @@ impl Tab {
             new_pane.update_sixel_host_support(supported);
         }
         new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
-                                                    // constructor so it won't be overrided
+                                                    // constructor so it won't be overridden
                                                     // by the editor
         new_pane
     }

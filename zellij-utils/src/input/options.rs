@@ -121,7 +121,7 @@ impl FromStr for PaneFrameStyle {
 /// Options that can be set either through the config file,
 /// or cli flags - cli flags should take precedence over the config file
 /// TODO: In order to correctly parse boolean flags, this is currently split
-/// into Options and CliOptions, this could be a good canditate for a macro
+/// into Options and CliOptions, this could be a good candidate for a macro
 pub struct Options {
     /// Allow plugins to use a more simplified layout
     /// that is compatible with more fonts (true or false)
