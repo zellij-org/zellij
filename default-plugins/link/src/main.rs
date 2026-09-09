@@ -155,10 +155,7 @@ impl State {
                     .with_plugin_config(configuration),
             );
         } else {
-            let mut file_to_open = FileToOpen::new(&absolute_path);
-            if let Some(line) = line_number {
-                file_to_open = file_to_open.with_line_number(line);
-            }
+            let file_to_open = file_to_open_from_context(&absolute_path, line_number, &context);
             open_file_floating(file_to_open, None, BTreeMap::new());
         }
     }
@@ -222,6 +219,21 @@ impl State {
         }
         context
     }
+}
+
+fn file_to_open_from_context(
+    path: &Path,
+    line_number: Option<usize>,
+    context: &BTreeMap<String, String>,
+) -> FileToOpen {
+    let mut file_to_open = FileToOpen::new(path);
+    if let Some(line_number) = line_number {
+        file_to_open = file_to_open.with_line_number(line_number);
+    }
+    if let Some(cwd) = context.get(CWD_CONTEXT_KEY) {
+        file_to_open = file_to_open.with_cwd(PathBuf::from(cwd));
+    }
+    file_to_open
 }
 
 /// Scan a directory for first-level file and folder names.
@@ -403,6 +415,25 @@ mod tests {
         let (path, line) = parse_path_and_line("src/main.rs:");
         assert_eq!(path, "src/main.rs:");
         assert_eq!(line, None);
+    }
+
+    #[test]
+    fn file_to_open_keeps_the_clicked_pane_cwd() {
+        let mut context = BTreeMap::new();
+        context.insert(CWD_CONTEXT_KEY.into(), "/home/user/project".into());
+
+        let file_to_open = file_to_open_from_context(
+            Path::new("/home/user/project/src/main.rs"),
+            Some(42),
+            &context,
+        );
+
+        assert_eq!(
+            file_to_open.path,
+            PathBuf::from("/home/user/project/src/main.rs")
+        );
+        assert_eq!(file_to_open.line_number, Some(42));
+        assert_eq!(file_to_open.cwd, Some(PathBuf::from("/home/user/project")));
     }
 
     // --- expand_path tests ---
