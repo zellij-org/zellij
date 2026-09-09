@@ -401,23 +401,6 @@ impl UnixPtyBackend {
         try_write_to_fd(fd, buf).with_context(err_context)
     }
 
-    pub fn tcdrain(&self, terminal_id: u32) -> Result<()> {
-        let err_context = || format!("failed to tcdrain to TTY ID {}", terminal_id);
-
-        match self
-            .terminal_id_to_raw_fd
-            .lock()
-            .to_anyhow()
-            .with_context(err_context)?
-            .get(&terminal_id)
-        {
-            Some(Some(fd)) => {
-                termios::tcdrain(unsafe { BorrowedFd::borrow_raw(*fd) }).with_context(err_context)
-            },
-            _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
-        }
-    }
-
     pub fn tcgetpgrp(&self, terminal_id: u32) -> Option<i32> {
         match self.terminal_id_to_raw_fd.lock().ok()?.get(&terminal_id) {
             Some(Some(fd)) => unistd::tcgetpgrp(unsafe { BorrowedFd::borrow_raw(*fd) })

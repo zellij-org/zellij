@@ -1,13 +1,15 @@
 use crate::tab::Pane;
 
-use crate::{os_input_output::ServerOsApi, panes::PaneId, ClientId};
+use crate::pty_writer::PtyWriteInstruction;
+use crate::thread_bus::ThreadSenders;
+use crate::{panes::PaneId, ClientId};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Clone)]
 pub struct ActivePanes {
     active_panes: HashMap<ClientId, PaneId>,
     last_panes: HashMap<ClientId, PaneId>,
-    os_api: Box<dyn ServerOsApi>,
+    senders: ThreadSenders,
 }
 
 impl std::fmt::Debug for ActivePanes {
@@ -17,12 +19,11 @@ impl std::fmt::Debug for ActivePanes {
 }
 
 impl ActivePanes {
-    pub fn new(os_api: &Box<dyn ServerOsApi>) -> Self {
-        let os_api = os_api.clone();
+    pub fn new(senders: ThreadSenders) -> Self {
         ActivePanes {
             active_panes: HashMap::new(),
             last_panes: HashMap::new(),
-            os_api,
+            senders,
         }
     }
     pub fn get(&self, client_id: &ClientId) -> Option<&PaneId> {
@@ -97,18 +98,22 @@ impl ActivePanes {
     fn unfocus_pane(&self, pane_id: PaneId, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
         if let PaneId::Terminal(terminal_id) = pane_id {
             if let Some(focus_event) = panes.get(&pane_id).and_then(|p| p.unfocus_event()) {
-                let _ = self
-                    .os_api
-                    .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
+                let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Write(
+                    focus_event.into_bytes(),
+                    terminal_id,
+                    None,
+                ));
             }
         }
     }
     fn focus_pane(&self, pane_id: PaneId, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
         if let PaneId::Terminal(terminal_id) = pane_id {
             if let Some(focus_event) = panes.get(&pane_id).and_then(|p| p.focus_event()) {
-                let _ = self
-                    .os_api
-                    .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
+                let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Write(
+                    focus_event.into_bytes(),
+                    terminal_id,
+                    None,
+                ));
             }
         }
     }

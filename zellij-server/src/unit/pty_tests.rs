@@ -67,9 +67,6 @@ impl ServerOsApi for MockOsApi {
     fn write_to_tty_stdin(&self, _: u32, buf: &[u8]) -> anyhow::Result<usize> {
         Ok(buf.len())
     }
-    fn tcdrain(&self, _: u32) -> anyhow::Result<()> {
-        Ok(())
-    }
     fn kill(&self, _: u32) -> anyhow::Result<()> {
         Ok(())
     }
