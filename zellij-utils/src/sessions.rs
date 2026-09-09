@@ -13,7 +13,7 @@ use humantime::format_duration;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::time::{Duration, SystemTime};
-use std::{fs, io, process};
+use std::{fs, io, process, thread};
 use suggest::Suggest;
 
 pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
@@ -140,31 +140,75 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
     }
 }
 
+/// How many times a refused connection is retried before the socket it points at
+/// is treated as stale. See [`assert_socket_at`].
+#[cfg(unix)]
+const REFUSED_CONNECTION_RETRIES: usize = 3;
+
+/// How long to wait between the retries above.
+#[cfg(unix)]
+const REFUSED_CONNECTION_RETRY_DELAY: Duration = Duration::from_millis(100);
+
 /// Probe a session socket to check if a server is alive.
 ///
 /// On Unix, connects and sends a `ConnStatus` message to verify the server responds.
 /// On Windows, reads the server PID from the marker file and checks process liveness.
 #[cfg(unix)]
 fn assert_socket(name: &str) -> bool {
+    assert_socket_at(&ZELLIJ_SOCK_DIR.join(name))
+}
+
+/// Probe the session socket at `path`, removing it if it turns out to be stale.
+///
+/// A refused connection is not on its own proof that the session is gone.
+/// `ECONNREFUSED` on a unix socket means either that nothing is listening on it -
+/// a stale file left behind by a server that did not shut down cleanly - or that
+/// a server *is* listening but cannot accept right now. On macOS and the BSDs the
+/// kernel refuses connections once a listener's accept backlog is full, which a
+/// busy but perfectly healthy server can hit.
+///
+/// Getting this wrong is not symmetrical. Keeping a stale socket around costs
+/// almost nothing, since the next server to take that name unlinks it before
+/// binding anyway. Removing the socket of a *live* server destroys that session
+/// permanently: a unix socket is bound to its inode rather than to its path, so
+/// once the path is unlinked the running server can never be reached again, and
+/// `zellij attach --create` will quietly start a second server under the same
+/// name while the first keeps running with all of the user's panes in it.
+///
+/// So retry a refused connection before concluding anything, and only remove the
+/// socket once it stays refused.
+#[cfg(unix)]
+fn assert_socket_at(path: &Path) -> bool {
     use crate::consts::ipc_connect;
-    let path = &*ZELLIJ_SOCK_DIR.join(name);
-    match ipc_connect(path) {
-        Ok(stream) => {
-            let mut sender: IpcSenderWithContext<ClientToServerMsg> =
-                IpcSenderWithContext::new(stream);
-            let _ = sender.send_client_msg(ClientToServerMsg::ConnStatus);
-            let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
-            match receiver.recv_server_msg() {
-                Some((ServerToClientMsg::Connected, _)) => true,
-                None | Some((_, _)) => false,
-            }
-        },
-        Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
-            drop(fs::remove_file(path));
-            false
-        },
-        Err(_) => false,
+
+    let mut retries_left = REFUSED_CONNECTION_RETRIES;
+    loop {
+        match ipc_connect(path) {
+            Ok(stream) => return server_answers_conn_status(stream),
+            Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
+                if retries_left == 0 {
+                    drop(fs::remove_file(path));
+                    return false;
+                }
+                retries_left -= 1;
+                thread::sleep(REFUSED_CONNECTION_RETRY_DELAY);
+            },
+            Err(_) => return false,
+        }
     }
+}
+
+/// Ask the server on the other end of `stream` whether it is up, and wait for its
+/// answer.
+#[cfg(unix)]
+fn server_answers_conn_status(stream: interprocess::local_socket::Stream) -> bool {
+    let mut sender: IpcSenderWithContext<ClientToServerMsg> = IpcSenderWithContext::new(stream);
+    let _ = sender.send_client_msg(ClientToServerMsg::ConnStatus);
+    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+    matches!(
+        receiver.recv_server_msg(),
+        Some((ServerToClientMsg::Connected, _))
+    )
 }
 
 /// On Windows, reads the server PID from the marker file and checks whether
@@ -802,3 +846,77 @@ const NOUNS: &[&'static str] = &[
     "yak",
     "zebra",
 ];
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::net::UnixListener;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    /// A socket file with nothing bound to it any more, the way a server that was
+    /// killed rather than shut down cleanly leaves one behind.
+    fn stale_socket(dir: &tempfile::TempDir) -> std::path::PathBuf {
+        let path = dir.path().join("session.sock");
+        drop(UnixListener::bind(&path).expect("failed to bind test socket"));
+        assert!(
+            path.exists(),
+            "dropping the listener should leave the socket file behind"
+        );
+        path
+    }
+
+    #[test]
+    fn removes_a_socket_nothing_is_listening_on() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = stale_socket(&dir);
+
+        assert!(!assert_socket_at(&path));
+        assert!(
+            !path.exists(),
+            "a socket that stays refused should be cleaned up"
+        );
+    }
+
+    #[test]
+    fn keeps_a_socket_that_only_refuses_the_first_connection() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = stale_socket(&dir);
+
+        // A server that cannot accept at first but catches up well within the
+        // retry window, the way one with a momentarily full accept backlog does.
+        let server_path = path.clone();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_accepting = Arc::clone(&stop);
+        let server = thread::spawn(move || {
+            thread::sleep(REFUSED_CONNECTION_RETRY_DELAY / 2);
+            fs::remove_file(&server_path).unwrap();
+            let listener = UnixListener::bind(&server_path).unwrap();
+            listener.set_nonblocking(true).unwrap();
+
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !stop_accepting.load(Ordering::Relaxed) && Instant::now() < deadline {
+                match listener.accept() {
+                    // Dropping the stream right away hands the probe an EOF
+                    // instead of a `Connected`. That is fine: what this test cares
+                    // about is that the socket file survives.
+                    Ok(_) => {},
+                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(5))
+                    },
+                    Err(_) => break,
+                }
+            }
+        });
+
+        assert_socket_at(&path);
+        stop.store(true, Ordering::Relaxed);
+        server.join().unwrap();
+
+        assert!(
+            path.exists(),
+            "a socket that stopped refusing connections must not be removed"
+        );
+    }
+}
