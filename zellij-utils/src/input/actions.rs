@@ -581,7 +581,7 @@ pub enum Action {
         payload: Option<String>,
         args: Option<BTreeMap<String, String>>,
         plugin: Option<String>,
-        plugin_id: Option<u32>, // supercedes plugin if present
+        plugin_id: Option<u32>, // supersedes plugin if present
         configuration: Option<BTreeMap<String, String>>,
         launch_new: bool,
         skip_cache: bool,

@@ -3,7 +3,7 @@
 //! To read more about Zellij plugins:
 //! [https://zellij.dev/documentation/plugins](https://zellij.dev/documentation/plugins)
 //!
-//! ### Interesting things in this libary:
+//! ### Interesting things in this library:
 //! - The [`ZellijPlugin`] trait for implementing plugins combined with the
 //! [`register_plugin!`](register_plugin) macro to register them.
 //! - The list of [commands](shim) representing what a plugin can do.

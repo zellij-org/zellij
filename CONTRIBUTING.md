@@ -134,14 +134,6 @@ Note that the output is truncated at 100KB. This can be adjusted for the purpose
 
 When running Zellij with the `--debug` flag, Zellij will dump a copy of all bytes received over the pty for each pane in: `/$temp_dir/zellij-<UID>/zellij-log/zellij-<pane_id>.log`. These might be useful when troubleshooting terminal issues.
 
-## Testing plugins
-Zellij allows the use of the singlepass [Winch](https://crates.io/crates/wasmtime-winch) compiler for wasmtime. This can enable great gains in compilation time of plugins at the cost of slower execution and less supported architectures.
-
-To enable the singlepass compiler, use the `singlepass` flag. E.g.:
-```sh
-cargo xtask run --singlepass
-```
-
 ## Toolchain Versions and MSRV
 
 Development aims to track the current stable Rust toolchain version, although

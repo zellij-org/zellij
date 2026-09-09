@@ -330,7 +330,7 @@ impl Config {
                 }
             })
     }
-    // returns true if the config was not previouly written to disk and we successfully wrote it
+    // returns true if the config was not previously written to disk and we successfully wrote it
     pub fn write_config_to_disk_if_it_does_not_exist(
         config: String,
         config_file_path: &Option<PathBuf>,
