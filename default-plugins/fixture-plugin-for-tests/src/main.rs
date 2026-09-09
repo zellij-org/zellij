@@ -50,7 +50,7 @@ register_worker!(TestWorker, test_worker, TEST_WORKER);
 #[cfg(target_family = "wasm")]
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
-        request_permission(&[
+        let mut permissions = vec![
             PermissionType::ChangeApplicationState,
             PermissionType::ReadApplicationState,
             PermissionType::ReadApplicationState,
@@ -66,7 +66,11 @@ impl ZellijPlugin for State {
             PermissionType::WriteToClipboard,
             PermissionType::RunActionsAsUser,
             PermissionType::ReadSessionEnvironmentVariables,
-        ]);
+        ];
+        if configuration.contains_key("test_large_scrollback") {
+            permissions.push(PermissionType::ReadPaneContents);
+        }
+        request_permission(&permissions);
         let should_subscribe_initial_keybinds = configuration
             .get("subscribe_initial_keybinds")
             .map(|v| v == "true")
@@ -993,6 +997,20 @@ impl ZellijPlugin for State {
             );
         } else if name == "message_to_plugin" {
             self.message_to_plugin_payload = payload.clone();
+        } else if name == "test_large_scrollback" {
+            for _ in 0..3 {
+                let contents = get_pane_scrollback(PaneId::Terminal(0), true).unwrap();
+                assert_eq!(contents.lines_above_viewport.len(), 10_000);
+                let expected_line = "x".repeat(150);
+                assert!(contents
+                    .lines_above_viewport
+                    .iter()
+                    .all(|line| line == &expected_line));
+                assert_eq!(contents.viewport, vec!["viewport".to_owned()]);
+                assert_eq!(contents.lines_below_viewport, vec!["below".to_owned()]);
+                assert_eq!(contents.cursor, Some((1, 2)));
+            }
+            self.explicit_string_to_render = Some("three complete scrollback reads".to_owned());
         } else if name == "panic_while_handling_pipe" {
             panic!("intentional panic for the pipe-release-on-crash test");
         }
