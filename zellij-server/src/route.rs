@@ -226,6 +226,7 @@ pub(crate) fn route_action(
     default_shell: Option<TerminalAction>,
     mut seen_cli_pipes: Option<&mut HashSet<String>>,
     default_mode: InputMode,
+    confirm_quit: bool,
     os_input: Option<Box<dyn ServerOsApi>>,
 ) -> Result<(bool, Option<ActionCompletionResult>)> {
     let mut should_break = false;
@@ -1177,13 +1178,22 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::Quit => {
-            senders
-                .send_to_server(ServerInstruction::ClientExit(
-                    client_id,
-                    Some(NotificationEnd::new(completion_tx)),
-                ))
-                .with_context(err_context)?;
-            should_break = true;
+            if confirm_quit {
+                // interactive client: ask for confirmation before quitting, the answer
+                // (y/n/Esc) is intercepted in `route_thread_main` while the prompt is open
+                drop(completion_tx);
+                senders
+                    .send_to_screen(ScreenInstruction::ShowQuitPrompt(client_id))
+                    .with_context(err_context)?;
+            } else {
+                senders
+                    .send_to_server(ServerInstruction::ClientExit(
+                        client_id,
+                        Some(NotificationEnd::new(completion_tx)),
+                    ))
+                    .with_context(err_context)?;
+                should_break = true;
+            }
         },
         Action::Detach => {
             senders
@@ -2261,6 +2271,7 @@ pub(crate) fn route_thread_main(
     let mut retry_queue = VecDeque::new();
     let err_context = || format!("failed to handle instruction for client {client_id}");
     let mut seen_cli_pipes = HashSet::new();
+    let quit_prompt_active = std::cell::Cell::new(false);
     let mut consecutive_unknown_messages_received = 0;
     'route_loop: loop {
         match receiver.try_recv_client_msg() {
@@ -2323,6 +2334,36 @@ pub(crate) fn route_thread_main(
                         return Ok(should_break);
                     }
 
+                    // While the quit confirmation prompt is open for this client,
+                    // intercept all keys: only y/n (or Esc) are meaningful here
+                    if quit_prompt_active.get() {
+                        if let ClientToServerMsg::Key { key, .. } = &instruction {
+                            let is_yes = key.bare_key == BareKey::Char('y')
+                                || key.bare_key == BareKey::Char('Y');
+                            let is_no = key.bare_key == BareKey::Char('n')
+                                || key.bare_key == BareKey::Char('N')
+                                || key.bare_key == BareKey::Esc;
+                            if is_yes || is_no {
+                                quit_prompt_active.set(false);
+                                let _ = senders.as_ref().map(|s| {
+                                    s.send_to_screen(ScreenInstruction::HideQuitPrompt(client_id))
+                                });
+                                if is_yes {
+                                    let _ = to_server
+                                        .send(ServerInstruction::ClientExit(client_id, None));
+                                    should_break = true;
+                                }
+                            }
+                            // swallow every other key while the prompt is open
+                            return Ok(should_break);
+                        }
+                        if let ClientToServerMsg::Action { .. } = &instruction {
+                            // swallow mouse events and any other actions, including
+                            // repeated quit requests, while the prompt is open
+                            return Ok(false);
+                        }
+                    }
+
                     match instruction {
                         ClientToServerMsg::Key {
                             key,
@@ -2348,6 +2389,7 @@ pub(crate) fn route_thread_main(
                                             s.default_shell.clone(),
                                             s.session_configuration
                                                 .get_client_default_input_mode(&client_id),
+                                            false,
                                             vec![Action::Write {
                                                 key_with_modifier: Some(key),
                                                 bytes: raw_bytes,
@@ -2365,16 +2407,28 @@ pub(crate) fn route_thread_main(
                                             dim,
                                             is_kitty_keyboard_protocol,
                                         );
+                                    let confirm_quit = s
+                                        .session_configuration
+                                        .get_client_configuration(&client_id)
+                                        .options
+                                        .confirm_quit
+                                        .unwrap_or(true);
                                     Some((
                                         s.senders.clone(),
                                         s.default_shell.clone(),
                                         s.session_configuration
                                             .get_client_default_input_mode(&client_id),
+                                        confirm_quit,
                                         actions,
                                     ))
                                 });
-                            if let Some((senders, default_shell, client_input_mode, actions)) =
-                                dispatch_inputs
+                            if let Some((
+                                senders,
+                                default_shell,
+                                client_input_mode,
+                                confirm_quit,
+                                actions,
+                            )) = dispatch_inputs
                             {
                                 for action in actions {
                                     // Send user input to plugin thread for logging
@@ -2385,6 +2439,8 @@ pub(crate) fn route_thread_main(
                                         cli_client_id: None,
                                     });
 
+                                    let quit_with_confirmation =
+                                        confirm_quit && matches!(action, Action::Quit);
                                     match route_action(
                                         action,
                                         client_id,
@@ -2394,11 +2450,16 @@ pub(crate) fn route_thread_main(
                                         default_shell.clone(),
                                         Some(&mut seen_cli_pipes),
                                         client_input_mode,
+                                        confirm_quit,
                                         Some(os_input.clone()),
                                     ) {
                                         Ok(route_action_should_break) => {
                                             if route_action_should_break.0 {
                                                 should_break = true;
+                                            } else if quit_with_confirmation {
+                                                // the prompt was shown, wait for the
+                                                // answer before processing further keys
+                                                quit_prompt_active.set(true);
                                             }
                                         },
                                         Err(e) => {
@@ -2470,6 +2531,7 @@ pub(crate) fn route_thread_main(
                                     default_shell,
                                     Some(&mut seen_cli_pipes),
                                     client_input_mode,
+                                    false, // never prompt CLI clients for confirmation
                                     Some(os_input.clone()),
                                 ) {
                                     Ok(route_action_should_break) => {

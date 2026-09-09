@@ -23,6 +23,7 @@ impl TryFrom<ProtobufInputMode> for InputMode {
             ProtobufInputMode::Move => Ok(InputMode::Move),
             ProtobufInputMode::Prompt => Ok(InputMode::Prompt),
             ProtobufInputMode::Tmux => Ok(InputMode::Tmux),
+            ProtobufInputMode::ConfirmQuit => Ok(InputMode::ConfirmQuit),
         }
     }
 }
@@ -45,6 +46,7 @@ impl TryFrom<InputMode> for ProtobufInputMode {
             InputMode::Move => ProtobufInputMode::Move,
             InputMode::Prompt => ProtobufInputMode::Prompt,
             InputMode::Tmux => ProtobufInputMode::Tmux,
+            InputMode::ConfirmQuit => ProtobufInputMode::ConfirmQuit,
         })
     }
 }

@@ -48,6 +48,9 @@ pub fn one_line_ui(
     if clipboard_failure {
         return (system_clipboard_error(&help.style.colors), None, None);
     }
+    if help.mode == InputMode::ConfirmQuit {
+        return (confirm_quit_hints(help), None, None);
+    }
     let mut line_part_to_render = LinePart::default();
     let mut new_pane_range = None;
     let mut floating_range = None;
@@ -91,6 +94,59 @@ fn to_base_mode(base_mode: InputMode) -> Action {
     Action::SwitchToMode {
         input_mode: base_mode,
     }
+}
+
+/// Quit prompt. Keys are display only; the server intercepts input while the
+/// prompt is open.
+pub(crate) fn confirm_quit_hints(help: &ModeInfo) -> LinePart {
+    let dimmed = help.session_dimmed.unwrap_or(false);
+    let colors = help.style.colors;
+    let mut ret = LinePart::default();
+
+    // Wedge separator in theme orange (`text_unselected.emphasis_0`); using
+    // the ribbon accent instead would match the "Quit?" text colour closely
+    // enough that the wedge would be indistinguishable from it.
+    if !dimmed && !help.capabilities.arrow_fonts {
+        let outer = palette_match!(colors.text_unselected.background);
+        let orange = palette_match!(colors.text_unselected.emphasis_0);
+        let wedge = |fg, on| {
+            Style::new()
+                .fg(fg)
+                .on(on)
+                .bold()
+                .paint(crate::ARROW_SEPARATOR)
+                .to_string()
+        };
+        ret.part = format!("{}{}", wedge(outer, orange), wedge(orange, outer));
+        ret.len += 2;
+    }
+
+    // "Quit?" as a standalone accent-colored word
+    let quit_text = if dimmed {
+        Text::new(" Quit? ").disabled().opaque()
+    } else {
+        Text::new(" Quit? ").color_range(2, ..).opaque()
+    };
+    ret.part.push_str(&serialize_text(&quit_text));
+    ret.len += " Quit? ".width();
+
+    // Grey label ribbon, then its key
+    for (label, key) in [("Yes", 'y'), ("No", 'n')] {
+        let ribbon = if dimmed {
+            serialize_ribbon(&Text::new(label).disabled())
+        } else {
+            serialize_ribbon(&Text::new(label))
+        };
+        ret.part.push_str(&ribbon);
+        ret.len += label.width() + 4; // padding and arrow fonts
+        ret.append(&style_key_with_modifier(
+            &[KeyWithModifier::new(BareKey::Char(key))],
+            Some(2),
+            dimmed,
+        ));
+    }
+
+    ret
 }
 
 fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<KeyShortcut>> {

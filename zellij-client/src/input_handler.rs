@@ -408,14 +408,14 @@ impl InputHandler {
         match action {
             Action::NoOp => {},
             Action::Quit => {
+                // forward the Quit to the server, which either exits or shows
+                // a confirmation prompt; exiting locally would race the prompt
                 self.os_input.send_to_server(ClientToServerMsg::Action {
                     action,
                     terminal_id: None,
                     client_id,
                     is_cli_client: false,
                 });
-                self.exit(ExitReason::Normal);
-                should_break = true;
             },
             Action::Detach => {
                 self.os_input.send_to_server(ClientToServerMsg::Action {

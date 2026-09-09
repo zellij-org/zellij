@@ -470,6 +470,21 @@ impl<'a> TabLinePrefixBuilder<'a> {
     }
 
     fn create_mode_part(&self, mode: InputMode, used_len: usize) -> Option<LinePart> {
+        if mode == InputMode::ConfirmQuit {
+            // Mirrors the status-bar confirm-quit prompt, shown as an orange
+            // "Quit?" label. No key hints are rendered.
+            let colors = self.get_text_colors();
+            let bg = colors.background;
+            let orange = self.palette.text_unselected.emphasis_0;
+
+            let quit_text = " Quit? ";
+            return Some(LinePart {
+                part: style!(orange, bg).bold().paint(quit_text).to_string(),
+                len: quit_text.width(),
+                tab_index: None,
+            });
+        }
+
         let mode_text = format!(" {} ", format!("{:?}", mode).to_uppercase());
         let mode_len = mode_text.width();
 
