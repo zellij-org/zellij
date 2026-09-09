@@ -2861,9 +2861,7 @@ pub fn object_from_stdin<T: DeserializeOwned>() -> Result<T> {
 #[doc(hidden)]
 pub fn bytes_from_stdin() -> Result<Vec<u8>> {
     let err_context = || "failed to deserialize bytes from stdin".to_string();
-    let mut json = String::new();
-    io::stdin().read_line(&mut json).with_context(err_context)?;
-    serde_json::from_str(&json).with_context(err_context)
+    crate::input_pipe::read_bytes(&mut io::stdin().lock()).with_context(err_context)
 }
 
 #[doc(hidden)]
