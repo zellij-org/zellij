@@ -3001,47 +3001,43 @@ fn switch_session(
 }
 
 fn delete_dead_session(session_name: String) -> Result<()> {
-    std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&session_name))
+    // The cache folder is keyed by session id; resolve the name (falling back to
+    // treating the argument as the id, e.g. when called with an id directly).
+    let id = zellij_utils::sessions::resolve_session_id(&session_name)
+        .unwrap_or_else(|| session_name.clone());
+    let _ = zellij_utils::sessions::with_registry(|reg| {
+        reg.sessions
+            .retain(|s| s.id != id && s.display_name != session_name);
+    });
+    std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&id))
         .with_context(|| format!("Failed to delete dead session: {:?}", &session_name))
 }
 
 fn delete_all_dead_sessions() -> Result<()> {
-    use zellij_utils::consts::is_ipc_socket;
-    let mut live_sessions = vec![];
-    if let Ok(files) = std::fs::read_dir(&*ZELLIJ_SOCK_DIR) {
-        files.for_each(|file| {
-            if let Ok(file) = file {
-                if let Ok(file_name) = file.file_name().into_string() {
-                    if is_ipc_socket(&file.file_type().unwrap()) {
-                        live_sessions.push(file_name);
-                    }
+    // Live sessions are the running registry entries. The cache is keyed by id,
+    // so compare folder ids against running ids and delete the rest by id.
+    let registry = zellij_utils::sessions::ensure_registry();
+    let live_ids: Vec<String> = registry.running_sessions().map(|e| e.id.clone()).collect();
+    let dead_ids: Vec<String> = match std::fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
+        Ok(entries) => entries
+            .filter_map(|f| f.ok().map(|f| f.path()))
+            .filter(|p| p.is_dir())
+            .filter_map(|folder| {
+                let id = folder.file_name()?.to_str()?.to_owned();
+                if live_ids.contains(&id) {
+                    None
+                } else {
+                    Some(id)
                 }
-            }
-        });
-    }
-    let dead_sessions: Vec<String> = match std::fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
-        Ok(files_in_session_info_folder) => {
-            let files_that_are_folders = files_in_session_info_folder
-                .filter_map(|f| f.ok().map(|f| f.path()))
-                .filter(|f| f.is_dir());
-            files_that_are_folders
-                .filter_map(|folder_name| {
-                    let session_name = folder_name.file_name()?.to_str()?.to_owned();
-                    if live_sessions.contains(&session_name) {
-                        // this is not a dead session...
-                        return None;
-                    }
-                    Some(session_name)
-                })
-                .collect()
-        },
+            })
+            .collect(),
         Err(e) => {
             log::error!("Failed to read session info cache dir: {:?}", e);
             vec![]
         },
     };
-    for session in dead_sessions {
-        delete_dead_session(session)?;
+    for id in dead_ids {
+        delete_dead_session(id)?;
     }
     Ok(())
 }
@@ -3400,7 +3396,9 @@ fn disconnect_other_clients(env: &PluginEnv) {
 
 fn kill_sessions(session_names: Vec<String>) {
     for session_name in session_names {
-        let path = &*ZELLIJ_SOCK_DIR.join(&session_name);
+        let resolved = zellij_utils::sessions::resolve_session_socket_path(&session_name)
+            .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(&session_name));
+        let path = &*resolved;
         match ipc_connect(path) {
             Ok(stream) => {
                 #[cfg(windows)]
@@ -3443,7 +3441,8 @@ fn kill_sessions_and_reply(env: &PluginEnv, session_names: Vec<String>) {
     let result: Result<(), String> = runtime.block_on(async {
         let mut set: JoinSet<(String, std::io::Result<()>)> = JoinSet::new();
         for name in session_names {
-            let path = ZELLIJ_SOCK_DIR.join(&name);
+            let path = zellij_utils::sessions::resolve_session_socket_path(&name)
+                .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(&name));
             set.spawn(async move {
                 let res = zellij_utils::ipc::async_send_kill_and_await(&path).await;
                 (name, res)
@@ -3489,14 +3488,20 @@ fn kill_sessions_and_reply(env: &PluginEnv, session_names: Vec<String>) {
 }
 
 fn delete_dead_session_and_reply(env: &PluginEnv, session_name: String) {
-    let response =
-        match std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&session_name)) {
-            Ok(()) => DeleteDeadSessionResponse::Ok,
-            Err(e) => DeleteDeadSessionResponse::Err(format!(
-                "Failed to delete dead session {}: {}",
-                session_name, e
-            )),
-        };
+    // Cache folder is keyed by session id; resolve the display name.
+    let id = zellij_utils::sessions::resolve_session_id(&session_name)
+        .unwrap_or_else(|| session_name.clone());
+    let _ = zellij_utils::sessions::with_registry(|reg| {
+        reg.sessions
+            .retain(|s| s.id != id && s.display_name != session_name);
+    });
+    let response = match std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&id)) {
+        Ok(()) => DeleteDeadSessionResponse::Ok,
+        Err(e) => DeleteDeadSessionResponse::Err(format!(
+            "Failed to delete dead session {}: {}",
+            session_name, e
+        )),
+    };
     let protobuf_response = ProtobufDeleteDeadSessionResponse::from(response);
     wasi_write_object(env, &protobuf_response.encode_to_vec())
         .with_context(|| "failed to write delete_dead_session response".to_string())
