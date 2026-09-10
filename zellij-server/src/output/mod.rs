@@ -190,7 +190,15 @@ fn serialize_chunks_with_newlines(
             )
             .with_context(err_context)?;
             chunk_width += t_character.width();
-            vte_output.push(t_character.character);
+            // Kitty Unicode-placeholder cells are stored as encoded PUA
+            // chars (see panes::kitty_graphics::placeholders); the image
+            // is drawn over them via kitty chunks, so the host terminal
+            // gets a plain space instead of an undefined-glyph box.
+            if crate::panes::kitty_graphics::is_in_encoded_range(t_character.character) {
+                vte_output.push(' ');
+            } else {
+                vte_output.push(t_character.character);
+            }
         }
     }
     Ok(vte_output)
@@ -256,7 +264,15 @@ fn serialize_chunks(
             )
             .with_context(err_context)?;
             chunk_width += t_character.width();
-            vte_output.push(t_character.character);
+            // Kitty Unicode-placeholder cells are stored as encoded PUA
+            // chars (see panes::kitty_graphics::placeholders); the image
+            // is drawn over them via kitty chunks, so the host terminal
+            // gets a plain space instead of an undefined-glyph box.
+            if crate::panes::kitty_graphics::is_in_encoded_range(t_character.character) {
+                vte_output.push(' ');
+            } else {
+                vte_output.push(t_character.character);
+            }
         }
     }
     if let Some(sixel_image_store) = sixel_image_store {

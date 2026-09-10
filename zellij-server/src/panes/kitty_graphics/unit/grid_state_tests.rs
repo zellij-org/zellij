@@ -283,3 +283,194 @@ fn reverse_index_region_scroll_reaps_fully_below_margin() {
     grid.apply_region_scroll(0, 80, -20, 0, 0, false);
     assert_eq!(grid.placements.len(), 0);
 }
+
+mod virtual_placements {
+    use super::*;
+    use crate::panes::kitty_graphics::parser::{
+        DecodedImage, KittyAction, KittyCommand, KittyFormat,
+    };
+
+    fn virtual_transmit_command(image_id: u32, columns: u32, rows: u32) -> KittyCommand {
+        KittyCommand {
+            action: KittyAction::TransmitAndDisplay,
+            image_id: Some(image_id),
+            columns,
+            rows,
+            unicode_placeholder: true,
+            image: Some(DecodedImage {
+                bytes: vec![255; 4 * 4 * 4],
+                width: 4,
+                height: 4,
+                format: KittyFormat::Rgba32,
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn delete_command(specifier: char, image_id: Option<u32>) -> KittyCommand {
+        KittyCommand {
+            action: KittyAction::Delete,
+            delete_specifier: Some(specifier),
+            image_id,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn register_virtual_transmit_stores_image_and_placement() {
+        let mut grid = test_grid();
+        let reply = grid
+            .register_virtual_transmit(&virtual_transmit_command(7, 20, 5))
+            .unwrap();
+        assert_eq!(reply.image_id, Some(7));
+        assert!(grid.has_virtual_placements());
+        let placement = grid.virtual_placement(7, 0).unwrap();
+        assert_eq!((placement.columns, placement.rows), (20, 5));
+        assert_eq!(
+            grid.kitty_image_store.borrow().image_count(),
+            1,
+            "image is stored"
+        );
+        assert_eq!(
+            grid.kitty_image_store
+                .borrow()
+                .refcount(placement.internal_id),
+            Some(1),
+            "the virtual placement holds one ref"
+        );
+    }
+
+    #[test]
+    fn plain_retransmit_under_same_id_replaces_virtual_placement() {
+        let mut grid = test_grid();
+        grid.register_virtual_transmit(&virtual_transmit_command(7, 20, 5))
+            .unwrap();
+        let mut plain = virtual_transmit_command(7, 0, 0);
+        plain.unicode_placeholder = false;
+        let image = plain.image.take().unwrap();
+        grid.transmit(&plain, image).unwrap();
+        assert!(
+            !grid.has_virtual_placements(),
+            "the old virtual placement is dropped with its image"
+        );
+        assert_eq!(
+            grid.kitty_image_store.borrow().image_count(),
+            1,
+            "only the newly transmitted image remains"
+        );
+    }
+
+    #[test]
+    fn register_virtual_display_places_an_already_transmitted_image() {
+        let mut grid = test_grid();
+        let mut transmit = virtual_transmit_command(9, 0, 0);
+        transmit.unicode_placeholder = false;
+        let image = transmit.image.take().unwrap();
+        grid.transmit(&transmit, image).unwrap();
+        let display = KittyCommand {
+            action: KittyAction::Display,
+            image_id: Some(9),
+            columns: 10,
+            rows: 3,
+            unicode_placeholder: true,
+            ..Default::default()
+        };
+        grid.register_virtual_display(&display).unwrap();
+        let placement = grid.virtual_placement(9, 0).unwrap();
+        assert_eq!((placement.columns, placement.rows), (10, 3));
+    }
+
+    #[test]
+    fn register_virtual_display_for_unknown_image_errors() {
+        let mut grid = test_grid();
+        let display = KittyCommand {
+            action: KittyAction::Display,
+            image_id: Some(42),
+            unicode_placeholder: true,
+            ..Default::default()
+        };
+        assert!(grid.register_virtual_display(&display).is_err());
+    }
+
+    #[test]
+    fn placement_id_selection_and_reregistration() {
+        let mut grid = test_grid();
+        let mut first = virtual_transmit_command(7, 20, 5);
+        first.placement_id = Some(1);
+        grid.register_virtual_transmit(&first).unwrap();
+        let second = KittyCommand {
+            action: KittyAction::Display,
+            image_id: Some(7),
+            placement_id: Some(2),
+            columns: 10,
+            rows: 2,
+            unicode_placeholder: true,
+            ..Default::default()
+        };
+        grid.register_virtual_display(&second).unwrap();
+        assert_eq!(grid.virtual_placement(7, 1).unwrap().columns, 20);
+        assert_eq!(grid.virtual_placement(7, 2).unwrap().columns, 10);
+        // no placement selected -> the most recently registered one
+        assert_eq!(grid.virtual_placement(7, 0).unwrap().columns, 10);
+        let first_uid = grid.virtual_placement(7, 1).unwrap().placement_uid;
+        let mut replacement = second.clone();
+        replacement.placement_id = Some(1);
+        grid.register_virtual_display(&replacement).unwrap();
+        assert_eq!(
+            grid.virtual_placement(7, 1).unwrap().placement_uid,
+            first_uid,
+            "re-registering a placement id keeps its uid"
+        );
+    }
+
+    #[test]
+    fn id_and_range_deletes_remove_virtual_placements() {
+        let mut grid = test_grid();
+        grid.register_virtual_transmit(&virtual_transmit_command(7, 20, 5))
+            .unwrap();
+        grid.register_virtual_transmit(&virtual_transmit_command(8, 20, 5))
+            .unwrap();
+        grid.delete(&delete_command('i', Some(7)), (0, 0), (10, 10), 0)
+            .unwrap();
+        assert!(grid.virtual_placement(7, 0).is_none());
+        assert!(grid.virtual_placement(8, 0).is_some());
+        let range = KittyCommand {
+            action: KittyAction::Delete,
+            delete_specifier: Some('R'),
+            source_x: 1,
+            source_y: 100,
+            ..Default::default()
+        };
+        grid.delete(&range, (0, 0), (10, 10), 0).unwrap();
+        assert!(!grid.has_virtual_placements());
+        assert_eq!(
+            grid.kitty_image_store.borrow().image_count(),
+            0,
+            "an uppercase range delete frees the images"
+        );
+    }
+
+    #[test]
+    fn clear_all_placements_frees_virtual_images() {
+        let mut grid = test_grid();
+        grid.register_virtual_transmit(&virtual_transmit_command(7, 20, 5))
+            .unwrap();
+        grid.clear_all_placements();
+        assert!(!grid.has_virtual_placements());
+        assert_eq!(grid.kitty_image_store.borrow().image_count(), 0);
+    }
+
+    #[test]
+    fn fit_rgba_into_box_letterboxes_preserving_aspect() {
+        // a 2x1 white image into a 4x4 box: scaled to 4x2, centered
+        // vertically, transparent rows above and below
+        let src = vec![255; 2 * 1 * 4];
+        let out = super::super::fit_rgba_into_box(&src, 2, 1, 4, 4);
+        assert_eq!(out.len(), 4 * 4 * 4);
+        let row = |index: usize| &out[index * 4 * 4..(index + 1) * 4 * 4];
+        assert!(row(0).iter().all(|byte| *byte == 0), "top padding");
+        assert!(row(1).iter().all(|byte| *byte == 255), "image row");
+        assert!(row(2).iter().all(|byte| *byte == 255), "image row");
+        assert!(row(3).iter().all(|byte| *byte == 0), "bottom padding");
+    }
+}
