@@ -433,7 +433,7 @@ fn emit_kitty_transmit(
         if part_index == 0 {
             write!(
                 out,
-                "\u{1b}_Ga=t,q=2,f=32,t=d,i={},s={},v={},m={};{}\u{1b}\\",
+                "\u{1b}_Ga=t,q=2,f=32,o=z,t=d,i={},s={},v={},m={};{}\u{1b}\\",
                 host_image_id,
                 width,
                 height,
