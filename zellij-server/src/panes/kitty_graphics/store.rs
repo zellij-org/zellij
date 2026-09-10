@@ -1,5 +1,6 @@
 use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
 use base64::engine::Engine as _;
+use std::io::Write;
 
 use super::parser::{DecodedImage, KittyError, KittyErrorCode, KittyFormat};
 use std::collections::HashMap;
@@ -142,7 +143,16 @@ impl KittyImageStore {
             Some(cells) => stored.image.scaled_variants.get(&cells)?,
             None => &stored.image.rgba,
         };
-        let encoded = BASE64_ENCODER.encode(bytes);
+        // Paired with `o=z` in `emit_kitty_transmit`; zlib is part of the base kitty protocol.
+        let mut encoder = flate2::write::ZlibEncoder::new(
+            Vec::with_capacity(bytes.len() / 8),
+            flate2::Compression::fast(),
+        );
+        let compressed = encoder
+            .write_all(bytes)
+            .and_then(|_| encoder.finish())
+            .ok()?;
+        let encoded = BASE64_ENCODER.encode(&compressed);
         stored.base64_cache.insert(variant, encoded.clone());
         Some(encoded)
     }
