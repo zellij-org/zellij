@@ -1051,12 +1051,14 @@ fn open_command_pane_in_new_tab(
         .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let args = command_to_run.args;
+    let env_vars = command_to_run.env_vars;
     let hold_on_close = true;
     let hold_on_start = false;
     let run_command_action = RunCommandAction {
         command,
         args,
         cwd,
+        env_vars,
         direction: None,
         hold_on_close,
         hold_on_start,
@@ -2046,6 +2048,7 @@ fn open_command_pane_in_place_of_pane_id(
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
+    let env_vars = command_to_run.env_vars;
     let direction = None;
     let hold_on_close = true;
     let hold_on_start = false;
@@ -2055,6 +2058,7 @@ fn open_command_pane_in_place_of_pane_id(
         command,
         args,
         cwd,
+        env_vars,
         direction,
         hold_on_close,
         hold_on_start,

@@ -4038,23 +4038,25 @@ impl From<crate::input::mouse::MouseEvent>
     }
 }
 
-fn env_vars_from_hashmap(value: std::collections::HashMap<String, String>)
-    -> Vec<crate::client_server_contract::client_server_contract::RunCommandActionEnvVariables>
-{
-    use crate::client_server_contract::client_server_contract::RunCommandActionEnvVariables;
+#[inline]
+fn env_vars_from_hashmap(
+    value: std::collections::HashMap<String, String>,
+) -> Vec<crate::client_server_contract::client_server_contract::RunCommandActionEnvVar> {
+    use crate::client_server_contract::client_server_contract::RunCommandActionEnvVar;
     value
         .into_iter()
-        .map(|(name, value)| RunCommandActionEnvVariables{name, value})
+        .map(|(name, value)| RunCommandActionEnvVar { name, value })
         .collect()
 }
 
-fn env_vars_to_hashmap(value: Vec<crate::client_server_contract::client_server_contract::RunCommandActionEnvVariables>)
-    -> std::collections::HashMap<String, String>
-{
-    use crate::client_server_contract::client_server_contract::RunCommandActionEnvVariables;
+#[inline]
+fn env_vars_to_hashmap(
+    value: Vec<crate::client_server_contract::client_server_contract::RunCommandActionEnvVar>,
+) -> std::collections::HashMap<String, String> {
+    use crate::client_server_contract::client_server_contract::RunCommandActionEnvVar;
     value
         .into_iter()
-        .map(|RunCommandActionEnvVariables{name, value}| (name, value))
+        .map(|RunCommandActionEnvVar { name, value }| (name, value))
         .collect()
 }
 
@@ -4554,7 +4556,11 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Run>
                     command: std::path::PathBuf::from(cmd.command),
                     args: cmd.args,
                     cwd: cmd.cwd.map(std::path::PathBuf::from),
-                    env_vars: cmd.env_vars.into_iter().map(|ev| (ev.name, ev.value)).collect(),
+                    env_vars: cmd
+                        .env_vars
+                        .into_iter()
+                        .map(|ev| (ev.name, ev.value))
+                        .collect(),
                     hold_on_close: cmd.hold_on_close,
                     hold_on_start: cmd.hold_on_start,
                     originating_plugin: cmd

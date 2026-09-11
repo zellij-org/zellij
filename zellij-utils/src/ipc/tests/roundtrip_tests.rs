@@ -24,7 +24,7 @@ use crate::ipc::{
 };
 use crate::pane_size::{Size, SizeInPixels};
 use crate::position::Position;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 
 const ROUNDTRIP_TEST_STACK_SIZE: usize = 32 * 1024 * 1024;
@@ -1417,6 +1417,7 @@ fn test_client_messages() {
                 command: PathBuf::from("/path/to/command"),
                 args: vec![],
                 cwd: None,
+                env_vars: HashMap::new(),
                 direction: None,
                 hold_on_close: false,
                 hold_on_start: false,
@@ -1446,6 +1447,7 @@ fn test_client_messages() {
                 command: PathBuf::from("/path/to/command"),
                 args: vec!["arg1".to_owned(), "arg2".to_owned()],
                 cwd: Some(PathBuf::from("/path/to/cwd")),
+                env_vars: HashMap::from([("foo".to_string(), "bar".to_string())]),
                 direction: Some(Direction::Right),
                 hold_on_close: true,
                 hold_on_start: true,
@@ -1493,6 +1495,7 @@ fn test_client_messages() {
                 command: PathBuf::from("/path/to/command"),
                 args: vec!["arg1".to_owned(), "arg2".to_owned()],
                 cwd: Some(PathBuf::from("/path/to/cwd")),
+                env_vars: HashMap::from([("foo".to_string(), "bar".to_string())]),
                 direction: Some(Direction::Right),
                 hold_on_close: true,
                 hold_on_start: true,
@@ -1520,6 +1523,7 @@ fn test_client_messages() {
                 command: PathBuf::from("/path/to/command"),
                 args: vec!["arg1".to_owned(), "arg2".to_owned()],
                 cwd: Some(PathBuf::from("/path/to/cwd")),
+                env_vars: HashMap::from([("foo".to_string(), "bar".to_string())]),
                 direction: Some(Direction::Right),
                 hold_on_close: true,
                 hold_on_start: true,
@@ -1561,6 +1565,7 @@ fn test_client_messages() {
                 command: PathBuf::from("/path/to/command"),
                 args: vec!["arg1".to_owned(), "arg2".to_owned()],
                 cwd: Some(PathBuf::from("/path/to/cwd")),
+                env_vars: HashMap::from([("foo".to_string(), "bar".to_string())]),
                 direction: Some(Direction::Right),
                 hold_on_close: true,
                 hold_on_start: true,
@@ -2050,6 +2055,7 @@ fn test_client_messages() {
                     command: PathBuf::from("/path/to/command"),
                     args: vec![],
                     cwd: None,
+                    env_vars: HashMap::new(),
                     hold_on_close: false,
                     hold_on_start: false,
                     originating_plugin: None,
@@ -2077,6 +2083,7 @@ fn test_client_messages() {
                     command: PathBuf::from("/path/to/command"),
                     args: vec!["arg1".to_owned(), "arg2".to_owned(), "arg3".to_owned()],
                     cwd: Some(PathBuf::from("/path/to/cwd")),
+                    env_vars: HashMap::from([("foo".to_string(), "bar".to_string())]),
                     hold_on_close: true,
                     hold_on_start: true,
                     originating_plugin: Some(OriginatingPlugin {
@@ -2274,6 +2281,7 @@ fn test_client_messages() {
                     command: PathBuf::from("/path/to/command"),
                     args: vec![],
                     cwd: None,
+                    env_vars: HashMap::new(),
                     direction: None,
                     hold_on_close: false,
                     hold_on_start: false,
@@ -2381,6 +2389,7 @@ fn test_client_messages() {
                 command: PathBuf::from("/path/to/command"),
                 args: vec![],
                 cwd: None,
+                env_vars: HashMap::new(),
                 direction: None,
                 hold_on_close: false,
                 hold_on_start: false,

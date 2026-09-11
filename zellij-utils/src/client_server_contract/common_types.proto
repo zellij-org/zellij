@@ -935,6 +935,11 @@ message FloatingCoordinate {
   }
 }
 
+message RunCommandActionEnvVar {
+    string name = 1;
+    string value = 2;
+}
+
 message RunCommandAction {
   string command = 1;
   repeated string args = 2;
@@ -944,6 +949,7 @@ message RunCommandAction {
   bool hold_on_start = 6;                              // Renumbered
   optional OriginatingPlugin originating_plugin = 7;   // Added missing originating_plugin field
   bool use_terminal_title = 8;                         // Added missing use_terminal_title field
+  repeated RunCommandActionEnvVar env_vars = 9;
 }
 
 message TiledPaneLayout {
