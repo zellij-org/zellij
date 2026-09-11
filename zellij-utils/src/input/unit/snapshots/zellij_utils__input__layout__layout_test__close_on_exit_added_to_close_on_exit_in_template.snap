@@ -22,6 +22,7 @@ Layout {
                                 RunCommand {
                                     command: "tail",
                                     args: [],
+                                    env_vars: {},
                                     cwd: None,
                                     hold_on_close: true,
                                     hold_on_start: false,
@@ -52,6 +53,7 @@ Layout {
                                 RunCommand {
                                     command: "tail",
                                     args: [],
+                                    env_vars: {},
                                     cwd: None,
                                     hold_on_close: false,
                                     hold_on_start: false,
