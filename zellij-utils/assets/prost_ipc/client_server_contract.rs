@@ -1582,6 +1582,14 @@ pub mod floating_coordinate {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunCommandActionEnvVar {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub value: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RunCommandAction {
     #[prost(string, tag="1")]
     pub command: ::prost::alloc::string::String,
@@ -1604,6 +1612,8 @@ pub struct RunCommandAction {
     /// Added missing use_terminal_title field
     #[prost(bool, tag="8")]
     pub use_terminal_title: bool,
+    #[prost(message, repeated, tag="9")]
+    pub env_vars: ::prost::alloc::vec::Vec<RunCommandActionEnvVar>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -22,6 +22,7 @@ Layout {
                                 RunCommand {
                                     command: "tail",
                                     args: [],
+                                    env_vars: {},
                                     cwd: None,
                                     hold_on_close: true,
                                     hold_on_start: false,
@@ -55,6 +56,7 @@ Layout {
                                         "-f",
                                         "/tmp/bar",
                                     ],
+                                    env_vars: {},
                                     cwd: None,
                                     hold_on_close: true,
                                     hold_on_start: false,

@@ -2844,6 +2844,7 @@ impl FileToOpen {
 pub struct CommandToRun {
     pub path: PathBuf,
     pub args: Vec<String>,
+    pub env_vars: HashMap<String, String>,
     pub cwd: Option<PathBuf>,
 }
 

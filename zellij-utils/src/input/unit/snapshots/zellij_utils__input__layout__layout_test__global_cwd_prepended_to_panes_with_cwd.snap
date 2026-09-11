@@ -43,6 +43,7 @@ Layout {
                                 RunCommand {
                                     command: "tail",
                                     args: [],
+                                    env_vars: {},
                                     cwd: Some(
                                         "/home/foo",
                                     ),
@@ -126,6 +127,7 @@ Layout {
                                 RunCommand {
                                     command: "tail",
                                     args: [],
+                                    env_vars: {},
                                     cwd: Some(
                                         "/home/foo",
                                     ),
