@@ -6340,6 +6340,58 @@ fn osc_4_set_stays_local() {
 }
 
 #[test]
+fn osc_66_scaled_text_uses_scaled_cell_widths() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    parser.advance(&mut grid, b"\x1b]66;s=2;Hi\x1b\\");
+
+    assert_eq!(grid.cursor.x, 4);
+    let row = grid.viewport.front().expect("scaled text row");
+    assert_eq!(row.columns.len(), 2);
+    assert_eq!(row.columns[0].width(), 2);
+    assert_eq!(row.columns[1].width(), 2);
+    assert!(row.columns.iter().all(|character| {
+        character.styles.text_sizing
+            == Some(crate::panes::terminal_character::TextSizing::parse("s=2").unwrap())
+    }));
+}
+
+#[test]
+fn osc_66_fractional_text_keeps_normal_cell_widths() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    parser.advance(&mut grid, b"\x1b]66;n=1:d=2;Hi\x1b\\");
+
+    assert_eq!(grid.cursor.x, 2);
+    let row = grid.viewport.front().expect("fractional text row");
+    assert_eq!(row.columns.len(), 2);
+    assert!(row.columns.iter().all(|character| character.width() == 1));
+}
+
+#[test]
+fn osc_66_explicit_width_probe_advances_by_the_requested_cells() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    parser.advance(&mut grid, b"\x1b]66;w=2; \x07");
+
+    assert_eq!(grid.cursor.x, 2);
+    assert_eq!(grid.viewport[0].columns[0].width(), 2);
+}
+
+#[test]
+fn presenterm_osc_66_capability_probe_reports_both_sizing_modes() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    parser.advance(
+        &mut grid,
+        b"\x1b]66;s=2; \x1b\\\x1b]66;n=1:d=2; \x1b\\\x1b[6n",
+    );
+
+    assert_eq!(grid.cursor.x, 3);
+    assert_eq!(grid.pending_messages_to_pty, vec![b"\x1b[1;4R"]);
+}
+
+#[test]
 fn decset_2031_enables_color_palette_notification() {
     let mut parser = vte::Parser::new();
     let mut grid = new_grid_for_forwarding_test();

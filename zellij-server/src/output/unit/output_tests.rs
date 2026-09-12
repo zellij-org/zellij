@@ -1,6 +1,6 @@
 use super::super::{
-    CharacterChunk, FloatingPanesStack, HostKittyState, KittyImageChunk, Output, OutputBuffer,
-    SixelImageChunk,
+    serialize_chunks, CharacterChunk, FloatingPanesStack, HostKittyState, KittyImageChunk, Output,
+    OutputBuffer, SixelImageChunk,
 };
 use crate::panes::kitty_graphics::parser::{
     DecodedImage, KittyAction, KittyCommandParser, KittyFormat,
@@ -8,6 +8,7 @@ use crate::panes::kitty_graphics::parser::{
 use crate::panes::kitty_graphics::store::{InternalImageId, KittyImageStore};
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::terminal_character::AnsiCode;
+use crate::panes::terminal_character::{TextSizing, DEFAULT_STYLES};
 use crate::panes::{LinkHandler, PaneId, Row, TerminalCharacter};
 use crate::ClientId;
 use std::cell::RefCell;
@@ -623,6 +624,19 @@ fn test_character_chunk_width() {
         4,
         "Width should be 4 (1 + 2 + 1) for mixed characters"
     );
+}
+
+#[test]
+fn scaled_text_is_reconstructed_as_osc_66() {
+    let sizing = TextSizing::parse("s=2").unwrap();
+    let mut styles = DEFAULT_STYLES;
+    styles.text_sizing = Some(sizing);
+    let character = TerminalCharacter::new_styled_with_width('A', styles.into(), 2);
+    let chunk = CharacterChunk::new(vec![character], 0, 0);
+
+    let output = serialize_chunks(vec![chunk], None, None, None, true, true, None, None).unwrap();
+
+    assert!(output.contains("\x1b]66;s=2;A\x1b\\"));
 }
 
 #[test]

@@ -264,7 +264,7 @@ use crate::panes::link_handler::LinkHandler;
 use crate::panes::search::SearchResult;
 use crate::panes::terminal_character::{
     AnsiCode, CharsetIndex, Cursor, CursorShape, RcCharacterStyles, StandardCharset,
-    TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
+    TerminalCharacter, TextSizing, EMPTY_TERMINAL_CHARACTER,
 };
 use crate::panes::Selection;
 use crate::ui::components::UiComponentParser;
@@ -4590,6 +4590,50 @@ impl Perform for Grid {
                     if let Some(path) = parse_osc7_path(raw) {
                         self.pending_osc7_cwd = Some(path);
                     }
+                }
+            },
+
+            // Kitty text sizing protocol. OSC 66 embeds text rather than
+            // toggling persistent terminal state, so retain the sizing on
+            // each character for reconstruction during host rendering.
+            b"66" => {
+                if params.len() < 3 {
+                    return;
+                }
+                let Some(metadata) = str::from_utf8(params[1]).ok() else {
+                    return;
+                };
+                let Some(text_sizing) = TextSizing::parse(metadata) else {
+                    return;
+                };
+                let text = params[2..]
+                    .iter()
+                    .filter_map(|part| str::from_utf8(part).ok())
+                    .collect::<Vec<_>>()
+                    .join(";");
+
+                // Packed multi-character blocks (`w` with multiple code
+                // points) need an atomic multi-cell grid primitive. Until the
+                // grid has one, preserve backwards-compatible plain text
+                // instead of reporting incorrect cursor geometry.
+                if text_sizing.width_is_explicit() && text.chars().count() != 1 {
+                    for character in text.chars() {
+                        self.print(character);
+                    }
+                    return;
+                }
+
+                for character in text.chars() {
+                    let width = text_sizing.cell_width(character);
+                    if width == 0 {
+                        continue;
+                    }
+                    let mut styles = *self.cursor.pending_styles;
+                    styles.text_sizing = Some(text_sizing);
+                    let terminal_character =
+                        TerminalCharacter::new_styled_with_width(character, styles.into(), width);
+                    self.set_preceding_character(terminal_character.clone());
+                    self.add_character(terminal_character);
                 }
             },
 
