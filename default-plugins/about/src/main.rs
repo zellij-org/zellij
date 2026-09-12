@@ -400,17 +400,22 @@ impl App {
             .with_title(Text::new(format!("{}", error)).color_range(3, ..))
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Unable to permanently dismiss tips."),
+                    Text::from("Unable to permanently dismiss tips."),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("You can do so manually by adding the following to your config:"),
+                    Text::new(
+                        "You can do so manually by adding the following to your config:"
+                            .to_string(),
+                    ),
                 ))]),
             ])
             .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
-                TextOrCustomRender::Text(Text::new("show_startup_tips false").color_range(0, ..)),
+                TextOrCustomRender::Text(
+                    Text::new("show_startup_tips false".into()).color_range(0, ..),
+                ),
             )])])
             .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
-                Text::new("<ESC> - dismiss").color_range(1, ..=4)
+                Text::new("<ESC> - dismiss".to_owned()).color_range(1, ..=4)
             }));
         error_page.render(rows, cols, &None)
     }
