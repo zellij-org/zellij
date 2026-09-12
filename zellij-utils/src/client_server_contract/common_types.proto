@@ -1226,6 +1226,7 @@ message Options {
   optional string host_notification_protocol = 67;
   optional bool scroll_mode_sync = 68;
   optional ThemeHue explicit_theme_hue = 69;
+  optional bool search_auto_jump_on_input = 70;
 }
 
 enum OnForceClose {

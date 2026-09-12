@@ -40,6 +40,7 @@ pub fn scrolling_inside_a_pane() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
@@ -59,6 +60,7 @@ pub fn scrolling_inside_a_pane() {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -94,6 +96,7 @@ pub fn sixel_image_inside_terminal_pane() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
@@ -113,6 +116,7 @@ pub fn sixel_image_inside_terminal_pane() {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -148,6 +152,7 @@ pub fn partial_sixel_image_inside_terminal_pane() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
@@ -167,6 +172,7 @@ pub fn partial_sixel_image_inside_terminal_pane() {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -196,6 +202,7 @@ pub fn overflowing_sixel_image_inside_terminal_pane() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
@@ -215,6 +222,7 @@ pub fn overflowing_sixel_image_inside_terminal_pane() {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -243,6 +251,7 @@ pub fn scrolling_through_a_sixel_image() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
@@ -262,6 +271,7 @@ pub fn scrolling_through_a_sixel_image() {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -301,6 +311,7 @@ pub fn multiple_sixel_images_in_pane() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
@@ -320,6 +331,7 @@ pub fn multiple_sixel_images_in_pane() {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -357,6 +369,7 @@ pub fn resizing_pane_with_sixel_images() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
@@ -376,6 +389,7 @@ pub fn resizing_pane_with_sixel_images() {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -416,6 +430,7 @@ pub fn changing_character_cell_size_with_sixel_images() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
@@ -435,6 +450,7 @@ pub fn changing_character_cell_size_with_sixel_images() {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -480,6 +496,7 @@ pub fn keep_working_after_corrupted_sixel_image() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
@@ -499,6 +516,7 @@ pub fn keep_working_after_corrupted_sixel_image() {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -542,6 +560,7 @@ pub fn pane_with_frame_position_is_on_frame() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
@@ -561,6 +580,7 @@ pub fn pane_with_frame_position_is_on_frame() {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -640,6 +660,7 @@ pub fn pane_with_bottom_and_right_borders_position_is_on_frame() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
@@ -659,6 +680,7 @@ pub fn pane_with_bottom_and_right_borders_position_is_on_frame() {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -741,6 +763,7 @@ fn make_terminal_pane_for_bell() -> TerminalPane {
         true,
         true,
         true,
+        true,
         false,
         None,
     )
@@ -812,6 +835,7 @@ pub fn frameless_pane_position_is_on_frame() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
@@ -831,6 +855,7 @@ pub fn frameless_pane_position_is_on_frame() {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -910,6 +935,7 @@ fn create_guest_modal_pane() -> TerminalPane {
         None,
         None,
         false,
+        true,
         true,
         true,
         true,

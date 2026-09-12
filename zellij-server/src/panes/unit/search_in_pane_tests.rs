@@ -32,6 +32,7 @@ fn create_pane() -> TerminalPane {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
@@ -51,6 +52,7 @@ fn create_pane() -> TerminalPane {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -101,6 +103,79 @@ pub fn searching_scroll_viewport() {
     assert_snapshot!(
         "grid_copy_search_scrolled_up",
         format!("{:?}", terminal_pane.grid)
+    );
+}
+
+/// Regression test for https://github.com/zellij-org/zellij/issues/5551
+///
+/// With `search_auto_jump_on_input` disabled, typing a search query (i.e. calling
+/// `update_search_term` per keystroke) must not jump the viewport around the
+/// scrollback just because the current viewport does not contain a hit yet. The
+/// auto-jump to the nearest hit belongs to explicit navigation with `n`/`p`
+/// (`search_down`/`search_up`).
+///
+/// We scroll to the bottom of the scrollback and then type "odio", a term that
+/// occurs in the scrollback above, but not in the current viewport.
+/// Pressing the navigation keys afterwards must still jump to the nearest hit.
+#[test]
+pub fn updating_the_search_term_does_not_auto_jump_when_disabled() {
+    let fake_client_id = 1;
+    let mut terminal_pane = create_pane();
+    terminal_pane.grid.update_search_auto_jump_on_input(false);
+
+    // Scroll the viewport to the very bottom of the scrollback,
+    // so that "odio" (which occurs above) is not visible
+    terminal_pane.scroll_up(4, fake_client_id);
+    terminal_pane.scroll_down(100, fake_client_id);
+    assert!(terminal_pane.grid.lines_below.is_empty());
+
+    // Now type the query one character at a time, like the client does
+    for c in "odio".chars() {
+        terminal_pane.update_search_term(&c.to_string());
+    }
+
+    // Typing the query must not have moved the viewport
+    assert!(
+        terminal_pane.grid.lines_below.is_empty(),
+        "typing the search query scrolled the viewport: \n{:?}",
+        terminal_pane.grid
+    );
+    // and no active hit should be selected
+    assert!(terminal_pane.grid.search_results.active.is_none());
+
+    // Explicit navigation must still jump to the nearest hit
+    terminal_pane.search_up();
+    assert!(terminal_pane.grid.search_results.active.is_some());
+    assert!(!terminal_pane.grid.lines_below.is_empty());
+}
+
+/// Test for https://github.com/zellij-org/zellij/issues/5551
+///
+/// The default (`search_auto_jump_on_input = true`, like in Firefox or helix) is
+/// to automatically jump to the nearest hit while typing, if the current
+/// viewport does not contain one. This test locks that default in.
+#[test]
+pub fn updating_the_search_term_auto_jumps_by_default() {
+    let fake_client_id = 1;
+    let mut terminal_pane = create_pane();
+
+    // Scroll the viewport to the very bottom of the scrollback,
+    // so that "odio" (which occurs above) is not visible
+    terminal_pane.scroll_up(4, fake_client_id);
+    terminal_pane.scroll_down(100, fake_client_id);
+    assert!(terminal_pane.grid.lines_below.is_empty());
+
+    // Now type the query one character at a time, like the client does
+    for c in "odio".chars() {
+        terminal_pane.update_search_term(&c.to_string());
+    }
+
+    // With the default on, typing the query must jump the viewport to the
+    // nearest hit, so the scrollback above the viewport is now occupied
+    assert!(
+        !terminal_pane.grid.lines_below.is_empty(),
+        "typing the search query did not auto-jump to the nearest hit: \n{:?}",
+        terminal_pane.grid
     );
 }
 

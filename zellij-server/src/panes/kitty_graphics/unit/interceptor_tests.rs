@@ -225,6 +225,7 @@ fn terminal_pane_grid_shows_ab_around_captured_apc() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
@@ -244,6 +245,7 @@ fn terminal_pane_grid_shows_ab_around_captured_apc() {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
