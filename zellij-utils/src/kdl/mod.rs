@@ -5760,7 +5760,7 @@ impl Themes {
                 if extension == "kdl" {
                     match Themes::from_path(path.clone()) {
                         Ok(themes_from_file) => themes = themes.merge(themes_from_file),
-                        Err(error) => Err::<(), anyhow::Error>(anyhow::anyhow!("{error:?}"))
+                        Err(error) => Err::<(), anyhow::Error>(anyhow::anyhow!("{error}"))
                             .with_context(|| {
                                 format!("Failed to load theme file {}", path.display())
                             })
