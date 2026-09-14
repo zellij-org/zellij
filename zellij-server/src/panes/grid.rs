@@ -12,6 +12,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::rc::Rc;
+use unicode_properties::{GeneralCategoryGroup, UnicodeGeneralCategory};
 use unicode_width::UnicodeWidthChar;
 use zellij_utils::data::{
     HighlightLayer, HighlightStyle, HostTerminalThemeMode, RegexHighlight, Style,
@@ -576,7 +577,7 @@ macro_rules! dump_screen {
             if line.is_canonical && !is_first {
                 buf.push_str("\n");
             }
-            let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
+            let s: String = line.to_text();
             // Replace the spaces at the end of the line. Sometimes, the lines are
             // collected with spaces until the end of the panel.
             buf.push_str(&s.trim_end_matches(' '));
@@ -603,7 +604,7 @@ macro_rules! dump_screen_with_ansi {
                 .columns
                 .iter()
                 .rposition(|tc| {
-                    let space = tc.character == ' ';
+                    let space = tc.character == ' ' && !tc.has_combining_marks();
                     let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
                     !space || styled // it's, something drawable
                 })
@@ -616,7 +617,7 @@ macro_rules! dump_screen_with_ansi {
                     write!(buf, "{}", tc.styles).unwrap();
                     last_styles = Some(tc.styles.clone());
                 }
-                buf.push(tc.character);
+                tc.push_cluster_to(&mut buf);
             }
             is_first = false;
         }
@@ -889,6 +890,32 @@ pub struct Grid {
     osc133_command_selection: bool,
     command_output_flash: Option<Selection>,
     word_separators: String,
+}
+
+/// True for Unicode general category Mark (Mn, Mc, Me): the nonspacing and combining marks
+/// that modify the character they follow. Thai and Lao vowels and tone marks, Devanagari
+/// matras, Hebrew points, Arabic harakat and the emoji variation selectors are all marks.
+/// Also true for the medial vowels and final consonants of Hangul Jamo, which are letters
+/// rather than marks but conjoin with the leading consonant before them just the same.
+/// The zero width joiner is deliberately not one: joining emoji into a single cluster also
+/// requires recomputing the width of that cluster, which is a separate concern.
+fn is_combining_mark(character: char) -> bool {
+    matches!(
+        character.general_category_group(),
+        GeneralCategoryGroup::Mark
+    ) || is_hangul_conjoining_jamo_vowel_or_final(character)
+}
+
+/// The medial vowels (jungseong) and final consonants (jongseong) of the Hangul Jamo block
+/// and its Extended-B block. Unicode classifies them as letters, but they have zero width
+/// because they never stand alone: a decomposed syllable is one leading consonant followed
+/// by them, and the three render as one wide grapheme cluster. Dropping them turned Korean
+/// into a row of leading consonants, which is the form macOS hands a terminal for file names.
+fn is_hangul_conjoining_jamo_vowel_or_final(character: char) -> bool {
+    matches!(
+        character,
+        '\u{1160}'..='\u{11FF}' | '\u{D7B0}'..='\u{D7C6}' | '\u{D7CB}'..='\u{D7FB}'
+    )
 }
 
 impl Grid {
@@ -2453,13 +2480,42 @@ impl Grid {
             },
         }
     }
+    /// Attach a zero width codepoint to the character preceding the cursor. Marks arriving
+    /// with no character to modify (at the start of a line, or before anything has been
+    /// printed) have nothing to attach to and are dropped, which is what every other terminal
+    /// does with them.
+    fn attach_combining_mark(&mut self, mark: char) {
+        if self.cursor.x == 0 {
+            return;
+        }
+        let y = self.cursor.y;
+        let x = self.cursor.x - 1;
+        let Some(row) = self.viewport.get_mut(y) else {
+            return;
+        };
+        // absolute_character_index maps a display column back to the character occupying it,
+        // so a mark following a wide character lands on that character rather than its
+        // second, empty column.
+        let index = row.absolute_character_index(x);
+        let Some(character) = row.columns.get_mut(index) else {
+            return;
+        };
+        character.add_combining_mark(mark);
+        self.output_buffer.update_line(y);
+    }
+
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
         let character_width = terminal_character.width();
-        // Drop zero-width Unicode/UTF-8 codepoints, like for example Variation Selectors.
-        // This breaks unicode grapheme segmentation, and is the reason why some characters
-        // aren't displayed correctly. Refer to this issue for more information:
-        //     https://github.com/zellij-org/zellij/issues/1538
+        // Zero width codepoints never get a cell of their own. Combining marks are attached to
+        // the character they modify so that the two render as a single grapheme cluster, which
+        // keeps the column count and the cursor position identical to the precomposed form of
+        // the same text. Everything else that happens to be zero width (controls, format
+        // characters such as the soft hyphen and the zero width joiner, fillers) has nothing
+        // to combine with and is dropped as before.
         if character_width == 0 {
+            if is_combining_mark(terminal_character.character) {
+                self.attach_combining_mark(terminal_character.character);
+            }
             return;
         }
         if self.cursor.x + character_width > self.width {
@@ -3296,7 +3352,7 @@ impl Grid {
             let mut terminal_col = 0;
             for terminal_character in &row.columns {
                 if (start_column..end_column).contains(&terminal_col) {
-                    line_selection.push(terminal_character.character);
+                    terminal_character.push_cluster_to(&mut line_selection);
                 }
 
                 terminal_col += terminal_character.width();
@@ -4330,13 +4386,13 @@ impl Grid {
     ) -> PaneContents {
         let mut viewport: Vec<String> = Vec::with_capacity(self.viewport.len());
         for row in &self.viewport {
-            let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+            let s: String = row.to_text();
             viewport.push(s);
         }
         let mut contents = if get_full_scrollback {
             let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
             for row in &self.lines_above {
-                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+                let s: String = row.to_text();
                 lines_above_viewport.push(s);
             }
             // Truncate to last N lines if max specified (Some(0) means "all" — no truncation)
@@ -4348,7 +4404,7 @@ impl Grid {
             }
             let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
             for row in &self.lines_below {
-                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+                let s: String = row.to_text();
                 lines_below_viewport.push(s);
             }
             PaneContents::new_with_scrollback(
@@ -4379,7 +4435,7 @@ impl Grid {
                 .columns
                 .iter()
                 .rposition(|tc| {
-                    let space = tc.character == ' ';
+                    let space = tc.character == ' ' && !tc.has_combining_marks();
                     let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
                     !space || styled
                 })
@@ -4391,7 +4447,7 @@ impl Grid {
                     write!(buf, "{}", tc.styles).unwrap();
                     last_styles = Some(tc.styles.clone());
                 }
-                buf.push(tc.character);
+                tc.push_cluster_to(&mut buf);
             }
             if last_styles.is_some() {
                 buf.push_str("\u{1b}[m");
@@ -5768,6 +5824,15 @@ impl Row {
             bg_color: None,
             osc133_markers: vec![],
         }
+    }
+    /// The text of this row, each cell rendered as its full cluster: the character together with
+    /// any combining marks attached to it.
+    pub fn to_text(&self) -> String {
+        let mut buf = String::with_capacity(self.columns.len());
+        for terminal_character in &self.columns {
+            terminal_character.push_cluster_to(&mut buf);
+        }
+        buf
     }
     pub fn from_columns(columns: VecDeque<TerminalCharacter>) -> Self {
         Row {
