@@ -13299,3 +13299,130 @@ pub fn cli_pipe_is_released_when_plugin_panics_while_handling_it() {
          otherwise the `zellij pipe` client stays blocked until the plugin is unloaded"
     );
 }
+
+#[test]
+#[ignore] // Requires the WASM fixture built by the plugin test CI job.
+fn large_scrollback_response_fits_plugin_memory() {
+    use std::time::{Duration, Instant};
+    use zellij_utils::data::{PaneContents, PaneId, PaneScrollbackResponse};
+
+    let temp_folder = tempdir().unwrap();
+    let (sender, receiver, teardown) =
+        create_plugin_thread(Some(temp_folder.path().to_path_buf()), None);
+    let mut configuration = BTreeMap::new();
+    configuration.insert("test_large_scrollback".to_owned(), "true".to_owned());
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: PluginUserConfiguration::new(configuration),
+        ..Default::default()
+    });
+    sender.send(PluginInstruction::AddClient(1)).unwrap();
+    sender
+        .send(PluginInstruction::Load(
+            Some(false),
+            false,
+            false,
+            Some("scrollback test".to_owned()),
+            run_plugin,
+            Some(1),
+            None,
+            1,
+            Size {
+                cols: 121,
+                rows: 20,
+            },
+            None,
+            None,
+            false,
+            None,
+            None,
+            None,
+        ))
+        .unwrap();
+
+    // The debug WASM interpreter takes substantially longer than the released host.
+    let deadline = Instant::now() + Duration::from_secs(180);
+    let mut plugin_error = None;
+    let mut sent_request = false;
+    let mut response_count = 0;
+    let mut complete = false;
+    while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+        let Ok((instruction, _)) = receiver.recv_timeout(remaining) else {
+            break;
+        };
+        match instruction {
+            ScreenInstruction::RequestPluginPermissions(plugin_id, permission) => {
+                assert!(permission
+                    .permissions
+                    .contains(&PermissionType::ReadPaneContents));
+                sender
+                    .send(PluginInstruction::PermissionRequestResult(
+                        plugin_id,
+                        Some(1),
+                        permission.permissions,
+                        PermissionStatus::Granted,
+                        Some(temp_folder.path().join("permissions.kdl")),
+                    ))
+                    .unwrap();
+            },
+            ScreenInstruction::PluginBytes(assets) => {
+                if assets.iter().any(|asset| {
+                    String::from_utf8_lossy(&asset.bytes)
+                        .contains("three complete scrollback reads")
+                }) {
+                    complete = true;
+                    break;
+                }
+                if !sent_request {
+                    sender
+                        .send(PluginInstruction::CliPipe {
+                            pipe_id: "scrollback_test".to_owned(),
+                            name: "test_large_scrollback".to_owned(),
+                            payload: Some(String::new()),
+                            plugin: None,
+                            args: None,
+                            configuration: None,
+                            floating: None,
+                            pane_id_to_replace: None,
+                            pane_title: None,
+                            cwd: None,
+                            skip_cache: false,
+                            cli_client_id: 1,
+                        })
+                        .unwrap();
+                    sent_request = true;
+                }
+            },
+            ScreenInstruction::GetPaneScrollback {
+                pane_id,
+                get_full_scrollback,
+                response_channel,
+                ..
+            } => {
+                assert_eq!(pane_id, PaneId::Terminal(0).into());
+                assert!(get_full_scrollback);
+                response_count += 1;
+                response_channel
+                    .send(PaneScrollbackResponse::Ok(PaneContents {
+                        lines_above_viewport: vec!["x".repeat(150); 10_000],
+                        viewport: vec!["viewport".to_owned()],
+                        lines_below_viewport: vec!["below".to_owned()],
+                        selected_text: None,
+                        cursor: Some((1, 2)),
+                    }))
+                    .unwrap();
+            },
+            ScreenInstruction::UpdatePluginLoadingStage(_, stage) if stage.is_error() => {
+                plugin_error = Some(format!("{:?}", stage));
+                break;
+            },
+            _ => {},
+        }
+    }
+    teardown();
+    assert!(
+        complete,
+        "plugin failed to render after {response_count} scrollback responses: {plugin_error:?}"
+    );
+    assert_eq!(response_count, 3);
+}
