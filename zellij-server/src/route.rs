@@ -1320,7 +1320,14 @@ pub(crate) fn route_action(
                 .send_to_screen(instruction)
                 .with_context(err_context)?;
         },
-        Action::ToggleMouseMode => {}, // Handled client side
+        Action::ToggleMouseMode => {
+            if let Some(ref os_input) = os_input {
+                os_input
+                    .send_to_client(client_id, ServerToClientMsg::ToggleMouseMode)
+                    .with_context(err_context)?;
+            }
+            drop(NotificationEnd::new(completion_tx));
+        },
         Action::PreviousSwapLayout => {
             senders
                 .send_to_screen(ScreenInstruction::PreviousSwapLayout(

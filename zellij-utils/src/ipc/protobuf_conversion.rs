@@ -20,7 +20,7 @@ use crate::{
         SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg, SixelSupportMsg,
         SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
         SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
-        TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
+        TerminalPixelDimensionsMsg, TerminalResizeMsg, ToggleMouseModeMsg, UnblockCliPipeInputMsg,
         UnblockInputThreadMsg, WebServerStartedMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
@@ -460,6 +460,9 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             ServerToClientMsg::MobileState { payload } => {
                 server_to_client_msg::Message::MobileState(mobile_state_payload_to_proto(payload))
             },
+            ServerToClientMsg::ToggleMouseMode => {
+                server_to_client_msg::Message::ToggleMouseMode(ToggleMouseModeMsg {})
+            },
         };
 
         ProtoServerToClientMsg {
@@ -705,6 +708,9 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                 Ok(ServerToClientMsg::MobileState {
                     payload: mobile_state_payload_from_proto(msg),
                 })
+            },
+            Some(server_to_client_msg::Message::ToggleMouseMode(_)) => {
+                Ok(ServerToClientMsg::ToggleMouseMode)
             },
             None => Err(anyhow!("Empty ServerToClientMsg message")),
         }
