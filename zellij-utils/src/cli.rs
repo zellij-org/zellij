@@ -226,13 +226,23 @@ pub struct WebCli {
     pub server_startup_timeout: Option<u64>,
     /// Create a login token for the web interface, will only be displayed once and cannot later be
     /// retrieved. Returns the token name and the token.
-    #[clap(long, value_parser, exclusive(true), display_order = 7)]
+    #[clap(
+        long,
+        value_parser,
+        conflicts_with_all(&["stop", "status", "daemonize", "create_read_only_token", "revoke_token", "revoke_all_tokens", "list_tokens"]),
+        display_order = 7
+    )]
     pub create_token: bool,
-    /// Optional name for the token
+    /// Optional name for the token, used together with --create-token or --create-read-only-token
     #[clap(long, value_parser, value_name = "TOKEN_NAME", display_order = 8)]
     pub token_name: Option<String>,
     /// Create a read-only login token (can only attach to existing sessions as watcher)
-    #[clap(long, value_parser, exclusive(true), display_order = 9)]
+    #[clap(
+        long,
+        value_parser,
+        conflicts_with_all(&["stop", "status", "daemonize", "create_token", "revoke_token", "revoke_all_tokens", "list_tokens"]),
+        display_order = 9
+    )]
     pub create_read_only_token: bool,
     /// Revoke a login token by its name
     #[clap(
