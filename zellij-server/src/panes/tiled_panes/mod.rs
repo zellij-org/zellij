@@ -80,6 +80,12 @@ pub struct TiledPanes {
     active_panes: ActivePanes,
     pane_frame_style: PaneFrameStyle,
     panes_to_hide: HashSet<PaneId>,
+    /// Panes that have given their space back to their neighbors until they ask for it again.
+    ///
+    /// Kept apart from `panes_to_hide`, which fullscreen overwrites wholesale: a collapsed pane
+    /// has to stay collapsed across entering and leaving fullscreen, and `panes_to_hide` is
+    /// rebuilt from both sources whenever either changes.
+    collapsed_panes: HashSet<PaneId>,
     fullscreen_is_active: Option<PaneId>,
     fullscreen_covers_ui: Rc<RefCell<bool>>,
     senders: ThreadSenders,
@@ -125,6 +131,7 @@ impl TiledPanes {
             active_panes: ActivePanes::new(&os_api),
             pane_frame_style,
             panes_to_hide: HashSet::new(),
+            collapsed_panes: HashSet::new(),
             fullscreen_is_active: None,
             fullscreen_covers_ui,
             senders,
@@ -544,6 +551,11 @@ impl TiledPanes {
                 // for the other panes in this tab
                 let is_ui_pane =
                     !p.selectable() || (p.borderless() && matches!(p.pid(), PaneId::Plugin(_)));
+                // a collapsed pane holds no space, so it must not shrink the viewport either,
+                // or the panes that grew over it would be sized as if it were still there
+                if self.collapsed_panes.contains(&p.pid()) {
+                    return None;
+                }
                 if is_ui_pane && is_inside_viewport(&self.viewport.borrow(), p) {
                     Some(geom.into())
                 } else {
@@ -2735,9 +2747,18 @@ impl TiledPanes {
     }
     pub fn extract_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
         self.reset_boundaries();
+        self.forget_collapsed_pane(&pane_id);
         self.panes.remove(&pane_id)
     }
+    /// Drop a pane's collapsed state as it leaves, so that a pane id Zellij hands out again does
+    /// not arrive already invisible.
+    fn forget_collapsed_pane(&mut self, pane_id: &PaneId) {
+        if self.collapsed_panes.remove(pane_id) {
+            self.panes_to_hide.remove(pane_id);
+        }
+    }
     pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
+        self.forget_collapsed_pane(&pane_id);
         let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,
             &self.panes_to_hide,
@@ -2808,7 +2829,7 @@ impl TiledPanes {
                 let viewport_pane = self.get_pane_mut(pid).unwrap();
                 viewport_pane.reset_size_and_position_override();
             }
-            self.panes_to_hide.clear();
+            self.panes_to_hide = self.collapsed_panes.clone();
             if let Some(fullscreen_pane) = self.get_pane_mut(fullscreen_pane_id) {
                 fullscreen_pane.reset_size_and_position_override();
             }
@@ -2854,10 +2875,19 @@ impl TiledPanes {
     }
 
     fn set_fullscreen(&mut self, pane_id: PaneId, covers_ui: bool) {
-        self.panes_to_hide = self.panes_covered_by_fullscreen(pane_id, covers_ui);
-        if self.panes_to_hide.is_empty() && !covers_ui {
+        let covered = self.panes_covered_by_fullscreen(pane_id, covers_ui);
+        if covered.is_empty() && !covers_ui {
             return;
         }
+        self.panes_to_hide = covered;
+        // a collapsed pane is hidden for its own reasons and stays that way underneath a
+        // fullscreen, so that leaving fullscreen does not hand it back space it has given up
+        self.panes_to_hide.extend(
+            self.collapsed_panes
+                .iter()
+                .copied()
+                .filter(|p| *p != pane_id),
+        );
         if covers_ui {
             self.expand_pane_over_whole_display(pane_id);
         } else {
@@ -3008,6 +3038,87 @@ impl TiledPanes {
     }
     pub fn visible_panes_count(&self) -> usize {
         self.panes.len().saturating_sub(self.panes_to_hide.len())
+    }
+    /// Take a pane out of the layout's space, or put it back, and say whether that changed
+    /// anything.
+    ///
+    /// A collapsed pane drops out of the constraint solve, so its neighbors grow over the
+    /// space it held. It keeps its size constraint the whole time, so expanding gives back
+    /// exactly the row or column the layout asked for rather than an approximation of it.
+    ///
+    /// The caller relays out the tab afterwards, which is also where the pane's geometry is
+    /// kept current: see `take_collapsed_panes`.
+    pub fn set_pane_collapsed(&mut self, pane_id: PaneId, collapsed: bool) -> bool {
+        let changed = if collapsed {
+            self.collapsed_panes.insert(pane_id)
+        } else {
+            self.collapsed_panes.remove(&pane_id)
+        };
+        if changed {
+            self.refresh_panes_to_hide();
+        }
+        changed
+    }
+    /// Rebuild the hidden set from the two things that feed it: whatever a fullscreen is
+    /// covering, and whatever has collapsed itself.
+    fn refresh_panes_to_hide(&mut self) {
+        let mut hidden = match self.fullscreen_is_active {
+            Some(fullscreen_pane_id) => {
+                let covers_ui = *self.fullscreen_covers_ui.borrow();
+                let mut covered = self.panes_covered_by_fullscreen(fullscreen_pane_id, covers_ui);
+                covered.extend(
+                    self.collapsed_panes
+                        .iter()
+                        .copied()
+                        .filter(|p| *p != fullscreen_pane_id),
+                );
+                covered
+            },
+            None => self.collapsed_panes.clone(),
+        };
+        hidden.retain(|pane_id| self.panes.contains_key(pane_id));
+        self.panes_to_hide = hidden;
+    }
+    pub fn pane_is_collapsed(&self, pane_id: &PaneId) -> bool {
+        self.collapsed_panes.contains(pane_id)
+    }
+    /// Let the collapsed panes take part in the next solve, and hand them back so the caller
+    /// can collapse them again over the result.
+    ///
+    /// Being filtered out of the solve is what stops a collapsed pane from holding space, but
+    /// it also means nothing writes geometry to it, so across a resize or a relayout it would
+    /// be left describing a display area that no longer exists. That is worse than merely
+    /// stale: the solver reconstructs the layout tree from where the panes currently sit, so
+    /// one pane in the wrong place gives the next solve a tree that does not match the screen.
+    /// Solving with them and then collapsing again over the answer keeps their geometry
+    /// current for the moment they are expanded.
+    ///
+    /// Paired with `restore_collapsed_panes`. Nesting is safe: the inner call finds nothing
+    /// left to take and restores nothing.
+    pub fn take_collapsed_panes(&mut self) -> HashSet<PaneId> {
+        let collapsed = std::mem::take(&mut self.collapsed_panes);
+        if !collapsed.is_empty() {
+            self.refresh_panes_to_hide();
+        }
+        collapsed
+    }
+    /// Put back what `take_collapsed_panes` took, and say whether there was anything to put
+    /// back. The caller solves again when there was, so the neighbors reclaim the space.
+    ///
+    /// A pane that closed while the set was out of the struct never reached
+    /// `forget_collapsed_pane`, so anything that is no longer here is dropped on the way in.
+    pub fn restore_collapsed_panes(&mut self, collapsed: HashSet<PaneId>) -> bool {
+        let panes = &self.panes;
+        let still_here: HashSet<PaneId> = collapsed
+            .into_iter()
+            .filter(|pane_id| panes.contains_key(pane_id))
+            .collect();
+        if still_here.is_empty() {
+            return false;
+        }
+        self.collapsed_panes = still_here;
+        self.refresh_panes_to_hide();
+        true
     }
     pub fn add_to_hidden_panels(&mut self, pid: PaneId) {
         self.panes_to_hide.insert(pid);

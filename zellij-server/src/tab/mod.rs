@@ -1945,6 +1945,9 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
+        // a new layout places every pane, so the collapsed ones take part and are collapsed
+        // again over the result. See TiledPanes::take_collapsed_panes.
+        let collapsed_panes_to_restore = self.tiled_panes.take_collapsed_panes();
         self.dissolve_stack_lists_for_classic_mutation();
         if let Some(layout_candidate) = self
             .swap_layouts
@@ -1986,6 +1989,12 @@ impl Tab {
         let display_area = *self.display_area.borrow();
         // we do this so that the new swap layout has a chance to pass through the constraint system
         self.tiled_panes.resize(display_area);
+        if self
+            .tiled_panes
+            .restore_collapsed_panes(collapsed_panes_to_restore)
+        {
+            self.tiled_panes.resize(display_area);
+        }
         self.set_should_clear_display_before_rendering();
         self.senders
             .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
@@ -5097,6 +5106,9 @@ impl Tab {
         // resize so the user-visible state is preserved. Without this, hidden
         // panes retain stale geometry from before the resize and the layout
         // solver fails when fullscreen is later toggled off.
+        // Collapsed panes come along for the same reason, and are collapsed again below once
+        // the new geometry is theirs. See TiledPanes::take_collapsed_panes.
+        let collapsed_panes_to_restore = self.tiled_panes.take_collapsed_panes();
         let fullscreen_pane_to_restore = self.tiled_panes.fullscreen_pane_id();
         let fullscreen_covered_ui = self.tiled_panes.fullscreen_covers_ui();
         if fullscreen_pane_to_restore.is_some() {
@@ -5125,6 +5137,13 @@ impl Tab {
         {
             self.swap_layouts.set_is_tiled_damaged();
             let _ = self.relayout_tiled_panes(false);
+        }
+        if self
+            .tiled_panes
+            .restore_collapsed_panes(collapsed_panes_to_restore)
+        {
+            // solve once more, now without them, so their neighbors take the space back
+            self.tiled_panes.resize(new_screen_size);
         }
         self.set_should_clear_display_before_rendering();
         self.senders
@@ -5654,6 +5673,24 @@ impl Tab {
     }
     pub fn set_mouse_selection_support(&mut self, pane_id: PaneId, selection_support: bool) {
         MouseHandler::set_mouse_selection_support(self, pane_id, selection_support);
+    }
+    /// Hand a tiled pane's space to its neighbors, or take it back.
+    ///
+    /// A pane that has nothing to show, such as a status bar whose content is empty, would
+    /// otherwise keep the row a layout reserved for it and draw it blank. Collapsing takes it
+    /// out of the layout's arithmetic without taking it out of the layout, so expanding puts it
+    /// back at the size the layout asked for.
+    ///
+    /// Floating panes take no space from their neighbors, so there is nothing to give back.
+    pub fn set_pane_collapsed(&mut self, pane_id: PaneId, collapsed: bool) {
+        if !self.tiled_panes.panes_contain(&pane_id) {
+            return;
+        }
+        if !self.tiled_panes.set_pane_collapsed(pane_id, collapsed) {
+            return;
+        }
+        let size = self.size;
+        self.resize_whole_tab(size).non_fatal();
     }
     pub fn close_pane(
         &mut self,

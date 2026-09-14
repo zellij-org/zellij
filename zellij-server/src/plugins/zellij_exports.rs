@@ -686,6 +686,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::SetSelfMouseSelectionSupport(selection_support) => {
                         set_self_mouse_selection_support(env, selection_support);
                     },
+                    PluginCommand::SetSelfCollapsed(collapsed) => {
+                        set_self_collapsed(env, collapsed);
+                    },
                     PluginCommand::GenerateWebLoginToken(token_label, read_only) => {
                         generate_web_login_token(env, token_label, read_only);
                     },
@@ -5279,6 +5282,22 @@ fn set_self_mouse_selection_support(env: &PluginEnv, selection_support: bool) {
             format!(
                 "failed to set plugin {} selectable from plugin {}",
                 selection_support,
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn set_self_collapsed(env: &PluginEnv, collapsed: bool) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetPaneCollapsed(
+            PaneId::Plugin(env.plugin_id),
+            collapsed,
+        ))
+        .with_context(|| {
+            format!(
+                "failed to set collapsed {} from plugin {}",
+                collapsed,
                 env.name()
             )
         })
