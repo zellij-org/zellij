@@ -1171,6 +1171,56 @@ fn store_test_kitty_image(
         .unwrap()
 }
 
+fn store_test_kitty_image_with_bytes(
+    kitty_image_store: &Rc<RefCell<KittyImageStore>>,
+    width: u32,
+    height: u32,
+    bytes: Vec<u8>,
+) -> InternalImageId {
+    kitty_image_store
+        .borrow_mut()
+        .store_image(DecodedImage {
+            bytes,
+            width,
+            height,
+            format: KittyFormat::Rgba32,
+        })
+        .unwrap()
+}
+
+fn kitty_transmit_control_and_payload(output: &str) -> (String, String) {
+    let mut control = String::new();
+    let mut payload = String::new();
+    let mut search_start = 0;
+    while let Some(position) = output[search_start..].find("\u{1b}_G") {
+        let start = search_start + position + 3;
+        let end = start + output[start..].find("\u{1b}\\").unwrap();
+        let (apc_control, apc_payload) = output[start..end]
+            .split_once(';')
+            .unwrap_or((&output[start..end], ""));
+        if apc_control.starts_with("a=t,") {
+            control = apc_control.to_owned();
+            payload.push_str(apc_payload);
+        } else if apc_control.starts_with("q=2,m=") {
+            payload.push_str(apc_payload);
+        }
+        search_start = end + 2;
+    }
+    (control, payload)
+}
+
+fn inflate_kitty_transmit_payload(payload_b64: &str) -> Vec<u8> {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine as _;
+    use std::io::Read;
+    let compressed = STANDARD.decode(payload_b64).unwrap();
+    let mut inflated = Vec::new();
+    flate2::read::ZlibDecoder::new(&compressed[..])
+        .read_to_end(&mut inflated)
+        .unwrap();
+    inflated
+}
+
 fn kitty_chunk(
     internal_image_id: InternalImageId,
     placement_uid: u64,
@@ -1295,14 +1345,49 @@ fn kitty_transmit_only_once_across_frames() {
 }
 
 #[test]
+fn kitty_transmit_payload_is_zlib_compressed_rgba() {
+    let parts = create_test_kitty_parts();
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let output = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 0, 0)], None);
+    let (control, payload) = kitty_transmit_control_and_payload(&output);
+    assert!(control.starts_with("a=t,q=2,f=32,o=z,t=d,i=2000000000,s=30,v=40,m="));
+    assert!(payload.len() < 30 * 40 * 4);
+    assert_eq!(
+        inflate_kitty_transmit_payload(&payload),
+        vec![255u8; 30 * 40 * 4]
+    );
+}
+
+#[test]
+fn kitty_transmit_chunks_incompressible_payload() {
+    let parts = create_test_kitty_parts();
+    let mut state: u32 = 0x9e37_79b9;
+    let rgba: Vec<u8> = (0..64 * 64 * 4)
+        .map(|_| {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (state >> 24) as u8
+        })
+        .collect();
+    let internal = store_test_kitty_image_with_bytes(&parts.0, 64, 64, rgba.clone());
+    let mut chunk = kitty_chunk(internal, 1, 0, 0);
+    chunk.source_px_width = 64;
+    chunk.source_px_height = 64;
+    let output = run_kitty_frame(&parts, vec![chunk], None);
+    assert!(output.contains("\u{1b}_Ga=t,q=2,f=32,o=z,t=d,i=2000000000,s=64,v=64,m=1;"));
+    assert!(output.contains("\u{1b}_Gq=2,m=1;"));
+    assert!(output.contains("\u{1b}_Gq=2,m=0;"));
+    let (_, payload) = kitty_transmit_control_and_payload(&output);
+    assert_eq!(inflate_kitty_transmit_payload(&payload), rgba);
+}
+
+#[test]
 fn kitty_placement_bytes_with_negative_z() {
     let parts = create_test_kitty_parts();
     let internal = store_test_kitty_image(&parts.0, 30, 40);
     let mut chunk = kitty_chunk(internal, 1, 5, 3);
     chunk.z_index = -1;
     let output = run_kitty_frame(&parts, vec![chunk], None);
-    assert!(output.contains("\u{1b}_Ga=t,q=2,f=32,t=d,i=2000000000,s=30,v=40,m=1;"));
-    assert!(output.contains("\u{1b}_Gq=2,m=0;"));
+    assert!(output.contains("\u{1b}_Ga=t,q=2,f=32,o=z,t=d,i=2000000000,s=30,v=40,m=0;"));
     let placement = "\u{1b}[4;6H\u{1b}[m\u{1b}_Ga=p,q=2,i=2000000000,p=1,x=0,y=0,w=30,h=40,X=0,Y=0,z=-1,C=1\u{1b}\\";
     assert!(output.contains(placement));
     let save_position = output.find("\u{1b}[s").unwrap();
@@ -1384,7 +1469,7 @@ fn kitty_diff_move_remove_free_retransmit() {
     assert!(frame_4.contains("\u{1b}_Ga=d,q=2,d=I,i=2000000000\u{1b}\\"));
     let new_internal = store_test_kitty_image(&parts.0, 30, 40);
     let frame_5 = run_kitty_frame(&parts, vec![kitty_chunk(new_internal, 2, 0, 0)], None);
-    assert!(frame_5.contains("\u{1b}_Ga=t,q=2,f=32,t=d,i=2000000001,"));
+    assert!(frame_5.contains("\u{1b}_Ga=t,q=2,f=32,o=z,t=d,i=2000000001,"));
 }
 
 #[test]
