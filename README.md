@@ -55,17 +55,29 @@ For more details about our future plans, read about upcoming features in our [ro
 
 ## How do I install it?
 
-The easiest way to install Zellij is through a [package for your OS](./docs/THIRD_PARTY_INSTALL.md).
+### Linux & macOS
 
-If one is not available for your OS, you could download a prebuilt binary from the [latest release](https://github.com/zellij-org/zellij/releases/latest) and place it in your `$PATH`. If you'd like, we could [automatically choose one for you](#try-zellij-without-installing).
+Run the installer in a terminal:
 
-You can also install (compile) with `cargo`:
+```bash
+curl -fsSL https://raw.githubusercontent.com/zellij-org/zellij/main/install.sh | bash
+```
+
+### Windows
+
+Download and run the `.msi` installer from the [latest release](https://github.com/zellij-org/zellij/releases/latest).
+
+### Other installation methods
+
+You can also use a [third-party package for your OS](./docs/THIRD_PARTY_INSTALL.md), or download a prebuilt binary from the [latest release](https://github.com/zellij-org/zellij/releases/latest) and place it in your `$PATH`.
+
+You can also install from source with `cargo`:
 
 ```
 cargo install --locked zellij
 ```
 
-#### Try Zellij without installing
+### Try Zellij without installing
 
 bash/zsh:
 ```bash
@@ -76,7 +88,7 @@ fish/xonsh:
 bash -c 'bash <(curl -L https://zellij.dev/launch)'
 ```
 
-#### Installing from `main`
+### Installing from `main`
 Installing Zellij from the `main` branch is not recommended. This branch represents pre-release code, is constantly being worked on and may contain broken or unusable features. In addition, using it may corrupt the cache for future versions, forcing users to clear it before they can use the officially released version.
 
 That being said - no-one will stop you from using it (and bug reports involving new features are greatly appreciated), but please consider using the latest release instead as detailed at the top of this section.
