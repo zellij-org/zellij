@@ -4599,6 +4599,18 @@ impl Perform for Grid {
                         self.pending_osc7_cwd = Some(path);
                     }
                 }
+                // Store the raw URI separately for forwarding to the parent terminal.
+                // Join params[1..] with ";" to preserve semicolons in the URI.
+                if params.len() >= 2 {
+                    let segments: Option<Vec<&str>> =
+                        params[1..].iter().map(|x| str::from_utf8(x).ok()).collect();
+                    if let Some(segments) = segments {
+                        let uri = segments.join(";");
+                        if !uri.is_empty() && !uri.chars().any(|c| c.is_control()) {
+                            self.osc7_payload = Some(uri);
+                        }
+                    }
+                }
             },
 
             // Set color index.
@@ -4921,23 +4933,6 @@ impl Perform for Grid {
                     if !title.is_empty() || !body.is_empty() {
                         self.pending_desktop_notifications
                             .push(PendingNotification::Osc777 { title, body });
-                    }
-                }
-            },
-
-            // Working directory reporting (OSC 7).
-            // Store the raw URI for forwarding to the parent terminal.
-            // Join params[1..] with ";" to handle URIs containing semicolons
-            // (same pattern used by the b"0"|b"2" title handler above).
-            b"7" => {
-                if params.len() >= 2 {
-                    let segments: Option<Vec<&str>> =
-                        params[1..].iter().map(|x| str::from_utf8(x).ok()).collect();
-                    if let Some(segments) = segments {
-                        let uri = segments.join(";");
-                        if !uri.is_empty() && !uri.chars().any(|c| c.is_control()) {
-                            self.osc7_payload = Some(uri);
-                        }
                     }
                 }
             },

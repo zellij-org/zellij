@@ -804,9 +804,15 @@ pub fn osc7_payload_stored_from_pty_bytes() {
     terminal_pane.handle_pty_bytes(osc7_bytes.to_vec());
 
     assert_eq!(
+        terminal_pane.drain_osc7_cwd(),
+        Some(std::path::PathBuf::from("/tmp")),
+        "OSC 7 should still update Zellij's internal CWD tracking"
+    );
+    assert!(terminal_pane.drain_osc7_cwd().is_none());
+    assert_eq!(
         terminal_pane.osc7_payload(),
         Some("file://localhost/tmp"),
-        "osc7_payload should contain the URI after OSC 7"
+        "The forwarding URI should persist after the internal CWD update is drained"
     );
 }
 
@@ -832,6 +838,10 @@ pub fn osc7_payload_preserves_percent_encoding() {
 
     let osc7_bytes = b"\x1b]7;file://localhost/path%20with%20spaces\x1b\\";
     terminal_pane.handle_pty_bytes(osc7_bytes.to_vec());
+    assert_eq!(
+        terminal_pane.drain_osc7_cwd(),
+        Some(std::path::PathBuf::from("/path with spaces")),
+    );
     assert_eq!(
         terminal_pane.osc7_payload(),
         Some("file://localhost/path%20with%20spaces"),
