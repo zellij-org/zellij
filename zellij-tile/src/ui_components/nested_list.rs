@@ -1,6 +1,5 @@
 use super::Text;
 use std::borrow::Borrow;
-use std::ops::RangeBounds;
 
 #[derive(Debug, Default, Clone)]
 pub struct NestedListItem {
@@ -9,116 +8,14 @@ pub struct NestedListItem {
 }
 
 impl NestedListItem {
-    pub fn new<S: AsRef<str>>(text: S) -> Self
-    where
-        S: ToString,
-    {
+    pub fn new(text: Text) -> Self {
         NestedListItem {
-            content: Text::new(text),
+            content: text,
             ..Default::default()
         }
     }
     pub fn indent(mut self, indentation_level: usize) -> Self {
         self.indentation_level = indentation_level;
-        self
-    }
-    pub fn selected(mut self) -> Self {
-        self.content = self.content.selected();
-        self
-    }
-    pub fn opaque(mut self) -> Self {
-        self.content = self.content.opaque();
-        self
-    }
-    pub fn color_indices(mut self, index_level: usize, indices: Vec<usize>) -> Self {
-        self.content = self.content.color_indices(index_level, indices);
-        self
-    }
-    pub fn color_range<R: RangeBounds<usize>>(mut self, index_level: usize, indices: R) -> Self {
-        self.content = self.content.color_range(index_level, indices);
-        self
-    }
-    pub fn color_substring<S: AsRef<str>>(mut self, index_level: usize, substr: S) -> Self {
-        self.content = self.content.color_substring(index_level, substr);
-        self
-    }
-    pub fn color_nth_substring<S: AsRef<str>>(
-        mut self,
-        index_level: usize,
-        substr: S,
-        occurrence_index: usize,
-    ) -> Self {
-        self.content = self
-            .content
-            .color_nth_substring(index_level, substr, occurrence_index);
-        self
-    }
-    pub fn color_last_substring<S: AsRef<str>>(mut self, index_level: usize, substr: S) -> Self {
-        self.content = self.content.color_last_substring(index_level, substr);
-        self
-    }
-    pub fn color_all(mut self, index_level: usize) -> Self {
-        self.content = self.content.color_all(index_level);
-        self
-    }
-    pub fn error_color_indices(mut self, indices: Vec<usize>) -> Self {
-        self.content = self.content.error_color_indices(indices);
-        self
-    }
-    pub fn error_color_range<R: RangeBounds<usize>>(mut self, indices: R) -> Self {
-        self.content = self.content.error_color_range(indices);
-        self
-    }
-    pub fn error_color_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
-        self.content = self.content.error_color_substring(substr);
-        self
-    }
-    pub fn error_color_nth_substring<S: AsRef<str>>(
-        mut self,
-        substr: S,
-        occurrence_index: usize,
-    ) -> Self {
-        self.content = self
-            .content
-            .error_color_nth_substring(substr, occurrence_index);
-        self
-    }
-    pub fn error_color_last_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
-        self.content = self.content.error_color_last_substring(substr);
-        self
-    }
-    pub fn error_color_all(mut self) -> Self {
-        self.content = self.content.error_color_all();
-        self
-    }
-    pub fn success_color_indices(mut self, indices: Vec<usize>) -> Self {
-        self.content = self.content.success_color_indices(indices);
-        self
-    }
-    pub fn success_color_range<R: RangeBounds<usize>>(mut self, indices: R) -> Self {
-        self.content = self.content.success_color_range(indices);
-        self
-    }
-    pub fn success_color_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
-        self.content = self.content.success_color_substring(substr);
-        self
-    }
-    pub fn success_color_nth_substring<S: AsRef<str>>(
-        mut self,
-        substr: S,
-        occurrence_index: usize,
-    ) -> Self {
-        self.content = self
-            .content
-            .success_color_nth_substring(substr, occurrence_index);
-        self
-    }
-    pub fn success_color_last_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
-        self.content = self.content.success_color_last_substring(substr);
-        self
-    }
-    pub fn success_color_all(mut self) -> Self {
-        self.content = self.content.success_color_all();
         self
     }
     pub fn serialize(&self) -> String {

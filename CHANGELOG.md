@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* (BREAKING CHANGE zellij-tile) `NestedListItem` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611) (Thanks @Zykino)
 
 ## [0.45.1] - 2026-08-28
 * fix: nested-session detection over SSH (https://github.com/zellij-org/zellij/pull/5522)

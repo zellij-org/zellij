@@ -449,27 +449,31 @@ impl PresetsScreen {
         let default_text = "1. Default";
         let (mut list_items, max_width) = if cols >= widths.0 {
             let list_items = vec![
-                NestedListItem::new(default_text).color_range(1, ..),
-                NestedListItem::new("All modes available directly from the base mode, eg.:")
+                NestedListItem::new(Text::from(default_text).color_range(1, ..)),
+                NestedListItem::new("All modes available directly from the base mode, eg.:".into())
                     .indent(1),
-                NestedListItem::new(format!(
-                    "{} p - to enter PANE mode",
-                    primary_modifier_key_text
-                ))
-                .color_range(3, ..primary_modifier_key_text_len + 3)
-                .color_range(
-                    2,
-                    primary_modifier_key_text_len + 14..primary_modifier_key_text_len + 18,
+                NestedListItem::new(
+                    Text::from(format!(
+                        "{} p - to enter PANE mode",
+                        primary_modifier_key_text
+                    ))
+                    .color_range(3, ..primary_modifier_key_text_len + 3)
+                    .color_range(
+                        2,
+                        primary_modifier_key_text_len + 14..primary_modifier_key_text_len + 18,
+                    ),
                 )
                 .indent(1),
-                NestedListItem::new(format!(
-                    "{} t - to enter TAB mode",
-                    primary_modifier_key_text
-                ))
-                .color_range(3, ..primary_modifier_key_text_len + 3)
-                .color_range(
-                    2,
-                    primary_modifier_key_text_len + 14..primary_modifier_key_text_len + 17,
+                NestedListItem::new(
+                    Text::from(format!(
+                        "{} t - to enter TAB mode",
+                        primary_modifier_key_text
+                    ))
+                    .color_range(3, ..primary_modifier_key_text_len + 3)
+                    .color_range(
+                        2,
+                        primary_modifier_key_text_len + 14..primary_modifier_key_text_len + 17,
+                    ),
                 )
                 .indent(1),
             ];
