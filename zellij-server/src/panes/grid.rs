@@ -889,6 +889,7 @@ pub struct Grid {
     osc133_command_selection: bool,
     command_output_flash: Option<Selection>,
     word_separators: String,
+    pub osc7_payload: Option<String>,
 }
 
 impl Grid {
@@ -1262,6 +1263,7 @@ impl Grid {
             osc133_command_selection: true,
             command_output_flash: None,
             word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
+            osc7_payload: None,
         }
     }
     pub fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
@@ -1269,6 +1271,11 @@ impl Grid {
         if self.word_separators != word_separators {
             self.word_separators = word_separators.to_owned();
         }
+    }
+    /// Returns the last OSC 7 working directory URI reported by the child process,
+    /// or `None` if no OSC 7 has been received (or was rejected for invalid content).
+    pub fn osc7_payload(&self) -> Option<&str> {
+        self.osc7_payload.as_deref()
     }
     pub fn render_full_viewport(&mut self) {
         self.output_buffer.update_all_lines();
@@ -2812,6 +2819,7 @@ impl Grid {
         self.pane_default_fg = None;
         self.pane_default_bg = None;
         self.osc133_markers_seen = false;
+        self.osc7_payload = None;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }
@@ -4589,6 +4597,18 @@ impl Perform for Grid {
                 if let Some(raw) = params.get(1) {
                     if let Some(path) = parse_osc7_path(raw) {
                         self.pending_osc7_cwd = Some(path);
+                    }
+                }
+                // Store the raw URI separately for forwarding to the parent terminal.
+                // Join params[1..] with ";" to preserve semicolons in the URI.
+                if params.len() >= 2 {
+                    let segments: Option<Vec<&str>> =
+                        params[1..].iter().map(|x| str::from_utf8(x).ok()).collect();
+                    if let Some(segments) = segments {
+                        let uri = segments.join(";");
+                        if !uri.is_empty() && !uri.chars().any(|c| c.is_control()) {
+                            self.osc7_payload = Some(uri);
+                        }
                     }
                 }
             },

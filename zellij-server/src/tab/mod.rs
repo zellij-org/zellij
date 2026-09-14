@@ -700,6 +700,9 @@ pub trait Pane {
         false
     }
     fn consume_bell(&mut self) {}
+    fn osc7_payload(&self) -> Option<&str> {
+        None
+    }
     fn set_bell_notification(&mut self, _val: bool) {}
     fn get_bell_notification(&self) -> bool {
         false
