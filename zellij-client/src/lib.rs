@@ -672,7 +672,10 @@ pub async fn run_remote_client_terminal_loop(
                     if reannounce_scheduler.on_tick(std::time::Instant::now()) {
                         let announce = nested_session::NestedSessionMessage::Announce {
                             session_name: session_name.clone(),
-                            capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
+                            capabilities: vec![
+                                nested_session::NestedSessionCapability::NestedControl,
+                                nested_session::NestedSessionCapability::HintReporting,
+                            ],
                         };
                         let mut stdout = os_input.get_stdout_writer();
                         if stdout
@@ -869,7 +872,10 @@ pub fn start_remote_client(
     stdout.write_all(ENABLE_FOCUS_REPORTING.as_bytes()).unwrap();
     let announce = nested_session::NestedSessionMessage::Announce {
         session_name: remote_session_name.clone(),
-        capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
+        capabilities: vec![
+            nested_session::NestedSessionCapability::NestedControl,
+            nested_session::NestedSessionCapability::HintReporting,
+        ],
     };
     stdout
         .write_all(&nested_session::encode_frame(&announce))
@@ -1187,7 +1193,10 @@ pub fn start_client(
     stdout.write_all(ENABLE_FOCUS_REPORTING.as_bytes()).unwrap();
     let announce = nested_session::NestedSessionMessage::Announce {
         session_name: own_session_name.clone(),
-        capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
+        capabilities: vec![
+            nested_session::NestedSessionCapability::NestedControl,
+            nested_session::NestedSessionCapability::HintReporting,
+        ],
     };
     stdout
         .write_all(&nested_session::encode_frame(&announce))

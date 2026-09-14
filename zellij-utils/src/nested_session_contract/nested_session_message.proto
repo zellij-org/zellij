@@ -15,12 +15,17 @@ message NestedSessionMessage {
     AncestryUpdate ancestry_update = 12;
     Ping ping = 13;
     ShortcutUpdate shortcut_update = 14;
+    GuestModeUpdate guest_mode_update = 15;
+    RequestGuestKeybinds request_guest_keybinds = 16;
+    GuestKeybindsUpdate guest_keybinds_update = 17;
   }
 }
 
 enum NestedCapability {
   NESTED_CAPABILITY_UNSPECIFIED = 0;
   NESTED_CAPABILITY_NESTED_CONTROL = 1;
+  // The peer can report its input mode and keybindings to its host.
+  NESTED_CAPABILITY_HINT_REPORTING = 2;
 }
 
 enum NestedDirection {
@@ -77,4 +82,29 @@ message AncestryUpdate {
 }
 
 message Ping {
+}
+
+// Sent by a guest to its host whenever the guest's input mode changes, so the host
+// knows which of the guest's keybindings currently apply. `base_mode` is the mode the
+// guest returns to, empty when the guest does not report one; a host needs it to tell
+// which of the guest's bindings are inherited from its base mode rather than specific to
+// the mode it is in now.
+message GuestModeUpdate {
+  string mode = 1;
+  string base_mode = 2;
+}
+
+// Sent by a host to ask a guest for its full keybinding table.
+message RequestGuestKeybinds {
+}
+
+// A guest's answer to RequestGuestKeybinds.
+//
+// The table is carried as an encoded plugin-API `InitialKeybindsPayload` rather than
+// being redescribed here, because describing keybindings natively would mean pulling the
+// whole `Action` schema into this contract. Protobuf's unknown-field and unknown-enum
+// handling means a host and a guest built from different Zellij versions still exchange
+// everything they both understand.
+message GuestKeybindsUpdate {
+  bytes keybinds_payload = 1;
 }
