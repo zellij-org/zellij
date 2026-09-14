@@ -193,30 +193,29 @@ impl RunPluginOrAlias {
             (
                 RunPluginOrAlias::Alias(self_alias),
                 Some(Run::Plugin(RunPluginOrAlias::Alias(run_alias))),
-            ) => {
-                self_alias.name == run_alias.name
-                    && self_alias
-                        .configuration
-                        .as_ref()
-                        // we do the is_empty() checks because an empty configuration is the same as no
-                        // configuration (i.e. None)
-                        .and_then(|c| if c.inner().is_empty() { None } else { Some(c) })
-                        == run_alias.configuration.as_ref().and_then(|c| {
-                            let mut to_compare = c.inner().clone();
-                            // caller_cwd is a special attribute given to alias and should not be
-                            // considered when weighing configuration equivalency
-                            to_compare.remove("caller_cwd");
-                            if to_compare.is_empty() {
-                                None
-                            } else {
-                                Some(c)
-                            }
-                        })
-            },
+            ) => self_alias == run_alias,
             (
                 RunPluginOrAlias::Alias(self_alias),
                 Some(Run::Plugin(RunPluginOrAlias::RunPlugin(other_run_plugin))),
-            ) => self_alias.run_plugin.as_ref() == Some(other_run_plugin),
+            ) => {
+                if self_alias.run_plugin.as_ref() == Some(other_run_plugin) {
+                    // Alias explicitly resolves to this plugin (e.g., via a plugins { ... } block defining file/web locations)
+                    true
+                } else if self_alias.run_plugin.is_none() {
+                    // Built-in aliases (like "session-manager") often don't have run_plugin explicitly populated.
+                    // Their background instance location is typically "zellij:<alias_name>".
+                    let location_str = other_run_plugin.location.to_string();
+                    let name_matches = location_str == self_alias.name || location_str == format!("zellij:{}", self_alias.name);
+
+                    if !name_matches {
+                        return false;
+                    }
+
+                    self_alias.configuration.as_ref().unwrap_or(&PluginUserConfiguration::default()) == &other_run_plugin.configuration
+                } else {
+                    false
+                }
+            },
             (
                 RunPluginOrAlias::RunPlugin(self_run_plugin),
                 Some(Run::Plugin(RunPluginOrAlias::RunPlugin(other_run_plugin))),
@@ -525,8 +524,30 @@ impl PartialEq for RunPlugin {
 }
 impl Eq for RunPlugin {}
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct PluginUserConfiguration(BTreeMap<String, String>);
+
+impl PartialEq for PluginUserConfiguration {
+    fn eq(&self, other: &Self) -> bool {
+        let mut self_config = self.0.clone();
+        self_config.remove("caller_cwd");
+
+        let mut other_config = other.0.clone();
+        other_config.remove("caller_cwd");
+
+        self_config == other_config
+    }
+}
+
+impl Eq for PluginUserConfiguration {}
+
+impl std::hash::Hash for PluginUserConfiguration {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let mut config = self.0.clone();
+        config.remove("caller_cwd");
+        config.hash(state);
+    }
+}
 
 impl PluginUserConfiguration {
     pub fn new(mut configuration: BTreeMap<String, String>) -> Self {
