@@ -1200,6 +1200,9 @@ pub enum InputMode {
     /// `Tmux` mode allows for basic tmux keybindings functionality
     #[serde(alias = "tmux")]
     Tmux,
+    /// `ConfirmQuit` mode is used transiently while the quit confirmation prompt is open
+    #[serde(alias = "confirmquit")]
+    ConfirmQuit,
 }
 
 impl Default for InputMode {
@@ -1387,6 +1390,7 @@ impl FromStr for InputMode {
             "move" | "Move" => Ok(InputMode::Move),
             "prompt" | "Prompt" => Ok(InputMode::Prompt),
             "tmux" | "Tmux" => Ok(InputMode::Tmux),
+            "confirmquit" | "ConfirmQuit" => Ok(InputMode::ConfirmQuit),
             "entersearch" | "Entersearch" | "EnterSearch" => Ok(InputMode::EnterSearch),
             e => Err(ConversionError::UnknownInputMode(e.into())),
         }

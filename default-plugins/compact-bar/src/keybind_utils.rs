@@ -729,6 +729,12 @@ impl KeybindProcessor {
                 ];
                 Self::find_predetermined_actions(mode_info, mode, ordered_predicates)
             },
+            InputMode::ConfirmQuit => {
+                vec![
+                    ("y".to_owned(), "Yes".to_owned()),
+                    ("n".to_owned(), "No".to_owned()),
+                ]
+            },
             InputMode::EnterSearch
             | InputMode::RenameTab
             | InputMode::RenamePane

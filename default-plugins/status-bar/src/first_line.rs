@@ -3,6 +3,7 @@ use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 
 use crate::color_elements;
+use crate::one_line_ui::confirm_quit_hints;
 use crate::{
     action_key, action_key_group, get_common_modifiers, style_key_with_modifier, TO_NORMAL,
 };
@@ -589,7 +590,9 @@ fn get_key_shortcut_for_mode<'a>(
     mode: &InputMode,
 ) -> Option<&'a mut KeyShortcut> {
     let key_action = match mode {
-        InputMode::Normal | InputMode::Prompt | InputMode::Tmux => return None,
+        InputMode::Normal | InputMode::Prompt | InputMode::Tmux | InputMode::ConfirmQuit => {
+            return None
+        },
         InputMode::Locked => KeyAction::Lock,
         InputMode::Pane | InputMode::RenamePane => KeyAction::Pane,
         InputMode::Tab | InputMode::RenameTab => KeyAction::Tab,
@@ -615,6 +618,10 @@ pub fn first_line(
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts, false);
     let binds = &help.get_mode_keybinds();
+
+    if help.mode == InputMode::ConfirmQuit {
+        return confirm_quit_hints(help);
+    }
     // Unselect all by default
     let mut default_keys = vec![
         KeyShortcut::new(
