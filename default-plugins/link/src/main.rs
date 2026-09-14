@@ -330,8 +330,9 @@ fn expand_path(path: &str, env_vars: &BTreeMap<String, String>) -> String {
             }
             i = end_idx;
         } else {
-            result.push(bytes[i] as char);
-            i += 1;
+            let ch = after_tilde[i..].chars().next().unwrap();
+            result.push(ch);
+            i += ch.len_utf8();
         }
     }
 
@@ -438,6 +439,25 @@ mod tests {
     fn expand_path_no_expansion_needed() {
         let env = BTreeMap::new();
         assert_eq!(expand_path("/absolute/path", &env), "/absolute/path");
+    }
+
+    #[test]
+    fn expand_path_preserves_unicode() {
+        let env = BTreeMap::new();
+        assert_eq!(
+            expand_path("/tmp/项目/ファイル🚀.rs", &env),
+            "/tmp/项目/ファイル🚀.rs"
+        );
+    }
+
+    #[test]
+    fn expand_path_preserves_unicode_after_env_expansion() {
+        let mut env = BTreeMap::new();
+        env.insert("HOME".into(), "/home/用户".into());
+        assert_eq!(
+            expand_path("$HOME/项目/ファイル🚀.rs", &env),
+            "/home/用户/项目/ファイル🚀.rs"
+        );
     }
 
     // --- regex_escape tests ---
