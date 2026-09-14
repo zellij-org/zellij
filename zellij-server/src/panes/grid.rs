@@ -5994,8 +5994,10 @@ impl Row {
         self.width = None;
     }
     pub fn truncate(&mut self, x: usize) {
-        let width_offset = self.excess_width_until(x);
-        let truncate_position = x.saturating_sub(width_offset);
+        // `x` is a display column; `columns` is indexed by character. `excess_width_until` counts
+        // the excess of the first `x` *characters*, which over-counts once more than one wide
+        // character precedes the column, so convert the same way the rest of `Row` does.
+        let truncate_position = self.position_accounting_for_widechars(x);
         if truncate_position < self.columns.len() {
             self.columns.truncate(truncate_position);
         }
