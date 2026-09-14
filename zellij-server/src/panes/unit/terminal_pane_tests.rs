@@ -891,6 +891,65 @@ pub fn osc7_payload_rejects_c1_control_characters() {
 }
 
 #[test]
+pub fn osc7_payload_rejects_an_empty_payload() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    terminal_pane.handle_pty_bytes(b"\x1b]7;file://localhost/tmp\x1b\\".to_vec());
+    terminal_pane.handle_pty_bytes(b"\x1b]7;\x1b\\".to_vec());
+
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/tmp"),
+        "An empty OSC 7 is rejected and the previous URI is retained"
+    );
+}
+
+#[test]
+pub fn osc7_payload_rejects_invalid_utf8() {
+    use vte::Perform;
+
+    let mut terminal_pane = make_terminal_pane_for_bell();
+    terminal_pane.handle_pty_bytes(b"\x1b]7;file://localhost/tmp\x1b\\".to_vec());
+
+    let params: &[&[u8]] = &[b"7", b"file://localhost/\xff\xfe"];
+    terminal_pane.grid.osc_dispatch(params, false);
+
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/tmp"),
+        "A non-UTF-8 OSC 7 is rejected and the previous URI is retained"
+    );
+}
+
+#[test]
+pub fn osc7_payload_joins_semicolon_separated_segments() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    terminal_pane.handle_pty_bytes(b"\x1b]7;file://localhost/a;b;c\x1b\\".to_vec());
+
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/a;b;c"),
+        "A URI containing semicolons is reassembled from the split params"
+    );
+}
+
+#[test]
+pub fn osc7_payload_is_cleared_by_a_terminal_reset() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    terminal_pane.handle_pty_bytes(b"\x1b]7;file://localhost/tmp\x1b\\".to_vec());
+    assert_eq!(terminal_pane.osc7_payload(), Some("file://localhost/tmp"));
+
+    terminal_pane.handle_pty_bytes(b"\x1bc".to_vec());
+
+    assert!(
+        terminal_pane.osc7_payload().is_none(),
+        "RIS clears the reported working directory"
+    );
+}
+
+#[test]
 pub fn frameless_pane_position_is_on_frame() {
     let mut fake_win_size = PaneGeom {
         x: 10,

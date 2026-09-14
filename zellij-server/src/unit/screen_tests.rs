@@ -13695,6 +13695,315 @@ fn a_client_whose_host_focus_was_never_reported_counts_as_focused() {
     );
 }
 
+fn collect_rendered_output_per_client(
+    server_receiver: &ServerReceiver,
+) -> HashMap<ClientId, String> {
+    let mut rendered: HashMap<ClientId, String> = HashMap::new();
+    while let Ok((instruction, _)) = server_receiver.try_recv() {
+        if let ServerInstruction::Render(Some(client_map)) = instruction {
+            for (client_id, content) in client_map {
+                rendered.entry(client_id).or_default().push_str(&content);
+            }
+        }
+    }
+    rendered
+}
+
+fn osc7_sequences_in(rendered: &str) -> Vec<String> {
+    let opener = "\u{1b}]7;";
+    let terminator = "\u{1b}\\";
+    let mut sequences = vec![];
+    let mut rest = rendered;
+    while let Some(start) = rest.find(opener) {
+        let payload_onwards = &rest[start + opener.len()..];
+        match payload_onwards.find(terminator) {
+            Some(end) => {
+                sequences.push(payload_onwards[..end].to_owned());
+                rest = &payload_onwards[end + terminator.len()..];
+            },
+            None => {
+                sequences.push(payload_onwards.to_owned());
+                break;
+            },
+        }
+    }
+    sequences
+}
+
+fn render_and_collect_osc7(
+    screen: &mut Screen,
+    server_receiver: &ServerReceiver,
+) -> HashMap<ClientId, Vec<String>> {
+    screen.render_to_clients().unwrap();
+    collect_rendered_output_per_client(server_receiver)
+        .into_iter()
+        .map(|(client_id, rendered)| (client_id, osc7_sequences_in(&rendered)))
+        .collect()
+}
+
+fn forwarded_osc7_for(
+    osc7_per_client: &HashMap<ClientId, Vec<String>>,
+    client_id: ClientId,
+) -> Vec<String> {
+    osc7_per_client.get(&client_id).cloned().unwrap_or_default()
+}
+
+fn emit_osc7_from_pane(screen: &mut Screen, client_id: ClientId, terminal_id: u32, uri: &str) {
+    emit_bytes_from_pane(
+        screen,
+        client_id,
+        terminal_id,
+        format!("\u{1b}]7;{}\u{1b}\\", uri).into_bytes(),
+    );
+}
+
+fn emit_bytes_from_pane(
+    screen: &mut Screen,
+    client_id: ClientId,
+    terminal_id: u32,
+    bytes: Vec<u8>,
+) {
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .handle_pty_bytes(terminal_id, bytes)
+        .unwrap();
+}
+
+fn settle_renders(screen: &mut Screen, server_receiver: &ServerReceiver) {
+    for _ in 0..3 {
+        screen.render_to_clients().unwrap();
+    }
+    while server_receiver.try_recv().is_ok() {}
+}
+
+fn screen_with_one_pane_for_osc7() -> (Screen, ServerReceiver) {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    settle_renders(&mut screen, &server_receiver);
+    (screen, server_receiver)
+}
+
+fn screen_with_two_panes_for_osc7(session_is_mirrored: bool) -> (Screen, ServerReceiver) {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, session_is_mirrored);
+    new_tab(&mut screen, 1, 0);
+    {
+        let active_tab = screen.get_active_tab_mut(1).unwrap();
+        active_tab
+            .horizontal_split(PaneId::Terminal(2), None, 1, None, None)
+            .unwrap();
+        active_tab.move_focus_up(1).unwrap();
+    }
+    settle_renders(&mut screen, &server_receiver);
+    (screen, server_receiver)
+}
+
+#[test]
+fn an_osc_7_from_the_focused_pane_is_forwarded_to_the_host_terminal() {
+    let (mut screen, server_receiver) = screen_with_one_pane_for_osc7();
+
+    emit_osc7_from_pane(&mut screen, 1, 1, "file://host/tmp");
+    let forwarded = render_and_collect_osc7(&mut screen, &server_receiver);
+
+    assert_eq!(
+        forwarded_osc7_for(&forwarded, 1),
+        vec!["file://host/tmp".to_owned()],
+        "the working directory of the focused pane reaches the host terminal"
+    );
+}
+
+#[test]
+fn an_unchanged_osc_7_is_not_forwarded_again() {
+    let (mut screen, server_receiver) = screen_with_one_pane_for_osc7();
+
+    emit_osc7_from_pane(&mut screen, 1, 1, "file://host/tmp");
+    render_and_collect_osc7(&mut screen, &server_receiver);
+
+    emit_osc7_from_pane(&mut screen, 1, 1, "file://host/tmp");
+    let forwarded = render_and_collect_osc7(&mut screen, &server_receiver);
+
+    assert!(
+        forwarded_osc7_for(&forwarded, 1).is_empty(),
+        "a pane repeating its working directory does not produce a second report"
+    );
+}
+
+#[test]
+fn a_changed_osc_7_from_the_focused_pane_is_forwarded_again() {
+    let (mut screen, server_receiver) = screen_with_one_pane_for_osc7();
+
+    emit_osc7_from_pane(&mut screen, 1, 1, "file://host/first");
+    render_and_collect_osc7(&mut screen, &server_receiver);
+
+    emit_osc7_from_pane(&mut screen, 1, 1, "file://host/second");
+    let forwarded = render_and_collect_osc7(&mut screen, &server_receiver);
+
+    assert_eq!(
+        forwarded_osc7_for(&forwarded, 1),
+        vec!["file://host/second".to_owned()],
+        "a pane changing directory produces a new report"
+    );
+}
+
+#[test]
+fn a_bel_terminated_osc_7_is_forwarded_with_a_string_terminator() {
+    let (mut screen, server_receiver) = screen_with_one_pane_for_osc7();
+
+    emit_bytes_from_pane(&mut screen, 1, 1, b"\x1b]7;file://host/tmp\x07".to_vec());
+    let forwarded = render_and_collect_osc7(&mut screen, &server_receiver);
+
+    assert_eq!(
+        forwarded_osc7_for(&forwarded, 1),
+        vec!["file://host/tmp".to_owned()],
+        "the report is re-emitted in its string-terminated form regardless of how it arrived"
+    );
+}
+
+#[test]
+fn an_osc_7_from_an_unfocused_pane_is_not_forwarded() {
+    let (mut screen, server_receiver) = screen_with_two_panes_for_osc7(true);
+
+    emit_osc7_from_pane(&mut screen, 1, 2, "file://host/unfocused");
+    let forwarded = render_and_collect_osc7(&mut screen, &server_receiver);
+
+    assert!(
+        forwarded_osc7_for(&forwarded, 1).is_empty(),
+        "only the focused pane reports its working directory"
+    );
+}
+
+#[test]
+fn changing_focus_forwards_the_osc_7_of_the_newly_focused_pane() {
+    let (mut screen, server_receiver) = screen_with_two_panes_for_osc7(true);
+
+    emit_osc7_from_pane(&mut screen, 1, 1, "file://host/first");
+    emit_osc7_from_pane(&mut screen, 1, 2, "file://host/second");
+    let forwarded = render_and_collect_osc7(&mut screen, &server_receiver);
+    assert_eq!(
+        forwarded_osc7_for(&forwarded, 1),
+        vec!["file://host/first".to_owned()],
+    );
+
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .move_focus_down(1)
+        .unwrap();
+    let forwarded = render_and_collect_osc7(&mut screen, &server_receiver);
+    assert_eq!(
+        forwarded_osc7_for(&forwarded, 1),
+        vec!["file://host/second".to_owned()],
+        "focusing the lower pane reports its working directory"
+    );
+
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .move_focus_up(1)
+        .unwrap();
+    let forwarded = render_and_collect_osc7(&mut screen, &server_receiver);
+    assert_eq!(
+        forwarded_osc7_for(&forwarded, 1),
+        vec!["file://host/first".to_owned()],
+        "focusing back reports the first pane's working directory again"
+    );
+}
+
+#[test]
+fn focusing_a_pane_that_never_reported_an_osc_7_forwards_nothing() {
+    let (mut screen, server_receiver) = screen_with_two_panes_for_osc7(true);
+
+    emit_osc7_from_pane(&mut screen, 1, 1, "file://host/first");
+    render_and_collect_osc7(&mut screen, &server_receiver);
+
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .move_focus_down(1)
+        .unwrap();
+    let forwarded = render_and_collect_osc7(&mut screen, &server_receiver);
+    assert!(
+        forwarded_osc7_for(&forwarded, 1).is_empty(),
+        "a pane with nothing to report leaves the host terminal as it was"
+    );
+
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .move_focus_up(1)
+        .unwrap();
+    let forwarded = render_and_collect_osc7(&mut screen, &server_receiver);
+    assert_eq!(
+        forwarded_osc7_for(&forwarded, 1),
+        vec!["file://host/first".to_owned()],
+        "returning to the reporting pane restates its working directory"
+    );
+}
+
+#[test]
+fn clients_focused_on_different_panes_are_forwarded_their_own_osc_7() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, server_receiver) = screen_with_two_panes_for_osc7(false);
+    screen.set_client_size(2, size);
+    screen.add_client(2, false).unwrap();
+    screen
+        .get_active_tab_mut(2)
+        .unwrap()
+        .move_focus_down(2)
+        .unwrap();
+    settle_renders(&mut screen, &server_receiver);
+
+    emit_osc7_from_pane(&mut screen, 1, 1, "file://host/upper");
+    emit_osc7_from_pane(&mut screen, 1, 2, "file://host/lower");
+    let forwarded = render_and_collect_osc7(&mut screen, &server_receiver);
+
+    assert_eq!(
+        forwarded_osc7_for(&forwarded, 1),
+        vec!["file://host/upper".to_owned()],
+        "the first client is told about the pane it is focused on"
+    );
+    assert_eq!(
+        forwarded_osc7_for(&forwarded, 2),
+        vec!["file://host/lower".to_owned()],
+        "the second client is told about the pane it is focused on"
+    );
+}
+
+#[test]
+fn a_departing_client_leaves_no_osc_7_state_behind() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, server_receiver) = screen_with_one_pane_for_osc7();
+    screen.set_client_size(2, size);
+    screen.add_client(2, false).unwrap();
+
+    emit_osc7_from_pane(&mut screen, 1, 1, "file://host/tmp");
+    render_and_collect_osc7(&mut screen, &server_receiver);
+    assert!(screen.last_forwarded_osc7.contains_key(&2));
+
+    screen.remove_client(2).unwrap();
+
+    assert!(
+        !screen.last_forwarded_osc7.contains_key(&2),
+        "the forwarded working directory is forgotten"
+    );
+}
+
 fn resize_pty_pixel_dimensions(
     instruction: &PtyWriteInstruction,
 ) -> Option<(Option<u16>, Option<u16>)> {
