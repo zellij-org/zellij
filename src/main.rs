@@ -15,7 +15,12 @@ use zellij_utils::{
 };
 
 fn main() {
-    configure_logger();
+    if let Err(e) = configure_logger() {
+        // continue without file logging rather than crash: eg. the tmp dir
+        // being on a full tmpfs (EDQUOT) or otherwise unwritable shouldn't
+        // prevent zellij from starting
+        eprintln!("Failed to set up zellij log file: {}", e);
+    }
     create_config_and_cache_folders();
     let opts = CliArgs::parse();
 
