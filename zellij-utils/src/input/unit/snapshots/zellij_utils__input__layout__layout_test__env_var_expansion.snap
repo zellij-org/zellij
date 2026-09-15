@@ -109,6 +109,7 @@ Layout {
                                 RunCommand {
                                     command: "ls",
                                     args: [],
+                                    env_vars: {},
                                     cwd: Some(
                                         "/somewhere",
                                     ),
@@ -193,6 +194,7 @@ Layout {
                                 RunCommand {
                                     command: "/home/aram/backup/executable",
                                     args: [],
+                                    env_vars: {},
                                     cwd: Some(
                                         "/abs/path",
                                     ),
@@ -368,6 +370,7 @@ Layout {
                                 RunCommand {
                                     command: "ls",
                                     args: [],
+                                    env_vars: {},
                                     cwd: Some(
                                         "/somewhere",
                                     ),
@@ -452,6 +455,7 @@ Layout {
                                 RunCommand {
                                     command: "/home/aram/backup/executable",
                                     args: [],
+                                    env_vars: {},
                                     cwd: Some(
                                         "/abs/path",
                                     ),

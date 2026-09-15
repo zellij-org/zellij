@@ -2,8 +2,14 @@ syntax = "proto3";
 
 package api.command;
 
+message EnvVar {
+    string name = 1;
+    string value = 2;
+}
+
 message Command {
   string path = 1;
   repeated string args = 2;
   optional string cwd = 3;
+  repeated EnvVar env_vars = 4;
 }

@@ -47,6 +47,7 @@ Layout {
                                                 RunCommand {
                                                     command: "htop",
                                                     args: [],
+                                                    env_vars: {},
                                                     cwd: None,
                                                     hold_on_close: true,
                                                     hold_on_start: false,

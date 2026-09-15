@@ -44,6 +44,7 @@ Layout {
                                 RunCommand {
                                     command: "tail",
                                     args: [],
+                                    env_vars: {},
                                     cwd: Some(
                                         "/tmp",
                                     ),
