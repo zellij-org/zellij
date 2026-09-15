@@ -6,7 +6,7 @@ use crate::panes::kitty_graphics::parser::{
     DecodedImage, KittyAction, KittyCommandParser, KittyFormat,
 };
 use crate::panes::kitty_graphics::store::{InternalImageId, KittyImageStore};
-use crate::panes::sixel::SixelImageStore;
+use crate::panes::sixel::{PixelRect, SixelImageStore};
 use crate::panes::terminal_character::AnsiCode;
 use crate::panes::{LinkHandler, PaneId, Row, TerminalCharacter};
 use crate::ClientId;
@@ -1189,6 +1189,12 @@ fn kitty_chunk(
         cell_offset_y: 0,
         z_index: 0,
         dest_cells: (3, 2),
+        source_crop: PixelRect {
+            x: 0,
+            y: 0,
+            width: 30,
+            height: 40,
+        },
         scaled_px: None,
         placement_uid,
     }
@@ -1281,6 +1287,36 @@ fn parse_kitty_placement_crops(output: &str) -> Vec<(usize, usize, usize, usize,
         search_start = absolute_position + marker.len();
     }
     crops
+}
+
+#[test]
+fn kitty_scaled_chunks_with_different_crops_transmit_separately() {
+    let parts = create_test_kitty_parts();
+    let internal = store_test_kitty_image(&parts.0, 20, 20);
+    let mut chunks = vec![];
+    for (cell_x, crop_x, fill) in [(0, 0, 1u8), (1, 10, 2u8)] {
+        let mut chunk = kitty_chunk(internal, cell_x as u64 + 1, cell_x, 0);
+        chunk.source_px_width = 10;
+        chunk.source_px_height = 20;
+        chunk.dest_cells = (1, 1);
+        chunk.scaled_px = Some((10, 20));
+        chunk.source_crop = PixelRect {
+            x: crop_x,
+            y: 0,
+            width: 10,
+            height: 20,
+        };
+        parts.0.borrow_mut().add_scaled_variant(
+            internal,
+            chunk.variant_key().unwrap(),
+            vec![fill; 10 * 20 * 4],
+        );
+        chunks.push(chunk);
+    }
+    let output = run_kitty_frame(&parts, chunks, None);
+    assert_eq!(output.matches("\u{1b}_Ga=t").count(), 2);
+    assert!(output.contains("i=2000000000,p=1,"));
+    assert!(output.contains("i=2000000001,p=2,"));
 }
 
 #[test]
