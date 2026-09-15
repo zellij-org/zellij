@@ -14,6 +14,7 @@ use crate::panes::alacritty_functions::parse_sgr_color;
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
+    combining_chars: None,
     width: 1,
     styles: RcCharacterStyles::Reset,
 };
@@ -920,14 +921,16 @@ impl Cursor {
 #[derive(Clone, PartialEq)]
 pub struct TerminalCharacter {
     pub character: char,
+    pub combining_chars: Option<Box<Vec<char>>>,
     pub styles: RcCharacterStyles,
     width: u8,
 }
 
 // This size has significant memory and CPU implications for long lines,
 // be careful about allowing it to grow
+// Increased from 16 to 24 to accommodate combining_chars field for Thai/Unicode support
 #[cfg(target_arch = "x86_64")]
-const _: [(); 16] = [(); std::mem::size_of::<TerminalCharacter>()];
+const _: [(); 24] = [(); std::mem::size_of::<TerminalCharacter>()];
 
 impl TerminalCharacter {
     #[inline]
@@ -939,6 +942,7 @@ impl TerminalCharacter {
     pub fn new_styled(character: char, styles: RcCharacterStyles) -> Self {
         TerminalCharacter {
             character,
+            combining_chars: None,
             styles,
             width: character.width().unwrap_or(0) as u8,
         }
@@ -953,8 +957,16 @@ impl TerminalCharacter {
     pub fn new_singlewidth_styled(character: char, styles: RcCharacterStyles) -> Self {
         TerminalCharacter {
             character,
+            combining_chars: None,
             styles,
             width: 1,
+        }
+    }
+
+    pub fn append_combining(&mut self, c: char) {
+        match &mut self.combining_chars {
+            Some(chars) => chars.push(c),
+            None => self.combining_chars = Some(Box::new(vec![c])),
         }
     }
 
@@ -965,7 +977,13 @@ impl TerminalCharacter {
 
 impl ::std::fmt::Debug for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.character)
+        write!(f, "{}", self.character)?;
+        if let Some(combining) = &self.combining_chars {
+            for c in combining.iter() {
+                write!(f, "{}", c)?;
+            }
+        }
+        Ok(())
     }
 }
 
