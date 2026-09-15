@@ -374,9 +374,10 @@ impl UnixPtyBackend {
                 }
             },
             _ => {
-                Err::<(), _>(anyhow!("failed to find terminal fd for id {terminal_id}"))
-                    .with_context(err_context)
-                    .non_fatal();
+                log::debug!(
+                    "tried to resize terminal id {} which is not yet spawned or already closed",
+                    terminal_id
+                );
             },
         }
         Ok(())
@@ -470,6 +471,7 @@ mod tests {
     use nix::fcntl::{fcntl, FcntlArg, OFlag};
     use nix::sys::termios;
     use std::io::Read;
+    use std::sync::OnceLock;
 
     /// Verify that `try_write_to_fd` writes as many bytes as the kernel will
     /// accept in one pass and returns a partial count (not an error) when the
@@ -578,5 +580,98 @@ mod tests {
             libc::close(master_fd);
             libc::close(slave_fd);
         }
+    }
+
+    /// Test-only logger that records (level, message) pairs for assertions.
+    static LOG_CAPTURE: OnceLock<Arc<Mutex<Vec<(log::Level, String)>>>> = OnceLock::new();
+
+    struct CapturingLogger {
+        records: Arc<Mutex<Vec<(log::Level, String)>>>,
+    }
+
+    impl log::Log for CapturingLogger {
+        fn enabled(&self, _metadata: &log::Metadata) -> bool {
+            true
+        }
+        fn log(&self, record: &log::Record) {
+            self.records
+                .lock()
+                .unwrap()
+                .push((record.level(), record.args().to_string()));
+        }
+        fn flush(&self) {}
+    }
+
+    /// Install the capturing logger once per process and return the record
+    /// store. If another test already installed a logger, `set_boxed_logger`
+    /// fails and the caller's probe assertion will detect it.
+    fn init_log_capture() -> Arc<Mutex<Vec<(log::Level, String)>>> {
+        let records = LOG_CAPTURE.get_or_init(|| {
+            let records = Arc::new(Mutex::new(Vec::new()));
+            let logger = CapturingLogger {
+                records: records.clone(),
+            };
+            let _ = log::set_boxed_logger(Box::new(logger));
+            log::set_max_level(log::LevelFilter::Trace);
+            records
+        });
+        records.clone()
+    }
+
+    /// A `ResizePty` for a terminal that was reserved but not yet spawned
+    /// (`Some(None)` in `terminal_id_to_raw_fd`) — or whose id was already
+    /// cleared (pane closed) — is a normal transient/stale state, not an
+    /// error. The resize is re-sent after spawn for live panes, and resizing
+    /// a closed terminal is a no-op. Resizing such a terminal must not log an
+    /// ERROR.
+    #[test]
+    fn resize_for_unspawned_or_cleared_terminal_is_not_an_error() {
+        let records = init_log_capture();
+        records.lock().unwrap().clear();
+
+        // Probe: prove the capturing logger is active. If another logger won
+        // the global slot, we cannot assert on log output and must fail.
+        log::error!("log-capture-probe");
+        assert!(
+            records
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(_, msg)| msg.contains("log-capture-probe")),
+            "test log capture is not active; cannot assert on log output",
+        );
+
+        let backend = UnixPtyBackend::new().expect("backend init failed");
+        let terminal_id = 5;
+
+        // Case 1: reserved but not yet spawned.
+        backend.reserve_terminal_id(terminal_id);
+        backend
+            .set_terminal_size(terminal_id, 80, 24, None, None)
+            .expect("set_terminal_size should succeed for a reserved terminal");
+        assert!(
+            !records
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(level, msg)| *level == log::Level::Error
+                    && msg.contains("failed to find terminal fd for id 5")),
+            "resize for a reserved-but-unspawned terminal must not log an error",
+        );
+
+        // Case 2: id already cleared (pane closed).
+        backend.clear_terminal_id(terminal_id);
+        backend
+            .set_terminal_size(terminal_id, 80, 24, None, None)
+            .expect("set_terminal_size should succeed for a cleared terminal");
+        assert!(
+            !records
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(level, msg)| *level == log::Level::Error
+                    && msg.contains("failed to find terminal fd for id 5")),
+            "resize for a cleared terminal must not log an error",
+        );
     }
 }

@@ -200,6 +200,7 @@ pub(crate) enum ClientInstruction {
         resolve_async: bool,
     },
     EmitNestedSessionFrame(Vec<u8>),
+    ToggleMouseMode,
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -234,6 +235,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::EmitNestedSessionFrame { payload_bytes } => {
                 ClientInstruction::EmitNestedSessionFrame(payload_bytes)
             },
+            ServerToClientMsg::ToggleMouseMode => ClientInstruction::ToggleMouseMode,
             // Subscribe-only messages — not handled by regular interactive clients
             ServerToClientMsg::PaneRenderUpdate { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SubscribedPaneClosed { .. } => ClientInstruction::UnblockInputThread,
@@ -263,6 +265,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::ConfigFileUpdated => ClientContext::ConfigFileUpdated,
             ClientInstruction::ForwardQueryToHost { .. } => ClientContext::ForwardQueryToHost,
             ClientInstruction::EmitNestedSessionFrame(..) => ClientContext::EmitNestedSessionFrame,
+            ClientInstruction::ToggleMouseMode => ClientContext::ToggleMouseMode,
         }
     }
 }
@@ -562,6 +565,7 @@ pub(crate) enum InputInstruction {
     },
     NestedSessionFrameFromHost(Vec<u8>),
     HostTerminalFocusChanged(bool),
+    ToggleMouseMode,
     Exit,
 }
 
@@ -1592,6 +1596,9 @@ pub fn start_client(
                     let _ = out.write_all(&frame);
                     let _ = out.flush();
                 }
+            },
+            ClientInstruction::ToggleMouseMode => {
+                let _ = send_input_instructions.send(InputInstruction::ToggleMouseMode);
             },
             _ => {},
         }
