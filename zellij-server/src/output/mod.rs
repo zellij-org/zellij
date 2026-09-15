@@ -133,6 +133,25 @@ fn write_changed_styles(
     Ok(())
 }
 
+fn write_terminal_character(
+    terminal_character: &TerminalCharacter,
+    character_styles: CharacterStyles,
+    vte_output: &mut String,
+) -> Result<()> {
+    match character_styles.text_sizing {
+        Some(text_sizing) => write!(
+            vte_output,
+            "\u{1b}]66;{};{}\u{1b}\\",
+            text_sizing, terminal_character.character
+        )
+        .context("failed to serialize OSC 66 text"),
+        None => {
+            vte_output.push(terminal_character.character);
+            Ok(())
+        },
+    }
+}
+
 fn serialize_chunks_with_newlines(
     character_chunks: Vec<CharacterChunk>,
     _sixel_chunks: Option<&Vec<SixelImageChunk>>, // TODO: fix this sometime
@@ -190,7 +209,8 @@ fn serialize_chunks_with_newlines(
             )
             .with_context(err_context)?;
             chunk_width += t_character.width();
-            vte_output.push(t_character.character);
+            write_terminal_character(t_character, current_character_styles, &mut vte_output)
+                .with_context(err_context)?;
         }
     }
     Ok(vte_output)
@@ -256,7 +276,8 @@ fn serialize_chunks(
             )
             .with_context(err_context)?;
             chunk_width += t_character.width();
-            vte_output.push(t_character.character);
+            write_terminal_character(t_character, current_character_styles, &mut vte_output)
+                .with_context(err_context)?;
         }
     }
     if let Some(sixel_image_store) = sixel_image_store {
