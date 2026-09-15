@@ -16,7 +16,6 @@ use crate::resize_pty;
 use tiled_pane_grid::{split, TiledPaneGrid, RESIZE_PERCENT};
 
 use crate::{
-    os_input_output::ServerOsApi,
     output::Output,
     panes::{ActivePanes, PaneId},
     plugins::PluginInstruction,
@@ -106,7 +105,6 @@ impl TiledPanes {
         pane_frame_style: PaneFrameStyle,
         default_mode_info: ModeInfo,
         style: Style,
-        os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
     ) -> Self {
         TiledPanes {
@@ -122,7 +120,7 @@ impl TiledPanes {
             default_mode_info,
             style,
             session_is_mirrored,
-            active_panes: ActivePanes::new(&os_api),
+            active_panes: ActivePanes::new(senders.clone()),
             pane_frame_style,
             panes_to_hide: HashSet::new(),
             fullscreen_is_active: None,

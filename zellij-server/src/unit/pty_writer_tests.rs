@@ -111,9 +111,6 @@ impl ServerOsApi for MockServerOsApi {
             )),
         }
     }
-    fn tcdrain(&self, _id: u32) -> Result<()> {
-        Ok(())
-    }
     fn kill(&self, _pid: u32) -> Result<()> {
         Ok(())
     }
