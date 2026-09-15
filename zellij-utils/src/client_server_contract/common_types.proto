@@ -1238,6 +1238,7 @@ enum Clipboard {
   CLIPBOARD_UNSPECIFIED = 0;
   CLIPBOARD_SYSTEM = 1;
   CLIPBOARD_PRIMARY = 2;
+  CLIPBOARD_BOTH = 3;
 }
 
 enum StackDirection {

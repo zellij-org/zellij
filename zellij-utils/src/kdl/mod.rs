@@ -3648,6 +3648,7 @@ impl Options {
             let mut node = match copy_clipboard {
                 Clipboard::Primary => create_node("primary"),
                 Clipboard::System => create_node("system"),
+                Clipboard::Both => create_node("both"),
             };
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
@@ -7910,6 +7911,16 @@ fn config_options_to_string_with_comments() {
         "Deserialized serialized config equals original config"
     );
     insta::assert_snapshot!(fake_document.to_string());
+}
+
+#[test]
+fn test_copy_clipboard_both() {
+    let fake_config = r#"
+        copy_clipboard "both"
+    "#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Options::from_kdl(&document).unwrap();
+    assert_eq!(deserialized.copy_clipboard, Some(Clipboard::Both));
 }
 
 #[test]
