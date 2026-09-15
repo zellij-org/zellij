@@ -13299,3 +13299,35 @@ pub fn cli_pipe_is_released_when_plugin_panics_while_handling_it() {
          otherwise the `zellij pipe` client stays blocked until the plugin is unloaded"
     );
 }
+
+#[test]
+pub fn cli_pipe_is_released_when_no_connected_plugin_targets() {
+    let (plugin_thread_sender, server_receiver, _screen_receiver, teardown) =
+        create_plugin_thread_with_server_receiver(None, None);
+
+    let _ = plugin_thread_sender.send(PluginInstruction::CliPipe {
+        pipe_id: "input_pipe_id".to_owned(),
+        name: "message_name".to_owned(),
+        payload: Some("message_payload".to_owned()),
+        plugin: None,
+        args: None,
+        configuration: None,
+        floating: None,
+        pane_id_to_replace: None,
+        pane_title: None,
+        cwd: None,
+        skip_cache: false,
+        cli_client_id: 1,
+    });
+
+    let received_server_instruction =
+        server_receiver.recv_timeout(std::time::Duration::from_secs(1));
+    teardown();
+
+    let (received_server_instruction, _) = received_server_instruction
+        .expect("a CLI pipe with no connected plugin targets must be released immediately");
+    assert!(matches!(
+        received_server_instruction,
+        ServerInstruction::UnblockCliPipeInput(pipe_name) if pipe_name == "input_pipe_id"
+    ));
+}
