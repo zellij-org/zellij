@@ -6595,7 +6595,9 @@ fn ui_component_flag_prefixes_parse_order_independently() {
     }
 }
 
-use crate::panes::kitty_graphics::{InterceptorResult, KittyApcInterceptor, KittyHostSupport};
+use crate::panes::kitty_graphics::{
+    InterceptorResult, KittyApcInterceptor, KittyHostSupport, KittyPlacement, KittyVariantKey,
+};
 use crate::panes::sixel::PixelRect;
 
 const KITTY_PNG_2X2: [u8; 75] = [
@@ -7250,7 +7252,18 @@ fn kitty_c_r_scaling_produces_exact_cell_rect_and_variant() {
     assert_eq!(
         kitty_image_store
             .borrow()
-            .scaled_variant(internal_id, (3, 2))
+            .scaled_variant(
+                internal_id,
+                KittyVariantKey {
+                    dest_cells: (3, 2),
+                    source_rect: PixelRect {
+                        x: 0,
+                        y: 0,
+                        width: 10,
+                        height: 10,
+                    },
+                },
+            )
             .unwrap()
             .len(),
         30 * 40 * 4
@@ -7315,6 +7328,136 @@ fn kitty_yazi_kgpold_stream_roundtrip() {
     );
     assert_eq!(grid.kitty_placement_count(), 0);
     assert_eq!(kitty_image_store.borrow().image_count(), 0);
+}
+
+fn scaled_bytes_for(store: &KittyImageStore, placement: &KittyPlacement) -> Vec<u8> {
+    let key = KittyVariantKey {
+        dest_cells: placement.dest_cells,
+        source_rect: placement.source_rect,
+    };
+    store
+        .scaled_variant(placement.internal_id, key)
+        .unwrap()
+        .to_vec()
+}
+
+#[test]
+fn kitty_per_cell_scaled_placements_keep_their_own_crop() {
+    // yazi >= 26.9.1 transmits once, then places each cell with its own crop and c=1,r=1
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    let red = [255, 0, 0];
+    let blue = [0, 0, 255];
+    let raster: Vec<u8> = (0..20 * 20)
+        .flat_map(|i| if i % 20 < 10 { red } else { blue })
+        .collect();
+    let mut stream = Vec::new();
+    stream.extend_from_slice(&kitty_apc("q=2,a=t,i=7,f=24,s=20,v=20", &raster));
+    stream.extend_from_slice(b"\x1b[1;1H");
+    stream.extend_from_slice(&kitty_apc(
+        "q=2,a=p,i=7,p=1,x=0,y=0,w=10,h=20,c=1,r=1,z=-1,C=1",
+        b"",
+    ));
+    stream.extend_from_slice(b"\x1b[1;2H");
+    stream.extend_from_slice(&kitty_apc(
+        "q=2,a=p,i=7,p=2,x=10,y=0,w=10,h=20,c=1,r=1,z=-1,C=1",
+        b"",
+    ));
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, &stream);
+    assert_eq!(grid.kitty_placement_count(), 2);
+    let store = kitty_image_store.borrow();
+    let mut placements = grid.kitty_placements().to_vec();
+    placements.sort_by_key(|placement| placement.placement_id);
+    let left = scaled_bytes_for(&store, &placements[0]);
+    let right = scaled_bytes_for(&store, &placements[1]);
+    assert_eq!(
+        &left[..4],
+        &[255, 0, 0, 255],
+        "left cell must show the red crop"
+    );
+    assert_eq!(
+        &right[..4],
+        &[0, 0, 255, 255],
+        "right cell must show the blue crop"
+    );
+}
+
+#[test]
+fn kitty_explicit_placement_ids_render_move_and_delete() {
+    // repro from https://github.com/zellij-org/zellij/issues/5573
+    let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vte::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    let place = |row: usize, col: usize, p: u32, x: u32, y: u32| {
+        let mut bytes = format!("\x1b[{};{}H", row, col).into_bytes();
+        bytes.extend_from_slice(
+            format!(
+                "\x1b_Gq=2,a=p,i=42,p={},x={},y={},w=1,h=1,c=1,r=1,z=-1,C=1\x1b\\",
+                p, x, y
+            )
+            .as_bytes(),
+        );
+        bytes
+    };
+    let mut stream = b"\x1b_Gq=2,a=t,i=42,f=24,s=2,v=2,m=0;/wAAAP8AAAD/////\x1b\\".to_vec();
+    stream.extend(place(1, 1, 1, 0, 0));
+    stream.extend(place(1, 2, 2, 1, 0));
+    stream.extend(place(2, 1, 3, 0, 1));
+    stream.extend(place(2, 2, 4, 1, 1));
+    feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, &stream);
+
+    let colors = |grid: &Grid| -> Vec<(u32, [u8; 4])> {
+        let store = kitty_image_store.borrow();
+        let mut colors: Vec<(u32, [u8; 4])> = grid
+            .kitty_placements()
+            .iter()
+            .map(|placement| {
+                let bytes = scaled_bytes_for(&store, placement);
+                (placement.placement_id, bytes[..4].try_into().unwrap())
+            })
+            .collect();
+        colors.sort_by_key(|(p, _)| *p);
+        colors
+    };
+    assert_eq!(
+        colors(&grid),
+        vec![
+            (1, [255, 0, 0, 255]),
+            (2, [0, 255, 0, 255]),
+            (3, [0, 0, 255, 255]),
+            (4, [255, 255, 255, 255]),
+        ]
+    );
+
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &place(4, 4, 1, 0, 0),
+    );
+    assert_eq!(grid.kitty_placement_count(), 4);
+    let moved = grid
+        .kitty_placements()
+        .iter()
+        .find(|placement| placement.placement_id == 1)
+        .unwrap();
+    assert_eq!((moved.display_rect.x, moved.display_rect.y), (30, 60));
+
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        b"\x1b_Gq=2,a=d,d=i,i=42,p=2\x1b\\",
+    );
+    assert_eq!(
+        colors(&grid),
+        vec![
+            (1, [255, 0, 0, 255]),
+            (3, [0, 0, 255, 255]),
+            (4, [255, 255, 255, 255]),
+        ]
+    );
 }
 
 #[test]
