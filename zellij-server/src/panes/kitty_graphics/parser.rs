@@ -102,6 +102,10 @@ pub struct KittyCommand {
     pub suppress_cursor_movement: bool,
     pub delete_specifier: Option<char>,
     pub image: Option<DecodedImage>,
+    /// U=1: this command creates a virtual (Unicode-placeholder)
+    /// placement rather than a positioned one. See
+    /// kitty_graphics::placeholders.
+    pub unicode_placeholder: bool,
 }
 
 impl Default for KittyCommand {
@@ -132,6 +136,7 @@ impl Default for KittyCommand {
             suppress_cursor_movement: false,
             delete_specifier: None,
             image: None,
+            unicode_placeholder: false,
         }
     }
 }
@@ -489,10 +494,7 @@ pub fn parse_control_data(control: &[u8]) -> Result<KittyCommand, KittyError> {
             b"U" => match parse_u32(value) {
                 Some(0) => {},
                 Some(_) => {
-                    return Err(echo.error(
-                        KittyErrorCode::Enotsupported,
-                        "unicode placeholders are not supported",
-                    ));
+                    command.unicode_placeholder = true;
                 },
                 None => {
                     return Err(echo.error(KittyErrorCode::Einval, "invalid value for key 'U'"));
