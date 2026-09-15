@@ -38,6 +38,7 @@ jobs:
           - macos x64
           - macos aarch64
           - windows x64
+          - windows aarch64
         include:
           - build: linux musl x64
             os: ubuntu-latest
@@ -57,6 +58,11 @@ jobs:
           - build: windows x64
             os: windows-latest
             target: x86_64-pc-windows-msvc
+            wix_arch: x64
+          - build: windows aarch64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            wix_arch: arm64
     steps:
       - name: Set release tag (Unix)
         if: runner.os != 'Windows'
@@ -96,16 +102,16 @@ jobs:
           cache: false
           rustflags: ""
 
-      - name: Install NASM (Windows)
-        if: runner.os == 'Windows'
+      - name: Install NASM (Windows x64)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
         uses: ilammy/setup-nasm@v1
 
       - name: Build release binary (cross-compiled)
-        if: matrix.build != 'windows x64'
+        if: runner.os != 'Windows'
         run: cargo xtask ci cross ${{ matrix.target }}
 
       - name: Build release binary (Windows native)
-        if: matrix.build == 'windows x64'
+        if: runner.os == 'Windows'
         env:
           RUSTFLAGS: "-C target-feature=+crt-static"
         run: cargo xtask ci build-release
@@ -183,9 +189,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path target\wix
           wix build wix\main.wxs wix\Zellij.wxl `
             -d Version=$version `
-            -arch x64 `
+            -arch ${{ matrix.wix_arch }} `
             -ext WixToolset.UI.wixext `
-            -o target\wix\zellij-x86_64-pc-windows-msvc-installer.msi
+            -o target\wix\zellij-${{ matrix.target }}-installer.msi
 
       - name: Create MSI checksum
         if: runner.os == 'Windows'
@@ -234,6 +240,7 @@ jobs:
           - macos x64
           - macos aarch64
           - windows x64
+          - windows aarch64
         include:
           - build: linux musl x64
             os: ubuntu-latest
@@ -253,6 +260,11 @@ jobs:
           - build: windows x64
             os: windows-latest
             target: x86_64-pc-windows-msvc
+            wix_arch: x64
+          - build: windows aarch64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            wix_arch: arm64
     steps:
       - name: Set release tag (Unix)
         if: runner.os != 'Windows'
@@ -292,16 +304,16 @@ jobs:
           cache: false
           rustflags: ""
 
-      - name: Install NASM (Windows)
-        if: runner.os == 'Windows'
+      - name: Install NASM (Windows x64)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
         uses: ilammy/setup-nasm@v1
 
       - name: Build release binary (cross-compiled, no-web)
-        if: matrix.build != 'windows x64'
+        if: runner.os != 'Windows'
         run: cargo xtask ci cross ${{ matrix.target }} --no-web
 
       - name: Build release binary (Windows native, no-web)
-        if: matrix.build == 'windows x64'
+        if: runner.os == 'Windows'
         env:
           RUSTFLAGS: "-C target-feature=+crt-static"
         run: cargo xtask ci build-release --no-web
@@ -379,7 +391,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path target\wix
           wix build wix\main.wxs wix\Zellij.wxl `
             -d Version=$version `
-            -arch x64 `
+            -arch ${{ matrix.wix_arch }} `
             -ext WixToolset.UI.wixext `
             -o target\wix\zellij-no-web-${{ matrix.target }}-installer.msi
 
