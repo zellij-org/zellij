@@ -2068,6 +2068,8 @@ pub struct Options {
     pub scroll_mode_sync: ::core::option::Option<bool>,
     #[prost(enumeration="ThemeHue", optional, tag="69")]
     pub explicit_theme_hue: ::core::option::Option<i32>,
+    #[prost(bool, optional, tag="70")]
+    pub search_auto_jump_on_input: ::core::option::Option<bool>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]

@@ -943,6 +943,7 @@ impl From<crate::input::options::Options>
             serialize_pane_viewport: options.serialize_pane_viewport,
             scrollback_lines_to_serialize: options.scrollback_lines_to_serialize.map(|s| s as u32),
             styled_underlines: options.styled_underlines,
+            search_auto_jump_on_input: options.search_auto_jump_on_input,
             serialization_interval: options.serialization_interval,
             disable_session_metadata: options.disable_session_metadata,
             support_kitty_keyboard_protocol: options.support_kitty_keyboard_protocol,
@@ -1077,6 +1078,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 .scrollback_lines_to_serialize
                 .map(|s| s as usize),
             styled_underlines: options.styled_underlines,
+            search_auto_jump_on_input: options.search_auto_jump_on_input,
             serialization_interval: options.serialization_interval,
             disable_session_metadata: options.disable_session_metadata,
             support_kitty_keyboard_protocol: options.support_kitty_keyboard_protocol,

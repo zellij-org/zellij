@@ -2851,6 +2851,9 @@ impl Options {
         let styled_underlines =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "styled_underlines")
                 .map(|(v, _)| v);
+        let search_auto_jump_on_input =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "search_auto_jump_on_input")
+                .map(|(v, _)| v);
         let serialization_interval =
             kdl_property_first_arg_as_i64_or_error!(kdl_options, "serialization_interval")
                 .map(|(scroll_buffer_size, _entry)| scroll_buffer_size as u64);
@@ -3021,6 +3024,7 @@ impl Options {
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
             styled_underlines,
+            search_auto_jump_on_input,
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
@@ -3915,6 +3919,34 @@ impl Options {
             Some(node)
         } else if add_comments {
             let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn search_auto_jump_on_input_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Whether to automatically jump to the nearest search result while typing the search term.",
+            "// (Requires restart)",
+            "// Default: true",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("search_auto_jump_on_input");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(search_auto_jump_on_input) = self.search_auto_jump_on_input {
+            let mut node = create_node(search_auto_jump_on_input);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(true);
             node.set_leading(format!("{}\n// ", comment_text));
             Some(node)
         } else {
@@ -4871,6 +4903,10 @@ impl Options {
         }
         if let Some(styled_underlines) = self.styled_underlines_to_kdl(add_comments) {
             nodes.push(styled_underlines);
+        }
+        if let Some(search_auto_jump_on_input) = self.search_auto_jump_on_input_to_kdl(add_comments)
+        {
+            nodes.push(search_auto_jump_on_input);
         }
         if let Some(serialization_interval) = self.serialization_interval_to_kdl(add_comments) {
             nodes.push(serialization_interval);

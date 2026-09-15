@@ -345,6 +345,7 @@ fn create_new_screen_with_capture(
 
     let debug = false;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let arrow_fonts = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
@@ -371,6 +372,7 @@ fn create_new_screen_with_capture(
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         arrow_fonts,
         layout_dir,
@@ -5779,6 +5781,7 @@ fn create_new_screen_with_message_capture(
     let layout_dir = None;
     let debug = false;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let arrow_fonts = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
@@ -5804,6 +5807,7 @@ fn create_new_screen_with_message_capture(
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         arrow_fonts,
         layout_dir,
@@ -8944,6 +8948,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
     let layout_dir = None;
     let debug = false;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let arrow_fonts = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
@@ -8969,6 +8974,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         arrow_fonts,
         layout_dir,
@@ -9869,6 +9875,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         false,
         None,
         true,
+        true, // search_auto_jump_on_input
         true,
         true,
         None,
@@ -10450,6 +10457,7 @@ fn new_terminal_pane_for_pause_test(pid: u32) -> TerminalPane {
         false,
         true,
         true,
+        true, // search_auto_jump_on_input
         true,
         false,
         None,
@@ -10693,6 +10701,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         false, // serialize_pane_viewport
         None,  // scrollback_lines_to_serialize
         true,  // styled_underlines
+        true,  // search_auto_jump_on_input
         true,  // osc8_hyperlinks
         true,  // arrow_fonts
         None,  // layout_dir
