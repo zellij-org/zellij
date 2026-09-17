@@ -326,7 +326,13 @@ pub enum Sessions {
     /// Attach to a session
     #[clap(visible_alias = "a")]
     Attach {
-        /// Name of the session to attach to.
+        /// Name of the session to attach to, or a remote URL such as
+        /// `https://example.com/session` or
+        /// `ssh://user@example.com:2222/session?web_port=8082`. For SSH URLs,
+        /// the URL port is the SSH port and `web_port` is the remote web-server
+        /// port. SSH authentication uses the local OpenSSH configuration and agent.
+        /// With `web_scheme=https`, use a trusted certificate for the SSH hostname
+        /// or explicitly pass `--ca-cert` or `--insecure`.
         #[clap(value_parser)]
         session_name: Option<String>,
 

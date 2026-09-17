@@ -53,6 +53,9 @@ signal-hook = { workspace = true }
 daemonize = { workspace = true }
 nix = { workspace = true, features = ["fs"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { workspace = true }
+
 [target.'cfg(windows)'.dependencies]
 crossterm = { workspace = true }
 tokio = { workspace = true }

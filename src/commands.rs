@@ -709,7 +709,12 @@ pub(crate) fn start_client(opts: CliArgs) {
         })) = opts.command.clone()
         {
             if let Some(remote_session_url) = session_name.as_ref().and_then(|s| {
-                if s.starts_with("http://") || s.starts_with("https://") {
+                let scheme = s.split_once("://").map(|(scheme, _)| scheme);
+                if scheme.is_some_and(|scheme| {
+                    scheme.eq_ignore_ascii_case("http")
+                        || scheme.eq_ignore_ascii_case("https")
+                        || scheme.eq_ignore_ascii_case("ssh")
+                }) {
                     Some(s)
                 } else {
                     None

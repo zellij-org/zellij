@@ -125,3 +125,30 @@ fn web_cli_status_with_ip_and_port_works() {
         panic!("Expected Web command");
     }
 }
+
+#[test]
+fn ssh_remote_attach_url_is_parsed_as_a_session_name() {
+    let args = CliArgs::try_parse_from([
+        "zellij",
+        "attach",
+        "ssh://alice@example.com:2222/my-session?web_port=9000",
+    ]);
+
+    assert!(args.is_ok());
+    if let Ok(CliArgs {
+        command:
+            Some(Command::Sessions(zellij_utils::cli::Sessions::Attach {
+                session_name: Some(session_name),
+                ..
+            })),
+        ..
+    }) = args
+    {
+        assert_eq!(
+            session_name,
+            "ssh://alice@example.com:2222/my-session?web_port=9000"
+        );
+    } else {
+        panic!("Expected SSH remote attach command");
+    }
+}

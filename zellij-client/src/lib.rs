@@ -116,6 +116,7 @@ pub enum RemoteClientError {
     Unauthorized,
     ConnectionFailed(String),
     UrlParseError(url::ParseError),
+    InvalidSshUrl(String),
     IoError(std::io::Error),
     Other(Box<dyn std::error::Error + Send + Sync>),
 }
@@ -128,6 +129,7 @@ impl std::fmt::Display for RemoteClientError {
             RemoteClientError::Unauthorized => write!(f, "Unauthorized"),
             RemoteClientError::ConnectionFailed(msg) => write!(f, "Connection failed: {}", msg),
             RemoteClientError::UrlParseError(e) => write!(f, "Invalid URL: {}", e),
+            RemoteClientError::InvalidSshUrl(msg) => write!(f, "Invalid SSH URL: {}", msg),
             RemoteClientError::IoError(e) => write!(f, "IO error: {}", e),
             RemoteClientError::Other(e) => write!(f, "{}", e),
         }
@@ -824,25 +826,54 @@ pub fn start_remote_client(
 ) -> Result<Option<ConnectToSession>, RemoteClientError> {
     info!("Starting Zellij client!");
 
-    let remote_session_name = remote_session_url
-        .trim_end_matches('/')
-        .rsplit('/')
-        .next()
-        .unwrap_or_default()
-        .to_owned();
+    let remote_session_name = remote_attach::extract_session_name(remote_session_url)?;
 
     let runtime = crate::async_runtime(async_worker_tasks);
 
-    let connections = remote_attach::attach_to_remote_session(
-        runtime.clone(),
-        os_input.clone(),
-        remote_session_url,
-        token,
-        remember,
-        forget,
-        ca_cert.as_deref(),
-        insecure,
-    )?;
+    let (connections, ssh_tunnel) = if remote_session_url
+        .split_once("://")
+        .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("ssh"))
+    {
+        let (connections, tunnel) = remote_attach::attach_to_ssh_remote_session(
+            runtime.clone(),
+            os_input.clone(),
+            remote_session_url,
+            token,
+            remember,
+            forget,
+            ca_cert.as_deref(),
+            insecure,
+        )?;
+        (connections, Some(tunnel))
+    } else {
+        let connections = remote_attach::attach_to_remote_session(
+            runtime.clone(),
+            os_input.clone(),
+            remote_session_url,
+            token,
+            remember,
+            forget,
+            ca_cert.as_deref(),
+            insecure,
+        )?;
+        (connections, None)
+    };
+    let ssh_tunnel = Arc::new(Mutex::new(ssh_tunnel));
+
+    std::panic::set_hook({
+        use zellij_utils::errors::handle_panic;
+        let os_input = os_input.clone();
+        let ssh_tunnel = ssh_tunnel.clone();
+        Box::new(move |info| {
+            let tunnel_to_drop = ssh_tunnel.lock().ok().and_then(|mut tunnel| tunnel.take());
+            drop(tunnel_to_drop);
+            os_input.disable_mouse().non_fatal();
+            os_input.restore_console_mode();
+            if let Ok(()) = os_input.unset_raw_mode() {
+                handle_panic::<ClientInstruction>(info, None);
+            }
+        })
+    });
 
     let reconnect_to_session = None;
     os_input.unset_raw_mode().unwrap();
@@ -877,18 +908,6 @@ pub fn start_remote_client(
     let _ = stdout.flush();
     let host_contacted = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    std::panic::set_hook({
-        use zellij_utils::errors::handle_panic;
-        let os_input = os_input.clone();
-        Box::new(move |info| {
-            os_input.disable_mouse().non_fatal();
-            os_input.restore_console_mode();
-            if let Ok(()) = os_input.unset_raw_mode() {
-                handle_panic::<ClientInstruction>(info, None);
-            }
-        })
-    });
-
     let reset_controlling_terminal_state = |e: String, exit_status: i32| {
         os_input.disable_mouse().non_fatal();
         os_input.unset_raw_mode().unwrap();
@@ -905,12 +924,18 @@ pub fn start_remote_client(
         std::process::exit(exit_status);
     };
 
-    runtime.block_on(run_remote_client_terminal_loop(
+    let remote_client_result = runtime.block_on(run_remote_client_terminal_loop(
         os_input.clone(),
         connections,
         Some(remote_session_name.clone()),
         host_contacted.clone(),
-    ))?;
+    ));
+
+    // `process::exit` below skips destructors, so close the SSH child before
+    // leaving the remote client. HTTP(S) attaches have no child to clean up.
+    let tunnel_to_drop = ssh_tunnel.lock().ok().and_then(|mut tunnel| tunnel.take());
+    drop(tunnel_to_drop);
+    remote_client_result?;
 
     if host_contacted.load(std::sync::atomic::Ordering::Relaxed) {
         let mut stdout = os_input.get_stdout_writer();

@@ -47,6 +47,9 @@ You can see a list of all commands (with supported arguments) with `cargo xtask
 
 To run `test`, you will need the package `pkg-config` and a version of `openssl`.
 
+On Nix, `nix develop` provides the Rust toolchain from `rust-toolchain.toml`,
+`protoc`, `pkg-config`, OpenSSL, and OpenSSH for SSH remote attach.
+
 ### The cargo target directory
 
 Debug builds embed the plugins from `<repository>/target/wasm32-wasip1/debug`, which is

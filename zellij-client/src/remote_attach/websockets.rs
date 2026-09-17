@@ -1,19 +1,26 @@
 use super::config::{WS_CONTROL_ENDPOINT, WS_TERMINAL_ENDPOINT};
 use super::http_client::HttpClientWithCookies;
+use super::RemoteTransport;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::TcpStream;
+#[cfg(unix)]
+use tokio::net::UnixStream;
 use tokio_tungstenite::WebSocketStream;
 
 // -- MaybeTls stream enum -------------------------------------------------
 
-/// A TCP stream that may or may not be wrapped in TLS.
+/// A local stream that may or may not be wrapped in TLS.
 pub enum MaybeTls {
     Plain(TcpStream),
     Tls(tokio_rustls::client::TlsStream<TcpStream>),
+    #[cfg(unix)]
+    Unix(UnixStream),
+    #[cfg(unix)]
+    TlsUnix(tokio_rustls::client::TlsStream<UnixStream>),
 }
 
 impl AsyncRead for MaybeTls {
@@ -25,6 +32,10 @@ impl AsyncRead for MaybeTls {
         match self.get_mut() {
             MaybeTls::Plain(s) => Pin::new(s).poll_read(cx, buf),
             MaybeTls::Tls(s) => Pin::new(s).poll_read(cx, buf),
+            #[cfg(unix)]
+            MaybeTls::Unix(s) => Pin::new(s).poll_read(cx, buf),
+            #[cfg(unix)]
+            MaybeTls::TlsUnix(s) => Pin::new(s).poll_read(cx, buf),
         }
     }
 }
@@ -38,6 +49,10 @@ impl AsyncWrite for MaybeTls {
         match self.get_mut() {
             MaybeTls::Plain(s) => Pin::new(s).poll_write(cx, buf),
             MaybeTls::Tls(s) => Pin::new(s).poll_write(cx, buf),
+            #[cfg(unix)]
+            MaybeTls::Unix(s) => Pin::new(s).poll_write(cx, buf),
+            #[cfg(unix)]
+            MaybeTls::TlsUnix(s) => Pin::new(s).poll_write(cx, buf),
         }
     }
 
@@ -45,6 +60,10 @@ impl AsyncWrite for MaybeTls {
         match self.get_mut() {
             MaybeTls::Plain(s) => Pin::new(s).poll_flush(cx),
             MaybeTls::Tls(s) => Pin::new(s).poll_flush(cx),
+            #[cfg(unix)]
+            MaybeTls::Unix(s) => Pin::new(s).poll_flush(cx),
+            #[cfg(unix)]
+            MaybeTls::TlsUnix(s) => Pin::new(s).poll_flush(cx),
         }
     }
 
@@ -52,6 +71,10 @@ impl AsyncWrite for MaybeTls {
         match self.get_mut() {
             MaybeTls::Plain(s) => Pin::new(s).poll_shutdown(cx),
             MaybeTls::Tls(s) => Pin::new(s).poll_shutdown(cx),
+            #[cfg(unix)]
+            MaybeTls::Unix(s) => Pin::new(s).poll_shutdown(cx),
+            #[cfg(unix)]
+            MaybeTls::TlsUnix(s) => Pin::new(s).poll_shutdown(cx),
         }
     }
 }
@@ -151,16 +174,56 @@ async fn connect_ws(
     host: &str,
     port: u16,
     tls_config: Option<Arc<rustls::ClientConfig>>,
+    transport: Option<&RemoteTransport>,
 ) -> Result<WebSocketStream<MaybeTls>, Box<dyn std::error::Error>> {
-    let tcp_stream = TcpStream::connect((host, port)).await?;
+    #[cfg(unix)]
+    let stream = match (transport, tls_config) {
+        (Some(RemoteTransport::Unix(local_socket_path)), Some(config)) => {
+            let unix_stream = UnixStream::connect(local_socket_path).await?;
+            let connector = tokio_rustls::TlsConnector::from(config);
+            let server_name = rustls_pki_types::ServerName::try_from(host.to_string())?;
+            let tls_stream = connector.connect(server_name, unix_stream).await?;
+            MaybeTls::TlsUnix(tls_stream)
+        },
+        (Some(RemoteTransport::Unix(local_socket_path)), None) => {
+            MaybeTls::Unix(UnixStream::connect(local_socket_path).await?)
+        },
+        (Some(RemoteTransport::Tcp(local_port)), Some(config)) => {
+            let tcp_stream = TcpStream::connect(("127.0.0.1", *local_port)).await?;
+            let connector = tokio_rustls::TlsConnector::from(config);
+            let server_name = rustls_pki_types::ServerName::try_from(host.to_string())?;
+            let tls_stream = connector.connect(server_name, tcp_stream).await?;
+            MaybeTls::Tls(tls_stream)
+        },
+        (Some(RemoteTransport::Tcp(local_port)), None) => {
+            MaybeTls::Plain(TcpStream::connect(("127.0.0.1", *local_port)).await?)
+        },
+        (None, Some(config)) => {
+            let tcp_stream = TcpStream::connect((host, port)).await?;
+            let connector = tokio_rustls::TlsConnector::from(config);
+            let server_name = rustls_pki_types::ServerName::try_from(host.to_string())?;
+            let tls_stream = connector.connect(server_name, tcp_stream).await?;
+            MaybeTls::Tls(tls_stream)
+        },
+        (None, None) => MaybeTls::Plain(TcpStream::connect((host, port)).await?),
+    };
 
-    let stream = if let Some(config) = tls_config {
-        let connector = tokio_rustls::TlsConnector::from(config);
-        let server_name = rustls_pki_types::ServerName::try_from(host.to_string())?;
-        let tls_stream = connector.connect(server_name, tcp_stream).await?;
-        MaybeTls::Tls(tls_stream)
-    } else {
-        MaybeTls::Plain(tcp_stream)
+    #[cfg(not(unix))]
+    let stream = {
+        let tcp_stream = match transport {
+            Some(RemoteTransport::Tcp(local_port)) => {
+                TcpStream::connect(("127.0.0.1", *local_port)).await?
+            },
+            None => TcpStream::connect((host, port)).await?,
+        };
+        if let Some(config) = tls_config {
+            let connector = tokio_rustls::TlsConnector::from(config);
+            let server_name = rustls_pki_types::ServerName::try_from(host.to_string())?;
+            let tls_stream = connector.connect(server_name, tcp_stream).await?;
+            MaybeTls::Tls(tls_stream)
+        } else {
+            MaybeTls::Plain(tcp_stream)
+        }
     };
 
     let (ws_stream, _response) =
@@ -192,18 +255,36 @@ pub async fn establish_websocket_connections(
     ca_cert: Option<&Path>,
     insecure: bool,
 ) -> Result<WebSocketConnections, Box<dyn std::error::Error>> {
+    establish_websocket_connections_with_transport(
+        web_client_id,
+        http_client,
+        server_base_url,
+        session_name,
+        ca_cert,
+        insecure,
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn establish_websocket_connections_with_transport(
+    web_client_id: &str,
+    http_client: &HttpClientWithCookies,
+    server_base_url: &str,
+    session_name: &str,
+    ca_cert: Option<&Path>,
+    insecure: bool,
+    transport: Option<&RemoteTransport>,
+) -> Result<WebSocketConnections, Box<dyn std::error::Error>> {
     let parsed_url = url::Url::parse(server_base_url)?;
-    let host = parsed_url
-        .host_str()
-        .ok_or("no host in server URL")?
-        .to_string();
+    let host = unbracket_host(parsed_url.host_str().ok_or("no host in server URL")?).to_owned();
     let port = parsed_url
         .port_or_known_default()
         .ok_or("no port in server URL")?;
-    let is_tls = parsed_url.scheme() == "https";
+    let is_tls = parsed_url.scheme().eq_ignore_ascii_case("https");
 
     let ws_protocol = if is_tls { "wss" } else { "ws" };
-    let base_host = format!("{}:{}", host, port);
+    let base_host = host_with_port(&host, port);
 
     let terminal_size = crate::os_input_output::get_terminal_size();
     let size_query = format!("&rows={}&cols={}", terminal_size.rows, terminal_size.cols);
@@ -277,12 +358,51 @@ pub async fn establish_websocket_connections(
     };
 
     // Connect to both WebSockets
-    let terminal_ws = connect_ws(terminal_request, &host, port, tls_config.clone()).await?;
-    let control_ws = connect_ws(control_request, &host, port, tls_config).await?;
+    let terminal_ws =
+        connect_ws(terminal_request, &host, port, tls_config.clone(), transport).await?;
+    let control_ws = connect_ws(control_request, &host, port, tls_config, transport).await?;
 
     Ok(WebSocketConnections {
         terminal_ws,
         control_ws,
         web_client_id: web_client_id.to_owned(),
     })
+}
+
+fn host_with_port(host: &str, port: u16) -> String {
+    let host = unbracket_host(host);
+    if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+fn unbracket_host(host: &str) -> &str {
+    host.strip_prefix('[')
+        .and_then(|host| host.strip_suffix(']'))
+        .unwrap_or(host)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{host_with_port, unbracket_host};
+    use url::Url;
+
+    #[test]
+    fn formats_ipv6_host_header() {
+        assert_eq!(host_with_port("2001:db8::1", 8082), "[2001:db8::1]:8082");
+    }
+
+    #[test]
+    fn does_not_double_bracket_ipv6_host_header() {
+        assert_eq!(host_with_port("[2001:db8::1]", 8082), "[2001:db8::1]:8082");
+    }
+
+    #[test]
+    fn normalizes_ipv6_host_from_url() {
+        let url = Url::parse("https://[2001:db8::1]:8082/session").unwrap();
+
+        assert_eq!(unbracket_host(url.host_str().unwrap()), "2001:db8::1");
+    }
 }

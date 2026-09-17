@@ -1,5 +1,6 @@
 use super::config::{LOGIN_ENDPOINT, SESSION_ENDPOINT};
 use super::http_client::HttpClientWithCookies;
+use super::RemoteTransport;
 use crate::RemoteClientError;
 use isahc::{AsyncReadResponseExt, Request};
 use serde::{Deserialize, Serialize};
@@ -28,6 +29,22 @@ fn session_url(server_base_url: &str, session_name: &str) -> String {
     }
 }
 
+fn redirect_error(status: u16) -> RemoteClientError {
+    RemoteClientError::ConnectionFailed(format!(
+        "Server returned redirect status {status}; use the final remote URL directly"
+    ))
+}
+
+fn session_token_status_error(status: u16) -> Option<RemoteClientError> {
+    match status {
+        401 | 300..=399 => Some(RemoteClientError::SessionTokenExpired),
+        status if !(200..=299).contains(&status) => Some(RemoteClientError::ConnectionFailed(
+            format!("Server returned status {status}"),
+        )),
+        _ => None,
+    }
+}
+
 pub async fn authenticate(
     server_base_url: &str,
     auth_token: &str,
@@ -35,8 +52,9 @@ pub async fn authenticate(
     session_name: &str,
     ca_cert: Option<&std::path::Path>,
     insecure: bool,
+    transport: Option<&RemoteTransport>,
 ) -> Result<(String, HttpClientWithCookies, Option<String>), RemoteClientError> {
-    let http_client = HttpClientWithCookies::new(ca_cert, insecure)
+    let http_client = HttpClientWithCookies::new_with_transport(ca_cert, insecure, transport)
         .map_err(|e| RemoteClientError::Other(Box::new(e)))?;
 
     // Step 1: Login with auth token
@@ -65,6 +83,7 @@ pub async fn authenticate(
     // Handle HTTP status codes
     match response.status().as_u16() {
         401 => return Err(RemoteClientError::InvalidAuthToken),
+        status if (300..400).contains(&status) => return Err(redirect_error(status)),
         status if !response.status().is_success() => {
             return Err(RemoteClientError::ConnectionFailed(format!(
                 "Server returned status {}",
@@ -92,6 +111,7 @@ pub async fn authenticate(
     // Handle session response
     match session_response.status().as_u16() {
         401 => return Err(RemoteClientError::Unauthorized),
+        status if (300..400).contains(&status) => return Err(redirect_error(status)),
         status if !session_response.status().is_success() => {
             return Err(RemoteClientError::ConnectionFailed(format!(
                 "Server returned status {}",
@@ -124,8 +144,9 @@ pub async fn validate_session_token(
     session_name: &str,
     ca_cert: Option<&std::path::Path>,
     insecure: bool,
+    transport: Option<&RemoteTransport>,
 ) -> Result<(String, HttpClientWithCookies), RemoteClientError> {
-    let http_client = HttpClientWithCookies::new(ca_cert, insecure)
+    let http_client = HttpClientWithCookies::new_with_transport(ca_cert, insecure, transport)
         .map_err(|e| RemoteClientError::Other(Box::new(e)))?;
 
     // Pre-populate the session_token cookie
@@ -146,19 +167,29 @@ pub async fn validate_session_token(
         .await
         .map_err(|e| RemoteClientError::ConnectionFailed(e.to_string()))?;
 
-    match session_response.status().as_u16() {
-        401 => Err(RemoteClientError::SessionTokenExpired),
-        status if !session_response.status().is_success() => Err(
-            RemoteClientError::ConnectionFailed(format!("Server returned status {}", status)),
-        ),
-        _ => {
-            let response_body = session_response
-                .text()
-                .await
-                .map_err(|e| RemoteClientError::Other(Box::new(e)))?;
-            let session_data: SessionResponse = serde_json::from_str(&response_body)
-                .map_err(|e| RemoteClientError::Other(Box::new(e)))?;
-            Ok((session_data.web_client_id, http_client))
-        },
+    let status = session_response.status().as_u16();
+    if let Some(error) = session_token_status_error(status) {
+        return Err(error);
+    }
+
+    let response_body = session_response
+        .text()
+        .await
+        .map_err(|e| RemoteClientError::Other(Box::new(e)))?;
+    let session_data: SessionResponse =
+        serde_json::from_str(&response_body).map_err(|e| RemoteClientError::Other(Box::new(e)))?;
+    Ok((session_data.web_client_id, http_client))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redirects_expire_saved_session_tokens() {
+        assert!(matches!(
+            session_token_status_error(302),
+            Some(RemoteClientError::SessionTokenExpired)
+        ));
     }
 }

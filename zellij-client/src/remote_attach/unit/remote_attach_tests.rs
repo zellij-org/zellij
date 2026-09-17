@@ -770,6 +770,7 @@ mod tests {
             ("https://example.com/my-session", "my-session"),
             ("https://example.com/", ""),
             ("https://example.com/path/to/session", "path/to/session"),
+            ("https://example.com/my%20session", "my session"),
             ("http://localhost:8080/test", "test"),
         ];
 

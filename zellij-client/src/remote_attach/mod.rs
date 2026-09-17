@@ -1,17 +1,26 @@
 mod auth;
 mod config;
 pub mod http_client;
+mod ssh;
 pub mod websockets;
 
 #[cfg(test)]
 mod unit;
 
+use self::ssh::{SshRemoteSession, SshTunnel};
 pub use websockets::WebSocketConnections;
 
 use crate::os_input_output::ClientOsApi;
 use crate::RemoteClientError;
 use tokio::runtime::Handle;
 use zellij_utils::remote_session_tokens;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RemoteTransport {
+    Tcp(u16),
+    #[cfg(unix)]
+    Unix(std::path::PathBuf),
+}
 
 // In tests, only attempt once (no retries) to avoid interactive prompts
 // In production, allow up to 3 attempts (initial + 2 retries)
@@ -44,23 +53,85 @@ pub fn attach_to_remote_session(
     // Extract server URL for token management
     let server_url = extract_server_url(remote_session_url)?;
 
+    attach_to_remote_session_with_token_cache_key(
+        runtime,
+        remote_session_url,
+        token,
+        remember,
+        forget,
+        ca_cert,
+        insecure,
+        &server_url,
+        None,
+    )
+}
+
+/// Attach to a remote session through an SSH local port forward.
+///
+/// The remote Zellij web server must already be running on loopback on the
+/// remote host. The returned tunnel must be kept alive while the WebSockets
+/// are in use; the tuple makes that ownership explicit to the caller.
+pub(crate) fn attach_to_ssh_remote_session(
+    runtime: Handle,
+    _os_input: Box<dyn ClientOsApi>,
+    remote_session_url: &str,
+    token: Option<String>,
+    remember: bool,
+    forget: bool,
+    ca_cert: Option<&std::path::Path>,
+    insecure: bool,
+) -> Result<(WebSocketConnections, SshTunnel), RemoteClientError> {
+    let remote_session = SshRemoteSession::parse(remote_session_url)?;
+    let tunnel = SshTunnel::connect(&remote_session)?;
+    let forwarded_server_url = remote_session.remote_server_url();
+    let forwarded_session_url = format!(
+        "{forwarded_server_url}/{}",
+        urlencoding::encode(&remote_session.session_name)
+    );
+
+    attach_to_remote_session_with_token_cache_key(
+        runtime,
+        &forwarded_session_url,
+        token,
+        remember,
+        forget,
+        ca_cert,
+        insecure,
+        &remote_session.token_cache_key,
+        Some(tunnel.transport()),
+    )
+    .map(|connections| (connections, tunnel))
+}
+
+fn attach_to_remote_session_with_token_cache_key(
+    runtime: Handle,
+    remote_session_url: &str,
+    token: Option<String>,
+    remember: bool,
+    forget: bool,
+    ca_cert: Option<&std::path::Path>,
+    insecure: bool,
+    token_cache_key: &str,
+    transport: Option<&RemoteTransport>,
+) -> Result<WebSocketConnections, RemoteClientError> {
     // Handle --forget flag
     if forget {
-        let _ = remote_session_tokens::delete_session_token(&server_url);
+        let _ = remote_session_tokens::delete_session_token(token_cache_key);
     }
 
     // If --token provided, delete saved session token
     if token.is_some() {
-        let _ = remote_session_tokens::delete_session_token(&server_url);
+        let _ = remote_session_tokens::delete_session_token(token_cache_key);
     }
 
     if token.is_none() {
         if let Some(connections) = try_to_connect_with_saved_session_token(
             runtime.clone(),
             remote_session_url,
-            &server_url,
+            token_cache_key,
             ca_cert,
             insecure,
+            transport,
         )? {
             return Ok(connections);
         }
@@ -74,6 +145,8 @@ pub fn attach_to_remote_session(
         remember,
         ca_cert,
         insecure,
+        token_cache_key,
+        transport,
     )
 }
 
@@ -82,11 +155,13 @@ pub fn attach_to_remote_session(
 fn try_to_connect_with_saved_session_token(
     runtime: Handle,
     remote_session_url: &str,
-    server_url: &str,
+    token_cache_key: &str,
     ca_cert: Option<&std::path::Path>,
     insecure: bool,
+    transport: Option<&RemoteTransport>,
 ) -> Result<Option<WebSocketConnections>, RemoteClientError> {
-    if let Ok(Some(saved_session_token)) = remote_session_tokens::get_session_token(server_url) {
+    if let Ok(Some(saved_session_token)) = remote_session_tokens::get_session_token(token_cache_key)
+    {
         // we have a saved session token, let's try to authenticate with it
         let ca_cert_owned = ca_cert.map(|p| p.to_path_buf());
         match runtime.block_on(async move {
@@ -95,6 +170,7 @@ fn try_to_connect_with_saved_session_token(
                 &saved_session_token,
                 ca_cert_owned.as_deref(),
                 insecure,
+                transport,
             )
             .await
         }) {
@@ -103,7 +179,7 @@ fn try_to_connect_with_saved_session_token(
             },
             Err(RemoteClientError::SessionTokenExpired) => {
                 // Session expired - delete and return to retry
-                let _ = remote_session_tokens::delete_session_token(server_url);
+                let _ = remote_session_tokens::delete_session_token(token_cache_key);
                 eprintln!("Session expired, please re-authenticate");
                 return Ok(None);
             },
@@ -128,6 +204,8 @@ fn authenticate_with_retry(
     remember: bool,
     ca_cert: Option<&std::path::Path>,
     insecure: bool,
+    token_cache_key: &str,
+    transport: Option<&RemoteTransport>,
 ) -> Result<WebSocketConnections, RemoteClientError> {
     use dialoguer::{Confirm, Password};
 
@@ -153,14 +231,15 @@ fn authenticate_with_retry(
                 remember,
                 ca_cert_owned.as_deref(),
                 insecure,
+                transport,
             )
             .await
         }) {
             Ok((connections, session_token_opt)) => {
                 // Save session token if we got one
                 if let Some(session_token) = session_token_opt {
-                    let server_url = extract_server_url(remote_session_url)?;
-                    let _ = remote_session_tokens::save_session_token(&server_url, &session_token);
+                    let _ =
+                        remote_session_tokens::save_session_token(token_cache_key, &session_token);
                 }
                 return Ok(connections);
             },
@@ -205,6 +284,7 @@ async fn remote_attach(
     remember_me: bool,
     ca_cert: Option<&std::path::Path>,
     insecure: bool,
+    transport: Option<&RemoteTransport>,
 ) -> Result<(websockets::WebSocketConnections, Option<String>), RemoteClientError> {
     let server_base_url = extract_server_url(server_url)?;
     let session_name = extract_session_name(server_url)?;
@@ -215,15 +295,17 @@ async fn remote_attach(
         &session_name,
         ca_cert,
         insecure,
+        transport,
     )
     .await?;
-    let connections = websockets::establish_websocket_connections(
+    let connections = websockets::establish_websocket_connections_with_transport(
         &web_client_id,
         &http_client,
         &server_base_url,
         &session_name,
         ca_cert,
         insecure,
+        transport,
     )
     .await
     .map_err(|e| RemoteClientError::ConnectionFailed(e.to_string()))?;
@@ -235,6 +317,7 @@ async fn remote_attach_with_session_token(
     session_token: &str,
     ca_cert: Option<&std::path::Path>,
     insecure: bool,
+    transport: Option<&RemoteTransport>,
 ) -> Result<websockets::WebSocketConnections, RemoteClientError> {
     let server_base_url = extract_server_url(server_url)?;
     let session_name = extract_session_name(server_url)?;
@@ -244,15 +327,17 @@ async fn remote_attach_with_session_token(
         &session_name,
         ca_cert,
         insecure,
+        transport,
     )
     .await?;
-    let connections = websockets::establish_websocket_connections(
+    let connections = websockets::establish_websocket_connections_with_transport(
         &web_client_id,
         &http_client,
         &server_base_url,
         &session_name,
         ca_cert,
         insecure,
+        transport,
     )
     .await
     .map_err(|e| RemoteClientError::ConnectionFailed(e.to_string()))?;
@@ -268,12 +353,15 @@ pub fn extract_server_url(full_url: &str) -> Result<String, RemoteClientError> {
     Ok(base_url.to_string().trim_end_matches('/').to_string())
 }
 
-fn extract_session_name(server_url: &str) -> Result<String, RemoteClientError> {
+pub(crate) fn extract_session_name(server_url: &str) -> Result<String, RemoteClientError> {
     let parsed_url = url::Url::parse(server_url)?;
     let path = parsed_url.path();
     // Extract session name from path (everything after the first /)
     if path.len() > 1 && path.starts_with('/') {
-        Ok(path[1..].trim_end_matches('/').to_string())
+        Ok(urlencoding::decode(path[1..].trim_end_matches('/'))
+            .map_err(|e| RemoteClientError::Other(Box::new(e)))?
+            .trim_end_matches('/')
+            .to_owned())
     } else {
         Ok(String::new())
     }

@@ -5027,6 +5027,7 @@ dependencies = [
  "interprocess",
  "isahc",
  "lazy_static",
+ "libc",
  "log",
  "nix",
  "num_cpus",
