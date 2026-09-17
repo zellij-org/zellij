@@ -10439,6 +10439,14 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 completion_tx,
             ) => {
+                // CLI clients (eg. `zellij action override-layout`) have no active tab of their
+                // own, so fall back to the first connected client as other actions do
+                let client_id = if screen.get_active_tab(client_id).is_ok() {
+                    client_id
+                } else {
+                    screen.get_first_client_id().unwrap_or(client_id)
+                };
+
                 // 1. Determine which tabs to close (exist but not in layout)
                 let existing_tab_indices: HashSet<usize> = screen.tabs.keys().copied().collect();
                 let layout_tab_indices: HashSet<usize> =
