@@ -5382,6 +5382,47 @@ pub fn send_cli_set_pane_border_style_action() {
 }
 
 #[test]
+pub fn set_pane_border_style_reports_an_unknown_pane() {
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = std::thread::spawn(move || {
+        while let Ok(instruction) = server_receiver.recv() {
+            if matches!(instruction, (ServerInstruction::KillSession, _)) {
+                break;
+            }
+        }
+    });
+
+    let (_, completion) = route_action(
+        Action::SetPaneBorderStyle {
+            pane_id: PaneId::Terminal(999).into(),
+            border_style: Default::default(),
+        },
+        client_id,
+        None,
+        None,
+        session_metadata.senders.clone(),
+        None,
+        None,
+        InputMode::Normal,
+        None,
+    )
+    .unwrap();
+    let completion = completion.unwrap();
+    assert_eq!(completion.exit_status, Some(1));
+    assert_eq!(
+        completion.error_message.as_deref(),
+        Some("Pane with id Terminal(999) not found")
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
 pub fn go_to_tab_by_id_verifies_screen_state() {
     let size = Size {
         cols: 121,

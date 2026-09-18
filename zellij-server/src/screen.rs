@@ -7321,13 +7321,17 @@ impl Screen {
             }
         }
     }
-    pub fn set_pane_border_style(&mut self, pane_id: PaneId, border_style: BorderStyleOverride) {
+    pub fn set_pane_border_style(
+        &mut self,
+        pane_id: PaneId,
+        border_style: BorderStyleOverride,
+    ) -> bool {
         for (_tab_id, tab) in self.tabs.iter_mut() {
             if tab.has_pane_with_pid(&pane_id) {
-                tab.set_pane_border_style(pane_id, border_style);
-                break;
+                return tab.set_pane_border_style(pane_id, border_style);
             }
         }
+        false
     }
     pub fn handle_mouse_event(&mut self, event: MouseEvent, client_id: ClientId) {
         let is_bare_motion = event.event_type == MouseEventType::Motion
@@ -12157,8 +12161,14 @@ pub(crate) fn screen_thread_main(
                 screen.set_pane_borderless(pane_id, borderless);
                 let _ = screen.render(None);
             },
-            ScreenInstruction::SetPaneBorderStyle(pane_id, border_style, _completion_tx) => {
-                screen.set_pane_border_style(pane_id, border_style);
+            ScreenInstruction::SetPaneBorderStyle(pane_id, border_style, mut completion_tx) => {
+                if !screen.set_pane_border_style(pane_id, border_style) {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(c) = completion_tx.as_mut() {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
                 let _ = screen.render(None);
             },
             ScreenInstruction::GroupAndUngroupPanes(
@@ -12911,7 +12921,7 @@ pub(crate) fn screen_thread_main(
                 mut _completion_tx,
             ) => {
                 if let Some(tab) = screen.tabs.get_mut(&tab_id) {
-                    let applied = tab.apply_tiled_swap_layout(&layout_name).unwrap_or(false);
+                    let applied = tab.apply_tiled_swap_layout(&layout_name)?;
                     if !applied {
                         log::error!("Tiled swap layout not found or incompatible: {layout_name}");
                         if let Some(ref mut c) = _completion_tx {
@@ -12937,9 +12947,7 @@ pub(crate) fn screen_thread_main(
                 mut _completion_tx,
             ) => {
                 if let Some(tab) = screen.tabs.get_mut(&tab_id) {
-                    let applied = tab
-                        .apply_floating_swap_layout(&layout_name)
-                        .unwrap_or(false);
+                    let applied = tab.apply_floating_swap_layout(&layout_name)?;
                     if !applied {
                         log::error!(
                             "Floating swap layout not found or incompatible: {layout_name}"
