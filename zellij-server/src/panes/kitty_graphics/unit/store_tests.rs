@@ -98,11 +98,19 @@ fn byte_accounting_matches_hand_computed_total_with_scaled_variants() {
     let mut store = KittyImageStore::default();
     let id_a = store.store_image(rgba_image(10, 10)).unwrap();
     let id_b = store.store_image(rgba_image(4, 5)).unwrap();
-    store.add_scaled_variant(id_a, (3, 2), vec![0; 120]);
-    store.add_scaled_variant(id_a, (5, 4), vec![0; 60]);
-    store.add_scaled_variant(id_a, (3, 2), vec![0; 100]);
+    let first = super::ScaledImageKey {
+        source: crate::panes::sixel::PixelRect::new(0, 0, 10, 10),
+        size: (3, 2),
+    };
+    let second = super::ScaledImageKey {
+        size: (5, 4),
+        ..first
+    };
+    store.add_scaled_variant(id_a, first, vec![0; 120]);
+    store.add_scaled_variant(id_a, second, vec![0; 60]);
+    store.add_scaled_variant(id_a, first, vec![0; 100]);
     assert_eq!(store.total_bytes(), 640);
-    assert_eq!(store.scaled_variant(id_a, (3, 2)).unwrap().len(), 100);
+    assert_eq!(store.scaled_variant(id_a, first).unwrap().len(), 100);
     store.free(id_a);
     assert_eq!(store.total_bytes(), 80);
     store.free(id_b);

@@ -464,6 +464,11 @@ impl SessionMetaData {
                     auto_layout: new_config.options.auto_layout.unwrap_or(true),
                     rounded_corners: new_config.ui.pane_frames.rounded_corners,
                     hide_session_name: new_config.ui.pane_frames.hide_session_name,
+                    border_style: new_config.ui.pane_frames.resolved_border_style(),
+                    floating_border_style: new_config
+                        .ui
+                        .pane_frames
+                        .resolved_floating_border_style(),
                     stacked_resize: new_config.options.stacked_resize.unwrap_or(true),
                     stacked_pane_list: new_config.options.stacked_pane_list.unwrap_or(true),
                     default_editor: new_config.options.scrollback_editor.clone(),
@@ -1026,6 +1031,11 @@ pub fn start_server_impl(
                             .unwrap_or_else(|| default_palette().into()),
                         rounded_corners: config.ui.pane_frames.rounded_corners,
                         hide_session_name: config.ui.pane_frames.hide_session_name,
+                        border_style: config.ui.pane_frames.resolved_border_style(),
+                        floating_border_style: config
+                            .ui
+                            .pane_frames
+                            .resolved_floating_border_style(),
                     },
                 };
 
@@ -1207,6 +1217,11 @@ pub fn start_server_impl(
                             .unwrap_or_else(|| default_palette().into()),
                         rounded_corners: config.ui.pane_frames.rounded_corners,
                         hide_session_name: config.ui.pane_frames.hide_session_name,
+                        border_style: config.ui.pane_frames.resolved_border_style(),
+                        floating_border_style: config
+                            .ui
+                            .pane_frames
+                            .resolved_floating_border_style(),
                     },
                 };
 

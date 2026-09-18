@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 
 use crate::{
+    data::{BorderStyleOverride, LineStyle},
     input::layout::PluginUserConfiguration,
     input::layout::{
         FloatingPaneLayout, Layout, LayoutConstraint, PercentOrFixed, Run, RunPluginOrAlias,
@@ -38,6 +39,7 @@ pub struct PaneLayoutManifest {
     pub pane_contents: Option<String>,
     pub default_fg: Option<String>,
     pub default_bg: Option<String>,
+    pub border_style: Option<BorderStyleOverride>,
 }
 
 pub fn serialize_session_layout(
@@ -390,6 +392,13 @@ fn serialize_tiled_layout_attributes(
             .entries_mut()
             .push(KdlEntry::new_prop("borderless", KdlValue::Bool(true)));
     }
+    if let Some(border_style) = layout.border_style.as_ref() {
+        for (property_name, value) in border_style_properties(border_style) {
+            kdl_node
+                .entries_mut()
+                .push(KdlEntry::new_prop(property_name, value));
+        }
+    }
     if layout.children_are_stacked {
         kdl_node
             .entries_mut()
@@ -483,6 +492,36 @@ fn serialize_floating_layout_attributes(
         },
         _ => {},
     }
+    if layout.borderless.unwrap_or(false) {
+        let mut node = KdlNode::new("borderless");
+        node.entries_mut().push(KdlEntry::new(KdlValue::Bool(true)));
+        pane_node_children.nodes_mut().push(node);
+    }
+    if let Some(border_style) = layout.border_style.as_ref() {
+        for (property_name, value) in border_style_properties(border_style) {
+            let mut node = KdlNode::new(property_name);
+            node.entries_mut().push(KdlEntry::new(value));
+            pane_node_children.nodes_mut().push(node);
+        }
+    }
+}
+
+fn border_style_properties(border_style: &BorderStyleOverride) -> Vec<(&'static str, KdlValue)> {
+    let mut properties = vec![];
+    let mut push_line_style = |name: &'static str, line_style: Option<LineStyle>| {
+        if let Some(line_style) = line_style {
+            properties.push((name, KdlValue::String(line_style.to_string())));
+        }
+    };
+    push_line_style("border_style", border_style.all);
+    push_line_style("border_top", border_style.top);
+    push_line_style("border_right", border_style.right);
+    push_line_style("border_bottom", border_style.bottom);
+    push_line_style("border_left", border_style.left);
+    if let Some(rounded_corners) = border_style.rounded_corners {
+        properties.push(("rounded_corners", KdlValue::Bool(rounded_corners)));
+    }
+    properties
 }
 
 fn serialize_start_suspended(command: &Option<String>, pane_node_children: &mut KdlDocument) {
@@ -742,6 +781,7 @@ fn tiled_pane_layout_from_manifest(
         pane_initial_contents,
         default_fg,
         default_bg,
+        border_style,
     ) = manifest
         .map(|g| {
             let mut run = g.run.clone();
@@ -761,9 +801,10 @@ fn tiled_pane_layout_from_manifest(
                 g.pane_contents.clone(),
                 g.default_fg.clone(),
                 g.default_bg.clone(),
+                g.border_style,
             )
         })
-        .unwrap_or((None, None, false, None, None, None, None, None));
+        .unwrap_or((None, None, false, None, None, None, None, None, None));
     TiledPaneLayout {
         split_size,
         run,
@@ -774,6 +815,7 @@ fn tiled_pane_layout_from_manifest(
         pane_initial_contents,
         default_fg,
         default_bg,
+        border_style,
         ..Default::default()
     }
 }
@@ -884,6 +926,7 @@ fn get_floating_panes_layout_from_panegeoms(
                 borderless: Some(m.is_borderless),
                 default_fg: m.default_fg.clone(),
                 default_bg: m.default_bg.clone(),
+                border_style: m.border_style,
             }
         })
         .collect()
@@ -2365,6 +2408,58 @@ mod tests {
             is_pinned: false,
             logical_position: None,
         }
+    }
+
+    #[test]
+    fn border_styles_survive_a_layout_serialization_round_trip() {
+        use crate::data::LineStyle;
+        use crate::input::layout::Layout;
+        let border_style = BorderStyleOverride {
+            all: Some(LineStyle::Double),
+            top: Some(LineStyle::Heavy),
+            rounded_corners: Some(false),
+            ..Default::default()
+        };
+        let floating_border_style = BorderStyleOverride {
+            left: Some(LineStyle::Dashed),
+            ..Default::default()
+        };
+        let geom = PaneGeom {
+            x: 0,
+            y: 0,
+            rows: Dimension::fixed(10),
+            cols: Dimension::fixed(10),
+            stacked: None,
+            is_pinned: false,
+            logical_position: None,
+        };
+        let tab_layout_manifest = TabLayoutManifest {
+            tiled_panes: vec![PaneLayoutManifest {
+                geom,
+                border_style: Some(border_style),
+                ..Default::default()
+            }],
+            floating_panes: vec![PaneLayoutManifest {
+                geom,
+                border_style: Some(floating_border_style),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![("tab".to_owned(), tab_layout_manifest)],
+            ..Default::default()
+        };
+        let (kdl, _) = serialize_session_layout(global_layout_manifest).unwrap();
+        let layout = Layout::from_kdl(&kdl, Some("layout".to_owned()), None, None).unwrap();
+        let (tiled, floating) = layout
+            .tabs()
+            .into_iter()
+            .next()
+            .map(|(_, t, f)| (t, f))
+            .unwrap();
+        assert_eq!(tiled.children[0].border_style, Some(border_style));
+        assert_eq!(floating[0].border_style, Some(floating_border_style));
     }
 
     fn get_dim(dim_hm: &Value) -> Dimension {

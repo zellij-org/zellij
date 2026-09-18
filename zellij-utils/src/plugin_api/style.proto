@@ -7,6 +7,33 @@ message Style {
   bool rounded_corners = 2;
   bool hide_session_name = 3;
   Styling styling = 4;
+  BorderStyle border_style = 5;
+  BorderStyle floating_border_style = 6;
+}
+
+enum LineStyle {
+  Single = 0;
+  Double = 1;
+  Heavy = 2;
+  Dashed = 3;
+  HeavyDashed = 4;
+}
+
+message BorderStyle {
+  LineStyle top = 1;
+  LineStyle right = 2;
+  LineStyle bottom = 3;
+  LineStyle left = 4;
+  bool rounded_corners = 5;
+}
+
+message BorderStyleOverride {
+  optional LineStyle all = 1;
+  optional LineStyle top = 2;
+  optional LineStyle right = 3;
+  optional LineStyle bottom = 4;
+  optional LineStyle left = 5;
+  optional bool rounded_corners = 6;
 }
 
 message Palette {

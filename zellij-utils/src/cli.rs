@@ -537,6 +537,9 @@ pub enum Sessions {
             conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Load a plugin
     /// Returns: Created pane ID (format: plugin_<id>)
@@ -592,6 +595,9 @@ pub enum Sessions {
         /// Target a specific tab by ID
         #[clap(long, value_parser, conflicts_with("in_place"))]
         tab_id: Option<usize>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Edit file with default $EDITOR / $VISUAL
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -657,6 +663,9 @@ pub enum Sessions {
             conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Send data to one or more plugins, launch them if they are not running.
     #[clap(override_usage(
@@ -1014,6 +1023,9 @@ pub enum CliAction {
             conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -1078,6 +1090,9 @@ pub enum CliAction {
             conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {
@@ -1271,6 +1286,30 @@ pub enum CliAction {
         tab_id: Option<usize>,
     },
     NextSwapLayout {
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    /// Apply the tiled swap layout with the given name, leaving floating pane visibility and focus
+    /// untouched
+    ///
+    /// Exits with status 1 if no tiled swap layout with that name fits the current pane count
+    ApplyTiledSwapLayout {
+        /// The name of the tiled swap layout, as declared in the layout file
+        #[clap(value_parser)]
+        name: String,
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    /// Apply the floating swap layout with the given name, leaving floating pane visibility and
+    /// focus untouched
+    ///
+    /// Exits with status 1 if no floating swap layout with that name fits the current pane count
+    ApplyFloatingSwapLayout {
+        /// The name of the floating swap layout, as declared in the layout file
+        #[clap(value_parser)]
+        name: String,
         /// Target a specific tab by ID
         #[clap(short, long, value_parser)]
         tab_id: Option<usize>,
@@ -1525,6 +1564,9 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// mouse if without a border)
         #[clap(short, long, value_parser)]
         borderless: Option<bool>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     TogglePaneBorderless {
         /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
@@ -1538,6 +1580,15 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Whether the pane should be borderless (flag present) or bordered (flag absent)
         #[clap(short, long, value_parser)]
         borderless: bool,
+    },
+    /// Change the border line style of an existing pane
+    SetPaneBorderStyle {
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: String,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Detach from the current session
     Detach,
@@ -1593,10 +1644,25 @@ mod tests {
     use super::*;
     use clap::Parser;
 
+    const CLI_PARSE_TEST_STACK_SIZE: usize = 16 * 1024 * 1024;
+
+    fn on_large_stack<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+        std::thread::Builder::new()
+            .stack_size(CLI_PARSE_TEST_STACK_SIZE)
+            .spawn(f)
+            .expect("failed to spawn cli parse test thread")
+            .join()
+            .expect("cli parse test thread panicked")
+    }
+
+    fn try_parse(args: &[&str]) -> Result<CliArgs, clap::Error> {
+        let mut full_args = vec!["zellij".to_owned()];
+        full_args.extend(args.iter().map(|arg| arg.to_string()));
+        on_large_stack(move || CliArgs::try_parse_from(full_args))
+    }
+
     fn parse_subscribe(args: &[&str]) -> SubscribeCli {
-        let mut full_args = vec!["zellij"];
-        full_args.extend_from_slice(args);
-        let cli = CliArgs::try_parse_from(full_args).unwrap();
+        let cli = try_parse(args).unwrap();
         match cli.command {
             Some(Command::Subscribe(s)) => s,
             other => panic!("Expected Subscribe, got {:?}", other),
@@ -1656,7 +1722,7 @@ mod tests {
 
     #[test]
     fn subscribe_requires_pane_id() {
-        let result = CliArgs::try_parse_from(["zellij", "subscribe"]);
+        let result = try_parse(&["subscribe"]);
         assert!(result.is_err());
     }
 }

@@ -312,6 +312,33 @@ load_plugins {
 //
 // pane_frame_style "titles"
 
+// Configure the look of the pane frame borders
+//
+// ui {
+//     pane_frames {
+//         // round the corners of single-line borders
+//         rounded_corners true
+//         // line style for all four sides of tiled pane frames
+//         // one of: single, double, heavy, dashed, heavy_dashed
+//         border_style "single"
+//         // per-side overrides, eg. a double top border with single sides
+//         border_top "double"
+//         border_right "single"
+//         border_bottom "single"
+//         border_left "single"
+//         // when two neighbouring panes disagree about a shared grid line
+//         // (pane frames off), that line falls back to border_style above
+//         // the same keys prefixed with "floating_" apply to floating panes,
+//         // they default to the values above
+//         floating_border_style "double"
+//         floating_border_top "double"
+//         floating_border_right "double"
+//         floating_border_bottom "double"
+//         floating_border_left "double"
+//         floating_border_rounded_corners false
+//     }
+// }
+
 // Toggle between having Zellij lay out panes according to a predefined set of layouts whenever possible
 // Options:
 //   - true (default)

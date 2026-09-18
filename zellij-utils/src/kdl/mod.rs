@@ -1,9 +1,9 @@
 mod kdl_layout_parser;
 use crate::data::{
-    BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo,
-    LayoutMetadata, MultiplayerColors, Palette, PaletteColor, PaneId, PaneInfo, PaneManifest,
-    PermissionType, Resize, SessionInfo, StyleDeclaration, Styling, TabInfo, ThemeHue, WebSharing,
-    DEFAULT_STYLES,
+    BareKey, BorderStyleOverride, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier,
+    LayoutInfo, LayoutMetadata, LineStyle, MultiplayerColors, Palette, PaletteColor, PaneId,
+    PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, StyleDeclaration, Styling,
+    TabInfo, ThemeHue, WebSharing, DEFAULT_STYLES,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -464,6 +464,8 @@ impl Action {
     ) -> Result<Self, ConfigError> {
         match action_name {
             "WriteChars" => Ok(Action::WriteChars { chars: string }),
+            "ApplyTiledSwapLayout" => Ok(Action::ApplyTiledSwapLayout { name: string }),
+            "ApplyFloatingSwapLayout" => Ok(Action::ApplyFloatingSwapLayout { name: string }),
             "SetPaneFrameStyle" => {
                 let style = PaneFrameStyle::from_str(string.as_str()).map_err(|e| {
                     ConfigError::new_kdl_error(
@@ -884,6 +886,7 @@ impl Action {
                 pane_name: name,
                 near_current_pane: false,
                 borderless: _,
+                border_style: _,
                 ..
             } => {
                 let mut node = KdlNode::new("Run");
@@ -1282,6 +1285,16 @@ impl Action {
             Action::ToggleMouseMode => Some(KdlNode::new("ToggleMouseMode")),
             Action::PreviousSwapLayout => Some(KdlNode::new("PreviousSwapLayout")),
             Action::NextSwapLayout => Some(KdlNode::new("NextSwapLayout")),
+            Action::ApplyTiledSwapLayout { name } => {
+                let mut node = KdlNode::new("ApplyTiledSwapLayout");
+                node.push(name.clone());
+                Some(node)
+            },
+            Action::ApplyFloatingSwapLayout { name } => {
+                let mut node = KdlNode::new("ApplyFloatingSwapLayout");
+                node.push(name.clone());
+                Some(node)
+            },
             Action::BreakPane => Some(KdlNode::new("BreakPane")),
             Action::BreakPaneRight => Some(KdlNode::new("BreakPaneRight")),
             Action::BreakPaneLeft => Some(KdlNode::new("BreakPaneLeft")),
@@ -2082,12 +2095,20 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     command_metadata.and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "pinned"));
                 let borderless = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "borderless"));
+                let border_style = match command_metadata {
+                    Some(command_metadata) => {
+                        border_style_override_from_kdl_document(command_metadata, "border")?
+                            .none_if_empty()
+                    },
+                    None => None,
+                };
                 if floating {
                     Ok(Action::NewFloatingPane {
                         command: Some(run_command_action),
                         pane_name: name,
-                        coordinates: FloatingPaneCoordinates::new(
-                            x, y, width, height, pinned, borderless,
+                        coordinates: FloatingPaneCoordinates::merge_border_style(
+                            FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
+                            border_style,
                         ),
                         near_current_pane: false,
                         no_focus: false,
@@ -2119,6 +2140,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         near_current_pane: false,
                         no_focus: false,
                         borderless: None,
+                        border_style,
                         tab_id: None,
                     })
                 }
@@ -2233,6 +2255,13 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
             "NextSwapLayout" => Ok(Action::NextSwapLayout),
+            "ApplyTiledSwapLayout" | "ApplyFloatingSwapLayout" => {
+                parse_kdl_action_char_or_string_arguments!(
+                    action_name,
+                    action_arguments,
+                    kdl_action
+                )
+            },
             "BreakPane" => Ok(Action::BreakPane),
             "BreakPaneRight" => Ok(Action::BreakPaneRight),
             "BreakPaneLeft" => Ok(Action::BreakPaneLeft),
@@ -5675,6 +5704,84 @@ fn load_plugins_from_kdl(
     Ok(load_plugins)
 }
 
+pub fn line_style_from_kdl(
+    kdl_document: &KdlDocument,
+    child_name: &str,
+) -> Result<Option<LineStyle>, ConfigError> {
+    let Some(child) = kdl_document.get(child_name) else {
+        return Ok(None);
+    };
+    let value = child
+        .get(0)
+        .and_then(|v| v.value().as_string())
+        .ok_or_else(|| {
+            ConfigError::new_kdl_error(
+                format!("'{}' must have a string value", child_name),
+                child.span().offset(),
+                child.span().len(),
+            )
+        })?;
+    LineStyle::from_str(value)
+        .map(Some)
+        .map_err(|e| ConfigError::new_kdl_error(e, child.span().offset(), child.span().len()))
+}
+
+pub fn border_style_override_from_kdl_document(
+    kdl_document: &KdlDocument,
+    prefix: &str,
+) -> Result<BorderStyleOverride, ConfigError> {
+    let rounded_corners = kdl_document
+        .get(&format!("{}_rounded_corners", prefix))
+        .and_then(|n| n.entries().iter().next())
+        .and_then(|e| e.value().as_bool());
+    Ok(BorderStyleOverride {
+        all: line_style_from_kdl(kdl_document, &format!("{}_style", prefix))?,
+        top: line_style_from_kdl(kdl_document, &format!("{}_top", prefix))?,
+        right: line_style_from_kdl(kdl_document, &format!("{}_right", prefix))?,
+        bottom: line_style_from_kdl(kdl_document, &format!("{}_bottom", prefix))?,
+        left: line_style_from_kdl(kdl_document, &format!("{}_left", prefix))?,
+        rounded_corners,
+    })
+}
+
+pub fn border_style_override_from_kdl_children(
+    kdl_node: &KdlNode,
+    prefix: &str,
+) -> Result<BorderStyleOverride, ConfigError> {
+    match kdl_node.children() {
+        Some(children) => border_style_override_from_kdl_document(children, prefix),
+        None => Ok(BorderStyleOverride::default()),
+    }
+}
+
+pub fn border_style_override_to_kdl_children(
+    border_style_override: &BorderStyleOverride,
+    prefix: &str,
+    children: &mut KdlDocument,
+) -> bool {
+    let mut has_any = false;
+    let mut push = |name: String, line_style: Option<LineStyle>| {
+        if let Some(line_style) = line_style {
+            let mut node = KdlNode::new(name);
+            node.push(KdlValue::String(line_style.to_string()));
+            children.nodes_mut().push(node);
+            has_any = true;
+        }
+    };
+    push(format!("{}_style", prefix), border_style_override.all);
+    push(format!("{}_top", prefix), border_style_override.top);
+    push(format!("{}_right", prefix), border_style_override.right);
+    push(format!("{}_bottom", prefix), border_style_override.bottom);
+    push(format!("{}_left", prefix), border_style_override.left);
+    if let Some(rounded_corners) = border_style_override.rounded_corners {
+        let mut node = KdlNode::new(format!("{}_rounded_corners", prefix));
+        node.push(KdlValue::Bool(rounded_corners));
+        children.nodes_mut().push(node);
+        has_any = true;
+    }
+    has_any
+}
+
 impl UiConfig {
     pub fn from_kdl(kdl_ui_config: &KdlNode) -> Result<UiConfig, ConfigError> {
         let mut ui_config = UiConfig::default();
@@ -5684,9 +5791,14 @@ impl UiConfig {
                     .unwrap_or(false);
             let hide_session_name =
                 kdl_get_child_entry_bool_value!(pane_frames, "hide_session_name").unwrap_or(false);
+            let border_style = border_style_override_from_kdl_children(pane_frames, "border")?;
+            let floating_border_style =
+                border_style_override_from_kdl_children(pane_frames, "floating_border")?;
             let frame_config = FrameConfig {
                 rounded_corners,
                 hide_session_name,
+                border_style,
+                floating_border_style,
             };
             ui_config.pane_frames = frame_config;
         }
@@ -5709,6 +5821,20 @@ impl UiConfig {
             let mut hide_session_name = KdlNode::new("hide_session_name");
             hide_session_name.push(KdlValue::Bool(true));
             frame_config_children.nodes_mut().push(hide_session_name);
+        }
+        if border_style_override_to_kdl_children(
+            &self.pane_frames.border_style,
+            "border",
+            &mut frame_config_children,
+        ) {
+            has_ui_config = true;
+        }
+        if border_style_override_to_kdl_children(
+            &self.pane_frames.floating_border_style,
+            "floating_border",
+            &mut frame_config_children,
+        ) {
+            has_ui_config = true;
         }
         if has_ui_config {
             frame_config.set_children(frame_config_children);
@@ -7090,6 +7216,51 @@ fn can_bind_theme_actions() {
 }
 
 #[test]
+fn can_bind_named_swap_layout_actions() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Ctrl t" { ApplyTiledSwapLayout "vertical"; }
+                bind "Ctrl f" { ApplyFloatingSwapLayout "staggered"; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let ctrl_t = KeyWithModifier::new(BareKey::Char('t')).with_ctrl_modifier();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &ctrl_t),
+        Some(&vec![Action::ApplyTiledSwapLayout {
+            name: "vertical".to_owned()
+        }])
+    );
+    let ctrl_f = KeyWithModifier::new(BareKey::Char('f')).with_ctrl_modifier();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &ctrl_f),
+        Some(&vec![Action::ApplyFloatingSwapLayout {
+            name: "staggered".to_owned()
+        }])
+    );
+    let serialized = Keybinds::to_kdl(&deserialized, true);
+    let deserialized_from_serialized = Keybinds::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("keybinds")
+            .unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized);
+}
+
+#[test]
 fn keybinds_to_string_with_all_actions() {
     let fake_config = r#"
         keybinds {
@@ -7658,6 +7829,71 @@ fn ui_config_to_string() {
         "Deserialized serialized config equals original config"
     );
     insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn ui_config_with_border_styles_to_string() {
+    let fake_config = r##"
+        ui {
+            pane_frames {
+                rounded_corners true
+                border_style "single"
+                border_top "double"
+                floating_border_style "heavy"
+                floating_border_rounded_corners false
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = UiConfig::from_kdl(document.get("ui").unwrap()).unwrap();
+    assert_eq!(
+        deserialized.pane_frames.border_style,
+        BorderStyleOverride {
+            all: Some(LineStyle::Single),
+            top: Some(LineStyle::Double),
+            ..Default::default()
+        }
+    );
+    assert_eq!(
+        deserialized.pane_frames.floating_border_style,
+        BorderStyleOverride {
+            all: Some(LineStyle::Heavy),
+            rounded_corners: Some(false),
+            ..Default::default()
+        }
+    );
+    let resolved = deserialized.pane_frames.resolved_border_style();
+    assert_eq!(resolved.top, LineStyle::Double);
+    assert_eq!(resolved.bottom, LineStyle::Single);
+    assert!(resolved.rounded_corners);
+    let resolved_floating = deserialized.pane_frames.resolved_floating_border_style();
+    assert_eq!(resolved_floating.top, LineStyle::Heavy);
+    assert!(!resolved_floating.rounded_corners);
+    let serialized = UiConfig::to_kdl(&deserialized).unwrap();
+    let deserialized_from_serialized = UiConfig::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("ui")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized and serialized ui config are the same"
+    );
+}
+
+#[test]
+fn ui_config_with_invalid_border_style_is_an_error() {
+    let fake_config = r##"
+        ui {
+            pane_frames {
+                border_style "squiggly"
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    assert!(UiConfig::from_kdl(document.get("ui").unwrap()).is_err());
 }
 
 #[test]

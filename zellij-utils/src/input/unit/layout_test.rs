@@ -47,6 +47,47 @@ fn layout_with_one_pane() {
 }
 
 #[test]
+fn layout_with_border_styles() {
+    use crate::data::{BorderStyleOverride, LineStyle};
+    let kdl_layout = r#"
+        layout {
+            pane border_style="double" border_top="heavy" rounded_corners=true
+            floating_panes {
+                pane border_style="dashed"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+    let (tiled, floating) = layout.template.clone().unwrap();
+    assert_eq!(
+        tiled.children[0].border_style,
+        Some(BorderStyleOverride {
+            all: Some(LineStyle::Double),
+            top: Some(LineStyle::Heavy),
+            rounded_corners: Some(true),
+            ..Default::default()
+        })
+    );
+    assert_eq!(
+        floating[0].border_style,
+        Some(BorderStyleOverride {
+            all: Some(LineStyle::Dashed),
+            ..Default::default()
+        })
+    );
+}
+
+#[test]
+fn layout_with_invalid_border_style() {
+    let kdl_layout = r#"
+        layout {
+            pane border_style="squiggly"
+        }
+    "#;
+    assert!(Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).is_err());
+}
+
+#[test]
 fn layout_with_multiple_panes() {
     let kdl_layout = r#"
         layout {

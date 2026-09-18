@@ -320,6 +320,7 @@ fn new_pane_cli_action(
         no_focus: false,
         borderless: None,
         tab_id: None,
+        border_style: None,
     }
 }
 

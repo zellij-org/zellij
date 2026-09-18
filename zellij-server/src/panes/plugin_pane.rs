@@ -22,7 +22,8 @@ use std::rc::Rc;
 use vte;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    BareKey, KeyWithModifier, PermissionStatus, PermissionType, PluginPermission,
+    BareKey, BorderStyleOverride, KeyWithModifier, PermissionStatus, PermissionType,
+    PluginPermission,
 };
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
@@ -99,6 +100,7 @@ pub(crate) struct PluginPane {
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    border_style_override: BorderStyleOverride,
     exclude_from_sync: bool,
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
@@ -146,6 +148,7 @@ impl PluginPane {
             content_offset: Offset::default(),
             pane_title: title,
             borderless: false,
+            border_style_override: BorderStyleOverride::default(),
             pane_name: pane_name.clone(),
             prev_pane_name: pane_name,
             terminal_emulator_colors,
@@ -747,6 +750,14 @@ impl Pane for PluginPane {
     fn borderless(&self) -> bool {
         self.borderless
     }
+    fn set_border_style_override(&mut self, border_style_override: BorderStyleOverride) {
+        self.border_style_override = border_style_override;
+        self.frame.clear();
+        self.set_should_render(true);
+    }
+    fn border_style_override(&self) -> BorderStyleOverride {
+        self.border_style_override
+    }
     fn set_exclude_from_sync(&mut self, exclude_from_sync: bool) {
         self.exclude_from_sync = exclude_from_sync;
     }
@@ -846,6 +857,10 @@ impl Pane for PluginPane {
     fn update_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;
         self.frame.clear();
+    }
+    fn invalidate_frame_cache(&mut self) {
+        self.frame.clear();
+        self.set_should_render(true);
     }
     fn set_should_be_suppressed(&mut self, should_be_suppressed: bool) {
         self.should_be_suppressed = should_be_suppressed;

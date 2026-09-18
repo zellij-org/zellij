@@ -552,6 +552,7 @@ impl<'a> LayoutApplier<'a> {
         }
 
         new_plugin.set_borderless(layout.borderless.unwrap_or(false));
+        new_plugin.set_border_style_override(layout.border_style.unwrap_or_default());
         if let Some(exclude_from_sync) = layout.exclude_from_sync {
             new_plugin.set_exclude_from_sync(exclude_from_sync);
         }
@@ -605,6 +606,7 @@ impl<'a> LayoutApplier<'a> {
         } else {
             new_pane.set_borderless(false);
         }
+        new_pane.set_border_style_override(floating_pane_layout.border_style.unwrap_or_default());
         resize_pty!(
             new_pane,
             self.os_api,
@@ -662,6 +664,7 @@ impl<'a> LayoutApplier<'a> {
         } else {
             new_pane.set_borderless(false);
         }
+        new_pane.set_border_style_override(floating_pane_layout.border_style.unwrap_or_default());
         if floating_pane_layout.default_fg.is_some() || floating_pane_layout.default_bg.is_some() {
             new_pane.set_pane_default_colors(
                 floating_pane_layout.default_fg.clone(),
@@ -735,6 +738,7 @@ impl<'a> LayoutApplier<'a> {
             new_pane.handle_pty_bytes("\n\r".as_bytes().into());
         }
         new_pane.set_borderless(layout.borderless.unwrap_or(false));
+        new_pane.set_border_style_override(layout.border_style.unwrap_or_default());
         if let Some(exclude_from_sync) = layout.exclude_from_sync {
             new_pane.set_exclude_from_sync(exclude_from_sync);
         }
@@ -764,6 +768,7 @@ impl<'a> LayoutApplier<'a> {
                 layout.run,
                 position_and_size,
                 layout.borderless,
+                layout.border_style,
             );
             found_exact_match = true;
         }
@@ -784,6 +789,7 @@ impl<'a> LayoutApplier<'a> {
                 run_instruction.clone(),
                 position_and_size,
                 layout.borderless,
+                layout.border_style,
             );
             found_empty_location = true;
         }
@@ -1331,6 +1337,9 @@ impl<'a> PaneApplier<'a> {
         if let Some(should_be_borderless) = floating_panes_layout.borderless {
             pane.set_borderless(should_be_borderless);
         }
+        if let Some(border_style) = floating_panes_layout.border_style {
+            pane.set_border_style_override(border_style);
+        }
         self.apply_position_and_size_to_floating_pane(pane, position_and_size);
         Ok(())
     }
@@ -1409,6 +1418,9 @@ impl<'a> PaneApplier<'a> {
         }
         if let Some(should_be_borderless) = layout.borderless {
             pane.set_borderless(should_be_borderless);
+        }
+        if let Some(border_style) = layout.border_style {
+            pane.set_border_style_override(border_style);
         }
         if let Some(pane_title) = layout.name.as_ref() {
             pane.set_title(pane_title.into());

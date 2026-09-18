@@ -1164,6 +1164,10 @@ impl From<crate::input::actions::Action>
     fn from(action: crate::input::actions::Action) -> Self {
         use crate::client_server_contract::client_server_contract::{
             action::ActionType,
+            ApplyFloatingSwapLayoutAction,
+            ApplyFloatingSwapLayoutByTabIdAction,
+            ApplyTiledSwapLayoutAction,
+            ApplyTiledSwapLayoutByTabIdAction,
             AreFloatingPanesVisibleAction,
             BreakPaneAction,
             BreakPaneLeftAction,
@@ -1276,6 +1280,7 @@ impl From<crate::input::actions::Action>
             SelectCommandAtScrollPositionAction,
             SetDarkThemeAction,
             SetLightThemeAction,
+            SetPaneBorderStyleAction,
             SetPaneBorderlessAction,
             SetPaneColorAction,
             SetPaneFrameStyleAction,
@@ -1554,6 +1559,7 @@ impl From<crate::input::actions::Action>
                 near_current_pane,
                 no_focus,
                 borderless,
+                border_style,
                 tab_id,
                 ..
             } => ActionType::NewTiledPane(NewTiledPaneAction {
@@ -1562,6 +1568,7 @@ impl From<crate::input::actions::Action>
                 pane_name,
                 near_current_pane,
                 borderless,
+                border_style: border_style.map(|b| b.into()),
                 tab_id: tab_id.map(|t| t as u32),
                 no_focus,
             }),
@@ -1813,6 +1820,12 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::NextSwapLayout => {
                 ActionType::NextSwapLayout(NextSwapLayoutAction {})
             },
+            crate::input::actions::Action::ApplyTiledSwapLayout { name } => {
+                ActionType::ApplyTiledSwapLayout(ApplyTiledSwapLayoutAction { name })
+            },
+            crate::input::actions::Action::ApplyFloatingSwapLayout { name } => {
+                ActionType::ApplyFloatingSwapLayout(ApplyFloatingSwapLayoutAction { name })
+            },
             crate::input::actions::Action::OverrideLayout {
                 tabs,
                 retain_existing_terminal_panes,
@@ -2050,6 +2063,13 @@ impl From<crate::input::actions::Action>
                 pane_id: Some(pane_id.into()),
                 borderless,
             }),
+            crate::input::actions::Action::SetPaneBorderStyle {
+                pane_id,
+                border_style,
+            } => ActionType::SetPaneBorderStyle(SetPaneBorderStyleAction {
+                pane_id: Some(pane_id.into()),
+                border_style: Some(border_style.into()),
+            }),
             crate::input::actions::Action::TogglePaneInGroup => {
                 ActionType::TogglePaneInGroup(TogglePaneInGroupAction {})
             },
@@ -2216,6 +2236,18 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::NextSwapLayoutByTabId { id } => {
                 ActionType::NextSwapLayoutByTabId(NextSwapLayoutByTabIdAction { id })
+            },
+            crate::input::actions::Action::ApplyTiledSwapLayoutByTabId { id, name } => {
+                ActionType::ApplyTiledSwapLayoutByTabId(ApplyTiledSwapLayoutByTabIdAction {
+                    id,
+                    name,
+                })
+            },
+            crate::input::actions::Action::ApplyFloatingSwapLayoutByTabId { id, name } => {
+                ActionType::ApplyFloatingSwapLayoutByTabId(ApplyFloatingSwapLayoutByTabIdAction {
+                    id,
+                    name,
+                })
             },
             crate::input::actions::Action::MoveTabByTabId { id, direction } => {
                 ActionType::MoveTabByTabId(MoveTabByTabIdAction {
@@ -2459,6 +2491,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     near_current_pane: new_tiled_action.near_current_pane,
                     no_focus: new_tiled_action.no_focus,
                     borderless: new_tiled_action.borderless,
+                    border_style: new_tiled_action.border_style.map(|b| b.into()),
                     tab_id: new_tiled_action.tab_id.map(|t| t as usize),
                 })
             },
@@ -2718,6 +2751,12 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::PreviousSwapLayout)
             },
             ActionType::NextSwapLayout(_) => Ok(crate::input::actions::Action::NextSwapLayout),
+            ActionType::ApplyTiledSwapLayout(a) => {
+                Ok(crate::input::actions::Action::ApplyTiledSwapLayout { name: a.name })
+            },
+            ActionType::ApplyFloatingSwapLayout(a) => {
+                Ok(crate::input::actions::Action::ApplyFloatingSwapLayout { name: a.name })
+            },
             ActionType::OverrideLayout(override_layout_action) => {
                 Ok(crate::input::actions::Action::OverrideLayout {
                     tabs: override_layout_action
@@ -2980,6 +3019,18 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     borderless: set_borderless_action.borderless,
                 })
             },
+            ActionType::SetPaneBorderStyle(set_border_style_action) => {
+                Ok(crate::input::actions::Action::SetPaneBorderStyle {
+                    pane_id: set_border_style_action
+                        .pane_id
+                        .ok_or_else(|| anyhow!("SetPaneBorderStyle missing pane_id"))?
+                        .try_into()?,
+                    border_style: set_border_style_action
+                        .border_style
+                        .map(|b| b.into())
+                        .unwrap_or_default(),
+                })
+            },
             ActionType::TogglePaneInGroup(_) => {
                 Ok(crate::input::actions::Action::TogglePaneInGroup)
             },
@@ -3194,6 +3245,18 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::NextSwapLayoutByTabId(a) => {
                 Ok(crate::input::actions::Action::NextSwapLayoutByTabId { id: a.id })
             },
+            ActionType::ApplyTiledSwapLayoutByTabId(a) => {
+                Ok(crate::input::actions::Action::ApplyTiledSwapLayoutByTabId {
+                    id: a.id,
+                    name: a.name,
+                })
+            },
+            ActionType::ApplyFloatingSwapLayoutByTabId(a) => Ok(
+                crate::input::actions::Action::ApplyFloatingSwapLayoutByTabId {
+                    id: a.id,
+                    name: a.name,
+                },
+            ),
             ActionType::MoveTabByTabId(a) => {
                 let direction = proto_i32_to_direction(a.direction)?;
                 Ok(crate::input::actions::Action::MoveTabByTabId {
@@ -3819,6 +3882,62 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingCoor
     }
 }
 
+fn line_style_to_proto_i32(line_style: crate::data::LineStyle) -> i32 {
+    use crate::client_server_contract::client_server_contract::LineStyle as ProtoLineStyle;
+    let proto = match line_style {
+        crate::data::LineStyle::Single => ProtoLineStyle::Single,
+        crate::data::LineStyle::Double => ProtoLineStyle::Double,
+        crate::data::LineStyle::Heavy => ProtoLineStyle::Heavy,
+        crate::data::LineStyle::Dashed => ProtoLineStyle::Dashed,
+        crate::data::LineStyle::HeavyDashed => ProtoLineStyle::HeavyDashed,
+    };
+    proto as i32
+}
+
+fn proto_i32_to_line_style(value: i32) -> crate::data::LineStyle {
+    use crate::client_server_contract::client_server_contract::LineStyle as ProtoLineStyle;
+    match ProtoLineStyle::try_from(value) {
+        Ok(ProtoLineStyle::Single) => crate::data::LineStyle::Single,
+        Ok(ProtoLineStyle::Double) => crate::data::LineStyle::Double,
+        Ok(ProtoLineStyle::Heavy) => crate::data::LineStyle::Heavy,
+        Ok(ProtoLineStyle::Dashed) => crate::data::LineStyle::Dashed,
+        Ok(ProtoLineStyle::HeavyDashed) => crate::data::LineStyle::HeavyDashed,
+        Err(_) => crate::data::LineStyle::Single,
+    }
+}
+
+impl From<crate::data::BorderStyleOverride>
+    for crate::client_server_contract::client_server_contract::BorderStyleOverride
+{
+    fn from(border_style: crate::data::BorderStyleOverride) -> Self {
+        Self {
+            all: border_style.all.map(line_style_to_proto_i32),
+            top: border_style.top.map(line_style_to_proto_i32),
+            right: border_style.right.map(line_style_to_proto_i32),
+            bottom: border_style.bottom.map(line_style_to_proto_i32),
+            left: border_style.left.map(line_style_to_proto_i32),
+            rounded_corners: border_style.rounded_corners,
+        }
+    }
+}
+
+impl From<crate::client_server_contract::client_server_contract::BorderStyleOverride>
+    for crate::data::BorderStyleOverride
+{
+    fn from(
+        border_style: crate::client_server_contract::client_server_contract::BorderStyleOverride,
+    ) -> Self {
+        Self {
+            all: border_style.all.map(proto_i32_to_line_style),
+            top: border_style.top.map(proto_i32_to_line_style),
+            right: border_style.right.map(proto_i32_to_line_style),
+            bottom: border_style.bottom.map(proto_i32_to_line_style),
+            left: border_style.left.map(proto_i32_to_line_style),
+            rounded_corners: border_style.rounded_corners,
+        }
+    }
+}
+
 // FloatingPaneCoordinates conversion
 impl From<crate::data::FloatingPaneCoordinates>
     for crate::client_server_contract::client_server_contract::FloatingPaneCoordinates
@@ -3831,6 +3950,7 @@ impl From<crate::data::FloatingPaneCoordinates>
             height: coords.height.map(|h| h.into()),
             pinned: coords.pinned,
             borderless: coords.borderless,
+            border_style: coords.border_style.map(|b| b.into()),
         }
     }
 }
@@ -3850,6 +3970,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingPane
             height: coords.height.map(|h| h.try_into()).transpose()?,
             pinned: coords.pinned,
             borderless: coords.borderless,
+            border_style: coords.border_style.map(|b| b.into()),
         })
     }
 }
@@ -3865,24 +3986,30 @@ impl From<crate::data::NewPanePlacement>
         };
         let placement_type = match placement {
             crate::data::NewPanePlacement::NoPreference {
-                borderless: Some(b),
+                borderless: None,
+                border_style: None,
+            } => PlacementType::NoPreference(true),
+            crate::data::NewPanePlacement::NoPreference {
+                borderless,
+                border_style,
             } => PlacementType::NoPreferenceWithOptions(NoPreferencePlacement {
-                borderless: Some(b),
-            }),
-            crate::data::NewPanePlacement::NoPreference { borderless: None } => {
-                PlacementType::NoPreference(true)
-            },
-            crate::data::NewPanePlacement::Tiled {
-                direction,
-                borderless: Some(b),
-            } => PlacementType::TiledWithOptions(TiledPlacement {
-                direction: direction.map(direction_to_proto_i32),
-                borderless: Some(b),
+                borderless,
+                border_style: border_style.map(|b| b.into()),
             }),
             crate::data::NewPanePlacement::Tiled {
                 direction,
                 borderless: None,
+                border_style: None,
             } => PlacementType::Tiled(direction.map(direction_to_proto_i32).unwrap_or(0)),
+            crate::data::NewPanePlacement::Tiled {
+                direction,
+                borderless,
+                border_style,
+            } => PlacementType::TiledWithOptions(TiledPlacement {
+                direction: direction.map(direction_to_proto_i32),
+                borderless,
+                border_style: border_style.map(|b| b.into()),
+            }),
             crate::data::NewPanePlacement::Floating(coords) => {
                 PlacementType::Floating(coords.map(|c| c.into()).unwrap_or_default())
             },
@@ -3890,28 +4017,33 @@ impl From<crate::data::NewPanePlacement>
                 pane_id_to_replace,
                 close_replaced_pane,
                 borderless,
+                border_style,
             } => PlacementType::InPlace(
                 crate::client_server_contract::client_server_contract::NewPanePlacementInPlace {
                     pane_id_to_replace: pane_id_to_replace.map(|id| id.into()),
                     close_replaced_pane,
                     borderless,
+                    border_style: border_style.map(|b| b.into()),
                 },
             ),
             crate::data::NewPanePlacement::Stacked {
                 pane_id_to_stack_under,
-                borderless: Some(b),
-            } => PlacementType::StackedWithOptions(StackedPlacement {
-                pane_id_to_stack_under: pane_id_to_stack_under.map(|id| id.into()),
-                borderless: Some(b),
-            }),
-            crate::data::NewPanePlacement::Stacked {
-                pane_id_to_stack_under,
                 borderless: None,
+                border_style: None,
             } => PlacementType::Stacked(
                 pane_id_to_stack_under
                     .map(|id| id.into())
                     .unwrap_or_default(),
             ),
+            crate::data::NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless,
+                border_style,
+            } => PlacementType::StackedWithOptions(StackedPlacement {
+                pane_id_to_stack_under: pane_id_to_stack_under.map(|id| id.into()),
+                borderless,
+                border_style: border_style.map(|b| b.into()),
+            }),
         };
         Self {
             placement_type: Some(placement_type),
@@ -3936,6 +4068,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
             PlacementType::NoPreferenceWithOptions(opts) => {
                 Ok(crate::data::NewPanePlacement::NoPreference {
                     borderless: opts.borderless,
+                    border_style: opts.border_style.map(|b| b.into()),
                 })
             },
             PlacementType::TiledWithOptions(opts) => {
@@ -3943,6 +4076,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                 Ok(crate::data::NewPanePlacement::Tiled {
                     direction,
                     borderless: opts.borderless,
+                    border_style: opts.border_style.map(|b| b.into()),
                 })
             },
             PlacementType::StackedWithOptions(opts) => {
@@ -3953,12 +4087,14 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                 Ok(crate::data::NewPanePlacement::Stacked {
                     pane_id_to_stack_under: pane_id,
                     borderless: opts.borderless,
+                    border_style: opts.border_style.map(|b| b.into()),
                 })
             },
             // Legacy fields (without borderless support)
-            PlacementType::NoPreference(_) => {
-                Ok(crate::data::NewPanePlacement::NoPreference { borderless: None })
-            },
+            PlacementType::NoPreference(_) => Ok(crate::data::NewPanePlacement::NoPreference {
+                borderless: None,
+                border_style: None,
+            }),
             PlacementType::Tiled(direction) => {
                 let direction = if direction == 0 {
                     None
@@ -3968,6 +4104,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                 Ok(crate::data::NewPanePlacement::Tiled {
                     direction,
                     borderless: None,
+                    border_style: None,
                 })
             },
             PlacementType::Floating(coords) => {
@@ -3985,6 +4122,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                     .transpose()?,
                 close_replaced_pane: in_place.close_replaced_pane,
                 borderless: in_place.borderless,
+                border_style: in_place.border_style.map(|b| b.into()),
             }),
             PlacementType::Stacked(pane_id) => {
                 let pane_id = if pane_id == Default::default() {
@@ -3995,6 +4133,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                 Ok(crate::data::NewPanePlacement::Stacked {
                     pane_id_to_stack_under: pane_id,
                     borderless: None,
+                    border_style: None,
                 })
             },
         }
@@ -4273,6 +4412,7 @@ impl From<crate::input::layout::TiledPaneLayout>
             pane_initial_contents: layout.pane_initial_contents,
             default_fg: layout.default_fg,
             default_bg: layout.default_bg,
+            border_style: layout.border_style.map(|b| b.into()),
         }
     }
 }
@@ -4296,6 +4436,7 @@ impl From<crate::input::layout::FloatingPaneLayout>
             borderless: layout.borderless,
             default_fg: layout.default_fg,
             default_bg: layout.default_bg,
+            border_style: layout.border_style.map(|b| b.into()),
         }
     }
 }
@@ -4508,6 +4649,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::CommandOrPlu
                     path: std::path::PathBuf::from(&f.path),
                     line_number: f.line_number.map(|n| n as usize),
                     cwd: f.cwd.map(std::path::PathBuf::from),
+                    border_style: None,
                 },
             )),
         }
@@ -4708,6 +4850,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::TiledPaneLay
             pane_initial_contents: layout.pane_initial_contents,
             default_fg: layout.default_fg,
             default_bg: layout.default_bg,
+            border_style: layout.border_style.map(|b| b.into()),
         })
     }
 }
@@ -4742,6 +4885,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingPane
             borderless: layout.borderless,
             default_fg: layout.default_fg,
             default_bg: layout.default_bg,
+            border_style: layout.border_style.map(|b| b.into()),
         })
     }
 }

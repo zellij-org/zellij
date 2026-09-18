@@ -21,13 +21,14 @@ use tokio::sync::oneshot;
 use wasmi::{Caller, Linker};
 use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{
-    BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
-    CommandType, ConnectToSession, DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse,
-    DeleteLayoutResponse, EditLayoutResponse, Event, FloatingPaneCoordinates,
-    FocusOrCreateTabResponse, GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
-    GetPaneRunningCommandResponse, HttpVerb, KeyWithModifier, KillSessionsResponse, LayoutInfo,
-    LayoutMetadata, LayoutParsingError, MessageToPlugin, NewPanePlacement, NewTabResponse,
-    NewTabUnfocusedResponse, NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
+    BorderStyleOverride, BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse,
+    BreakPanesToTabWithIndexResponse, CommandType, ConnectToSession, DeleteAllDeadSessionsResponse,
+    DeleteDeadSessionResponse, DeleteLayoutResponse, EditLayoutResponse, Event,
+    FloatingPaneCoordinates, FocusOrCreateTabResponse, GetFocusedPaneInfoResponse,
+    GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, HttpVerb,
+    KeyWithModifier, KillSessionsResponse, LayoutInfo, LayoutMetadata, LayoutParsingError,
+    MessageToPlugin, NewPanePlacement, NewTabResponse, NewTabUnfocusedResponse,
+    NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
     OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
     OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
@@ -199,21 +200,35 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         floating_pane_coordinates,
                         context,
                     ) => open_file_floating(env, file_to_open, floating_pane_coordinates, context),
-                    PluginCommand::OpenTerminal(cwd) => open_terminal(env, cwd.path.try_into()?),
+                    PluginCommand::OpenTerminal(cwd) => {
+                        let border_style = cwd.border_style;
+                        open_terminal(env, cwd.path.try_into()?, border_style)
+                    },
                     PluginCommand::OpenTerminalNearPlugin(cwd) => {
-                        open_terminal_near_plugin(env, cwd.path.try_into()?)
+                        let border_style = cwd.border_style;
+                        open_terminal_near_plugin(env, cwd.path.try_into()?, border_style)
                     },
                     PluginCommand::OpenTerminalFloating(cwd, floating_pane_coordinates) => {
+                        let floating_pane_coordinates = FloatingPaneCoordinates::merge_border_style(
+                            floating_pane_coordinates,
+                            cwd.border_style,
+                        );
                         open_terminal_floating(env, cwd.path.try_into()?, floating_pane_coordinates)
                     },
                     PluginCommand::OpenTerminalFloatingNearPlugin(
                         cwd,
                         floating_pane_coordinates,
-                    ) => open_terminal_floating_near_plugin(
-                        env,
-                        cwd.path.try_into()?,
-                        floating_pane_coordinates,
-                    ),
+                    ) => {
+                        let floating_pane_coordinates = FloatingPaneCoordinates::merge_border_style(
+                            floating_pane_coordinates,
+                            cwd.border_style,
+                        );
+                        open_terminal_floating_near_plugin(
+                            env,
+                            cwd.path.try_into()?,
+                            floating_pane_coordinates,
+                        )
+                    },
                     PluginCommand::OpenCommandPane(command_to_run, context) => {
                         open_command_pane(env, command_to_run, context)
                     },
@@ -351,6 +366,12 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::QuitZellij => quit_zellij(env),
                     PluginCommand::PreviousSwapLayout => previous_swap_layout(env),
                     PluginCommand::NextSwapLayout => next_swap_layout(env),
+                    PluginCommand::ApplyTiledSwapLayout(layout_name) => {
+                        apply_tiled_swap_layout(env, layout_name)
+                    },
+                    PluginCommand::ApplyFloatingSwapLayout(layout_name) => {
+                        apply_floating_swap_layout(env, layout_name)
+                    },
                     PluginCommand::GoToTabName(tab_name) => go_to_tab_name(env, tab_name),
                     PluginCommand::FocusOrCreateTab(tab_name) => focus_or_create_tab(env, tab_name),
                     PluginCommand::GoToTab(tab_index) => go_to_tab(env, tab_index),
@@ -621,6 +642,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     },
                     PluginCommand::TogglePaneBorderless(pane_id) => {
                         toggle_pane_borderless(env, pane_id.into())
+                    },
+                    PluginCommand::SetPaneBorderStyle(pane_id, border_style) => {
+                        set_pane_border_style(env, pane_id.into(), border_style)
                     },
                     PluginCommand::SetPaneBorderless(pane_id, borderless) => {
                         set_pane_borderless(env, pane_id.into(), borderless)
@@ -1208,6 +1232,7 @@ fn open_editor_pane_in_new_tab(
         .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let file_to_open = FileToOpen {
+        border_style: None,
         path,
         cwd,
         ..file_to_open
@@ -1407,6 +1432,7 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
     let floating = false;
     let in_place = false;
     let start_suppressed = false;
+    let border_style = file_to_open.border_style;
     let path = translate_plugin_path(env, file_to_open.path);
     let cwd = file_to_open
         .cwd
@@ -1421,7 +1447,7 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
         in_place,
         close_replaced_pane: false,
         start_suppressed,
-        coordinates: None,
+        coordinates: FloatingPaneCoordinates::merge_border_style(None, border_style),
         near_current_pane: false,
         no_focus: false,
         tab_id: None,
@@ -1503,6 +1529,7 @@ fn open_file_floating(
     let floating = true;
     let in_place = false;
     let start_suppressed = false;
+    let border_style = file_to_open.border_style;
     let path = translate_plugin_path(env, file_to_open.path);
     let cwd = file_to_open
         .cwd
@@ -1517,7 +1544,10 @@ fn open_file_floating(
         in_place,
         close_replaced_pane: false,
         start_suppressed,
-        coordinates: floating_pane_coordinates,
+        coordinates: FloatingPaneCoordinates::merge_border_style(
+            floating_pane_coordinates,
+            border_style,
+        ),
         near_current_pane: false,
         no_focus: false,
         tab_id: None,
@@ -1582,6 +1612,7 @@ fn open_file_near_plugin(
     file_to_open: FileToOpen,
     context: BTreeMap<String, String>,
 ) {
+    let border_style = file_to_open.border_style;
     let cwd = file_to_open
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd))
@@ -1600,7 +1631,7 @@ fn open_file_near_plugin(
     let pty_instr = PtyInstruction::SpawnTerminal(
         Some(open_file),
         Some(title),
-        NewPanePlacement::default(),
+        NewPanePlacement::default().with_border_style(border_style),
         start_suppressed,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         Some(NotificationEnd::new(completion_tx)),
@@ -1625,6 +1656,10 @@ fn open_file_floating_near_plugin(
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
     context: BTreeMap<String, String>,
 ) {
+    let floating_pane_coordinates = FloatingPaneCoordinates::merge_border_style(
+        floating_pane_coordinates,
+        file_to_open.border_style,
+    );
     let cwd = file_to_open
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd))
@@ -1702,7 +1737,7 @@ fn open_file_in_place_of_plugin(
         .non_fatal();
 }
 
-fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
+fn open_terminal(env: &PluginEnv, cwd: PathBuf, border_style: Option<BorderStyleOverride>) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
     let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
@@ -1724,6 +1759,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         near_current_pane: false,
         no_focus: false,
         borderless: None,
+        border_style,
         tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
@@ -1738,7 +1774,11 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         .non_fatal();
 }
 
-fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
+fn open_terminal_near_plugin(
+    env: &PluginEnv,
+    cwd: PathBuf,
+    border_style: Option<BorderStyleOverride>,
+) {
     let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
@@ -1758,6 +1798,7 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
         NewPanePlacement::Tiled {
             direction: None,
             borderless: None,
+            border_style,
         },
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
@@ -1940,6 +1981,7 @@ fn open_command_pane_in_place_of_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
+    let _border_style = command_to_run.border_style;
     let cwd = command_to_run
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
@@ -2039,6 +2081,7 @@ fn open_command_pane_in_place_of_pane_id(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
+    let _border_style = command_to_run.border_style;
     let cwd = command_to_run
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
@@ -2134,6 +2177,7 @@ fn open_command_pane(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
+    let border_style = command_to_run.border_style;
     let cwd = command_to_run
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
@@ -2164,6 +2208,7 @@ fn open_command_pane(
         near_current_pane: false,
         no_focus: false,
         borderless: None,
+        border_style,
         tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
@@ -2185,6 +2230,7 @@ fn open_command_pane_near_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
+    let border_style = command_to_run.border_style;
     let cwd = command_to_run
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
@@ -2218,6 +2264,7 @@ fn open_command_pane_near_plugin(
         NewPanePlacement::Tiled {
             direction: None,
             borderless: None,
+            border_style,
         },
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
@@ -2244,6 +2291,7 @@ fn open_command_pane_floating(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
+    let border_style = command_to_run.border_style;
     let cwd = command_to_run
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
@@ -2270,7 +2318,10 @@ fn open_command_pane_floating(
     let action = Action::NewFloatingPane {
         command: Some(run_command_action),
         pane_name: name,
-        coordinates: floating_pane_coordinates,
+        coordinates: FloatingPaneCoordinates::merge_border_style(
+            floating_pane_coordinates,
+            border_style,
+        ),
         near_current_pane: false,
         no_focus: false,
         tab_id: None,
@@ -2295,6 +2346,7 @@ fn open_command_pane_floating_near_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
+    let border_style = command_to_run.border_style;
     let cwd = command_to_run
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
@@ -2325,7 +2377,10 @@ fn open_command_pane_floating_near_plugin(
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(run_cmd),
         name,
-        NewPanePlacement::Floating(floating_pane_coordinates),
+        NewPanePlacement::Floating(FloatingPaneCoordinates::merge_border_style(
+            floating_pane_coordinates,
+            border_style,
+        )),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         Some(NotificationEnd::new(completion_tx)),
@@ -2355,6 +2410,7 @@ fn open_command_pane_in_place(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
+    let _border_style = command_to_run.border_style;
     let cwd = command_to_run
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
@@ -2869,6 +2925,7 @@ fn new_tiled_pane_in_tab(env: &PluginEnv, tab_position: usize) {
         near_current_pane: false,
         no_focus: false,
         borderless: None,
+        border_style: None,
         tab_id: Some(tab_position),
     };
     let result = apply_action!(action, error_msg, env);
@@ -3248,6 +3305,23 @@ fn previous_swap_layout(env: &PluginEnv) {
 fn next_swap_layout(env: &PluginEnv) {
     let error_msg = || format!("failed to switch swap layout in plugin {}", env.name());
     let action = Action::NextSwapLayout;
+    apply_action!(action, error_msg, env);
+}
+
+fn apply_tiled_swap_layout(env: &PluginEnv, layout_name: String) {
+    let error_msg = || format!("failed to apply tiled swap layout in plugin {}", env.name());
+    let action = Action::ApplyTiledSwapLayout { name: layout_name };
+    apply_action!(action, error_msg, env);
+}
+
+fn apply_floating_swap_layout(env: &PluginEnv, layout_name: String) {
+    let error_msg = || {
+        format!(
+            "failed to apply floating swap layout in plugin {}",
+            env.name()
+        )
+    };
+    let action = Action::ApplyFloatingSwapLayout { name: layout_name };
     apply_action!(action, error_msg, env);
 }
 
@@ -3942,6 +4016,16 @@ fn set_pane_borderless(env: &PluginEnv, pane_id: PaneId, borderless: bool) {
         .senders
         .send_to_screen(ScreenInstruction::SetPaneBorderless(
             pane_id, borderless, None,
+        ));
+}
+
+fn set_pane_border_style(env: &PluginEnv, pane_id: PaneId, border_style: BorderStyleOverride) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::SetPaneBorderStyle(
+            pane_id,
+            border_style,
+            None,
         ));
 }
 
@@ -4685,6 +4769,7 @@ fn try_edit_layout(
 
     // Create FileToOpen for the layout file
     let file_to_open = FileToOpen {
+        border_style: None,
         path: file_path,
         line_number: None,
         cwd: Some(layout_dir.clone()),
@@ -5520,6 +5605,8 @@ fn check_command_permission(
         | PluginCommand::QuitZellij
         | PluginCommand::PreviousSwapLayout
         | PluginCommand::NextSwapLayout
+        | PluginCommand::ApplyTiledSwapLayout(..)
+        | PluginCommand::ApplyFloatingSwapLayout(..)
         | PluginCommand::GoToTabName(..)
         | PluginCommand::FocusOrCreateTab(..)
         | PluginCommand::GoToTab(..)
@@ -5554,6 +5641,7 @@ fn check_command_permission(
         | PluginCommand::ChangeFloatingPanesCoordinates(..)
         | PluginCommand::TogglePaneBorderless(..)
         | PluginCommand::SetPaneBorderless(..)
+        | PluginCommand::SetPaneBorderStyle(..)
         | PluginCommand::SetPaneColor(..)
         | PluginCommand::GroupAndUngroupPanes(..)
         | PluginCommand::HighlightAndUnhighlightPanes(..)
