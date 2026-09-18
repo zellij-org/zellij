@@ -289,6 +289,10 @@ message Action {
     ScrollToNextPromptAction scroll_to_next_prompt = 149;
     SelectCommandAtScrollPositionAction select_command_at_scroll_position = 150;
     CopyLastCommandOutputAction copy_last_command_output = 151;
+    ApplyTiledSwapLayoutAction apply_tiled_swap_layout = 152;
+    ApplyFloatingSwapLayoutAction apply_floating_swap_layout = 153;
+    ApplyTiledSwapLayoutByTabIdAction apply_tiled_swap_layout_by_tab_id = 154;
+    ApplyFloatingSwapLayoutByTabIdAction apply_floating_swap_layout_by_tab_id = 155;
   }
 }
 
@@ -358,6 +362,8 @@ message DenyAction {}
 message ToggleMouseModeAction {}
 message PreviousSwapLayoutAction {}
 message NextSwapLayoutAction {}
+message ApplyTiledSwapLayoutAction { string name = 1; }
+message ApplyFloatingSwapLayoutAction { string name = 1; }
 message TabLayoutInfo {
   uint32 tab_index = 1;
   optional string tab_name = 2;
@@ -1300,4 +1306,6 @@ message ToggleActiveSyncTabByTabIdAction { uint64 id = 1; }
 message ToggleFloatingPanesByTabIdAction { uint64 id = 1; }
 message PreviousSwapLayoutByTabIdAction { uint64 id = 1; }
 message NextSwapLayoutByTabIdAction { uint64 id = 1; }
+message ApplyTiledSwapLayoutByTabIdAction { uint64 id = 1; string name = 2; }
+message ApplyFloatingSwapLayoutByTabIdAction { uint64 id = 1; string name = 2; }
 message MoveTabByTabIdAction { uint64 id = 1; Direction direction = 2; }

@@ -1275,6 +1275,30 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         tab_id: Option<usize>,
     },
+    /// Apply the tiled swap layout with the given name, leaving floating pane visibility and focus
+    /// untouched
+    ///
+    /// Exits with status 1 if no tiled swap layout with that name fits the current pane count
+    ApplyTiledSwapLayout {
+        /// The name of the tiled swap layout, as declared in the layout file
+        #[clap(value_parser)]
+        name: String,
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    /// Apply the floating swap layout with the given name, leaving floating pane visibility and
+    /// focus untouched
+    ///
+    /// Exits with status 1 if no floating swap layout with that name fits the current pane count
+    ApplyFloatingSwapLayout {
+        /// The name of the floating swap layout, as declared in the layout file
+        #[clap(value_parser)]
+        name: String,
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
     /// Override the layout of the active tab
     OverrideLayout {
         /// Path to the layout file

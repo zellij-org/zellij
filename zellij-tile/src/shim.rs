@@ -1404,6 +1404,24 @@ pub fn next_swap_layout() {
     unsafe { host_run_plugin_command() };
 }
 
+/// Applies the named tiled [swap layout](https://zellij.dev/documentation/swap-layouts.html)
+/// without changing floating pane visibility or focus. Unknown or incompatible names are a no-op.
+pub fn apply_tiled_swap_layout(layout_name: &str) {
+    let plugin_command = PluginCommand::ApplyTiledSwapLayout(layout_name.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Applies the named floating [swap layout](https://zellij.dev/documentation/swap-layouts.html)
+/// without changing floating pane visibility or focus. Unknown or incompatible names are a no-op.
+pub fn apply_floating_swap_layout(layout_name: &str) {
+    let plugin_command = PluginCommand::ApplyFloatingSwapLayout(layout_name.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Change focus to the tab with the specified name
 pub fn go_to_tab_name(tab_name: &str) {
     let plugin_command = PluginCommand::GoToTabName(tab_name.to_owned());

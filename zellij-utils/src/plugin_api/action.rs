@@ -848,6 +848,22 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("NextSwapLayout should not have a payload"),
                 None => Ok(Action::NextSwapLayout),
             },
+            Some(ProtobufActionName::ApplyTiledSwapLayout) => {
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::ApplyTiledSwapLayoutPayload(name)) => {
+                        Ok(Action::ApplyTiledSwapLayout { name })
+                    },
+                    _ => Err("Wrong payload for Action::ApplyTiledSwapLayout"),
+                }
+            },
+            Some(ProtobufActionName::ApplyFloatingSwapLayout) => {
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::ApplyFloatingSwapLayoutPayload(name)) => {
+                        Ok(Action::ApplyFloatingSwapLayout { name })
+                    },
+                    _ => Err("Wrong payload for Action::ApplyFloatingSwapLayout"),
+                }
+            },
             Some(ProtobufActionName::OverrideLayout) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::OverrideLayoutPayload(payload)) => {
                     Ok(Action::OverrideLayout {
@@ -1211,6 +1227,8 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::ToggleFloatingPanesByTabId { .. }
             | Action::PreviousSwapLayoutByTabId { .. }
             | Action::NextSwapLayoutByTabId { .. }
+            | Action::ApplyTiledSwapLayoutByTabId { .. }
+            | Action::ApplyFloatingSwapLayoutByTabId { .. }
             | Action::MoveTabByTabId { .. } => {
                 Err("These are CLI-only actions, not available in keybindings")
             },
@@ -1797,6 +1815,14 @@ impl TryFrom<Action> for ProtobufAction {
             Action::NextSwapLayout => Ok(ProtobufAction {
                 name: ProtobufActionName::NextSwapLayout as i32,
                 optional_payload: None,
+            }),
+            Action::ApplyTiledSwapLayout { name } => Ok(ProtobufAction {
+                name: ProtobufActionName::ApplyTiledSwapLayout as i32,
+                optional_payload: Some(OptionalPayload::ApplyTiledSwapLayoutPayload(name)),
+            }),
+            Action::ApplyFloatingSwapLayout { name } => Ok(ProtobufAction {
+                name: ProtobufActionName::ApplyFloatingSwapLayout as i32,
+                optional_payload: Some(OptionalPayload::ApplyFloatingSwapLayoutPayload(name)),
             }),
             Action::OverrideLayout {
                 tabs,

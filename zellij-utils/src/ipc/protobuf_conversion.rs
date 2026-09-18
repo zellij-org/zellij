@@ -1164,6 +1164,10 @@ impl From<crate::input::actions::Action>
     fn from(action: crate::input::actions::Action) -> Self {
         use crate::client_server_contract::client_server_contract::{
             action::ActionType,
+            ApplyFloatingSwapLayoutAction,
+            ApplyFloatingSwapLayoutByTabIdAction,
+            ApplyTiledSwapLayoutAction,
+            ApplyTiledSwapLayoutByTabIdAction,
             AreFloatingPanesVisibleAction,
             BreakPaneAction,
             BreakPaneLeftAction,
@@ -1813,6 +1817,12 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::NextSwapLayout => {
                 ActionType::NextSwapLayout(NextSwapLayoutAction {})
             },
+            crate::input::actions::Action::ApplyTiledSwapLayout { name } => {
+                ActionType::ApplyTiledSwapLayout(ApplyTiledSwapLayoutAction { name })
+            },
+            crate::input::actions::Action::ApplyFloatingSwapLayout { name } => {
+                ActionType::ApplyFloatingSwapLayout(ApplyFloatingSwapLayoutAction { name })
+            },
             crate::input::actions::Action::OverrideLayout {
                 tabs,
                 retain_existing_terminal_panes,
@@ -2216,6 +2226,18 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::NextSwapLayoutByTabId { id } => {
                 ActionType::NextSwapLayoutByTabId(NextSwapLayoutByTabIdAction { id })
+            },
+            crate::input::actions::Action::ApplyTiledSwapLayoutByTabId { id, name } => {
+                ActionType::ApplyTiledSwapLayoutByTabId(ApplyTiledSwapLayoutByTabIdAction {
+                    id,
+                    name,
+                })
+            },
+            crate::input::actions::Action::ApplyFloatingSwapLayoutByTabId { id, name } => {
+                ActionType::ApplyFloatingSwapLayoutByTabId(ApplyFloatingSwapLayoutByTabIdAction {
+                    id,
+                    name,
+                })
             },
             crate::input::actions::Action::MoveTabByTabId { id, direction } => {
                 ActionType::MoveTabByTabId(MoveTabByTabIdAction {
@@ -2718,6 +2740,12 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::PreviousSwapLayout)
             },
             ActionType::NextSwapLayout(_) => Ok(crate::input::actions::Action::NextSwapLayout),
+            ActionType::ApplyTiledSwapLayout(a) => {
+                Ok(crate::input::actions::Action::ApplyTiledSwapLayout { name: a.name })
+            },
+            ActionType::ApplyFloatingSwapLayout(a) => {
+                Ok(crate::input::actions::Action::ApplyFloatingSwapLayout { name: a.name })
+            },
             ActionType::OverrideLayout(override_layout_action) => {
                 Ok(crate::input::actions::Action::OverrideLayout {
                     tabs: override_layout_action
@@ -3194,6 +3222,18 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::NextSwapLayoutByTabId(a) => {
                 Ok(crate::input::actions::Action::NextSwapLayoutByTabId { id: a.id })
             },
+            ActionType::ApplyTiledSwapLayoutByTabId(a) => Ok(
+                crate::input::actions::Action::ApplyTiledSwapLayoutByTabId {
+                    id: a.id,
+                    name: a.name,
+                },
+            ),
+            ActionType::ApplyFloatingSwapLayoutByTabId(a) => Ok(
+                crate::input::actions::Action::ApplyFloatingSwapLayoutByTabId {
+                    id: a.id,
+                    name: a.name,
+                },
+            ),
             ActionType::MoveTabByTabId(a) => {
                 let direction = proto_i32_to_direction(a.direction)?;
                 Ok(crate::input::actions::Action::MoveTabByTabId {

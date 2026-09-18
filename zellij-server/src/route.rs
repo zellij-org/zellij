@@ -1337,6 +1337,24 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ApplyTiledSwapLayout { name } => {
+            senders
+                .send_to_screen(ScreenInstruction::ApplyTiledSwapLayout(
+                    client_id,
+                    name,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ApplyFloatingSwapLayout { name } => {
+            senders
+                .send_to_screen(ScreenInstruction::ApplyFloatingSwapLayout(
+                    client_id,
+                    name,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::OverrideLayout {
             tabs,
             retain_existing_terminal_panes,
@@ -2156,6 +2174,24 @@ pub(crate) fn route_action(
             senders
                 .send_to_screen(ScreenInstruction::NextSwapLayoutWithTabId(
                     id as usize,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ApplyTiledSwapLayoutByTabId { id, name } => {
+            senders
+                .send_to_screen(ScreenInstruction::ApplyTiledSwapLayoutWithTabId(
+                    id as usize,
+                    name,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ApplyFloatingSwapLayoutByTabId { id, name } => {
+            senders
+                .send_to_screen(ScreenInstruction::ApplyFloatingSwapLayoutWithTabId(
+                    id as usize,
+                    name,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;

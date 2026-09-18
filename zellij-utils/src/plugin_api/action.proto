@@ -247,6 +247,8 @@ message Action {
     HideFloatingPanesPayload hide_floating_panes_payload = 59;
     AreFloatingPanesVisiblePayload are_floating_panes_visible_payload = 60;
     SetPaneFrameStylePayload set_pane_frame_style_payload = 61;
+    string apply_tiled_swap_layout_payload = 62;
+    string apply_floating_swap_layout_payload = 63;
   }
 }
 
@@ -509,6 +511,8 @@ enum ActionName {
     ScrollToNextPrompt = 111;
     SelectCommandAtScrollPosition = 112;
     CopyLastCommandOutput = 113;
+    ApplyTiledSwapLayout = 114;
+    ApplyFloatingSwapLayout = 115;
 }
 
 message Position {

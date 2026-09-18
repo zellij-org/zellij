@@ -3477,6 +3477,8 @@ pub enum PluginCommand {
     QuitZellij,
     PreviousSwapLayout,
     NextSwapLayout,
+    ApplyTiledSwapLayout(String),
+    ApplyFloatingSwapLayout(String),
     GoToTabName(String),
     FocusOrCreateTab(String),
     GoToTab(u32),                       // tab index
