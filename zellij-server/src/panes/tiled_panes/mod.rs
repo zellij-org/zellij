@@ -28,7 +28,10 @@ use crate::{
 };
 use stacked_panes::StackedPanes;
 use zellij_utils::{
-    data::{Direction, ModeInfo, PaneInfo, Resize, ResizeStrategy, Style, Styling},
+    data::{
+        BorderStyle, BorderStyleOverride, Direction, LineStyle, ModeInfo, PaneInfo, Resize,
+        ResizeStrategy, Style, Styling,
+    },
     errors::prelude::*,
     input::{
         command::RunCommand,
@@ -1161,6 +1164,11 @@ impl TiledPanes {
         let connected_clients: Vec<ClientId> = connected_clients.into_iter().collect();
         let multiple_users_exist_in_session = { self.connected_clients_in_app.borrow().len() > 1 };
         let mut client_id_to_boundaries: HashMap<ClientId, Boundaries> = HashMap::new();
+        let fallback_line_style = self
+            .style
+            .border_style
+            .uniform_style()
+            .unwrap_or(LineStyle::Single);
         let active_panes = if floating_panes_are_visible {
             HashMap::new()
         } else {
@@ -1317,9 +1325,12 @@ impl TiledPanes {
                                 pane_is_selectable,
                             )
                             .with_context(err_context)?;
-                        let boundaries = client_id_to_boundaries
-                            .entry(*client_id)
-                            .or_insert_with(|| Boundaries::new(*self.viewport.borrow()));
+                        let boundaries =
+                            client_id_to_boundaries
+                                .entry(*client_id)
+                                .or_insert_with(|| {
+                                    Boundaries::new(*self.viewport.borrow(), fallback_line_style)
+                                });
                         pane_contents_and_ui.render_pane_boundaries(
                             *client_id,
                             client_mode,
@@ -1329,9 +1340,12 @@ impl TiledPanes {
                             pane_is_on_bottom_of_stack,
                         );
                     } else {
-                        let boundaries = client_id_to_boundaries
-                            .entry(*client_id)
-                            .or_insert_with(|| Boundaries::new(*self.viewport.borrow()));
+                        let boundaries =
+                            client_id_to_boundaries
+                                .entry(*client_id)
+                                .or_insert_with(|| {
+                                    Boundaries::new(*self.viewport.borrow(), fallback_line_style)
+                                });
                         pane_contents_and_ui.render_pane_boundaries(
                             *client_id,
                             client_mode,
@@ -1415,6 +1429,7 @@ impl TiledPanes {
         run: Option<Run>,
         geom: PaneGeom,
         should_be_borderless: Option<bool>,
+        border_style: Option<BorderStyleOverride>,
     ) {
         match self
             .panes
@@ -1423,6 +1438,9 @@ impl TiledPanes {
         {
             Some((_, pane)) => {
                 pane.set_geom(geom);
+                if let Some(border_style) = border_style {
+                    pane.set_border_style_override(border_style);
+                }
 
                 if let Some(should_be_borderless) = should_be_borderless {
                     pane.set_borderless(should_be_borderless);
@@ -3128,6 +3146,17 @@ impl TiledPanes {
         self.style.rounded_corners = rounded_corners;
         for pane in self.panes.values_mut() {
             pane.update_rounded_corners(rounded_corners);
+        }
+    }
+    pub fn update_border_styles(
+        &mut self,
+        border_style: BorderStyle,
+        floating_border_style: BorderStyle,
+    ) {
+        self.style.border_style = border_style;
+        self.style.floating_border_style = floating_border_style;
+        for pane in self.panes.values_mut() {
+            pane.invalidate_frame_cache();
         }
     }
     pub fn stack_panes(

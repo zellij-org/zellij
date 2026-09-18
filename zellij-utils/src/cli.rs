@@ -537,6 +537,9 @@ pub enum Sessions {
             conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Load a plugin
     /// Returns: Created pane ID (format: plugin_<id>)
@@ -592,6 +595,9 @@ pub enum Sessions {
         /// Target a specific tab by ID
         #[clap(long, value_parser, conflicts_with("in_place"))]
         tab_id: Option<usize>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Edit file with default $EDITOR / $VISUAL
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -657,6 +663,9 @@ pub enum Sessions {
             conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Send data to one or more plugins, launch them if they are not running.
     #[clap(override_usage(
@@ -1014,6 +1023,9 @@ pub enum CliAction {
             conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -1078,6 +1090,9 @@ pub enum CliAction {
             conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {
@@ -1549,6 +1564,9 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// mouse if without a border)
         #[clap(short, long, value_parser)]
         borderless: Option<bool>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     TogglePaneBorderless {
         /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
@@ -1562,6 +1580,15 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Whether the pane should be borderless (flag present) or bordered (flag absent)
         #[clap(short, long, value_parser)]
         borderless: bool,
+    },
+    /// Change the border line style of an existing pane
+    SetPaneBorderStyle {
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: String,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Detach from the current session
     Detach,

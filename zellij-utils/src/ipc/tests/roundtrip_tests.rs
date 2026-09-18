@@ -1,8 +1,9 @@
 use super::test_framework::*;
 use crate::data::{
-    BareKey, CommandOrPlugin, ConnectToSession, Direction, FloatingPaneCoordinates,
-    HostTerminalThemeMode, InputMode, KeyModifier, KeyWithModifier, LayoutInfo, LayoutMetadata,
-    NewPanePlacement, OriginatingPlugin, PaneId, PluginTag, Resize, WebSharing,
+    BareKey, BorderStyleOverride, CommandOrPlugin, ConnectToSession, Direction,
+    FloatingPaneCoordinates, HostTerminalThemeMode, InputMode, KeyModifier, KeyWithModifier,
+    LayoutInfo, LayoutMetadata, LineStyle, NewPanePlacement, OriginatingPlugin, PaneId, PluginTag,
+    Resize, WebSharing,
 };
 use crate::input::actions::{Action, SearchDirection, SearchOption};
 use crate::input::cli_assets::CliAssets;
@@ -53,6 +54,12 @@ fn test_client_messages() {
         LayoutConstraint::MaxPanes(1),
         TiledPaneLayout {
             name: Some("max_panes_1".to_owned()),
+            border_style: Some(BorderStyleOverride {
+                all: Some(LineStyle::Double),
+                top: Some(LineStyle::Heavy),
+                rounded_corners: Some(true),
+                ..Default::default()
+            }),
             ..Default::default()
         },
     );
@@ -1482,6 +1489,7 @@ fn test_client_messages() {
             no_focus: false,
             borderless: None,
             tab_id: None,
+            border_style: None,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -1509,6 +1517,7 @@ fn test_client_messages() {
             no_focus: false,
             borderless: Some(true),
             tab_id: None,
+            border_style: None,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -2185,9 +2194,15 @@ fn test_client_messages() {
                     logical_position: Some(15),
                     default_fg: None,
                     default_bg: None,
+                    border_style: None,
                 },
                 FloatingPaneLayout {
                     name: Some("third floating layout".to_owned()),
+                    border_style: Some(BorderStyleOverride {
+                        left: Some(LineStyle::HeavyDashed),
+                        rounded_corners: Some(false),
+                        ..Default::default()
+                    }),
                     ..Default::default()
                 },
                 FloatingPaneLayout::default(),
@@ -2723,6 +2738,7 @@ fn test_client_messages() {
             no_focus: false,
             borderless: None,
             tab_id: Some(3),
+            border_style: None,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -2757,7 +2773,8 @@ fn test_client_messages() {
         action: Action::NewBlockingPane {
             placement: NewPanePlacement::Tiled {
                 direction: None,
-                borderless: None
+                borderless: None,
+                border_style: None,
             },
             pane_name: None,
             command: None,
@@ -3161,6 +3178,123 @@ fn test_client_messages() {
         client_id: Some(100),
         is_cli_client: true,
     });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetPaneBorderStyle {
+            pane_id: PaneId::Terminal(7),
+            border_style: BorderStyleOverride {
+                all: Some(LineStyle::Double),
+                top: Some(LineStyle::Heavy),
+                right: Some(LineStyle::Dashed),
+                bottom: Some(LineStyle::HeavyDashed),
+                left: Some(LineStyle::Single),
+                rounded_corners: Some(true),
+            },
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetPaneBorderStyle {
+            pane_id: PaneId::Plugin(1),
+            border_style: BorderStyleOverride::default(),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::NewTiledPane {
+            command: None,
+            direction: None,
+            pane_name: None,
+            near_current_pane: false,
+            no_focus: false,
+            borderless: None,
+            tab_id: None,
+            border_style: Some(BorderStyleOverride {
+                top: Some(LineStyle::Double),
+                rounded_corners: Some(false),
+                ..Default::default()
+            }),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::NewFloatingPane {
+            command: None,
+            pane_name: None,
+            coordinates: Some(FloatingPaneCoordinates {
+                x: None,
+                y: None,
+                width: None,
+                height: None,
+                pinned: None,
+                borderless: None,
+                border_style: Some(BorderStyleOverride {
+                    all: Some(LineStyle::Heavy),
+                    ..Default::default()
+                }),
+            }),
+            near_current_pane: false,
+            no_focus: false,
+            tab_id: None,
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    for placement in [
+        NewPanePlacement::NoPreference {
+            borderless: None,
+            border_style: Some(BorderStyleOverride {
+                all: Some(LineStyle::Double),
+                ..Default::default()
+            }),
+        },
+        NewPanePlacement::Tiled {
+            direction: Some(Direction::Right),
+            borderless: Some(true),
+            border_style: Some(BorderStyleOverride {
+                left: Some(LineStyle::Heavy),
+                ..Default::default()
+            }),
+        },
+        NewPanePlacement::InPlace {
+            pane_id_to_replace: Some(PaneId::Terminal(3)),
+            close_replaced_pane: true,
+            borderless: None,
+            border_style: Some(BorderStyleOverride {
+                bottom: Some(LineStyle::Dashed),
+                ..Default::default()
+            }),
+        },
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: Some(PaneId::Plugin(5)),
+            borderless: None,
+            border_style: Some(BorderStyleOverride {
+                rounded_corners: Some(true),
+                ..Default::default()
+            }),
+        },
+    ] {
+        test_client_roundtrip!(ClientToServerMsg::Action {
+            action: Action::NewBlockingPane {
+                placement: placement.clone(),
+                pane_name: None,
+                command: None,
+                unblock_condition: None,
+                near_current_pane: false,
+                no_focus: false,
+                tab_id: None,
+            },
+            terminal_id: Some(1),
+            client_id: Some(100),
+            is_cli_client: true,
+        });
+    }
     test_client_roundtrip!(ClientToServerMsg::Key {
         key: KeyWithModifier {
             bare_key: BareKey::PageDown,

@@ -11,6 +11,40 @@ pub struct Style {
     pub hide_session_name: bool,
     #[prost(message, optional, tag="4")]
     pub styling: ::core::option::Option<Styling>,
+    #[prost(message, optional, tag="5")]
+    pub border_style: ::core::option::Option<BorderStyle>,
+    #[prost(message, optional, tag="6")]
+    pub floating_border_style: ::core::option::Option<BorderStyle>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BorderStyle {
+    #[prost(enumeration="LineStyle", tag="1")]
+    pub top: i32,
+    #[prost(enumeration="LineStyle", tag="2")]
+    pub right: i32,
+    #[prost(enumeration="LineStyle", tag="3")]
+    pub bottom: i32,
+    #[prost(enumeration="LineStyle", tag="4")]
+    pub left: i32,
+    #[prost(bool, tag="5")]
+    pub rounded_corners: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BorderStyleOverride {
+    #[prost(enumeration="LineStyle", optional, tag="1")]
+    pub all: ::core::option::Option<i32>,
+    #[prost(enumeration="LineStyle", optional, tag="2")]
+    pub top: ::core::option::Option<i32>,
+    #[prost(enumeration="LineStyle", optional, tag="3")]
+    pub right: ::core::option::Option<i32>,
+    #[prost(enumeration="LineStyle", optional, tag="4")]
+    pub bottom: ::core::option::Option<i32>,
+    #[prost(enumeration="LineStyle", optional, tag="5")]
+    pub left: ::core::option::Option<i32>,
+    #[prost(bool, optional, tag="6")]
+    pub rounded_corners: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -114,6 +148,41 @@ pub struct Styling {
     pub exit_code_error: ::prost::alloc::vec::Vec<Color>,
     #[prost(message, repeated, tag="15")]
     pub multiplayer_user_colors: ::prost::alloc::vec::Vec<Color>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum LineStyle {
+    Single = 0,
+    Double = 1,
+    Heavy = 2,
+    Dashed = 3,
+    HeavyDashed = 4,
+}
+impl LineStyle {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            LineStyle::Single => "Single",
+            LineStyle::Double => "Double",
+            LineStyle::Heavy => "Heavy",
+            LineStyle::Dashed => "Dashed",
+            LineStyle::HeavyDashed => "HeavyDashed",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "Single" => Some(Self::Single),
+            "Double" => Some(Self::Double),
+            "Heavy" => Some(Self::Heavy),
+            "Dashed" => Some(Self::Dashed),
+            "HeavyDashed" => Some(Self::HeavyDashed),
+            _ => None,
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

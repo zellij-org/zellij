@@ -11,3 +11,6 @@ linker = "x86_64-w64-mingw32-gcc"
 
 [build]
 target-dir = "target"
+
+[env]
+RUST_MIN_STACK = "16777216"

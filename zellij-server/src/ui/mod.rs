@@ -1,3 +1,4 @@
+pub mod border_glyphs;
 pub mod boundaries;
 pub mod components;
 pub mod hint_text;

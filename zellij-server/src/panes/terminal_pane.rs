@@ -25,8 +25,8 @@ use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{
-        BareKey, InputMode, KeyWithModifier, Palette, PaletteColor, PaneId as ZellijUtilsPaneId,
-        RegexHighlight, Style, Styling,
+        BareKey, BorderStyleOverride, InputMode, KeyWithModifier, Palette, PaletteColor,
+        PaneId as ZellijUtilsPaneId, RegexHighlight, Style, Styling,
     },
     errors::prelude::*,
     input::layout::Run,
@@ -145,6 +145,7 @@ pub struct TerminalPane {
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    border_style_override: BorderStyleOverride,
     exclude_from_sync: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
     search_term: String,
@@ -990,6 +991,14 @@ impl Pane for TerminalPane {
             self.set_content_offset(Offset::frame(1));
         }
     }
+    fn set_border_style_override(&mut self, border_style_override: BorderStyleOverride) {
+        self.border_style_override = border_style_override;
+        self.frame.clear();
+        self.set_should_render(true);
+    }
+    fn border_style_override(&self) -> BorderStyleOverride {
+        self.border_style_override
+    }
 
     fn set_exclude_from_sync(&mut self, exclude_from_sync: bool) {
         self.exclude_from_sync = exclude_from_sync;
@@ -1232,6 +1241,10 @@ impl Pane for TerminalPane {
         self.style.rounded_corners = rounded_corners;
         self.frame.clear();
     }
+    fn invalidate_frame_cache(&mut self) {
+        self.frame.clear();
+        self.set_should_render(true);
+    }
     fn drain_fake_cursors(&mut self) -> Option<HashSet<(usize, usize)>> {
         if !self.fake_cursor_locations.is_empty() {
             for (y, _x) in &self.fake_cursor_locations {
@@ -1418,6 +1431,7 @@ impl TerminalPane {
             pane_name: pane_name.clone(),
             prev_pane_name: pane_name,
             borderless: false,
+            border_style_override: BorderStyleOverride::default(),
             exclude_from_sync: false,
             fake_cursor_locations: HashSet::new(),
             search_term: String::new(),

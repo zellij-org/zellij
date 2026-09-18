@@ -1,6 +1,6 @@
 pub mod floating_pane_grid;
 use zellij_utils::{
-    data::{Direction, FloatingPaneCoordinates, PaneInfo, ResizeStrategy},
+    data::{BorderStyle, Direction, FloatingPaneCoordinates, PaneInfo, ResizeStrategy},
     position::Position,
 };
 
@@ -1708,6 +1708,17 @@ impl FloatingPanes {
         self.style.rounded_corners = rounded_corners;
         for pane in self.panes.values_mut() {
             pane.update_rounded_corners(rounded_corners);
+        }
+    }
+    pub fn update_border_styles(
+        &mut self,
+        border_style: BorderStyle,
+        floating_border_style: BorderStyle,
+    ) {
+        self.style.border_style = border_style;
+        self.style.floating_border_style = floating_border_style;
+        for pane in self.panes.values_mut() {
+            pane.invalidate_frame_cache();
         }
     }
     pub fn next_selectable_pane_id_above(&mut self, pane_id: &PaneId) -> Option<PaneId> {

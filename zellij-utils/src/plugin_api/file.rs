@@ -1,5 +1,5 @@
 pub use super::generated_api::api::file::File as ProtobufFile;
-use crate::data::FileToOpen;
+use crate::data::{BorderStyleOverride, FileToOpen};
 
 use std::convert::TryFrom;
 use std::path::PathBuf;
@@ -14,6 +14,7 @@ impl TryFrom<ProtobufFile> for FileToOpen {
             path,
             line_number,
             cwd,
+            border_style: protobuf_file.border_style.map(BorderStyleOverride::from),
         })
     }
 }
@@ -25,6 +26,7 @@ impl TryFrom<FileToOpen> for ProtobufFile {
             path: file_to_open.path.display().to_string(),
             line_number: file_to_open.line_number.map(|l| l as i32),
             cwd: file_to_open.cwd.map(|c| c.display().to_string()),
+            border_style: file_to_open.border_style.map(|b| b.into()),
         })
     }
 }

@@ -17,8 +17,9 @@ use unicode_width::UnicodeWidthStr;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    Direction, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
-    PluginPermission, RegexHighlight, ResizeStrategy, Style, StyledText, WebSharing,
+    BorderStyle, BorderStyleOverride, Direction, KeyWithModifier, NewPanePlacement, PaneInfo,
+    PermissionStatus, PermissionType, PluginPermission, RegexHighlight, ResizeStrategy, Style,
+    StyledText, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -627,6 +628,10 @@ pub trait Pane {
     fn load_pane_name(&mut self);
     fn set_borderless(&mut self, borderless: bool);
     fn borderless(&self) -> bool;
+    fn set_border_style_override(&mut self, _border_style: BorderStyleOverride) {}
+    fn border_style_override(&self) -> BorderStyleOverride {
+        BorderStyleOverride::default()
+    }
     fn set_exclude_from_sync(&mut self, exclude_from_sync: bool);
     fn exclude_from_sync(&self) -> bool;
 
@@ -754,6 +759,7 @@ pub trait Pane {
     fn update_kitty_host_support(&mut self, _supported: KittyHostSupport) {}
     fn update_sixel_host_support(&mut self, _supported: bool) {}
     fn update_rounded_corners(&mut self, _rounded_corners: bool) {}
+    fn invalidate_frame_cache(&mut self) {}
     fn set_should_be_suppressed(&mut self, _should_be_suppressed: bool) {}
     fn query_should_be_suppressed(&self) -> bool {
         false
@@ -2028,14 +2034,17 @@ impl Tab {
             self.tiled_panes.unset_fullscreen();
         }
         self.dissolve_stack_lists_for_classic_mutation();
-        self.swap_layouts.set_current_tiled_layout_position(position);
+        self.swap_layouts
+            .set_current_tiled_layout_position(position);
         self.apply_tiled_layout_candidate(Some(layout_candidate))?;
         Ok(true)
     }
     pub fn apply_floating_swap_layout(&mut self, layout_name: &str) -> Result<bool> {
-        let Some((position, layout_candidate)) = self
-            .swap_layouts
-            .floating_layout_candidate_by_name(layout_name, self.floating_panes.visible_panes_count())
+        let Some((position, layout_candidate)) =
+            self.swap_layouts.floating_layout_candidate_by_name(
+                layout_name,
+                self.floating_panes.visible_panes_count(),
+            )
         else {
             return Ok(false);
         };
@@ -2532,8 +2541,9 @@ impl Tab {
         blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         let invoked_with = self.normalize_invoked_with_for_default_shell(invoked_with);
-        match new_pane_placement {
-            NewPanePlacement::NoPreference { borderless } => self.new_no_preference_pane(
+        let border_style = new_pane_placement.get_border_style();
+        let result = match new_pane_placement {
+            NewPanePlacement::NoPreference { borderless, .. } => self.new_no_preference_pane(
                 pid,
                 initial_pane_title,
                 invoked_with,
@@ -2546,6 +2556,7 @@ impl Tab {
             NewPanePlacement::Tiled {
                 direction: None,
                 borderless,
+                ..
             } => self.new_tiled_pane(
                 pid,
                 initial_pane_title,
@@ -2559,6 +2570,7 @@ impl Tab {
             NewPanePlacement::Tiled {
                 direction: Some(direction),
                 borderless,
+                ..
             } => {
                 let is_vertical = direction == Direction::Left || direction == Direction::Right;
                 let focused_client_id = client_id.filter(|_| should_focus_pane);
@@ -2637,6 +2649,7 @@ impl Tab {
                 pane_id_to_replace,
                 close_replaced_pane,
                 borderless,
+                ..
             } => self.new_in_place_pane(
                 pid,
                 initial_pane_title,
@@ -2650,6 +2663,7 @@ impl Tab {
             NewPanePlacement::Stacked {
                 pane_id_to_stack_under,
                 borderless,
+                ..
             } => self.new_stacked_pane(
                 pid,
                 initial_pane_title,
@@ -2661,7 +2675,11 @@ impl Tab {
                 blocking_notification,
                 borderless,
             ),
+        };
+        if let Some(border_style) = border_style {
+            self.set_pane_border_style(pid, border_style);
         }
+        result
     }
     pub fn new_no_preference_pane(
         &mut self,
@@ -7607,6 +7625,21 @@ impl Tab {
             pane.update_rounded_corners(rounded_corners);
         }
     }
+    pub fn update_border_styles(
+        &mut self,
+        border_style: BorderStyle,
+        floating_border_style: BorderStyle,
+    ) {
+        self.style.border_style = border_style;
+        self.style.floating_border_style = floating_border_style;
+        self.floating_panes
+            .update_border_styles(border_style, floating_border_style);
+        self.tiled_panes
+            .update_border_styles(border_style, floating_border_style);
+        for (_, pane) in self.suppressed_panes.values_mut() {
+            pane.invalidate_frame_cache();
+        }
+    }
     pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
         self.arrow_fonts = should_support_arrow_fonts;
         self.floating_panes
@@ -7881,6 +7914,27 @@ impl Tab {
 
         log::error!("Pane with id {:?} not found", pane_id);
         Ok(())
+    }
+    pub fn set_pane_border_style(
+        &mut self,
+        pane_id: PaneId,
+        border_style: BorderStyleOverride,
+    ) -> bool {
+        if let Some(pane) = self.floating_panes.get_pane_mut(pane_id) {
+            pane.set_border_style_override(border_style);
+            self.set_force_render();
+            return true;
+        }
+        if let Some(pane) = self.tiled_panes.get_pane_mut(pane_id) {
+            pane.set_border_style_override(border_style);
+            self.set_force_render();
+            return true;
+        }
+        if let Some(pane) = self.suppressed_panes.get_mut(&pane_id) {
+            pane.1.set_border_style_override(border_style);
+            return true;
+        }
+        false
     }
     pub fn get_viewport(&self) -> Viewport {
         self.viewport.borrow().clone()
