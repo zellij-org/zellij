@@ -4,7 +4,7 @@ use crate::panes::Row;
 
 use crate::panes::Selection;
 use crate::{
-    panes::kitty_graphics::store::{InternalImageId, KittyImageStore},
+    panes::kitty_graphics::store::{InternalImageId, KittyImageStore, ScaledImageKey},
     panes::sixel::SixelImageStore,
     panes::terminal_character::{AnsiCode, CharacterStyles},
     panes::{LinkHandler, PaneId, TerminalCharacter, DEFAULT_STYLES, EMPTY_TERMINAL_CHARACTER},
@@ -371,13 +371,13 @@ pub struct KittyChunkKey {
 pub struct HostPlacementRecord {
     pub host_image_id: u32,
     pub host_placement_id: u32,
-    pub image_key: (InternalImageId, Option<(u16, u16)>),
+    pub image_key: (InternalImageId, Option<ScaledImageKey>),
     pub geometry: KittyImageChunk,
 }
 
 #[derive(Debug, Clone)]
 pub struct HostKittyState {
-    pub transmitted: HashMap<(InternalImageId, Option<(u16, u16)>), u32>,
+    pub transmitted: HashMap<(InternalImageId, Option<ScaledImageKey>), u32>,
     pub live_placements: HashMap<KittyChunkKey, HostPlacementRecord>,
     next_host_image_id: u32,
     next_host_placement_id: u32,
@@ -469,10 +469,13 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
         host_state.live_placements.clear();
         host_state.transmitted.clear();
     }
-    let mut freed: Vec<((InternalImageId, Option<(u16, u16)>), u32)> = host_state
+    let mut freed: Vec<((InternalImageId, Option<ScaledImageKey>), u32)> = host_state
         .transmitted
         .iter()
-        .filter(|(image_key, _)| kitty_image_store.get(image_key.0).is_none())
+        .filter(|(image_key, _)| match image_key.1 {
+            Some(key) => kitty_image_store.scaled_variant(image_key.0, key).is_none(),
+            None => kitty_image_store.get(image_key.0).is_none(),
+        })
         .map(|(image_key, host_id)| (*image_key, *host_id))
         .collect();
     freed.sort_by_key(|(_, host_id)| *host_id);
@@ -542,19 +545,15 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
             host_state.live_placements.remove(&key);
         }
         for (key, chunk) in current {
-            let variant = if chunk.scaled_px.is_some() {
-                Some(chunk.dest_cells)
-            } else {
-                None
-            };
+            let variant = chunk.scaled_image;
             let image_key = (chunk.internal_image_id, variant);
             let host_image_id = match host_state.transmitted.get(&image_key) {
                 Some(host_image_id) => *host_image_id,
                 None => {
                     let raster_dims = match variant {
-                        Some(cells) => {
-                            match kitty_image_store.scaled_variant(chunk.internal_image_id, cells) {
-                                Some(_) => chunk.scaled_px,
+                        Some(key) => {
+                            match kitty_image_store.scaled_variant(chunk.internal_image_id, key) {
+                                Some(_) => Some(key.size),
                                 None => None,
                             }
                         },

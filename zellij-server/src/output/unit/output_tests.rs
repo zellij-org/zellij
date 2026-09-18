@@ -1188,8 +1188,7 @@ fn kitty_chunk(
         cell_offset_x: 0,
         cell_offset_y: 0,
         z_index: 0,
-        dest_cells: (3, 2),
-        scaled_px: None,
+        scaled_image: None,
         placement_uid,
     }
 }
@@ -1433,7 +1432,6 @@ fn kitty_occlusion_crops_exclude_covered_quarter() {
     let mut chunk = kitty_chunk(internal, 1, 0, 0);
     chunk.source_px_width = 40;
     chunk.source_px_height = 80;
-    chunk.dest_cells = (4, 4);
     let output = run_kitty_frame(&parts, vec![chunk], Some(floating_panes_stack));
     let crops = parse_kitty_placement_crops(&output);
     let crop_set: HashSet<(usize, usize, usize, usize, usize, usize)> =
@@ -1559,7 +1557,6 @@ fn kitty_emitted_bytes_roundtrip_through_our_parser() {
     chunk.cell_offset_x = 3;
     chunk.cell_offset_y = 4;
     chunk.z_index = -1;
-    chunk.dest_cells = (2, 2);
     let output = run_kitty_frame(&parts, vec![chunk.clone()], None);
     let commands = extract_kitty_commands(&output);
     assert!(
@@ -1632,6 +1629,123 @@ fn kitty_host_ids_stay_within_signed_32_bit_range() {
                     );
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn kitty_cropped_placements_preserve_pixels_after_cell_resize() {
+    use crate::panes::kitty_graphics::grid_state::{KittyGrid, KittyVerticalAnchor};
+    use crate::panes::kitty_graphics::parser::KittyCommand;
+
+    let colors = [
+        [255, 0, 0, 255],
+        [0, 255, 0, 255],
+        [0, 0, 255, 255],
+        [255; 4],
+    ];
+    for scaled in [false, true] {
+        let parts = create_test_kitty_parts();
+        let cell = Rc::new(RefCell::new(Some(SizeInPixels {
+            width: 10,
+            height: 20,
+        })));
+        let mut grid = KittyGrid::new(cell.clone(), parts.0.clone());
+        let image = DecodedImage {
+            bytes: (0..40)
+                .flat_map(|y| (0..20).flat_map(move |x| colors[y / 20 * 2 + x / 10]))
+                .collect(),
+            width: 20,
+            height: 40,
+            format: KittyFormat::Rgba32,
+        };
+        let image_id = grid
+            .transmit(
+                &KittyCommand {
+                    image_id: Some(1),
+                    ..Default::default()
+                },
+                image,
+            )
+            .unwrap();
+        let internal = grid.pane_image_id_map()[&image_id];
+        for i in 0..4 {
+            let command = KittyCommand {
+                image_id: Some(image_id),
+                placement_id: Some(i as u32 + 1),
+                source_x: (i % 2 * 10) as u32,
+                source_y: (i / 2 * 20) as u32,
+                source_w: 10,
+                source_h: 20,
+                columns: u32::from(scaled),
+                rows: u32::from(scaled),
+                ..Default::default()
+            };
+            grid.place(
+                image_id,
+                internal,
+                &command,
+                (i * 20, 0),
+                cell.borrow().unwrap(),
+                KittyVerticalAnchor {
+                    canonical_line: 0,
+                    offset_px_from_line_start: 0,
+                },
+            )
+            .unwrap();
+        }
+        let mut host_images = HashMap::new();
+        let mut host_placements = std::collections::BTreeMap::<u32, KittyCommand>::new();
+        for size in [(10, 20), (15, 30)] {
+            *cell.borrow_mut() = Some(SizeInPixels {
+                width: size.0,
+                height: size.1,
+            });
+            grid.character_cell_size_possibly_changed();
+            let chunks = grid.viewport_kitty_chunks(20, 0, 50, 0, 0);
+            let output = run_kitty_frame(&parts, chunks, None);
+            let mut parser = KittyCommandParser::new();
+            for raw in extract_kitty_commands(&output) {
+                if let Some(command) = parser.parse(&raw) {
+                    let command = command.unwrap();
+                    match command.action {
+                        KittyAction::Transmit => {
+                            host_images.insert(command.image_id.unwrap(), command.image.unwrap());
+                        },
+                        KittyAction::Display => {
+                            host_placements.insert(command.placement_id.unwrap(), command);
+                        },
+                        KittyAction::Delete => {
+                            let id = command.image_id.unwrap();
+                            host_images.remove(&id);
+                            host_placements.retain(|_, placement| placement.image_id != Some(id));
+                        },
+                        _ => {},
+                    }
+                }
+            }
+            assert_eq!(host_placements.len(), 4);
+            assert_eq!(host_images.len(), if scaled { 4 } else { 1 });
+            for (i, command) in host_placements.values().enumerate() {
+                let image = &host_images[&command.image_id.unwrap()];
+                let expected_size = if scaled { size } else { (10, 20) };
+                assert_eq!(
+                    (command.source_w as usize, command.source_h as usize),
+                    expected_size
+                );
+                for y in command.source_y..command.source_y + command.source_h {
+                    for x in command.source_x..command.source_x + command.source_w {
+                        let offset = ((y * image.width + x) * 4) as usize;
+                        assert_eq!(
+                            &image.bytes[offset..offset + 4],
+                            &colors[i],
+                            "scaled={scaled}, cell={size:?}, placement={i}"
+                        );
+                    }
+                }
+            }
+            let scaled_bytes = if scaled { 4 * size.0 * size.1 * 4 } else { 0 };
+            assert_eq!(parts.0.borrow().total_bytes(), 20 * 40 * 4 + scaled_bytes);
         }
     }
 }

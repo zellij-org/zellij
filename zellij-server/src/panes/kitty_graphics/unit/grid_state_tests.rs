@@ -104,7 +104,7 @@ fn changed_chunks_for_placement_straddling_changed_rect() {
     assert_eq!(chunk.source_px_y, 0);
     assert_eq!(chunk.source_px_width, 20);
     assert_eq!(chunk.source_px_height, 10);
-    assert_eq!(chunk.scaled_px, None);
+    assert_eq!(chunk.scaled_image, None);
 }
 
 #[test]
@@ -188,8 +188,7 @@ fn changed_chunks_for_scaled_placement_use_variant_space() {
     assert_eq!(chunk.cell_y, 1);
     assert_eq!(chunk.source_px_y, 20);
     assert_eq!(chunk.source_px_height, 20);
-    assert_eq!(chunk.scaled_px, Some((20, 40)));
-    assert_eq!(chunk.dest_cells, (2, 2));
+    assert_eq!(chunk.scaled_image.unwrap().size, (20, 40));
 }
 
 #[test]
