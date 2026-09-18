@@ -474,6 +474,12 @@ pub enum Action {
     ToggleMouseMode,
     PreviousSwapLayout,
     NextSwapLayout,
+    ApplyTiledSwapLayout {
+        name: String,
+    },
+    ApplyFloatingSwapLayout {
+        name: String,
+    },
     /// Override the layout of the active tab
     OverrideLayout {
         tabs: Vec<TabLayoutInfo>,
@@ -711,6 +717,14 @@ pub enum Action {
     },
     NextSwapLayoutByTabId {
         id: u64,
+    },
+    ApplyTiledSwapLayoutByTabId {
+        id: u64,
+        name: String,
+    },
+    ApplyFloatingSwapLayoutByTabId {
+        id: u64,
+        name: String,
     },
     MoveTabByTabId {
         id: u64,
@@ -1758,6 +1772,20 @@ impl Action {
             CliAction::NextSwapLayout { tab_id } => match tab_id {
                 Some(id) => Ok(vec![Action::NextSwapLayoutByTabId { id: id as u64 }]),
                 None => Ok(vec![Action::NextSwapLayout]),
+            },
+            CliAction::ApplyTiledSwapLayout { name, tab_id } => match tab_id {
+                Some(id) => Ok(vec![Action::ApplyTiledSwapLayoutByTabId {
+                    id: id as u64,
+                    name,
+                }]),
+                None => Ok(vec![Action::ApplyTiledSwapLayout { name }]),
+            },
+            CliAction::ApplyFloatingSwapLayout { name, tab_id } => match tab_id {
+                Some(id) => Ok(vec![Action::ApplyFloatingSwapLayoutByTabId {
+                    id: id as u64,
+                    name,
+                }]),
+                None => Ok(vec![Action::ApplyFloatingSwapLayout { name }]),
             },
             CliAction::OverrideLayout {
                 layout,

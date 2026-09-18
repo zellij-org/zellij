@@ -647,6 +647,8 @@ pub enum ScreenInstruction {
     },
     PreviousSwapLayout(ClientId, Option<NotificationEnd>),
     NextSwapLayout(ClientId, Option<NotificationEnd>),
+    ApplyTiledSwapLayout(ClientId, String, Option<NotificationEnd>),
+    ApplyFloatingSwapLayout(ClientId, String, Option<NotificationEnd>),
     OverrideLayout(
         Option<PathBuf>,        // cwd (applies to all tabs)
         Option<TerminalAction>, // default_shell (applies to all tabs)
@@ -959,6 +961,8 @@ pub enum ScreenInstruction {
     ToggleFloatingPanesWithTabId(usize, Option<TerminalAction>, Option<NotificationEnd>),
     PreviousSwapLayoutWithTabId(usize, Option<NotificationEnd>),
     NextSwapLayoutWithTabId(usize, Option<NotificationEnd>),
+    ApplyTiledSwapLayoutWithTabId(usize, String, Option<NotificationEnd>),
+    ApplyFloatingSwapLayoutWithTabId(usize, String, Option<NotificationEnd>),
     MoveTabWithTabId(usize, Direction, Option<NotificationEnd>),
     SetSoftKeyboard {
         client_id: ClientId,
@@ -1165,6 +1169,10 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
+            ScreenInstruction::ApplyTiledSwapLayout(..) => ScreenContext::ApplyTiledSwapLayout,
+            ScreenInstruction::ApplyFloatingSwapLayout(..) => {
+                ScreenContext::ApplyFloatingSwapLayout
+            },
             ScreenInstruction::OverrideLayout(..) => ScreenContext::OverrideLayout,
             ScreenInstruction::OverrideLayoutComplete(..) => ScreenContext::OverrideLayoutComplete,
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
@@ -1360,6 +1368,12 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::NextSwapLayoutWithTabId(..) => {
                 ScreenContext::NextSwapLayoutWithTabId
+            },
+            ScreenInstruction::ApplyTiledSwapLayoutWithTabId(..) => {
+                ScreenContext::ApplyTiledSwapLayoutWithTabId
+            },
+            ScreenInstruction::ApplyFloatingSwapLayoutWithTabId(..) => {
+                ScreenContext::ApplyFloatingSwapLayoutWithTabId
             },
             ScreenInstruction::MoveTabWithTabId(..) => ScreenContext::MoveTabWithTabId,
             ScreenInstruction::SetSoftKeyboard { .. } => ScreenContext::SetSoftKeyboard,
@@ -10429,6 +10443,58 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
+            ScreenInstruction::ApplyTiledSwapLayout(client_id, layout_name, mut completion_tx) => {
+                let mut applied = false;
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, _client_id: ClientId| {
+                        applied = tab.apply_tiled_swap_layout(&layout_name)?;
+                        Ok::<(), anyhow::Error>(())
+                    },
+                    ?
+                );
+                if !applied {
+                    log::error!("Tiled swap layout not found or incompatible: {layout_name}");
+                    if let Some(ref mut c) = completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!(
+                            "Tiled swap layout not found or incompatible: {layout_name}"
+                        ));
+                    }
+                }
+                drop(completion_tx);
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ApplyFloatingSwapLayout(
+                client_id,
+                layout_name,
+                mut completion_tx,
+            ) => {
+                let mut applied = false;
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, _client_id: ClientId| {
+                        applied = tab.apply_floating_swap_layout(&layout_name)?;
+                        Ok::<(), anyhow::Error>(())
+                    },
+                    ?
+                );
+                if !applied {
+                    log::error!("Floating swap layout not found or incompatible: {layout_name}");
+                    if let Some(ref mut c) = completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!(
+                            "Floating swap layout not found or incompatible: {layout_name}"
+                        ));
+                    }
+                }
+                drop(completion_tx);
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
             ScreenInstruction::OverrideLayout(
                 cwd,
                 default_shell,
@@ -12796,6 +12862,60 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::NextSwapLayoutWithTabId(tab_id, mut _completion_tx) => {
                 if let Some(tab) = screen.tabs.get_mut(&tab_id) {
                     tab.next_swap_layout().non_fatal();
+                } else {
+                    log::error!("Tab with id {} not found", tab_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ApplyTiledSwapLayoutWithTabId(
+                tab_id,
+                layout_name,
+                mut _completion_tx,
+            ) => {
+                if let Some(tab) = screen.tabs.get_mut(&tab_id) {
+                    let applied = tab.apply_tiled_swap_layout(&layout_name).unwrap_or(false);
+                    if !applied {
+                        log::error!("Tiled swap layout not found or incompatible: {layout_name}");
+                        if let Some(ref mut c) = _completion_tx {
+                            c.set_exit_status(1);
+                            c.set_error_message(format!(
+                                "Tiled swap layout not found or incompatible: {layout_name}"
+                            ));
+                        }
+                    }
+                } else {
+                    log::error!("Tab with id {} not found", tab_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ApplyFloatingSwapLayoutWithTabId(
+                tab_id,
+                layout_name,
+                mut _completion_tx,
+            ) => {
+                if let Some(tab) = screen.tabs.get_mut(&tab_id) {
+                    let applied = tab.apply_floating_swap_layout(&layout_name).unwrap_or(false);
+                    if !applied {
+                        log::error!(
+                            "Floating swap layout not found or incompatible: {layout_name}"
+                        );
+                        if let Some(ref mut c) = _completion_tx {
+                            c.set_exit_status(1);
+                            c.set_error_message(format!(
+                                "Floating swap layout not found or incompatible: {layout_name}"
+                            ));
+                        }
+                    }
                 } else {
                     log::error!("Tab with id {} not found", tab_id);
                     if let Some(ref mut c) = _completion_tx {

@@ -1907,10 +1907,16 @@ impl Tab {
         }
     }
     fn relayout_floating_panes(&mut self, search_backwards: bool) -> Result<()> {
-        if let Some(layout_candidate) = self
+        let layout_candidate = self
             .swap_layouts
-            .swap_floating_panes(&self.floating_panes, search_backwards)
-        {
+            .swap_floating_panes(&self.floating_panes, search_backwards);
+        self.apply_floating_layout_candidate(layout_candidate)
+    }
+    fn apply_floating_layout_candidate(
+        &mut self,
+        layout_candidate: Option<Vec<FloatingPaneLayout>>,
+    ) -> Result<()> {
+        if let Some(layout_candidate) = layout_candidate {
             LayoutApplier::new(
                 &self.viewport,
                 &self.senders,
@@ -1949,10 +1955,16 @@ impl Tab {
             self.tiled_panes.unset_fullscreen();
         }
         self.dissolve_stack_lists_for_classic_mutation();
-        if let Some(layout_candidate) = self
+        let layout_candidate = self
             .swap_layouts
-            .swap_tiled_panes(&self.tiled_panes, search_backwards)
-        {
+            .swap_tiled_panes(&self.tiled_panes, search_backwards);
+        self.apply_tiled_layout_candidate(layout_candidate)
+    }
+    fn apply_tiled_layout_candidate(
+        &mut self,
+        layout_candidate: Option<TiledPaneLayout>,
+    ) -> Result<()> {
+        if let Some(layout_candidate) = layout_candidate {
             let application_res = LayoutApplier::new(
                 &self.viewport,
                 &self.senders,
@@ -1994,6 +2006,43 @@ impl Tab {
             .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
             .with_context(|| format!("failed to apply cached resizes"))?;
         Ok(())
+    }
+    fn settled_tiled_pane_count(&self) -> usize {
+        let mut pane_count = self.tiled_panes.visible_panes_count();
+        if self.tiled_panes.fullscreen_is_active() {
+            pane_count += self.tiled_panes.panes_to_hide_count();
+        }
+        if self.stacked_pane_list_is_active() {
+            pane_count += self.suppressed_stack_list_members().count();
+        }
+        pane_count
+    }
+    pub fn apply_tiled_swap_layout(&mut self, layout_name: &str) -> Result<bool> {
+        let Some((position, layout_candidate)) = self
+            .swap_layouts
+            .tiled_layout_candidate_by_name(layout_name, self.settled_tiled_pane_count())
+        else {
+            return Ok(false);
+        };
+        if self.tiled_panes.fullscreen_is_active() {
+            self.tiled_panes.unset_fullscreen();
+        }
+        self.dissolve_stack_lists_for_classic_mutation();
+        self.swap_layouts.set_current_tiled_layout_position(position);
+        self.apply_tiled_layout_candidate(Some(layout_candidate))?;
+        Ok(true)
+    }
+    pub fn apply_floating_swap_layout(&mut self, layout_name: &str) -> Result<bool> {
+        let Some((position, layout_candidate)) = self
+            .swap_layouts
+            .floating_layout_candidate_by_name(layout_name, self.floating_panes.visible_panes_count())
+        else {
+            return Ok(false);
+        };
+        self.swap_layouts
+            .set_current_floating_layout_position(position);
+        self.apply_floating_layout_candidate(Some(layout_candidate))?;
+        Ok(true)
     }
     pub fn previous_swap_layout(&mut self) -> Result<()> {
         let search_backwards = true;

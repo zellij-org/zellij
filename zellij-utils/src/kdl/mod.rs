@@ -464,6 +464,8 @@ impl Action {
     ) -> Result<Self, ConfigError> {
         match action_name {
             "WriteChars" => Ok(Action::WriteChars { chars: string }),
+            "ApplyTiledSwapLayout" => Ok(Action::ApplyTiledSwapLayout { name: string }),
+            "ApplyFloatingSwapLayout" => Ok(Action::ApplyFloatingSwapLayout { name: string }),
             "SetPaneFrameStyle" => {
                 let style = PaneFrameStyle::from_str(string.as_str()).map_err(|e| {
                     ConfigError::new_kdl_error(
@@ -1282,6 +1284,16 @@ impl Action {
             Action::ToggleMouseMode => Some(KdlNode::new("ToggleMouseMode")),
             Action::PreviousSwapLayout => Some(KdlNode::new("PreviousSwapLayout")),
             Action::NextSwapLayout => Some(KdlNode::new("NextSwapLayout")),
+            Action::ApplyTiledSwapLayout { name } => {
+                let mut node = KdlNode::new("ApplyTiledSwapLayout");
+                node.push(name.clone());
+                Some(node)
+            },
+            Action::ApplyFloatingSwapLayout { name } => {
+                let mut node = KdlNode::new("ApplyFloatingSwapLayout");
+                node.push(name.clone());
+                Some(node)
+            },
             Action::BreakPane => Some(KdlNode::new("BreakPane")),
             Action::BreakPaneRight => Some(KdlNode::new("BreakPaneRight")),
             Action::BreakPaneLeft => Some(KdlNode::new("BreakPaneLeft")),
@@ -2233,6 +2245,13 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
             "NextSwapLayout" => Ok(Action::NextSwapLayout),
+            "ApplyTiledSwapLayout" | "ApplyFloatingSwapLayout" => {
+                parse_kdl_action_char_or_string_arguments!(
+                    action_name,
+                    action_arguments,
+                    kdl_action
+                )
+            },
             "BreakPane" => Ok(Action::BreakPane),
             "BreakPaneRight" => Ok(Action::BreakPaneRight),
             "BreakPaneLeft" => Ok(Action::BreakPaneLeft),
@@ -7074,6 +7093,51 @@ fn can_bind_theme_actions() {
         Some(&vec![Action::SetLightTheme])
     );
     // The bindings must also survive a serialize -> deserialize round-trip.
+    let serialized = Keybinds::to_kdl(&deserialized, true);
+    let deserialized_from_serialized = Keybinds::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("keybinds")
+            .unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized);
+}
+
+#[test]
+fn can_bind_named_swap_layout_actions() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Ctrl t" { ApplyTiledSwapLayout "vertical"; }
+                bind "Ctrl f" { ApplyFloatingSwapLayout "staggered"; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let ctrl_t = KeyWithModifier::new(BareKey::Char('t')).with_ctrl_modifier();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &ctrl_t),
+        Some(&vec![Action::ApplyTiledSwapLayout {
+            name: "vertical".to_owned()
+        }])
+    );
+    let ctrl_f = KeyWithModifier::new(BareKey::Char('f')).with_ctrl_modifier();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &ctrl_f),
+        Some(&vec![Action::ApplyFloatingSwapLayout {
+            name: "staggered".to_owned()
+        }])
+    );
     let serialized = Keybinds::to_kdl(&deserialized, true);
     let deserialized_from_serialized = Keybinds::from_kdl(
         serialized

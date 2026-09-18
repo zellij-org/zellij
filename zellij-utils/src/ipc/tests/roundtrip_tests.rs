@@ -2632,6 +2632,22 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ApplyTiledSwapLayout {
+            name: "vertical".to_owned()
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ApplyFloatingSwapLayout {
+            name: "staggered".to_owned()
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::QueryTabNames,
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3714,6 +3730,24 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::PreviousSwapLayoutByTabId { id: 1 },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ApplyTiledSwapLayoutByTabId {
+            id: 1,
+            name: "vertical".to_owned()
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ApplyFloatingSwapLayoutByTabId {
+            id: 3,
+            name: "staggered".to_owned()
+        },
         terminal_id: Some(1),
         client_id: Some(100),
         is_cli_client: true,
