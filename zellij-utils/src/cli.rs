@@ -1644,10 +1644,25 @@ mod tests {
     use super::*;
     use clap::Parser;
 
+    const CLI_PARSE_TEST_STACK_SIZE: usize = 16 * 1024 * 1024;
+
+    fn on_large_stack<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+        std::thread::Builder::new()
+            .stack_size(CLI_PARSE_TEST_STACK_SIZE)
+            .spawn(f)
+            .expect("failed to spawn cli parse test thread")
+            .join()
+            .expect("cli parse test thread panicked")
+    }
+
+    fn try_parse(args: &[&str]) -> Result<CliArgs, clap::Error> {
+        let mut full_args = vec!["zellij".to_owned()];
+        full_args.extend(args.iter().map(|arg| arg.to_string()));
+        on_large_stack(move || CliArgs::try_parse_from(full_args))
+    }
+
     fn parse_subscribe(args: &[&str]) -> SubscribeCli {
-        let mut full_args = vec!["zellij"];
-        full_args.extend_from_slice(args);
-        let cli = CliArgs::try_parse_from(full_args).unwrap();
+        let cli = try_parse(args).unwrap();
         match cli.command {
             Some(Command::Subscribe(s)) => s,
             other => panic!("Expected Subscribe, got {:?}", other),
@@ -1707,7 +1722,7 @@ mod tests {
 
     #[test]
     fn subscribe_requires_pane_id() {
-        let result = CliArgs::try_parse_from(["zellij", "subscribe"]);
+        let result = try_parse(&["subscribe"]);
         assert!(result.is_err());
     }
 }
