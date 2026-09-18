@@ -1922,6 +1922,9 @@ impl Grid {
         let changed_rects = self
             .output_buffer
             .changed_rects_in_viewport(self.viewport.len());
+        if let Some(image_ids_to_reap) = self.sixel_grid.drain_image_ids_to_reap() {
+            self.sixel_grid.reap_images(image_ids_to_reap);
+        }
         let changed_sixel_image_chunks = self.sixel_grid.changed_sixel_chunks_in_viewport(
             changed_rects,
             self.lines_above.len(),
@@ -1929,9 +1932,6 @@ impl Grid {
             x_offset,
             y_offset,
         );
-        if let Some(image_ids_to_reap) = self.sixel_grid.drain_image_ids_to_reap() {
-            self.sixel_grid.reap_images(image_ids_to_reap);
-        }
         if self.kitty_settle_placements_below_the_viewport() {
             self.kitty_reanchor_all_from_pixels();
         }

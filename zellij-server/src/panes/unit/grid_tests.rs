@@ -3304,6 +3304,51 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
 }
 
 #[test]
+fn sixel_replacement_reaps_covered_images_without_reusing_live_ids() {
+    let (mut grid, _) = new_kitty_grid(10, 25);
+    let mut parser = vte::Parser::new();
+    for step in 0..18u8 {
+        let width = if step < 12 { 20 } else { 10 + (step % 3) * 10 };
+        if step >= 12 {
+            parser.advance(&mut grid, b"\x1b[3;4H   ");
+        }
+        let bytes = format!(
+            "\u{1b}[3;4H\u{1b}P9;1q\"1;1;{};12#1;2;{};0;0#1!{}~-!{}~\u{1b}\\",
+            width,
+            step * 5,
+            width,
+            width
+        );
+        parser.advance(&mut grid, bytes.as_bytes());
+        grid.read_changes(0, 0);
+        let coordinates: Vec<_> = grid.sixel_grid.image_coordinates().collect();
+        assert_eq!(coordinates.len(), 1, "obsolete image at step {}", step);
+        let (id, rect) = coordinates[0];
+        let mut store = grid.sixel_grid.sixel_image_store.borrow_mut();
+        assert_eq!(store.image_count(), 1, "storage after step {}", step);
+        let serialized = store
+            .serialize_image(id, 0, 0, rect.width, rect.height)
+            .expect("replacement image survives reaping");
+        let decoded = sixel_image::SixelImage::new(serialized.as_bytes()).unwrap();
+        assert!(decoded.pixels.iter().flatten().all(|pixel| {
+            pixel.on
+                && decoded.color_registers[&pixel.color]
+                    == sixel_image::SixelColor::Rgb(step * 5, 0, 0)
+        }));
+    }
+    parser.advance(&mut grid, b"\x1b[3;4H   ");
+    let (_, sixel_chunks, _) = grid.read_changes(0, 0);
+    assert!(
+        sixel_chunks.is_empty(),
+        "erased rasters must not be replayed"
+    );
+    assert_eq!(grid.sixel_grid.sixel_image_store.borrow().image_count(), 0);
+    parser.advance(&mut grid, b"\x1b[3;4H\x1bP0;0q\"1;1;20;12?\x1b\\");
+    let (_, sixel_chunks, _) = grid.read_changes(0, 0);
+    assert_eq!(sixel_chunks.len(), 1);
+}
+
+#[test]
 pub fn sixel_images_are_reaped_when_resetting() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
