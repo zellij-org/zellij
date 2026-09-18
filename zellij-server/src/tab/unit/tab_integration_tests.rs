@@ -5776,43 +5776,49 @@ fn swap_tiled_layout_with_only_stacked_children() {
         true,
         stacked_resize,
     );
-    let new_pane_id_1 = PaneId::Terminal(2);
-    let new_pane_id_2 = PaneId::Terminal(3);
-    let new_pane_id_3 = PaneId::Terminal(4);
+    let new_pane_ids = [2, 3, 4, 5].map(PaneId::Terminal);
+    let open_pane = |tab: &mut Tab, pane_id| {
+        tab.new_pane(
+            pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(client_id),
+            None,
+        )
+        .unwrap();
+    };
+    let stack_order = |tab: &Tab| {
+        let mut panes = tab
+            .tiled_panes
+            .get_panes()
+            .filter_map(|(pane_id, pane)| {
+                let geom = pane.current_geom();
+                geom.is_stacked().then_some((geom.y, *pane_id))
+            })
+            .collect::<Vec<_>>();
+        panes.sort_unstable();
+        panes
+            .into_iter()
+            .map(|(_, pane_id)| pane_id)
+            .collect::<Vec<_>>()
+    };
 
-    tab.new_pane(
-        new_pane_id_1,
-        None,
-        None,
-        false,
-        true,
-        NewPanePlacement::default(),
-        Some(client_id),
-        None,
-    )
-    .unwrap();
-    tab.new_pane(
-        new_pane_id_2,
-        None,
-        None,
-        false,
-        true,
-        NewPanePlacement::default(),
-        Some(client_id),
-        None,
-    )
-    .unwrap();
-    tab.new_pane(
-        new_pane_id_3,
-        None,
-        None,
-        false,
-        true,
-        NewPanePlacement::default(),
-        Some(client_id),
-        None,
-    )
-    .unwrap();
+    for pane_id in &new_pane_ids[..3] {
+        open_pane(&mut tab, *pane_id);
+    }
+    tab.move_focus_up(client_id).unwrap();
+    open_pane(&mut tab, new_pane_ids[3]);
+    let mut expected_order = vec![PaneId::Terminal(1)];
+    expected_order.extend(new_pane_ids);
+    assert_eq!(stack_order(&tab), expected_order);
+    tab.close_pane(new_pane_ids[1], false, None);
+    expected_order.remove(2);
+    assert_eq!(stack_order(&tab), expected_order);
+    tab.next_swap_layout().unwrap();
+    assert_eq!(stack_order(&tab), expected_order);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
