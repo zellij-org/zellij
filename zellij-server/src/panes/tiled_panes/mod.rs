@@ -2738,13 +2738,17 @@ impl TiledPanes {
         self.panes.remove(&pane_id)
     }
     pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
+        let closed_logical_position = self
+            .panes
+            .get(&pane_id)
+            .and_then(|pane| pane.position_and_size().logical_position);
         let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,
             &self.panes_to_hide,
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        if pane_grid.fill_space_over_pane(pane_id) {
+        let closed_pane = if pane_grid.fill_space_over_pane(pane_id) {
             // successfully filled space over pane
             let closed_pane = self.panes.remove(&pane_id);
             self.move_clients_out_of_pane(pane_id);
@@ -2762,7 +2766,20 @@ impl TiledPanes {
                 self.active_panes.clear(&mut self.panes);
             }
             closed_pane
+        };
+        if let Some(closed_logical_position) = closed_logical_position {
+            for pane in self.panes.values_mut() {
+                let mut geom = pane.position_and_size();
+                if geom
+                    .logical_position
+                    .is_some_and(|position| position > closed_logical_position)
+                {
+                    geom.logical_position = geom.logical_position.map(|position| position - 1);
+                    pane.set_geom(geom);
+                }
+            }
         }
+        closed_pane
     }
     pub fn hold_pane(
         &mut self,
