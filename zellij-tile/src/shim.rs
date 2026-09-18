@@ -2603,6 +2603,13 @@ pub fn set_pane_borderless(pane_id: PaneId, borderless: bool) {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn set_pane_border_style(pane_id: PaneId, border_style: BorderStyleOverride) {
+    let plugin_command = PluginCommand::SetPaneBorderStyle(pane_id, border_style);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Set the default foreground and/or background color of a pane
 ///
 /// # Arguments

@@ -14,10 +14,10 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use zellij_utils::channels::Receiver;
-use zellij_utils::data::Direction;
 use zellij_utils::data::Resize;
 use zellij_utils::data::ResizeStrategy;
 use zellij_utils::data::WebSharing;
+use zellij_utils::data::{BorderStyle, BorderStyleOverride, Direction, LineStyle};
 use zellij_utils::envs::set_session_name;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::layout::{
@@ -1558,6 +1558,7 @@ fn new_stacked_pane() {
         NewPanePlacement::Stacked {
             pane_id_to_stack_under: None,
             borderless: None,
+            border_style: None,
         },
         Some(client_id),
         None,
@@ -1597,6 +1598,7 @@ fn kitty_visible_panes_exclude_collapsed_stack_members() {
             NewPanePlacement::Stacked {
                 pane_id_to_stack_under: None,
                 borderless: None,
+                border_style: None,
             },
             Some(client_id),
             None,
@@ -10843,6 +10845,7 @@ fn borderless_floating_pane() {
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: None,
         borderless: Some(true),
+        border_style: None,
     };
 
     tab.new_floating_pane(
@@ -10890,6 +10893,7 @@ fn borderless_pane_content_fills_edges() {
         height: Some(PercentOrFixed::Fixed(5)),
         pinned: None,
         borderless: Some(true),
+        border_style: None,
     };
 
     tab.new_floating_pane(
@@ -10938,6 +10942,7 @@ fn borderless_pinned_floating_pane() {
         height: Some(PercentOrFixed::Fixed(8)),
         pinned: Some(true),
         borderless: Some(true),
+        border_style: None,
     };
 
     tab.new_floating_pane(
@@ -10990,6 +10995,7 @@ fn cursor_hidden_when_floating_pane_is_under_pinned_pane() {
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: Some(false),
         borderless: Some(false),
+        border_style: None,
     };
 
     tab.new_floating_pane(
@@ -11011,6 +11017,7 @@ fn cursor_hidden_when_floating_pane_is_under_pinned_pane() {
         height: Some(PercentOrFixed::Fixed(8)),
         pinned: Some(true),
         borderless: Some(false),
+        border_style: None,
     };
 
     tab.new_floating_pane(
@@ -11070,6 +11077,7 @@ fn cursor_visible_when_pinned_pane_is_focused() {
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: Some(false),
         borderless: Some(false),
+        border_style: None,
     };
 
     tab.new_floating_pane(
@@ -11091,6 +11099,7 @@ fn cursor_visible_when_pinned_pane_is_focused() {
         height: Some(PercentOrFixed::Fixed(8)),
         pinned: Some(true),
         borderless: Some(false),
+        border_style: None,
     };
 
     tab.new_floating_pane(
@@ -11532,6 +11541,7 @@ fn test_ctrl_drag_resizes_floating_pane_from_edge() {
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: None,
         borderless: Some(false),
+        border_style: None,
     };
 
     tab.toggle_floating_panes(Some(client_id), None, None)
@@ -11613,6 +11623,7 @@ fn test_ctrl_drag_resizes_floating_pane_from_corner() {
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: None,
         borderless: Some(false),
+        border_style: None,
     };
 
     tab.toggle_floating_panes(Some(client_id), None, None)
@@ -11694,6 +11705,7 @@ fn test_ctrl_drag_resizes_pinned_floating_pane_when_floating_panes_not_shown() {
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: Some(true),
         borderless: Some(false),
+        border_style: None,
     };
 
     tab.new_pane(
@@ -11957,6 +11969,7 @@ fn test_left_click_on_floating_pane_changes_focus() {
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: None,
         borderless: Some(false),
+        border_style: None,
     };
 
     let coordinates_2 = FloatingPaneCoordinates {
@@ -11966,6 +11979,7 @@ fn test_left_click_on_floating_pane_changes_focus() {
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: None,
         borderless: Some(false),
+        border_style: None,
     };
 
     tab.toggle_floating_panes(Some(client_id), None, None)
@@ -12028,6 +12042,7 @@ fn test_left_click_on_pinned_floating_pane() {
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: None,
         borderless: Some(false),
+        border_style: None,
     };
 
     let coordinates_2 = FloatingPaneCoordinates {
@@ -12037,6 +12052,7 @@ fn test_left_click_on_pinned_floating_pane() {
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: None,
         borderless: Some(false),
+        border_style: None,
     };
 
     tab.toggle_floating_panes(Some(client_id), None, None)
@@ -13366,6 +13382,7 @@ fn test_ctrl_scroll_up_increases_pinned_floating_pane_size_when_floating_panes_h
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: Some(true),
         borderless: Some(false),
+        border_style: None,
     };
 
     tab.new_pane(
@@ -13434,6 +13451,7 @@ fn test_ctrl_scroll_down_decreases_pinned_floating_pane_size_when_floating_panes
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: Some(true),
         borderless: Some(false),
+        border_style: None,
     };
 
     tab.new_pane(
@@ -13706,6 +13724,7 @@ fn adding_stacked_pane_in_stack_list_mode_moves_existing_pane_to_suppressed_imme
         NewPanePlacement::Stacked {
             pane_id_to_stack_under: None,
             borderless: None,
+            border_style: None,
         },
         Some(client_id),
         None,
@@ -13933,6 +13952,7 @@ fn in_place_pane_with_close_replaced_pane_false_restores_original() {
         NewPanePlacement::Tiled {
             direction: None,
             borderless: None,
+            border_style: None,
         },
         Some(client_id),
         None,
@@ -13996,6 +14016,7 @@ fn in_place_pane_with_close_replaced_pane_true_closes_original() {
         NewPanePlacement::Tiled {
             direction: None,
             borderless: None,
+            border_style: None,
         },
         Some(client_id),
         None,
@@ -15060,6 +15081,7 @@ fn focus_follows_mouse_focuses_floating_pane_on_hover() {
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: None,
         borderless: Some(false),
+        border_style: None,
     };
 
     let coordinates_2 = FloatingPaneCoordinates {
@@ -15069,6 +15091,7 @@ fn focus_follows_mouse_focuses_floating_pane_on_hover() {
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: None,
         borderless: Some(false),
+        border_style: None,
     };
 
     tab.toggle_floating_panes(Some(client_id), None, None)
@@ -15284,6 +15307,7 @@ fn focus_follows_mouse_ignores_tiled_pane_when_floating_visible() {
             height: Some(PercentOrFixed::Fixed(10)),
             pinned: None,
             borderless: Some(false),
+            border_style: None,
         })),
         Some(client_id),
         None,
@@ -15334,6 +15358,7 @@ fn focus_follows_mouse_focuses_floating_pane_when_floating_visible() {
             height: Some(PercentOrFixed::Fixed(10)),
             pinned: None,
             borderless: Some(false),
+            border_style: None,
         })),
         Some(client_id),
         None,
@@ -15352,6 +15377,7 @@ fn focus_follows_mouse_focuses_floating_pane_when_floating_visible() {
             height: Some(PercentOrFixed::Fixed(10)),
             pinned: None,
             borderless: Some(false),
+            border_style: None,
         })),
         Some(client_id),
         None,
@@ -16544,4 +16570,203 @@ fn host_focus_events_only_reach_panes_that_asked_for_them() {
         .get(&1)
         .map(|bytes| String::from_utf8_lossy(bytes).to_string());
     assert_eq!(written, Some("\u{1b}[O\u{1b}[I".to_owned()));
+}
+
+fn border_style_override(all: LineStyle) -> BorderStyleOverride {
+    BorderStyleOverride {
+        all: Some(all),
+        ..Default::default()
+    }
+}
+
+fn uniform_border_style(line_style: LineStyle) -> BorderStyle {
+    BorderStyle {
+        top: line_style,
+        right: line_style,
+        bottom: line_style,
+        left: line_style,
+        rounded_corners: false,
+    }
+}
+
+fn render_tab(tab: &mut Tab, size: Size, client_id: ClientId) -> String {
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    )
+}
+
+#[test]
+fn a_per_pane_border_style_is_drawn_on_the_pane_frame() {
+    let size = Size { cols: 40, rows: 10 };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.set_pane_border_style(
+        PaneId::Terminal(1),
+        border_style_override(LineStyle::Double),
+    );
+    let snapshot = render_tab(&mut tab, size, client_id);
+    assert!(snapshot.contains('╔'), "{}", snapshot);
+    assert!(snapshot.contains('║'), "{}", snapshot);
+    assert!(snapshot.contains('╝'), "{}", snapshot);
+}
+
+#[test]
+fn a_per_pane_border_style_reaches_a_floating_pane() {
+    let size = Size { cols: 60, rows: 20 };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.set_pane_border_style(PaneId::Terminal(2), border_style_override(LineStyle::Heavy));
+    let snapshot = render_tab(&mut tab, size, client_id);
+    assert!(snapshot.contains('┏'), "{}", snapshot);
+    assert!(snapshot.contains('┃'), "{}", snapshot);
+}
+
+#[test]
+fn setting_a_border_style_on_an_unknown_pane_reports_failure() {
+    let size = Size { cols: 40, rows: 10 };
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    assert!(tab.set_pane_border_style(
+        PaneId::Terminal(1),
+        border_style_override(LineStyle::Double)
+    ));
+    assert!(!tab.set_pane_border_style(
+        PaneId::Terminal(99),
+        border_style_override(LineStyle::Double)
+    ));
+}
+
+#[test]
+fn an_empty_border_style_override_restores_the_configured_default() {
+    let size = Size { cols: 40, rows: 10 };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.set_pane_border_style(
+        PaneId::Terminal(1),
+        border_style_override(LineStyle::Double),
+    );
+    assert!(render_tab(&mut tab, size, client_id).contains('╔'));
+    tab.set_pane_border_style(PaneId::Terminal(1), BorderStyleOverride::default());
+    let snapshot = render_tab(&mut tab, size, client_id);
+    assert!(!snapshot.contains('╔'), "{}", snapshot);
+    assert!(snapshot.contains('┌'), "{}", snapshot);
+}
+
+#[test]
+fn reconfiguring_the_global_border_style_repaints_open_panes() {
+    let size = Size { cols: 40, rows: 10 };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    assert!(render_tab(&mut tab, size, client_id).contains('┌'));
+    let heavy = uniform_border_style(LineStyle::Heavy);
+    tab.update_border_styles(heavy, heavy);
+    let snapshot = render_tab(&mut tab, size, client_id);
+    assert!(snapshot.contains('┏'), "{}", snapshot);
+    assert!(snapshot.contains('┛'), "{}", snapshot);
+}
+
+#[test]
+fn a_per_pane_border_style_wins_over_the_global_one() {
+    let size = Size { cols: 40, rows: 10 };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let heavy = uniform_border_style(LineStyle::Heavy);
+    tab.update_border_styles(heavy, heavy);
+    tab.set_pane_border_style(
+        PaneId::Terminal(1),
+        border_style_override(LineStyle::Double),
+    );
+    let snapshot = render_tab(&mut tab, size, client_id);
+    assert!(snapshot.contains('╔'), "{}", snapshot);
+    assert!(!snapshot.contains('┏'), "{}", snapshot);
+}
+
+#[test]
+fn border_styles_from_a_layout_reach_the_panes() {
+    let size = Size { cols: 60, rows: 20 };
+    let client_id = 1;
+    let layout = r#"
+        layout {
+            pane border_style="double"
+            floating_panes {
+                pane x=2 y=2 width=20 height=6 border_style="heavy"
+            }
+        }
+    "#;
+    let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
+    let snapshot = render_tab(&mut tab, size, client_id);
+    assert!(snapshot.contains('╔'), "{}", snapshot);
+    assert!(snapshot.contains('┏'), "{}", snapshot);
+}
+
+#[test]
+fn matching_neighbours_share_a_styled_grid_line() {
+    let size = Size { cols: 60, rows: 10 };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.set_pane_frames(PaneFrameStyle::None);
+    tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
+        .unwrap();
+    tab.set_pane_border_style(
+        PaneId::Terminal(1),
+        border_style_override(LineStyle::Double),
+    );
+    tab.set_pane_border_style(
+        PaneId::Terminal(2),
+        border_style_override(LineStyle::Double),
+    );
+    let snapshot = render_tab(&mut tab, size, client_id);
+    assert!(snapshot.contains('║'), "{}", snapshot);
+}
+
+#[test]
+fn mismatched_neighbours_fall_back_to_the_ambient_grid_line() {
+    let size = Size { cols: 60, rows: 10 };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.set_pane_frames(PaneFrameStyle::None);
+    tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
+        .unwrap();
+    let double = uniform_border_style(LineStyle::Double);
+    tab.update_border_styles(double, double);
+    tab.set_pane_border_style(PaneId::Terminal(2), border_style_override(LineStyle::Heavy));
+    let snapshot = render_tab(&mut tab, size, client_id);
+    assert!(snapshot.contains('║'), "{}", snapshot);
+    assert!(!snapshot.contains('┃'), "{}", snapshot);
+    assert!(!snapshot.contains('│'), "{}", snapshot);
+}
+
+#[test]
+fn mismatched_neighbours_fall_back_to_single_when_the_ambient_style_is_mixed() {
+    let size = Size { cols: 60, rows: 10 };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.set_pane_frames(PaneFrameStyle::None);
+    tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
+        .unwrap();
+    let mixed = BorderStyle {
+        top: LineStyle::Double,
+        ..Default::default()
+    };
+    tab.update_border_styles(mixed, mixed);
+    tab.set_pane_border_style(PaneId::Terminal(2), border_style_override(LineStyle::Heavy));
+    let snapshot = render_tab(&mut tab, size, client_id);
+    assert!(snapshot.contains('│'), "{}", snapshot);
 }

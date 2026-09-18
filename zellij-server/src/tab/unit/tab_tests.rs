@@ -910,6 +910,7 @@ pub fn split_in_direction_without_a_connected_client_still_creates_the_pane() {
         NewPanePlacement::Tiled {
             direction: Some(Direction::Down),
             borderless: None,
+            border_style: None,
         },
         None,
         None,
@@ -940,6 +941,7 @@ pub fn split_in_direction_without_a_connected_client_splits_the_existing_pane() 
         NewPanePlacement::Tiled {
             direction: Some(Direction::Right),
             borderless: None,
+            border_style: None,
         },
         None,
         None,

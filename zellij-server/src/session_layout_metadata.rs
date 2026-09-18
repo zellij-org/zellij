@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use zellij_utils::common_path::common_path_all;
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::{
-    data::{LayoutMetadata, PaneMetadata, TabMetadata},
+    data::{BorderStyleOverride, LayoutMetadata, PaneMetadata, TabMetadata},
     input::command::RunCommand,
     input::layout::{Layout, Run, RunPlugin, RunPluginOrAlias},
     input::plugins::PluginAliases,
@@ -535,6 +535,7 @@ impl Into<PaneLayoutManifest> for PaneLayoutMetadata {
             pane_contents: self.pane_contents,
             default_fg: self.default_fg,
             default_bg: self.default_bg,
+            border_style: self.border_style.none_if_empty(),
         }
     }
 }
@@ -561,6 +562,7 @@ pub struct PaneLayoutMetadata {
     focused_clients: Vec<ClientId>,
     default_fg: Option<String>,
     default_bg: Option<String>,
+    border_style: BorderStyleOverride,
 }
 
 impl PaneLayoutMetadata {
@@ -575,6 +577,7 @@ impl PaneLayoutMetadata {
         focused_clients: Vec<ClientId>,
         default_fg: Option<String>,
         default_bg: Option<String>,
+        border_style: BorderStyleOverride,
     ) -> Self {
         PaneLayoutMetadata {
             id,
@@ -588,6 +591,7 @@ impl PaneLayoutMetadata {
             focused_clients,
             default_fg,
             default_bg,
+            border_style,
         }
     }
     fn to_pane_metadata(&self) -> PaneMetadata {
@@ -701,6 +705,7 @@ mod tests {
             vec![],
             None,
             None,
+            Default::default(),
         )
     }
 
@@ -720,6 +725,7 @@ mod tests {
             vec![],
             None,
             None,
+            Default::default(),
         )
     }
 

@@ -678,8 +678,12 @@ pub(crate) fn route_action(
                 Some(direction) => NewPanePlacement::Tiled {
                     direction: Some(direction),
                     borderless: None,
+                    border_style: None,
                 },
-                None => NewPanePlacement::NoPreference { borderless: None },
+                None => NewPanePlacement::NoPreference {
+                    borderless: None,
+                    border_style: None,
+                },
             };
             senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
@@ -782,7 +786,12 @@ pub(crate) fn route_action(
                     } else {
                         NewPanePlacement::Tiled {
                             direction: split_direction,
-                            borderless: None,
+                            borderless: floating_pane_coordinates
+                                .as_ref()
+                                .and_then(|c| c.borderless),
+                            border_style: floating_pane_coordinates
+                                .as_ref()
+                                .and_then(|c| c.border_style),
                         }
                     },
                     start_suppressed,
@@ -889,6 +898,7 @@ pub(crate) fn route_action(
                     NewPanePlacement::Stacked {
                         pane_id_to_stack_under: None,
                         borderless: None,
+                        border_style: None,
                     },
                     if no_focus {
                         ClientTabIndexOrPaneId::TabIndexNoFocus(tab_id)
@@ -902,6 +912,7 @@ pub(crate) fn route_action(
                     NewPanePlacement::Stacked {
                         pane_id_to_stack_under: Some(pane_id.into()),
                         borderless: None,
+                        border_style: None,
                     },
                     ClientTabIndexOrPaneId::PaneId(pane_id),
                 )
@@ -910,6 +921,7 @@ pub(crate) fn route_action(
                     NewPanePlacement::Stacked {
                         pane_id_to_stack_under: None,
                         borderless: None,
+                        border_style: None,
                     },
                     if no_focus {
                         ClientTabIndexOrPaneId::ClientIdNoFocus(client_id)
@@ -937,6 +949,7 @@ pub(crate) fn route_action(
             near_current_pane,
             no_focus,
             borderless,
+            border_style,
             tab_id,
         } => {
             let run_cmd = run_command
@@ -951,6 +964,7 @@ pub(crate) fn route_action(
                     NewPanePlacement::Tiled {
                         direction,
                         borderless,
+                        border_style,
                     },
                     false,
                     client_tab_index_or_paneid,
@@ -1008,6 +1022,7 @@ pub(crate) fn route_action(
                     NewPanePlacement::Tiled {
                         direction: command.direction,
                         borderless: None,
+                        border_style: None,
                     },
                     false,
                     client_tab_index_or_paneid,
@@ -1911,6 +1926,18 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::SetPaneBorderless(
                     pane_id.into(),
                     borderless,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::SetPaneBorderStyle {
+            pane_id,
+            border_style,
+        } => {
+            senders
+                .send_to_screen(ScreenInstruction::SetPaneBorderStyle(
+                    pane_id.into(),
+                    border_style,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;

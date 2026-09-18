@@ -52,6 +52,7 @@ fn main() {
             near_current_pane,
             no_focus,
             borderless,
+            border_style,
             tab_id,
         })) = opts.command
         {
@@ -97,6 +98,7 @@ fn main() {
                 near_current_pane,
                 no_focus,
                 borderless,
+                border_style,
                 tab_id,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
@@ -116,6 +118,7 @@ fn main() {
             pinned,
             no_focus,
             borderless,
+            border_style,
             tab_id,
         })) = opts.command
         {
@@ -151,6 +154,7 @@ fn main() {
                 near_current_pane: false,
                 no_focus,
                 borderless,
+                border_style,
                 tab_id,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
@@ -172,6 +176,7 @@ fn main() {
             near_current_pane,
             no_focus,
             borderless,
+            border_style,
             tab_id,
         })) = opts.command
         {
@@ -198,6 +203,7 @@ fn main() {
                 near_current_pane,
                 no_focus,
                 borderless,
+                border_style,
                 tab_id,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);

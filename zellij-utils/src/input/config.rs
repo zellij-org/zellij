@@ -1409,6 +1409,7 @@ mod config_test {
             pane_frames: FrameConfig {
                 rounded_corners: true,
                 hide_session_name: true,
+                ..Default::default()
             },
         };
         assert_eq!(config.ui, expected_ui_config, "Ui config defined in config");

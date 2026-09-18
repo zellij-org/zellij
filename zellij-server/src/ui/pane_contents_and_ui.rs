@@ -6,7 +6,7 @@ use crate::ui::boundaries::Boundaries;
 use crate::ui::pane_boundaries_frame::{FrameParams, StackListEntry};
 use crate::ClientId;
 use std::collections::{HashMap, HashSet};
-use zellij_utils::data::{client_id_to_colors, InputMode, PaletteColor, Style};
+use zellij_utils::data::{client_id_to_colors, BorderStyle, InputMode, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::PaneGeom;
 
@@ -358,12 +358,14 @@ impl<'a> PaneContentsAndUi<'a> {
         });
         let frame_is_dimmed = self.frame_is_dimmed_for_client(client_id);
         let guest_choice_indicator = self.pane.guest_choice_indicator(client_id);
+        let border_style = self.border_style(pane_is_floating);
         let frame_params = if session_is_mirrored {
             FrameParams {
                 focused_client,
                 is_main_client: pane_focused_for_client_id,
                 other_focused_clients: vec![],
                 style: self.style,
+                border_style,
                 color: frame_color.map(|c| c.0),
                 other_cursors_exist_in_session: false,
                 pane_is_stacked_over: self.pane_is_stacked_over,
@@ -393,6 +395,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 is_main_client: pane_focused_for_client_id,
                 other_focused_clients,
                 style: self.style,
+                border_style,
                 color: frame_color.map(|c| c.0),
                 other_cursors_exist_in_session: self.multiple_users_exist_in_session,
                 pane_is_stacked_over: self.pane_is_stacked_over,
@@ -437,6 +440,14 @@ impl<'a> PaneContentsAndUi<'a> {
 
         Ok(())
     }
+    pub fn border_style(&self, pane_is_floating: bool) -> BorderStyle {
+        let base = if pane_is_floating {
+            self.style.floating_border_style
+        } else {
+            self.style.border_style
+        };
+        self.pane.border_style_override().apply_to(base)
+    }
     pub fn render_pane_boundaries(
         &self,
         client_id: ClientId,
@@ -447,9 +458,11 @@ impl<'a> PaneContentsAndUi<'a> {
         pane_is_on_bottom_of_stack: bool,
     ) {
         let color = self.frame_color(client_id, client_mode, session_is_mirrored);
+        let pane_is_floating = false;
         boundaries.add_rect(
             self.pane.as_ref(),
             color,
+            self.border_style(pane_is_floating),
             pane_is_on_top_of_stack,
             pane_is_on_bottom_of_stack,
             self.pane_is_stacked_under,

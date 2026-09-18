@@ -1744,6 +1744,7 @@ fn open_new_floating_pane_with_custom_coordinates() {
                 height: Some(PercentOrFixed::Fixed(2)),
                 pinned: None,
                 borderless: Some(false),
+                border_style: None,
             })),
             Some(1),
             None,
@@ -1780,6 +1781,7 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
                 height: Some(PercentOrFixed::Fixed(10)),
                 pinned: None,
                 borderless: Some(false),
+                border_style: None,
             })),
             Some(1),
             None,
@@ -1816,6 +1818,7 @@ fn floating_pane_auto_centers_horizontally_with_only_width() {
                 height: Some(PercentOrFixed::Fixed(10)),
                 pinned: None,
                 borderless: Some(false),
+                border_style: None,
             })),
             Some(1),
             None,
@@ -1852,6 +1855,7 @@ fn floating_pane_auto_centers_vertically_with_only_height() {
                 height: Some(PercentOrFixed::Fixed(20)),
                 pinned: None,
                 borderless: Some(false),
+                border_style: None,
             })),
             Some(1),
             None,
@@ -1888,6 +1892,7 @@ fn floating_pane_auto_centers_both_axes_with_only_size() {
                 height: Some(PercentOrFixed::Fixed(30)),
                 pinned: None,
                 borderless: Some(false),
+                border_style: None,
             })),
             Some(1),
             None,
@@ -1924,6 +1929,7 @@ fn floating_pane_respects_explicit_coordinates_with_size() {
                 height: Some(PercentOrFixed::Fixed(30)),
                 pinned: None,
                 borderless: Some(false),
+                border_style: None,
             })),
             Some(1),
             None,
@@ -1960,6 +1966,7 @@ fn floating_pane_centers_with_percentage_width() {
                 height: Some(PercentOrFixed::Fixed(20)),
                 pinned: None,
                 borderless: Some(false),
+                border_style: None,
             })),
             Some(1),
             None,
@@ -2001,6 +2008,7 @@ fn floating_pane_centers_large_pane_safely() {
                 height: Some(PercentOrFixed::Fixed(50)),
                 pinned: None,
                 borderless: Some(false),
+                border_style: None,
             })),
             Some(1),
             None,
@@ -2413,6 +2421,7 @@ fn group_panes_following_focus() {
                     NewPanePlacement::Tiled {
                         direction: None,
                         borderless: None,
+                        border_style: None,
                     },
                     Some(client_id),
                     None,
@@ -2474,6 +2483,7 @@ fn break_group_with_mouse() {
                     NewPanePlacement::Tiled {
                         direction: None,
                         borderless: None,
+                        border_style: None,
                     },
                     Some(client_id),
                     None,
@@ -3572,6 +3582,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         no_focus: false,
         borderless: Some(false),
         tab_id: None,
+        border_style: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3607,6 +3618,7 @@ pub fn web_new_pane_in_tab_action_targets_requested_tab() {
         no_focus: false,
         borderless: None,
         tab_id: Some(0),
+        border_style: None,
     };
     route_arbitrary_action_to_server(&session_metadata, action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3682,6 +3694,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         no_focus: false,
         borderless: Some(false),
         tab_id: None,
+        border_style: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3738,6 +3751,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         no_focus: false,
         borderless: Some(false),
         tab_id: None,
+        border_style: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3805,6 +3819,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         no_focus: false,
         borderless: Some(false),
         tab_id: None,
+        border_style: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3849,6 +3864,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         near_current_pane: false,
         no_focus: false,
         tab_id: None,
+        border_style: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3893,6 +3909,7 @@ pub fn send_cli_edit_action_with_line_number() {
         near_current_pane: false,
         no_focus: false,
         tab_id: None,
+        border_style: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3937,6 +3954,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         near_current_pane: false,
         no_focus: false,
         tab_id: None,
+        border_style: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -5310,12 +5328,46 @@ pub fn send_cli_change_floating_pane_coordinates_action() {
         height: Some("10".to_owned()),
         pinned: None,
         borderless: Some(false),
+        border_style: None,
     };
     send_cli_action_to_server(
         &session_metadata,
         change_floating_pane_coordinates_action,
         client_id,
     );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    for (_cursor_coordinates, snapshot) in snapshots {
+        assert_snapshot!(format!("{}", snapshot));
+    }
+    assert_snapshot!(format!("{}", snapshot_count));
+}
+
+#[test]
+pub fn send_cli_set_pane_border_style_action() {
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let set_pane_border_style_action = CliAction::SetPaneBorderStyle {
+        pane_id: "0".to_owned(),
+        border_style: Some("double,rounded:false".to_owned()),
+    };
+    send_cli_action_to_server(&session_metadata, set_pane_border_style_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -5633,6 +5685,7 @@ pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
         no_focus: false,
         borderless: None,
         tab_id: None,
+        border_style: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -5685,6 +5738,7 @@ pub fn send_cli_edit_in_place_with_close_replaced_pane() {
         no_focus: false,
         borderless: None,
         tab_id: None,
+        border_style: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8424,6 +8478,7 @@ pub fn send_cli_new_pane_action_with_tab_id() {
         no_focus: false,
         borderless: Some(false),
         tab_id: Some(0),
+        border_style: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8487,6 +8542,7 @@ pub fn send_cli_new_floating_pane_action_with_tab_id() {
         no_focus: false,
         borderless: None,
         tab_id: Some(0),
+        border_style: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8537,6 +8593,7 @@ pub fn send_cli_edit_action_with_tab_id() {
         no_focus: false,
         borderless: None,
         tab_id: Some(0),
+        border_style: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8599,6 +8656,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_direction() {
         no_focus: false,
         borderless: Some(false),
         tab_id: Some(0),
+        border_style: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8661,6 +8719,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_stacked() {
         no_focus: false,
         borderless: None,
         tab_id: Some(0),
+        border_style: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));

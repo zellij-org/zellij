@@ -40,11 +40,12 @@ use crate::route::NotificationEnd;
 
 use log::{debug, warn};
 use zellij_utils::data::{
-    CommandOrPlugin, Direction, EventType, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
-    HostTerminalThemeMode, KeyWithModifier, LayoutInfo, LayoutWithError, ListPanesResponse,
-    ListTabsResponse, NewPanePlacement, PaneContents, PaneInfo, PaneListEntry, PaneManifest,
-    PaneRenderReport, PaneScrollbackResponse, PluginPermission, RegexHighlight, Resize,
-    ResizeStrategy, SessionInfo, Styling, TabInfo, ThemeHue, WebSharing,
+    BorderStyle, BorderStyleOverride, CommandOrPlugin, Direction, EventType,
+    FloatingPaneCoordinates, GetFocusedPaneInfoResponse, HostTerminalThemeMode, KeyWithModifier,
+    LayoutInfo, LayoutWithError, ListPanesResponse, ListTabsResponse, NewPanePlacement,
+    PaneContents, PaneInfo, PaneListEntry, PaneManifest, PaneRenderReport, PaneScrollbackResponse,
+    PluginPermission, RegexHighlight, Resize, ResizeStrategy, SessionInfo, Styling, TabInfo,
+    ThemeHue, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
@@ -814,6 +815,8 @@ pub enum ScreenInstruction {
         auto_layout: bool,
         rounded_corners: bool,
         hide_session_name: bool,
+        border_style: BorderStyle,
+        floating_border_style: BorderStyle,
         stacked_resize: bool,
         stacked_pane_list: bool,
         default_editor: Option<PathBuf>,
@@ -892,6 +895,7 @@ pub enum ScreenInstruction {
     ),
     TogglePaneBorderless(PaneId, Option<NotificationEnd>),
     SetPaneBorderless(PaneId, bool, Option<NotificationEnd>),
+    SetPaneBorderStyle(PaneId, BorderStyleOverride, Option<NotificationEnd>),
     AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
     // message
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, bool, ClientId), // panes_to_group, panes_to_ungroup, bool -> for all clients
@@ -1263,6 +1267,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::TogglePaneBorderless(..) => ScreenContext::TogglePaneBorderless,
             ScreenInstruction::SetPaneBorderless(..) => ScreenContext::SetPaneBorderless,
+            ScreenInstruction::SetPaneBorderStyle(..) => ScreenContext::SetPaneBorderStyle,
             ScreenInstruction::AddHighlightPaneFrameColorOverride(..) => {
                 ScreenContext::AddHighlightPaneFrameColorOverride
             },
@@ -6726,6 +6731,7 @@ impl Screen {
                         height: Some(PercentOrFixed::Fixed(pane.rows())),
                         pinned: Some(pane.current_geom().is_pinned),
                         borderless: Some(pane.borderless()),
+                        border_style: None,
                     };
                     new_active_tab.add_floating_pane(
                         pane,
@@ -6894,6 +6900,8 @@ impl Screen {
         auto_layout: bool,
         rounded_corners: bool,
         hide_session_name: bool,
+        border_style: BorderStyle,
+        floating_border_style: BorderStyle,
         stacked_resize: bool,
         stacked_pane_list: bool,
         default_editor: Option<PathBuf>,
@@ -6920,6 +6928,10 @@ impl Screen {
         self.default_mode_info.update_theme(theme);
         self.default_mode_info
             .update_rounded_corners(rounded_corners);
+        self.default_mode_info
+            .update_border_styles(border_style, floating_border_style);
+        self.style.border_style = border_style;
+        self.style.floating_border_style = floating_border_style;
         // `default_mode_info` is the fallback used by `change_mode` for
         // clients that don't yet have a per-client `mode_info` entry, so its
         // keybinds and base mode must be kept in sync with reconfigures.
@@ -6960,6 +6972,7 @@ impl Screen {
         for tab in self.tabs.values_mut() {
             tab.update_theme(theme);
             tab.update_rounded_corners(rounded_corners);
+            tab.update_border_styles(border_style, floating_border_style);
             tab.update_default_shell(default_shell.clone());
             tab.update_default_editor(self.default_editor.clone());
             tab.update_auto_layout(auto_layout);
@@ -7308,6 +7321,14 @@ impl Screen {
             }
         }
     }
+    pub fn set_pane_border_style(&mut self, pane_id: PaneId, border_style: BorderStyleOverride) {
+        for (_tab_id, tab) in self.tabs.iter_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                tab.set_pane_border_style(pane_id, border_style);
+                break;
+            }
+        }
+    }
     pub fn handle_mouse_event(&mut self, event: MouseEvent, client_id: ClientId) {
         let is_bare_motion = event.event_type == MouseEventType::Motion
             && !event.left
@@ -7524,6 +7545,7 @@ impl Screen {
                         focused_clients,
                         default_fg,
                         default_bg,
+                        p.border_style_override(),
                     )
                 })
                 .collect();
@@ -7553,7 +7575,7 @@ impl Screen {
                     PaneLayoutMetadata::new(
                         pane_id,
                         p.position_and_size(),
-                        false, // floating panes are never borderless
+                        p.borderless(),
                         p.invoked_with().clone(),
                         p.custom_title(),
                         !focused_clients.is_empty(),
@@ -7565,6 +7587,7 @@ impl Screen {
                         focused_clients,
                         default_fg,
                         default_bg,
+                        p.border_style_override(),
                     )
                 })
                 .collect();
@@ -8429,6 +8452,7 @@ pub(crate) fn screen_thread_main(
                                     NewPanePlacement::Tiled {
                                         direction: Some(direction),
                                         borderless,
+                                        border_style: None,
                                     } => {
                                         if direction == Direction::Left
                                             || direction == Direction::Right
@@ -10894,6 +10918,7 @@ pub(crate) fn screen_thread_main(
                     new_pane_placement = NewPanePlacement::Tiled {
                         direction: None,
                         borderless: None,
+                        border_style: None,
                     };
                 }
                 if should_be_in_place {
@@ -11669,6 +11694,8 @@ pub(crate) fn screen_thread_main(
                 auto_layout,
                 rounded_corners,
                 hide_session_name,
+                border_style,
+                floating_border_style,
                 stacked_resize,
                 stacked_pane_list,
                 default_editor,
@@ -11702,6 +11729,8 @@ pub(crate) fn screen_thread_main(
                         auto_layout,
                         rounded_corners,
                         hide_session_name,
+                        border_style,
+                        floating_border_style,
                         stacked_resize,
                         stacked_pane_list,
                         default_editor,
@@ -12126,6 +12155,10 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::SetPaneBorderless(pane_id, borderless, _completion_tx) => {
                 screen.set_pane_borderless(pane_id, borderless);
+                let _ = screen.render(None);
+            },
+            ScreenInstruction::SetPaneBorderStyle(pane_id, border_style, _completion_tx) => {
+                screen.set_pane_border_style(pane_id, border_style);
                 let _ = screen.render(None);
             },
             ScreenInstruction::GroupAndUngroupPanes(
@@ -12904,7 +12937,9 @@ pub(crate) fn screen_thread_main(
                 mut _completion_tx,
             ) => {
                 if let Some(tab) = screen.tabs.get_mut(&tab_id) {
-                    let applied = tab.apply_floating_swap_layout(&layout_name).unwrap_or(false);
+                    let applied = tab
+                        .apply_floating_swap_layout(&layout_name)
+                        .unwrap_or(false);
                     if !applied {
                         log::error!(
                             "Floating swap layout not found or incompatible: {layout_name}"

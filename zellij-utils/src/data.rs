@@ -1427,10 +1427,209 @@ pub struct Palette {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum LineStyle {
+    #[default]
+    Single,
+    Double,
+    Heavy,
+    Dashed,
+    HeavyDashed,
+}
+
+impl LineStyle {
+    pub fn is_heavy(&self) -> bool {
+        matches!(self, LineStyle::Heavy | LineStyle::HeavyDashed)
+    }
+    pub fn is_double(&self) -> bool {
+        matches!(self, LineStyle::Double)
+    }
+    pub fn is_single(&self) -> bool {
+        matches!(self, LineStyle::Single | LineStyle::Dashed)
+    }
+}
+
+impl FromStr for LineStyle {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "single" | "light" | "normal" => Ok(LineStyle::Single),
+            "double" => Ok(LineStyle::Double),
+            "heavy" | "bold" | "thick" => Ok(LineStyle::Heavy),
+            "dashed" => Ok(LineStyle::Dashed),
+            "heavy_dashed" | "heavy-dashed" | "heavydashed" => Ok(LineStyle::HeavyDashed),
+            _ => Err(format!(
+                "Unknown line style: '{}', expected one of: single, double, heavy, dashed, heavy_dashed",
+                s
+            )),
+        }
+    }
+}
+
+impl fmt::Display for LineStyle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            LineStyle::Single => "single",
+            LineStyle::Double => "double",
+            LineStyle::Heavy => "heavy",
+            LineStyle::Dashed => "dashed",
+            LineStyle::HeavyDashed => "heavy_dashed",
+        };
+        write!(f, "{}", name)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub struct BorderStyle {
+    pub top: LineStyle,
+    pub right: LineStyle,
+    pub bottom: LineStyle,
+    pub left: LineStyle,
+    pub rounded_corners: bool,
+}
+
+impl BorderStyle {
+    pub fn with_rounded_corners(rounded_corners: bool) -> Self {
+        BorderStyle {
+            rounded_corners,
+            ..Default::default()
+        }
+    }
+    pub fn uniform_style(&self) -> Option<LineStyle> {
+        if self.top == self.right && self.right == self.bottom && self.bottom == self.left {
+            Some(self.top)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub struct BorderStyleOverride {
+    pub all: Option<LineStyle>,
+    pub top: Option<LineStyle>,
+    pub right: Option<LineStyle>,
+    pub bottom: Option<LineStyle>,
+    pub left: Option<LineStyle>,
+    pub rounded_corners: Option<bool>,
+}
+
+impl BorderStyleOverride {
+    pub fn is_empty(&self) -> bool {
+        self.all.is_none()
+            && self.top.is_none()
+            && self.right.is_none()
+            && self.bottom.is_none()
+            && self.left.is_none()
+            && self.rounded_corners.is_none()
+    }
+    pub fn none_if_empty(self) -> Option<Self> {
+        if self.is_empty() {
+            None
+        } else {
+            Some(self)
+        }
+    }
+    pub fn from_cli_string(value: &str) -> Result<Self, String> {
+        let mut border_style_override = BorderStyleOverride::default();
+        for token in value.split(',') {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            let (key, value) = match token.split_once(|c| c == ':' || c == '=') {
+                Some((key, value)) => (key.trim().to_lowercase(), Some(value.trim())),
+                None => (token.to_lowercase(), None),
+            };
+            match (key.as_str(), value) {
+                ("rounded" | "rounded_corners" | "rounded-corners", value) => {
+                    let rounded = match value {
+                        None => true,
+                        Some(value) => value.parse::<bool>().map_err(|_| {
+                            format!("Expected true or false for rounded corners, got '{}'", value)
+                        })?,
+                    };
+                    border_style_override.rounded_corners = Some(rounded);
+                },
+                ("all", Some(value)) => border_style_override.all = Some(LineStyle::from_str(value)?),
+                ("top", Some(value)) => border_style_override.top = Some(LineStyle::from_str(value)?),
+                ("right", Some(value)) => {
+                    border_style_override.right = Some(LineStyle::from_str(value)?)
+                },
+                ("bottom", Some(value)) => {
+                    border_style_override.bottom = Some(LineStyle::from_str(value)?)
+                },
+                ("left", Some(value)) => {
+                    border_style_override.left = Some(LineStyle::from_str(value)?)
+                },
+                (_, Some(_)) => {
+                    return Err(format!(
+                        "Unknown border side: '{}', expected one of: all, top, right, bottom, left, rounded",
+                        key
+                    ))
+                },
+                (line_style, None) => border_style_override.all = Some(LineStyle::from_str(line_style)?),
+            }
+        }
+        Ok(border_style_override)
+    }
+    pub fn from_optional_cli_string(value: Option<&str>) -> Result<Option<Self>, String> {
+        match value {
+            Some(value) => Self::from_cli_string(value).map(|b| b.none_if_empty()),
+            None => Ok(None),
+        }
+    }
+    pub fn from_strings(
+        all: Option<String>,
+        top: Option<String>,
+        right: Option<String>,
+        bottom: Option<String>,
+        left: Option<String>,
+        rounded_corners: Option<bool>,
+    ) -> Result<Self, String> {
+        let parse = |value: Option<String>| -> Result<Option<LineStyle>, String> {
+            match value {
+                Some(value) => LineStyle::from_str(&value).map(Some),
+                None => Ok(None),
+            }
+        };
+        Ok(BorderStyleOverride {
+            all: parse(all)?,
+            top: parse(top)?,
+            right: parse(right)?,
+            bottom: parse(bottom)?,
+            left: parse(left)?,
+            rounded_corners,
+        })
+    }
+    pub fn apply_to(&self, base: BorderStyle) -> BorderStyle {
+        let all = self.all;
+        BorderStyle {
+            top: self.top.or(all).unwrap_or(base.top),
+            right: self.right.or(all).unwrap_or(base.right),
+            bottom: self.bottom.or(all).unwrap_or(base.bottom),
+            left: self.left.or(all).unwrap_or(base.left),
+            rounded_corners: self.rounded_corners.unwrap_or(base.rounded_corners),
+        }
+    }
+    pub fn merge(&self, other: &BorderStyleOverride) -> BorderStyleOverride {
+        BorderStyleOverride {
+            all: other.all.or(self.all),
+            top: other.top.or(self.top),
+            right: other.right.or(self.right),
+            bottom: other.bottom.or(self.bottom),
+            left: other.left.or(self.left),
+            rounded_corners: other.rounded_corners.or(self.rounded_corners),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct Style {
     pub colors: Styling,
     pub rounded_corners: bool,
     pub hide_session_name: bool,
+    pub border_style: BorderStyle,
+    pub floating_border_style: BorderStyle,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -1826,6 +2025,14 @@ impl ModeInfo {
     }
     pub fn update_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;
+    }
+    pub fn update_border_styles(
+        &mut self,
+        border_style: BorderStyle,
+        floating_border_style: BorderStyle,
+    ) {
+        self.style.border_style = border_style;
+        self.style.floating_border_style = floating_border_style;
     }
     pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
         // it is honestly quite baffling to me how "arrow_fonts: false" can mean "I support arrow
@@ -2821,6 +3028,8 @@ pub struct FileToOpen {
     pub path: PathBuf,
     pub line_number: Option<usize>,
     pub cwd: Option<PathBuf>,
+    #[serde(default)]
+    pub border_style: Option<BorderStyleOverride>,
 }
 
 impl FileToOpen {
@@ -2838,6 +3047,10 @@ impl FileToOpen {
         self.cwd = Some(cwd);
         self
     }
+    pub fn with_border_style(mut self, border_style: BorderStyleOverride) -> Self {
+        self.border_style = Some(border_style);
+        self
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -2845,6 +3058,7 @@ pub struct CommandToRun {
     pub path: PathBuf,
     pub args: Vec<String>,
     pub cwd: Option<PathBuf>,
+    pub border_style: Option<BorderStyleOverride>,
 }
 
 impl CommandToRun {
@@ -2860,6 +3074,10 @@ impl CommandToRun {
             args: args.into_iter().map(|a| a.as_ref().to_owned()).collect(),
             ..Default::default()
         }
+    }
+    pub fn with_border_style(mut self, border_style: BorderStyleOverride) -> Self {
+        self.border_style = Some(border_style);
+        self
     }
 }
 
@@ -3095,6 +3313,8 @@ pub struct FloatingPaneCoordinates {
     pub height: Option<PercentOrFixed>,
     pub pinned: Option<bool>,
     pub borderless: Option<bool>,
+    #[serde(default)]
+    pub border_style: Option<BorderStyleOverride>,
 }
 
 impl FloatingPaneCoordinates {
@@ -3146,7 +3366,25 @@ impl FloatingPaneCoordinates {
                 height,
                 pinned,
                 borderless,
+                border_style: None,
             })
+        }
+    }
+    pub fn with_border_style(mut self, border_style: Option<BorderStyleOverride>) -> Self {
+        self.border_style = border_style;
+        self
+    }
+    pub fn merge_border_style(
+        coordinates: Option<Self>,
+        border_style: Option<BorderStyleOverride>,
+    ) -> Option<Self> {
+        match border_style {
+            Some(border_style) => Some(
+                coordinates
+                    .unwrap_or_default()
+                    .with_border_style(Some(border_style)),
+            ),
+            None => coordinates,
         }
     }
     pub fn with_x_fixed(mut self, x: usize) -> Self {
@@ -3208,6 +3446,7 @@ impl From<PaneGeom> for FloatingPaneCoordinates {
             height: Some(PercentOrFixed::Fixed(pane_geom.rows.as_usize())),
             pinned: Some(pane_geom.is_pinned),
             borderless: None,
+            border_style: None,
         }
     }
 }
@@ -3304,26 +3543,33 @@ impl FromStr for WebSharing {
 pub enum NewPanePlacement {
     NoPreference {
         borderless: Option<bool>,
+        border_style: Option<BorderStyleOverride>,
     },
     Tiled {
         direction: Option<Direction>,
         borderless: Option<bool>,
+        border_style: Option<BorderStyleOverride>,
     },
     Floating(Option<FloatingPaneCoordinates>),
     InPlace {
         pane_id_to_replace: Option<PaneId>,
         close_replaced_pane: bool,
         borderless: Option<bool>,
+        border_style: Option<BorderStyleOverride>,
     },
     Stacked {
         pane_id_to_stack_under: Option<PaneId>,
         borderless: Option<bool>,
+        border_style: Option<BorderStyleOverride>,
     },
 }
 
 impl Default for NewPanePlacement {
     fn default() -> Self {
-        NewPanePlacement::NoPreference { borderless: None }
+        NewPanePlacement::NoPreference {
+            borderless: None,
+            border_style: None,
+        }
     }
 }
 
@@ -3343,6 +3589,7 @@ impl NewPanePlacement {
                 pane_id_to_replace: None,
                 close_replaced_pane,
                 borderless: None,
+                border_style: None,
             }
         } else {
             self
@@ -3356,6 +3603,7 @@ impl NewPanePlacement {
             pane_id_to_replace,
             close_replaced_pane,
             borderless: None,
+            border_style: None,
         }
     }
     pub fn should_float(&self) -> Option<bool> {
@@ -3390,11 +3638,65 @@ impl NewPanePlacement {
     }
     pub fn get_borderless(&self) -> Option<bool> {
         match self {
-            NewPanePlacement::NoPreference { borderless } => *borderless,
+            NewPanePlacement::NoPreference { borderless, .. } => *borderless,
             NewPanePlacement::Tiled { borderless, .. } => *borderless,
             NewPanePlacement::Floating(coords) => coords.as_ref().and_then(|c| c.borderless),
             NewPanePlacement::InPlace { borderless, .. } => *borderless,
             NewPanePlacement::Stacked { borderless, .. } => *borderless,
+        }
+    }
+    pub fn get_border_style(&self) -> Option<BorderStyleOverride> {
+        match self {
+            NewPanePlacement::NoPreference { border_style, .. } => *border_style,
+            NewPanePlacement::Tiled { border_style, .. } => *border_style,
+            NewPanePlacement::Floating(coords) => {
+                coords.as_ref().and_then(|c| c.border_style.clone())
+            },
+            NewPanePlacement::InPlace { border_style, .. } => *border_style,
+            NewPanePlacement::Stacked { border_style, .. } => *border_style,
+        }
+    }
+    pub fn with_border_style(self, border_style: Option<BorderStyleOverride>) -> Self {
+        if border_style.is_none() {
+            return self;
+        }
+        match self {
+            NewPanePlacement::NoPreference { borderless, .. } => NewPanePlacement::NoPreference {
+                borderless,
+                border_style,
+            },
+            NewPanePlacement::Tiled {
+                direction,
+                borderless,
+                ..
+            } => NewPanePlacement::Tiled {
+                direction,
+                borderless,
+                border_style,
+            },
+            NewPanePlacement::Floating(coords) => NewPanePlacement::Floating(Some(
+                coords.unwrap_or_default().with_border_style(border_style),
+            )),
+            NewPanePlacement::InPlace {
+                pane_id_to_replace,
+                close_replaced_pane,
+                borderless,
+                ..
+            } => NewPanePlacement::InPlace {
+                pane_id_to_replace,
+                close_replaced_pane,
+                borderless,
+                border_style,
+            },
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless,
+                ..
+            } => NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless,
+                border_style,
+            },
         }
     }
 }
@@ -3593,6 +3895,7 @@ pub enum PluginCommand {
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
     TogglePaneBorderless(PaneId),
     SetPaneBorderless(PaneId, bool),
+    SetPaneBorderStyle(PaneId, BorderStyleOverride),
     OpenCommandPaneNearPlugin(CommandToRun, Context),
     OpenTerminalNearPlugin(FileToOpen),
     OpenTerminalFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>),
@@ -3758,4 +4061,186 @@ pub fn can_parse_unicode_bare_keys() {
         Some(BareKey::Char('ъ')),
         "Can parse a bare 'ъ' keypress"
     );
+}
+
+#[test]
+fn line_style_names_round_trip() {
+    for line_style in [
+        LineStyle::Single,
+        LineStyle::Double,
+        LineStyle::Heavy,
+        LineStyle::Dashed,
+        LineStyle::HeavyDashed,
+    ] {
+        assert_eq!(LineStyle::from_str(&line_style.to_string()), Ok(line_style));
+    }
+    assert!(LineStyle::from_str("squiggly").is_err());
+}
+
+#[test]
+fn border_style_override_from_a_bare_cli_style() {
+    assert_eq!(
+        BorderStyleOverride::from_cli_string("double"),
+        Ok(BorderStyleOverride {
+            all: Some(LineStyle::Double),
+            ..Default::default()
+        })
+    );
+}
+
+#[test]
+fn border_style_override_from_a_compound_cli_string() {
+    assert_eq!(
+        BorderStyleOverride::from_cli_string("top:double, left=heavy ,rounded"),
+        Ok(BorderStyleOverride {
+            top: Some(LineStyle::Double),
+            left: Some(LineStyle::Heavy),
+            rounded_corners: Some(true),
+            ..Default::default()
+        })
+    );
+    assert_eq!(
+        BorderStyleOverride::from_cli_string("all:dashed,rounded:false"),
+        Ok(BorderStyleOverride {
+            all: Some(LineStyle::Dashed),
+            rounded_corners: Some(false),
+            ..Default::default()
+        })
+    );
+}
+
+#[test]
+fn border_style_override_rejects_unknown_cli_input() {
+    assert!(BorderStyleOverride::from_cli_string("diagonal:double").is_err());
+    assert!(BorderStyleOverride::from_cli_string("top:squiggly").is_err());
+    assert!(BorderStyleOverride::from_cli_string("rounded:maybe").is_err());
+}
+
+#[test]
+fn empty_cli_border_style_is_treated_as_no_override() {
+    assert_eq!(
+        BorderStyleOverride::from_optional_cli_string(Some("")),
+        Ok(None)
+    );
+    assert_eq!(
+        BorderStyleOverride::from_optional_cli_string(None),
+        Ok(None)
+    );
+}
+
+#[test]
+fn border_style_override_applies_per_side_over_the_shorthand() {
+    let base = BorderStyle::with_rounded_corners(true);
+    let applied = BorderStyleOverride {
+        all: Some(LineStyle::Double),
+        top: Some(LineStyle::Heavy),
+        ..Default::default()
+    }
+    .apply_to(base);
+    assert_eq!(
+        applied,
+        BorderStyle {
+            top: LineStyle::Heavy,
+            right: LineStyle::Double,
+            bottom: LineStyle::Double,
+            left: LineStyle::Double,
+            rounded_corners: true,
+        }
+    );
+}
+
+#[test]
+fn an_empty_border_style_override_leaves_the_base_untouched() {
+    let base = BorderStyle {
+        top: LineStyle::Double,
+        right: LineStyle::Heavy,
+        bottom: LineStyle::Dashed,
+        left: LineStyle::Single,
+        rounded_corners: true,
+    };
+    assert!(BorderStyleOverride::default().is_empty());
+    assert_eq!(BorderStyleOverride::default().apply_to(base), base);
+}
+
+#[test]
+fn border_style_overrides_merge_with_the_later_one_winning() {
+    let merged = BorderStyleOverride {
+        all: Some(LineStyle::Single),
+        top: Some(LineStyle::Single),
+        ..Default::default()
+    }
+    .merge(&BorderStyleOverride {
+        top: Some(LineStyle::Double),
+        rounded_corners: Some(true),
+        ..Default::default()
+    });
+    assert_eq!(
+        merged,
+        BorderStyleOverride {
+            all: Some(LineStyle::Single),
+            top: Some(LineStyle::Double),
+            rounded_corners: Some(true),
+            ..Default::default()
+        }
+    );
+}
+
+#[test]
+fn a_uniform_border_style_reports_its_line_style() {
+    assert_eq!(
+        BorderStyle {
+            top: LineStyle::Double,
+            right: LineStyle::Double,
+            bottom: LineStyle::Double,
+            left: LineStyle::Double,
+            rounded_corners: false,
+        }
+        .uniform_style(),
+        Some(LineStyle::Double)
+    );
+    assert_eq!(
+        BorderStyle {
+            top: LineStyle::Double,
+            ..Default::default()
+        }
+        .uniform_style(),
+        None
+    );
+}
+
+#[test]
+fn new_pane_placement_carries_a_border_style() {
+    let placement = NewPanePlacement::Tiled {
+        direction: None,
+        borderless: None,
+        border_style: None,
+    }
+    .with_border_style(Some(BorderStyleOverride {
+        all: Some(LineStyle::Heavy),
+        ..Default::default()
+    }));
+    assert_eq!(
+        placement.get_border_style(),
+        Some(BorderStyleOverride {
+            all: Some(LineStyle::Heavy),
+            ..Default::default()
+        })
+    );
+}
+
+#[test]
+fn a_floating_placement_carries_its_border_style_in_the_coordinates() {
+    let placement = NewPanePlacement::Floating(None).with_border_style(Some(BorderStyleOverride {
+        all: Some(LineStyle::Double),
+        ..Default::default()
+    }));
+    let coordinates = placement.floating_pane_coordinates().unwrap();
+    assert_eq!(
+        coordinates.border_style,
+        Some(BorderStyleOverride {
+            all: Some(LineStyle::Double),
+            ..Default::default()
+        })
+    );
+    assert_eq!(placement.get_border_style(), coordinates.border_style);
 }

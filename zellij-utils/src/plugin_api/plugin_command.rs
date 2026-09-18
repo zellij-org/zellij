@@ -121,7 +121,7 @@ pub use super::generated_api::api::{
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
-        SetPaneBorderlessPayload, SetPaneColorPayload,
+        SetPaneBorderStylePayload, SetPaneBorderlessPayload, SetPaneColorPayload,
         SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
         SetPaneRegexHighlightsPayload, SetSelfMouseSelectionSupportPayload,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
@@ -147,6 +147,7 @@ use crate::data::{
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
 
+use crate::data::BorderStyleOverride;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::path::PathBuf;
@@ -200,6 +201,7 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
             }),
             pinned: self.pinned,
             borderless: self.borderless,
+            border_style: self.border_style.map(BorderStyleOverride::from),
         }
     }
 }
@@ -253,6 +255,7 @@ impl Into<ProtobufFloatingPaneCoordinates> for FloatingPaneCoordinates {
             },
             pinned: self.pinned,
             borderless: self.borderless,
+            border_style: self.border_style.map(|b| b.into()),
         }
     }
 }
@@ -2106,6 +2109,19 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for SetPaneBorderless"),
             },
+            Some(CommandName::SetPaneBorderStyle) => match protobuf_plugin_command.payload {
+                Some(Payload::SetPaneBorderStylePayload(payload)) => match payload.pane_id {
+                    Some(pane_id) => Ok(PluginCommand::SetPaneBorderStyle(
+                        pane_id.try_into()?,
+                        payload
+                            .border_style
+                            .map(BorderStyleOverride::from)
+                            .unwrap_or_default(),
+                    )),
+                    _ => Err("Malformed SetPaneBorderStyle payload"),
+                },
+                _ => Err("Mismatched payload for SetPaneBorderStyle"),
+            },
             Some(CommandName::OpenCommandPaneNearPlugin) => match protobuf_plugin_command.payload {
                 Some(Payload::OpenCommandPaneNearPluginPayload(command_to_run_payload)) => {
                     match command_to_run_payload.command_to_run {
@@ -3955,6 +3971,15 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
+            PluginCommand::SetPaneBorderStyle(pane_id, border_style) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetPaneBorderStyle as i32,
+                payload: Some(Payload::SetPaneBorderStylePayload(
+                    SetPaneBorderStylePayload {
+                        pane_id: Some(pane_id.try_into()?),
+                        border_style: Some(border_style.into()),
+                    },
+                )),
+            }),
             PluginCommand::OpenCommandPaneNearPlugin(command_to_run, context) => {
                 let context: Vec<_> = context
                     .into_iter()
@@ -5249,6 +5274,109 @@ impl From<OpenPluginPaneFloatingResponse> for ProtobufOpenPluginPaneFloatingResp
 mod tests {
     use super::*;
     use crate::data::PluginCommand;
+
+    #[test]
+    fn set_pane_border_style_protobuf_round_trip() {
+        use crate::data::{BorderStyleOverride, LineStyle, PaneId};
+        let border_style = BorderStyleOverride {
+            all: Some(LineStyle::Double),
+            top: Some(LineStyle::Heavy),
+            right: Some(LineStyle::Dashed),
+            bottom: Some(LineStyle::HeavyDashed),
+            left: Some(LineStyle::Single),
+            rounded_corners: Some(true),
+        };
+        let original = PluginCommand::SetPaneBorderStyle(PaneId::Plugin(3), border_style);
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::SetPaneBorderStyle(pane_id, decoded_border_style) => {
+                assert_eq!(pane_id, PaneId::Plugin(3));
+                assert_eq!(decoded_border_style, border_style);
+            },
+            other => panic!("expected SetPaneBorderStyle, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn an_empty_pane_border_style_round_trips() {
+        use crate::data::{BorderStyleOverride, PaneId};
+        let original =
+            PluginCommand::SetPaneBorderStyle(PaneId::Terminal(1), BorderStyleOverride::default());
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::SetPaneBorderStyle(pane_id, border_style) => {
+                assert_eq!(pane_id, PaneId::Terminal(1));
+                assert!(border_style.is_empty());
+            },
+            other => panic!("expected SetPaneBorderStyle, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn floating_pane_coordinates_carry_a_border_style_over_protobuf() {
+        use crate::data::{BorderStyleOverride, FileToOpen, FloatingPaneCoordinates, LineStyle};
+        let border_style = BorderStyleOverride {
+            all: Some(LineStyle::Heavy),
+            ..Default::default()
+        };
+        let coordinates = FloatingPaneCoordinates::default().with_border_style(Some(border_style));
+        let original =
+            PluginCommand::OpenTerminalFloating(FileToOpen::new("/tmp"), Some(coordinates.clone()));
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::OpenTerminalFloating(_, decoded_coordinates) => {
+                assert_eq!(
+                    decoded_coordinates.unwrap().border_style,
+                    Some(border_style)
+                );
+            },
+            other => panic!("expected OpenTerminalFloating, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn a_file_to_open_carries_a_border_style_over_protobuf() {
+        use crate::data::{BorderStyleOverride, FileToOpen, LineStyle};
+        let border_style = BorderStyleOverride {
+            top: Some(LineStyle::Double),
+            ..Default::default()
+        };
+        let original =
+            PluginCommand::OpenTerminal(FileToOpen::new("/tmp").with_border_style(border_style));
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::OpenTerminal(file_to_open) => {
+                assert_eq!(file_to_open.border_style, Some(border_style));
+            },
+            other => panic!("expected OpenTerminal, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn a_command_to_run_carries_a_border_style_over_protobuf() {
+        use crate::data::{BorderStyleOverride, CommandToRun, LineStyle};
+        let border_style = BorderStyleOverride {
+            bottom: Some(LineStyle::Dashed),
+            rounded_corners: Some(false),
+            ..Default::default()
+        };
+        let original = PluginCommand::OpenCommandPane(
+            CommandToRun::new("/bin/sh").with_border_style(border_style),
+            BTreeMap::new(),
+        );
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::OpenCommandPane(command_to_run, _) => {
+                assert_eq!(command_to_run.border_style, Some(border_style));
+            },
+            other => panic!("expected OpenCommandPane, got {:?}", other),
+        }
+    }
 
     #[test]
     fn set_pane_frame_style_protobuf_round_trip() {

@@ -7,8 +7,8 @@ use super::layout::{
 };
 use crate::cli::CliAction;
 use crate::data::{
-    CommandOrPlugin, Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, OriginatingPlugin,
-    PaneId, Resize, UnblockCondition,
+    BorderStyleOverride, CommandOrPlugin, Direction, KeyWithModifier, LayoutInfo, NewPanePlacement,
+    OriginatingPlugin, PaneId, Resize, UnblockCondition,
 };
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -320,6 +320,7 @@ pub enum Action {
         near_current_pane: bool,
         no_focus: bool,
         borderless: Option<bool>,
+        border_style: Option<BorderStyleOverride>,
         tab_id: Option<usize>,
     },
     /// Open a new pane in place of the focused one, suppressing it instead
@@ -630,6 +631,10 @@ pub enum Action {
     SetPaneBorderless {
         pane_id: PaneId,
         borderless: bool,
+    },
+    SetPaneBorderStyle {
+        pane_id: PaneId,
+        border_style: BorderStyleOverride,
     },
     TogglePaneInGroup,
     ToggleGroupMarking,
@@ -1130,8 +1135,11 @@ impl Action {
                 near_current_pane,
                 no_focus,
                 borderless,
+                border_style,
                 tab_id,
             } => {
+                let border_style =
+                    BorderStyleOverride::from_optional_cli_string(border_style.as_deref())?;
                 let pane_id_to_replace = match pane_id {
                     Some(pane_id_str) => match PaneId::from_str(&pane_id_str) {
                         Ok(parsed_pane_id) => Some(parsed_pane_id),
@@ -1187,24 +1195,28 @@ impl Action {
                     };
 
                     let placement = if floating {
-                        NewPanePlacement::Floating(FloatingPaneCoordinates::new(
-                            x, y, width, height, pinned, borderless,
+                        NewPanePlacement::Floating(FloatingPaneCoordinates::merge_border_style(
+                            FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
+                            border_style,
                         ))
                     } else if in_place {
                         NewPanePlacement::InPlace {
                             pane_id_to_replace,
                             close_replaced_pane,
                             borderless,
+                            border_style,
                         }
                     } else if stacked {
                         NewPanePlacement::Stacked {
                             pane_id_to_stack_under: None,
                             borderless,
+                            border_style,
                         }
                     } else {
                         NewPanePlacement::Tiled {
                             direction,
                             borderless,
+                            border_style,
                         }
                     };
 
@@ -1244,8 +1256,11 @@ impl Action {
                             pane_name: name,
                             skip_cache: skip_plugin_cache,
                             cwd,
-                            coordinates: FloatingPaneCoordinates::new(
-                                x, y, width, height, pinned, borderless,
+                            coordinates: FloatingPaneCoordinates::merge_border_style(
+                                FloatingPaneCoordinates::new(
+                                    x, y, width, height, pinned, borderless,
+                                ),
+                                border_style,
                             ),
                             no_focus,
                             tab_id,
@@ -1295,8 +1310,11 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane {
                             command: Some(run_command_action),
                             pane_name: name,
-                            coordinates: FloatingPaneCoordinates::new(
-                                x, y, width, height, pinned, borderless,
+                            coordinates: FloatingPaneCoordinates::merge_border_style(
+                                FloatingPaneCoordinates::new(
+                                    x, y, width, height, pinned, borderless,
+                                ),
+                                border_style,
                             ),
                             near_current_pane,
                             no_focus,
@@ -1328,6 +1346,7 @@ impl Action {
                             near_current_pane,
                             no_focus,
                             borderless,
+                            border_style,
                             tab_id,
                         }])
                     }
@@ -1336,8 +1355,11 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane {
                             command: None,
                             pane_name: name,
-                            coordinates: FloatingPaneCoordinates::new(
-                                x, y, width, height, pinned, borderless,
+                            coordinates: FloatingPaneCoordinates::merge_border_style(
+                                FloatingPaneCoordinates::new(
+                                    x, y, width, height, pinned, borderless,
+                                ),
+                                border_style,
                             ),
                             near_current_pane,
                             no_focus,
@@ -1369,6 +1391,7 @@ impl Action {
                             near_current_pane,
                             no_focus,
                             borderless,
+                            border_style,
                             tab_id,
                         }])
                     }
@@ -1390,8 +1413,11 @@ impl Action {
                 near_current_pane,
                 no_focus,
                 borderless,
+                border_style,
                 tab_id,
             } => {
+                let border_style =
+                    BorderStyleOverride::from_optional_cli_string(border_style.as_deref())?;
                 let mut file = file;
                 let current_dir = get_current_dir();
                 let cwd = cwd
@@ -1410,8 +1436,9 @@ impl Action {
                     in_place,
                     close_replaced_pane,
                     start_suppressed,
-                    coordinates: FloatingPaneCoordinates::new(
-                        x, y, width, height, pinned, borderless,
+                    coordinates: FloatingPaneCoordinates::merge_border_style(
+                        FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
+                        border_style,
                     ),
                     near_current_pane,
                     no_focus,
@@ -2077,10 +2104,14 @@ impl Action {
                 height,
                 pinned,
                 borderless,
+                border_style,
             } => {
-                let Some(coordinates) =
-                    FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless)
-                else {
+                let border_style =
+                    BorderStyleOverride::from_optional_cli_string(border_style.as_deref())?;
+                let Some(coordinates) = FloatingPaneCoordinates::merge_border_style(
+                    FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
+                    border_style,
+                ) else {
                     return Err(format!("Failed to parse floating pane coordinates"));
                 };
                 let parsed_pane_id = PaneId::from_str(&pane_id);
@@ -2094,6 +2125,29 @@ impl Action {
                     Err(_e) => {
                         Err(format!(
                             "Malformed pane id: {}, expecting a space separated list of either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                            pane_id
+                        ))
+                    }
+                }
+            },
+            CliAction::SetPaneBorderStyle {
+                pane_id,
+                border_style,
+            } => {
+                let border_style =
+                    BorderStyleOverride::from_optional_cli_string(border_style.as_deref())?
+                        .unwrap_or_default();
+                let parsed_pane_id = PaneId::from_str(&pane_id);
+                match parsed_pane_id {
+                    Ok(parsed_pane_id) => {
+                        Ok(vec![Action::SetPaneBorderStyle {
+                            pane_id: parsed_pane_id,
+                            border_style,
+                        }])
+                    },
+                    Err(_e) => {
+                        Err(format!(
+                            "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
                             pane_id
                         ))
                     }
@@ -3698,6 +3752,194 @@ mod tests {
         assert!(result.is_err());
     }
 
+    fn new_pane_cli_action(floating: bool, border_style: Option<&str>) -> CliAction {
+        CliAction::NewPane {
+            direction: None,
+            command: vec![],
+            plugin: None,
+            cwd: None,
+            floating,
+            in_place: false,
+            close_replaced_pane: false,
+            pane_id: None,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            no_focus: false,
+            borderless: None,
+            tab_id: None,
+            border_style: border_style.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn test_new_tiled_pane_with_border_style() {
+        let result = Action::actions_from_cli(
+            new_pane_cli_action(false, Some("top:double,rounded")),
+            Box::new(|| PathBuf::from("/tmp")),
+            None,
+        );
+        let actions = result.unwrap();
+        match &actions[0] {
+            Action::NewTiledPane { border_style, .. } => {
+                assert_eq!(
+                    *border_style,
+                    Some(BorderStyleOverride {
+                        top: Some(crate::data::LineStyle::Double),
+                        rounded_corners: Some(true),
+                        ..Default::default()
+                    })
+                );
+            },
+            other => panic!("Expected NewTiledPane action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_new_floating_pane_with_border_style() {
+        let result = Action::actions_from_cli(
+            new_pane_cli_action(true, Some("heavy")),
+            Box::new(|| PathBuf::from("/tmp")),
+            None,
+        );
+        let actions = result.unwrap();
+        match &actions[0] {
+            Action::NewFloatingPane { coordinates, .. } => {
+                assert_eq!(
+                    coordinates.as_ref().unwrap().border_style,
+                    Some(BorderStyleOverride {
+                        all: Some(crate::data::LineStyle::Heavy),
+                        ..Default::default()
+                    })
+                );
+            },
+            other => panic!("Expected NewFloatingPane action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_without_border_style() {
+        let result = Action::actions_from_cli(
+            new_pane_cli_action(false, None),
+            Box::new(|| PathBuf::from("/tmp")),
+            None,
+        );
+        let actions = result.unwrap();
+        match &actions[0] {
+            Action::NewTiledPane { border_style, .. } => assert_eq!(*border_style, None),
+            other => panic!("Expected NewTiledPane action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_with_malformed_border_style_is_an_error() {
+        let result = Action::actions_from_cli(
+            new_pane_cli_action(false, Some("squiggly")),
+            Box::new(|| PathBuf::from("/tmp")),
+            None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_set_pane_border_style() {
+        let cli_action = CliAction::SetPaneBorderStyle {
+            pane_id: "plugin_4".to_string(),
+            border_style: Some("bottom:heavy".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::SetPaneBorderStyle {
+                pane_id,
+                border_style,
+            } => {
+                assert_eq!(*pane_id, PaneId::Plugin(4));
+                assert_eq!(
+                    *border_style,
+                    BorderStyleOverride {
+                        bottom: Some(crate::data::LineStyle::Heavy),
+                        ..Default::default()
+                    }
+                );
+            },
+            other => panic!("Expected SetPaneBorderStyle action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_pane_border_style_without_a_style_clears_the_override() {
+        let cli_action = CliAction::SetPaneBorderStyle {
+            pane_id: "3".to_string(),
+            border_style: None,
+        };
+        let actions =
+            Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None).unwrap();
+        match &actions[0] {
+            Action::SetPaneBorderStyle { border_style, .. } => {
+                assert!(border_style.is_empty());
+            },
+            other => panic!("Expected SetPaneBorderStyle action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_pane_border_style_with_a_malformed_pane_id_is_an_error() {
+        let cli_action = CliAction::SetPaneBorderStyle {
+            pane_id: "not_a_pane".to_string(),
+            border_style: None,
+        };
+        assert!(
+            Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None).is_err()
+        );
+    }
+
+    #[test]
+    fn test_change_floating_pane_coordinates_with_border_style() {
+        let cli_action = CliAction::ChangeFloatingPaneCoordinates {
+            pane_id: "terminal_2".to_string(),
+            x: Some("10".to_string()),
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            borderless: None,
+            border_style: Some("double".to_string()),
+        };
+        let actions =
+            Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None).unwrap();
+        match &actions[0] {
+            Action::ChangeFloatingPaneCoordinates { coordinates, .. } => {
+                assert_eq!(
+                    coordinates.border_style,
+                    Some(BorderStyleOverride {
+                        all: Some(crate::data::LineStyle::Double),
+                        ..Default::default()
+                    })
+                );
+            },
+            other => panic!(
+                "Expected ChangeFloatingPaneCoordinates action, got {:?}",
+                other
+            ),
+        }
+    }
+
     // Tab-targeting for pane creation commands
 
     #[test]
@@ -3731,6 +3973,7 @@ mod tests {
             no_focus: false,
             borderless: None,
             tab_id: Some(3),
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3775,6 +4018,7 @@ mod tests {
             no_focus: false,
             borderless: None,
             tab_id: None,
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3819,6 +4063,7 @@ mod tests {
             no_focus: false,
             borderless: None,
             tab_id: None,
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3865,6 +4110,7 @@ mod tests {
             no_focus: false,
             borderless: None,
             tab_id: None,
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_err());
@@ -3902,6 +4148,7 @@ mod tests {
             no_focus: false,
             borderless: None,
             tab_id: Some(5),
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3946,6 +4193,7 @@ mod tests {
             no_focus: false,
             borderless: None,
             tab_id: Some(1),
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3990,6 +4238,7 @@ mod tests {
             no_focus: false,
             borderless: None,
             tab_id: Some(2),
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4022,6 +4271,7 @@ mod tests {
             no_focus: false,
             borderless: None,
             tab_id: Some(4),
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4054,6 +4304,7 @@ mod tests {
             no_focus: false,
             borderless: None,
             tab_id: None,
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4098,6 +4349,7 @@ mod tests {
             no_focus: false,
             borderless: None,
             tab_id: Some(2),
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4142,6 +4394,7 @@ mod tests {
             no_focus: false,
             borderless: None,
             tab_id: Some(1),
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());

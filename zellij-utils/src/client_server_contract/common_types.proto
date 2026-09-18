@@ -89,6 +89,33 @@ message Style {
   Styling colors = 1;
   bool rounded_corners = 2;
   bool hide_session_name = 3;
+  BorderStyle border_style = 4;
+  BorderStyle floating_border_style = 5;
+}
+
+enum LineStyle {
+  LINE_STYLE_SINGLE = 0;
+  LINE_STYLE_DOUBLE = 1;
+  LINE_STYLE_HEAVY = 2;
+  LINE_STYLE_DASHED = 3;
+  LINE_STYLE_HEAVY_DASHED = 4;
+}
+
+message BorderStyle {
+  LineStyle top = 1;
+  LineStyle right = 2;
+  LineStyle bottom = 3;
+  LineStyle left = 4;
+  bool rounded_corners = 5;
+}
+
+message BorderStyleOverride {
+  optional LineStyle all = 1;
+  optional LineStyle top = 2;
+  optional LineStyle right = 3;
+  optional LineStyle bottom = 4;
+  optional LineStyle left = 5;
+  optional bool rounded_corners = 6;
 }
 
 message Styling {
@@ -233,6 +260,7 @@ message Action {
     OverrideLayoutAction override_layout = 94;
     TogglePaneBorderlessAction toggle_pane_borderless = 95;
     SetPaneBorderlessAction set_pane_borderless = 96;
+    SetPaneBorderStyleAction set_pane_border_style = 156;
     SaveSessionAction save_session = 97;
     ListPanesAction list_panes = 98;
     WriteCharsToPaneIdAction write_chars_to_pane_id = 99;
@@ -511,6 +539,7 @@ message NewTiledPaneAction {
   optional bool borderless = 8;
   optional uint32 tab_id = 9;
   bool no_focus = 10;
+  optional BorderStyleOverride border_style = 11;
 }
 
 message NewInPlacePaneAction {
@@ -759,6 +788,11 @@ message SetPaneColorAction {
   optional string bg = 3;
 }
 
+message SetPaneBorderStyleAction {
+  PaneId pane_id = 1;
+  BorderStyleOverride border_style = 2;
+}
+
 // Supporting enums and messages
 enum InputMode {
   INPUT_MODE_UNSPECIFIED = 0;
@@ -880,22 +914,26 @@ message NewPanePlacement {
 
 message NoPreferencePlacement {
   optional bool borderless = 1;
+  optional BorderStyleOverride border_style = 2;
 }
 
 message TiledPlacement {
   optional Direction direction = 1;
   optional bool borderless = 2;
+  optional BorderStyleOverride border_style = 3;
 }
 
 message StackedPlacement {
   optional PaneId pane_id_to_stack_under = 1;
   optional bool borderless = 2;
+  optional BorderStyleOverride border_style = 3;
 }
 
 message NewPanePlacementInPlace {
   optional PaneId pane_id_to_replace = 1;
   bool close_replaced_pane = 2;
   optional bool borderless = 3;
+  optional BorderStyleOverride border_style = 4;
 }
 
 message PaneIdWithPlugin {
@@ -932,6 +970,7 @@ message FloatingPaneCoordinates {
   optional FloatingCoordinate height = 4;
   optional bool pinned = 5;
   optional bool borderless = 6;
+  optional BorderStyleOverride border_style = 7;
 }
 
 message FloatingCoordinate {
@@ -968,6 +1007,7 @@ message TiledPaneLayout {
   optional string pane_initial_contents = 13;
   optional string default_fg = 14;
   optional string default_bg = 15;
+  optional BorderStyleOverride border_style = 16;
   // NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
 }
 
@@ -986,6 +1026,7 @@ message FloatingPaneLayout {
   optional bool borderless = 12;
   optional string default_fg = 13;
   optional string default_bg = 14;
+  optional BorderStyleOverride border_style = 15;
 }
 
 message SwapTiledLayout {
