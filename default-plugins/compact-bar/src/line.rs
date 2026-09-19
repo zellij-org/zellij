@@ -606,12 +606,12 @@ impl RightSideElementsBuilder {
     fn create_tooltip_indicator(&self, toggle_key: &str, is_active: bool) -> LinePart {
         let key_text = toggle_key;
         let key = if self.dimmed {
-            Text::new(key_text).disabled().opaque()
+            Text::from(key_text).disabled().opaque()
         } else {
-            Text::new(key_text).color_all(3).opaque()
+            Text::from(key_text).color_all(3).opaque()
         };
         let ribbon_text = "Tooltip";
-        let mut ribbon = Text::new(ribbon_text);
+        let mut ribbon = Text::from(ribbon_text);
 
         if self.dimmed {
             ribbon = ribbon.disabled();

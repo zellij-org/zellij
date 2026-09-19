@@ -15,36 +15,28 @@ impl From<StyledText> for Text {
     fn from(styled_text: StyledText) -> Self {
         Text {
             text: styled_text.text,
-            selected: false,
-            opaque: false,
-            disabled: false,
             indices: styled_text.indices,
+            ..Default::default()
         }
     }
 }
 
 impl From<String> for Text {
     fn from(value: String) -> Self {
-        Text::new(value)
+        Text {
+            text: value,
+            ..Default::default()
+        }
     }
 }
 
 impl From<&str> for Text {
     fn from(value: &str) -> Self {
-        Text::new(value.to_owned())
+        Text::from(value.to_owned())
     }
 }
 
 impl Text {
-    pub fn new(content: String) -> Self {
-        Text {
-            text: content.to_string(),
-            selected: false,
-            opaque: false,
-            disabled: false,
-            indices: vec![],
-        }
-    }
     pub fn selected(mut self) -> Self {
         self.selected = true;
         self
@@ -503,10 +495,14 @@ mod tests {
 
     #[test]
     fn new_string_equivalent_to_from_str() {
-        let new = Text::new(String::from("x")).serialize();
-        let from = Text::from("x").serialize();
+        let from_str = Text::from("x").serialize();
+        let from_string = Text::from(String::from("x")).serialize();
 
-        assert_eq!(new, from);
+        assert_eq!(from_str, from_string);
+
+        let plop = String::from("Plop");
+
+        assert_eq!(Text::from(plop), Text::from(plop));
     }
 
     #[test]

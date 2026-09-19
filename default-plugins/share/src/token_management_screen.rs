@@ -279,7 +279,7 @@ impl<'a> TokenManagementScreen<'a> {
         let column_widths = self.calculate_column_widths();
 
         let title_text = "List of Login Tokens";
-        let title = Text::new(title_text).color_range(2, ..);
+        let title = Text::from(title_text).color_range(2, ..);
         max_width = std::cmp::max(max_width, title_text.len());
 
         let mut items = vec![];
@@ -398,7 +398,7 @@ impl<'a> TokenManagementScreen<'a> {
 
         // Replace the last cell (controls column) with the truncation indicator
         if let Some(last_cell) = row.last_mut() {
-            *last_cell = Text::new(&indicator).color_range(1, ..);
+            *last_cell = Text::from(indicator).color_range(1, ..);
         }
     }
 
@@ -437,12 +437,12 @@ impl<'a> TokenManagementScreen<'a> {
 
         let token_end = truncated_name.chars().count();
         let items = vec![
-            Text::new(&item_text)
+            Text::from(item_text)
                 .color_range(0, ..token_end + 1)
                 .selected(),
-            Text::new(&date_text),
-            Text::new(&read_only_text).color_all(1),
-            Text::new(&controls_text),
+            Text::from(date_text),
+            Text::from(read_only_text).color_all(1),
+            Text::from(controls_text),
         ];
         (
             format!(
@@ -479,18 +479,18 @@ impl<'a> TokenManagementScreen<'a> {
         };
 
         let controls_colored = if controls_text.trim().is_empty() {
-            Text::new(&controls_text).selected()
+            Text::from(controls_text).selected()
         } else {
-            Text::new(&controls_text)
+            Text::from(controls_text)
                 .color_range(3, x_range)
                 .color_range(3, r_range)
                 .selected()
         };
 
         let items = vec![
-            Text::new(&item_text).color_range(0, ..).selected(),
-            Text::new(&date_text).selected(),
-            Text::new(&read_only_text).color_all(1).selected(),
+            Text::from(item_text).color_range(0, ..).selected(),
+            Text::from(date_text).selected(),
+            Text::from(read_only_text).color_all(1).selected(),
             controls_colored,
         ];
 
@@ -520,10 +520,10 @@ impl<'a> TokenManagementScreen<'a> {
         let controls_text = " ".repeat(column_widths.controls);
 
         let items = vec![
-            Text::new(&item_text).color_range(0, ..),
-            Text::new(&date_text),
-            Text::new(&read_only_text).color_all(1),
-            Text::new(&controls_text),
+            Text::from(item_text).color_range(0, ..),
+            Text::from(date_text),
+            Text::from(read_only_text).color_all(1),
+            Text::from(controls_text),
         ];
         (
             format!(
@@ -548,7 +548,7 @@ impl<'a> TokenManagementScreen<'a> {
                 name.clone()
             };
             let text = format!("{}_", truncated_name);
-            (text.clone(), Text::new(&text).color_range(3, ..))
+            (text.clone(), Text::from(text).color_range(3, ..))
         } else {
             // Check which text fits
             let (text_to_use, n_range, o_range) = if full_create_text.chars().count() <= self.cols {
@@ -561,7 +561,7 @@ impl<'a> TokenManagementScreen<'a> {
 
             (
                 text_to_use.to_string(),
-                Text::new(text_to_use)
+                Text::from(text_to_use)
                     .color_range(3, n_range)
                     .color_range(3, o_range),
             )
@@ -586,7 +586,7 @@ impl<'a> TokenManagementScreen<'a> {
             )
         };
 
-        let mut help_line = Text::new(text).color_range(3, highlight_range);
+        let mut help_line = Text::from(text).color_range(3, highlight_range);
 
         // Add second highlight for the back option
         if self.entering_new_token_name.is_none() && self.renaming_token.is_none() {
@@ -598,9 +598,9 @@ impl<'a> TokenManagementScreen<'a> {
 
     fn create_status_message(&self) -> Option<(String, Text)> {
         if let Some(error) = &self.error {
-            Some((error.clone(), Text::new(error).color_range(3, ..)))
+            Some((error.clone(), Text::from(error).color_range(3, ..)))
         } else if let Some(info) = &self.info {
-            Some((info.clone(), Text::new(info).color_range(1, ..)))
+            Some((info.clone(), Text::from(info).color_range(1, ..)))
         } else {
             None
         }

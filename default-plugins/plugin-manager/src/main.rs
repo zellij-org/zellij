@@ -76,7 +76,7 @@ impl NewPluginScreen {
     fn render_title(&self, cols: usize) {
         let title_text = format!("LOAD NEW PLUGIN");
         let title_text_len = title_text.chars().count();
-        let title = Text::new(title_text);
+        let title = Text::from(title_text);
         print_text_with_coordinates(
             title,
             (cols / 2).saturating_sub(title_text_len / 2),
@@ -90,26 +90,26 @@ impl NewPluginScreen {
             let truncated_url =
                 truncate_string_start(&self.new_plugin_url, cols.saturating_sub(19)); // 17 the length of the prompt + 2 for padding and cursor
             let text = format!("Enter Plugin URL: {}_", truncated_url);
-            Text::new(text).color_range(2, ..=16).color_range(3, 18..)
+            Text::from(text).color_range(2, ..=16).color_range(3, 18..)
         } else {
             let truncated_url =
                 truncate_string_start(&self.new_plugin_url, cols.saturating_sub(18)); // 17 the length of the prompt + 1 for padding
             let text = format!("Enter Plugin URL: {}", truncated_url);
-            Text::new(text).color_range(2, ..=16).color_range(0, 18..)
+            Text::from(text).color_range(2, ..=16).color_range(0, 18..)
         };
         print_text_with_coordinates(url_field, 0, 2, None, None);
         let url_helper =
-            NestedListItem::new(format!("<Ctrl f> - Load from Disk")).color_range(3, ..=8);
+            NestedListItem::new(Text::from("<Ctrl f> - Load from Disk").color_range(3, ..=8));
         print_nested_list_with_coordinates(vec![url_helper], 0, 3, None, None);
     }
     fn render_configuration_title(&self) {
         let configuration_title =
             if !self.editing_configuration() && self.new_plugin_config.is_empty() {
-                Text::new(format!("Plugin Configuration: <TAB> - Edit"))
+                Text::from(format!("Plugin Configuration: <TAB> - Edit"))
                     .color_range(2, ..=20)
                     .color_range(3, 22..=26)
             } else if !self.editing_configuration() {
-                Text::new(format!(
+                Text::from(format!(
                     "Plugin Configuration: <TAB> - Edit, <↓↑> - Navigate, <Del> - Delete"
                 ))
                 .color_range(2, ..=20)
@@ -117,7 +117,7 @@ impl NewPluginScreen {
                 .color_range(3, 36..=39)
                 .color_range(3, 53..=57)
             } else {
-                Text::new(format!(
+                Text::from(format!(
                     "Plugin Configuration: [Editing: <TAB> - Next, <ENTER> - Accept]"
                 ))
                 .color_range(2, ..=20)
@@ -149,14 +149,16 @@ impl NewPluginScreen {
                 cols,
             ));
         } else if items.is_empty() {
-            items.push(NestedListItem::new("<NO CONFIGURATION>").color_range(0, ..));
+            items.push(NestedListItem::new(
+                Text::from("<NO CONFIGURATION>").color_range(0, ..),
+            ));
         }
         let config_list_len = items.len();
         print_nested_list_with_coordinates(items, 0, 6, Some(cols), None);
         if more_config_items > 0 {
             let more_text = format!("[+{}]", more_config_items);
             print_text_with_coordinates(
-                Text::new(more_text).color_range(1, ..),
+                Text::from(more_text).color_range(1, ..),
                 0,
                 6 + config_list_len,
                 None,
@@ -198,18 +200,22 @@ impl NewPluginScreen {
             } else {
                 config_val
             };
-            NestedListItem::new(format!("{}_: {}", config_key, val))
-                .color_range(3, ..=config_key.chars().count())
-                .color_range(1, config_key.chars().count() + 3..)
+            NestedListItem::new(
+                Text::from(format!("{}_: {}", config_key, val))
+                    .color_range(3, ..=config_key.chars().count())
+                    .color_range(1, config_key.chars().count() + 3..),
+            )
         } else {
             let key = if config_key.is_empty() {
                 "<EMPTY>".to_owned()
             } else {
                 config_key
             };
-            NestedListItem::new(format!("{}: {}_", key, config_val))
-                .color_range(0, ..key.chars().count())
-                .color_range(3, key.chars().count() + 2..)
+            NestedListItem::new(
+                Text::from(format!("{}: {}_", key, config_val))
+                    .color_range(0, ..key.chars().count())
+                    .color_range(3, key.chars().count() + 2..),
+            )
         }
     }
     fn render_config_line(
@@ -244,9 +250,11 @@ impl NewPluginScreen {
         } else {
             config_val.to_owned()
         };
-        let mut item = NestedListItem::new(format!("{}: {}", config_key, config_val))
-            .color_range(0, ..config_key.chars().count())
-            .color_range(1, config_key.chars().count() + 2..);
+        let mut item = NestedListItem::new(
+            Text::from(format!("{}: {}", config_key, config_val))
+                .color_range(0, ..config_key.chars().count())
+                .color_range(1, config_key.chars().count() + 2..),
+        );
         if is_selected {
             item = item.selected()
         }
@@ -254,8 +262,10 @@ impl NewPluginScreen {
     }
     fn render_background_toggle(&self, y_coordinates: usize) {
         let key_shortcuts_text = format!("Ctrl l");
+        let key_shortcuts_text_len = key_shortcuts_text.len();
+
         print_text_with_coordinates(
-            Text::new(&key_shortcuts_text).color_range(3, ..).opaque(),
+            Text::from(key_shortcuts_text).color_range(3, ..).opaque(),
             0,
             y_coordinates,
             None,
@@ -269,39 +279,40 @@ impl NewPluginScreen {
         println!(
             "\u{1b}[{};{}H{}",
             y_coordinates + 1,
-            key_shortcuts_text.chars().count() + 1,
+            key_shortcuts_text_len + 1,
             bg_color
         );
         let load_in_background_text = format!("Load in Background");
+        let load_in_background_text_len = load_in_background_text.len();
         let load_in_foreground_text = format!("Load in Foreground");
         let (load_in_background_ribbon, load_in_foreground_ribbon) = if self.load_in_background {
             (
-                Text::new(&load_in_background_text).selected(),
-                Text::new(&load_in_foreground_text),
+                Text::from(load_in_background_text).selected(),
+                Text::from(load_in_foreground_text),
             )
         } else {
             (
-                Text::new(&load_in_background_text),
-                Text::new(&load_in_foreground_text).selected(),
+                Text::from(load_in_background_text),
+                Text::from(load_in_foreground_text).selected(),
             )
         };
         print_ribbon_with_coordinates(
             load_in_background_ribbon,
-            key_shortcuts_text.chars().count() + 1,
+            key_shortcuts_text_len + 1,
             y_coordinates,
             None,
             None,
         );
         print_ribbon_with_coordinates(
             load_in_foreground_ribbon,
-            key_shortcuts_text.chars().count() + 1 + load_in_background_text.chars().count() + 4,
+            key_shortcuts_text_len + 1 + load_in_background_text_len + 4,
             y_coordinates,
             None,
             None,
         );
     }
     fn render_help(&self, rows: usize) {
-        let enter_line = Text::new(format!(
+        let enter_line = Text::from(format!(
             "Help: <ENTER> - Accept and Load Plugin, <ESC> - Cancel"
         ))
         .color_range(3, 6..=12)
@@ -677,7 +688,7 @@ impl State {
             let text = format!("↑ [+{}]", more_above);
             let text_len = text.chars().count();
             print_text_with_coordinates(
-                Text::new(text).color_range(1, ..),
+                Text::from(text).color_range(1, ..),
                 cols.saturating_sub(text_len),
                 list_y.saturating_sub(1),
                 None,
@@ -688,7 +699,7 @@ impl State {
             let text = format!("↓ [+{}]", more_below);
             let text_len = text.chars().count();
             print_text_with_coordinates(
-                Text::new(text).color_range(1, ..),
+                Text::from(text).color_range(1, ..),
                 cols.saturating_sub(text_len),
                 list_y + list_len,
                 None,
@@ -699,13 +710,13 @@ impl State {
     pub fn render_search(&self, cols: usize) {
         let text = format!(" SEARCH: {}_", self.search_term);
         if text.chars().count() <= cols {
-            let text = Text::new(text).color_range(3, 9..);
+            let text = Text::from(text).color_range(3, 9..);
             print_text_with_coordinates(text, 0, 0, None, None);
         } else {
             let truncated_search_term =
                 truncate_string_start(&self.search_term, cols.saturating_sub(10)); // 9 the length of the SEARCH prompt + 1 for the cursor
             let text = format!(" SEARCH: {}_", truncated_search_term);
-            let text = Text::new(text).color_range(3, 9..);
+            let text = Text::from(text).color_range(3, 9..);
             print_text_with_coordinates(text, 0, 0, None, None);
         }
     }
@@ -734,9 +745,10 @@ impl State {
             let tab_line = self.render_tab_line(plugin_id, cols);
             items.push(tab_line);
             if !plugin_info.configuration.is_empty() {
-                let config_line = NestedListItem::new(format!("Configuration:"))
-                    .color_range(2, ..=13)
-                    .indent(1);
+                let config_line = NestedListItem::new(
+                    Text::from(format!("Configuration:")).color_range(2, ..=13),
+                )
+                .indent(1);
                 items.push(config_line);
                 for (config_key, config_val) in &plugin_info.configuration {
                     items.push(self.render_config_line(config_key, config_val, cols))
@@ -766,10 +778,12 @@ impl State {
         } else {
             config_val.to_owned()
         };
-        NestedListItem::new(format!("{}: {}", config_key, config_val))
-            .indent(2)
-            .color_range(0, ..config_key.chars().count())
-            .color_range(1, config_key.chars().count() + 2..)
+        NestedListItem::new(
+            Text::from(format!("{}: {}", config_key, config_val))
+                .color_range(0, ..config_key.chars().count())
+                .color_range(1, config_key.chars().count() + 2..),
+        )
+        .indent(2)
     }
     pub fn render_search_result(
         &self,
@@ -809,9 +823,10 @@ impl State {
             let tab_line = self.render_tab_line(plugin_id, cols);
             items.push(tab_line);
             if !plugin_info.configuration.is_empty() {
-                let config_line = NestedListItem::new(format!("Configuration:"))
-                    .color_range(2, ..=13)
-                    .indent(1);
+                let config_line = NestedListItem::new(
+                    Text::from(format!("Configuration:")).color_range(2, ..=13),
+                )
+                .indent(1);
                 items.push(config_line);
                 for (config_key, config_value) in &plugin_info.configuration {
                     items.push(self.render_config_line(config_key, config_value, cols))
@@ -826,9 +841,11 @@ impl State {
         plus_indication: usize,
         indices: Option<Vec<usize>>,
     ) -> NestedListItem {
-        let mut item = NestedListItem::new(&format!("{} [+{}]", location_string, plus_indication))
-            .color_range(0, ..)
-            .color_range(1, location_string.chars().count() + 1..);
+        let mut item = NestedListItem::new(
+            Text::from(format!("{} [+{}]", location_string, plus_indication))
+                .color_range(0, ..)
+                .color_range(1, location_string.chars().count() + 1..),
+        );
         if let Some(indices) = indices {
             item = item.color_indices(3, indices);
         }
@@ -839,7 +856,7 @@ impl State {
         location_string: String,
         indices: Option<Vec<usize>>,
     ) -> NestedListItem {
-        let mut item = NestedListItem::new(location_string).color_range(0, ..);
+        let mut item = NestedListItem::new(Text::from(location_string).color_range(0, ..));
         if let Some(indices) = indices {
             item = item.color_indices(3, indices);
         }
@@ -861,9 +878,10 @@ impl State {
                 tab_of_plugin_id
             };
 
-        let tab_line = NestedListItem::new(format!("Tab: {}", tab_of_plugin_id))
-            .color_range(2, ..=3)
-            .indent(1);
+        let tab_line = NestedListItem::new(
+            Text::from(format!("Tab: {}", tab_of_plugin_id)).color_range(2, ..=3),
+        )
+        .indent(1);
         tab_line
     }
     pub fn render_help(&self, y: usize, cols: usize) {
@@ -873,7 +891,7 @@ impl State {
         let short_text =
             "<←↓↑→/ENTER/TAB/Del> - Navigate/Expand/Reload/Close, <Ctrl a> - New, <ESC> - Exit";
         if cols >= full_text.chars().count() {
-            let text = Text::new(full_text)
+            let text = Text::from(full_text)
                 .color_range(3, 5..=11)
                 .color_range(3, 32..=38)
                 .color_range(3, 49..=53)
@@ -882,7 +900,7 @@ impl State {
                 .color_range(3, 96..=100);
             print_text_with_coordinates(text, 0, y, Some(cols), None);
         } else if cols >= middle_text.chars().count() {
-            let text = Text::new(middle_text)
+            let text = Text::from(middle_text)
                 .color_range(3, 6..=17)
                 .color_range(3, 31..=35)
                 .color_range(3, 47..=51)
@@ -890,7 +908,7 @@ impl State {
                 .color_range(3, 78..=82);
             print_text_with_coordinates(text, 0, y, Some(cols), None);
         } else {
-            let text = Text::new(short_text)
+            let text = Text::from(short_text)
                 .color_range(3, ..=21)
                 .color_range(3, 53..=60)
                 .color_range(3, 69..=73);

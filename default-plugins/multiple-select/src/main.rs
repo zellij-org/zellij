@@ -106,13 +106,13 @@ impl App {
 
     fn render_no_panes_message(&self, rows: usize, cols: usize) {
         let message = "PANES SELECTED FOR OTHER CLIENT";
-        let message_component = Text::new(message).color_all(2);
+        let message_component = Text::from(message).color_all(2);
         let base_x = cols.saturating_sub(message.len()) / 2;
         let base_y = rows / 2;
         print_text_with_coordinates(message_component, base_x, base_y, None, None);
 
         let esc_message = "<ESC> - close";
-        let esc_message_component = Text::new(esc_message).color_substring(3, "<ESC>");
+        let esc_message_component = Text::from(esc_message).color_substring(3, "<ESC>");
         let esc_base_x = cols.saturating_sub(esc_message.len()) / 2;
         let esc_base_y = base_y + 2;
         print_text_with_coordinates(esc_message_component, esc_base_x, esc_base_y, None, None);
@@ -120,7 +120,7 @@ impl App {
 
     fn header_text() -> (&'static str, Text) {
         let header_text = "<ESC> - cancel, <TAB> - move";
-        let header_text_component = Text::new(header_text)
+        let header_text_component = Text::from(header_text)
             .color_substring(3, "<ESC>")
             .color_substring(3, "<TAB>");
         (header_text, header_text_component)
@@ -149,13 +149,13 @@ impl App {
             )
         };
 
-        let component = Text::new(&count_text).color_all(2);
+        let component = Text::from(count_text).color_all(2);
         (Box::leak(count_text.into_boxed_str()), component)
     }
 
     fn shortcuts_line1_text() -> (&'static str, Text) {
         let text = "<b> - break out, <s> - stack, <c> - close";
-        let component = Text::new(text)
+        let component = Text::from(text)
             .color_substring(3, "<b>")
             .color_substring(3, "<s>")
             .color_substring(3, "<c>");
@@ -164,7 +164,7 @@ impl App {
 
     fn shortcuts_line2_text() -> (&'static str, Text) {
         let text = "<l> - break left, <r> - break right";
-        let component = Text::new(text)
+        let component = Text::from(text)
             .color_substring(3, "<l>")
             .color_substring(3, "<r>");
         (text, component)
@@ -172,7 +172,7 @@ impl App {
 
     fn shortcuts_line3_text() -> (&'static str, Text) {
         let text = "<e> - embed, <f> - float";
-        let component = Text::new(text)
+        let component = Text::from(text)
             .color_substring(3, "<e>")
             .color_substring(3, "<f>");
         (text, component)
@@ -615,16 +615,17 @@ fn render_common_modifiers(
                 .collect::<Vec<_>>()
                 .join(" ")
         );
+        let modifiers_text_len = modifiers_text.chars().count();
 
         print_text_with_coordinates(
-            Text::new(&modifiers_text).color_all(0),
+            Text::from(modifiers_text).color_all(0),
             base_x,
             base_y,
             None,
             None,
         );
 
-        modifiers_text.chars().count()
+        modifiers_text_len
     } else {
         0
     }
@@ -670,7 +671,7 @@ fn render_follow_focus_ribbon(
     let follow_text = format!("<{}> Follow Focus", group_mark_key);
     let key_highlight = format!("{}", group_mark_key);
 
-    let mut ribbon = Text::new(&follow_text).color_substring(0, &key_highlight);
+    let mut ribbon = Text::from(follow_text).color_substring(0, &key_highlight);
 
     if mode_info.currently_marking_pane_group.unwrap_or(false) {
         ribbon = ribbon.selected();
@@ -681,15 +682,16 @@ fn render_follow_focus_ribbon(
 
 fn render_toggle_group_ribbon(pane_group_key: &str, base_x: usize, base_y: usize) -> usize {
     let toggle_text = format!("<{}> Toggle", pane_group_key);
+    let toggle_text_len = toggle_text.len();
     let key_highlight = format!("{}", pane_group_key);
 
     print_ribbon_with_coordinates(
-        Text::new(&toggle_text).color_substring(0, &key_highlight),
+        Text::from(toggle_text).color_substring(0, &key_highlight),
         base_x,
         base_y,
         None,
         None,
     );
 
-    base_x + toggle_text.len() + 4
+    base_x + toggle_text_len + 4
 }

@@ -1,7 +1,7 @@
 use super::Text;
 
 /// render a table with arbitrary data
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct Table {
     contents: Vec<Vec<Text>>,
 }
@@ -12,7 +12,7 @@ impl Table {
     }
     pub fn add_row(mut self, row: Vec<impl ToString>) -> Self {
         self.contents
-            .push(row.iter().map(|c| Text::new(c.to_string())).collect());
+            .push(row.iter().map(|c| Text::from(c.to_string())).collect());
         self
     }
     pub fn add_styled_row(mut self, row: Vec<Text>) -> Self {

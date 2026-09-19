@@ -95,7 +95,7 @@ impl RenameLayoutScreen {
 
     fn render_rename_line(&self, x: usize, y: usize, width: usize) {
         let (text, _) = self.rename_line_text(Some(width));
-        let colored = Text::new(&text);
+        let colored = Text::from(text);
         print_text_with_coordinates(colored, x, y, None, None);
     }
 
@@ -105,7 +105,7 @@ impl RenameLayoutScreen {
 
     fn render_help_text(&self, x: usize, y: usize, _width: usize) {
         let (text, items_to_color) = self.help_text();
-        let mut text_obj = Text::new(text);
+        let mut text_obj = Text::from(text);
         for item in items_to_color {
             text_obj = text_obj.color_substring(3, item);
         }
@@ -113,7 +113,7 @@ impl RenameLayoutScreen {
     }
 
     fn render_title(&self, x: usize, y: usize, width: usize) {
-        let title = Text::new("Rename Layout").color_all(2);
+        let title = Text::from("Rename Layout").color_all(2);
         print_text_with_coordinates(title, x, y, Some(width), None);
     }
 

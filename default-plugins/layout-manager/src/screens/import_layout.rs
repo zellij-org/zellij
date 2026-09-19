@@ -166,7 +166,7 @@ impl ImportLayoutScreen {
     }
 
     fn render_description(&self, x: usize, y: usize, _width: usize) {
-        let text = Text::new(self.description_text());
+        let text = Text::from(self.description_text());
         print_text_with_coordinates(text, x, y, None, None);
     }
 
@@ -207,7 +207,7 @@ impl ImportLayoutScreen {
 
     fn render_save_as_line(&self, x: usize, y: usize, width: usize) {
         let (text, _) = self.save_as_line_text(Some(width));
-        let colored = Text::new(&text).color_substring(3, "<r>");
+        let colored = Text::from(text).color_substring(3, "<r>");
         print_text_with_coordinates(colored, x, y, None, None);
     }
 
@@ -218,7 +218,7 @@ impl ImportLayoutScreen {
 
     fn render_help_text(&self, x: usize, y: usize, _width: usize) {
         let (text, items_to_color) = self.help_text();
-        let mut text_obj = Text::new(text);
+        let mut text_obj = Text::from(text);
         for item in items_to_color {
             text_obj = text_obj.color_substring(3, item);
         }
@@ -226,7 +226,7 @@ impl ImportLayoutScreen {
     }
 
     fn render_title(&self, x: usize, y: usize, width: usize) {
-        let title = Text::new("Import Layout").color_all(2);
+        let title = Text::from("Import Layout").color_all(2);
         print_text_with_coordinates(title, x, y, Some(width), None);
     }
 
@@ -309,7 +309,7 @@ impl ImportLayoutScreen {
     }
     fn render_esc_cancel_help(&self, x: usize, y: usize) {
         let help_text = "<Esc> - Cancel";
-        let help_text = Text::new(help_text).color_substring(3, "<Esc>");
+        let help_text = Text::from(help_text).color_substring(3, "<Esc>");
         print_text_with_coordinates(help_text, x, y, None, None);
     }
 

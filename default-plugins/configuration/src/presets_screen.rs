@@ -356,14 +356,14 @@ impl PresetsScreen {
             let left_padding = cols.saturating_sub(widths.0) / 2;
             let first_row_coords = (rows.saturating_sub(ui_size) / 2).saturating_sub(1);
             print_text_with_coordinates(
-                Text::new(title_text_1).color_range(2, ..),
+                Text::from(title_text_1).color_range(2, ..),
                 left_padding,
                 first_row_coords,
                 None,
                 None,
             );
             print_text_with_coordinates(
-                Text::new(title_text_2)
+                Text::from(title_text_2)
                     .color_range(0, ..10)
                     .color_range(2, 16..23)
                     .color_range(1, 34..41),
@@ -373,14 +373,14 @@ impl PresetsScreen {
                 None,
             );
             print_text_with_coordinates(
-                Text::new(title_text_3),
+                Text::from(title_text_3),
                 left_padding,
                 first_row_coords + 4,
                 None,
                 None,
             );
             print_text_with_coordinates(
-                Text::new(title_text_4),
+                Text::from(title_text_4),
                 left_padding,
                 first_row_coords + 5,
                 None,
@@ -398,14 +398,14 @@ impl PresetsScreen {
             };
             let first_row_coords = (rows.saturating_sub(ui_size) / 2).saturating_sub(1);
             print_text_with_coordinates(
-                Text::new(title_text_1).color_range(2, ..),
+                Text::from(title_text_1).color_range(2, ..),
                 left_padding,
                 first_row_coords,
                 None,
                 None,
             );
             print_text_with_coordinates(
-                Text::new(title_text_2)
+                Text::from(title_text_2)
                     .color_range(0, ..10)
                     .color_range(2, 16..23)
                     .color_range(1, 40..49),
@@ -415,14 +415,14 @@ impl PresetsScreen {
                 None,
             );
             print_text_with_coordinates(
-                Text::new(title_text_3),
+                Text::from(title_text_3),
                 left_padding,
                 first_row_coords + 4,
                 None,
                 None,
             );
             print_text_with_coordinates(
-                Text::new(title_text_4),
+                Text::from(title_text_4),
                 left_padding,
                 first_row_coords + 5,
                 None,
@@ -481,49 +481,57 @@ impl PresetsScreen {
             (list_items, max_width)
         } else if cols >= widths.1 {
             let list_items = vec![
-                NestedListItem::new(default_text).color_range(1, ..),
-                NestedListItem::new("Modes available directly, eg.:").indent(1),
-                NestedListItem::new(format!(
-                    "{} p - to enter PANE mode",
-                    primary_modifier_key_text
-                ))
-                .indent(1)
-                .color_range(3, ..primary_modifier_key_text_len + 3)
-                .color_range(
-                    2,
-                    primary_modifier_key_text_len + 14..primary_modifier_key_text_len + 18,
-                ),
-                NestedListItem::new(format!(
-                    "{} t - to enter TAB mode",
-                    primary_modifier_key_text
-                ))
-                .indent(1)
-                .color_range(3, ..primary_modifier_key_text_len + 3)
-                .color_range(
-                    2,
-                    primary_modifier_key_text_len + 14..primary_modifier_key_text_len + 17,
-                ),
+                NestedListItem::new(Text::from(default_text).color_range(1, ..)),
+                NestedListItem::new("Modes available directly, eg.:".into()).indent(1),
+                NestedListItem::new(
+                    Text::from(format!(
+                        "{} p - to enter PANE mode",
+                        primary_modifier_key_text
+                    ))
+                    .color_range(3, ..primary_modifier_key_text_len + 3)
+                    .color_range(
+                        2,
+                        primary_modifier_key_text_len + 14..primary_modifier_key_text_len + 18,
+                    ),
+                )
+                .indent(1),
+                NestedListItem::new(
+                    Text::from(format!(
+                        "{} t - to enter TAB mode",
+                        primary_modifier_key_text
+                    ))
+                    .color_range(3, ..primary_modifier_key_text_len + 3)
+                    .color_range(
+                        2,
+                        primary_modifier_key_text_len + 14..primary_modifier_key_text_len + 17,
+                    ),
+                )
+                .indent(1),
             ];
             let max_width = widths.1;
             (list_items, max_width)
         } else {
             let list_items = vec![
-                NestedListItem::new(default_text).color_range(1, ..),
-                NestedListItem::new("Directly, eg.:").indent(1),
-                NestedListItem::new(format!("{} p - PANE mode", primary_modifier_key_text))
-                    .color_range(3, ..primary_modifier_key_text_len + 3)
-                    .color_range(
-                        2,
-                        primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 10,
-                    )
-                    .indent(1),
-                NestedListItem::new(format!("{} t - TAB mode", primary_modifier_key_text))
-                    .color_range(3, ..primary_modifier_key_text_len + 3)
-                    .color_range(
-                        2,
-                        primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 9,
-                    )
-                    .indent(1),
+                NestedListItem::new(Text::from(default_text).color_range(1, ..)),
+                NestedListItem::new("Directly, eg.:".into()).indent(1),
+                NestedListItem::new(
+                    Text::from(format!("{} p - PANE mode", primary_modifier_key_text))
+                        .color_range(3, ..primary_modifier_key_text_len + 3)
+                        .color_range(
+                            2,
+                            primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 10,
+                        ),
+                )
+                .indent(1),
+                NestedListItem::new(
+                    Text::from(format!("{} t - TAB mode", primary_modifier_key_text))
+                        .color_range(3, ..primary_modifier_key_text_len + 3)
+                        .color_range(
+                            2,
+                            primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 9,
+                        ),
+                )
+                .indent(1),
             ];
             let max_width = widths.2;
             (list_items, max_width)
@@ -551,77 +559,91 @@ impl PresetsScreen {
         let primary_modifier_key_text_len = primary_modifier_key_text.chars().count();
         let (mut list_items, max_width) = if cols >= widths.0 {
             let list_items = vec![
-                NestedListItem::new(unlock_first_text).color_range(1, ..),
-                NestedListItem::new(format!(
-                    "Single key modes available after unlocking with {} g, eg.:",
-                    primary_modifier_key_text
-                ))
+                NestedListItem::new(Text::from(unlock_first_text).color_range(1, ..)),
+                NestedListItem::new(
+                    format!(
+                        "Single key modes available after unlocking with {} g, eg.:",
+                        primary_modifier_key_text
+                    )
+                    .into(),
+                )
                 .indent(1),
-                NestedListItem::new(format!(
-                    "{} g + p to enter PANE mode",
-                    primary_modifier_key_text
-                ))
-                .indent(1)
-                .color_range(3, ..primary_modifier_key_text_len + 3)
-                .color_range(
-                    3,
-                    primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
+                NestedListItem::new(
+                    Text::from(format!(
+                        "{} g + p to enter PANE mode",
+                        primary_modifier_key_text
+                    ))
+                    .color_range(3, ..primary_modifier_key_text_len + 3)
+                    .color_range(
+                        3,
+                        primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
+                    )
+                    .color_range(
+                        2,
+                        primary_modifier_key_text_len + 16..primary_modifier_key_text_len + 21,
+                    ),
                 )
-                .color_range(
-                    2,
-                    primary_modifier_key_text_len + 16..primary_modifier_key_text_len + 21,
-                ),
-                NestedListItem::new(format!(
-                    "{} g + t to enter TAB mode",
-                    primary_modifier_key_text
-                ))
-                .indent(1)
-                .color_range(3, ..primary_modifier_key_text_len + 3)
-                .color_range(
-                    3,
-                    primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
+                .indent(1),
+                NestedListItem::new(
+                    Text::from(format!(
+                        "{} g + t to enter TAB mode",
+                        primary_modifier_key_text
+                    ))
+                    .color_range(3, ..primary_modifier_key_text_len + 3)
+                    .color_range(
+                        3,
+                        primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
+                    )
+                    .color_range(
+                        2,
+                        primary_modifier_key_text_len + 16..primary_modifier_key_text_len + 20,
+                    ),
                 )
-                .color_range(
-                    2,
-                    primary_modifier_key_text_len + 16..primary_modifier_key_text_len + 20,
-                ),
+                .indent(1),
             ];
             let max_width = widths.0;
             (list_items, max_width)
         } else if cols >= widths.1 {
             let list_items = vec![
-                NestedListItem::new(unlock_first_text).color_range(1, ..),
-                NestedListItem::new(format!(
-                    "Single key modes after {} g, eg.:",
-                    primary_modifier_key_text
-                ))
-                .indent(1),
-                NestedListItem::new(format!(
-                    "{} g + p to enter PANE mode",
-                    primary_modifier_key_text
-                ))
-                .color_range(3, ..primary_modifier_key_text_len + 3)
-                .color_range(
-                    3,
-                    primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
-                )
-                .color_range(
-                    2,
-                    primary_modifier_key_text_len + 16..primary_modifier_key_text_len + 21,
+                NestedListItem::new(Text::from(unlock_first_text).color_range(1, ..)),
+                NestedListItem::new(
+                    format!(
+                        "Single key modes after {} g, eg.:",
+                        primary_modifier_key_text
+                    )
+                    .into(),
                 )
                 .indent(1),
-                NestedListItem::new(format!(
-                    "{} g + t to enter TAB mode",
-                    primary_modifier_key_text
-                ))
-                .color_range(3, ..primary_modifier_key_text_len + 3)
-                .color_range(
-                    3,
-                    primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
+                NestedListItem::new(
+                    Text::from(format!(
+                        "{} g + p to enter PANE mode",
+                        primary_modifier_key_text
+                    ))
+                    .color_range(3, ..primary_modifier_key_text_len + 3)
+                    .color_range(
+                        3,
+                        primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
+                    )
+                    .color_range(
+                        2,
+                        primary_modifier_key_text_len + 16..primary_modifier_key_text_len + 21,
+                    ),
                 )
-                .color_range(
-                    2,
-                    primary_modifier_key_text_len + 16..primary_modifier_key_text_len + 20,
+                .indent(1),
+                NestedListItem::new(
+                    Text::from(format!(
+                        "{} g + t to enter TAB mode",
+                        primary_modifier_key_text
+                    ))
+                    .color_range(3, ..primary_modifier_key_text_len + 3)
+                    .color_range(
+                        3,
+                        primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
+                    )
+                    .color_range(
+                        2,
+                        primary_modifier_key_text_len + 16..primary_modifier_key_text_len + 20,
+                    ),
                 )
                 .indent(1),
             ];
@@ -629,34 +651,37 @@ impl PresetsScreen {
             (list_items, max_width)
         } else {
             let list_items = vec![
-                NestedListItem::new("2. Unlock First").color_range(1, ..),
-                NestedListItem::new(format!(
-                    "{} g + single key, eg.:",
-                    primary_modifier_key_text
-                ))
+                NestedListItem::new(Text::from("2. Unlock First").color_range(1, ..)),
+                NestedListItem::new(
+                    format!("{} g + single key, eg.:", primary_modifier_key_text).into(),
+                )
                 .indent(1),
-                NestedListItem::new(format!("{} g + p PANE mode", primary_modifier_key_text))
-                    .color_range(3, ..primary_modifier_key_text_len + 3)
-                    .color_range(
-                        3,
-                        primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
-                    )
-                    .color_range(
-                        2,
-                        primary_modifier_key_text_len + 7..primary_modifier_key_text_len + 11,
-                    )
-                    .indent(1),
-                NestedListItem::new(format!("{} g + t TAB mode", primary_modifier_key_text))
-                    .color_range(3, ..primary_modifier_key_text_len + 3)
-                    .color_range(
-                        3,
-                        primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
-                    )
-                    .color_range(
-                        2,
-                        primary_modifier_key_text_len + 7..primary_modifier_key_text_len + 10,
-                    )
-                    .indent(1),
+                NestedListItem::new(
+                    Text::from(format!("{} g + p PANE mode", primary_modifier_key_text))
+                        .color_range(3, ..primary_modifier_key_text_len + 3)
+                        .color_range(
+                            3,
+                            primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
+                        )
+                        .color_range(
+                            2,
+                            primary_modifier_key_text_len + 7..primary_modifier_key_text_len + 11,
+                        ),
+                )
+                .indent(1),
+                NestedListItem::new(
+                    Text::from(format!("{} g + t TAB mode", primary_modifier_key_text))
+                        .color_range(3, ..primary_modifier_key_text_len + 3)
+                        .color_range(
+                            3,
+                            primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 7,
+                        )
+                        .color_range(
+                            2,
+                            primary_modifier_key_text_len + 7..primary_modifier_key_text_len + 10,
+                        ),
+                )
+                .indent(1),
             ];
             let max_width = widths.2;
             (list_items, max_width)
@@ -696,7 +721,7 @@ impl PresetsScreen {
             );
             let left_padding = cols.saturating_sub(widths.0) / 2;
             print_text_with_coordinates(
-                Text::new(leader_key_text)
+                Text::from(leader_key_text)
                     .color_range(2, ..12)
                     .color_range(3, 13..primary_modifier_key_text_len + 14)
                     .color_range(
@@ -720,7 +745,7 @@ impl PresetsScreen {
                 cols.saturating_sub(widths.2) / 2
             };
             print_text_with_coordinates(
-                Text::new(leader_key_text)
+                Text::from(leader_key_text)
                     .color_range(2, ..8)
                     .color_range(3, 9..primary_modifier_key_text_len + 10)
                     .color_range(
@@ -740,7 +765,7 @@ impl PresetsScreen {
         let short_help_text = "Help: <↓↑> / <ENTER> / <ESC>";
         if cols >= full_help_text.chars().count() {
             print_text_with_coordinates(
-                Text::new(full_help_text)
+                Text::from(full_help_text)
                     .color_range(2, 6..10)
                     .color_range(2, 23..30)
                     .color_range(2, 47..=50),
@@ -751,7 +776,7 @@ impl PresetsScreen {
             );
         } else {
             print_text_with_coordinates(
-                Text::new(short_help_text)
+                Text::from(short_help_text)
                     .color_range(2, 6..10)
                     .color_range(2, 13..20)
                     .color_range(2, 23..=27),
@@ -774,7 +799,7 @@ impl PresetsScreen {
             let title_text = "Override keybindings with one of the following presets:";
             let left_padding = cols.saturating_sub(widths.0) / 2;
             print_text_with_coordinates(
-                Text::new(title_text).color_range(2, ..),
+                Text::from(title_text).color_range(2, ..),
                 left_padding,
                 (rows.saturating_sub(ui_size) / 2) + 1,
                 None,
@@ -788,7 +813,7 @@ impl PresetsScreen {
                 cols.saturating_sub(widths.2) / 2
             };
             print_text_with_coordinates(
-                Text::new(title_text).color_range(2, ..),
+                Text::from(title_text).color_range(2, ..),
                 left_padding,
                 (rows.saturating_sub(ui_size) / 2) + 1,
                 None,
@@ -802,7 +827,7 @@ impl PresetsScreen {
         let short_help_text = "Help: <↓↑> / <ENTER> / <Ctrl a> / <ESC>";
         if cols >= full_help_text.chars().count() {
             print_text_with_coordinates(
-                Text::new(full_help_text)
+                Text::from(full_help_text)
                     .color_range(2, 6..10)
                     .color_range(2, 23..30)
                     .color_range(2, 40..48)
@@ -814,7 +839,7 @@ impl PresetsScreen {
             );
         } else {
             print_text_with_coordinates(
-                Text::new(short_help_text)
+                Text::from(short_help_text)
                     .color_range(2, 6..10)
                     .color_range(2, 13..20)
                     .color_range(2, 23..31)

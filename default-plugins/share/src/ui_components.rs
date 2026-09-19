@@ -93,7 +93,7 @@ impl ColoredTextBuilder {
 
     pub fn build(self) -> (Text, usize) {
         let length = self.text.chars().count();
-        let mut text_component = Text::new(self.text);
+        let mut text_component = Text::from(self.text);
 
         for range in self.ranges {
             text_component = text_component.color_range(range.color, range.start..range.end);
@@ -240,9 +240,9 @@ impl Usage {
             .build()
             .0;
 
-        let bulletin_1_text = Text::new(bulletin_1);
-        let bulletin_2_text = Text::new(bulletin_2);
-        let bulletin_3_text = Text::new(bulletin_3);
+        let bulletin_1_text = Text::from(bulletin_1);
+        let bulletin_2_text = Text::from(bulletin_2);
+        let bulletin_3_text = Text::from(bulletin_3);
 
         let bulletin_4_text =
             create_highlighted_shortcut(self.bulletin_4, "<t>", COLOR_HIGHLIGHT).0;
@@ -512,7 +512,7 @@ impl CurrentSessionSection {
         if self.web_sharing.web_clients_allowed() && self.web_server_started {
             self.render_session_url(x, y, hover_coordinates);
         } else if self.web_sharing.web_clients_allowed() {
-            let info_line = Text::new(WEB_SERVER_OFFLINE);
+            let info_line = Text::from(WEB_SERVER_OFFLINE);
             print_text_with_coordinates(info_line, x, y + 1, None, None);
         } else if !self.web_sharing.sharing_is_disabled() {
             let info_line = self.press_space_to_share().0;

@@ -229,7 +229,7 @@ impl NewLayoutFromCurrentSessionScreen {
     }
 
     fn render_title(&self, x: usize, y: usize, width: usize) {
-        let title = Text::new("Save Layout of Current Session").color_all(2);
+        let title = Text::from("Save Layout of Current Session").color_all(2);
         print_text_with_coordinates(title, x, y, Some(width), None);
     }
 
@@ -251,8 +251,8 @@ impl NewLayoutFromCurrentSessionScreen {
         } else {
             self.description_text_short()
         };
-        print_text_with_coordinates(Text::new(line1), x, y, None, None);
-        print_text_with_coordinates(Text::new(line2), x, y + 1, None, None);
+        print_text_with_coordinates(Text::from(line1), x, y, None, None);
+        print_text_with_coordinates(Text::from(line2), x, y + 1, None, None);
     }
     fn max_description_width(&self) -> usize {
         let (line1, line2) = self.description_text_full();
@@ -284,7 +284,7 @@ impl NewLayoutFromCurrentSessionScreen {
     }
     fn render_save_as_line(&self, x: usize, y: usize, width: usize) {
         let (text, _) = self.save_as_line_text(width);
-        let colored = Text::new(&text).color_substring(3, "<r>");
+        let colored = Text::from(text).color_substring(3, "<r>");
 
         print_text_with_coordinates(colored, x, y, None, None);
     }
@@ -306,7 +306,7 @@ impl NewLayoutFromCurrentSessionScreen {
         } else {
             text
         };
-        let colored = Text::new(text)
+        let colored = Text::from(text)
             .color_substring(3, "<Tab>")
             .color_substring(0, "[All Tabs]")
             .color_substring(0, "[All]")
@@ -334,7 +334,7 @@ impl NewLayoutFromCurrentSessionScreen {
         } else {
             self.help_text_full()
         };
-        let mut text = Text::new(text);
+        let mut text = Text::from(text);
         for item in items_to_color {
             text = text.color_substring(3, item)
         }

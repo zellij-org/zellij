@@ -314,7 +314,7 @@ impl RebindLeadersScreen {
             };
         let primary_modifier_menu_width = primary_modifier_text.chars().count();
         print_text_with_coordinates(
-            Text::new(primary_modifier_text).color_range(3, primary_modifier_start_position..),
+            Text::from(primary_modifier_text).color_range(3, primary_modifier_start_position..),
             base_x,
             base_y + 5,
             None,
@@ -326,9 +326,9 @@ impl RebindLeadersScreen {
                 .enumerate()
                 .map(|(i, m)| {
                     let item = if self.primary_modifier.contains(m) {
-                        NestedListItem::new(m.to_string()).color_range(3, ..)
+                        NestedListItem::new(Text::from(m.to_string()).color_range(3, ..))
                     } else {
-                        NestedListItem::new(m.to_string())
+                        NestedListItem::new(Text::from(m.to_string()))
                     };
                     if self.browsing_primary_modifier && self.selected_primary_key_index == i {
                         item.selected()
@@ -373,21 +373,21 @@ impl RebindLeadersScreen {
             ""
         };
         print_text_with_coordinates(
-            Text::new(leader_keys_text).color_range(2, ..),
+            Text::from(leader_keys_text).color_range(2, ..),
             base_x,
             base_y,
             None,
             None,
         );
         print_text_with_coordinates(
-            Text::new(explanation_text_1).color_range(1, ..=12),
+            Text::from(explanation_text_1).color_range(1, ..=12),
             base_x,
             base_y + 2,
             None,
             None,
         );
         print_text_with_coordinates(
-            Text::new(explanation_text_2).color_range(1, ..=17),
+            Text::from(explanation_text_2).color_range(1, ..=17),
             base_x,
             base_y + 3,
             None,
@@ -422,21 +422,21 @@ impl RebindLeadersScreen {
             ""
         };
         print_text_with_coordinates(
-            Text::new(leader_keys_text).color_range(2, ..),
+            Text::from(leader_keys_text).color_range(2, ..),
             base_x,
             base_y,
             None,
             None,
         );
         print_text_with_coordinates(
-            Text::new(explanation_text_1).color_range(1, ..=6),
+            Text::from(explanation_text_1).color_range(1, ..=6),
             base_x,
             base_y + 2,
             None,
             None,
         );
         print_text_with_coordinates(
-            Text::new(explanation_text_2).color_range(1, ..=8),
+            Text::from(explanation_text_2).color_range(1, ..=8),
             base_x,
             base_y + 3,
             None,
@@ -464,7 +464,7 @@ impl RebindLeadersScreen {
                     (format!("{}", main_leader_key_text), 0)
                 };
             let mut primary_modifier =
-                Text::new(primary_modifier_text).color_range(3, primary_modifier_start_position..);
+                Text::from(primary_modifier_text).color_range(3, primary_modifier_start_position..);
             if self.main_leader_selected {
                 primary_modifier = primary_modifier.selected();
             }
@@ -475,9 +475,9 @@ impl RebindLeadersScreen {
                 let third_bulletin = "\"Alt ESC\", \"Ctrl SPACE\"";
                 print_nested_list_with_coordinates(
                     vec![
-                        NestedListItem::new(first_bulletin).color_range(3, ..=14),
-                        NestedListItem::new(second_bulletin),
-                        NestedListItem::new(third_bulletin),
+                        NestedListItem::new(Text::from(first_bulletin).color_range(3, ..=14)),
+                        NestedListItem::new(second_bulletin.into()),
+                        NestedListItem::new(third_bulletin.into()),
                     ],
                     base_x,
                     base_y + 6,
@@ -515,7 +515,7 @@ impl RebindLeadersScreen {
         let secondary_modifier_menu_x_coords = base_x + (screen_width / 2);
         let secondary_modifier_menu_width = secondary_modifier_text.chars().count();
         print_text_with_coordinates(
-            Text::new(secondary_modifier_text).color_range(0, secondary_modifier_start_position..),
+            Text::from(secondary_modifier_text).color_range(0, secondary_modifier_start_position..),
             secondary_modifier_menu_x_coords,
             base_y + 5,
             None,
@@ -527,9 +527,9 @@ impl RebindLeadersScreen {
                 .enumerate()
                 .map(|(i, m)| {
                     let item = if self.secondary_modifier.contains(m) {
-                        NestedListItem::new(m.to_string()).color_range(0, ..)
+                        NestedListItem::new(Text::from(m.to_string()).color_range(0, ..))
                     } else {
-                        NestedListItem::new(m.to_string())
+                        NestedListItem::new(Text::from(m.to_string()))
                     };
                     if self.browsing_secondary_modifier && self.selected_secondary_key_index == i {
                         item.selected()
@@ -577,7 +577,7 @@ impl RebindLeadersScreen {
         let help_text_minimum = "<←↓↑→>/<SPACE>/<ENTER>/<Ctrl a>/<Ctrl c>/<ESC>";
         if cols >= help_text_long.chars().count() {
             print_text_with_coordinates(
-                Text::new(help_text_long)
+                Text::from(help_text_long)
                     .color_range(2, 6..=12)
                     .color_range(2, 25..=31)
                     .color_range(2, 43..=49)
@@ -591,7 +591,7 @@ impl RebindLeadersScreen {
             );
         } else if cols >= help_text_medium.chars().count() {
             print_text_with_coordinates(
-                Text::new(help_text_medium)
+                Text::from(help_text_medium)
                     .color_range(2, 6..=17)
                     .color_range(2, 38..=51)
                     .color_range(2, 67..=75)
@@ -603,7 +603,7 @@ impl RebindLeadersScreen {
             );
         } else if cols >= help_text_short.chars().count() {
             print_text_with_coordinates(
-                Text::new(help_text_short)
+                Text::from(help_text_short)
                     .color_range(2, 6..=11)
                     .color_range(2, 13..=19)
                     .color_range(2, 21..=27)
@@ -617,7 +617,7 @@ impl RebindLeadersScreen {
             );
         } else {
             print_text_with_coordinates(
-                Text::new(help_text_minimum)
+                Text::from(help_text_minimum)
                     .color_range(2, ..=5)
                     .color_range(2, 7..=13)
                     .color_range(2, 15..=21)
@@ -638,7 +638,7 @@ impl RebindLeadersScreen {
         let help_text_minimum = "<←↓↑→>/<SPACE>/<ENTER>";
         if cols >= help_text_long.chars().count() {
             print_text_with_coordinates(
-                Text::new(help_text_long)
+                Text::from(help_text_long)
                     .color_range(2, 6..=12)
                     .color_range(2, 25..=31)
                     .color_range(2, 43..=49),
@@ -649,7 +649,7 @@ impl RebindLeadersScreen {
             );
         } else if cols >= help_text_medium.chars().count() {
             print_text_with_coordinates(
-                Text::new(help_text_medium)
+                Text::from(help_text_medium)
                     .color_range(2, 6..=12)
                     .color_range(2, 25..=31)
                     .color_range(2, 43..=49),
@@ -660,7 +660,7 @@ impl RebindLeadersScreen {
             );
         } else if cols >= help_text_short.chars().count() {
             print_text_with_coordinates(
-                Text::new(help_text_short)
+                Text::from(help_text_short)
                     .color_range(2, 1..=4)
                     .color_range(2, 6..=10)
                     .color_range(2, 32..=38),
@@ -671,7 +671,7 @@ impl RebindLeadersScreen {
             );
         } else {
             print_text_with_coordinates(
-                Text::new(help_text_minimum)
+                Text::from(help_text_minimum)
                     .color_range(2, ..=5)
                     .color_range(2, 7..=13)
                     .color_range(2, 15..=21),

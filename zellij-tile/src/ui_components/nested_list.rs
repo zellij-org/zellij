@@ -14,6 +14,10 @@ impl NestedListItem {
             ..Default::default()
         }
     }
+    pub fn selected(mut self) -> Self {
+        self.content = self.content.selected();
+        self
+    }
     pub fn indent(mut self, indentation_level: usize) -> Self {
         self.indentation_level = indentation_level;
         self
