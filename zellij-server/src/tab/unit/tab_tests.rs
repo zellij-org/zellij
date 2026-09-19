@@ -17911,3 +17911,150 @@ fn floating_plugin_panes_are_not_shown_again_when_their_tab_returns_with_the_sur
         "a plugin whose floating surface is hidden should not be told it is visible when its tab returns"
     );
 }
+
+mod host_terminal_title_tests {
+    use super::*;
+    use crate::output::Output;
+    use zellij_utils::shared::make_terminal_title;
+
+    fn tab_with_title(floating: bool) -> Tab {
+        let mut tab = create_new_tab(
+            Size {
+                cols: 121,
+                rows: 20,
+            },
+            false,
+        );
+        let terminal_id = if floating {
+            tab.new_floating_pane(PaneId::Terminal(2), None, None, false, true, None, None)
+                .unwrap();
+            tab.floating_panes.toggle_show_panes(true);
+            2
+        } else {
+            1
+        };
+        tab.handle_pty_bytes(terminal_id, b"\x1b]0;reattach-title\x07".to_vec())
+            .unwrap();
+        tab
+    }
+
+    fn render(tab: &mut Tab) -> HashMap<ClientId, String> {
+        let mut output = Output::default();
+        tab.render(&mut output, None).unwrap();
+        output.serialize().unwrap()
+    }
+
+    fn assert_title(output: &HashMap<ClientId, String>, client_id: ClientId) {
+        assert!(
+            output
+                .get(&client_id)
+                .unwrap()
+                .contains(&make_terminal_title("reattach-title")),
+            "client {client_id} must receive the current host title without switching tabs"
+        );
+    }
+
+    fn reattach(floating: bool, new_client_id: ClientId) {
+        let mut tab = tab_with_title(floating);
+        assert_title(&render(&mut tab), 1);
+        tab.remove_client(1);
+        tab.add_client(new_client_id, None).unwrap();
+        assert_title(&render(&mut tab), new_client_id);
+    }
+
+    #[test]
+    fn tiled_new_client_receives_title_after_detach() {
+        reattach(false, 2);
+    }
+
+    #[test]
+    fn floating_new_client_receives_title_after_detach() {
+        reattach(true, 2);
+    }
+
+    #[test]
+    fn tiled_reused_client_id_receives_title_after_detach() {
+        reattach(false, 1);
+    }
+
+    #[test]
+    fn floating_reused_client_id_receives_title_after_detach() {
+        reattach(true, 1);
+    }
+
+    #[test]
+    fn each_client_receives_title_on_first_render() {
+        for floating in [false, true] {
+            let mut tab = tab_with_title(floating);
+            tab.add_client(2, None).unwrap();
+            let output = render(&mut tab);
+            assert_title(&output, 1);
+            assert_title(&output, 2);
+        }
+    }
+
+    #[test]
+    fn attaching_client_does_not_resend_unchanged_title_to_existing_client() {
+        for floating in [false, true] {
+            let mut tab = tab_with_title(floating);
+            assert_title(&render(&mut tab), 1);
+            tab.add_client(2, None).unwrap();
+            let output = render(&mut tab);
+            assert_title(&output, 2);
+            assert!(!output
+                .get(&1)
+                .unwrap()
+                .contains(&make_terminal_title("reattach-title")));
+        }
+    }
+
+    #[test]
+    fn returning_to_tab_resends_title_after_draining_clients() {
+        for floating in [false, true] {
+            for clients in [None, Some(vec![1])] {
+                let mut tab = tab_with_title(floating);
+                assert_title(&render(&mut tab), 1);
+                let drained = tab.drain_connected_clients(clients);
+                tab.add_multiple_clients(drained).unwrap();
+                assert_title(&render(&mut tab), 1);
+            }
+        }
+    }
+
+    #[test]
+    fn unchanged_title_is_suppressed_but_changed_title_is_sent() {
+        for floating in [false, true] {
+            let mut tab = tab_with_title(floating);
+            assert_title(&render(&mut tab), 1);
+            tab.set_force_render();
+            assert!(!render(&mut tab)
+                .get(&1)
+                .unwrap()
+                .contains(&make_terminal_title("reattach-title")));
+            let terminal_id = if floating { 2 } else { 1 };
+            tab.handle_pty_bytes(terminal_id, b"\x1b]0;changed-title\x07".to_vec())
+                .unwrap();
+            assert!(render(&mut tab)
+                .get(&1)
+                .unwrap()
+                .contains(&make_terminal_title("changed-title")));
+        }
+    }
+
+    #[test]
+    fn toggling_floating_panes_restores_the_visible_panes_title() {
+        let mut tab = tab_with_title(true);
+        tab.handle_pty_bytes(1, b"\x1b]0;tiled-title\x07".to_vec())
+            .unwrap();
+        assert_title(&render(&mut tab), 1);
+        tab.floating_panes.toggle_show_panes(false);
+        tab.set_force_render();
+        assert!(render(&mut tab)
+            .get(&1)
+            .unwrap()
+            .contains(&make_terminal_title("tiled-title")));
+        tab.floating_panes.toggle_show_panes(true);
+        tab.set_force_render();
+        assert_title(&render(&mut tab), 1);
+    }
+}

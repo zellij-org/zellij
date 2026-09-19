@@ -83,7 +83,7 @@ pub struct TiledPanes {
     fullscreen_is_active: Option<PaneId>,
     fullscreen_covers_ui: Rc<RefCell<bool>>,
     senders: ThreadSenders,
-    window_title: Option<String>,
+    window_titles: HashMap<ClientId, String>,
     client_id_to_boundaries: HashMap<ClientId, Boundaries>,
     tombstones_before_increase: Option<(PaneId, Vec<HashMap<PaneId, PaneGeom>>)>,
     tombstones_before_decrease: Option<(PaneId, Vec<HashMap<PaneId, PaneGeom>>)>,
@@ -128,12 +128,15 @@ impl TiledPanes {
             fullscreen_is_active: None,
             fullscreen_covers_ui,
             senders,
-            window_title: None,
+            window_titles: HashMap::new(),
             client_id_to_boundaries: HashMap::new(),
             tombstones_before_increase: None,
             tombstones_before_decrease: None,
             dimmed_clients: HashSet::new(),
         }
+    }
+    pub fn clear_client_title(&mut self, client_id: ClientId) {
+        self.window_titles.remove(&client_id);
     }
     pub fn set_client_dimmed(&mut self, client_id: ClientId, dimmed: bool) {
         if dimmed {
@@ -1344,7 +1347,7 @@ impl TiledPanes {
                     pane_contents_and_ui.render_terminal_title_if_needed(
                         *client_id,
                         client_mode,
-                        &mut self.window_title,
+                        &mut self.window_titles,
                     );
                     // this is done for panes that don't have their own cursor (eg. panes of
                     // another user)
@@ -1399,7 +1402,7 @@ impl TiledPanes {
         }
         if floating_panes_are_visible {
             // we do this here so that when they are toggled off, we will make sure to re-render the title
-            self.window_title = None;
+            self.window_titles.clear();
         }
         Ok(())
     }
