@@ -44,6 +44,9 @@ const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
     GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
 );
 
+const MAX_USER_VARIABLES: usize = 256;
+const MAX_USER_VARIABLE_BYTES: usize = 4096;
+
 const MAX_TRACKED_NOTIFICATION_IDS: usize = 256;
 const MAX_NOTIFICATION_ASSEMBLY_BYTES: usize = 4096;
 
@@ -890,6 +893,7 @@ pub struct Grid {
     command_output_flash: Option<Selection>,
     word_separators: String,
     pub osc7_payload: Option<String>,
+    pub user_variables: BTreeMap<String, String>,
 }
 
 impl Grid {
@@ -1264,6 +1268,7 @@ impl Grid {
             command_output_flash: None,
             word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
             osc7_payload: None,
+            user_variables: BTreeMap::new(),
         }
     }
     pub fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
@@ -2820,6 +2825,7 @@ impl Grid {
         self.pane_default_bg = None;
         self.osc133_markers_seen = false;
         self.osc7_payload = None;
+        self.user_variables.clear();
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }
@@ -4608,6 +4614,29 @@ impl Perform for Grid {
                         let uri = segments.join(";");
                         if !uri.is_empty() && !uri.chars().any(|c| c.is_control()) {
                             self.osc7_payload = Some(uri);
+                        }
+                    }
+                }
+            },
+
+            b"1337" => {
+                // Retain only SetUserVar, not arbitrary iTerm2 control sequences.
+                if params.len() == 2 && params[1].len() <= MAX_USER_VARIABLE_BYTES {
+                    if let Ok(payload) = str::from_utf8(params[1]) {
+                        if let Some((name, value)) = payload
+                            .strip_prefix("SetUserVar=")
+                            .and_then(|assignment| assignment.split_once('='))
+                        {
+                            if !name.is_empty()
+                                && !name.chars().any(|c| c.is_control())
+                                && BASE64_DECODER.decode(value).is_ok()
+                                && (self.user_variables.contains_key(name)
+                                    || self.user_variables.len() < MAX_USER_VARIABLES)
+                            {
+                                self.user_variables
+                                    .insert(name.to_owned(), value.to_owned());
+                                self.mark_for_rerender();
+                            }
                         }
                     }
                 }

@@ -1632,6 +1632,7 @@ pub(crate) struct Screen {
     host_notification_protocol: HostNotificationProtocol,
     client_host_terminal_env: HashMap<ClientId, BTreeMap<String, String>>,
     last_forwarded_osc7: HashMap<ClientId, Option<String>>,
+    last_forwarded_user_variables: HashMap<ClientId, BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1840,6 +1841,7 @@ impl Screen {
             host_notification_protocol: HostNotificationProtocol::default(),
             client_host_terminal_env: HashMap::new(),
             last_forwarded_osc7: HashMap::new(),
+            last_forwarded_user_variables: HashMap::new(),
         }
     }
 
@@ -4314,7 +4316,47 @@ impl Screen {
                 }
             }
 
-            if non_watcher_output_was_dirty || has_bell || has_osc7_update {
+            let mut has_user_variable_update = false;
+            for (&client_id, &tab_index) in &self.active_tab_ids {
+                if self.watcher_clients.contains_key(&client_id) {
+                    continue;
+                }
+                let current = self
+                    .tabs
+                    .get(&tab_index)
+                    .and_then(|tab| tab.get_active_pane(client_id))
+                    .and_then(|pane| pane.user_variables())
+                    .cloned()
+                    .unwrap_or_default();
+                let previous = self
+                    .last_forwarded_user_variables
+                    .entry(client_id)
+                    .or_default();
+                // Clear variables owned by the previous pane, without touching host-only variables.
+                for name in previous.keys().filter(|name| !current.contains_key(*name)) {
+                    output.add_post_vte_instruction_to_client(
+                        client_id,
+                        &format!("\x1b]1337;SetUserVar={}=\x07", name),
+                    );
+                    has_user_variable_update = true;
+                }
+                for (name, value) in &current {
+                    if previous.get(name) != Some(value) {
+                        output.add_post_vte_instruction_to_client(
+                            client_id,
+                            &format!("\x1b]1337;SetUserVar={}={}\x07", name, value),
+                        );
+                        has_user_variable_update = true;
+                    }
+                }
+                *previous = current;
+            }
+
+            if non_watcher_output_was_dirty
+                || has_bell
+                || has_osc7_update
+                || has_user_variable_update
+            {
                 let serialized_output = output.serialize().context(err_context)?;
                 if !serialized_output.is_empty() {
                     let _ = self
@@ -5220,6 +5262,7 @@ impl Screen {
         self.client_sizes.remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
         self.last_forwarded_osc7.remove(&client_id);
+        self.last_forwarded_user_variables.remove(&client_id);
         self.client_host_focused.remove(&client_id);
         self.client_notification_protocols.remove(&client_id);
         self.client_host_terminal_env.remove(&client_id);
