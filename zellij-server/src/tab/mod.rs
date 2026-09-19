@@ -745,6 +745,7 @@ pub trait Pane {
     fn serialize(&self, _scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
         None
     }
+    fn reset_command_state(&mut self) {}
     fn rerun(&mut self) -> Option<RunCommand> {
         None
     } // only relevant to terminal panes
@@ -4504,15 +4505,12 @@ impl Tab {
                         should_update_ui = true;
                     },
                     Some(AdjustedInput::DropToShellInThisPane { working_dir }) => {
-                        self.pids_waiting_resize.insert(active_terminal_id);
-                        self.senders
-                            .send_to_pty(PtyInstruction::DropToShellInPane {
-                                pane_id: PaneId::Terminal(active_terminal_id),
-                                shell: Some(self.default_shell.clone()),
-                                working_dir,
-                                completion_tx,
-                            })
-                            .with_context(err_context)?;
+                        self.drop_to_shell(
+                            PaneId::Terminal(active_terminal_id),
+                            working_dir,
+                            completion_tx,
+                        )
+                        .with_context(err_context)?;
                         should_update_ui = true;
                     },
                     Some(AdjustedInput::GuestModalSelectionChanged) => {
@@ -5843,6 +5841,36 @@ impl Tab {
             None
         }
     }
+    fn drop_to_shell(
+        &mut self,
+        pane_id: PaneId,
+        working_dir: Option<PathBuf>,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let shell_title = self
+            .default_shell
+            .file_name()
+            .unwrap_or(self.default_shell.as_os_str())
+            .to_string_lossy()
+            .to_string();
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.reset_command_state();
+            // Explicit user names take precedence over this automatic fallback title.
+            pane.set_title(shell_title);
+        }
+        if let PaneId::Terminal(id) = pane_id {
+            self.pids_waiting_resize.insert(id);
+        }
+        self.senders
+            .send_to_pty(PtyInstruction::DropToShellInPane {
+                pane_id,
+                shell: Some(self.default_shell.clone()),
+                working_dir,
+                completion_tx,
+            })?;
+        Ok(())
+    }
+
     pub fn hold_pane(
         &mut self,
         id: PaneId,
@@ -5858,6 +5886,10 @@ impl Tab {
                     is_first_run,
                     run_command,
                 ));
+            return;
+        }
+        if !is_first_run && run_command.drop_to_shell_on_exit {
+            self.drop_to_shell(id, run_command.cwd, None).non_fatal();
             return;
         }
         if self.floating_panes.panes_contain(&id) {

@@ -17911,3 +17911,127 @@ fn floating_plugin_panes_are_not_shown_again_when_their_tab_returns_with_the_sur
         "a plugin whose floating surface is hidden should not be told it is visible when its tab returns"
     );
 }
+
+mod resurrected_command_tests {
+    use super::*;
+    use crate::pty::PtyInstruction;
+
+    #[test]
+    fn resurrected_commands_exit_to_shell_with_dynamic_titles() {
+        for floating in [false, true] {
+            for custom_name in [None, Some("my work")] {
+                for status in [Some(0), Some(1), None] {
+                    let mut tab = create_new_tab(
+                        Size {
+                            cols: 121,
+                            rows: 20,
+                        },
+                        false,
+                    );
+                    tab.default_shell = PathBuf::from("/bin/bash");
+                    let id = if floating {
+                        tab.new_floating_pane(
+                            PaneId::Terminal(2),
+                            None,
+                            None,
+                            false,
+                            true,
+                            None,
+                            None,
+                        )
+                        .unwrap();
+                        PaneId::Terminal(2)
+                    } else {
+                        PaneId::Terminal(1)
+                    };
+                    let (sender, receiver): ChannelWithContext<PtyInstruction> = unbounded();
+                    tab.senders.replace_to_pty(SenderWithContext::new(sender));
+                    let command = RunCommand {
+                        command: "vi".into(),
+                        args: vec!["file.txt".into()],
+                        cwd: Some("/tmp".into()),
+                        hold_on_close: true,
+                        drop_to_shell_on_exit: true,
+                        ..Default::default()
+                    };
+                    let pane = tab.get_pane_with_id_mut(id).unwrap();
+                    pane.set_title(command.to_string());
+                    if let Some(name) = custom_name {
+                        pane.rename(name.as_bytes().to_vec());
+                    }
+                    tab.hold_pane(id, None, true, command.clone());
+                    assert!(tab.get_pane_with_id(id).unwrap().is_held());
+                    assert!(
+                        receiver.try_recv().is_err(),
+                        "must wait for initial consent"
+                    );
+                    tab.get_pane_with_id_mut(id).unwrap().rerun().unwrap();
+                    tab.hold_pane(id, status, false, command);
+                    let pane = tab.get_pane_with_id(id).unwrap();
+                    assert!(!pane.is_held());
+                    assert!(pane.invoked_with().is_none());
+                    assert_eq!(pane.current_title(), custom_name.unwrap_or("bash"));
+                    assert_eq!(pane.custom_title().as_deref(), custom_name);
+                    match receiver.try_recv().unwrap().0 {
+                        PtyInstruction::DropToShellInPane {
+                            pane_id,
+                            shell,
+                            working_dir,
+                            ..
+                        } => {
+                            assert_eq!(pane_id, id);
+                            assert_eq!(shell, Some("/bin/bash".into()));
+                            assert_eq!(working_dir, Some("/tmp".into()));
+                        },
+                        other => panic!("unexpected instruction: {other:?}"),
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn explicit_command_panes_still_wait_for_rerun() {
+        let mut tab = create_new_tab(
+            Size {
+                cols: 121,
+                rows: 20,
+            },
+            false,
+        );
+        let command = RunCommand {
+            command: "vi".into(),
+            hold_on_close: true,
+            ..Default::default()
+        };
+        tab.hold_pane(PaneId::Terminal(1), Some(0), false, command);
+        assert!(tab.get_pane_with_id(PaneId::Terminal(1)).unwrap().is_held());
+    }
+
+    #[test]
+    fn dropping_to_shell_clears_command_identity_but_preserves_custom_name() {
+        let mut tab = create_new_tab(
+            Size {
+                cols: 121,
+                rows: 20,
+            },
+            false,
+        );
+        tab.default_shell = "/bin/bash".into();
+        let id = PaneId::Terminal(1);
+        let command = RunCommand {
+            command: "vi".into(),
+            args: vec!["file.txt".into()],
+            ..Default::default()
+        };
+        tab.get_pane_with_id_mut(id)
+            .unwrap()
+            .set_title(command.to_string());
+        tab.hold_pane(id, None, true, command);
+        tab.drop_to_shell(id, Some("/tmp".into()), None).unwrap();
+        let pane = tab.get_pane_with_id(id).unwrap();
+        assert!(!pane.is_held());
+        assert!(pane.invoked_with().is_none());
+        assert_eq!(pane.current_title(), "bash");
+    }
+}

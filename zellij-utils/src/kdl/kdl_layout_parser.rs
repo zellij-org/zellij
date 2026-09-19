@@ -75,6 +75,7 @@ impl<'a> KdlLayoutParser<'a> {
             || word == "tab"
             || word == "args"
             || word == "close_on_exit"
+            || word == "drop_to_shell_on_exit"
             || word == "start_suspended"
             || word == "borderless"
             || word == "focus"
@@ -98,6 +99,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "cwd"
             || property_name == "args"
             || property_name == "close_on_exit"
+            || property_name == "drop_to_shell_on_exit"
             || property_name == "start_suspended"
             || property_name == "split_direction"
             || property_name == "pane"
@@ -119,6 +121,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "cwd"
             || property_name == "args"
             || property_name == "close_on_exit"
+            || property_name == "drop_to_shell_on_exit"
             || property_name == "start_suspended"
             || property_name == "x"
             || property_name == "y"
@@ -450,6 +453,15 @@ impl<'a> KdlLayoutParser<'a> {
                 pane_node,
             )?;
         }
+        let drop_to_shell_on_exit =
+            kdl_get_bool_property_or_child_value_with_error!(pane_node, "drop_to_shell_on_exit")
+                .unwrap_or(false);
+        if drop_to_shell_on_exit && (command.is_none() || close_on_exit == Some(true)) {
+            return Err(kdl_parsing_error!(
+                "drop_to_shell_on_exit requires a command and cannot be combined with close_on_exit true".into(),
+                pane_node
+            ));
+        }
         let hold_on_close = close_on_exit.map(|c| !c).unwrap_or(true);
         let hold_on_start = start_suspended.map(|c| c).unwrap_or(false);
         match (command, edit, cwd) {
@@ -459,6 +471,7 @@ impl<'a> KdlLayoutParser<'a> {
                 args: args.unwrap_or_else(|| vec![]),
                 cwd,
                 hold_on_close,
+                drop_to_shell_on_exit,
                 hold_on_start,
                 ..Default::default()
             }))),

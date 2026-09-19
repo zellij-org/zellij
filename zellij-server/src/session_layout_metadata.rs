@@ -288,6 +288,11 @@ impl SessionLayoutMetadata {
                         } else {
                             let mut run_command = RunCommand::new(PathBuf::from(command_name));
                             run_command.args = args;
+                            run_command.drop_to_shell_on_exit = match &pane_layout_metadata.run {
+                                None | Some(Run::Cwd(_)) => true,
+                                Some(Run::Command(previous)) => previous.drop_to_shell_on_exit,
+                                _ => false,
+                            };
                             pane_layout_metadata.run = Some(Run::Command(run_command));
                         }
                     }
@@ -379,6 +384,10 @@ impl SessionLayoutMetadata {
 
         let upgrade_pane = |pane: &mut PaneLayoutMetadata| {
             if let Some(Run::Command(run_command)) = &pane.run {
+                // Keep the command and its shell-return policy: EditFile closes the pane.
+                if run_command.drop_to_shell_on_exit {
+                    return;
+                }
                 let command_binary_name = run_command
                     .command
                     .file_name()
@@ -732,6 +741,75 @@ mod tests {
 
     fn get_first_tiled_run(meta: &SessionLayoutMetadata) -> Option<&Run> {
         meta.tabs[0].tiled_panes[0].run.as_ref()
+    }
+
+    #[test]
+    fn explicit_command_panes_keep_their_exit_policy_during_discovery() {
+        let pane = make_command_pane(1, "watch", vec!["date"]);
+        let mut meta = session_with_editor("vi", vec![pane]);
+        meta.update_terminal_commands(HashMap::from([(1, vec!["watch".into(), "date".into()])]));
+        match get_first_tiled_run(&meta).unwrap() {
+            Run::Command(command) => assert!(!command.drop_to_shell_on_exit),
+            _ => panic!("expected command"),
+        }
+    }
+
+    #[test]
+    fn shell_return_policy_survives_repeated_discovery_and_ipc() {
+        let mut pane = make_command_pane(1, "vi", vec!["file.txt"]);
+        if let Some(Run::Command(command)) = pane.run.as_mut() {
+            command.drop_to_shell_on_exit = true;
+        }
+        let mut meta = session_with_editor("vi", vec![pane]);
+        meta.update_terminal_commands(HashMap::from([(1, vec!["vi".into(), "file.txt".into()])]));
+        let run = get_first_tiled_run(&meta).unwrap().clone();
+        let proto: zellij_utils::client_server_contract::client_server_contract::Run =
+            run.clone().into();
+        let decoded: Run = proto.try_into().unwrap();
+        assert_eq!(decoded, run);
+        match decoded {
+            Run::Command(command) => assert!(command.drop_to_shell_on_exit),
+            _ => panic!("expected command"),
+        }
+    }
+
+    #[test]
+    fn resurrected_shell_commands_return_to_shell() {
+        for floating in [false, true] {
+            let mut pane = make_command_pane(1, "/bin/bash", vec![]);
+            pane.run = None; // A shell pane, not an explicitly opened command pane.
+            pane.title = Some("my work".into());
+            let mut meta = SessionLayoutMetadata::default();
+            meta.add_tab(
+                "tab".into(),
+                true,
+                false,
+                if floating { vec![] } else { vec![pane.clone()] },
+                if floating { vec![pane] } else { vec![] },
+            );
+            meta.update_default_shell(PathBuf::from("/bin/bash"));
+            meta.update_terminal_commands(HashMap::from([(
+                1,
+                vec!["vi".into(), "file.txt".into()],
+            )]));
+            meta.update_default_editor(&Some(PathBuf::from("vi")));
+            meta.detect_editor_panes();
+            let (serialized, _) =
+                zellij_utils::session_serialization::serialize_session_layout(meta.into()).unwrap();
+            assert!(
+                serialized.contains("drop_to_shell_on_exit true"),
+                "{serialized}"
+            );
+            assert!(serialized.contains("name=\"my work\""));
+            assert!(serialized.contains("start_suspended true"));
+            let parsed = Layout::from_kdl(&serialized, None, None, None).unwrap();
+            let run = if floating {
+                parsed.tabs[0].2[0].run.as_ref()
+            } else {
+                parsed.tabs[0].1.children[0].run.as_ref()
+            };
+            assert!(matches!(run, Some(Run::Command(command)) if command.drop_to_shell_on_exit));
+        }
     }
 
     #[test]

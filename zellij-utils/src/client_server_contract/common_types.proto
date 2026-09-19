@@ -944,6 +944,7 @@ message RunCommandAction {
   bool hold_on_start = 6;                              // Renumbered
   optional OriginatingPlugin originating_plugin = 7;   // Added missing originating_plugin field
   bool use_terminal_title = 8;                         // Added missing use_terminal_title field
+  bool drop_to_shell_on_exit = 9;
 }
 
 message TiledPaneLayout {

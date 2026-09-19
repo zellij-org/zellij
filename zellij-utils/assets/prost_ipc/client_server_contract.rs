@@ -1604,6 +1604,8 @@ pub struct RunCommandAction {
     /// Added missing use_terminal_title field
     #[prost(bool, tag="8")]
     pub use_terminal_title: bool,
+    #[prost(bool, tag = "9")]
+    pub drop_to_shell_on_exit: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
