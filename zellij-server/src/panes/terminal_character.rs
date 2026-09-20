@@ -368,6 +368,14 @@ impl CharacterStyles {
         if self.dim != new_styles.dim {
             diff.dim = new_styles.dim;
         }
+        // Bold and dim share a reset code.
+        // If we reset one we need to
+        // reapply the other.
+        match (diff.bold, diff.dim) {
+            (Some(AnsiCode::Reset), None) => diff.dim = self.dim,
+            (None, Some(AnsiCode::Reset)) => diff.bold = self.bold,
+            _ => {}
+        };
         if self.italic != new_styles.italic {
             diff.italic = new_styles.italic;
         }
