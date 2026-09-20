@@ -1455,22 +1455,17 @@ pub fn start_server_impl(
                     }
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state, session_data);
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
-                        .unwrap();
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
-                        .unwrap();
+                    // `session_data` is None until the first client initializes the session, so
+                    // a connection that is accepted and closed before that has nothing to
+                    // notify. See the watcher branch above for the same guard.
+                    if let Some(session_data) = session_data.write().unwrap().as_ref() {
+                        let _ = session_data
+                            .senders
+                            .send_to_screen(ScreenInstruction::RemoveClient(client_id));
+                        let _ = session_data
+                            .senders
+                            .send_to_plugin(PluginInstruction::RemoveClient(client_id));
+                    }
                 }
             },
             ServerInstruction::SendWebClientsForbidden(client_id) => {
