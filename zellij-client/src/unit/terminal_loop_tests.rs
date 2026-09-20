@@ -362,10 +362,15 @@ async fn test_stdin_forwarded_to_terminal_websocket() {
 
     let os_input = Box::new(TestClientOsApi::new(stdin_rx, signal_rx));
 
-    let loop_handle =
-        tokio::spawn(
-            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
-        );
+    let loop_handle = tokio::spawn(async move {
+        run_remote_client_terminal_loop(
+            os_input,
+            connections,
+            None,
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .await
+    });
 
     let test_data = b"hello from stdin\n".to_vec();
     stdin_tx.send(test_data.clone()).unwrap();
@@ -433,10 +438,15 @@ async fn test_terminal_output_written_to_stdout() {
     let stdout_buffer = os_input.stdout_buffer.clone();
     let os_input = Box::new(os_input);
 
-    let loop_handle =
-        tokio::spawn(
-            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
-        );
+    let loop_handle = tokio::spawn(async move {
+        run_remote_client_terminal_loop(
+            os_input,
+            connections,
+            None,
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .await
+    });
 
     let test_output = "Hello from terminal";
     server
@@ -505,10 +515,15 @@ async fn test_resize_signal_sends_control_message() {
 
     let os_input = Box::new(TestClientOsApi::new(stdin_rx, signal_rx));
 
-    let loop_handle =
-        tokio::spawn(
-            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
-        );
+    let loop_handle = tokio::spawn(async move {
+        run_remote_client_terminal_loop(
+            os_input,
+            connections,
+            None,
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .await
+    });
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
@@ -593,10 +608,15 @@ async fn test_quit_signal_exits_loop() {
 
     let os_input = Box::new(TestClientOsApi::new(stdin_rx, signal_rx));
 
-    let loop_handle =
-        tokio::spawn(
-            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
-        );
+    let loop_handle = tokio::spawn(async move {
+        run_remote_client_terminal_loop(
+            os_input,
+            connections,
+            None,
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .await
+    });
 
     signal_tx.send(SignalEvent::Quit).unwrap();
 
@@ -648,10 +668,15 @@ async fn test_websocket_close_exits_loop() {
 
     let os_input = Box::new(TestClientOsApi::new(stdin_rx, signal_rx));
 
-    let loop_handle =
-        tokio::spawn(
-            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
-        );
+    let loop_handle = tokio::spawn(async move {
+        run_remote_client_terminal_loop(
+            os_input,
+            connections,
+            None,
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .await
+    });
 
     server
         .terminal_to_client_tx
@@ -708,10 +733,15 @@ async fn test_control_message_handling() {
     let terminal_size = os_input.terminal_size;
     let os_input = Box::new(os_input);
 
-    let loop_handle =
-        tokio::spawn(
-            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
-        );
+    let loop_handle = tokio::spawn(async move {
+        run_remote_client_terminal_loop(
+            os_input,
+            connections,
+            None,
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .await
+    });
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
@@ -816,10 +846,15 @@ async fn test_nested_ping_frame_is_answered_locally_and_stripped_from_forwarded_
     let stdout_buffer = os_input.stdout_buffer.clone();
     let os_input = Box::new(os_input);
 
-    let loop_handle =
-        tokio::spawn(
-            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
-        );
+    let loop_handle = tokio::spawn(async move {
+        run_remote_client_terminal_loop(
+            os_input,
+            connections,
+            None,
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .await
+    });
 
     let mut chunk = b"abc".to_vec();
     chunk.extend_from_slice(&zellij_utils::nested_session::encode_frame(
@@ -870,10 +905,15 @@ async fn test_nested_announce_ack_is_relayed_over_control_websocket() {
     let (_signal_tx, signal_rx) = mpsc::unbounded_channel();
     let os_input = Box::new(TestClientOsApi::new(stdin_rx, signal_rx));
 
-    let loop_handle =
-        tokio::spawn(
-            async move { run_remote_client_terminal_loop(os_input, connections, None).await },
-        );
+    let loop_handle = tokio::spawn(async move {
+        run_remote_client_terminal_loop(
+            os_input,
+            connections,
+            None,
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .await
+    });
 
     let announce_ack = zellij_utils::nested_session::NestedSessionMessage::AnnounceAck {
         ancestry: vec!["outer-host".to_owned()],

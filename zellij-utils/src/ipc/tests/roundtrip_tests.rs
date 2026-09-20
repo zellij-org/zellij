@@ -424,6 +424,7 @@ fn test_client_messages() {
             host_terminal_env: [("TERM".to_owned(), "xterm-kitty".to_owned())]
                 .into_iter()
                 .collect(),
+            initial_panes: None,
         },
         is_web_client: true,
     });
@@ -443,6 +444,7 @@ fn test_client_messages() {
             host_terminal_env: [("TERM".to_owned(), "xterm-kitty".to_owned())]
                 .into_iter()
                 .collect(),
+            initial_panes: None,
         },
         is_web_client: true,
     });
@@ -456,6 +458,7 @@ fn test_client_messages() {
                 theme: Some("theme".to_owned()),
                 theme_dark: Some("theme_dark".to_owned()),
                 theme_light: Some("theme_light".to_owned()),
+                explicit_theme_hue: Some(crate::data::ThemeHue::Light),
                 default_mode: Some(InputMode::Normal),
                 default_shell: Some(PathBuf::from("default_shell")),
                 default_cwd: Some(PathBuf::from("default_cwd")),
@@ -492,6 +495,7 @@ fn test_client_messages() {
                 show_release_notes: Some(true),
                 advanced_mouse_actions: Some(true),
                 mouse_scroll_resize: Some(true),
+                scroll_mode_sync: Some(true),
                 web_server_ip: Some("1.1.1.1".parse().unwrap()),
                 web_server_port: Some(8080),
                 web_server_cert: Some(PathBuf::from("web_server_cert")),
@@ -520,6 +524,16 @@ fn test_client_messages() {
             host_terminal_env: [("TERM".to_owned(), "xterm-kitty".to_owned())]
                 .into_iter()
                 .collect(),
+            initial_panes: Some(vec![
+                CommandOrPlugin::Command(RunCommandAction {
+                    command: PathBuf::from("htop"),
+                    args: vec!["-d".to_owned(), "5".to_owned()],
+                    cwd: Some(PathBuf::from("/path/to/cwd")),
+                    hold_on_close: true,
+                    ..Default::default()
+                }),
+                CommandOrPlugin::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin::default())),
+            ]),
         },
         is_web_client: true,
     });

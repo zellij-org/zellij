@@ -369,6 +369,18 @@ pub enum Sessions {
         /// Skip TLS certificate validation (DANGEROUS — development only)
         #[clap(long, value_parser)]
         insecure: bool,
+
+        /// Command to run in the first pane of the session, if it is created
+        #[clap(value_parser, last(true))]
+        initial_command: Vec<String>,
+
+        /// Close the initial command's pane immediately when it exits
+        #[clap(long, requires("initial_command"))]
+        close_on_exit: bool,
+
+        /// Start the initial command suspended, only running it after you first press ENTER
+        #[clap(long, requires("initial_command"))]
+        start_suspended: bool,
     },
 
     /// Watch a session (read-only)

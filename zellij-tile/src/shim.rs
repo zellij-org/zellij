@@ -502,7 +502,7 @@ pub fn open_terminal<P: AsRef<Path>>(path: P) -> Option<PaneId> {
 }
 
 /// Open a new terminal pane to the specified location on the host filesystem
-/// This variant is identical to open_terminal, excpet it opens it near the plugin regardless of
+/// This variant is identical to open_terminal, except it opens it near the plugin regardless of
 /// whether the user was focused on it or not
 pub fn open_terminal_near_plugin<P: AsRef<Path>>(path: P) -> Option<PaneId> {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
@@ -535,7 +535,7 @@ pub fn open_terminal_floating<P: AsRef<Path>>(
 }
 
 /// Open a new floating terminal pane to the specified location on the host filesystem
-/// This variant is identical to open_terminal_floating, excpet it opens it near the plugin regardless of
+/// This variant is identical to open_terminal_floating, except it opens it near the plugin regardless of
 /// whether the user was focused on it or not
 pub fn open_terminal_floating_near_plugin<P: AsRef<Path>>(
     path: P,
@@ -1380,7 +1380,7 @@ pub fn undo_rename_tab() {
     unsafe { host_run_plugin_command() };
 }
 
-/// Compeltely quit Zellij for this and all other connected clients
+/// Completely quit Zellij for this and all other connected clients
 pub fn quit_zellij() {
     let plugin_command = PluginCommand::QuitZellij;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1649,7 +1649,7 @@ pub fn block_cli_pipe_input(pipe_name: &str) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Send output to the output side of a pipe, ths does not affect the input side of same pipe
+/// Send output to the output side of a pipe, this does not affect the input side of same pipe
 pub fn cli_pipe_output(pipe_name: &str, output: &str) {
     let plugin_command = PluginCommand::CliPipeOutput(pipe_name.to_owned(), output.to_owned());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

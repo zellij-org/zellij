@@ -523,6 +523,44 @@ fn focusing_a_smaller_tab_leaves_nothing_behind_outside_it() {
 }
 
 #[test]
+fn closing_a_larger_tab_leaves_nothing_behind_outside_the_one_returned_to() {
+    let mut zellij = start_zellij();
+    let first_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    mark_pane(zellij.main_client(), &first_terminal, "oneone");
+
+    let second_client = zellij.attach_client(LARGER_CLIENT_SIZE);
+    second_client.wait_until(
+        "second client attached to the shared tab",
+        |grid_snapshot| settled_in_tab_sized(grid_snapshot, TERMINAL_SIZE, "oneone"),
+    );
+    let second_tab_terminal = open_marked_tab(&zellij, &second_client, "twotwo");
+    second_tab_terminal.wait_for_size("second tab laid out for its lone viewer", |cols, rows| {
+        (cols, rows) == pane_size_in_tab_sized(LARGER_CLIENT_SIZE)
+    });
+
+    close_focused_tab(&second_client);
+
+    let main_grid = zellij.wait_until("main client settled on the shared tab", |grid_snapshot| {
+        settled_in_normal_mode(grid_snapshot, TERMINAL_SIZE, "oneone")
+            && grid_snapshot.contains("Tab #1 [ ]")
+    });
+    let second_grid =
+        second_client.wait_until("larger client settled on the shared tab", |grid_snapshot| {
+            settled_in_normal_mode(grid_snapshot, TERMINAL_SIZE, "oneone")
+                && grid_snapshot.contains("Tab #1 [ ]")
+                && !grid_snapshot.contains("twotwo")
+        });
+
+    assert_eq!(
+        rendered_content(&second_grid),
+        rendered_content(&main_grid),
+        "a client returning from a tab larger than the one it lands in must not leave that tab's leftovers around it"
+    );
+    second_client.quit();
+    zellij.quit();
+}
+
+#[test]
 fn opening_a_new_tab_regrows_the_tab_its_creator_left() {
     let mut zellij = start_zellij();
     let first_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);

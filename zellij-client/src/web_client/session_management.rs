@@ -103,6 +103,7 @@ pub fn create_first_message(
             force_run_layout_commands: false,
             cwd: None,
             host_terminal_env: Default::default(),
+            initial_panes: None,
         };
 
         ClientToServerMsg::FirstClientConnected {
@@ -123,6 +124,7 @@ pub fn create_first_message(
             force_run_layout_commands: false,
             cwd: None,
             host_terminal_env: Default::default(),
+            initial_panes: None,
         };
         let is_web_client = true;
 

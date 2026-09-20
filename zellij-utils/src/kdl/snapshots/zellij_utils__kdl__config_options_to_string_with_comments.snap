@@ -32,6 +32,12 @@ theme "dracula"
 // 
 // theme_light "solarized-light"
  
+// Pin the session to a dark or light appearance, ignoring what the
+// host terminal reports. When unset, the host terminal decides.
+// Options: dark, light
+// 
+// explicit_theme_hue "dark"
+ 
 // Choose the base input mode of zellij.
 // Default: normal
 // 
@@ -283,6 +289,10 @@ web_sharing "disabled"
 // Whether Ctrl+ScrollWheel resizes panes
 // default is true
 // mouse_scroll_resize false
+ 
+// Whether scrolling a pane implicitly enters and exits Scroll mode
+// default is true
+// scroll_mode_sync false
  
 // Whether to enable mouse hover visual effects (frame highlight and help text)
 // default is true

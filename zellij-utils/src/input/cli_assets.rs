@@ -1,4 +1,4 @@
-use crate::data::LayoutInfo;
+use crate::data::{CommandOrPlugin, LayoutInfo};
 use crate::input::options::Options;
 use crate::pane_size::Size;
 use crate::{
@@ -47,6 +47,7 @@ pub struct CliAssets {
     pub force_run_layout_commands: bool,
     pub cwd: Option<PathBuf>,
     pub host_terminal_env: BTreeMap<String, String>,
+    pub initial_panes: Option<Vec<CommandOrPlugin>>,
 }
 
 impl CliAssets {

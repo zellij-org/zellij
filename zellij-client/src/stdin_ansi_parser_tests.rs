@@ -378,6 +378,30 @@ fn osc_99_routes_into_desktop_notifications() {
 }
 
 #[test]
+fn osc_99_does_not_leak_into_an_open_forwarding_window() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(7);
+    let mut chunk = Vec::new();
+    chunk.extend_from_slice(b"\x1b]99;i=p1.myid;\x1b\\");
+    chunk.extend_from_slice(b"\x1b]11;rgb:1111/1111/1111\x1b\\");
+    chunk.extend_from_slice(b"\x1b[c");
+    let out = parser.feed(&chunk);
+    assert_eq!(out.desktop_notifications.len(), 1);
+    let (token, reply_bytes) = out.completed_forward.unwrap();
+    assert_eq!(token, 7);
+    assert!(
+        reply_bytes.windows(4).any(|w| w == b"]11;"),
+        "the reply the pane asked for is forwarded: {:?}",
+        reply_bytes
+    );
+    assert!(
+        !reply_bytes.windows(4).any(|w| w == b"]99;"),
+        "the notification response is not: {:?}",
+        reply_bytes
+    );
+}
+
+#[test]
 fn fragmented_osc_99_emits_one_notification() {
     // Cross-chunk regression: OSC 99 split across two feed() calls
     // must still emit exactly one notification, with no leak into

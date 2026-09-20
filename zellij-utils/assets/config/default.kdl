@@ -367,6 +367,21 @@ load_plugins {
 //
 // theme "default"
 
+// Themes to use when the host terminal reports a dark or light color palette.
+// Both must be set for automatic switching to take place, otherwise `theme`
+// remains authoritative. Until the host terminal reports (or if it never does),
+// the dark theme is used.
+//
+// theme_dark "nightfox"
+// theme_light "dayfox"
+
+// Pin the session to a dark or light appearance, ignoring what the host
+// terminal reports. Resolved before the first render. When unset, the host
+// terminal decides.
+// Options: dark, light
+//
+// explicit_theme_hue "dark"
+
 // The name of the default layout to load on startup
 // Default: "default"
 // (Requires restart)
@@ -566,6 +581,11 @@ load_plugins {
 // Default: true
 //
 // mouse_scroll_resize false
+
+// Whether scrolling a pane implicitly enters and exits Scroll mode
+// Default: true
+//
+// scroll_mode_sync false
 
 // Whether to enable mouse hover visual effects (frame highlight and help text)
 // Default: true

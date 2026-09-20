@@ -1207,6 +1207,22 @@ fn run_kitty_frame(
     output.serialize().unwrap().remove(&1).unwrap_or_default()
 }
 
+fn run_kitty_frame_for_panes(
+    parts: &KittyTestParts,
+    chunks_by_pane: Vec<(PaneId, Vec<KittyImageChunk>)>,
+    visible_panes: HashSet<PaneId>,
+) -> String {
+    let mut output = create_test_kitty_output(parts);
+    let client_ids: HashSet<ClientId> = create_test_clients(1);
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    output.add_clients(&client_ids, link_handler, None);
+    output.set_kitty_visible_panes(1, visible_panes);
+    for (pane_id, chunks) in chunks_by_pane {
+        output.add_kitty_image_chunks_to_client(1, pane_id, chunks, None);
+    }
+    output.serialize().unwrap().remove(&1).unwrap_or_default()
+}
+
 fn run_kitty_frame_with_host_clear(parts: &KittyTestParts, chunks: Vec<KittyImageChunk>) -> String {
     let mut output = create_test_kitty_output(parts);
     let client_ids: HashSet<ClientId> = create_test_clients(1);
@@ -1369,6 +1385,41 @@ fn kitty_diff_move_remove_free_retransmit() {
     let new_internal = store_test_kitty_image(&parts.0, 30, 40);
     let frame_5 = run_kitty_frame(&parts, vec![kitty_chunk(new_internal, 2, 0, 0)], None);
     assert!(frame_5.contains("\u{1b}_Ga=t,q=2,f=32,t=d,i=2000000001,"));
+}
+
+#[test]
+fn kitty_placements_of_pane_dropped_from_visible_set_are_deleted() {
+    let parts = create_test_kitty_parts();
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let both_panes_visible: HashSet<PaneId> = [PaneId::Terminal(1), PaneId::Terminal(2)]
+        .into_iter()
+        .collect();
+    let frame_1 = run_kitty_frame_for_panes(
+        &parts,
+        vec![
+            (PaneId::Terminal(1), vec![kitty_chunk(internal, 1, 0, 0)]),
+            (PaneId::Terminal(2), vec![kitty_chunk(internal, 2, 0, 10)]),
+        ],
+        both_panes_visible,
+    );
+    assert_eq!(frame_1.matches("\u{1b}_Ga=p,q=2,").count(), 2);
+    assert!(!frame_1.contains("a=d"));
+
+    let only_second_pane_visible: HashSet<PaneId> = [PaneId::Terminal(2)].into_iter().collect();
+    let frame_2 = run_kitty_frame_for_panes(
+        &parts,
+        vec![(PaneId::Terminal(2), vec![kitty_chunk(internal, 2, 0, 10)])],
+        only_second_pane_visible,
+    );
+    assert_eq!(
+        frame_2.matches("\u{1b}_Ga=d,q=2,d=i,").count(),
+        1,
+        "the placement of the pane that left the visible set must be deleted"
+    );
+    assert!(
+        frame_2.contains("\u{1b}_Ga=d,q=2,d=i,i=2000000000,p=1\u{1b}\\"),
+        "the deleted placement must be the one belonging to the invisible pane"
+    );
 }
 
 #[test]

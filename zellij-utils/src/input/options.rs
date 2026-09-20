@@ -1,6 +1,6 @@
 //! Handles cli and configuration options
 use crate::cli::Command;
-use crate::data::{InputMode, WebSharing};
+use crate::data::{InputMode, ThemeHue, WebSharing};
 use clap::{Args, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -121,7 +121,7 @@ impl FromStr for PaneFrameStyle {
 /// Options that can be set either through the config file,
 /// or cli flags - cli flags should take precedence over the config file
 /// TODO: In order to correctly parse boolean flags, this is currently split
-/// into Options and CliOptions, this could be a good canditate for a macro
+/// into Options and CliOptions, this could be a good candidate for a macro
 pub struct Options {
     /// Allow plugins to use a more simplified layout
     /// that is compatible with more fonts (true or false)
@@ -141,6 +141,12 @@ pub struct Options {
     /// is missing the static `theme` remains authoritative.
     #[clap(long, value_parser)]
     pub theme_light: Option<String>,
+    /// Pin the session to a dark or light appearance ("dark" or "light"),
+    /// resolved before the first render and kept authoritative over ambient
+    /// host terminal reports (CSI 2031 / DSR 997). When unset, the session
+    /// follows the host terminal.
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
+    pub explicit_theme_hue: Option<ThemeHue>,
     /// Set the default mode
     #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     pub default_mode: Option<InputMode>,
@@ -337,6 +343,12 @@ pub struct Options {
     #[serde(default)]
     pub mouse_scroll_resize: Option<bool>,
 
+    /// Whether scrolling a pane implicitly enters (and leaving the scroll implicitly exits) Scroll mode
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub scroll_mode_sync: Option<bool>,
+
     /// Whether to enable mouse hover visual effects (frame highlight and help text)
     /// default is true
     #[clap(long, value_parser)]
@@ -514,6 +526,7 @@ impl Options {
         let theme = other.theme.or_else(|| self.theme.clone());
         let theme_dark = other.theme_dark.or_else(|| self.theme_dark.clone());
         let theme_light = other.theme_light.or_else(|| self.theme_light.clone());
+        let explicit_theme_hue = other.explicit_theme_hue.or(self.explicit_theme_hue);
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
@@ -553,6 +566,7 @@ impl Options {
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
         let mouse_scroll_resize = other.mouse_scroll_resize.or(self.mouse_scroll_resize);
+        let scroll_mode_sync = other.scroll_mode_sync.or(self.scroll_mode_sync);
         let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
         let mouse_hover_tips = other.mouse_hover_tips.or(self.mouse_hover_tips);
         let visual_bell = other.visual_bell.or(self.visual_bell);
@@ -594,6 +608,7 @@ impl Options {
             theme,
             theme_dark,
             theme_light,
+            explicit_theme_hue,
             default_mode,
             default_shell,
             default_cwd,
@@ -630,6 +645,7 @@ impl Options {
             show_release_notes,
             advanced_mouse_actions,
             mouse_scroll_resize,
+            scroll_mode_sync,
             mouse_hover_effects,
             mouse_hover_tips,
             visual_bell,
@@ -685,6 +701,7 @@ impl Options {
         let theme = other.theme.or_else(|| self.theme.clone());
         let theme_dark = other.theme_dark.or_else(|| self.theme_dark.clone());
         let theme_light = other.theme_light.or_else(|| self.theme_light.clone());
+        let explicit_theme_hue = other.explicit_theme_hue.or(self.explicit_theme_hue);
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
@@ -720,6 +737,7 @@ impl Options {
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
         let mouse_scroll_resize = other.mouse_scroll_resize.or(self.mouse_scroll_resize);
+        let scroll_mode_sync = other.scroll_mode_sync.or(self.scroll_mode_sync);
         let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
         let mouse_hover_tips = other.mouse_hover_tips.or(self.mouse_hover_tips);
         let visual_bell = other.visual_bell.or(self.visual_bell);
@@ -761,6 +779,7 @@ impl Options {
             theme,
             theme_dark,
             theme_light,
+            explicit_theme_hue,
             default_mode,
             default_shell,
             default_cwd,
@@ -797,6 +816,7 @@ impl Options {
             show_release_notes,
             advanced_mouse_actions,
             mouse_scroll_resize,
+            scroll_mode_sync,
             mouse_hover_effects,
             mouse_hover_tips,
             visual_bell,

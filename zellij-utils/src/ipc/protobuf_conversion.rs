@@ -845,6 +845,10 @@ impl From<crate::input::cli_assets::CliAssets>
             force_run_layout_commands: cli_assets.force_run_layout_commands,
             cwd: cli_assets.cwd.map(|p| p.to_string_lossy().to_string()),
             host_terminal_env: cli_assets.host_terminal_env.into_iter().collect(),
+            initial_panes: cli_assets
+                .initial_panes
+                .map(|panes| panes.into_iter().map(|p| p.into()).collect())
+                .unwrap_or_default(),
         }
     }
 }
@@ -875,6 +879,17 @@ impl TryFrom<crate::client_server_contract::client_server_contract::CliAssets>
             force_run_layout_commands: cli_assets.force_run_layout_commands,
             cwd: cli_assets.cwd.map(PathBuf::from),
             host_terminal_env: cli_assets.host_terminal_env.into_iter().collect(),
+            initial_panes: if cli_assets.initial_panes.is_empty() {
+                None
+            } else {
+                Some(
+                    cli_assets
+                        .initial_panes
+                        .into_iter()
+                        .map(|p| p.try_into())
+                        .collect::<Result<Vec<_>>>()?,
+                )
+            },
         })
     }
 }
@@ -945,6 +960,7 @@ impl From<crate::input::options::Options>
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
             mouse_scroll_resize: options.mouse_scroll_resize,
+            scroll_mode_sync: options.scroll_mode_sync,
             mouse_hover_effects: options.mouse_hover_effects,
             mouse_hover_tips: options.mouse_hover_tips,
             web_server_ip: options.web_server_ip.map(|ip| ip.to_string()),
@@ -981,6 +997,13 @@ impl From<crate::input::options::Options>
                     },
                     NestedSessionHandling::Descend => ProtoNestedSessionHandling::Descend as i32,
                     NestedSessionHandling::Never => ProtoNestedSessionHandling::Never as i32,
+                }
+            }),
+            explicit_theme_hue: options.explicit_theme_hue.map(|hue| {
+                use crate::client_server_contract::client_server_contract::ThemeHue as ProtoThemeHue;
+                match hue {
+                    crate::data::ThemeHue::Dark => ProtoThemeHue::Dark as i32,
+                    crate::data::ThemeHue::Light => ProtoThemeHue::Light as i32,
                 }
             }),
         }
@@ -1075,6 +1098,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
             mouse_scroll_resize: options.mouse_scroll_resize,
+            scroll_mode_sync: options.scroll_mode_sync,
             mouse_hover_effects: options.mouse_hover_effects,
             mouse_hover_tips: options.mouse_hover_tips,
             web_server_ip: options
@@ -1116,6 +1140,17 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                         Ok(crate::input::options::NestedSessionHandling::Never)
                     },
                     _ => Err(anyhow!("Invalid NestedSessionHandling value: {}", n)),
+                })
+                .transpose()?,
+            explicit_theme_hue: options
+                .explicit_theme_hue
+                .map(|hue| {
+                    use crate::client_server_contract::client_server_contract::ThemeHue as ProtoThemeHue;
+                    match ProtoThemeHue::try_from(hue).ok() {
+                        Some(ProtoThemeHue::Dark) => Ok(crate::data::ThemeHue::Dark),
+                        Some(ProtoThemeHue::Light) => Ok(crate::data::ThemeHue::Light),
+                        _ => Err(anyhow!("Invalid ThemeHue value: {}", hue)),
+                    }
                 })
                 .transpose()?,
         })

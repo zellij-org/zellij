@@ -1,6 +1,6 @@
 # How to release a zellij version
 
-This document is primarily target at zellij maintainers in need to (prepare to)
+This document is primarily targeted at zellij maintainers in need to (prepare to)
 release a new zellij version.
 
 
@@ -38,7 +38,7 @@ to make sure it works as expected.
        {"dl":"http://localhost:8000/dl","api":"http://localhost:8000"}
        ```
     1. Generate an access token for full repo access, we'll refer to this as
-       `$TOKEN` for the remained of this text
+       `$TOKEN` for the remainder of this text
     1. Create and push a commit with these changes. Provide the following HTTPS
        credentials:
         1. Username: Your git-forge username

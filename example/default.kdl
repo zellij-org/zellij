@@ -540,6 +540,11 @@ load_plugins {
 //
 // mouse_scroll_resize false
 
+// Whether scrolling a pane implicitly enters and exits Scroll mode
+// Default: true
+//
+// scroll_mode_sync false
+
 // Whether to enable mouse hover visual effects (frame highlight and help text)
 // Default: true
 //

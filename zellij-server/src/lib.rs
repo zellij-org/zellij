@@ -454,6 +454,7 @@ impl SessionMetaData {
                         .unwrap_or_else(|| default_palette().into()),
                     host_theme_dark,
                     host_theme_light,
+                    explicit_theme_hue: new_config.options.explicit_theme_hue,
                     simplified_ui: new_config.options.simplified_ui.unwrap_or(false),
                     default_shell: new_config.options.default_shell,
                     pane_frame_style,
@@ -471,6 +472,7 @@ impl SessionMetaData {
                         .advanced_mouse_actions
                         .unwrap_or(true),
                     mouse_scroll_resize: new_config.options.mouse_scroll_resize.unwrap_or(true),
+                    scroll_mode_sync: new_config.options.scroll_mode_sync.unwrap_or(true),
                     mouse_hover_effects: new_config.options.mouse_hover_effects.unwrap_or(true),
                     mouse_hover_tips: new_config.options.mouse_hover_tips.unwrap_or(true),
                     visual_bell: new_config.options.visual_bell.unwrap_or(true),
@@ -991,6 +993,7 @@ pub fn start_server_impl(
         match instruction {
             ServerInstruction::FirstClientConnected(cli_assets, is_web_client, client_id) => {
                 let host_terminal_env = cli_assets.host_terminal_env.clone();
+                let mut initial_panes = cli_assets.initial_panes.clone();
                 let (config, layout) = cli_assets.load_config_and_layout();
                 let layout_is_welcome_screen = cli_assets.layout
                     == Some(LayoutInfo::BuiltIn("welcome".to_owned()))
@@ -1083,11 +1086,16 @@ pub fn start_server_impl(
                     .cwd
                     .or_else(|| runtime_config_options.default_cwd);
 
-                let spawn_tabs = |tab_layout,
-                                  floating_panes_layout,
-                                  tab_name,
-                                  swap_layouts,
-                                  should_focus_tab| {
+                let mut spawn_tabs = |tab_layout,
+                                      floating_panes_layout,
+                                      tab_name,
+                                      swap_layouts,
+                                      should_focus_tab| {
+                    let initial_panes = if should_focus_tab {
+                        initial_panes.take()
+                    } else {
+                        None
+                    };
                     session_data
                         .read()
                         .unwrap()
@@ -1101,7 +1109,7 @@ pub fn start_server_impl(
                             floating_panes_layout,
                             tab_name,
                             swap_layouts,
-                            None,  // initial_panes
+                            initial_panes,
                             false, // block_on_first_terminal
                             should_focus_tab,
                             (client_id, is_web_client),
