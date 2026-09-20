@@ -409,27 +409,38 @@ pub enum SessionNameMatch {
     None,
 }
 
-pub fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKind> {
-    let sessions = get_sessions()?;
+fn match_session_name_in_sessions(prefix: &str, sessions: &[String]) -> SessionNameMatch {
+    #[cfg(windows)]
+    if let Some(session_name) = sessions
+        .iter()
+        .find(|name| name.eq_ignore_ascii_case(prefix))
+    {
+        return SessionNameMatch::Exact(session_name.to_string());
+    }
 
     let filtered_sessions: Vec<_> = sessions
         .iter()
-        .filter(|s| s.0.starts_with(prefix))
+        .map(String::as_str)
+        .filter(|name| name.starts_with(prefix))
         .collect();
 
-    if filtered_sessions.iter().any(|s| s.0 == prefix) {
-        return Ok(SessionNameMatch::Exact(prefix.to_string()));
+    if filtered_sessions.iter().any(|name| *name == prefix) {
+        return SessionNameMatch::Exact(prefix.to_string());
     }
 
-    Ok({
-        match &filtered_sessions[..] {
-            [] => SessionNameMatch::None,
-            [s] => SessionNameMatch::UniquePrefix(s.0.to_string()),
-            _ => SessionNameMatch::AmbiguousPrefix(
-                filtered_sessions.into_iter().map(|s| s.0.clone()).collect(),
-            ),
-        }
-    })
+    match &filtered_sessions[..] {
+        [] => SessionNameMatch::None,
+        [name] => SessionNameMatch::UniquePrefix((*name).to_string()),
+        _ => SessionNameMatch::AmbiguousPrefix(
+            filtered_sessions.into_iter().map(str::to_string).collect(),
+        ),
+    }
+}
+
+pub fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKind> {
+    let sessions = get_sessions()?;
+    let session_names: Vec<_> = sessions.into_iter().map(|(name, _)| name).collect();
+    Ok(match_session_name_in_sessions(prefix, &session_names))
 }
 
 pub fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
@@ -802,3 +813,57 @@ const NOUNS: &[&'static str] = &[
     "yak",
     "zebra",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session_names(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| name.to_string()).collect()
+    }
+
+    #[test]
+    fn matches_existing_session_names() {
+        let sessions = session_names(&["alpha", "alpine", "beta"]);
+
+        assert!(matches!(
+            match_session_name_in_sessions("alpha", &sessions),
+            SessionNameMatch::Exact(name) if name == "alpha"
+        ));
+        assert!(matches!(
+            match_session_name_in_sessions("alpin", &sessions),
+            SessionNameMatch::UniquePrefix(name) if name == "alpine"
+        ));
+        assert!(matches!(
+            match_session_name_in_sessions("alp", &sessions),
+            SessionNameMatch::AmbiguousPrefix(names)
+                if names == vec!["alpha".to_string(), "alpine".to_string()]
+        ));
+        assert!(matches!(
+            match_session_name_in_sessions("gamma", &sessions),
+            SessionNameMatch::None
+        ));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn matches_live_session_names_case_insensitively() {
+        let sessions = session_names(&["Test"]);
+
+        assert!(matches!(
+            match_session_name_in_sessions("test", &sessions),
+            SessionNameMatch::Exact(name) if name == "Test"
+        ));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn keeps_live_session_names_case_sensitive() {
+        let sessions = session_names(&["Test"]);
+
+        assert!(matches!(
+            match_session_name_in_sessions("test", &sessions),
+            SessionNameMatch::None
+        ));
+    }
+}
