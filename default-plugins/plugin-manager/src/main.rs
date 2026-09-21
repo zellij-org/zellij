@@ -841,26 +841,24 @@ impl State {
         plus_indication: usize,
         indices: Option<Vec<usize>>,
     ) -> NestedListItem {
-        let mut item = NestedListItem::new(
-            Text::from(format!("{} [+{}]", location_string, plus_indication))
-                .color_range(0, ..)
-                .color_range(1, location_string.chars().count() + 1..),
-        );
+        let mut item = Text::from(format!("{} [+{}]", location_string, plus_indication))
+            .color_range(0, ..)
+            .color_range(1, location_string.chars().count() + 1..);
         if let Some(indices) = indices {
             item = item.color_indices(3, indices);
         }
-        item
+        NestedListItem::new(item)
     }
     fn render_plugin_line(
         &self,
         location_string: String,
         indices: Option<Vec<usize>>,
     ) -> NestedListItem {
-        let mut item = NestedListItem::new(Text::from(location_string).color_range(0, ..));
+        let mut item = Text::from(location_string).color_range(0, ..);
         if let Some(indices) = indices {
             item = item.color_indices(3, indices);
         }
-        item
+        NestedListItem::new(item)
     }
     fn render_tab_line(&self, plugin_id: u32, max_width: usize) -> NestedListItem {
         let tab_of_plugin_id = self

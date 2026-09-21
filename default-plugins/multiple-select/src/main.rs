@@ -129,7 +129,7 @@ impl App {
     fn shortcuts_max_width(&self) -> usize {
         std::cmp::max(
             std::cmp::max(
-                self.group_actions_text().0.len(),
+                self.group_actions_text().len(),
                 Self::shortcuts_line1_text().0.len(),
             ),
             std::cmp::max(
@@ -139,7 +139,7 @@ impl App {
         )
     }
 
-    fn group_actions_text(&self) -> (&'static str, Text) {
+    fn group_actions_text(&self) -> Text {
         let count_text = if self.grouped_panes_count == 1 {
             format!("GROUP ACTIONS ({} SELECTED PANE)", self.grouped_panes_count)
         } else {
@@ -149,8 +149,7 @@ impl App {
             )
         };
 
-        let component = Text::from(count_text).color_all(2);
-        (Box::leak(count_text.into_boxed_str()), component)
+        Text::from(count_text).color_all(2)
     }
 
     fn shortcuts_line1_text() -> (&'static str, Text) {
@@ -343,7 +342,7 @@ impl App {
 
     fn render_shortcuts(&self, base_x: usize, base_y: usize) {
         let mut running_y = base_y;
-        print_text_with_coordinates(self.group_actions_text().1, base_x, running_y, None, None);
+        print_text_with_coordinates(self.group_actions_text(), base_x, running_y, None, None);
         running_y += 1;
 
         print_text_with_coordinates(

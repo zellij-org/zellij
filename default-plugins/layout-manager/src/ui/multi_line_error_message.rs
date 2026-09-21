@@ -14,7 +14,7 @@ impl MultiLineErrorMessage {
         print_text_with_coordinates(title, x, y, None, None);
 
         let mut current_y = y + 2;
-        for line in self.message.iter().take(max_rows) {
+        for line in self.message.iter().take(max_rows).cloned() {
             let text = Text::from(line).error_color_all();
             print_text_with_coordinates(text, x, current_y, None, None);
             current_y += 1;

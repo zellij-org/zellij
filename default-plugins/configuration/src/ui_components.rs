@@ -48,8 +48,8 @@ pub fn info_line(
     rows: usize,
     cols: usize,
     ui_size: usize,
-    notification: &Option<String>,
-    warning_text: &Option<String>,
+    notification: Option<String>,
+    warning_text: Option<String>,
     widths: Option<(usize, usize, usize)>,
 ) {
     let top_coordinates = if rows > 14 {
@@ -72,7 +72,7 @@ pub fn info_line(
             cols.saturating_sub(WIDTH_BREAKPOINTS.1) / 2
         }
     };
-    if let Some(notification) = &notification {
+    if let Some(notification) = notification {
         print_text_with_coordinates(
             Text::from(notification).color_range(3, ..),
             left_padding,

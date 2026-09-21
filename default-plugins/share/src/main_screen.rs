@@ -238,7 +238,7 @@ impl<'a> MainScreen<'a> {
 
     fn render_info(&self, layout: &Layout, y: usize) {
         if let Some(info) = self.info {
-            let info_text = Text::from(info).color_range(1, ..);
+            let info_text = Text::from(info.clone()).color_range(1, ..);
             print_text_with_coordinates(info_text, layout.base_x, y, None, None);
         }
     }

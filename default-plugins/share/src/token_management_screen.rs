@@ -5,9 +5,9 @@ struct ScreenContent {
     title: (String, Text),
     items: Vec<Vec<Text>>,
     help: (String, Text),
-    status_message: Option<(String, Text)>,
+    status_message: Option<Text>,
     max_width: usize,
-    new_token_line: Option<(String, Text)>,
+    new_token_line: Option<Text>,
 }
 
 #[derive(Debug)]
@@ -285,21 +285,21 @@ impl<'a> TokenManagementScreen<'a> {
         let mut items = vec![];
         for (i, (token, created_at, read_only)) in self.token_list.iter().enumerate() {
             let is_selected = Some(i) == self.selected_list_index;
-            let (row_text, row_items) =
+            let row_items =
                 self.create_token_item(token, created_at, *read_only, is_selected, &column_widths);
-            max_width = std::cmp::max(max_width, row_text.chars().count());
+            max_width = std::cmp::max(max_width, row_items.len());
             items.push(row_items);
         }
 
-        let (new_token_text, new_token_line) = self.create_new_token_line();
-        max_width = std::cmp::max(max_width, new_token_text.chars().count());
+        let new_token_line = self.create_new_token_line();
+        max_width = std::cmp::max(max_width, new_token_line.len());
 
         let (help_text, help_line) = self.create_help_line();
         max_width = std::cmp::max(max_width, help_text.chars().count());
 
         let status_message = self.create_status_message();
-        if let Some((ref text, _)) = status_message {
-            max_width = std::cmp::max(max_width, text.chars().count());
+        if let Some(text) = &status_message {
+            max_width = std::cmp::max(max_width, text.len());
         }
 
         max_width = std::cmp::min(max_width, max_table_width);
@@ -310,7 +310,7 @@ impl<'a> TokenManagementScreen<'a> {
             help: (help_text, help_line),
             status_message,
             max_width,
-            new_token_line: Some((new_token_text, new_token_line)),
+            new_token_line: Some(new_token_line),
         }
     }
 
@@ -409,7 +409,7 @@ impl<'a> TokenManagementScreen<'a> {
         is_read_only: bool,
         is_selected: bool,
         column_widths: &ColumnWidths,
-    ) -> (String, Vec<Text>) {
+    ) -> Vec<Text> {
         if is_selected {
             if let Some(new_name) = &self.renaming_token {
                 self.create_renaming_item(new_name, created_at, is_read_only, column_widths)
@@ -427,7 +427,7 @@ impl<'a> TokenManagementScreen<'a> {
         created_at: &str,
         is_read_only: bool,
         column_widths: &ColumnWidths,
-    ) -> (String, Vec<Text>) {
+    ) -> Vec<Text> {
         let truncated_name =
             self.truncate_token_name(new_name, column_widths.token.saturating_sub(1)); // -1 for cursor
         let item_text = format!("{}_", truncated_name);
@@ -444,13 +444,7 @@ impl<'a> TokenManagementScreen<'a> {
             Text::from(read_only_text).color_all(1),
             Text::from(controls_text),
         ];
-        (
-            format!(
-                "{} {} {} {}",
-                item_text, date_text, read_only_text, controls_text
-            ),
-            items,
-        )
+        items
     }
 
     fn create_selected_item(
@@ -459,7 +453,7 @@ impl<'a> TokenManagementScreen<'a> {
         created_at: &str,
         is_read_only: bool,
         column_widths: &ColumnWidths,
-    ) -> (String, Vec<Text>) {
+    ) -> Vec<Text> {
         let mut item_text = self.truncate_token_name(token, column_widths.token);
         if item_text.is_empty() {
             // otherwise the table gets messed up
@@ -494,13 +488,7 @@ impl<'a> TokenManagementScreen<'a> {
             controls_colored,
         ];
 
-        (
-            format!(
-                "{} {} {} {}",
-                item_text, date_text, read_only_text, controls_text
-            ),
-            items,
-        )
+        items
     }
 
     fn create_regular_item(
@@ -509,7 +497,7 @@ impl<'a> TokenManagementScreen<'a> {
         created_at: &str,
         is_read_only: bool,
         column_widths: &ColumnWidths,
-    ) -> (String, Vec<Text>) {
+    ) -> Vec<Text> {
         let mut item_text = self.truncate_token_name(token, column_widths.token);
         if item_text.is_empty() {
             // otherwise the table gets messed up
@@ -525,16 +513,10 @@ impl<'a> TokenManagementScreen<'a> {
             Text::from(read_only_text).color_all(1),
             Text::from(controls_text),
         ];
-        (
-            format!(
-                "{} {} {} {}",
-                item_text, date_text, read_only_text, controls_text
-            ),
-            items,
-        )
+        items
     }
 
-    fn create_new_token_line(&self) -> (String, Text) {
+    fn create_new_token_line(&self) -> Text {
         let full_create_text = "<n> - create new token, <o> - create read-only token".to_string();
         let medium_create_text = "<n> - new token, <o> - read-only".to_string();
         let short_create_text = "<n> - new, <o> - RO".to_string();
@@ -548,23 +530,20 @@ impl<'a> TokenManagementScreen<'a> {
                 name.clone()
             };
             let text = format!("{}_", truncated_name);
-            (text.clone(), Text::from(text).color_range(3, ..))
+            Text::from(text).color_range(3, ..)
         } else {
             // Check which text fits
             let (text_to_use, n_range, o_range) = if full_create_text.chars().count() <= self.cols {
-                (&full_create_text, 0..=2, 24..=26)
+                (full_create_text, 0..=2, 24..=26)
             } else if medium_create_text.chars().count() <= self.cols {
-                (&medium_create_text, 0..=2, 16..=19)
+                (medium_create_text, 0..=2, 16..=19)
             } else {
-                (&short_create_text, 0..=2, 11..=14)
+                (short_create_text, 0..=2, 11..=14)
             };
 
-            (
-                text_to_use.to_string(),
-                Text::from(text_to_use)
-                    .color_range(3, n_range)
-                    .color_range(3, o_range),
-            )
+            Text::from(text_to_use)
+                .color_range(3, n_range)
+                .color_range(3, o_range)
         }
     }
 
@@ -596,11 +575,11 @@ impl<'a> TokenManagementScreen<'a> {
         (text.to_string(), help_line)
     }
 
-    fn create_status_message(&self) -> Option<(String, Text)> {
-        if let Some(error) = &self.error {
-            Some((error.clone(), Text::from(error).color_range(3, ..)))
-        } else if let Some(info) = &self.info {
-            Some((info.clone(), Text::from(info).color_range(1, ..)))
+    fn create_status_message(&self) -> Option<Text> {
+        if let Some(error) = self.error {
+            Some(Text::from(error.clone()).color_range(3, ..))
+        } else if let Some(info) = self.info {
+            Some(Text::from(info.clone()).color_range(1, ..))
         } else {
             None
         }
@@ -655,7 +634,7 @@ impl<'a> TokenManagementScreen<'a> {
 
         print_table_with_coordinates(table, layout.base_x, layout.base_y + 1, None, None);
 
-        if let Some((_, new_token_text)) = content.new_token_line {
+        if let Some(new_token_text) = content.new_token_line {
             print_text_with_coordinates(
                 new_token_text,
                 layout.base_x,
@@ -665,7 +644,7 @@ impl<'a> TokenManagementScreen<'a> {
             );
         }
 
-        if let Some((_, status_text)) = content.status_message {
+        if let Some(status_text) = content.status_message {
             print_text_with_coordinates(status_text, layout.base_x, layout.status_y, None, None);
         } else {
             print_text_with_coordinates(content.help.1, layout.base_x, layout.help_y, None, None);

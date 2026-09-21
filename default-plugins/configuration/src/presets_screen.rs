@@ -256,7 +256,7 @@ impl PresetsScreen {
         rows: usize,
         cols: usize,
         ui_size: usize,
-        notification: &Option<String>,
+        notification: Option<String>,
     ) {
         if let Some(rebind_leaders_screen) = self.rebind_leaders_screen.as_mut() {
             return rebind_leaders_screen.render(rows, cols, ui_size, notification);
@@ -277,8 +277,8 @@ impl PresetsScreen {
             rows + 8,
             cols,
             ui_size,
-            &notification,
-            &self.warning_text(cols),
+            notification,
+            self.warning_text(cols),
             Some(self.main_screen_widths(&primary_modifier_key_text)),
         );
         // self.render_info_line(rows + 8, cols);
@@ -289,7 +289,7 @@ impl PresetsScreen {
         rows: usize,
         cols: usize,
         ui_size: usize,
-        notification: &Option<String>,
+        notification: Option<String>,
     ) {
         if let Some(rebind_leaders_screen) = self.rebind_leaders_screen.as_mut() {
             return rebind_leaders_screen.render(rows, cols, ui_size, notification);
@@ -312,8 +312,8 @@ impl PresetsScreen {
             rows,
             cols,
             ui_size,
-            &notification,
-            &warning_text,
+            notification,
+            warning_text,
             Some(self.main_screen_widths(&primary_modifier_key_text)),
         );
         self.render_help_text_main(rows, cols);

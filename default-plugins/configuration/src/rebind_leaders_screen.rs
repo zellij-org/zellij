@@ -271,7 +271,7 @@ impl RebindLeadersScreen {
         rows: usize,
         cols: usize,
         ui_size: usize,
-        notification: &Option<String>,
+        notification: Option<String>,
     ) {
         if self.is_rebinding_for_presets {
             back_to_presets();
@@ -283,7 +283,7 @@ impl RebindLeadersScreen {
             self.render_default_preset(rows, cols);
         }
         let warning_text = self.warning_text(cols);
-        info_line(rows, cols, ui_size, &notification, &warning_text, None);
+        info_line(rows, cols, ui_size, notification, warning_text, None);
     }
     fn render_unlock_first(&mut self, rows: usize, cols: usize) {
         self.render_screen_title_unlock_first(rows, cols);

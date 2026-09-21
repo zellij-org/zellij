@@ -494,15 +494,11 @@ mod tests {
     }
 
     #[test]
-    fn new_string_equivalent_to_from_str() {
+    fn from_str_equal_from_string() {
         let from_str = Text::from("x").serialize();
         let from_string = Text::from(String::from("x")).serialize();
 
         assert_eq!(from_str, from_string);
-
-        let plop = String::from("Plop");
-
-        assert_eq!(Text::from(plop), Text::from(plop));
     }
 
     #[test]

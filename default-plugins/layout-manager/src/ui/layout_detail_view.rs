@@ -94,7 +94,7 @@ impl<'a> LayoutDetail<'a> {
         let wrapped_lines = wrap_text_to_width(&full_text, max_cols);
 
         let mut current_y = y;
-        for line in wrapped_lines.iter().take(max_rows) {
+        for line in wrapped_lines.iter().take(max_rows).cloned() {
             let text = if line.contains(name) {
                 Text::from(line).color_substring(1, name)
             } else {
@@ -122,7 +122,7 @@ impl<'a> LayoutDetail<'a> {
 
         let mut current_y = y + 1; // + 1 (and saturating_sub(3) above) to be aligned with the
                                    // table on the left
-        for line in wrapped_lines.iter().take(available_rows) {
+        for line in wrapped_lines.iter().take(available_rows).cloned() {
             let text = Text::from(line).error_color_all();
             print_text_with_coordinates(text, x, current_y, None, None);
             current_y += 1;
