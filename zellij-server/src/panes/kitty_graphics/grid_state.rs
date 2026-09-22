@@ -1,5 +1,5 @@
 use super::parser::{DecodedImage, KittyCommand, KittyError, KittyErrorCode};
-use super::store::{InternalImageId, KittyImageStore};
+use super::store::{InternalImageId, KittyImageStore, KittyVariantKey};
 use crate::panes::sixel::PixelRect;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -19,8 +19,18 @@ pub struct KittyImageChunk {
     pub cell_offset_y: u32,
     pub z_index: i32,
     pub dest_cells: (u16, u16),
+    pub source_crop: PixelRect,
     pub scaled_px: Option<(usize, usize)>,
     pub placement_uid: u64,
+}
+
+impl KittyImageChunk {
+    pub fn variant_key(&self) -> Option<KittyVariantKey> {
+        self.scaled_px.map(|_| KittyVariantKey {
+            dest_cells: self.dest_cells,
+            source_rect: self.source_crop,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -348,7 +358,15 @@ impl KittyGrid {
             };
             self.kitty_image_store.borrow_mut().add_scaled_variant(
                 internal,
-                dest_cells,
+                KittyVariantKey {
+                    dest_cells,
+                    source_rect: PixelRect {
+                        x: source_x,
+                        y: source_y as isize,
+                        width: source_w,
+                        height: source_h,
+                    },
+                },
                 scaled_bytes,
             );
         }
@@ -881,7 +899,10 @@ impl KittyGrid {
                     if let Some(scaled_bytes) = scaled_bytes {
                         self.kitty_image_store.borrow_mut().add_scaled_variant(
                             internal,
-                            dest_cells,
+                            KittyVariantKey {
+                                dest_cells,
+                                source_rect,
+                            },
                             scaled_bytes,
                         );
                     }
@@ -1063,6 +1084,7 @@ impl KittyGrid {
                             cell_offset_y: placement.cell_offset.1,
                             z_index: placement.z_index,
                             dest_cells: placement.dest_cells,
+                            source_crop: placement.source_rect,
                             scaled_px: placement.scaled_px,
                             placement_uid: placement.placement_uid,
                         });
