@@ -124,6 +124,35 @@ impl CliArgs {
         }
         None
     }
+    /// The clap command, named after the running distribution rather than after Zellij
+    pub fn command_for_distribution() -> clap::Command {
+        use clap::CommandFactory;
+        let distribution = crate::distribution::distribution();
+        let command = CliArgs::command()
+            .name(distribution.name)
+            .bin_name(distribution.name);
+        if distribution.is_stock_zellij() {
+            command
+        } else {
+            static VERSION_STRING: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+            let version = VERSION_STRING.get_or_init(|| {
+                format!(
+                    "{} (zellij {})",
+                    distribution.version,
+                    crate::consts::VERSION
+                )
+            });
+            command.version(version.as_str())
+        }
+    }
+    pub fn parse_for_distribution() -> Self {
+        use clap::FromArgMatches;
+        let matches = CliArgs::command_for_distribution().get_matches();
+        match CliArgs::from_arg_matches(&matches) {
+            Ok(cli_args) => cli_args,
+            Err(e) => e.exit(),
+        }
+    }
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]

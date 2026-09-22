@@ -362,10 +362,12 @@ fn check_ipc_pipe_length(ipc_pipe: &Path) {
             "Error: the IPC socket path is too long ({} bytes, max {}):\n  {}\n\n\
              This is usually caused by a long $TMPDIR path.\n\
              To fix this, set a shorter socket directory, eg.:\n  \
-             ZELLIJ_SOCKET_DIR=/tmp/zellij zellij",
+             ZELLIJ_SOCKET_DIR=/tmp/{} {}",
             path_len,
             ZELLIJ_SOCK_MAX_LENGTH - 1,
-            ipc_pipe.display()
+            ipc_pipe.display(),
+            zellij_utils::distribution::name(),
+            zellij_utils::distribution::name()
         );
         std::process::exit(1);
     }
@@ -408,14 +410,18 @@ fn exit_after_startup_error(teardown: Option<TerminalTeardown>, message: String)
 
 fn spawn_server_error_message(e: io::Error) -> String {
     format!(
-        "Error: failed to start the Zellij server process:\n\n\
+        "Error: failed to start the {} server process:\n\n\
          Reason: {}\n\n\
-         This can happen if the Zellij binary cannot be executed, or if the server \
+         This can happen if the {} binary cannot be executed, or if the server \
          could not create its session socket - for example due to a permission issue \
          in the socket directory.\n\
          To fix a socket directory issue, set a writable socket directory, eg.:\n  \
-         ZELLIJ_SOCKET_DIR=/tmp/zellij-$USER zellij",
-        e
+         ZELLIJ_SOCKET_DIR=/tmp/{}-$USER {}",
+        zellij_utils::distribution::display_name(),
+        e,
+        zellij_utils::distribution::display_name(),
+        zellij_utils::distribution::name(),
+        zellij_utils::distribution::name()
     )
 }
 
@@ -425,15 +431,19 @@ fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
         exit_after_startup_error(
             teardown,
             format!(
-                "Error: failed to create the Zellij socket directory:\n  {}\n\n\
+                "Error: failed to create the {} socket directory:\n  {}\n\n\
                  Reason: {}\n\n\
                  This usually means the directory (or one of its parents) is owned by \
-                 another user or is not writable - for example if Zellij was previously \
+                 another user or is not writable - for example if {} was previously \
                  run with `sudo`, or if $XDG_RUNTIME_DIR points to a directory you do not \
                  own.\nTo fix this, remove or correct the offending directory, or set a \
-                 writable socket directory, eg.:\n  ZELLIJ_SOCKET_DIR=/tmp/zellij-$USER zellij",
+                 writable socket directory, eg.:\n  ZELLIJ_SOCKET_DIR=/tmp/{}-$USER {}",
+                zellij_utils::distribution::display_name(),
                 sock_dir.display(),
-                e
+                e,
+                zellij_utils::distribution::display_name(),
+                zellij_utils::distribution::name(),
+                zellij_utils::distribution::name()
             ),
         );
     }
@@ -441,13 +451,16 @@ fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
         exit_after_startup_error(
             teardown,
             format!(
-                "Error: failed to set permissions (0700) on the Zellij socket directory:\n  {}\n\n\
+                "Error: failed to set permissions (0700) on the {} socket directory:\n  {}\n\n\
                  Reason: {}\n\n\
                  This usually means the directory is owned by another user.\n\
                  To fix this, remove or correct the offending directory, or set a writable \
-                 socket directory, eg.:\n  ZELLIJ_SOCKET_DIR=/tmp/zellij-$USER zellij",
+                 socket directory, eg.:\n  ZELLIJ_SOCKET_DIR=/tmp/{}-$USER {}",
+                zellij_utils::distribution::display_name(),
                 sock_dir.display(),
-                e
+                e,
+                zellij_utils::distribution::name(),
+                zellij_utils::distribution::name()
             ),
         );
     }

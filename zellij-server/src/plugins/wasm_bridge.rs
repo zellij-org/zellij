@@ -1883,6 +1883,10 @@ impl WasmBridge {
             .data_mut()
             .set_permissions(HashSet::from_iter(permissions.clone()));
 
+        if running_plugin.store.data().plugin.is_builtin() {
+            return Ok(());
+        }
+
         let mut permission_cache = PermissionCache::from_path_or_default(cache_path);
         permission_cache.cache(
             running_plugin.store.data().plugin.location.to_string(),

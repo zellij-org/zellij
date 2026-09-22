@@ -1066,10 +1066,15 @@ pub fn start_server_impl(
                     == Some(LayoutInfo::BuiltIn("welcome".to_owned()))
                     || config.options.default_layout == Some(PathBuf::from("welcome"));
 
-                let successfully_written_config = Config::write_config_to_disk_if_it_does_not_exist(
-                    config.to_string(true),
-                    &cli_assets.config_file_path,
-                );
+                let successfully_written_config =
+                    if zellij_utils::distribution::bundled_config().is_some() {
+                        false
+                    } else {
+                        Config::write_config_to_disk_if_it_does_not_exist(
+                            config.to_string(true),
+                            &cli_assets.config_file_path,
+                        )
+                    };
                 // if we successfully wrote the config to disk, it means two things:
                 // 1. It did not exist beforehand
                 // 2. The config folder is writeable

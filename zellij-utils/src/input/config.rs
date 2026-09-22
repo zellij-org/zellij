@@ -207,15 +207,32 @@ impl Config {
             None => self.themes.get_theme("default").map(|theme| theme.palette),
         }
     }
-    /// Gets default configuration from assets
+    /// Gets default configuration from assets, layered with the configuration bundled by the
+    /// running distribution (if any)
     pub fn from_default_assets() -> ConfigResult {
         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?;
-        match Self::from_kdl(&cfg, None) {
-            Ok(config) => Ok(config),
-            Err(ConfigError::KdlError(kdl_error)) => Err(ConfigError::KdlError(
-                kdl_error.add_src("Default built-in-configuration".into(), cfg),
-            )),
-            Err(e) => Err(e),
+        let config = match Self::from_kdl(&cfg, None) {
+            Ok(config) => config,
+            Err(ConfigError::KdlError(kdl_error)) => {
+                return Err(ConfigError::KdlError(
+                    kdl_error.add_src("Default built-in-configuration".into(), cfg),
+                ))
+            },
+            Err(e) => return Err(e),
+        };
+        let distribution = crate::distribution::distribution();
+        match distribution.config {
+            Some(distribution_config) => match Self::from_kdl(distribution_config, Some(config)) {
+                Ok(config) => Ok(config),
+                Err(ConfigError::KdlError(kdl_error)) => Err(ConfigError::KdlError(
+                    kdl_error.add_src(
+                        format!("{} bundled configuration", distribution.name),
+                        distribution_config.to_owned(),
+                    ),
+                )),
+                Err(e) => Err(e),
+            },
+            None => Ok(config),
         }
     }
     pub fn from_path(path: &PathBuf, default_config: Option<Config>) -> ConfigResult {

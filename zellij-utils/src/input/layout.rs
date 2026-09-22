@@ -1615,6 +1615,21 @@ impl Layout {
         // TODO: ideally these should not be hard-coded
         // we should load layouts by name from the config
         // and load them from a hashmap or some such
+        if let Some(layout) = path
+            .to_str()
+            .and_then(|name| crate::distribution::builtin_layout(name))
+        {
+            return Ok((
+                format!("{} layout", layout.name),
+                layout.layout.to_owned(),
+                layout.swap_layout.map(|swap_layout| {
+                    (
+                        format!("{} swap layout", layout.name),
+                        swap_layout.to_owned(),
+                    )
+                }),
+            ));
+        }
         match path.to_str() {
             Some("default") => Ok((
                 "Default layout".into(),
