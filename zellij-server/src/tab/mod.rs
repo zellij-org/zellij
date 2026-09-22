@@ -268,6 +268,7 @@ pub(crate) struct Tab {
     word_separators: String,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+    client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
     // the below are the configured values - the ones that will be set if and when the web server
     // is brought online
     web_server_ip: IpAddr,
@@ -871,6 +872,7 @@ impl Tab {
         pane_frame_style: PaneFrameStyle,
         auto_layout: bool,
         connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+        client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
         session_is_mirrored: bool,
         client_id: Option<ClientId>,
         copy_options: CopyOptions,
@@ -927,6 +929,7 @@ impl Tab {
             viewport.clone(),
             connected_clients.clone(),
             connected_clients_in_app.clone(),
+            client_display_slots.clone(),
             mode_info.clone(),
             character_cell_size.clone(),
             stacked_resize.clone(),
@@ -944,6 +947,7 @@ impl Tab {
             viewport.clone(),
             connected_clients.clone(),
             connected_clients_in_app.clone(),
+            client_display_slots.clone(),
             mode_info.clone(),
             character_cell_size.clone(),
             fullscreen_covers_ui.clone(),
@@ -1037,6 +1041,7 @@ impl Tab {
             osc133_command_selection: true,
             word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
             connected_clients_in_app,
+            client_display_slots,
             web_server_ip,
             web_server_port,
             panes_with_pending_bell: HashSet::new(),
@@ -1690,6 +1695,7 @@ impl Tab {
                     self.mouse_scroll_resize,
                     self.mouse_hover_tips,
                     self.dimmed_clients.clone(),
+                    &self.client_display_slots.borrow(),
                 );
                 pane_contents_and_ui.set_frame_geom_override(Some(header_geom));
                 pane_contents_and_ui.set_stack_list_entry(
@@ -2341,7 +2347,15 @@ impl Tab {
         Ok(())
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
-        self.focus_pane_id = None;
+        let is_connected_to_this_tab = self.connected_clients.borrow().contains(&client_id);
+        if is_connected_to_this_tab {
+            let is_last_connected_client = self.connected_clients.borrow().len() == 1;
+            self.focus_pane_id = if is_last_connected_client {
+                self.tiled_panes.focused_pane_id(client_id)
+            } else {
+                None
+            };
+        }
         self.mode_info
             .borrow_mut()
             .get_mut(&client_id)

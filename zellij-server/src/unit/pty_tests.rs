@@ -85,19 +85,18 @@ impl ServerOsApi for MockOsApi {
     fn send_to_client(&self, _: ClientId, _: ServerToClientMsg) -> anyhow::Result<()> {
         Ok(())
     }
-    fn new_client(
+    fn register_client(
         &mut self,
         _: ClientId,
-        _: LocalSocketStream,
-    ) -> anyhow::Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        _: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> anyhow::Result<()> {
         unimplemented!()
     }
-    fn new_client_with_reply(
+    fn register_client_with_reply(
         &mut self,
         _: ClientId,
         _: LocalSocketStream,
-        _: LocalSocketStream,
-    ) -> anyhow::Result<IpcReceiverWithContext<ClientToServerMsg>> {
+    ) -> anyhow::Result<()> {
         unimplemented!()
     }
     fn remove_client(&mut self, _: ClientId) -> anyhow::Result<()> {

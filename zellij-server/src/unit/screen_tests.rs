@@ -236,19 +236,18 @@ impl ServerOsApi for FakeInputOutput {
             .push(msg);
         Ok(())
     }
-    fn new_client(
+    fn register_client(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        _receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()> {
         unimplemented!()
     }
-    fn new_client_with_reply(
+    fn register_client_with_reply(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
         _reply_stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+    ) -> Result<()> {
         unimplemented!()
     }
     fn remove_client(&mut self, _client_id: ClientId) -> Result<()> {
@@ -408,7 +407,7 @@ fn seed_first_client_size(mut screen: Screen, size: Size) -> Screen {
 }
 
 struct MockScreen {
-    pub main_client_id: u16,
+    pub main_client_id: ClientId,
     pub pty_receiver: Option<Receiver<(PtyInstruction, ErrorContext)>>,
     pub pty_writer_receiver: Option<Receiver<(PtyWriteInstruction, ErrorContext)>>,
     #[allow(dead_code)]

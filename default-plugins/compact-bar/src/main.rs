@@ -60,7 +60,7 @@ struct State {
     persist: bool,
     is_first_run: bool,
     own_tab_index: Option<usize>,
-    own_client_id: u16,
+    own_client_id: ClientId,
 
     // Keybinding cache
     cached_keybinds: KeybindsVec,
@@ -593,7 +593,7 @@ impl State {
     }
 }
 
-fn bind_toggle_key_config(toggle_key: &str, client_id: u16) -> String {
+fn bind_toggle_key_config(toggle_key: &str, client_id: ClientId) -> String {
     format!(
         r#"
         keybinds {{

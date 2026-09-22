@@ -332,18 +332,16 @@ pub trait ServerOsApi: Send + Sync {
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
     fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) -> Result<()>;
-    fn new_client(
+    fn register_client(
         &mut self,
         client_id: ClientId,
-        stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>>;
-    /// Create a new client with a separate reply stream (Windows dual-pipe IPC).
-    fn new_client_with_reply(
+        receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()>;
+    fn register_client_with_reply(
         &mut self,
         client_id: ClientId,
-        stream: LocalSocketStream,
         reply_stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>>;
+    ) -> Result<()>;
     fn remove_client(&mut self, client_id: ClientId) -> Result<()>;
     fn load_palette(&self) -> Palette;
     /// Returns the current working directory for a given pid
@@ -461,35 +459,32 @@ impl ServerOsApi for ServerOsInputOutput {
         }
     }
 
-    fn new_client(
+    fn register_client(
         &mut self,
         client_id: ClientId,
-        stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
-        let receiver = IpcReceiverWithContext::new(stream);
+        receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()> {
         let sender = ClientSender::new(client_id, receiver.get_sender());
         self.client_senders
             .lock()
             .to_anyhow()
             .with_context(|| format!("failed to create new client {client_id}"))?
             .insert(client_id, sender);
-        Ok(receiver)
+        Ok(())
     }
 
-    fn new_client_with_reply(
+    fn register_client_with_reply(
         &mut self,
         client_id: ClientId,
-        stream: LocalSocketStream,
         reply_stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
-        let receiver = IpcReceiverWithContext::new(stream);
+    ) -> Result<()> {
         let sender = ClientSender::new(client_id, IpcSenderWithContext::new(reply_stream));
         self.client_senders
             .lock()
             .to_anyhow()
             .with_context(|| format!("failed to create new client {client_id}"))?
             .insert(client_id, sender);
-        Ok(receiver)
+        Ok(())
     }
 
     fn remove_client(&mut self, client_id: ClientId) -> Result<()> {

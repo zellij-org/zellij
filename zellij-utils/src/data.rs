@@ -28,7 +28,7 @@ use crate::vendored::termwiz::{
     input::{KeyCode, KeyCodeEncodeModes, KeyboardEncoding, Modifiers},
 };
 
-pub type ClientId = u16; // TODO: merge with crate type?
+pub type ClientId = u32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UnblockCondition {
@@ -64,13 +64,13 @@ impl CommandOrPlugin {
     }
 }
 
-pub fn client_id_to_colors(
-    client_id: ClientId,
+pub fn client_slot_to_colors(
+    display_slot: usize,
     colors: MultiplayerColors,
 ) -> Option<(PaletteColor, PaletteColor)> {
     // (primary color, secondary color)
     let black = PaletteColor::EightBit(default_colors::BLACK);
-    match client_id {
+    match display_slot {
         1 => Some((colors.player_1, black)),
         2 => Some((colors.player_2, black)),
         3 => Some((colors.player_3, black)),
@@ -83,6 +83,13 @@ pub fn client_id_to_colors(
         10 => Some((colors.player_10, black)),
         _ => None,
     }
+}
+
+pub fn client_id_to_colors(
+    client_id: ClientId,
+    colors: MultiplayerColors,
+) -> Option<(PaletteColor, PaletteColor)> {
+    client_slot_to_colors(client_id as usize, colors)
 }
 
 pub fn single_client_color(colors: Palette) -> (PaletteColor, PaletteColor) {
@@ -2518,6 +2525,7 @@ pub struct TabInfo {
     pub is_sync_panes_active: bool,
     pub are_floating_panes_visible: bool,
     pub other_focused_clients: Vec<ClientId>,
+    pub other_focused_client_slots: Vec<usize>,
     pub active_swap_layout_name: Option<String>,
     /// Whether the user manually changed the layout, moving out of the swap layout scheme
     pub is_swap_layout_dirty: bool,

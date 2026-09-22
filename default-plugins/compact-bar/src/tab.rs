@@ -5,14 +5,14 @@ use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
 fn cursors<'a>(
-    focused_clients: &'a [ClientId],
+    focused_client_slots: &'a [usize],
     colors: MultiplayerColors,
 ) -> (Vec<ANSIString<'a>>, usize) {
     // cursor section, text length
     let mut len = 0;
     let mut cursors = vec![];
-    for client_id in focused_clients.iter() {
-        if let Some(color) = client_id_to_colors(*client_id, colors) {
+    for display_slot in focused_client_slots.iter() {
+        if let Some(color) = client_slot_to_colors(*display_slot, colors) {
             cursors.push(style!(color.1, color.0).paint(" "));
             len += 1;
         }
@@ -29,7 +29,7 @@ pub fn render_tab(
     separator: &str,
     dimmed: bool,
 ) -> LinePart {
-    let focused_clients = tab.other_focused_clients.as_slice();
+    let focused_clients = tab.other_focused_client_slots.as_slice();
     let separator_width = separator.width();
     let alternate_tab_color = if is_alternate_tab {
         palette.ribbon_unselected.emphasis_1

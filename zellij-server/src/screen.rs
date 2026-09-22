@@ -1557,6 +1557,8 @@ pub(crate) struct Screen {
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     connected_clients: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+    client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
+    highest_client_id_seen: ClientId,
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_ids: BTreeMap<ClientId, usize>,
     client_sizes: HashMap<ClientId, Size>,
@@ -1616,6 +1618,8 @@ pub(crate) struct Screen {
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
+    last_reported_plugin_tab_indices: HashMap<PluginId, usize>,
+    state_report_target: Option<(PluginId, ClientId)>,
     next_forward_token: u32,
     pending_forwarded_queries: HashMap<u32, PendingForwardEntry>,
     forward_queue: VecDeque<PendingForward>,
@@ -1769,6 +1773,8 @@ impl Screen {
             client_kitty_host_state: Rc::new(RefCell::new(HashMap::new())),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
+            client_display_slots: Rc::new(RefCell::new(HashMap::new())),
+            highest_client_id_seen: 0,
             active_tab_ids: BTreeMap::new(),
             client_sizes: HashMap::new(),
             global_last_active_tab_id: 0,
@@ -1824,6 +1830,8 @@ impl Screen {
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
             background_plugin_subscriptions: HashMap::new(),
+            last_reported_plugin_tab_indices: HashMap::new(),
+            state_report_target: None,
             next_forward_token: 1, // 0 is reserved as the startup sentinel
             pending_forwarded_queries: HashMap::new(),
             forward_queue: VecDeque::new(),
@@ -4868,6 +4876,7 @@ impl Screen {
             self.pane_frame_style,
             self.auto_layout,
             self.connected_clients.clone(),
+            self.client_display_slots.clone(),
             self.session_is_mirrored,
             client_id,
             self.copy_options.clone(),
@@ -5051,8 +5060,8 @@ impl Screen {
             })
             .with_context(err_context)?;
 
-        if !self.active_tab_ids.contains_key(&client_id) {
-            // this means this is a new client and we need to add it to our state properly
+        let client_has_since_disconnected = client_id <= self.highest_client_id_seen;
+        if !self.active_tab_ids.contains_key(&client_id) && !client_has_since_disconnected {
             self.add_client(client_id, is_web_client)
                 .with_context(err_context)?;
         }
@@ -5080,8 +5089,16 @@ impl Screen {
             format!("failed to attach client {client_id} to tab with index {tab_index}")
         };
 
-        // Set followed_client_id to the first regular client if not already set
-        if self.followed_client_id.is_none() && !self.watcher_clients.contains_key(&client_id) {
+        let followed_client_is_gone = self
+            .followed_client_id
+            .map(|followed_client_id| {
+                !self
+                    .connected_clients
+                    .borrow()
+                    .contains_key(&followed_client_id)
+            })
+            .unwrap_or(true);
+        if followed_client_is_gone && !self.watcher_clients.contains_key(&client_id) {
             self.followed_client_id = Some(client_id);
         }
 
@@ -5116,11 +5133,13 @@ impl Screen {
             bail!("Can't find a valid tab to attach client to!");
         };
 
+        self.highest_client_id_seen = self.highest_client_id_seen.max(client_id);
         self.active_tab_ids.insert(client_id, tab_index);
         self.client_kitty_host_state.borrow_mut().remove(&client_id);
         self.connected_clients
             .borrow_mut()
             .insert(client_id, is_web_client);
+        self.assign_display_slot(client_id);
         if is_web_client {
             self.kitty_host_capabilities
                 .borrow_mut()
@@ -5155,6 +5174,7 @@ impl Screen {
 
     pub fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to remove client {client_id}");
+        self.highest_client_id_seen = self.highest_client_id_seen.max(client_id);
 
         self.set_client_dimmed(client_id, false, None);
         let passthrough_panes: Vec<PaneId> = self
@@ -5237,7 +5257,10 @@ impl Screen {
             self.push_sixel_host_support_to_tabs();
         }
         self.client_sizes.remove(&client_id);
+        self.client_display_slots.borrow_mut().remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
+        self.background_plugin_subscriptions
+            .retain(|(_plugin_id, c_id), _subscriptions| c_id != &client_id);
         self.last_forwarded_osc7.remove(&client_id);
         self.client_host_focused.remove(&client_id);
         self.client_notification_protocols.remove(&client_id);
@@ -5316,6 +5339,7 @@ impl Screen {
                 is_fullscreen_active: tab.is_fullscreen_active(),
                 is_sync_panes_active: tab.is_sync_panes_active(),
                 are_floating_panes_visible: tab.are_floating_panes_visible(),
+                other_focused_client_slots: self.display_slots_of_clients(&all_focused_clients),
                 other_focused_clients: all_focused_clients,
                 active_swap_layout_name,
                 is_swap_layout_dirty,
@@ -5363,6 +5387,8 @@ impl Screen {
                     is_fullscreen_active: tab.is_fullscreen_active(),
                     is_sync_panes_active: tab.is_sync_panes_active(),
                     are_floating_panes_visible: tab.are_floating_panes_visible(),
+                    other_focused_client_slots: self
+                        .display_slots_of_clients(&other_focused_clients),
                     other_focused_clients,
                     active_swap_layout_name,
                     is_swap_layout_dirty,
@@ -5419,6 +5445,20 @@ impl Screen {
         }
 
         Ok(pane_manifest)
+    }
+
+    fn report_pane_and_tab_state_to_plugin(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+    ) -> Result<()> {
+        self.state_report_target = Some((plugin_id, client_id));
+        let pane_state = self.generate_and_report_pane_state();
+        let tab_state = self.generate_and_report_tab_state();
+        self.state_report_target = None;
+        pane_state?;
+        tab_state?;
+        Ok(())
     }
 
     fn collect_pane_list(&self, show_all: bool) -> Result<ListPanesResponse> {
@@ -5492,6 +5532,45 @@ impl Screen {
             false
         }
     }
+    fn assign_display_slot(&mut self, client_id: ClientId) {
+        let mut display_slots = self.client_display_slots.borrow_mut();
+        if display_slots.contains_key(&client_id) {
+            return;
+        }
+        let taken: HashSet<usize> = display_slots.values().copied().collect();
+        let mut slot = 1;
+        while taken.contains(&slot) {
+            slot += 1;
+        }
+        display_slots.insert(client_id, slot);
+    }
+    fn display_slots_of_clients(&self, client_ids: &[ClientId]) -> Vec<usize> {
+        let display_slots = self.client_display_slots.borrow();
+        client_ids
+            .iter()
+            .map(|client_id| display_slots.get(client_id).copied().unwrap_or(0))
+            .collect()
+    }
+    fn report_plugin_tab_indices(&mut self) {
+        let mut current: HashMap<PluginId, usize> = HashMap::new();
+        for tab in self.tabs.values() {
+            for plugin_id in tab.get_plugin_ids() {
+                current.insert(plugin_id, tab.position);
+            }
+        }
+        if current == self.last_reported_plugin_tab_indices {
+            return;
+        }
+        let tab_indices: Vec<(PluginId, usize)> = current
+            .iter()
+            .map(|(plugin_id, tab_index)| (*plugin_id, *tab_index))
+            .collect();
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::UpdatePluginTabIndices(tab_indices));
+        self.last_reported_plugin_tab_indices = current;
+    }
     fn log_and_report_session_state(&mut self) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
 
@@ -5499,6 +5578,7 @@ impl Screen {
         self.revert_fit_disabled_without_reference_client()
             .with_context(err_context)?;
         self.reconcile_all_single_pane_focus();
+        self.report_plugin_tab_indices();
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
@@ -5899,7 +5979,7 @@ impl Screen {
         Ok(())
     }
 
-    fn client_id(&mut self, client_id: ClientId) -> Option<u16> {
+    fn client_id(&mut self, client_id: ClientId) -> Option<ClientId> {
         if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
@@ -6190,6 +6270,13 @@ impl Screen {
     /// Returns plugin IDs from the client's active tab plus background plugins
     /// subscribed to the given event type.
     fn targeted_plugin_ids(&self, client_id: ClientId, event_type: EventType) -> Vec<PluginId> {
+        if let Some((target_plugin_id, target_client_id)) = self.state_report_target {
+            return if target_client_id == client_id {
+                vec![target_plugin_id]
+            } else {
+                vec![]
+            };
+        }
         let mut plugin_ids = Vec::new();
         // Active-tab plugins
         if let Some(active_tab_id) = self.active_tab_ids.get(&client_id) {
@@ -7709,6 +7796,7 @@ impl Screen {
                 is_fullscreen_active: tab.is_fullscreen_active(),
                 is_sync_panes_active: tab.is_sync_panes_active(),
                 are_floating_panes_visible: tab.are_floating_panes_visible(),
+                other_focused_client_slots: self.display_slots_of_clients(&all_focused_clients),
                 other_focused_clients: all_focused_clients,
                 active_swap_layout_name,
                 is_swap_layout_dirty,
@@ -12431,7 +12519,10 @@ pub(crate) fn screen_thread_main(
                 } else {
                     screen
                         .background_plugin_subscriptions
-                        .insert((plugin_id, client_id), subscriptions);
+                        .entry((plugin_id, client_id))
+                        .or_default()
+                        .extend(subscriptions);
+                    screen.report_pane_and_tab_state_to_plugin(plugin_id, client_id)?;
                 }
             },
             ScreenInstruction::ClearHintTextCache => {

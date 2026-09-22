@@ -425,9 +425,9 @@ impl TryFrom<ProtobufEvent> for Event {
                         .ok_or("Missing action in UserAction payload")?
                         .try_into()
                         .map_err(|_| "Failed to convert Action in UserAction payload")?;
-                    let client_id = protobuf_payload.client_id as u16;
+                    let client_id = protobuf_payload.client_id as ClientId;
                     let terminal_id = protobuf_payload.terminal_id;
-                    let cli_client_id = protobuf_payload.cli_client_id.map(|id| id as u16);
+                    let cli_client_id = protobuf_payload.cli_client_id.map(|id| id as ClientId);
                     Ok(Event::UserAction(
                         action,
                         client_id,
@@ -469,7 +469,7 @@ impl TryFrom<ProtobufEvent> for Event {
                     let focused_client_ids: Vec<ClientId> = protobuf_payload
                         .focused_client_ids
                         .into_iter()
-                        .map(|id| id as u16)
+                        .map(|id| id as ClientId)
                         .collect();
                     Ok(Event::CwdChanged(pane_id, new_cwd, focused_client_ids))
                 },
@@ -485,7 +485,7 @@ impl TryFrom<ProtobufEvent> for Event {
                     let focused_client_ids: Vec<ClientId> = p
                         .focused_client_ids
                         .into_iter()
-                        .map(|id| id as u16)
+                        .map(|id| id as ClientId)
                         .collect();
                     Ok(Event::CommandChanged(
                         pane_id,
@@ -628,7 +628,7 @@ impl TryFrom<ProtobufClientInfo> for ClientInfo {
     type Error = &'static str;
     fn try_from(protobuf_client_info: ProtobufClientInfo) -> Result<Self, &'static str> {
         Ok(ClientInfo::new(
-            protobuf_client_info.client_id as u16,
+            protobuf_client_info.client_id as ClientId,
             protobuf_client_info
                 .pane_id
                 .ok_or("No pane id found")?
@@ -1279,8 +1279,8 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
     }
 }
 
-impl From<(u16, Vec<usize>)> for ProtobufClientTabHistory {
-    fn from((client_id, tab_history): (u16, Vec<usize>)) -> ProtobufClientTabHistory {
+impl From<(ClientId, Vec<usize>)> for ProtobufClientTabHistory {
+    fn from((client_id, tab_history): (ClientId, Vec<usize>)) -> ProtobufClientTabHistory {
         ProtobufClientTabHistory {
             client_id: client_id as u32,
             tab_history: tab_history.into_iter().map(|t| t as u32).collect(),
@@ -1288,8 +1288,8 @@ impl From<(u16, Vec<usize>)> for ProtobufClientTabHistory {
     }
 }
 
-impl From<(u16, Vec<PaneId>)> for ProtobufClientPaneHistory {
-    fn from((client_id, pane_history): (u16, Vec<PaneId>)) -> ProtobufClientPaneHistory {
+impl From<(ClientId, Vec<PaneId>)> for ProtobufClientPaneHistory {
+    fn from((client_id, pane_history): (ClientId, Vec<PaneId>)) -> ProtobufClientPaneHistory {
         ProtobufClientPaneHistory {
             client_id: client_id as u32,
             pane_history: pane_history
@@ -1353,7 +1353,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
                 .iter()
                 .map(|t| *t as usize)
                 .collect();
-            tab_history.insert(client_id as u16, tab_history_for_client);
+            tab_history.insert(client_id as ClientId, tab_history_for_client);
         }
         let mut pane_history = BTreeMap::new();
         for client_pane_history in protobuf_session_manifest.pane_history.into_iter() {
@@ -1363,7 +1363,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
                 .into_iter()
                 .filter_map(|p| p.try_into().ok())
                 .collect();
-            pane_history.insert(client_id as u16, pane_history_for_client);
+            pane_history.insert(client_id as ClientId, pane_history_for_client);
         }
         Ok(SessionInfo {
             name: protobuf_session_manifest.name,
@@ -1818,7 +1818,7 @@ impl TryFrom<ProtobufPaneInfo> for PaneInfo {
                 .iter()
                 .map(|index_in_pane_group| {
                     (
-                        index_in_pane_group.client_id as u16,
+                        index_in_pane_group.client_id as ClientId,
                         index_in_pane_group.index as usize,
                     )
                 })
@@ -1888,7 +1888,12 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
             other_focused_clients: protobuf_tab_info
                 .other_focused_clients
                 .iter()
-                .map(|c| *c as u16)
+                .map(|c| *c as ClientId)
+                .collect(),
+            other_focused_client_slots: protobuf_tab_info
+                .other_focused_client_slots
+                .iter()
+                .map(|s| *s as usize)
                 .collect(),
             active_swap_layout_name: protobuf_tab_info.active_swap_layout_name,
             is_swap_layout_dirty: protobuf_tab_info.is_swap_layout_dirty,
@@ -1921,6 +1926,11 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
                 .other_focused_clients
                 .iter()
                 .map(|c| *c as u32)
+                .collect(),
+            other_focused_client_slots: tab_info
+                .other_focused_client_slots
+                .iter()
+                .map(|s| *s as u32)
                 .collect(),
             active_swap_layout_name: tab_info.active_swap_layout_name,
             is_swap_layout_dirty: tab_info.is_swap_layout_dirty,
@@ -2550,6 +2560,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             is_sync_panes_active: false,
             are_floating_panes_visible: true,
             other_focused_clients: vec![2, 3, 4],
+            other_focused_client_slots: vec![1, 2, 3],
             active_swap_layout_name: Some("my cool swap layout".to_owned()),
             is_swap_layout_dirty: false,
             viewport_rows: 10,
@@ -2571,6 +2582,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             is_sync_panes_active: true,
             are_floating_panes_visible: true,
             other_focused_clients: vec![1, 5, 111],
+            other_focused_client_slots: vec![1, 2, 3],
             active_swap_layout_name: None,
             is_swap_layout_dirty: true,
             viewport_rows: 10,
@@ -2896,6 +2908,7 @@ fn serialize_session_update_event_with_non_default_values() {
             is_sync_panes_active: false,
             are_floating_panes_visible: true,
             other_focused_clients: vec![2, 3, 4],
+            other_focused_client_slots: vec![1, 2, 3],
             active_swap_layout_name: Some("my cool swap layout".to_owned()),
             is_swap_layout_dirty: false,
             viewport_rows: 10,
@@ -2917,6 +2930,7 @@ fn serialize_session_update_event_with_non_default_values() {
             is_sync_panes_active: true,
             are_floating_panes_visible: true,
             other_focused_clients: vec![1, 5, 111],
+            other_focused_client_slots: vec![1, 2, 3],
             active_swap_layout_name: None,
             is_swap_layout_dirty: true,
             viewport_rows: 10,

@@ -23,7 +23,7 @@ use zellij_utils::{
         UnblockCondition,
     },
     envs,
-    errors::prelude::*,
+    errors::{prelude::*, ErrorContext},
     input::{
         actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
@@ -2320,13 +2320,21 @@ pub(crate) fn route_thread_main(
     to_server: SenderWithContext<ServerInstruction>,
     mut receiver: IpcReceiverWithContext<ClientToServerMsg>,
     client_id: ClientId,
+    first_instruction: Option<ClientToServerMsg>,
 ) -> Result<()> {
     let mut retry_queue = VecDeque::new();
     let err_context = || format!("failed to handle instruction for client {client_id}");
     let mut seen_cli_pipes = HashSet::new();
     let mut consecutive_unknown_messages_received = 0;
+    let mut first_instruction =
+        first_instruction.map(|instruction| (instruction, ErrorContext::default()));
+    let mut cleanup_requested = false;
     'route_loop: loop {
-        match receiver.try_recv_client_msg() {
+        let received = match first_instruction.take() {
+            Some(instruction) => Ok(instruction),
+            None => receiver.try_recv_client_msg(),
+        };
+        match received {
             Ok((instruction, err_ctx)) => {
                 consecutive_unknown_messages_received = 0;
                 err_ctx.update_thread_ctx();
@@ -2737,7 +2745,6 @@ pub(crate) fn route_thread_main(
                             }
                         },
                         ClientToServerMsg::ClientExited => {
-                            let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
                             return Ok(true);
                         },
                         ClientToServerMsg::KillSession => {
@@ -2990,6 +2997,7 @@ pub(crate) fn route_thread_main(
                         },
                     );
                     let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
+                    cleanup_requested = true;
                     break 'route_loop;
                 }
             },
@@ -3001,7 +3009,9 @@ pub(crate) fn route_thread_main(
         let _ = os_input.send_to_client(client_id, ServerToClientMsg::UnblockInputThread);
     }
     // route thread exited, make sure we clean up
-    let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
+    if !cleanup_requested {
+        let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
+    }
     Ok(())
 }
 

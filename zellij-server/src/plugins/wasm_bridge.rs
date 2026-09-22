@@ -4,7 +4,9 @@ use crate::plugins::pipes::{
     apply_pipe_message_to_plugin, pipes_to_block_or_unblock, PendingPipes, PipeStateChange,
 };
 use crate::plugins::plugin_loader::PluginLoader;
-use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions};
+use crate::plugins::plugin_map::{
+    AtomicEvent, PluginEnv, PluginMap, RemovedPluginAssets, RunningPlugin, Subscriptions,
+};
 
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
@@ -795,6 +797,11 @@ impl WasmBridge {
     ) -> Result<()> {
         let err_context = move || format!("failed to resize plugin {pid}");
 
+        self.plugin_map
+            .lock()
+            .unwrap()
+            .set_size(pid, new_rows, new_columns);
+
         let plugins_to_resize: Vec<(PluginId, ClientId, Arc<Mutex<RunningPlugin>>)> = self
             .plugin_map
             .lock()
@@ -1028,7 +1035,7 @@ impl WasmBridge {
         // Execute directly on pinned thread (no async I/O needed for directory check/change)
         self.plugin_executor
             .execute_for_plugin(plugin_id_to_update, {
-                move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
+                move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     match new_host_dir.try_exists() {
                         Ok(false) => {
                             log::error!(
@@ -1081,6 +1088,11 @@ impl WasmBridge {
                                 Ok(wasi_ctx) => {
                                     drop(std::mem::replace(&mut plugin_env.wasi_ctx, wasi_ctx));
                                     plugin_env.plugin_cwd = new_host_dir.clone();
+                                    drop(running_plugin);
+                                    plugin_map
+                                        .lock()
+                                        .unwrap()
+                                        .set_cwd(*plugin_id, new_host_dir.clone());
 
                                     let _ =
                                         senders.send_to_plugin(PluginInstruction::Update(vec![(
@@ -1258,6 +1270,78 @@ impl WasmBridge {
         if let Some(ref mut prev_report) = self.previous_pane_render_report {
             prev_report.all_pane_contents.remove(&client_id);
         }
+
+        let instances_to_clean_up = self
+            .plugin_map
+            .lock()
+            .unwrap()
+            .remove_plugin_clients(client_id);
+        self.clean_up_plugin_instances(instances_to_clean_up);
+
+        for messages in self.cached_worker_messages.values_mut() {
+            messages.retain(|(c_id, _, _, _)| c_id != &client_id);
+        }
+        self.cached_worker_messages
+            .retain(|_plugin_id, messages| !messages.is_empty());
+    }
+
+    pub fn update_plugin_tab_indices(&mut self, tab_indices: Vec<(PluginId, usize)>) {
+        let mut plugin_map = self.plugin_map.lock().unwrap();
+        for (plugin_id, tab_index) in tab_indices {
+            plugin_map.set_tab_index(plugin_id, tab_index);
+        }
+    }
+
+    fn clean_up_plugin_instances(&mut self, instances: RemovedPluginAssets) {
+        if instances.is_empty() {
+            return;
+        }
+        for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in instances {
+            if running_plugin.lock().unwrap().intercepting_key_presses() {
+                let _ = self
+                    .senders
+                    .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(client_id));
+            }
+            let _ = self.senders.send_to_screen(
+                ScreenInstruction::UpdateBackgroundPluginSubscriptions(
+                    plugin_id,
+                    client_id,
+                    HashSet::new(),
+                ),
+            );
+
+            for (_worker_name, worker_sender) in workers {
+                drop(worker_sender.send(MessageToWorker::Exit));
+            }
+
+            self.plugin_executor.execute_for_plugin(plugin_id, {
+                move |_senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
+                    let cache_dir = running_plugin
+                        .lock()
+                        .unwrap()
+                        .store
+                        .data()
+                        .plugin_own_data_dir
+                        .clone();
+                    if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
+                        log::error!("Failed to remove data dir for plugin instance: {:?}", e);
+                    }
+                    drop(running_plugin);
+                    drop(subscriptions);
+                }
+            });
+
+            let mut pipes_to_unblock = self
+                .pending_pipes
+                .unload_plugin_client(&plugin_id, &client_id);
+            for pipe_name in pipes_to_unblock.drain(..) {
+                let _ = self
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
+                    .context("failed to unblock input pipe");
+            }
+        }
+        self.cached_plugin_map.clear();
     }
 
     fn get_changed_panes_per_client(
@@ -1329,17 +1413,13 @@ impl WasmBridge {
         client_id: ClientId,
         events: HashSet<EventType>,
     ) {
-        // Check if this plugin is a background plugin (tab_index == None)
         let is_background = {
-            let mut plugin_map = self.plugin_map.lock().unwrap();
-            plugin_map
-                .running_plugins_and_subscriptions()
-                .iter()
-                .any(|(pid, cid, rp, _)| {
-                    *pid == plugin_id
-                        && *cid == client_id
-                        && rp.lock().unwrap().store.data().tab_index.is_none()
-                })
+            let plugin_map = self.plugin_map.lock().unwrap();
+            plugin_map.contains(plugin_id, client_id)
+                && plugin_map
+                    .metadata(plugin_id)
+                    .map(|metadata| metadata.is_background)
+                    .unwrap_or(false)
         };
         if is_background {
             let _ = self.senders.send_to_screen(
@@ -1689,41 +1769,29 @@ impl WasmBridge {
         self.plugin_map
             .lock()
             .unwrap()
-            .get_running_plugin(plugin_id, None)
-            .map(|r| {
-                let r = r.lock().unwrap();
-                (r.rows, r.columns)
-            })
+            .metadata(plugin_id)
+            .map(|metadata| (metadata.rows, metadata.columns))
     }
     fn cwd_of_plugin_id(&self, plugin_id: PluginId) -> Option<PathBuf> {
         self.plugin_map
             .lock()
             .unwrap()
-            .get_running_plugin(plugin_id, None)
-            .map(|r| {
-                let r = r.lock().unwrap();
-                r.store.data().plugin_cwd.clone()
-            })
+            .metadata(plugin_id)
+            .map(|metadata| metadata.cwd.clone())
     }
     fn plugin_config_of_plugin_id(&self, plugin_id: PluginId) -> Option<PluginConfig> {
         self.plugin_map
             .lock()
             .unwrap()
-            .get_running_plugin(plugin_id, None)
-            .map(|r| {
-                let r = r.lock().unwrap();
-                r.store.data().plugin.clone()
-            })
+            .metadata(plugin_id)
+            .map(|metadata| metadata.plugin_config.clone())
     }
     fn tab_index_of_plugin_id(&self, plugin_id: PluginId) -> Option<usize> {
         self.plugin_map
             .lock()
             .unwrap()
-            .get_running_plugin(plugin_id, None)
-            .and_then(|r| {
-                let r = r.lock().unwrap();
-                r.store.data().tab_index
-            })
+            .metadata(plugin_id)
+            .and_then(|metadata| metadata.tab_index)
     }
     fn start_plugin_loading_indication(
         &self,

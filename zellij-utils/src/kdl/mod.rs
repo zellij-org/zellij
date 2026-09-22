@@ -1,4 +1,5 @@
 mod kdl_layout_parser;
+use crate::data::ClientId;
 use crate::data::{
     BareKey, BorderStyleOverride, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier,
     LayoutInfo, LayoutMetadata, LineStyle, MultiplayerColors, Palette, PaletteColor, PaneId,
@@ -6298,7 +6299,7 @@ impl SessionInfo {
                             }
                         }
                     }
-                    tab_history.insert(client_id as u16, history);
+                    tab_history.insert(client_id as ClientId, history);
                 }
             }
         }
@@ -6342,7 +6343,7 @@ impl SessionInfo {
                             }
                         }
                     }
-                    pane_history.insert(client_id as u16, history);
+                    pane_history.insert(client_id as ClientId, history);
                 }
             }
         }
@@ -6541,7 +6542,7 @@ impl TabInfo {
         {
             for entry in tab_other_focused_clients {
                 if let Some(entry_parsed) = entry.value().as_i64() {
-                    other_focused_clients.push(entry_parsed as u16);
+                    other_focused_clients.push(entry_parsed as ClientId);
                 }
             }
         }
@@ -6565,6 +6566,7 @@ impl TabInfo {
             is_sync_panes_active,
             are_floating_panes_visible,
             other_focused_clients,
+            other_focused_client_slots: vec![],
             active_swap_layout_name,
             is_swap_layout_dirty,
             viewport_rows,
@@ -7004,6 +7006,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 is_sync_panes_active: false,
                 are_floating_panes_visible: true,
                 other_focused_clients: vec![2, 3],
+                other_focused_client_slots: vec![],
                 active_swap_layout_name: Some("BASE".to_owned()),
                 is_swap_layout_dirty: true,
                 viewport_rows: 10,
@@ -7025,6 +7028,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 is_sync_panes_active: true,
                 are_floating_panes_visible: true,
                 other_focused_clients: vec![2, 3],
+                other_focused_client_slots: vec![],
                 active_swap_layout_name: None,
                 is_swap_layout_dirty: false,
                 viewport_rows: 10,

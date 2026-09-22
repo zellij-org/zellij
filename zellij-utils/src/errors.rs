@@ -540,6 +540,7 @@ pub enum PluginContext {
     Exit,
     AddClient,
     RemoveClient,
+    UpdatePluginTabIndices,
     NewTab,
     OverrideLayout,
     ApplyCachedEvents,

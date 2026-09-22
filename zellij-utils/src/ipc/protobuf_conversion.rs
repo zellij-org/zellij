@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+use crate::data::ClientId;
+
 use crate::{
     client_server_contract::client_server_contract::{
         client_to_server_msg, server_to_client_msg, ActionMsg, AttachClientMsg,
@@ -201,7 +203,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
         match msg.message {
             Some(client_to_server_msg::Message::DetachSession(detach)) => {
                 Ok(ClientToServerMsg::DetachSession {
-                    client_ids: detach.client_ids.into_iter().map(|id| id as u16).collect(),
+                    client_ids: detach
+                        .client_ids
+                        .into_iter()
+                        .map(|id| id as ClientId)
+                        .collect(),
                 })
             },
             Some(client_to_server_msg::Message::TerminalPixelDimensions(pixel_dims)) => {
@@ -274,7 +280,7 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     .ok_or_else(|| anyhow!("Missing action"))?
                     .try_into()?,
                 terminal_id: action.terminal_id,
-                client_id: action.client_id.map(|id| id as u16),
+                client_id: action.client_id.map(|id| id as ClientId),
                 is_cli_client: action.is_cli_client,
             }),
             Some(client_to_server_msg::Message::Key(key)) => Ok(ClientToServerMsg::Key {
@@ -4226,7 +4232,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::OriginatingP
 
         Ok(Self {
             plugin_id: orig.plugin_id,
-            client_id: orig.client_id as u16,
+            client_id: orig.client_id as ClientId,
             context,
         })
     }

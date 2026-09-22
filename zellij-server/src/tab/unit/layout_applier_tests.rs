@@ -75,19 +75,18 @@ impl ServerOsApi for FakeInputOutput {
         unimplemented!()
     }
 
-    fn new_client(
+    fn register_client(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        _receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()> {
         unimplemented!()
     }
-    fn new_client_with_reply(
+    fn register_client_with_reply(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
         _reply_stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+    ) -> Result<()> {
         unimplemented!()
     }
 
@@ -199,6 +198,7 @@ fn create_layout_applier_fixtures(
         viewport.clone(),
         connected_clients_set.clone(),
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashMap::new())),
         mode_info.clone(),
         character_cell_size.clone(),
         stacked_resize,
@@ -218,6 +218,7 @@ fn create_layout_applier_fixtures(
         viewport.clone(),
         connected_clients_set,
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashMap::new())),
         mode_info,
         character_cell_size.clone(),
         fullscreen_covers_ui,
@@ -335,6 +336,7 @@ fn create_layout_applier_fixtures_with_receivers(
         viewport.clone(),
         connected_clients_set.clone(),
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashMap::new())),
         mode_info.clone(),
         character_cell_size.clone(),
         stacked_resize,
@@ -354,6 +356,7 @@ fn create_layout_applier_fixtures_with_receivers(
         viewport.clone(),
         connected_clients_set,
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashMap::new())),
         mode_info,
         character_cell_size.clone(),
         fullscreen_covers_ui,

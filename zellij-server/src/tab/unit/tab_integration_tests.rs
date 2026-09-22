@@ -94,19 +94,18 @@ impl ServerOsApi for FakeInputOutput {
     fn send_to_client(&self, _client_id: ClientId, _msg: ServerToClientMsg) -> Result<()> {
         unimplemented!()
     }
-    fn new_client(
+    fn register_client(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        _receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()> {
         unimplemented!()
     }
-    fn new_client_with_reply(
+    fn register_client_with_reply(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
         _reply_stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+    ) -> Result<()> {
         unimplemented!()
     }
     fn remove_client(&mut self, _client_id: ClientId) -> Result<()> {
@@ -259,6 +258,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -357,6 +357,7 @@ fn create_new_tab_with_stacked_pane_list(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -451,6 +452,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -562,6 +564,7 @@ fn create_new_tab_with_swap_layouts(
         },
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -670,6 +673,7 @@ fn create_new_tab_with_os_api(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -764,6 +768,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -872,6 +877,7 @@ fn create_new_tab_with_mock_pty_writer(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -971,6 +977,7 @@ fn create_new_tab_with_sixel_support(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -5159,7 +5166,7 @@ fn pane_bracketed_paste_ignored_when_not_in_bracketed_paste_mode() {
         cols: 121,
         rows: 20,
     };
-    let client_id: u16 = 1;
+    let client_id: ClientId = 1;
 
     let mut pty_instruction_bus = MockPtyInstructionBus::new();
     let mut tab = create_new_tab_with_mock_pty_writer(
@@ -5189,7 +5196,7 @@ fn pane_faux_scrolling_in_alternate_mode() {
         cols: 121,
         rows: 20,
     };
-    let client_id: u16 = 1;
+    let client_id: ClientId = 1;
     let lines_to_scroll = 3;
 
     let mut pty_instruction_bus = MockPtyInstructionBus::new();
@@ -14122,6 +14129,7 @@ fn create_new_tab_with_plugin_receiver(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -15912,6 +15920,7 @@ fn create_new_tab_with_server_receiver(
         PaneFrameStyle::Full,
         true, // auto_layout
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         true, // session_is_mirrored
         Some(client_id),
         copy_options,

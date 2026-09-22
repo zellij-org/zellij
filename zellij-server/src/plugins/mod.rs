@@ -88,6 +88,7 @@ pub enum PluginInstruction {
     Resize(PluginId, usize, usize), // plugin_id, columns, rows
     AddClient(ClientId),
     RemoveClient(ClientId),
+    UpdatePluginTabIndices(Vec<(PluginId, usize)>),
     NewTab(
         Option<PathBuf>,
         Option<TerminalAction>,
@@ -236,6 +237,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::Exit => PluginContext::Exit,
             PluginInstruction::AddClient(_) => PluginContext::AddClient,
             PluginInstruction::RemoveClient(_) => PluginContext::RemoveClient,
+            PluginInstruction::UpdatePluginTabIndices(..) => PluginContext::UpdatePluginTabIndices,
             PluginInstruction::NewTab(..) => PluginContext::NewTab,
             PluginInstruction::OverrideLayout(..) => PluginContext::OverrideLayout,
             PluginInstruction::ApplyCachedEvents { .. } => PluginContext::ApplyCachedEvents,
@@ -509,6 +511,9 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::RemoveClient(client_id) => {
                 wasm_bridge.remove_client(client_id);
+            },
+            PluginInstruction::UpdatePluginTabIndices(tab_indices) => {
+                wasm_bridge.update_plugin_tab_indices(tab_indices);
             },
             PluginInstruction::NewTab(
                 cwd,

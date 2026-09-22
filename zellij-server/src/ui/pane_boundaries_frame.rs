@@ -10,7 +10,7 @@ use crate::ui::hint_text::{
     HintSegment, HintTier,
 };
 use crate::ClientId;
-use zellij_utils::data::{client_id_to_colors, BorderStyle, LineStyle, PaletteColor, Style};
+use zellij_utils::data::{client_slot_to_colors, BorderStyle, LineStyle, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::{Offset, PaneGeom, Viewport};
 use zellij_utils::position::Position;
@@ -80,6 +80,7 @@ pub struct FrameParams {
     pub focused_client: Option<ClientId>,
     pub is_main_client: bool, // more accurately: is_focused_for_main_client
     pub other_focused_clients: Vec<ClientId>,
+    pub other_focused_client_slots: Vec<usize>,
     pub style: Style,
     pub border_style: BorderStyle,
     pub color: Option<PaletteColor>,
@@ -116,6 +117,7 @@ pub struct PaneFrame {
     pub is_main_client: bool,
     pub other_cursors_exist_in_session: bool,
     pub other_focused_clients: Vec<ClientId>,
+    pub other_focused_client_slots: Vec<usize>,
     exit_status: Option<ExitStatus>,
     is_first_run: bool,
     pane_is_stacked_over: bool,
@@ -155,6 +157,7 @@ impl PaneFrame {
             focused_client: frame_params.focused_client,
             is_main_client: frame_params.is_main_client,
             other_focused_clients: frame_params.other_focused_clients,
+            other_focused_client_slots: frame_params.other_focused_client_slots,
             other_cursors_exist_in_session: frame_params.other_cursors_exist_in_session,
             exit_status: None,
             is_first_run: false,
@@ -195,8 +198,8 @@ impl PaneFrame {
         self.color = Some(color);
         self.color_override = Some(color);
     }
-    fn client_cursor(&self, client_id: ClientId) -> Vec<TerminalCharacter> {
-        let color = client_id_to_colors(client_id, self.style.colors.multiplayer_user_colors);
+    fn client_cursor(&self, display_slot: usize) -> Vec<TerminalCharacter> {
+        let color = client_slot_to_colors(display_slot, self.style.colors.multiplayer_user_colors);
         background_color(" ", color.map(|c| c.0))
     }
     fn top_horizontal(&self) -> &'static str {
@@ -386,8 +389,8 @@ impl PaneFrame {
         let mut full_indication_len = full_indication_text.width();
         let mut short_indication = foreground_color(short_indication_text, self.color);
         let mut short_indication_len = short_indication_text.width();
-        for client_id in &self.other_focused_clients {
-            let mut text = self.client_cursor(*client_id);
+        for display_slot in &self.other_focused_client_slots {
+            let mut text = self.client_cursor(*display_slot);
             full_indication_len += 2;
             full_indication.push(EMPTY_TERMINAL_CHARACTER);
             full_indication.append(&mut text.clone());
@@ -435,8 +438,8 @@ impl PaneFrame {
         let mut middle_indication_len = middle_indication_text.width();
         let mut short_indication = vec![];
         let mut short_indication_len = 0;
-        for client_id in &self.other_focused_clients {
-            let mut text = self.client_cursor(*client_id);
+        for display_slot in &self.other_focused_client_slots {
+            let mut text = self.client_cursor(*display_slot);
             full_indication_len += 2;
             full_indication.push(EMPTY_TERMINAL_CHARACTER);
             full_indication.append(&mut text.clone());
@@ -1011,9 +1014,9 @@ impl PaneFrame {
     fn focused_users_part(&self, label: &str) -> (Vec<TerminalCharacter>, usize) {
         let mut content = foreground_color(label, self.color);
         let mut content_length = label.width();
-        for client_id in &self.other_focused_clients {
+        for display_slot in &self.other_focused_client_slots {
             content.push(EMPTY_TERMINAL_CHARACTER);
-            content.append(&mut self.client_cursor(*client_id));
+            content.append(&mut self.client_cursor(*display_slot));
             content_length += 2;
         }
         self.bracketed_title_part_from_characters(content, content_length)
@@ -1021,12 +1024,12 @@ impl PaneFrame {
     fn focused_users_cursors_part(&self) -> (Vec<TerminalCharacter>, usize) {
         let mut content = vec![];
         let mut content_length = 0;
-        for client_id in &self.other_focused_clients {
+        for display_slot in &self.other_focused_client_slots {
             if content_length > 0 {
                 content.push(EMPTY_TERMINAL_CHARACTER);
                 content_length += 1;
             }
-            content.append(&mut self.client_cursor(*client_id));
+            content.append(&mut self.client_cursor(*display_slot));
             content_length += 1;
         }
         self.bracketed_title_part_from_characters(content, content_length)
@@ -1505,6 +1508,7 @@ mod tests {
                 focused_client: None,
                 is_main_client: true,
                 other_focused_clients: vec![],
+                other_focused_client_slots: vec![],
                 style: Style::default(),
                 border_style: BorderStyle::default(),
                 color: None,

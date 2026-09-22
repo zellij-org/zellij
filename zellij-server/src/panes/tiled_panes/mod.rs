@@ -73,6 +73,7 @@ pub struct TiledPanes {
     viewport: Rc<RefCell<Viewport>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+    client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
@@ -100,6 +101,7 @@ impl TiledPanes {
         viewport: Rc<RefCell<Viewport>>,
         connected_clients: Rc<RefCell<HashSet<ClientId>>>,
         connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+        client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         stacked_resize: Rc<RefCell<bool>>,
@@ -118,6 +120,7 @@ impl TiledPanes {
             viewport,
             connected_clients,
             connected_clients_in_app,
+            client_display_slots,
             mode_info,
             character_cell_size,
             stacked_resize,
@@ -1282,6 +1285,7 @@ impl TiledPanes {
                     mouse_scroll_resize,
                     mouse_hover_tips,
                     self.dimmed_clients.clone(),
+                    &self.client_display_slots.borrow(),
                 );
                 pane_contents_and_ui.set_frame_geom_override(visible_member_frame_override);
                 pane_contents_and_ui.set_blank_title(reserved_rows_for_pane > 0);

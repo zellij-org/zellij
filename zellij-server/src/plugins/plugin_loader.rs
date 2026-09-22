@@ -1,5 +1,5 @@
 use crate::plugins::plugin_map::{
-    PluginEnv, PluginMap, RunningPlugin, VecDequeInputStream, WriteOutputStream,
+    PluginEnv, PluginMap, PluginMetadata, RunningPlugin, VecDequeInputStream, WriteOutputStream,
 };
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
 use crate::plugins::wasm_bridge::{LoadingContext, PluginCache};
@@ -132,6 +132,7 @@ impl<'a> PluginLoader<'a> {
         self
     }
     pub fn start_plugin(&mut self) -> Result<()> {
+        self.record_plugin_metadata();
         let module = if self.skip_cache {
             self.interpret_module()?
         } else {
@@ -142,6 +143,19 @@ impl<'a> PluginLoader<'a> {
         self.load_plugin_instance(store, &instance)?;
         self.clone_instance_for_other_clients()?;
         Ok(())
+    }
+    fn record_plugin_metadata(&mut self) {
+        self.plugin_map.insert_metadata(
+            self.plugin_id,
+            PluginMetadata {
+                plugin_config: self.plugin_config.clone(),
+                tab_index: self.tab_index,
+                rows: self.size.rows,
+                columns: self.size.cols,
+                cwd: self.plugin_cwd.clone(),
+                is_background: self.tab_index.is_none(),
+            },
+        );
     }
     fn interpret_module(&mut self) -> Result<Module> {
         self.loading_indication.override_previous_error();
@@ -266,7 +280,6 @@ impl<'a> PluginLoader<'a> {
             wasi_ctx,
             plugin_own_data_dir: self.plugin_own_data_dir.clone(),
             plugin_own_cache_dir: self.plugin_own_cache_dir.clone(),
-            tab_index: self.tab_index,
             path_to_default_shell: self.path_to_default_shell.clone(),
             default_shell: self.default_shell.clone(),
             plugin_cwd: self.plugin_cwd.clone(),
@@ -378,7 +391,6 @@ impl<'a> PluginLoader<'a> {
             wasi_ctx,
             plugin_own_data_dir: self.plugin_own_data_dir.clone(),
             plugin_own_cache_dir: self.plugin_own_cache_dir.clone(),
-            tab_index: self.tab_index,
             path_to_default_shell: self.path_to_default_shell.clone(),
             default_shell: self.default_shell.clone(),
             plugin_cwd: self.plugin_cwd.clone(),
