@@ -330,9 +330,7 @@ fn resolve_plugins(
     distribution: &Distribution,
 ) -> Result<Vec<DistributionPlugin>, DistributionError> {
     if !is_usable_name(distribution.name) {
-        return Err(DistributionError::InvalidName(
-            distribution.name.to_owned(),
-        ));
+        return Err(DistributionError::InvalidName(distribution.name.to_owned()));
     }
     for removed in &distribution.removed_builtin_plugins {
         if !builtins.iter().any(|builtin| builtin.name == *removed) {
@@ -520,10 +518,7 @@ mod tests {
     #[test]
     fn a_distribution_can_remove_a_builtin() {
         let distribution = Distribution::new("test", "0.0.0").without_plugin("strider");
-        assert_eq!(
-            resolved_names(&distribution),
-            vec!["status-bar", "tab-bar"]
-        );
+        assert_eq!(resolved_names(&distribution), vec!["status-bar", "tab-bar"]);
     }
 
     #[test]
@@ -631,8 +626,6 @@ mod tests {
         assert!(is_usable_name("yazelix"));
         assert!(is_usable_name("my-dist_2"));
     }
-
-
 
     #[test]
     fn stock_zellij_keeps_its_historical_paths() {

@@ -224,12 +224,12 @@ impl Config {
         match distribution.config {
             Some(distribution_config) => match Self::from_kdl(distribution_config, Some(config)) {
                 Ok(config) => Ok(config),
-                Err(ConfigError::KdlError(kdl_error)) => Err(ConfigError::KdlError(
-                    kdl_error.add_src(
+                Err(ConfigError::KdlError(kdl_error)) => {
+                    Err(ConfigError::KdlError(kdl_error.add_src(
                         format!("{} bundled configuration", distribution.name),
                         distribution_config.to_owned(),
-                    ),
-                )),
+                    )))
+                },
                 Err(e) => Err(e),
             },
             None => Ok(config),

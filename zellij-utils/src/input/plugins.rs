@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use super::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation};
-use crate::distribution;
 pub use crate::data::PluginTag;
+use crate::distribution;
 use crate::errors::prelude::*;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]

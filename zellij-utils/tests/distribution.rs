@@ -148,8 +148,8 @@ fn an_untouched_builtin_is_still_registered_but_has_no_embedded_bytes() {
 #[test]
 fn a_removed_builtin_no_longer_resolves() {
     install();
-    let run_plugin = RunPlugin::from_url(&format!("zellij:{}", REMOVED_BUILTIN))
-        .expect("the url should parse");
+    let run_plugin =
+        RunPlugin::from_url(&format!("zellij:{}", REMOVED_BUILTIN)).expect("the url should parse");
     assert!(
         PluginConfig::from_run_plugin(&run_plugin).is_none(),
         "'{}' was removed and should not resolve",
