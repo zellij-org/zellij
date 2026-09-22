@@ -25,16 +25,51 @@ pub static ZELLIJ_DEFAULT_THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets
 
 pub const CLIENT_SERVER_CONTRACT_VERSION: usize = 1;
 
-pub fn session_info_cache_file_name(session_name: &str) -> PathBuf {
-    session_info_folder_for_session(session_name).join("session-metadata.kdl")
+// The session-info cache is keyed by session id (a UUID for new sessions, or the
+// legacy session name for pre-registry sessions), NOT the user-visible display
+// name — so renaming a session never moves its cache folder.
+pub fn session_info_cache_file_name(session_id: &str) -> PathBuf {
+    session_info_folder_for_session(session_id).join("session-metadata.kdl")
 }
 
-pub fn session_layout_cache_file_name(session_name: &str) -> PathBuf {
-    session_info_folder_for_session(session_name).join("session-layout.kdl")
+pub fn session_layout_cache_file_name(session_id: &str) -> PathBuf {
+    session_info_folder_for_session(session_id).join("session-layout.kdl")
 }
 
-pub fn session_info_folder_for_session(session_name: &str) -> PathBuf {
-    ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_name)
+pub fn session_info_folder_for_session(session_id: &str) -> PathBuf {
+    ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_id)
+}
+
+/// Length of a generated session id (hex chars). Kept short so the socket/pipe
+/// path stays within the platform limit (104 bytes on macOS) even under a long
+/// temp dir — a full 36-char UUID would overflow it. See `generate_session_id`.
+pub const SESSION_ID_LENGTH: usize = 12;
+
+/// Validate that `ZELLIJ_SOCK_DIR` is short enough to fit an id-based socket
+/// filename within the platform's Unix domain socket path limit.
+///
+/// Should be called once at startup. Exits with an error message if the
+/// directory is too long.
+pub fn check_sock_dir_length() {
+    let dir_len = ZELLIJ_SOCK_DIR.as_os_str().len();
+    // +1 for the path separator between dir and filename.
+    let required = dir_len + 1 + SESSION_ID_LENGTH;
+    if required >= ZELLIJ_SOCK_MAX_LENGTH {
+        let max_dir_len = ZELLIJ_SOCK_MAX_LENGTH.saturating_sub(1 + SESSION_ID_LENGTH + 1);
+        eprintln!(
+            "Error: the socket directory path is too long ({} bytes, max {}):\n  {}\n\n\
+             Session socket paths use a {}-byte id as the filename, leaving\n\
+             at most {} bytes for the directory.\n\
+             To fix this, set a shorter socket directory, eg.:\n  \
+             ZELLIJ_SOCKET_DIR=/tmp/zellij zellij",
+            dir_len,
+            max_dir_len,
+            ZELLIJ_SOCK_DIR.display(),
+            SESSION_ID_LENGTH,
+            max_dir_len,
+        );
+        std::process::exit(1);
+    }
 }
 
 pub fn create_config_and_cache_folders() {
@@ -106,6 +141,8 @@ lazy_static! {
     pub static ref ZELLIJ_SESSION_INFO_CACHE_DIR: PathBuf = ZELLIJ_CACHE_DIR
         .join(CLIENT_SERVER_CONTRACT_DIR.clone())
         .join("session_info");
+    pub static ref ZELLIJ_SESSIONS_KDL: PathBuf = ZELLIJ_SOCK_DIR.join("sessions.kdl");
+    pub static ref ZELLIJ_SESSIONS_LOCK: PathBuf = ZELLIJ_SOCK_DIR.join("sessions.kdl.lock");
     pub static ref ZELLIJ_PLUGIN_ARTIFACT_DIR: PathBuf = ZELLIJ_CACHE_DIR.join(VERSION);
     pub static ref ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE: PathBuf =
         ZELLIJ_CACHE_DIR.join(VERSION).join("seen_release_notes");

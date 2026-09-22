@@ -28,26 +28,9 @@ const CLI_STYLES: Styles = Styles::styled()
     .invalid(ansi(AnsiColor::Yellow));
 
 fn validate_session(name: &str) -> Result<String, String> {
-    #[cfg(unix)]
-    {
-        use crate::consts::ZELLIJ_SOCK_MAX_LENGTH;
-
-        let mut socket_path = crate::consts::ZELLIJ_SOCK_DIR.clone();
-        socket_path.push(name);
-
-        if socket_path.as_os_str().len() >= ZELLIJ_SOCK_MAX_LENGTH {
-            // socket path must be less than 108 bytes
-            let available_length = ZELLIJ_SOCK_MAX_LENGTH
-                .saturating_sub(socket_path.as_os_str().len())
-                .saturating_sub(1);
-
-            return Err(format!(
-                "session name must be less than {} characters",
-                available_length
-            ));
-        };
-    };
-
+    // Socket paths are now named by session id (a UUID), not the session name,
+    // so the name no longer contributes to the socket-path length limit. The
+    // directory length is validated once at startup via `check_sock_dir_length`.
     Ok(name.to_owned())
 }
 
