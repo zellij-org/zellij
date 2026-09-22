@@ -150,6 +150,12 @@ fn assert_socket(name: &str) -> bool {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match ipc_connect(path) {
         Ok(stream) => {
+            // a wedged server accepts connections but never replies; without a
+            // read timeout `zellij ls` would block forever on recv below
+            {
+                use interprocess::local_socket::prelude::*;
+                let _ = stream.set_recv_timeout(Some(std::time::Duration::from_secs(5)));
+            }
             let mut sender: IpcSenderWithContext<ClientToServerMsg> =
                 IpcSenderWithContext::new(stream);
             let _ = sender.send_client_msg(ClientToServerMsg::ConnStatus);
