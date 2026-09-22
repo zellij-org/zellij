@@ -38,6 +38,7 @@ sysinfo = { version = "0.39.5", default-features = false, features = ["system"] 
 tempfile = { workspace = true }
 tokio = { workspace = true }
 unicode-width = { workspace = true }
+unicode-properties = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 vte = { workspace = true }
