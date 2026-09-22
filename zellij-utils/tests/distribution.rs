@@ -232,6 +232,7 @@ fn zellijs_own_layouts_are_still_addressable() {
     assert!(layout.contains("compact-bar"));
 }
 
+#[cfg(unix)]
 #[test]
 fn every_path_is_named_after_the_distribution() {
     install();
@@ -245,7 +246,7 @@ fn every_path_is_named_after_the_distribution() {
         ("log file", ZELLIJ_TMP_LOG_FILE.clone()),
     ];
     for (what, path) in paths {
-        let path = path.display().to_string();
+        let path = path.display().to_string().to_lowercase();
         assert!(
             path.contains(NAME),
             "the {} should be named after the distribution, got '{}'",
@@ -259,6 +260,22 @@ fn every_path_is_named_after_the_distribution() {
             path
         );
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn the_paths_the_distribution_spells_itself_are_its_own() {
+    install();
+    assert!(home_config_dir()
+        .expect("a home dir")
+        .ends_with(format!(".config/{}", NAME)));
+    assert_eq!(
+        system_default_config_dir(),
+        PathBuf::from("/etc").join(NAME)
+    );
+    assert!(system_data_dir().ends_with(format!("share/{}", NAME)));
+    assert!(ZELLIJ_TMP_LOG_FILE.ends_with(format!("{}.log", NAME)));
+    assert!(ZELLIJ_CACHE_DIR.ends_with(NAME));
 }
 
 #[test]

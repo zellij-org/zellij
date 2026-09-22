@@ -92,6 +92,7 @@ fn only_zellijs_own_layouts_are_addressable() {
     assert!(Layout::stringified_from_default_assets(Path::new("bundled")).is_err());
 }
 
+#[cfg(unix)]
 #[test]
 fn every_path_keeps_its_historical_name() {
     let paths: Vec<(&str, PathBuf)> = vec![
@@ -104,7 +105,7 @@ fn every_path_keeps_its_historical_name() {
         ("log file", ZELLIJ_TMP_LOG_FILE.clone()),
     ];
     for (what, path) in paths {
-        let path = path.display().to_string();
+        let path = path.display().to_string().to_lowercase();
         assert!(
             path.contains("zellij"),
             "the {} should be named after zellij, got '{}'",
@@ -112,11 +113,38 @@ fn every_path_keeps_its_historical_name() {
             path
         );
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn the_paths_zellij_spells_itself_are_exactly_as_they_were() {
     assert!(home_config_dir()
         .expect("a home dir")
         .ends_with(".config/zellij"));
     assert_eq!(system_default_config_dir(), PathBuf::from("/etc/zellij"));
+    assert!(system_data_dir().ends_with("share/zellij"));
     assert!(ZELLIJ_TMP_LOG_FILE.ends_with("zellij.log"));
+    assert!(ZELLIJ_TMP_DIR
+        .file_name()
+        .expect("the tmp dir should have a file name")
+        .to_string_lossy()
+        .starts_with("zellij-"));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn the_platform_directories_are_lowercase_on_linux() {
+    assert!(ZELLIJ_CACHE_DIR.ends_with("zellij"));
+    assert!(ZELLIJ_PLUGIN_PERMISSIONS_CACHE.ends_with("zellij/permissions.kdl"));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn the_platform_directories_use_zellijs_historical_bundle_id_on_macos() {
+    assert!(ZELLIJ_CACHE_DIR.ends_with("org.Zellij-Contributors.Zellij"));
+    assert!(
+        ZELLIJ_PLUGIN_PERMISSIONS_CACHE.ends_with("org.Zellij-Contributors.Zellij/permissions.kdl")
+    );
 }
 
 #[test]
