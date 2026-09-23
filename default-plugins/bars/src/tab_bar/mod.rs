@@ -365,7 +365,7 @@ impl TabBar {
                 t,
                 is_alternate_tab,
                 is_hovered,
-                client.mode_info.style.colors,
+                t.ui_theme.unwrap_or(client.mode_info.style.colors),
                 client.mode_info.capabilities,
                 dimmed,
             );

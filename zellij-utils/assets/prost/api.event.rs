@@ -727,6 +727,8 @@ pub struct TabInfo {
     pub is_flashing_bell: bool,
     #[prost(uint32, repeated, tag="20")]
     pub other_focused_client_slots: ::prost::alloc::vec::Vec<u32>,
+    #[prost(message, optional, tag="21")]
+    pub ui_theme: ::core::option::Option<super::style::Styling>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -63,7 +63,7 @@ use zellij_utils::{
     data::{
         CommandOrPlugin, CommandToRun, Direction, EventType, FileToOpen, InputMode,
         NestedSessionKeybindsError, PluginCommand, PluginIds, PluginMessage, Resize,
-        ResizeStrategy,
+        ResizeStrategy, UiThemeTarget,
     },
     errors::prelude::*,
     input::{
@@ -823,6 +823,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     },
                     PluginCommand::SetPaneColor(pane_id, fg, bg) => {
                         set_pane_color(env, pane_id.into(), fg, bg)
+                    },
+                    PluginCommand::SetUiTheme(target, theme_name) => {
+                        set_ui_theme(env, target, theme_name)
                     },
                     PluginCommand::OpenFileNearPlugin(file_to_open, context) => {
                         open_file_near_plugin(env, file_to_open, context)
@@ -4254,6 +4257,12 @@ fn set_pane_color(env: &PluginEnv, pane_id: PaneId, fg: Option<String>, bg: Opti
         .send_to_screen(ScreenInstruction::SetPaneColor(pane_id, fg, bg, None));
 }
 
+fn set_ui_theme(env: &PluginEnv, target: UiThemeTarget, theme_name: Option<String>) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::SetUiTheme(target, theme_name, None));
+}
+
 fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
     if !folder_to_scan.starts_with("/host") {
         log::error!(
@@ -5868,6 +5877,7 @@ fn check_command_permission(
         | PluginCommand::SetPaneBorderless(..)
         | PluginCommand::SetPaneBorderStyle(..)
         | PluginCommand::SetPaneColor(..)
+        | PluginCommand::SetUiTheme(..)
         | PluginCommand::GroupAndUngroupPanes(..)
         | PluginCommand::HighlightAndUnhighlightPanes(..)
         | PluginCommand::CloseMultiplePanes(..)
