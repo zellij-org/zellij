@@ -6,10 +6,11 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 
 use tab::get_tab_to_focus;
+use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
-use crate::line::tab_line;
-use crate::tab::tab_style;
+use crate::line::{tab_line, tab_line_prefix, tab_separator};
+use crate::tab::{tab_style, truncate_to_width};
 
 #[derive(Debug, Default)]
 pub struct LinePart {
@@ -200,6 +201,24 @@ impl ZellijPlugin for State {
         }
         let dimmed = self.mode_info.session_ascended == Some(true)
             || self.mode_info.session_dimmed == Some(true);
+        let bar_cols = cols.saturating_sub(1);
+        let breadcrumb_ancestry: Vec<String> = if self.mode_info.host_fullscreen == Some(true) {
+            self.mode_info.session_ancestry.clone()
+        } else {
+            vec![]
+        };
+        let (prefix_parts, _) = if self.mode_info.style.hide_session_name {
+            tab_line_prefix(None, self.mode_info.style.colors, bar_cols, dimmed, &[])
+        } else {
+            tab_line_prefix(
+                self.mode_info.session_name.as_deref(),
+                self.mode_info.style.colors,
+                bar_cols,
+                dimmed,
+                &breadcrumb_ancestry,
+            )
+        };
+        let prefix_len: usize = prefix_parts.iter().map(|p| p.len).sum();
         let mut all_tabs: Vec<LinePart> = vec![];
         let mut active_tab_index = 0;
         let mut is_alternate_tab = false;
@@ -212,6 +231,27 @@ impl ZellijPlugin for State {
                 active_tab_index = t.position;
             } else if t.active {
                 active_tab_index = t.position;
+            }
+            if t.active {
+                // the suffixes appended by tab_style and the separators and
+                // padding added by render_tab have to fit next to the name
+                let separator_width = tab_separator(self.mode_info.capabilities).width();
+                let mut extra_width = separator_width * 2 + 2;
+                if t.is_fullscreen_active {
+                    extra_width += " (FULLSCREEN)".width();
+                } else if t.is_sync_panes_active {
+                    extra_width += " (SYNC)".width();
+                }
+                if t.has_bell_notification || t.is_flashing_bell {
+                    extra_width += " [!]".width();
+                }
+                if !t.other_focused_clients.is_empty() {
+                    extra_width += t.other_focused_clients.len() + 2; // the "[…]" wrapper
+                }
+                let max_name_width = bar_cols
+                    .saturating_sub(prefix_len)
+                    .saturating_sub(extra_width);
+                tabname = truncate_to_width(&tabname, max_name_width);
             }
             let is_hovered = self.hovered_tab_idx == Some(t.position + 1);
             let tab = tab_style(
@@ -235,16 +275,11 @@ impl ZellijPlugin for State {
         } else {
             self.hint_text.as_ref()
         };
-        let breadcrumb_ancestry: Vec<String> = if self.mode_info.host_fullscreen == Some(true) {
-            self.mode_info.session_ancestry.clone()
-        } else {
-            vec![]
-        };
         let (line, new_tab_button_range, breadcrumb_range) = tab_line(
             self.mode_info.session_name.as_deref(),
             all_tabs,
             active_tab_index,
-            cols.saturating_sub(1),
+            bar_cols,
             self.mode_info.style.colors,
             self.mode_info.capabilities,
             self.mode_info.style.hide_session_name,
