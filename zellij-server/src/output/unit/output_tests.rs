@@ -1388,6 +1388,30 @@ fn kitty_diff_move_remove_free_retransmit() {
 }
 
 #[test]
+fn kitty_scaled_variant_replacement_retires_previous_host_placement() {
+    let parts = create_test_kitty_parts();
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let original = kitty_chunk(internal, 1, 0, 0);
+    let unaffected = kitty_chunk(internal, 2, 10, 0);
+    run_kitty_frame(&parts, vec![original, unaffected], None);
+
+    parts
+        .0
+        .borrow_mut()
+        .add_scaled_variant(internal, (3, 1), vec![255; 30 * 20 * 4]);
+    let mut cropped = original;
+    cropped.dest_cells = (3, 1);
+    cropped.scaled_px = Some((30, 20));
+    cropped.source_px_height = 20;
+    let replacement = run_kitty_frame(&parts, vec![cropped, unaffected], None);
+
+    assert!(replacement.contains("\u{1b}_Ga=d,q=2,d=i,i=2000000000,p=1\u{1b}\\"));
+    assert!(replacement.contains("\u{1b}_Ga=p,q=2,i=2000000001,p=1,"));
+    assert_eq!(replacement.matches("\u{1b}_Ga=d,").count(), 1);
+    assert!(!replacement.contains("d=I"));
+}
+
+#[test]
 fn kitty_placements_of_pane_dropped_from_visible_set_are_deleted() {
     let parts = create_test_kitty_parts();
     let internal = store_test_kitty_image(&parts.0, 30, 40);
