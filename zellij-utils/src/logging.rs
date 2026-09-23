@@ -22,10 +22,10 @@ use crate::shared::set_permissions;
 
 const LOG_MAX_BYTES: u64 = 1024 * 1024 * 16; // 16 MiB per log
 
-pub fn configure_logger() {
-    atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
-    atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR).unwrap();
-    atomic_create_file(&*ZELLIJ_TMP_LOG_FILE).unwrap();
+pub fn configure_logger() -> io::Result<()> {
+    atomic_create_dir(&*ZELLIJ_TMP_DIR)?;
+    atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR)?;
+    atomic_create_file(&*ZELLIJ_TMP_LOG_FILE)?;
 
     let trigger = SizeTrigger::new(LOG_MAX_BYTES);
     let roller = FixedWindowRoller::builder()
@@ -36,7 +36,7 @@ pub fn configure_logger() {
                 .unwrap(),
             1,
         )
-        .unwrap();
+        .map_err(io::Error::other)?;
 
     // {n} means platform dependent newline
     // module is padded to exactly 25 bytes and thread is padded to be between 10 and 15 bytes.
@@ -52,7 +52,7 @@ pub fn configure_logger() {
                 Box::new(roller.clone()),
             )),
         )
-        .unwrap();
+        .map_err(io::Error::other)?;
 
     // plugin appender. To be used in logging_pipe to forward stderr output from plugins. We do some formatting
     // in logging_pipe to print plugin name as 'module' and plugin_id instead of thread.
@@ -64,7 +64,7 @@ pub fn configure_logger() {
             &*ZELLIJ_TMP_LOG_FILE,
             Box::new(CompoundPolicy::new(Box::new(trigger), Box::new(roller))),
         )
-        .unwrap();
+        .map_err(io::Error::other)?;
 
     // Set the default logging level to "info" and log it to zellij.log file
     // Decrease verbosity for `wasmtime_wasi` module because it has a lot of useless info logs
@@ -90,9 +90,11 @@ pub fn configure_logger() {
                 .build("zellij_server::logging_pipe", LevelFilter::Trace),
         )
         .build(Root::builder().appender("logFile").build(LevelFilter::Info))
-        .unwrap();
+        .map_err(io::Error::other)?;
 
-    let _ = log4rs::init_config(config).unwrap();
+    log4rs::init_config(config).map_err(io::Error::other)?;
+
+    Ok(())
 }
 
 pub fn atomic_create_file(file_name: &Path) -> io::Result<()> {
