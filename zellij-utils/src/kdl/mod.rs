@@ -6450,6 +6450,7 @@ impl TabInfo {
             tab_id,
             has_bell_notification: false,
             is_flashing_bell: false,
+            ui_theme: None,
         })
     }
     pub fn encode_to_kdl(&self) -> KdlDocument {
@@ -6888,6 +6889,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 selectable_floating_panes_count: 10,
                 tab_id: 0,
                 is_flashing_bell: false,
+                ui_theme: None,
                 has_bell_notification: false,
             },
             TabInfo {
@@ -6909,6 +6911,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 selectable_floating_panes_count: 10,
                 tab_id: 1,
                 is_flashing_bell: false,
+                ui_theme: None,
                 has_bell_notification: false,
             },
         ],

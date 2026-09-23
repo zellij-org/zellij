@@ -16,7 +16,8 @@ pub use super::generated_api::api::{
         highlight_style::Style as ProtobufHighlightStyleVariant, new_tab_response,
         new_tab_unfocused_response, parse_layout_response, plugin_command::Payload,
         rename_layout_response, save_layout_response, save_session_response,
-        show_floating_panes_response, BreakPanesToNewTabPayload,
+        show_floating_panes_response, ui_theme_target::Target as ProtobufUiThemeTarget,
+        BreakPanesToNewTabPayload,
         BreakPanesToNewTabResponse as ProtobufBreakPanesToNewTabResponse,
         BreakPanesToTabWithIdPayload,
         BreakPanesToTabWithIdResponse as ProtobufBreakPanesToTabWithIdResponse,
@@ -125,12 +126,14 @@ pub use super::generated_api::api::{
         SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
         SetPaneRegexHighlightsPayload, SetSelfMouseSelectionSupportPayload,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
-        ShowCursorPayload, ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
+        SetUiThemePayload, ShowCursorPayload,
+        ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
         StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToIdPayload,
         SwitchTabToPayload, ToggleFloatingPanesPayload, TogglePaneBorderlessPayload,
-        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload,
+        UiThemeTarget as ProtobufUiThemeTargetPayload, UnsubscribePayload, WebRequestPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -142,7 +145,7 @@ use crate::data::{
     GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, GetSessionListResponse,
     HighlightLayer, HighlightStyle, HttpVerb, InputMode, KeyWithModifier, KillSessionsResponse,
     MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand, RegexHighlight,
-    RenameLayoutResponse, SaveLayoutResponse, SessionInfo, SessionListSnapshot,
+    RenameLayoutResponse, SaveLayoutResponse, SessionInfo, SessionListSnapshot, UiThemeTarget,
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
@@ -2670,6 +2673,21 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for SetPaneColor"),
             },
+            Some(CommandName::SetUiTheme) => match protobuf_plugin_command.payload {
+                Some(Payload::SetUiThemePayload(payload)) => {
+                    let target = match payload.target.and_then(|target| target.target) {
+                        Some(ProtobufUiThemeTarget::TabId(tab_id)) => {
+                            UiThemeTarget::Tab(tab_id as usize)
+                        },
+                        Some(ProtobufUiThemeTarget::PaneId(pane_id)) => {
+                            UiThemeTarget::Pane(pane_id.try_into()?)
+                        },
+                        None => return Err("Malformed SetUiTheme payload"),
+                    };
+                    Ok(PluginCommand::SetUiTheme(target, payload.theme_name))
+                },
+                _ => Err("Mismatched payload for SetUiTheme"),
+            },
             Some(CommandName::SetPaneRegexHighlights) => {
                 match protobuf_plugin_command.payload {
                     Some(Payload::SetPaneRegexHighlightsPayload(p)) => {
@@ -4432,6 +4450,23 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     bg,
                 })),
             }),
+            PluginCommand::SetUiTheme(target, theme_name) => {
+                let target = match target {
+                    UiThemeTarget::Tab(tab_id) => ProtobufUiThemeTargetPayload {
+                        target: Some(ProtobufUiThemeTarget::TabId(tab_id as u64)),
+                    },
+                    UiThemeTarget::Pane(pane_id) => ProtobufUiThemeTargetPayload {
+                        target: Some(ProtobufUiThemeTarget::PaneId(pane_id.try_into()?)),
+                    },
+                };
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::SetUiTheme as i32,
+                    payload: Some(Payload::SetUiThemePayload(SetUiThemePayload {
+                        target: Some(target),
+                        theme_name,
+                    })),
+                })
+            },
             PluginCommand::SetPaneRegexHighlights(pane_id, highlights) => {
                 Ok(ProtobufPluginCommand {
                     name: CommandName::SetPaneRegexHighlights as i32,
@@ -5280,6 +5315,36 @@ mod tests {
         match decoded {
             PluginCommand::ToggleFloatingPanes { tab_id } => assert_eq!(tab_id, Some(2)),
             other => panic!("expected ToggleFloatingPanes, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn set_ui_theme_protobuf_round_trip() {
+        let tab = PluginCommand::SetUiTheme(UiThemeTarget::Tab(2), Some("project-a".into()));
+        let pane = PluginCommand::SetUiTheme(
+            UiThemeTarget::Pane(PaneId::Terminal(4)),
+            Some("attention".into()),
+        );
+        let clear = PluginCommand::SetUiTheme(UiThemeTarget::Pane(PaneId::Plugin(5)), None);
+
+        for (original_target, original_theme, original) in [
+            (UiThemeTarget::Tab(2), Some("project-a".to_owned()), tab),
+            (
+                UiThemeTarget::Pane(PaneId::Terminal(4)),
+                Some("attention".to_owned()),
+                pane,
+            ),
+            (UiThemeTarget::Pane(PaneId::Plugin(5)), None, clear),
+        ] {
+            let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+            let decoded: PluginCommand = protobuf.try_into().expect("decode");
+            match decoded {
+                PluginCommand::SetUiTheme(target, theme) => {
+                    assert_eq!(target, original_target);
+                    assert_eq!(theme, original_theme);
+                },
+                other => panic!("expected SetUiTheme, got {:?}", other),
+            }
         }
     }
 }
