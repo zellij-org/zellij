@@ -2283,6 +2283,9 @@ impl Tab {
         Ok(())
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
+        // The client can receive another title while away, or its ID can be reused.
+        self.tiled_panes.clear_client_title(client_id);
+        self.floating_panes.clear_client_title(client_id);
         self.focus_pane_id = None;
         self.mode_info
             .borrow_mut()
@@ -2309,6 +2312,9 @@ impl Tab {
         client_ids_to_mode_infos
     }
     pub fn drain_single_client(&mut self, client_id: ClientId) -> (ClientId, ModeInfo) {
+        // The client can receive another title while away, or its ID can be reused.
+        self.tiled_panes.clear_client_title(client_id);
+        self.floating_panes.clear_client_title(client_id);
         let client_mode_info = self
             .mode_info
             .borrow_mut()

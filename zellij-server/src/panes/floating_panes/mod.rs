@@ -54,7 +54,7 @@ pub struct FloatingPanes {
     // initial_position,
     // last_position)
     senders: ThreadSenders,
-    window_title: Option<String>,
+    window_titles: HashMap<ClientId, String>,
     dimmed_clients: HashSet<ClientId>,
     fullscreen_covers_ui: Rc<RefCell<bool>>,
     fullscreen_pane_id: Option<PaneId>,
@@ -97,7 +97,7 @@ impl FloatingPanes {
             active_panes: ActivePanes::new(&os_input),
             pane_being_moved_with_mouse: None,
             senders,
-            window_title: None,
+            window_titles: HashMap::new(),
             dimmed_clients: HashSet::new(),
             fullscreen_covers_ui,
             fullscreen_pane_id: None,
@@ -110,6 +110,9 @@ impl FloatingPanes {
         if self.fullscreen_pane_id.is_some() && !self.floating_fullscreen_covers_ui {
             let _ = self.set_pane_frames();
         }
+    }
+    pub fn clear_client_title(&mut self, client_id: ClientId) {
+        self.window_titles.remove(&client_id);
     }
     pub fn set_client_dimmed(&mut self, client_id: ClientId, dimmed: bool) {
         if dimmed {
@@ -305,7 +308,7 @@ impl FloatingPanes {
             .or_else(|| self.panes.keys().next().copied())
     }
     pub fn toggle_show_panes(&mut self, should_show_floating_panes: bool) {
-        self.window_title = None; // clear so that it will be re-rendered once we toggle back
+        self.window_titles.clear(); // clear so that it will be re-rendered once we toggle back
         self.show_panes = should_show_floating_panes;
         if should_show_floating_panes {
             self.active_panes.focus_all_panes(&mut self.panes);
@@ -630,7 +633,7 @@ impl FloatingPanes {
                 pane_contents_and_ui.render_terminal_title_if_needed(
                     *client_id,
                     client_mode,
-                    &mut self.window_title,
+                    &mut self.window_titles,
                 );
                 // this is done for panes that don't have their own cursor (eg. panes of
                 // another user)

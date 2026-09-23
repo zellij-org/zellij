@@ -296,18 +296,18 @@ impl<'a> PaneContentsAndUi<'a> {
         &mut self,
         client_id: ClientId,
         client_mode: InputMode,
-        previous_title: &mut Option<String>,
+        previous_titles: &mut HashMap<ClientId, String>,
     ) {
         if !self.focused_clients.contains(&client_id) {
             return;
         }
         let vte_output = self.pane.render_terminal_title(client_mode);
-        if let Some(previous_title) = previous_title {
+        if let Some(previous_title) = previous_titles.get(&client_id) {
             if *previous_title == vte_output {
                 return;
             }
         }
-        *previous_title = Some(vte_output.clone());
+        previous_titles.insert(client_id, vte_output.clone());
         self.output
             .add_post_vte_instruction_to_client(client_id, &vte_output);
     }
