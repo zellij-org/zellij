@@ -161,24 +161,22 @@ mod not_wasm {
                     env!("CARGO_MANIFEST_DIR"),
                     "/assets/plugins/",
                     $plugin
-                ))
-                .to_vec(),
+                )),
                 #[cfg(all(feature = "plugins_from_target", debug_assertions))]
                 include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
                     "/../target/wasm32-wasip1/debug/",
                     $plugin
-                ))
-                .to_vec(),
+                )),
             );
         };
     }
 
     lazy_static! {
         // Zellij asset map
-        pub static ref ASSET_MAP: HashMap<PathBuf, Vec<u8>> = {
+        pub static ref ASSET_MAP: HashMap<PathBuf, &'static [u8]> = {
             #[allow(unused_mut)]
-            let mut assets: HashMap<PathBuf, Vec<u8>> = std::collections::HashMap::new();
+            let mut assets: HashMap<PathBuf, &'static [u8]> = std::collections::HashMap::new();
             #[cfg(not(feature = "disable_automatic_asset_installation"))]
             {
                 add_plugin!(assets, "compact-bar.wasm");

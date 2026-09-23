@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * fix: forward OSC7 (cwd changes) to host terminal (https://github.com/zellij-org/zellij/pull/4867)
+* performance: reduce server memory usage by not copying the builtin plugins onto the heap (https://github.com/zellij-org/zellij/pull/5622)
 
 ## [0.45.1] - 2026-08-28
 * fix: nested-session detection over SSH (https://github.com/zellij-org/zellij/pull/5522)
