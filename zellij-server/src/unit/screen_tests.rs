@@ -14075,3 +14075,165 @@ pub fn reported_pixel_dimensions_are_applied_to_existing_ptys() {
         resizes_after_reply
     );
 }
+
+mod user_variable_tests {
+    use super::*;
+
+    const FIRST: &str = "UkYtQkpU"; // RF-BJT
+    const SECOND: &str = "VkZP"; // VFO
+
+    fn emit(screen: &mut Screen, terminal_id: u32, value: &str) {
+        emit_bytes_from_pane(
+            screen,
+            1,
+            terminal_id,
+            format!("\x1b]1337;SetUserVar=zellijSession={}\x07", value).into_bytes(),
+        );
+    }
+
+    fn output(screen: &mut Screen, receiver: &ServerReceiver) -> HashMap<ClientId, String> {
+        screen.render_to_clients().unwrap();
+        collect_rendered_output_per_client(receiver)
+    }
+
+    fn has_value(rendered: &HashMap<ClientId, String>, client: ClientId, value: &str) -> bool {
+        rendered
+            .get(&client)
+            .map(|s| s.contains(&format!("\x1b]1337;SetUserVar=zellijSession={}\x07", value)))
+            .unwrap_or(false)
+    }
+
+    #[test]
+    fn forwards_bash_user_variable_without_visible_output() {
+        let (mut screen, receiver) = screen_with_one_pane_for_osc7();
+        emit(&mut screen, 1, FIRST);
+        assert!(has_value(&output(&mut screen, &receiver), 1, FIRST));
+        emit(&mut screen, 1, SECOND);
+        assert!(has_value(&output(&mut screen, &receiver), 1, SECOND));
+        emit(&mut screen, 1, SECOND);
+        assert!(!has_value(&output(&mut screen, &receiver), 1, SECOND));
+    }
+
+    #[test]
+    fn reattach_restores_variable_for_new_and_reused_client_ids() {
+        for client in [1, 2] {
+            let (mut screen, receiver) = screen_with_one_pane_for_osc7();
+            emit(&mut screen, 1, FIRST);
+            assert!(has_value(&output(&mut screen, &receiver), 1, FIRST));
+            screen.remove_client(1).unwrap();
+            screen.set_client_size(
+                client,
+                Size {
+                    cols: 121,
+                    rows: 20,
+                },
+            );
+            screen.add_client(client, false).unwrap();
+            assert!(has_value(&output(&mut screen, &receiver), client, FIRST));
+        }
+    }
+
+    #[test]
+    fn pane_focus_restores_values_and_background_panes_do_not_override_them() {
+        let (mut screen, receiver) = screen_with_two_panes_for_osc7(true);
+        emit(&mut screen, 1, FIRST);
+        emit(&mut screen, 2, SECOND);
+        let rendered = output(&mut screen, &receiver);
+        assert!(has_value(&rendered, 1, FIRST));
+        assert!(!has_value(&rendered, 1, SECOND));
+        screen
+            .get_active_tab_mut(1)
+            .unwrap()
+            .move_focus_down(1)
+            .unwrap();
+        assert!(has_value(&output(&mut screen, &receiver), 1, SECOND));
+        screen
+            .get_active_tab_mut(1)
+            .unwrap()
+            .move_focus_up(1)
+            .unwrap();
+        assert!(has_value(&output(&mut screen, &receiver), 1, FIRST));
+    }
+
+    #[test]
+    fn each_client_receives_its_focused_panes_variable() {
+        let (mut screen, receiver) = screen_with_two_panes_for_osc7(false);
+        screen.set_client_size(
+            2,
+            Size {
+                cols: 121,
+                rows: 20,
+            },
+        );
+        screen.add_client(2, false).unwrap();
+        screen
+            .get_active_tab_mut(2)
+            .unwrap()
+            .move_focus_down(2)
+            .unwrap();
+        emit(&mut screen, 1, FIRST);
+        emit(&mut screen, 2, SECOND);
+        let rendered = output(&mut screen, &receiver);
+        assert!(has_value(&rendered, 1, FIRST));
+        assert!(has_value(&rendered, 2, SECOND));
+        assert!(!has_value(&rendered, 1, SECOND));
+        assert!(!has_value(&rendered, 2, FIRST));
+    }
+
+    #[test]
+    fn floating_pane_and_tiled_pane_restore_their_own_variables() {
+        let (mut screen, receiver) = screen_with_one_pane_for_osc7();
+        emit(&mut screen, 1, FIRST);
+        assert!(has_value(&output(&mut screen, &receiver), 1, FIRST));
+        let tab = screen.get_active_tab_mut(1).unwrap();
+        tab.new_floating_pane(PaneId::Terminal(2), None, None, false, true, None, None)
+            .unwrap();
+        tab.show_floating_panes();
+        emit(&mut screen, 2, SECOND);
+        assert!(has_value(&output(&mut screen, &receiver), 1, SECOND));
+        screen.get_active_tab_mut(1).unwrap().hide_floating_panes();
+        assert!(has_value(&output(&mut screen, &receiver), 1, FIRST));
+    }
+
+    #[test]
+    fn leaving_a_reporting_pane_clears_only_previously_forwarded_variables() {
+        let (mut screen, receiver) = screen_with_two_panes_for_osc7(true);
+        emit(&mut screen, 1, FIRST);
+        assert!(has_value(&output(&mut screen, &receiver), 1, FIRST));
+        screen
+            .get_active_tab_mut(1)
+            .unwrap()
+            .move_focus_down(1)
+            .unwrap();
+        assert!(has_value(&output(&mut screen, &receiver), 1, ""));
+        screen
+            .get_active_tab_mut(1)
+            .unwrap()
+            .move_focus_up(1)
+            .unwrap();
+        assert!(has_value(&output(&mut screen, &receiver), 1, FIRST));
+    }
+
+    #[test]
+    fn switching_tabs_restores_each_tabs_variable() {
+        let (mut screen, receiver) = screen_with_one_pane_for_osc7();
+        emit(&mut screen, 1, FIRST);
+        assert!(has_value(&output(&mut screen, &receiver), 1, FIRST));
+        new_tab(&mut screen, 2, 1);
+        emit(&mut screen, 2, SECOND);
+        assert!(has_value(&output(&mut screen, &receiver), 1, SECOND));
+        screen.go_to_tab(1, 1).unwrap();
+        assert!(has_value(&output(&mut screen, &receiver), 1, FIRST));
+        screen.go_to_tab(2, 1).unwrap();
+        assert!(has_value(&output(&mut screen, &receiver), 1, SECOND));
+    }
+
+    #[test]
+    fn terminal_reset_clears_forwarded_variable() {
+        let (mut screen, receiver) = screen_with_one_pane_for_osc7();
+        emit(&mut screen, 1, FIRST);
+        assert!(has_value(&output(&mut screen, &receiver), 1, FIRST));
+        emit_bytes_from_pane(&mut screen, 1, 1, b"\x1bc".to_vec());
+        assert!(has_value(&output(&mut screen, &receiver), 1, ""));
+    }
+}

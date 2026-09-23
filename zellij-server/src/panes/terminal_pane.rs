@@ -1115,6 +1115,9 @@ impl Pane for TerminalPane {
     fn consume_bell(&mut self) {
         self.grid.ring_bell = false;
     }
+    fn user_variables(&self) -> Option<&std::collections::BTreeMap<String, String>> {
+        Some(&self.grid.user_variables)
+    }
     fn osc7_payload(&self) -> Option<&str> {
         self.grid.osc7_payload()
     }
