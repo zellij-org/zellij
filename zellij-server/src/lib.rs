@@ -1274,6 +1274,12 @@ impl SessionMetaData {
                     theme: new_config
                         .theme_config(new_config.options.theme.as_ref())
                         .unwrap_or_else(Styling::default),
+                    themes: new_config
+                        .themes
+                        .inner()
+                        .iter()
+                        .map(|(name, theme)| (name.clone(), theme.palette))
+                        .collect(),
                     host_theme_dark,
                     host_theme_light,
                     explicit_theme_hue: new_config.options.explicit_theme_hue,

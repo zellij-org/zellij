@@ -414,6 +414,7 @@ pub enum ScreenContext {
     WriteToPaneId,
     Paste,
     SetPaneColor,
+    SetUiTheme,
     WriteKeyToPaneId,
     CopyTextToClipboard,
     MovePaneWithPaneId,
