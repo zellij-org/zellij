@@ -592,8 +592,9 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
                 },
                 Some((host_placement_id, _, existing_host_image_id)) => {
                     if existing_host_image_id != host_image_id {
-                        // Placement IDs are scoped to an image. A new scaled
-                        // variant cannot replace the old image's placement.
+                        // Placement IDs are scoped to an image: `a=p` under
+                        // the new image ID would add a second placement rather
+                        // than replace this one, leaving the old one painted.
                         write!(
                             out,
                             "\u{1b}_Ga=d,q=2,d=i,i={},p={}\u{1b}\\",

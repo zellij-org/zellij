@@ -1405,8 +1405,13 @@ fn kitty_scaled_variant_replacement_retires_previous_host_placement() {
     cropped.source_px_height = 20;
     let replacement = run_kitty_frame(&parts, vec![cropped, unaffected], None);
 
-    assert!(replacement.contains("\u{1b}_Ga=d,q=2,d=i,i=2000000000,p=1\u{1b}\\"));
-    assert!(replacement.contains("\u{1b}_Ga=p,q=2,i=2000000001,p=1,"));
+    let retire = replacement
+        .find("\u{1b}_Ga=d,q=2,d=i,i=2000000000,p=1\u{1b}\\")
+        .expect("previous host placement is retired");
+    let place = replacement
+        .find("\u{1b}_Ga=p,q=2,i=2000000001,p=1,")
+        .expect("replacement is placed under the new image ID");
+    assert!(retire < place, "retirement must precede the new placement");
     assert_eq!(replacement.matches("\u{1b}_Ga=d,").count(), 1);
     assert!(!replacement.contains("d=I"));
 }
