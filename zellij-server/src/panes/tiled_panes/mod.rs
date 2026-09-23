@@ -1147,6 +1147,7 @@ impl TiledPanes {
         help_text_visible: &HashMap<ClientId, bool>,
         mouse_scroll_resize: bool,
         mouse_hover_tips: bool,
+        pane_ui_themes: &HashMap<PaneId, Styling>,
     ) -> Result<()> {
         let err_context = || "failed to render tiled panes";
 
@@ -1257,10 +1258,14 @@ impl TiledPanes {
                     None
                 };
                 let pane_has_guest_modal = pane.has_guest_modal_for_any_client();
+                let mut pane_style = self.style;
+                if let Some(ui_theme) = pane_ui_themes.get(&pane.pid()) {
+                    pane_style.colors = *ui_theme;
+                }
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane,
                     output,
-                    self.style,
+                    pane_style,
                     &active_panes,
                     multiple_users_exist_in_session,
                     None,

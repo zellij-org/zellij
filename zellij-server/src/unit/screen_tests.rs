@@ -9,7 +9,7 @@ use insta::assert_snapshot;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
-use zellij_utils::data::{Event, EventType, Resize, Style, WebSharing};
+use zellij_utils::data::{Event, EventType, Resize, Style, UiThemeTarget, WebSharing};
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
@@ -913,6 +913,55 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
             None,
         )
         .expect("TEST");
+}
+
+#[test]
+fn plugin_ui_themes_resolve_by_name_and_fall_back_when_cleared_or_missing() {
+    let mut screen = create_new_screen(
+        Size {
+            cols: 121,
+            rows: 20,
+        },
+        true,
+        true,
+    );
+    new_tab(&mut screen, 1, 0);
+
+    let mut project_a = screen.style.colors;
+    project_a.ribbon_selected.background = zellij_utils::data::PaletteColor::Rgb((1, 2, 3));
+    project_a.frame_selected.base = zellij_utils::data::PaletteColor::Rgb((4, 5, 6));
+    screen.set_available_themes(HashMap::from([("project-a".to_owned(), project_a)]));
+
+    screen.set_ui_theme(UiThemeTarget::Tab(0), Some("project-a".to_owned()));
+    assert_eq!(screen.get_tab_info(0).unwrap().ui_theme, Some(project_a));
+
+    screen.set_ui_theme(
+        UiThemeTarget::Pane(zellij_utils::data::PaneId::Terminal(1)),
+        Some("project-a".to_owned()),
+    );
+    assert_eq!(
+        screen
+            .tabs
+            .get(&0)
+            .unwrap()
+            .pane_ui_theme(&PaneId::Terminal(1)),
+        Some(project_a)
+    );
+
+    screen.set_ui_theme(UiThemeTarget::Tab(0), Some("missing".to_owned()));
+    screen.set_ui_theme(
+        UiThemeTarget::Pane(zellij_utils::data::PaneId::Terminal(1)),
+        None,
+    );
+    assert_eq!(screen.get_tab_info(0).unwrap().ui_theme, None);
+    assert_eq!(
+        screen
+            .tabs
+            .get(&0)
+            .unwrap()
+            .pane_ui_theme(&PaneId::Terminal(1)),
+        None
+    );
 }
 
 #[test]

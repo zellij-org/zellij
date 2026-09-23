@@ -482,6 +482,7 @@ impl FloatingPanes {
         help_text_visible: &HashMap<ClientId, bool>,
         mouse_scroll_resize: bool,
         mouse_hover_tips: bool,
+        pane_ui_themes: &HashMap<PaneId, Styling>,
     ) -> Result<()> {
         let err_context = || "failed to render output";
         let mut connected_clients: HashSet<ClientId> =
@@ -581,10 +582,14 @@ impl FloatingPanes {
             } else {
                 true
             };
+            let mut pane_style = self.style;
+            if let Some(ui_theme) = pane_ui_themes.get(&pane.pid()) {
+                pane_style.colors = *ui_theme;
+            }
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
                 output,
-                self.style,
+                pane_style,
                 &active_panes,
                 multiple_users_exist_in_session,
                 Some(z_index + 1), // +1 because 0 is reserved for non-floating panes

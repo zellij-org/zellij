@@ -2598,6 +2598,25 @@ pub fn set_pane_color(pane_id: PaneId, fg: Option<String>, bg: Option<String>) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Apply a configured theme to one native tab or pane frame.
+///
+/// The theme name is resolved by Zellij, so plugins cannot provide arbitrary colors. A missing
+/// theme falls back to the session theme.
+pub fn set_ui_theme(target: UiThemeTarget, theme_name: impl Into<String>) {
+    let plugin_command = PluginCommand::SetUiTheme(target, Some(theme_name.into()));
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Remove a theme override from one native tab or pane frame.
+pub fn clear_ui_theme(target: UiThemeTarget) {
+    let plugin_command = PluginCommand::SetUiTheme(target, None);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn start_web_server() {
     let plugin_command = PluginCommand::StartWebServer;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

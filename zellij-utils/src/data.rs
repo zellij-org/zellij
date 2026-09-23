@@ -2334,6 +2334,8 @@ pub struct TabInfo {
     pub has_bell_notification: bool,
     /// Whether this tab is currently flashing its bell (transient 400ms state)
     pub is_flashing_bell: bool,
+    /// Resolved styling selected for this tab by a plugin, if any.
+    pub ui_theme: Option<Styling>,
 }
 
 /// The `PaneManifest` contains a dictionary of panes, indexed by the tab position (0 indexed).
@@ -2891,6 +2893,13 @@ pub struct NewPluginArgs {
 pub enum PaneId {
     Terminal(u32),
     Plugin(u32),
+}
+
+/// A native UI target whose theme can be overridden by a plugin.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum UiThemeTarget {
+    Tab(usize),
+    Pane(PaneId),
 }
 
 impl Default for PaneId {
@@ -3675,6 +3684,8 @@ pub enum PluginCommand {
         tab_id: Option<usize>,
     },
     SetPaneColor(PaneId, Option<String>, Option<String>), // (pane_id, fg, bg)
+    /// Applies a configured theme to a native tab or pane frame. `None` clears the override.
+    SetUiTheme(UiThemeTarget, Option<String>),
     SetPaneRegexHighlights(PaneId, Vec<RegexHighlight>),
     ClearPaneHighlights(PaneId),
     OpenPluginPaneFloating {

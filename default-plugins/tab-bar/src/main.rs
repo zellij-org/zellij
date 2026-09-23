@@ -219,7 +219,7 @@ impl ZellijPlugin for State {
                 t,
                 is_alternate_tab,
                 is_hovered,
-                self.mode_info.style.colors,
+                t.ui_theme.unwrap_or(self.mode_info.style.colors),
                 self.mode_info.capabilities,
                 dimmed,
             );
