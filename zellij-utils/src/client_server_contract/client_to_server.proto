@@ -33,6 +33,8 @@ message ClientToServerMsg {
     SetMobileRenderPreferencesMsg set_mobile_render_preferences = 26;
     HostTerminalFocusChangedMsg host_terminal_focus_changed = 27;
     KittyZlibSupportMsg kitty_zlib_support = 28;
+    StructuredRenderSupportMsg structured_render_support = 29;
+    RenderFrameAckMsg render_frame_ack = 30;
   }
 }
 
@@ -129,10 +131,6 @@ message HostTerminalThemeChangedMsg {
   HostTerminalThemeIndication mode = 1;
 }
 
-enum HostTerminalThemeIndication {
-  HOST_TERMINAL_THEME_INDICATION_DARK = 0;
-  HOST_TERMINAL_THEME_INDICATION_LIGHT = 1;
-}
 
 message SoftKeyboardVisibilityChangedMsg {
   bool visible = 1;
@@ -148,6 +146,7 @@ message NestedSessionFrameFromHostMsg {
 
 message KittyGraphicsSupportMsg {
   bool supported = 1;
+  bool local_media = 2;
 }
 
 message KittyZlibSupportMsg {
@@ -165,4 +164,12 @@ message RequestSessionListMsg {
 message SetMobileRenderPreferencesMsg {
   bool single_pane = 1;
   bool fit = 2;
+}
+
+message StructuredRenderSupportMsg {
+  bool supported = 1;
+}
+
+message RenderFrameAckMsg {
+  uint64 seq = 1;
 }

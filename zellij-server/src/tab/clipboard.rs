@@ -3,9 +3,7 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::engine::Engine as _;
 use zellij_utils::{data::CopyDestination, input::options::Clipboard};
 
-use crate::ClientId;
-
-use super::{copy_command::CopyCommand, Output};
+use super::copy_command::CopyCommand;
 
 pub(crate) enum ClipboardProvider {
     Command(CopyCommand),
@@ -13,15 +11,11 @@ pub(crate) enum ClipboardProvider {
 }
 
 impl ClipboardProvider {
-    pub(crate) fn set_content(
-        &self,
-        content: &str,
-        output: &mut Output,
-        client_ids: impl Iterator<Item = ClientId>,
-    ) -> Result<()> {
+    pub(crate) fn set_content(&self, content: &str) -> Result<Option<String>> {
         match &self {
             ClipboardProvider::Command(command) => {
                 command.set(content.to_string())?;
+                Ok(None)
             },
             ClipboardProvider::Osc52(clipboard) => {
                 let dest = match clipboard {
@@ -31,17 +25,13 @@ impl ClipboardProvider {
                     Clipboard::Primary => 'c',
                     Clipboard::System => 'c',
                 };
-                output.add_pre_vte_instruction_to_multiple_clients(
-                    client_ids,
-                    &format!(
-                        "\u{1b}]52;{};{}\u{1b}\\",
-                        dest,
-                        BASE64_STANDARD.encode(content)
-                    ),
-                );
+                Ok(Some(format!(
+                    "\u{1b}]52;{};{}\u{1b}\\",
+                    dest,
+                    BASE64_STANDARD.encode(content)
+                )))
             },
-        };
-        Ok(())
+        }
     }
 
     pub(crate) fn as_copy_destination(&self) -> CopyDestination {

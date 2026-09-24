@@ -1,0 +1,85 @@
+size: 40x120
+cursor: row=1 col=0 visible shape=Default
+grid:
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 0: cols 0-119 fg=#ffffff bg=#000000
+row 1: cols 0-119 fg=#ffffff bg=#000000
+row 2: cols 0-119 fg=#ffffff bg=#000000
+row 3: cols 0-119 fg=#ffffff bg=#000000
+row 4: cols 0-119 fg=#ffffff bg=#000000
+row 5: cols 0-119 fg=#ffffff bg=#000000
+row 6: cols 0-119 fg=#ffffff bg=#000000
+row 7: cols 0-119 fg=#ffffff bg=#000000
+row 8: cols 0-119 fg=#ffffff bg=#000000
+row 9: cols 0-119 fg=#ffffff bg=#000000
+row 10: cols 0-119 fg=#ffffff bg=#000000
+row 11: cols 0-119 fg=#ffffff bg=#000000
+row 12: cols 0-119 fg=#ffffff bg=#000000
+row 13: cols 0-119 fg=#ffffff bg=#000000
+row 14: cols 0-119 fg=#ffffff bg=#000000
+row 15: cols 0-119 fg=#ffffff bg=#000000
+row 16: cols 0-119 fg=#ffffff bg=#000000
+row 17: cols 0-119 fg=#ffffff bg=#000000
+row 18: cols 0-119 fg=#ffffff bg=#000000
+row 19: cols 0-119 fg=#ffffff bg=#000000
+row 20: cols 0-119 fg=#ffffff bg=#000000
+row 21: cols 0-119 fg=#ffffff bg=#000000
+row 22: cols 0-119 fg=#ffffff bg=#000000
+row 23: cols 0-119 fg=#ffffff bg=#000000
+row 24: cols 0-119 fg=#ffffff bg=#000000
+row 25: cols 0-119 fg=#ffffff bg=#000000
+row 26: cols 0-119 fg=#ffffff bg=#000000
+row 27: cols 0-119 fg=#ffffff bg=#000000
+row 28: cols 0-119 fg=#ffffff bg=#000000
+row 29: cols 0-119 fg=#ffffff bg=#000000
+row 30: cols 0-119 fg=#ffffff bg=#000000
+row 31: cols 0-119 fg=#ffffff bg=#000000
+row 32: cols 0-119 fg=#ffffff bg=#000000
+row 33: cols 0-119 fg=#ffffff bg=#000000
+row 34: cols 0-119 fg=#ffffff bg=#000000
+row 35: cols 0-119 fg=#ffffff bg=#000000
+row 36: cols 0-119 fg=#ffffff bg=#000000
+row 37: cols 0-119 fg=#ffffff bg=#000000
+row 38: cols 0-119 fg=#ffffff bg=#000000
+row 39: cols 0-119 fg=#ffffff bg=#000000
+images:

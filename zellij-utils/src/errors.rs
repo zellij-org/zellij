@@ -217,6 +217,7 @@ pub enum ScreenContext {
     PluginBytes,
     Render,
     RenderToClients,
+    SendVteInstructionToClients,
     NewPane,
     OpenInPlaceEditor,
     ToggleFloatingPanes,
@@ -321,6 +322,8 @@ pub enum ScreenContext {
     SetKittyGraphicsSupport,
     SetKittyZlibSupport,
     SetSixelSupport,
+    SetStructuredRenderSupport,
+    RenderFrameAck,
     ForwardHostQuery,
     NestedSessionMessageFromPane,
     NestedGuestPingTick,
@@ -642,6 +645,7 @@ pub enum ServerContext {
     ForwardQueryToHost,
     KeyPassthroughChanged,
     EmitNestedSessionFrameToClient,
+    HostTerminalThemeModeChanged,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

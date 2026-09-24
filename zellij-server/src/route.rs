@@ -1260,7 +1260,7 @@ pub(crate) fn route_action(
         },
         Action::MouseEvent { event } => {
             senders
-                .send_to_screen(ScreenInstruction::MouseEvent(
+                .send_to_screen_priority(ScreenInstruction::MouseEvent(
                     event,
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
@@ -2333,6 +2333,21 @@ macro_rules! send_to_screen_or_retry_queue {
     }};
 }
 
+macro_rules! send_to_screen_priority_or_retry_queue {
+    ($senders:expr, $message:expr, $instruction: expr, $retry_queue:expr) => {{
+        match $senders.as_ref() {
+            Some(senders) => senders.send_to_screen_priority($message),
+            None => {
+                log::warn!("Server not ready, trying to place instruction in retry queue...");
+                if let Some(retry_queue) = $retry_queue.as_mut() {
+                    retry_queue.push_back($instruction);
+                }
+                Ok(())
+            },
+        }
+    }};
+}
+
 pub(crate) fn route_thread_main(
     session_data: Arc<RwLock<Option<SessionMetaData>>>,
     session_state: Arc<RwLock<SessionState>>,
@@ -2401,6 +2416,30 @@ pub(crate) fn route_thread_main(
                                 send_to_screen_or_retry_queue!(
                                     senders,
                                     ScreenInstruction::WatcherTerminalResize(client_id, *new_size),
+                                    instruction.clone(),
+                                    retry_queue
+                                )
+                                .with_context(err_context)?;
+                            },
+                            ClientToServerMsg::StructuredRenderSupport { supported } => {
+                                send_to_screen_or_retry_queue!(
+                                    senders,
+                                    ScreenInstruction::SetStructuredRenderSupport {
+                                        client_id,
+                                        supported: *supported,
+                                    },
+                                    instruction.clone(),
+                                    retry_queue
+                                )
+                                .with_context(err_context)?;
+                            },
+                            ClientToServerMsg::RenderFrameAck { seq } => {
+                                send_to_screen_priority_or_retry_queue!(
+                                    senders,
+                                    ScreenInstruction::RenderFrameAck {
+                                        client_id,
+                                        seq: *seq,
+                                    },
                                     instruction.clone(),
                                     retry_queue
                                 )
@@ -2615,12 +2654,16 @@ pub(crate) fn route_thread_main(
                             )
                             .with_context(err_context)?;
                         },
-                        ClientToServerMsg::KittyGraphicsSupport { supported } => {
+                        ClientToServerMsg::KittyGraphicsSupport {
+                            supported,
+                            local_media,
+                        } => {
                             send_to_screen_or_retry_queue!(
                                 senders,
                                 ScreenInstruction::SetKittyGraphicsSupport {
                                     client_id,
-                                    supported
+                                    supported,
+                                    local_media
                                 },
                                 instruction,
                                 retry_queue
@@ -2646,6 +2689,27 @@ pub(crate) fn route_thread_main(
                                     client_id,
                                     supported
                                 },
+                                instruction,
+                                retry_queue
+                            )
+                            .with_context(err_context)?;
+                        },
+                        ClientToServerMsg::StructuredRenderSupport { supported } => {
+                            send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::SetStructuredRenderSupport {
+                                    client_id,
+                                    supported
+                                },
+                                instruction,
+                                retry_queue
+                            )
+                            .with_context(err_context)?;
+                        },
+                        ClientToServerMsg::RenderFrameAck { seq } => {
+                            send_to_screen_priority_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::RenderFrameAck { client_id, seq },
                                 instruction,
                                 retry_queue
                             )

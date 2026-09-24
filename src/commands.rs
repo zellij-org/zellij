@@ -5,6 +5,7 @@ use std::{path::PathBuf, process, time::Duration};
 #[cfg(feature = "web_server_capability")]
 use isahc::{config::RedirectPolicy, prelude::*, HttpClient, Request};
 
+use zellij_client::session_resolution::{self, Resolved};
 use zellij_client::{
     os_input_output::get_client_os_input, start_client as start_client_impl, ClientInfo,
 };
@@ -12,12 +13,8 @@ use zellij_client::{
 use zellij_utils::sessions::{
     assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
     generate_unique_session_name, get_active_session, get_resurrectable_sessions, get_sessions,
-    get_sessions_sorted_by_mtime, kill_session as kill_session_impl, match_session_name,
-    print_sessions, print_sessions_with_index, resurrection_layout, session_exists,
-    session_listing_error_message, validate_session_name, ActiveSession, SessionNameMatch,
+    kill_session as kill_session_impl, validate_session_name, ActiveSession,
 };
-
-use zellij_utils::consts::session_layout_cache_file_name;
 
 #[cfg(feature = "web_server_capability")]
 use zellij_client::web_client::start_web_client as start_web_client_impl;
@@ -33,7 +30,7 @@ use zellij_utils::web_authentication_tokens::{
 use miette::{Report, Result};
 use zellij_server::{os_input_output::get_server_os_input, start_server as start_server_impl};
 use zellij_utils::{
-    cli::{CliArgs, Command, SessionCommand, Sessions},
+    cli::{AttachArgs, CliArgs, Command, Sessions},
     data::ConnectToSession,
     envs,
     input::{
@@ -172,6 +169,48 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
     start_server_impl(Box::new(os_input), path);
 }
 
+#[cfg(feature = "window")]
+pub(crate) fn start_window(args: zellij_utils::cli::WindowArgs, opts: CliArgs) {
+    if let Err(e) = zellij_window::run(args, opts) {
+        eprintln!("{:?}", e);
+        process::exit(1);
+    }
+}
+
+#[cfg(not(feature = "window"))]
+pub(crate) fn start_window(_args: zellij_utils::cli::WindowArgs, _opts: CliArgs) {
+    eprintln!("This Zellij was built without the window feature.");
+    process::exit(1);
+}
+
+#[cfg(feature = "window")]
+pub(crate) fn install_desktop_entry() {
+    if let Err(e) = zellij_window::install_desktop_entry() {
+        eprintln!("{:?}", e);
+        process::exit(1);
+    }
+}
+
+#[cfg(not(feature = "window"))]
+pub(crate) fn install_desktop_entry() {
+    eprintln!("This Zellij was built without the window feature, so there is no window for a desktop entry to start.");
+    process::exit(1);
+}
+
+#[cfg(feature = "window")]
+pub(crate) fn uninstall_desktop_entry() {
+    if let Err(e) = zellij_window::uninstall_desktop_entry() {
+        eprintln!("{:?}", e);
+        process::exit(1);
+    }
+}
+
+#[cfg(not(feature = "window"))]
+pub(crate) fn uninstall_desktop_entry() {
+    eprintln!("This Zellij was built without the window feature, so there is no desktop entry it could have written.");
+    process::exit(1);
+}
+
 #[cfg(feature = "web_server_capability")]
 pub(crate) fn start_web_server(
     opts: CliArgs,
@@ -226,10 +265,6 @@ pub(crate) fn start_web_server(
         "This version of Zellij was compiled without web server support, cannot run web server!"
     );
     std::process::exit(2);
-}
-
-fn create_new_client() -> ClientInfo {
-    ClientInfo::New(generate_unique_session_name_or_exit(), None, None, None)
 }
 
 #[cfg(feature = "web_server_capability")]
@@ -378,26 +413,6 @@ pub(crate) fn web_server_status(
     std::process::exit(2);
 }
 
-fn find_indexed_session(
-    sessions: Vec<String>,
-    config_options: Options,
-    index: usize,
-    create: bool,
-) -> ClientInfo {
-    match sessions.get(index) {
-        Some(session) => ClientInfo::Attach(session.clone(), config_options),
-        None if create => create_new_client(),
-        None => {
-            println!(
-                "No session indexed by {} found. The following sessions are active:",
-                index
-            );
-            print_sessions_with_index(sessions);
-            process::exit(1);
-        },
-    }
-}
-
 /// Client entrypoint for all [`zellij_utils::cli::CliAction`]
 ///
 /// Checks session to send the action to and attaches with client
@@ -532,84 +547,6 @@ fn attach_with_cli_client(
     }
 }
 
-fn attach_with_session_index(config_options: Options, index: usize, create: bool) -> ClientInfo {
-    // Ignore the session_name when `--index` is provided
-    match get_sessions_sorted_by_mtime() {
-        Ok(sessions) if sessions.is_empty() => {
-            if create {
-                create_new_client()
-            } else {
-                eprintln!("No active zellij sessions found.");
-                process::exit(1);
-            }
-        },
-        Ok(sessions) => find_indexed_session(sessions, config_options, index, create),
-        Err(e) => {
-            eprintln!("Error occurred: {:?}", e);
-            process::exit(1);
-        },
-    }
-}
-
-fn attach_with_session_name(
-    session_name: Option<String>,
-    config_options: Options,
-    create: bool,
-) -> ClientInfo {
-    match &session_name {
-        Some(session) if create => match session_exists(session) {
-            Ok(true) => ClientInfo::Attach(session_name.unwrap(), config_options),
-            Ok(false) => ClientInfo::New(session_name.unwrap(), None, None, None),
-            Err(kind) => {
-                eprintln!("{}", session_listing_error_message(kind));
-                process::exit(1);
-            },
-        },
-        Some(prefix) => match match_session_name(prefix) {
-            Ok(SessionNameMatch::UniquePrefix(s)) | Ok(SessionNameMatch::Exact(s)) => {
-                ClientInfo::Attach(s, config_options)
-            },
-            Ok(SessionNameMatch::AmbiguousPrefix(sessions)) => {
-                println!(
-                    "Ambiguous selection: multiple sessions names start with '{}':",
-                    prefix
-                );
-                print_sessions(
-                    sessions
-                        .iter()
-                        .map(|s| (s.clone(), Duration::default(), false))
-                        .collect(),
-                    false,
-                    false,
-                    true,
-                );
-                process::exit(1);
-            },
-            Ok(SessionNameMatch::None) => {
-                eprintln!("No session with the name '{}' found!", prefix);
-                process::exit(1);
-            },
-            Err(kind) => {
-                eprintln!("{}", session_listing_error_message(kind));
-                process::exit(1);
-            },
-        },
-        None => match get_active_session() {
-            ActiveSession::None if create => create_new_client(),
-            ActiveSession::None => {
-                eprintln!("No active zellij sessions found.");
-                process::exit(1);
-            },
-            ActiveSession::One(session_name) => ClientInfo::Attach(session_name, config_options),
-            ActiveSession::Many => {
-                println!("Please specify the session to attach to, either by using the full name or a unique prefix.\nThe following sessions are active:");
-                list_sessions(false, false, true);
-                process::exit(1);
-            },
-        },
-    }
-}
-
 pub(crate) fn start_client(opts: CliArgs) {
     let (
         config,
@@ -654,20 +591,12 @@ pub(crate) fn start_client(opts: CliArgs) {
             );
             if reconnect_to_session.name.is_some() {
                 opts.command = Some(Command::Sessions(Sessions::Attach {
-                    session_name: reconnect_to_session.name.clone(),
-                    create: true,
+                    args: AttachArgs {
+                        session_name: reconnect_to_session.name.clone(),
+                        create: true,
+                        ..AttachArgs::default()
+                    },
                     create_background: false,
-                    force_run_commands: false,
-                    index: None,
-                    options: None,
-                    token: None,
-                    remember: false,
-                    forget: false,
-                    ca_cert: None,
-                    insecure: false,
-                    initial_command: vec![],
-                    close_on_exit: false,
-                    start_suspended: false,
                 }));
             } else {
                 opts.command = None;
@@ -692,40 +621,26 @@ pub(crate) fn start_client(opts: CliArgs) {
 
         #[cfg_attr(not(feature = "web_server_capability"), allow(unused_variables))]
         if let Some(Command::Sessions(Sessions::Attach {
-            session_name,
-            create,
+            args,
             create_background,
-            force_run_commands,
-            index,
-            options,
-            token,
-            remember,
-            forget,
-            ca_cert,
-            insecure,
-            initial_command,
-            close_on_exit,
-            start_suspended,
         })) = opts.command.clone()
         {
-            if let Some(remote_session_url) = session_name.as_ref().and_then(|s| {
-                if s.starts_with("http://") || s.starts_with("https://") {
-                    Some(s)
-                } else {
-                    None
-                }
-            }) {
+            if let Some(remote_session_url) = args.remote_url() {
                 if !cfg!(feature = "web_server_capability") {
                     eprintln!("This version of Zellij was compiled without web/remote-attach capabilities.");
                     std::process::exit(2);
                 }
 
-                if options.is_some() || create || create_background || force_run_commands {
+                if args.options.is_some()
+                    || args.create
+                    || create_background
+                    || args.force_run_commands
+                {
                     eprintln!("Cannot attach to remote session with options.");
                     std::process::exit(2);
                 }
 
-                if !initial_command.is_empty() {
+                if !args.initial_command.is_empty() {
                     eprintln!("Cannot run an initial command on a remote session.");
                     std::process::exit(2);
                 }
@@ -734,76 +649,34 @@ pub(crate) fn start_client(opts: CliArgs) {
                 if let Err(e) = zellij_client::start_remote_client(
                     Box::new(os_input.clone()),
                     remote_session_url,
-                    token,
-                    remember,
-                    forget,
-                    ca_cert,
-                    insecure,
+                    args.token.clone(),
+                    args.remember,
+                    args.forget,
+                    args.ca_cert.clone(),
+                    args.insecure,
                     config_options.client_async_worker_tasks,
                 ) {
                     eprintln!("{}", e);
                     std::process::exit(2);
                 }
             } else {
-                let config_options = match options.as_deref() {
-                    Some(SessionCommand::Options(o)) => {
-                        config_options.merge_from_cli(o.to_owned().into())
-                    },
-                    None => config_options,
-                };
                 should_create_detached = create_background;
 
-                let mut client = if let Some(idx) = index {
-                    attach_with_session_index(
-                        config_options.clone(),
-                        idx,
-                        create || should_create_detached,
-                    )
-                } else {
-                    let session_exists = session_name
-                        .as_ref()
-                        .and_then(|s| session_exists(&s).ok())
-                        .unwrap_or(false);
-                    let resurrection_layout =
-                        session_name
-                            .as_ref()
-                            .and_then(|s| match resurrection_layout(&s) {
-                                Ok(layout) => layout,
-                                Err(e) => {
-                                    eprintln!("{}", e);
-                                    process::exit(2);
-                                },
-                            });
-                    if (create || should_create_detached)
-                        && !session_exists
-                        && resurrection_layout.is_none()
-                    {
-                        session_name.clone().map(start_client_plan);
-                    }
-                    match (session_name.as_ref(), resurrection_layout) {
-                        (Some(session_name), Some(mut resurrection_layout)) if !session_exists => {
-                            if force_run_commands {
-                                resurrection_layout.recursively_add_start_suspended(Some(false));
-                            }
-                            ClientInfo::Resurrect(
-                                session_name.clone(),
-                                session_layout_cache_file_name(session_name.as_ref()),
-                                force_run_commands,
-                                new_session_cwd.clone(),
-                            )
-                        },
-                        _ => attach_with_session_name(
-                            session_name,
-                            config_options.clone(),
-                            create || should_create_detached,
-                        ),
-                    }
+                let Resolved {
+                    mut client,
+                    config_options,
+                } = match session_resolution::resolve_attach(
+                    &args,
+                    config_options,
+                    should_create_detached,
+                    new_session_cwd.clone(),
+                ) {
+                    Ok(resolved) => resolved,
+                    Err(failure) => failure.report_and_exit(),
                 };
 
-                if let Ok(val) = std::env::var(envs::SESSION_NAME_ENV_KEY) {
-                    if val == *client.get_session_name() {
-                        panic!("You are trying to attach to the current session (\"{}\"). This is not supported.", val);
-                    }
+                if let Err(failure) = session_resolution::refuse_self_attach(&client) {
+                    panic!("{}", failure.message);
                 }
 
                 if let Some(layout_info) = layout_info {
@@ -816,12 +689,12 @@ pub(crate) fn start_client(opts: CliArgs) {
 
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                 if let Some(initial_panes) = initial_panes_from_cli(
-                    initial_command,
+                    args.initial_command.clone(),
                     None,
                     Some(current_dir.clone()),
                     current_dir,
-                    close_on_exit,
-                    start_suspended,
+                    args.close_on_exit,
+                    args.start_suspended,
                 ) {
                     client.set_initial_panes(initial_panes);
                 }
@@ -875,11 +748,14 @@ pub(crate) fn start_client(opts: CliArgs) {
                     }
                     match config_options.attach_to_session {
                         Some(true) => {
-                            let client = attach_with_session_name(
+                            let client = match session_resolution::attach_by_name(
                                 Some(session_name.clone()),
                                 config_options.clone(),
                                 true,
-                            );
+                            ) {
+                                Ok(client) => client,
+                                Err(failure) => failure.report_and_exit(),
+                            };
                             reconnect_to_session = start_client_impl(
                                 Box::new(os_input),
                                 opts,
@@ -983,44 +859,10 @@ pub(crate) fn watch_session(session_name: Option<String>, opts: CliArgs) {
         },
     };
 
-    // Resolve the session name to watch
-    let client_info = match &session_name {
-        Some(prefix) => match match_session_name(prefix).unwrap() {
-            SessionNameMatch::UniquePrefix(s) | SessionNameMatch::Exact(s) => {
-                ClientInfo::Watch(s, config_options.clone())
-            },
-            SessionNameMatch::AmbiguousPrefix(sessions) => {
-                eprintln!(
-                    "Ambiguous selection: multiple sessions names start with '{}':",
-                    prefix
-                );
-                print_sessions(
-                    sessions
-                        .iter()
-                        .map(|s| (s.clone(), Duration::default(), false))
-                        .collect(),
-                    false,
-                    false,
-                    true,
-                );
-                process::exit(1);
-            },
-            SessionNameMatch::None => {
-                eprintln!("No session with the name '{}' found!", prefix);
-                process::exit(1);
-            },
-        },
-        None => match get_active_session() {
-            ActiveSession::None => {
-                eprintln!("No active zellij sessions found.");
-                process::exit(1);
-            },
-            ActiveSession::One(name) => ClientInfo::Watch(name, config_options.clone()),
-            ActiveSession::Many => {
-                eprintln!("Please specify the session name to watch.");
-                process::exit(1);
-            },
-        },
+    let client_info = match session_resolution::resolve_watch(session_name, config_options.clone())
+    {
+        Ok(client_info) => client_info,
+        Err(failure) => failure.report_and_exit(),
     };
 
     let mut opts = opts.clone();

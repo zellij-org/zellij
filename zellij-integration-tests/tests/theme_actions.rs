@@ -132,3 +132,79 @@ fn toggle_theme_round_trips_between_the_configured_themes() {
 
     zellij.quit();
 }
+
+fn theme_announcements(client: &TestSession) -> usize {
+    client
+        .received_server_messages()
+        .iter()
+        .filter(|name| *name == "HostTerminalThemeChanged")
+        .count()
+}
+
+#[test]
+fn a_theme_switch_is_announced_to_every_client() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    let on_arrival = theme_announcements(&zellij);
+    assert!(
+        on_arrival > 0,
+        "a client was not told which mode the session it joined is in"
+    );
+
+    zellij.send_stdin(&SET_LIGHT_THEME);
+    wait_for_light_palette(&zellij, "the light theme palette was rendered");
+    let after_switch = theme_announcements(&zellij);
+    assert!(
+        after_switch > on_arrival,
+        "a client painting its own window was not told the theme mode changed \
+         ({} announcements before the switch, {} after)",
+        on_arrival,
+        after_switch
+    );
+
+    zellij.send_stdin(&SET_LIGHT_THEME);
+    wait_for_light_palette(&zellij, "the light theme palette was rendered again");
+    assert_eq!(
+        theme_announcements(&zellij),
+        after_switch,
+        "a switch to the mode already in force was announced again"
+    );
+
+    zellij.quit();
+}
+
+#[test]
+fn a_client_attaching_after_a_switch_is_told_the_mode_it_arrived_into() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    zellij.send_stdin(&SET_LIGHT_THEME);
+    wait_for_light_palette(&zellij, "the light theme palette was rendered");
+
+    let attaching_client = zellij.attach_client(TERMINAL_SIZE);
+    attaching_client.wait_until("attaching client loaded", |grid_snapshot| {
+        grid_snapshot.tab_bar_appears() && grid_snapshot.cursor.is_some()
+    });
+
+    let messages = attaching_client.received_server_messages();
+    assert!(
+        messages
+            .iter()
+            .any(|name| name == "HostTerminalThemeChanged"),
+        "a client that arrived into a switched session was not told which mode it is, got: {:?}",
+        messages
+    );
+    assert!(
+        messages
+            .iter()
+            .filter(|name| *name == "HostTerminalThemeChanged")
+            .count()
+            == 1,
+        "the arriving client was told the mode more than once, got: {:?}",
+        messages
+    );
+
+    attaching_client.quit();
+    zellij.quit();
+}

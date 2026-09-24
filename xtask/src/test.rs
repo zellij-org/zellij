@@ -48,9 +48,18 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
         }
     }
 
+    let mut excluded: Vec<&str> = Vec::new();
+    if flags.no_web {
+        excluded.push(metadata::WEB_FEATURE);
+    }
+    if flags.no_window {
+        excluded.push(metadata::WINDOW_FEATURE);
+    }
+
     for WorkspaceMember { crate_name, .. } in crate::workspace_members()
         .iter()
         .filter(|m| !m.crate_name.contains("plugins"))
+        .filter(|m| !(flags.no_window && m.crate_name == "zellij-window"))
     {
         let _pd = sh.push_dir(Path::new(crate_name));
         println!();
@@ -58,14 +67,14 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
         crate::status(&msg);
         println!("{}", msg);
 
-        let cmd = if flags.no_web {
-            // Check if this crate has web features that need modification
-            match metadata::get_no_web_features(sh, crate_name)
-                .context("Failed to check web features")?
+        let cmd = if excluded.is_empty() {
+            cmd!(sh, "{cargo} test --all-features --")
+        } else {
+            match metadata::get_features_without(sh, crate_name, &excluded)
+                .context("Failed to check features")?
             {
                 Some(features) => {
                     if features.is_empty() {
-                        // Crate has web_server_capability but no other applicable features
                         cmd!(sh, "{cargo} test --no-default-features --")
                     } else {
                         cmd!(sh, "{cargo} test --no-default-features --features")
@@ -74,19 +83,61 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
                     }
                 },
                 None => {
-                    // Crate doesn't have web features, use normal test
                     cmd!(sh, "{cargo} test --all-features --")
                 },
             }
-        } else {
-            cmd!(sh, "{cargo} test --all-features --")
         };
 
         cmd.args(&flags.args)
             .run()
             .with_context(|| format!("Failed to run tests for '{}'", crate_name))?;
     }
+
+    if !flags.no_window {
+        check_feature_is_optional(sh, &cargo, &excluded, metadata::WINDOW_FEATURE)
+            .context(err_context)?;
+    }
+    if !flags.no_web {
+        check_feature_is_optional(sh, &cargo, &excluded, metadata::WEB_FEATURE)
+            .context(err_context)?;
+    }
+
     Ok(())
+}
+
+fn check_feature_is_optional(
+    sh: &Shell,
+    cargo: &std::path::PathBuf,
+    already_excluded: &[&str],
+    feature: &str,
+) -> anyhow::Result<()> {
+    let mut excluded = already_excluded.to_vec();
+    excluded.push(feature);
+
+    let Some(features) =
+        metadata::get_features_without(sh, ".", &excluded).context("Failed to check features")?
+    else {
+        return Ok(());
+    };
+
+    let _pd = sh.push_dir(crate::project_root());
+    println!();
+    let msg = format!(">> Checking the build without '{}'", feature);
+    crate::status(&msg);
+    println!("{}", msg);
+
+    let cmd = if features.is_empty() {
+        cmd!(sh, "{cargo} check --all-targets --no-default-features")
+    } else {
+        cmd!(
+            sh,
+            "{cargo} check --all-targets --no-default-features --features"
+        )
+        .arg(features)
+    };
+
+    cmd.run()
+        .with_context(|| format!("The build without '{}' does not compile", feature))
 }
 
 pub fn host_target_triple(sh: &Shell) -> anyhow::Result<String> {

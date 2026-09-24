@@ -1,0 +1,60 @@
+[package]
+name = "zellij-window"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Native window client for Zellij sessions"
+
+[dependencies]
+zellij-client = { path = "../zellij-client/", version = "0.46.0" }
+zellij-utils = { workspace = true }
+anyhow = { workspace = true }
+arboard = { workspace = true }
+base64 = { version = "0.22", default-features = false, features = ["std"] }
+clap = { workspace = true }
+glow = { workspace = true }
+glutin = { workspace = true }
+glutin-winit = { workspace = true }
+libloading = { workspace = true }
+png = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sixel-tokenizer = { version = "0.1.0", default-features = false }
+swash = { workspace = true }
+unicode-width = { workspace = true }
+winit = { workspace = true }
+futures-util = { version = "0.3", optional = true }
+tokio = { workspace = true, optional = true }
+tokio-tungstenite = { version = "0.28", optional = true }
+url = { workspace = true, optional = true }
+
+[features]
+web_server_capability = [
+    "dep:futures-util",
+    "dep:tokio",
+    "dep:tokio-tungstenite",
+    "dep:url",
+    "zellij-client/web_server_capability",
+]
+
+[target.'cfg(unix)'.dependencies]
+signal-hook = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+dunce = "1.0"
+glutin = { workspace = true, features = ["wgl"] }
+glutin-winit = { workspace = true, features = ["wgl"] }
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[target.'cfg(any(target_os = "macos", windows))'.dependencies]
+fontdb = { version = "0.23", default-features = false, features = ["std", "fs", "memmap"] }
+
+[dev-dependencies]
+alacritty_terminal = { workspace = true }
+khronos-egl = { workspace = true }
+interprocess = { workspace = true }
+tempfile = { workspace = true }
+vte = { workspace = true }
+zellij-server = { workspace = true }
