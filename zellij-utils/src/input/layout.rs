@@ -955,7 +955,7 @@ impl TiledPaneLayout {
                         }
                     }
                     let _ = layout_to_split.insert_children_nodes(&mut extra_children);
-                } else {
+                } else if max_panes < pane_count_in_layout {
                     layout_to_split.truncate(max_panes);
                 }
                 if !layout_to_split.has_focused_node() && focus_layout_if_not_focused {
