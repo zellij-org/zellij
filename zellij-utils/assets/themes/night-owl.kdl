@@ -116,5 +116,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/sdras/night-owl-vscode-theme/blob/main/themes/Night%20Owl-color-theme.json (terminal.ansi*)
+        terminal_colors {
+            black 1 22 39
+            red 239 83 80
+            green 34 218 110
+            yellow 197 228 120
+            blue 130 170 255
+            magenta 199 146 234
+            cyan 33 199 168
+            white 255 255 255
+            bright_black 87 86 86
+            bright_red 239 83 80
+            bright_green 34 218 110
+            bright_yellow 255 235 149
+            bright_blue 130 170 255
+            bright_magenta 199 146 234
+            bright_cyan 127 219 202
+            bright_white 255 255 255
+        }
     }
 }

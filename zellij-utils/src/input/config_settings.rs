@@ -440,6 +440,7 @@ pub fn setting_values(config: &Config) -> BTreeMap<SettingKey, Option<String>> {
         context_menu,
         keybinds_layers: _keybinds_layers_are_compared_directly,
         mousebinds: _mousebinds_are_compared_directly,
+        window: _window_is_read_by_the_window_client,
     } = config;
     let mut values = BTreeMap::new();
     option_values(options, &mut values);

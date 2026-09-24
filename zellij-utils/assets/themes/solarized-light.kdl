@@ -116,5 +116,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/altercation/solarized/blob/master/README.md (the 16/8 TERMCOL column, shared by both variants)
+        terminal_colors {
+            black 7 54 66
+            red 220 50 47
+            green 133 153 0
+            yellow 181 137 0
+            blue 38 139 210
+            magenta 211 54 130
+            cyan 42 161 152
+            white 238 232 213
+            bright_black 0 43 54
+            bright_red 203 75 22
+            bright_green 88 110 117
+            bright_yellow 101 123 131
+            bright_blue 131 148 150
+            bright_magenta 108 113 196
+            bright_cyan 147 161 161
+            bright_white 253 246 227
+        }
     }
 }

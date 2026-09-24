@@ -1,0 +1,54 @@
+size: 40x120
+cursor: row=4 col=0 visible shape=Default
+grid:
+|                                                                                                                        |
+|  > item 1 with some                                                                                                    |
+|    - item 2 with som                                                                                                   |
+|  > item 3 is a real                                                                                                    |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 1: cols 1-3 fg=#d8d5e6 bg=Background
+row 1: cols 4-13 fg=#87a5c2 bg=Background flags=BOLD
+row 1: cols 14-20 fg=#d98cff bg=Background flags=BOLD
+row 2: cols 1-5 fg=#d8d5e6 bg=Background
+row 2: cols 6-6 fg=#a2bc8c bg=Background flags=BOLD
+row 2: cols 7-20 fg=#d98cff bg=Background flags=BOLD
+row 3: cols 1-3 fg=#d8d5e6 bg=#3a3358
+row 3: cols 4-8 fg=#87a5c2 bg=#3a3358 flags=BOLD
+row 3: cols 9-20 fg=#d98cff bg=#3a3358 flags=BOLD
+images:

@@ -124,5 +124,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/kepano/flexoki/blob/main/alacritty/flexoki-dark.toml
+        terminal_colors {
+            black 16 15 15
+            red 175 48 41
+            green 102 128 11
+            yellow 173 131 1
+            blue 32 94 166
+            magenta 160 47 111
+            cyan 36 131 123
+            white 255 252 240
+            bright_black 16 15 15
+            bright_red 209 77 65
+            bright_green 135 154 57
+            bright_yellow 208 162 21
+            bright_blue 67 133 190
+            bright_magenta 206 93 151
+            bright_cyan 58 169 159
+            bright_white 255 252 240
+        }
     }
 }

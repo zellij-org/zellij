@@ -1,0 +1,65 @@
+size: 40x120
+cursor: row=20 col=20 visible shape=Default
+grid:
+|line1aaaaaaaaaaaaaaa                                                                                                    |
+|line2aaaaaaaaaaaaaaa                                                                                                    |
+|line3aaaaaaaaaaaaaaa                                                                                                    |
+|line4aaaaaaaaaaaaaaa                                                                                                    |
+|line5aaaaaaaaaaaaaaa                                                                                                    |
+|line6aaaaaaaaaaaaaaa                                                                                                    |
+|line7aaaaaaaaaaaaaaa                                                                                                    |
+|line8aaaaaaaaaaaaaaa                                                                                                    |
+|line9aaaaaaaaaaaaaaa                                                                                                    |
+|line10aaaaaaaaaaaaaa                                                                                                    |
+|line11aaaaaaaaaaaaaa                                                                                                    |
+|line12aaaaaaaaaaaaaa                                                                                                    |
+|line13aaaaaaaaaaaaaa                                                                                                    |
+|line14aaaaaaaaaaaaaa                                                                                                    |
+|line15aaaaaaaaaaaaaa                                                                                                    |
+|line16aaaaaaaaaaaaaa                                                                                                    |
+|line17aaaaaaaaaaaaaa                                                                                                    |
+|line18aaaaaaaaaaaaaa                                                                                                    |
+|line19a🦀 aaaaaaaaaaa                                                                                                    |
+|line20a🦀 🦀 aaaaaaaaa                                                                                                    |
+|line21🦀 🦀 🦀 🦀 🦀 🦀 🦀                                                                                                     |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 18: cols 7-7 fg=Foreground bg=Background flags=WIDE_CHAR
+row 18: cols 8-8 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 19: cols 7-7 fg=Foreground bg=Background flags=WIDE_CHAR
+row 19: cols 8-8 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 19: cols 9-9 fg=Foreground bg=Background flags=WIDE_CHAR
+row 19: cols 10-10 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 6-6 fg=Foreground bg=Background flags=WIDE_CHAR
+row 20: cols 7-7 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 8-8 fg=Foreground bg=Background flags=WIDE_CHAR
+row 20: cols 9-9 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 10-10 fg=Foreground bg=Background flags=WIDE_CHAR
+row 20: cols 11-11 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 12-12 fg=Foreground bg=Background flags=WIDE_CHAR
+row 20: cols 13-13 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 14-14 fg=Foreground bg=Background flags=WIDE_CHAR
+row 20: cols 15-15 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 16-16 fg=Foreground bg=Background flags=WIDE_CHAR
+row 20: cols 17-17 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 18-18 fg=Foreground bg=Background flags=WIDE_CHAR
+row 20: cols 19-19 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+images:

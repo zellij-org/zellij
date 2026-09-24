@@ -13,7 +13,7 @@ use super::keybind_presets::MousebindChanges;
 use super::layout::{RunPlugin, RunPluginOrAlias};
 use super::mousebinds::MouseBinding;
 use super::plugins::PluginAliases;
-use super::theme::{Theme, Themes};
+use super::theme::{TerminalColors, Theme, Themes};
 use crate::data::{
     ConfigBlocks, ContextMenuAction, ContextMenuEntry, EnvVarEntry, InputMode, KeyWithModifier,
     KeybindingEntry, KeybindingSource, KeybindsVec, MenuItemEntry, MenuSectionEntries, MouseTarget,
@@ -640,7 +640,12 @@ fn check_theme_text(text: &str, name: &str, path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-pub fn create_theme_file(dir: &Path, name: &str, palette: &Styling) -> Result<PathBuf, String> {
+pub fn create_theme_file(
+    dir: &Path,
+    name: &str,
+    palette: &Styling,
+    terminal_colors: Option<&TerminalColors>,
+) -> Result<PathBuf, String> {
     if !is_usable_theme_file_name(name) {
         return Err(format!(
             "{} cannot be a file name; use only letters, digits, - and _",
@@ -656,7 +661,14 @@ pub fn create_theme_file(dir: &Path, name: &str, palette: &Styling) -> Result<Pa
     }
     let mut themes_node = KdlNode::new("themes");
     let mut children = KdlDocument::new();
-    children.nodes_mut().push(theme_to_kdl(name, palette));
+    let mut theme_node = theme_to_kdl(name, palette);
+    if let Some(terminal_colors) = terminal_colors {
+        theme_node
+            .ensure_children()
+            .nodes_mut()
+            .push(terminal_colors.to_kdl());
+    }
+    children.nodes_mut().push(theme_node);
     themes_node.set_children(children);
     let mut document = KdlDocument::new();
     document.nodes_mut().push(themes_node);
@@ -732,7 +744,14 @@ pub fn update_theme_file(path: &Path, name: &str, palette: &Styling) -> Result<(
                 .find(|node| node.name().value() == name)
         })
         .ok_or_else(missing)?;
+    let terminal_colors = theme_node
+        .children()
+        .and_then(|children| children.get("terminal_colors"))
+        .cloned();
     *theme_node = theme_to_kdl(name, palette);
+    if let Some(terminal_colors) = terminal_colors {
+        theme_node.ensure_children().nodes_mut().push(terminal_colors);
+    }
     document.fmt();
     let new_text = document.to_string();
     check_theme_text(&new_text, name, path)?;

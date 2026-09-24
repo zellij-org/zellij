@@ -3268,10 +3268,36 @@ impl ThemeHue {
         }
     }
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum HostTerminalThemeIndication {
+    Dark = 0,
+    Light = 1,
+}
+impl HostTerminalThemeIndication {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            HostTerminalThemeIndication::Dark => "HOST_TERMINAL_THEME_INDICATION_DARK",
+            HostTerminalThemeIndication::Light => "HOST_TERMINAL_THEME_INDICATION_LIGHT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "HOST_TERMINAL_THEME_INDICATION_DARK" => Some(Self::Dark),
+            "HOST_TERMINAL_THEME_INDICATION_LIGHT" => Some(Self::Light),
+            _ => None,
+        }
+    }
+}
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -3335,6 +3361,10 @@ pub mod client_to_server_msg {
         HostTerminalFocusChanged(super::HostTerminalFocusChangedMsg),
         #[prost(message, tag="28")]
         KittyZlibSupport(super::KittyZlibSupportMsg),
+        #[prost(message, tag="29")]
+        StructuredRenderSupport(super::StructuredRenderSupportMsg),
+        #[prost(message, tag="30")]
+        RenderFrameAck(super::RenderFrameAckMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3503,6 +3533,8 @@ pub struct NestedSessionFrameFromHostMsg {
 pub struct KittyGraphicsSupportMsg {
     #[prost(bool, tag="1")]
     pub supported: bool,
+    #[prost(bool, tag="2")]
+    pub local_media: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3529,36 +3561,22 @@ pub struct SetMobileRenderPreferencesMsg {
     #[prost(bool, tag="2")]
     pub fit: bool,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum HostTerminalThemeIndication {
-    Dark = 0,
-    Light = 1,
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StructuredRenderSupportMsg {
+    #[prost(bool, tag="1")]
+    pub supported: bool,
 }
-impl HostTerminalThemeIndication {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            HostTerminalThemeIndication::Dark => "HOST_TERMINAL_THEME_INDICATION_DARK",
-            HostTerminalThemeIndication::Light => "HOST_TERMINAL_THEME_INDICATION_LIGHT",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "HOST_TERMINAL_THEME_INDICATION_DARK" => Some(Self::Dark),
-            "HOST_TERMINAL_THEME_INDICATION_LIGHT" => Some(Self::Light),
-            _ => None,
-        }
-    }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenderFrameAckMsg {
+    #[prost(uint64, tag="1")]
+    pub seq: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerToClientMsg {
-    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19")]
+    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21")]
     pub message: ::core::option::Option<server_to_client_msg::Message>,
 }
 /// Nested message and enum types in `ServerToClientMsg`.
@@ -3604,6 +3622,10 @@ pub mod server_to_client_msg {
         EmitNestedSessionFrame(super::EmitNestedSessionFrameMsg),
         #[prost(message, tag="19")]
         MobileState(super::MobileStateMsg),
+        #[prost(message, tag="20")]
+        RenderFrame(super::RenderFrameMsg),
+        #[prost(message, tag="21")]
+        HostThemeMode(super::HostThemeModeMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3611,6 +3633,12 @@ pub mod server_to_client_msg {
 pub struct RenderMsg {
     #[prost(string, tag="1")]
     pub content: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenderFrameMsg {
+    #[prost(bytes="vec", tag="1")]
+    pub frame: ::prost::alloc::vec::Vec<u8>,
 }
 /// Empty message
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3684,6 +3712,12 @@ pub struct RenamedSessionMsg {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConfigFileUpdatedMsg {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HostThemeModeMsg {
+    #[prost(enumeration="HostTerminalThemeIndication", tag="1")]
+    pub mode: i32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

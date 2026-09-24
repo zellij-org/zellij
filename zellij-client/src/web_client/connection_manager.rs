@@ -36,6 +36,18 @@ impl ConnectionTable {
             .unwrap_or(false)
     }
 
+    pub fn declare_client_structured(&mut self, client_id: &str, is_structured: bool) {
+        self.client_structured_status
+            .insert(client_id.to_owned(), is_structured);
+    }
+
+    pub fn is_client_structured(&self, client_id: &str) -> bool {
+        self.client_structured_status
+            .get(client_id)
+            .copied()
+            .unwrap_or(false)
+    }
+
     pub fn add_client_control_tx(
         &mut self,
         client_id: &str,
@@ -55,7 +67,7 @@ impl ConnectionTable {
     pub fn add_client_terminal_tx(
         &mut self,
         client_id: &str,
-        terminal_channel_tx: UnboundedSender<String>,
+        terminal_channel_tx: UnboundedSender<Message>,
     ) {
         self.client_id_to_channels
             .get_mut(client_id)
@@ -76,7 +88,7 @@ impl ConnectionTable {
         self.client_id_to_channels.get(client_id).map(|c| &c.os_api)
     }
 
-    pub fn get_client_terminal_tx(&self, client_id: &str) -> Option<UnboundedSender<String>> {
+    pub fn get_client_terminal_tx(&self, client_id: &str) -> Option<UnboundedSender<Message>> {
         self.client_id_to_channels
             .get(client_id)
             .and_then(|c| c.terminal_channel_tx.clone())
@@ -94,6 +106,7 @@ impl ConnectionTable {
         }
         self.client_read_only_status.remove(client_id);
         self.client_session_token_hash.remove(client_id);
+        self.client_structured_status.remove(client_id);
     }
 
     pub fn get_should_not_reconnect_flag(&self, client_id: &str) -> Option<Arc<AtomicBool>> {
@@ -105,14 +118,22 @@ impl ConnectionTable {
 
 impl ClientConnectionBus {
     pub fn send_stdout(&mut self, stdout: String) {
+        self.send_terminal_message(Message::Text(stdout.into()));
+    }
+
+    pub fn send_frame(&mut self, frame: Vec<u8>) {
+        self.send_terminal_message(Message::Binary(frame.into()));
+    }
+
+    fn send_terminal_message(&mut self, message: Message) {
         match self.stdout_channel_tx.as_ref() {
             Some(stdout_channel_tx) => {
-                let _ = stdout_channel_tx.send(stdout);
+                let _ = stdout_channel_tx.send(message);
             },
             None => {
                 self.get_stdout_channel_tx();
                 if let Some(stdout_channel_tx) = self.stdout_channel_tx.as_ref() {
-                    let _ = stdout_channel_tx.send(stdout);
+                    let _ = stdout_channel_tx.send(message);
                 } else {
                     log::error!("Failed to send STDOUT message to client");
                 }
