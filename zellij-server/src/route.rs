@@ -705,6 +705,7 @@ pub(crate) fn route_action(
             near_current_pane,
             no_focus,
             tab_id,
+            env: _,
         } => {
             let command = command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -824,6 +825,7 @@ pub(crate) fn route_action(
             near_current_pane,
             no_focus,
             tab_id,
+            env: _,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -850,6 +852,7 @@ pub(crate) fn route_action(
             pane_id_to_replace,
             close_replaced_pane,
             tab_id,
+            env: _,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -888,6 +891,7 @@ pub(crate) fn route_action(
             near_current_pane,
             no_focus,
             tab_id,
+            env: _,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -951,6 +955,7 @@ pub(crate) fn route_action(
             borderless,
             border_style,
             tab_id,
+            env: _,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -1049,6 +1054,7 @@ pub(crate) fn route_action(
             cwd,
             initial_panes,
             first_pane_unblock_condition,
+            env: _,
         } => {
             let shell = default_shell.clone();
             let is_web_client = false; // actions cannot be initiated directly from the web

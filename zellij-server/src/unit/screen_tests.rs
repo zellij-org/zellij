@@ -3619,6 +3619,7 @@ pub fn web_new_pane_in_tab_action_targets_requested_tab() {
         borderless: None,
         tab_id: Some(0),
         border_style: None,
+        env: Default::default(),
     };
     route_arbitrary_action_to_server(&session_metadata, action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));

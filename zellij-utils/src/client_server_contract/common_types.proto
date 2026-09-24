@@ -529,6 +529,7 @@ message NewFloatingPaneAction {
   bool near_current_pane = 7;
   optional uint32 tab_id = 8;
   bool no_focus = 9;
+  map<string, string> env = 10;
 }
 
 message NewTiledPaneAction {
@@ -540,6 +541,7 @@ message NewTiledPaneAction {
   optional uint32 tab_id = 9;
   bool no_focus = 10;
   optional BorderStyleOverride border_style = 11;
+  map<string, string> env = 12;
 }
 
 message NewInPlacePaneAction {
@@ -550,6 +552,7 @@ message NewInPlacePaneAction {
   bool close_replaced_pane = 5;
   optional uint32 tab_id = 6;
   bool no_focus = 7;
+  map<string, string> env = 8;
 }
 
 message NewStackedPaneAction {
@@ -558,6 +561,7 @@ message NewStackedPaneAction {
   bool near_current_pane = 3;
   optional uint32 tab_id = 4;
   bool no_focus = 5;
+  map<string, string> env = 6;
 }
 
 message NewBlockingPaneAction {
@@ -568,6 +572,7 @@ message NewBlockingPaneAction {
   bool near_current_pane = 5;
   optional uint32 tab_id = 6;
   bool no_focus = 7;
+  map<string, string> env = 8;
 }
 
 message PaneNameInputAction {
@@ -584,6 +589,7 @@ message NewTabAction {
   optional string cwd = 7;
   repeated CommandOrPlugin initial_panes = 8;
   optional UnblockCondition first_pane_unblock_condition = 9;
+  map<string, string> env = 10;
 }
 
 message GoToTabAction {
@@ -989,6 +995,7 @@ message RunCommandAction {
   bool hold_on_start = 6;                              // Renumbered
   optional OriginatingPlugin originating_plugin = 7;   // Added missing originating_plugin field
   bool use_terminal_title = 8;                         // Added missing use_terminal_title field
+  map<string, string> env = 9;
 }
 
 message TiledPaneLayout {

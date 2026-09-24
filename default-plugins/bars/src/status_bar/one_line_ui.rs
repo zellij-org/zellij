@@ -1670,7 +1670,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Toggle Embed"), s("Embed"), single_action_key(&km, &[A::TogglePaneEmbedOrFloating, TO_NORMAL])),
         (s("Split Right"), s("Right"), single_action_key(&km, &[A::NewPane{direction: Some(Direction::Right), pane_name: None, start_suppressed: false}, TO_NORMAL])),
         (s("Split Down"), s("Down"), single_action_key(&km, &[A::NewPane{direction: Some(Direction::Down), pane_name: None, start_suppressed: false}, TO_NORMAL])),
-        (s("Stack"), s("Stack"), single_action_key(&km, &[A::NewStackedPane{command: None, pane_name: None, near_current_pane: false, no_focus: false, tab_id: None}, TO_NORMAL])),
+        (s("Stack"), s("Stack"), single_action_key(&km, &[A::NewStackedPane{command: None, pane_name: None, near_current_pane: false, no_focus: false, tab_id: None, env: Default::default()}, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_basemode_key),
     ]} else if mi.mode == IM::Tab {
         let old_keymap = mi.get_mode_keybinds();
@@ -1694,6 +1694,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             cwd: None,
             initial_panes: None,
             first_pane_unblock_condition: None,
+            env: Default::default(),
         }, TO_NORMAL])),
         (s("Change focus"), s("Move"), focus_keys),
         (s("Close"), s("Close"), single_action_key(&km, &[A::CloseTab, TO_NORMAL])),
@@ -1790,6 +1791,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             cwd: None,
             initial_panes: None,
             first_pane_unblock_condition: None,
+            env: Default::default(),
         }, TO_NORMAL])),
         (s("Rename tab"), s("Rename"),
             action_key(&km, &[A::SwitchToMode{input_mode: IM::RenameTab}, A::TabNameInput{input: vec![0]}])),
