@@ -59,8 +59,9 @@ use prost::Message;
 use zellij_utils::{
     consts::{VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR, ZELLIJ_TMP_DIR},
     data::{
-        CommandOrPlugin, CommandToRun, Direction, EventType, FileToOpen, InputMode, PluginCommand,
-        PluginIds, PluginMessage, Resize, ResizeStrategy,
+        CommandOrPlugin, CommandToRun, Direction, EventType, FileToOpen, InputMode,
+        NestedSessionKeybindsError, PluginCommand, PluginIds, PluginMessage, Resize,
+        ResizeStrategy,
     },
     errors::prelude::*,
     input::{
@@ -72,7 +73,8 @@ use zellij_utils::{
     plugin_api::{
         event::{
             layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
-            ProtobufLayoutParsingError, ProtobufPaneScrollbackResponse, ProtobufSyntaxError,
+            nested_session_keybinds_response_to_protobuf, ProtobufLayoutParsingError,
+            ProtobufPaneScrollbackResponse, ProtobufSyntaxError,
         },
         plugin_command::{
             dump_layout_response, dump_session_layout_response, hide_floating_panes_response,
@@ -353,8 +355,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ToggleFocusFullscreen => toggle_focus_fullscreen(env),
                     PluginCommand::ToggleFocusNoUiFullscreen => toggle_focus_no_ui_fullscreen(env),
                     PluginCommand::FocusHostSession => focus_host_session(env),
-                    PluginCommand::RequestNestedSessionKeybinds(pane_id) => {
-                        request_nested_session_keybinds(env, pane_id.into())
+                    PluginCommand::GetNestedSessionKeybinds(pane_id) => {
+                        get_nested_session_keybinds(env, pane_id.into())
                     },
                     PluginCommand::TogglePaneFrames => toggle_pane_frames(env),
                     PluginCommand::SetPaneFrameStyle(pane_frame_style) => {
@@ -3222,9 +3224,14 @@ fn focus_host_session(env: &PluginEnv) {
         .non_fatal();
 }
 
-fn request_nested_session_keybinds(env: &PluginEnv, pane_id: PaneId) {
+fn get_nested_session_keybinds(env: &PluginEnv, pane_id: PaneId) {
+    use crossbeam::channel::RecvTimeoutError;
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
     env.senders
-        .send_to_screen(ScreenInstruction::RequestNestedSessionKeybinds(pane_id))
+        .send_to_screen(ScreenInstruction::GetNestedSessionKeybinds {
+            pane_id,
+            response_channel: response_sender,
+        })
         .with_context(|| {
             format!(
                 "failed to request nested session keybindings from plugin {}",
@@ -3232,6 +3239,28 @@ fn request_nested_session_keybinds(env: &PluginEnv, pane_id: PaneId) {
             )
         })
         .non_fatal();
+    let response = match response_receiver
+        .recv_timeout(zellij_utils::nested_session::KEYBINDS_REQUEST_TIMEOUT)
+    {
+        Ok(response) => response,
+        Err(RecvTimeoutError::Timeout) | Err(RecvTimeoutError::Disconnected) => {
+            log::warn!(
+                "nested session keybindings for pane {:?} did not arrive in time for plugin {}",
+                pane_id,
+                env.plugin_id
+            );
+            Err(NestedSessionKeybindsError::Timeout)
+        },
+    };
+    let protobuf_response = nested_session_keybinds_response_to_protobuf(response).or_else(|_| {
+        nested_session_keybinds_response_to_protobuf(Err(NestedSessionKeybindsError::NotSupported))
+    });
+    match protobuf_response {
+        Ok(protobuf_response) => {
+            let _ = wasi_write_object(env, &protobuf_response.encode_to_vec());
+        },
+        Err(e) => log::error!("failed to encode nested session keybindings: {}", e),
+    }
 }
 
 fn toggle_pane_frames(env: &PluginEnv) {
@@ -5699,7 +5728,7 @@ fn check_command_permission(
         | PluginCommand::CurrentSessionLastSavedTime
         | PluginCommand::GetPaneInfo(..)
         | PluginCommand::GetTabInfo(..)
-        | PluginCommand::RequestNestedSessionKeybinds(..)
+        | PluginCommand::GetNestedSessionKeybinds(..)
         | PluginCommand::GetSessionList => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure

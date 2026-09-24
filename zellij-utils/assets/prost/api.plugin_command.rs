@@ -327,12 +327,12 @@ pub mod plugin_command {
         #[prost(message, tag="174")]
         SetPaneBorderStylePayload(super::SetPaneBorderStylePayload),
         #[prost(message, tag="175")]
-        RequestNestedSessionKeybindsPayload(super::RequestNestedSessionKeybindsPayload),
+        GetNestedSessionKeybindsPayload(super::GetNestedSessionKeybindsPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct RequestNestedSessionKeybindsPayload {
+pub struct GetNestedSessionKeybindsPayload {
     #[prost(message, optional, tag="1")]
     pub pane_id: ::core::option::Option<PaneId>,
 }
@@ -2254,7 +2254,7 @@ pub enum CommandName {
     ApplyTiledSwapLayout = 229,
     ApplyFloatingSwapLayout = 230,
     SetPaneBorderStyle = 231,
-    RequestNestedSessionKeybinds = 232,
+    GetNestedSessionKeybinds = 232,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2469,7 +2469,7 @@ impl CommandName {
             CommandName::ApplyTiledSwapLayout => "ApplyTiledSwapLayout",
             CommandName::ApplyFloatingSwapLayout => "ApplyFloatingSwapLayout",
             CommandName::SetPaneBorderStyle => "SetPaneBorderStyle",
-            CommandName::RequestNestedSessionKeybinds => "RequestNestedSessionKeybinds",
+            CommandName::GetNestedSessionKeybinds => "GetNestedSessionKeybinds",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2681,7 +2681,7 @@ impl CommandName {
             "ApplyTiledSwapLayout" => Some(Self::ApplyTiledSwapLayout),
             "ApplyFloatingSwapLayout" => Some(Self::ApplyFloatingSwapLayout),
             "SetPaneBorderStyle" => Some(Self::SetPaneBorderStyle),
-            "RequestNestedSessionKeybinds" => Some(Self::RequestNestedSessionKeybinds),
+            "GetNestedSessionKeybinds" => Some(Self::GetNestedSessionKeybinds),
             _ => None,
         }
     }

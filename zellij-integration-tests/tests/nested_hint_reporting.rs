@@ -1,10 +1,7 @@
 #![cfg(unix)]
-//! A host session cannot render hints for a guest it knows nothing about. These tests cover
-//! the frames that close that gap: the guest telling its host which input mode it is in, and
-//! the guest answering the host's request for its full keybinding table.
 
 use zellij_integration_tests::keys;
-use zellij_integration_tests::nested::NestedHarness;
+use zellij_integration_tests::nested::{NestedDepthThreeHarness, NestedHarness};
 use zellij_utils::data::InputMode;
 use zellij_utils::nested_session::{self, NestedSessionCapability, NestedSessionMessage};
 use zellij_utils::pane_size::Size;
@@ -12,6 +9,11 @@ use zellij_utils::pane_size::Size;
 const TERMINAL_SIZE: Size = Size {
     cols: 121,
     rows: 30,
+};
+
+const DEPTH_THREE_TERMINAL_SIZE: Size = Size {
+    cols: 160,
+    rows: 40,
 };
 
 #[test]
@@ -45,9 +47,6 @@ fn the_guest_reports_its_mode_as_soon_as_the_handshake_completes() {
     nested.wait_for_guest_to_announce();
     nested.wait_for_host_to_acknowledge_guest();
 
-    // Nothing has driven the guest yet, so this frame can only be the unprompted report the
-    // guest makes on contact. A host plugin needs it: until one arrives, the host has no way
-    // of knowing which of its panes holds a session it could ask for keybindings.
     nested.guest_to_host().wait_for(
         "the guest to report its starting mode without being asked",
         |message| {
@@ -56,7 +55,9 @@ fn the_guest_reports_its_mode_as_soon_as_the_handshake_completes() {
                 NestedSessionMessage::GuestModeUpdate {
                     mode: InputMode::Normal,
                     base_mode: Some(_),
-                }
+                    session_path,
+                    ..
+                } if session_path.len() == 1
             )
         },
     );
@@ -68,35 +69,26 @@ fn the_guest_answers_a_keybinding_request_with_its_table_and_current_mode() {
     nested.wait_for_guest_to_announce();
     nested.wait_for_host_to_acknowledge_guest();
 
-    // A plugin in the host would trigger this frame through
-    // PluginCommand::RequestNestedSessionKeybinds; writing it into the guest's stdin puts it
-    // on the same wire the host writes to, without needing a plugin in the test.
     let since = nested.mark_guest_to_host();
     nested.guest.send_stdin(&nested_session::encode_frame(
-        &NestedSessionMessage::RequestGuestKeybinds,
+        &NestedSessionMessage::RequestGuestKeybinds { request_id: 41 },
     ));
 
     nested.guest_to_host().wait_for_after(
         since,
-        "the guest to answer with a keybinding table that has bindings in it",
+        "the guest to answer request 41 with its table, mode and base mode",
         |message| {
             matches!(
                 message,
-                NestedSessionMessage::GuestKeybindsUpdate { keybinds }
-                    if keybinds.iter().any(|(_, bindings)| !bindings.is_empty())
-            )
-        },
-    );
-    nested.guest_to_host().wait_for_after(
-        since,
-        "the guest to send its current mode and base mode alongside the keybinding table",
-        |message| {
-            matches!(
-                message,
-                NestedSessionMessage::GuestModeUpdate {
-                    base_mode: Some(_),
-                    ..
-                }
+                NestedSessionMessage::GuestKeybindsReply {
+                    request_id: 41,
+                    result: Ok(nested_session_keybinds),
+                } if nested_session_keybinds.base_mode.is_some()
+                    && nested_session_keybinds.session_path.len() == 1
+                    && nested_session_keybinds
+                        .keybinds
+                        .iter()
+                        .any(|(_, bindings)| !bindings.is_empty())
             )
         },
     );
@@ -138,6 +130,63 @@ fn the_guest_reports_its_mode_as_the_user_switches_modes_inside_it() {
                     mode: InputMode::Normal,
                     ..
                 }
+            )
+        },
+    );
+}
+
+#[test]
+fn a_middle_session_reports_and_answers_for_the_session_its_keys_go_to() {
+    let nested = NestedDepthThreeHarness::start_depth_three(DEPTH_THREE_TERMINAL_SIZE);
+    nested.boot_and_descend_depth_three();
+
+    nested.middle_to_outer_frames().wait_for(
+        "the middle session to report the inner session's mode once its keys go there",
+        |message| {
+            matches!(
+                message,
+                NestedSessionMessage::GuestModeUpdate { session_path, .. }
+                    if session_path.len() == 2
+            )
+        },
+    );
+
+    let since = nested.mark_middle_to_outer();
+    nested.outer.send_stdin(&keys::ctrl('p'));
+    nested.middle_to_outer_frames().wait_for_after(
+        since,
+        "the middle session to pass the inner session's switch to pane mode up to the outer session",
+        |message| {
+            matches!(
+                message,
+                NestedSessionMessage::GuestModeUpdate {
+                    mode: InputMode::Pane,
+                    session_path,
+                    ..
+                } if session_path.len() == 2
+            )
+        },
+    );
+
+    let since = nested.mark_middle_to_outer();
+    nested.middle.send_stdin(&nested_session::encode_frame(
+        &NestedSessionMessage::RequestGuestKeybinds { request_id: 77 },
+    ));
+    nested.middle_to_outer_frames().wait_for_after(
+        since,
+        "the middle session to relay request 77 to the inner session and pass its answer up",
+        |message| {
+            matches!(
+                message,
+                NestedSessionMessage::GuestKeybindsReply {
+                    request_id: 77,
+                    result: Ok(nested_session_keybinds),
+                } if nested_session_keybinds.session_path.len() == 2
+                    && nested_session_keybinds.mode == InputMode::Pane
+                    && nested_session_keybinds
+                        .keybinds
+                        .iter()
+                        .any(|(_, bindings)| !bindings.is_empty())
             )
         },
     );

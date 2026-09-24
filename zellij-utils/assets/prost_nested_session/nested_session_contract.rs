@@ -2,7 +2,7 @@
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NestedSessionMessage {
-    #[prost(oneof="nested_session_message::Payload", tags="1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17")]
+    #[prost(oneof="nested_session_message::Payload", tags="1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18")]
     pub payload: ::core::option::Option<nested_session_message::Payload>,
 }
 /// Nested message and enum types in `NestedSessionMessage`.
@@ -38,8 +38,8 @@ pub mod nested_session_message {
         GuestModeUpdate(super::GuestModeUpdate),
         #[prost(message, tag="16")]
         RequestGuestKeybinds(super::RequestGuestKeybinds),
-        #[prost(message, tag="17")]
-        GuestKeybindsUpdate(super::GuestKeybindsUpdate),
+        #[prost(message, tag="18")]
+        GuestKeybindsReply(super::GuestKeybindsReply),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -114,11 +114,6 @@ pub struct AncestryUpdate {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Ping {
 }
-/// Sent by a guest to its host whenever the guest's input mode changes, so the host
-/// knows which of the guest's keybindings currently apply. `base_mode` is the mode the
-/// guest returns to, empty when the guest does not report one; a host needs it to tell
-/// which of the guest's bindings are inherited from its base mode rather than specific to
-/// the mode it is in now.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GuestModeUpdate {
@@ -126,24 +121,49 @@ pub struct GuestModeUpdate {
     pub mode: ::prost::alloc::string::String,
     #[prost(string, tag="2")]
     pub base_mode: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag="3")]
+    pub session_path: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(uint64, tag="4")]
+    pub keybinds_generation: u64,
 }
-/// Sent by a host to ask a guest for its full keybinding table.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RequestGuestKeybinds {
+    #[prost(uint64, tag="1")]
+    pub request_id: u64,
 }
-/// A guest's answer to RequestGuestKeybinds.
-///
-/// The table is carried as an encoded plugin-API `InitialKeybindsPayload` rather than
-/// being redescribed here, because describing keybindings natively would mean pulling the
-/// whole `Action` schema into this contract. Protobuf's unknown-field and unknown-enum
-/// handling means a host and a guest built from different Zellij versions still exchange
-/// everything they both understand.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GuestKeybindsUpdate {
-    #[prost(bytes="vec", tag="1")]
+pub struct GuestKeybinds {
+    #[prost(string, repeated, tag="1")]
+    pub session_path: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, tag="2")]
+    pub mode: ::prost::alloc::string::String,
+    #[prost(string, tag="3")]
+    pub base_mode: ::prost::alloc::string::String,
+    #[prost(uint64, tag="4")]
+    pub keybinds_generation: u64,
+    #[prost(bytes="vec", tag="5")]
     pub keybinds_payload: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GuestKeybindsReply {
+    #[prost(uint64, tag="1")]
+    pub request_id: u64,
+    #[prost(oneof="guest_keybinds_reply::Result", tags="2, 3")]
+    pub result: ::core::option::Option<guest_keybinds_reply::Result>,
+}
+/// Nested message and enum types in `GuestKeybindsReply`.
+pub mod guest_keybinds_reply {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(message, tag="2")]
+        Keybinds(super::GuestKeybinds),
+        #[prost(enumeration="super::GuestKeybindsError", tag="3")]
+        Error(i32),
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -206,6 +226,47 @@ impl NestedDirection {
             "NESTED_DIRECTION_RIGHT" => Some(Self::Right),
             "NESTED_DIRECTION_UP" => Some(Self::Up),
             "NESTED_DIRECTION_DOWN" => Some(Self::Down),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum GuestKeybindsError {
+    Unspecified = 0,
+    NotNested = 1,
+    Unsupported = 2,
+    GuestUnresponsive = 3,
+    GuestGone = 4,
+    TooLarge = 5,
+    Timeout = 6,
+}
+impl GuestKeybindsError {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            GuestKeybindsError::Unspecified => "GUEST_KEYBINDS_ERROR_UNSPECIFIED",
+            GuestKeybindsError::NotNested => "GUEST_KEYBINDS_ERROR_NOT_NESTED",
+            GuestKeybindsError::Unsupported => "GUEST_KEYBINDS_ERROR_UNSUPPORTED",
+            GuestKeybindsError::GuestUnresponsive => "GUEST_KEYBINDS_ERROR_GUEST_UNRESPONSIVE",
+            GuestKeybindsError::GuestGone => "GUEST_KEYBINDS_ERROR_GUEST_GONE",
+            GuestKeybindsError::TooLarge => "GUEST_KEYBINDS_ERROR_TOO_LARGE",
+            GuestKeybindsError::Timeout => "GUEST_KEYBINDS_ERROR_TIMEOUT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "GUEST_KEYBINDS_ERROR_UNSPECIFIED" => Some(Self::Unspecified),
+            "GUEST_KEYBINDS_ERROR_NOT_NESTED" => Some(Self::NotNested),
+            "GUEST_KEYBINDS_ERROR_UNSUPPORTED" => Some(Self::Unsupported),
+            "GUEST_KEYBINDS_ERROR_GUEST_UNRESPONSIVE" => Some(Self::GuestUnresponsive),
+            "GUEST_KEYBINDS_ERROR_GUEST_GONE" => Some(Self::GuestGone),
+            "GUEST_KEYBINDS_ERROR_TOO_LARGE" => Some(Self::TooLarge),
+            "GUEST_KEYBINDS_ERROR_TIMEOUT" => Some(Self::Timeout),
             _ => None,
         }
     }

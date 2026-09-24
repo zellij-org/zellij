@@ -1047,32 +1047,63 @@ pub enum Event {
     SoftKeyboardVisibilityChanged(bool),
     HintText(BTreeMap<usize, StyledText>),
     ActivePaneScroll(Option<(usize, usize)>),
-    /// The current input mode of a nested session running inside one of this session's
-    /// panes, sent whenever that mode changes.
-    ///
-    /// `pane_id` is the pane hosting the nested session, and `session_name` is that
-    /// session's own name when it has announced one. Together they let a plugin tell
-    /// several nested sessions apart.
     NestedSessionModeUpdate {
         pane_id: PaneId,
-        session_name: Option<String>,
+        session_path: Vec<String>,
         mode: InputMode,
-        /// The mode the nested session returns to, when it reports one. A plugin needs it
-        /// to tell which of that session's bindings are inherited from its base mode
-        /// rather than specific to the mode it is in now.
         base_mode: Option<InputMode>,
+        keybinds_generation: u64,
     },
-    /// The keybindings of a nested session running inside one of this session's panes,
-    /// sent in answer to [`PluginCommand::RequestNestedSessionKeybinds`].
-    ///
-    /// Bindings that this session's build cannot represent are omitted, so a nested
-    /// session running a different Zellij version reports what both sides understand.
-    NestedSessionKeybinds {
+    NestedSessionEnded {
         pane_id: PaneId,
-        session_name: Option<String>,
-        keybinds: KeybindsVec,
+        reason: NestedSessionEndReason,
     },
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NestedSessionEndReason {
+    Exited,
+    Unresponsive,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NestedSessionKeybinds {
+    pub session_path: Vec<String>,
+    pub mode: InputMode,
+    pub base_mode: Option<InputMode>,
+    pub keybinds: KeybindsVec,
+    pub keybinds_generation: u64,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NestedSessionKeybindsError {
+    NotANestedSession,
+    NotSupported,
+    GuestUnresponsive,
+    GuestGone,
+    TooLarge,
+    Timeout,
+}
+
+impl fmt::Display for NestedSessionKeybindsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let description = match self {
+            NestedSessionKeybindsError::NotANestedSession => "no nested session in this pane",
+            NestedSessionKeybindsError::NotSupported => {
+                "the nested session cannot report its keybindings"
+            },
+            NestedSessionKeybindsError::GuestUnresponsive => "the nested session is not responding",
+            NestedSessionKeybindsError::GuestGone => "the nested session has ended",
+            NestedSessionKeybindsError::TooLarge => {
+                "the nested session's keybindings are too large to send"
+            },
+            NestedSessionKeybindsError::Timeout => "the nested session did not answer in time",
+        };
+        write!(f, "{}", description)
+    }
+}
+
+pub type NestedSessionKeybindsResponse = Result<NestedSessionKeybinds, NestedSessionKeybindsError>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum HostTerminalThemeMode {
@@ -2646,6 +2677,7 @@ pub struct PaneInfo {
     pub default_fg: Option<String>,
     /// The default background color of this pane, if set (e.g. "#001a3a")
     pub default_bg: Option<String>,
+    pub nested_session_name: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -4028,12 +4060,7 @@ pub enum PluginCommand {
     DeleteAllDeadSessionsAndReply,     // no payload; sends a response back
     SetSoftKeyboard(bool),
     FocusHostSession,
-    /// Ask the nested session running in the given pane for its keybindings.
-    ///
-    /// The answer arrives as an [`Event::NestedSessionKeybinds`]. A nested session running
-    /// a Zellij too old to report them does not answer, so a plugin should treat the
-    /// bindings as unavailable until the event arrives rather than waiting on it.
-    RequestNestedSessionKeybinds(PaneId),
+    GetNestedSessionKeybinds(PaneId),
 }
 
 // Response type for plugin API methods that open a pane in a new tab

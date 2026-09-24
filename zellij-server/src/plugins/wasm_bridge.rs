@@ -2172,7 +2172,7 @@ fn check_event_permission(
         | Event::HintText(..)
         | Event::ActivePaneScroll(..)
         | Event::NestedSessionModeUpdate { .. }
-        | Event::NestedSessionKeybinds { .. }
+        | Event::NestedSessionEnded { .. }
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,

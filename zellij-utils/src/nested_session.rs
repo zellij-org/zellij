@@ -1,4 +1,7 @@
-use crate::data::{BareKey, Direction, InputMode, KeyWithModifier, KeybindsVec};
+use crate::data::{
+    BareKey, Direction, InputMode, KeyWithModifier, KeybindsVec, NestedSessionKeybinds,
+    NestedSessionKeybindsError, NestedSessionKeybindsResponse,
+};
 use crate::nested_session_contract::nested_session_contract as proto;
 use crate::plugin_api::event::{keybinds_from_protobuf, keybinds_to_protobuf};
 use crate::plugin_api::generated_api::api::event::InitialKeybindsPayload as ProtobufInitialKeybindsPayload;
@@ -23,6 +26,8 @@ pub const NESTED_FRAME_TERMINATOR: &[u8] = b"\x1b\\";
 pub const REANNOUNCE_SILENCE_MS: u64 = 3000;
 pub const REANNOUNCE_CHECK_INTERVAL_MS: u64 = 1000;
 pub const MAX_UNACKED_ANNOUNCES: usize = 5;
+pub const KEYBINDS_REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
+pub const MAX_HELD_KEYBINDS_REQUESTS: usize = 8;
 
 pub fn reannounce_silence_ms() -> u64 {
     std::env::var("ZELLIJ_NESTED_REANNOUNCE_SILENCE_MS")
@@ -99,9 +104,6 @@ impl ReannounceScheduler {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NestedSessionCapability {
     NestedControl,
-    /// The peer can report its input mode and keybindings to its host, through
-    /// [`NestedSessionMessage::GuestModeUpdate`] and
-    /// [`NestedSessionMessage::GuestKeybindsUpdate`].
     HintReporting,
 }
 
@@ -139,16 +141,18 @@ pub enum NestedSessionMessage {
         ascend_keys: Vec<KeyWithModifier>,
         descend_keys: Vec<KeyWithModifier>,
     },
-    /// Sent by a guest to its host whenever the guest's input mode changes.
     GuestModeUpdate {
         mode: InputMode,
         base_mode: Option<InputMode>,
+        session_path: Vec<String>,
+        keybinds_generation: u64,
     },
-    /// Sent by a host to ask a guest for its full keybinding table.
-    RequestGuestKeybinds,
-    /// A guest's answer to [`NestedSessionMessage::RequestGuestKeybinds`].
-    GuestKeybindsUpdate {
-        keybinds: KeybindsVec,
+    RequestGuestKeybinds {
+        request_id: u64,
+    },
+    GuestKeybindsReply {
+        request_id: u64,
+        result: NestedSessionKeybindsResponse,
     },
 }
 
@@ -240,6 +244,40 @@ fn binds_a_control_character(key: &KeyWithModifier) -> bool {
     matches!(key.bare_key, BareKey::Char(character) if character.is_control())
 }
 
+fn keybinds_error_to_proto(error: NestedSessionKeybindsError) -> proto::GuestKeybindsError {
+    match error {
+        NestedSessionKeybindsError::NotANestedSession => proto::GuestKeybindsError::NotNested,
+        NestedSessionKeybindsError::NotSupported => proto::GuestKeybindsError::Unsupported,
+        NestedSessionKeybindsError::GuestUnresponsive => {
+            proto::GuestKeybindsError::GuestUnresponsive
+        },
+        NestedSessionKeybindsError::GuestGone => proto::GuestKeybindsError::GuestGone,
+        NestedSessionKeybindsError::TooLarge => proto::GuestKeybindsError::TooLarge,
+        NestedSessionKeybindsError::Timeout => proto::GuestKeybindsError::Timeout,
+    }
+}
+
+fn keybinds_error_from_proto(error: i32) -> NestedSessionKeybindsError {
+    match proto::GuestKeybindsError::try_from(error).ok() {
+        Some(proto::GuestKeybindsError::NotNested) => NestedSessionKeybindsError::NotANestedSession,
+        Some(proto::GuestKeybindsError::GuestUnresponsive) => {
+            NestedSessionKeybindsError::GuestUnresponsive
+        },
+        Some(proto::GuestKeybindsError::GuestGone) => NestedSessionKeybindsError::GuestGone,
+        Some(proto::GuestKeybindsError::TooLarge) => NestedSessionKeybindsError::TooLarge,
+        Some(proto::GuestKeybindsError::Timeout) => NestedSessionKeybindsError::Timeout,
+        _ => NestedSessionKeybindsError::NotSupported,
+    }
+}
+
+fn base_mode_from_proto(base_mode: &str) -> Option<InputMode> {
+    if base_mode.is_empty() {
+        None
+    } else {
+        mode_from_proto(base_mode)
+    }
+}
+
 fn direction_to_proto(direction: Option<Direction>) -> i32 {
     match direction {
         Some(Direction::Left) => proto::NestedDirection::Left as i32,
@@ -308,18 +346,38 @@ impl From<NestedSessionMessage> for proto::NestedSessionMessage {
                 ascend_keys: keys_to_proto(&ascend_keys),
                 descend_keys: keys_to_proto(&descend_keys),
             }),
-            NestedSessionMessage::GuestModeUpdate { mode, base_mode } => {
-                Payload::GuestModeUpdate(proto::GuestModeUpdate {
-                    mode: mode_to_proto(mode),
-                    base_mode: base_mode.map(mode_to_proto).unwrap_or_default(),
-                })
+            NestedSessionMessage::GuestModeUpdate {
+                mode,
+                base_mode,
+                session_path,
+                keybinds_generation,
+            } => Payload::GuestModeUpdate(proto::GuestModeUpdate {
+                mode: mode_to_proto(mode),
+                base_mode: base_mode.map(mode_to_proto).unwrap_or_default(),
+                session_path,
+                keybinds_generation,
+            }),
+            NestedSessionMessage::RequestGuestKeybinds { request_id } => {
+                Payload::RequestGuestKeybinds(proto::RequestGuestKeybinds { request_id })
             },
-            NestedSessionMessage::RequestGuestKeybinds => {
-                Payload::RequestGuestKeybinds(proto::RequestGuestKeybinds {})
-            },
-            NestedSessionMessage::GuestKeybindsUpdate { keybinds } => {
-                Payload::GuestKeybindsUpdate(proto::GuestKeybindsUpdate {
-                    keybinds_payload: keybinds_to_proto(keybinds),
+            NestedSessionMessage::GuestKeybindsReply { request_id, result } => {
+                use proto::guest_keybinds_reply::Result as ReplyResult;
+                let result = match result {
+                    Ok(nested_session_keybinds) => ReplyResult::Keybinds(proto::GuestKeybinds {
+                        session_path: nested_session_keybinds.session_path,
+                        mode: mode_to_proto(nested_session_keybinds.mode),
+                        base_mode: nested_session_keybinds
+                            .base_mode
+                            .map(mode_to_proto)
+                            .unwrap_or_default(),
+                        keybinds_generation: nested_session_keybinds.keybinds_generation,
+                        keybinds_payload: keybinds_to_proto(nested_session_keybinds.keybinds),
+                    }),
+                    Err(error) => ReplyResult::Error(keybinds_error_to_proto(error) as i32),
+                };
+                Payload::GuestKeybindsReply(proto::GuestKeybindsReply {
+                    request_id,
+                    result: Some(result),
                 })
             },
         };
@@ -376,23 +434,35 @@ impl TryFrom<proto::NestedSessionMessage> for NestedSessionMessage {
             },
             Some(Payload::GuestModeUpdate(guest_mode_update)) => {
                 let mode = mode_from_proto(&guest_mode_update.mode).ok_or(())?;
-                // An empty base mode means the guest did not report one. A name this side
-                // does not recognize is treated the same way, so an unknown base mode
-                // costs the inherited-binding distinction rather than the whole message.
-                let base_mode = if guest_mode_update.base_mode.is_empty() {
-                    None
-                } else {
-                    mode_from_proto(&guest_mode_update.base_mode)
+                Ok(NestedSessionMessage::GuestModeUpdate {
+                    mode,
+                    base_mode: base_mode_from_proto(&guest_mode_update.base_mode),
+                    session_path: guest_mode_update.session_path,
+                    keybinds_generation: guest_mode_update.keybinds_generation,
+                })
+            },
+            Some(Payload::RequestGuestKeybinds(request)) => {
+                Ok(NestedSessionMessage::RequestGuestKeybinds {
+                    request_id: request.request_id,
+                })
+            },
+            Some(Payload::GuestKeybindsReply(reply)) => {
+                use proto::guest_keybinds_reply::Result as ReplyResult;
+                let result = match reply.result {
+                    Some(ReplyResult::Keybinds(guest_keybinds)) => Ok(NestedSessionKeybinds {
+                        mode: mode_from_proto(&guest_keybinds.mode).ok_or(())?,
+                        base_mode: base_mode_from_proto(&guest_keybinds.base_mode),
+                        keybinds: keybinds_from_proto(&guest_keybinds.keybinds_payload).ok_or(())?,
+                        session_path: guest_keybinds.session_path,
+                        keybinds_generation: guest_keybinds.keybinds_generation,
+                    }),
+                    Some(ReplyResult::Error(error)) => Err(keybinds_error_from_proto(error)),
+                    None => return Err(()),
                 };
-                Ok(NestedSessionMessage::GuestModeUpdate { mode, base_mode })
-            },
-            Some(Payload::RequestGuestKeybinds(_)) => {
-                Ok(NestedSessionMessage::RequestGuestKeybinds)
-            },
-            Some(Payload::GuestKeybindsUpdate(guest_keybinds_update)) => {
-                let keybinds =
-                    keybinds_from_proto(&guest_keybinds_update.keybinds_payload).ok_or(())?;
-                Ok(NestedSessionMessage::GuestKeybindsUpdate { keybinds })
+                Ok(NestedSessionMessage::GuestKeybindsReply {
+                    request_id: reply.request_id,
+                    result,
+                })
             },
             None => Err(()),
         }
@@ -429,6 +499,24 @@ pub fn decode_base64(encoded: &[u8]) -> Option<Vec<u8>> {
 }
 
 const MAX_PARTIAL_FRAME_BYTES: usize = 1024 * 1024;
+
+pub const MAX_FRAME_PAYLOAD_BYTES: usize =
+    (MAX_PARTIAL_FRAME_BYTES - NESTED_FRAME_HEADER.len() - NESTED_FRAME_TERMINATOR.len()) / 4 * 3;
+
+pub fn encode_keybinds_reply_payload(
+    request_id: u64,
+    result: NestedSessionKeybindsResponse,
+) -> Vec<u8> {
+    let payload = encode_payload(&NestedSessionMessage::GuestKeybindsReply { request_id, result });
+    if payload.len() > MAX_FRAME_PAYLOAD_BYTES {
+        encode_payload(&NestedSessionMessage::GuestKeybindsReply {
+            request_id,
+            result: Err(NestedSessionKeybindsError::TooLarge),
+        })
+    } else {
+        payload
+    }
+}
 
 enum FrameScanStatus {
     Complete(usize),
@@ -573,12 +661,38 @@ mod tests {
             NestedSessionMessage::GuestModeUpdate {
                 mode: InputMode::Locked,
                 base_mode: Some(InputMode::Normal),
+                session_path: vec!["middle".to_owned(), "inner".to_owned()],
+                keybinds_generation: 4,
             },
-            NestedSessionMessage::RequestGuestKeybinds,
-            NestedSessionMessage::GuestKeybindsUpdate {
-                keybinds: sample_keybinds(),
+            NestedSessionMessage::RequestGuestKeybinds { request_id: 17 },
+            keybinds_reply(18, sample_keybinds()),
+            NestedSessionMessage::GuestKeybindsReply {
+                request_id: 19,
+                result: Err(NestedSessionKeybindsError::GuestGone),
             },
         ]
+    }
+
+    fn keybinds_reply(request_id: u64, keybinds: KeybindsVec) -> NestedSessionMessage {
+        NestedSessionMessage::GuestKeybindsReply {
+            request_id,
+            result: Ok(NestedSessionKeybinds {
+                session_path: vec!["guest".to_owned()],
+                mode: InputMode::Pane,
+                base_mode: Some(InputMode::Normal),
+                keybinds,
+                keybinds_generation: 2,
+            }),
+        }
+    }
+
+    fn mode_update(mode: InputMode, base_mode: Option<InputMode>) -> NestedSessionMessage {
+        NestedSessionMessage::GuestModeUpdate {
+            mode,
+            base_mode,
+            session_path: vec!["guest".to_owned()],
+            keybinds_generation: 0,
+        }
     }
 
     fn sample_keybinds() -> KeybindsVec {
@@ -689,8 +803,6 @@ mod tests {
 
     #[test]
     fn a_capability_the_reading_side_does_not_know_is_dropped() {
-        // A peer built from a newer Zellij may advertise capabilities this side has never
-        // heard of. Those must be ignored without taking the known ones down with them.
         let capabilities = capabilities_from_proto(&[
             proto::NestedCapability::HintReporting as i32,
             9999,
@@ -708,10 +820,7 @@ mod tests {
     #[test]
     fn guest_mode_update_roundtrip_preserves_every_input_mode() {
         for mode in InputMode::iter() {
-            let message = NestedSessionMessage::GuestModeUpdate {
-                mode,
-                base_mode: Some(mode),
-            };
+            let message = mode_update(mode, Some(mode));
             assert_eq!(
                 decode_payload(&encode_payload(&message)),
                 Some(message),
@@ -723,32 +832,26 @@ mod tests {
 
     #[test]
     fn a_guest_that_reports_no_base_mode_round_trips_as_none() {
-        let message = NestedSessionMessage::GuestModeUpdate {
-            mode: InputMode::Normal,
-            base_mode: None,
-        };
+        let message = mode_update(InputMode::Normal, None);
         assert_eq!(decode_payload(&encode_payload(&message)), Some(message));
     }
 
     #[test]
     fn an_unknown_base_mode_name_costs_only_the_base_mode() {
-        // The mode itself still has to be readable, but a base mode this side does not
-        // recognize must not take the whole message down with it.
         let payload = proto::NestedSessionMessage {
             payload: Some(proto::nested_session_message::Payload::GuestModeUpdate(
                 proto::GuestModeUpdate {
                     mode: "Normal".to_owned(),
                     base_mode: "ModeFromAFutureZellij".to_owned(),
+                    session_path: vec!["guest".to_owned()],
+                    keybinds_generation: 0,
                 },
             )),
         }
         .encode_to_vec();
         assert_eq!(
             decode_payload(&payload),
-            Some(NestedSessionMessage::GuestModeUpdate {
-                mode: InputMode::Normal,
-                base_mode: None,
-            })
+            Some(mode_update(InputMode::Normal, None))
         );
     }
 
@@ -759,6 +862,8 @@ mod tests {
                 proto::GuestModeUpdate {
                     mode: "ModeFromAFutureZellij".to_owned(),
                     base_mode: String::new(),
+                    session_path: vec![],
+                    keybinds_generation: 0,
                 },
             )),
         }
@@ -767,33 +872,86 @@ mod tests {
     }
 
     #[test]
-    fn guest_keybinds_update_preserves_modes_keys_and_actions() {
-        let message = NestedSessionMessage::GuestKeybindsUpdate {
-            keybinds: sample_keybinds(),
-        };
+    fn guest_keybinds_reply_preserves_modes_keys_and_actions() {
+        let message = keybinds_reply(5, sample_keybinds());
         assert_eq!(decode_payload(&encode_payload(&message)), Some(message));
     }
 
     #[test]
     fn empty_keybinds_survive_the_roundtrip() {
-        let message = NestedSessionMessage::GuestKeybindsUpdate { keybinds: vec![] };
+        let message = keybinds_reply(5, vec![]);
         assert_eq!(decode_payload(&encode_payload(&message)), Some(message));
+    }
+
+    #[test]
+    fn every_keybinds_error_survives_the_roundtrip() {
+        for error in [
+            NestedSessionKeybindsError::NotANestedSession,
+            NestedSessionKeybindsError::NotSupported,
+            NestedSessionKeybindsError::GuestUnresponsive,
+            NestedSessionKeybindsError::GuestGone,
+            NestedSessionKeybindsError::TooLarge,
+            NestedSessionKeybindsError::Timeout,
+        ] {
+            let message = NestedSessionMessage::GuestKeybindsReply {
+                request_id: 9,
+                result: Err(error),
+            };
+            assert_eq!(decode_payload(&encode_payload(&message)), Some(message));
+        }
+    }
+
+    #[test]
+    fn an_unknown_keybinds_error_reads_as_not_supported() {
+        let payload = proto::NestedSessionMessage {
+            payload: Some(proto::nested_session_message::Payload::GuestKeybindsReply(
+                proto::GuestKeybindsReply {
+                    request_id: 3,
+                    result: Some(proto::guest_keybinds_reply::Result::Error(9999)),
+                },
+            )),
+        }
+        .encode_to_vec();
+        assert_eq!(
+            decode_payload(&payload),
+            Some(NestedSessionMessage::GuestKeybindsReply {
+                request_id: 3,
+                result: Err(NestedSessionKeybindsError::NotSupported),
+            })
+        );
+    }
+
+    #[test]
+    fn a_reply_without_a_result_is_rejected() {
+        let payload = proto::NestedSessionMessage {
+            payload: Some(proto::nested_session_message::Payload::GuestKeybindsReply(
+                proto::GuestKeybindsReply {
+                    request_id: 3,
+                    result: None,
+                },
+            )),
+        }
+        .encode_to_vec();
+        assert_eq!(decode_payload(&payload), None);
     }
 
     #[test]
     fn a_binding_on_a_control_character_is_dropped_without_losing_the_rest() {
         let mut keybinds = sample_keybinds();
-        // A key nobody can press, and an escape in the output of any host that draws it.
         keybinds[0].1.push((
             KeyWithModifier::new(BareKey::Char('\u{1b}')),
             vec![Action::Quit],
         ));
         let bindings_in_normal_mode = keybinds[0].1.len();
 
-        let decoded = decode_payload(&encode_payload(
-            &NestedSessionMessage::GuestKeybindsUpdate { keybinds },
-        ));
-        let Some(NestedSessionMessage::GuestKeybindsUpdate { keybinds: decoded }) = decoded else {
+        let decoded = decode_payload(&encode_payload(&keybinds_reply(1, keybinds)));
+        let Some(NestedSessionMessage::GuestKeybindsReply {
+            result: Ok(NestedSessionKeybinds {
+                keybinds: decoded, ..
+            }),
+            ..
+        }) = decoded
+        else {
             panic!("expected a keybinding table, got {:?}", decoded);
         };
 
@@ -802,21 +960,88 @@ mod tests {
             |(key, _actions)| matches!(key.bare_key, BareKey::Char(character)
                 if character.is_control())
         ));
-        // The mode it shared a table with is otherwise untouched.
         assert_eq!(decoded[1], sample_keybinds()[1]);
     }
 
     #[test]
     fn undecodable_keybinds_payload_is_rejected() {
         let payload = proto::NestedSessionMessage {
-            payload: Some(proto::nested_session_message::Payload::GuestKeybindsUpdate(
-                proto::GuestKeybindsUpdate {
-                    keybinds_payload: vec![0xff, 0xff, 0xff, 0xff],
+            payload: Some(proto::nested_session_message::Payload::GuestKeybindsReply(
+                proto::GuestKeybindsReply {
+                    request_id: 1,
+                    result: Some(proto::guest_keybinds_reply::Result::Keybinds(
+                        proto::GuestKeybinds {
+                            session_path: vec![],
+                            mode: "Normal".to_owned(),
+                            base_mode: String::new(),
+                            keybinds_generation: 0,
+                            keybinds_payload: vec![0xff, 0xff, 0xff, 0xff],
+                        },
+                    )),
                 },
             )),
         }
         .encode_to_vec();
         assert_eq!(decode_payload(&payload), None);
+    }
+
+    #[test]
+    fn a_reply_that_fits_in_a_frame_is_sent_as_is() {
+        let result = match keybinds_reply(4, sample_keybinds()) {
+            NestedSessionMessage::GuestKeybindsReply { result, .. } => result,
+            _ => unreachable!(),
+        };
+        let payload = encode_keybinds_reply_payload(4, result);
+        assert_eq!(
+            decode_payload(&payload),
+            Some(keybinds_reply(4, sample_keybinds()))
+        );
+    }
+
+    #[test]
+    fn a_reply_too_large_for_a_frame_becomes_too_large() {
+        let bindings: Vec<(KeyWithModifier, Vec<Action>)> = (0..MAX_FRAME_PAYLOAD_BYTES / 4)
+            .map(|index| {
+                (
+                    KeyWithModifier::new(BareKey::Char('a')),
+                    vec![Action::GoToTab {
+                        index: index as u32,
+                    }],
+                )
+            })
+            .collect();
+        let payload = encode_keybinds_reply_payload(
+            6,
+            Ok(NestedSessionKeybinds {
+                session_path: vec!["guest".to_owned()],
+                mode: InputMode::Normal,
+                base_mode: None,
+                keybinds: vec![(InputMode::Normal, bindings)],
+                keybinds_generation: 0,
+            }),
+        );
+        assert!(payload.len() <= MAX_FRAME_PAYLOAD_BYTES);
+        assert_eq!(
+            decode_payload(&payload),
+            Some(NestedSessionMessage::GuestKeybindsReply {
+                request_id: 6,
+                result: Err(NestedSessionKeybindsError::TooLarge),
+            })
+        );
+    }
+
+    #[test]
+    fn a_frame_at_the_payload_limit_is_extracted_even_when_split() {
+        let payload = vec![0u8; MAX_FRAME_PAYLOAD_BYTES];
+        let frame = encode_frame_from_payload(&payload);
+        let mut extractor = NestedFrameExtractor::new();
+        let (split_at, _) = frame.split_at(frame.len() / 2);
+        let (cleaned_first, payloads_first) = extractor.extract(split_at);
+        assert!(cleaned_first.is_empty());
+        assert!(payloads_first.is_empty());
+        let (cleaned_second, payloads_second) = extractor.extract(&frame[split_at.len()..]);
+        assert!(cleaned_second.is_empty());
+        assert_eq!(payloads_second, vec![payload]);
     }
 
     fn test_scheduler(now: Instant) -> ReannounceScheduler {

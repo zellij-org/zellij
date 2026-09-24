@@ -451,6 +451,7 @@ pub struct NestedDepthThreeHarness {
     pub middle_pane: FakePtyHandle,
     pub inner_pane: FakePtyHandle,
     outer_to_middle: FrameLog,
+    middle_to_outer: FrameLog,
     middle_to_inner: FrameLog,
     inner_to_middle: FrameLog,
     _frozen: Arc<AtomicBool>,
@@ -469,6 +470,7 @@ impl NestedDepthThreeHarness {
         let outer_to_middle_bridge = bridge_guest_into_pane_for_host(&middle_pane, frozen.clone());
         let middle = outer_to_middle_bridge.guest;
         let outer_to_middle = outer_to_middle_bridge.host_to_guest;
+        let middle_to_outer = outer_to_middle_bridge.guest_to_host;
 
         middle.wait_for_app_load();
         let inner_pane = middle.expect_pty_spawn();
@@ -488,6 +490,7 @@ impl NestedDepthThreeHarness {
             middle_pane,
             inner_pane,
             outer_to_middle,
+            middle_to_outer,
             middle_to_inner,
             inner_to_middle,
             _frozen: frozen,
@@ -497,6 +500,10 @@ impl NestedDepthThreeHarness {
 
     pub fn outer_to_middle_frames(&self) -> &FrameLog {
         &self.outer_to_middle
+    }
+
+    pub fn middle_to_outer_frames(&self) -> &FrameLog {
+        &self.middle_to_outer
     }
 
     pub fn middle_to_inner_frames(&self) -> &FrameLog {
@@ -571,6 +578,10 @@ impl NestedDepthThreeHarness {
 
     pub fn mark_outer_to_middle(&self) -> usize {
         self.outer_to_middle.mark()
+    }
+
+    pub fn mark_middle_to_outer(&self) -> usize {
+        self.middle_to_outer.mark()
     }
 
     pub fn mark_middle_to_inner(&self) -> usize {

@@ -20,6 +20,10 @@ pub use super::generated_api::api::{
         LayoutInfo as ProtobufLayoutInfo, LayoutMetadata as ProtobufLayoutMetadata,
         LayoutParsingError as ProtobufLayoutParsingError,
         LayoutWithError as ProtobufLayoutWithError, ModeUpdatePayload as ProtobufModeUpdatePayload,
+        NestedSessionEndReason as ProtobufNestedSessionEndReason,
+        NestedSessionKeybindsError as ProtobufNestedSessionKeybindsError,
+        NestedSessionKeybindsResponse as ProtobufNestedSessionKeybindsResponse,
+        NestedSessionKeybindsResult as ProtobufNestedSessionKeybindsResult,
         PaneContents as ProtobufPaneContents, PaneContentsEntry as ProtobufPaneContentsEntry,
         PaneFrameStyle as ProtobufPaneFrameStyle, PaneId as ProtobufPaneId,
         PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
@@ -44,9 +48,10 @@ pub use super::generated_api::api::{
 use crate::data::{
     ClientId, ClientInfo, CopyDestination, Event, EventType, FileMetadata, HostTerminalThemeMode,
     InputMode, KeyWithModifier, KeybindsVec, LayoutInfo, LayoutMetadata, ModeInfo, Mouse,
-    PaneContents, PaneId, PaneInfo, PaneManifest, PaneMetadata, PaneScrollbackResponse,
-    PermissionStatus, PluginCapabilities, PluginInfo, SelectedText, SessionInfo, Style, StyledText,
-    TabInfo, TabMetadata, WebServerStatus, WebSharing,
+    NestedSessionEndReason, NestedSessionKeybinds, NestedSessionKeybindsError,
+    NestedSessionKeybindsResponse, PaneContents, PaneId, PaneInfo, PaneManifest, PaneMetadata,
+    PaneScrollbackResponse, PermissionStatus, PluginCapabilities, PluginInfo, SelectedText,
+    SessionInfo, Style, StyledText, TabInfo, TabMetadata, WebServerStatus, WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -634,25 +639,34 @@ impl TryFrom<ProtobufEvent> for Event {
                         .and_then(|base_mode| InputMode::try_from(base_mode).ok());
                     Ok(Event::NestedSessionModeUpdate {
                         pane_id: PaneId::try_from(pane_id)?,
-                        session_name: payload.session_name,
+                        session_path: payload.session_path,
                         mode,
                         base_mode,
+                        keybinds_generation: payload.keybinds_generation,
                     })
                 },
                 _ => Err("Malformed payload for the NestedSessionModeUpdate Event"),
             },
-            Some(ProtobufEventType::NestedSessionKeybinds) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::NestedSessionKeybindsPayload(payload)) => {
+            Some(ProtobufEventType::NestedSessionEnded) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::NestedSessionEndedPayload(payload)) => {
                     let pane_id = payload
                         .pane_id
-                        .ok_or("Malformed payload for the NestedSessionKeybinds Event")?;
-                    Ok(Event::NestedSessionKeybinds {
+                        .ok_or("Malformed payload for the NestedSessionEnded Event")?;
+                    let reason = match ProtobufNestedSessionEndReason::try_from(payload.reason) {
+                        Ok(ProtobufNestedSessionEndReason::NestedSessionExited) => {
+                            NestedSessionEndReason::Exited
+                        },
+                        Ok(ProtobufNestedSessionEndReason::NestedSessionUnresponsive) => {
+                            NestedSessionEndReason::Unresponsive
+                        },
+                        Err(_) => return Err("Unknown reason in the NestedSessionEnded Event"),
+                    };
+                    Ok(Event::NestedSessionEnded {
                         pane_id: PaneId::try_from(pane_id)?,
-                        session_name: payload.session_name,
-                        keybinds: keybinds_from_protobuf(payload.keybinds),
+                        reason,
                     })
                 },
-                _ => Err("Malformed payload for the NestedSessionKeybinds Event"),
+                _ => Err("Malformed payload for the NestedSessionEnded Event"),
             },
             Some(ProtobufEventType::InitialKeybinds) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::InitialKeybindsPayload(p)) => {
@@ -1274,9 +1288,10 @@ impl TryFrom<Event> for ProtobufEvent {
             },
             Event::NestedSessionModeUpdate {
                 pane_id,
-                session_name,
+                session_path,
                 mode,
                 base_mode,
+                keybinds_generation,
             } => {
                 let protobuf_mode: ProtobufInputMode = mode.try_into()?;
                 let protobuf_base_mode = base_mode
@@ -1288,27 +1303,33 @@ impl TryFrom<Event> for ProtobufEvent {
                     payload: Some(event::Payload::NestedSessionModeUpdatePayload(
                         NestedSessionModeUpdatePayload {
                             pane_id: Some(pane_id.try_into()?),
-                            session_name,
+                            session_path,
                             mode: protobuf_mode as i32,
                             base_mode: protobuf_base_mode,
+                            keybinds_generation,
                         },
                     )),
                 })
             },
-            Event::NestedSessionKeybinds {
-                pane_id,
-                session_name,
-                keybinds,
-            } => Ok(ProtobufEvent {
-                name: ProtobufEventType::NestedSessionKeybinds as i32,
-                payload: Some(event::Payload::NestedSessionKeybindsPayload(
-                    NestedSessionKeybindsPayload {
-                        pane_id: Some(pane_id.try_into()?),
-                        session_name,
-                        keybinds: keybinds_to_protobuf(keybinds),
+            Event::NestedSessionEnded { pane_id, reason } => {
+                let protobuf_reason = match reason {
+                    NestedSessionEndReason::Exited => {
+                        ProtobufNestedSessionEndReason::NestedSessionExited
                     },
-                )),
-            }),
+                    NestedSessionEndReason::Unresponsive => {
+                        ProtobufNestedSessionEndReason::NestedSessionUnresponsive
+                    },
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::NestedSessionEnded as i32,
+                    payload: Some(event::Payload::NestedSessionEndedPayload(
+                        NestedSessionEndedPayload {
+                            pane_id: Some(pane_id.try_into()?),
+                            reason: protobuf_reason as i32,
+                        },
+                    )),
+                })
+            },
             Event::InitialKeybinds(keybinds) => {
                 let protobuf_keybinds = keybinds_to_protobuf(keybinds);
                 Ok(ProtobufEvent {
@@ -1921,6 +1942,7 @@ impl TryFrom<ProtobufPaneInfo> for PaneInfo {
                 .collect(),
             default_fg: protobuf_pane_info.default_fg,
             default_bg: protobuf_pane_info.default_bg,
+            nested_session_name: protobuf_pane_info.nested_session_name,
         })
     }
 }
@@ -1966,6 +1988,7 @@ impl TryFrom<PaneInfo> for ProtobufPaneInfo {
                 .collect(),
             default_fg: pane_info.default_fg,
             default_bg: pane_info.default_bg,
+            nested_session_name: pane_info.nested_session_name,
         })
     }
 }
@@ -2293,7 +2316,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::HintText => EventType::HintText,
             ProtobufEventType::ActivePaneScroll => EventType::ActivePaneScroll,
             ProtobufEventType::NestedSessionModeUpdate => EventType::NestedSessionModeUpdate,
-            ProtobufEventType::NestedSessionKeybinds => EventType::NestedSessionKeybinds,
+            ProtobufEventType::NestedSessionEnded => EventType::NestedSessionEnded,
         })
     }
 }
@@ -2353,7 +2376,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::HintText => ProtobufEventType::HintText,
             EventType::ActivePaneScroll => ProtobufEventType::ActivePaneScroll,
             EventType::NestedSessionModeUpdate => ProtobufEventType::NestedSessionModeUpdate,
-            EventType::NestedSessionKeybinds => ProtobufEventType::NestedSessionKeybinds,
+            EventType::NestedSessionEnded => ProtobufEventType::NestedSessionEnded,
         })
     }
 }
@@ -3035,6 +3058,7 @@ fn serialize_session_update_event_with_non_default_values() {
             index_in_pane_group: index_in_pane_group_1,
             default_fg: None,
             default_bg: None,
+            nested_session_name: None,
         },
         PaneInfo {
             id: 1,
@@ -3062,6 +3086,7 @@ fn serialize_session_update_event_with_non_default_values() {
             index_in_pane_group: index_in_pane_group_2,
             default_fg: None,
             default_bg: None,
+            nested_session_name: None,
         },
     ];
     panes.insert(0, panes_list);
@@ -3394,6 +3419,113 @@ impl TryFrom<PaneScrollbackResponse> for ProtobufPaneScrollbackResponse {
     }
 }
 
+fn nested_session_keybinds_error_to_protobuf(
+    error: NestedSessionKeybindsError,
+) -> ProtobufNestedSessionKeybindsError {
+    match error {
+        NestedSessionKeybindsError::NotANestedSession => {
+            ProtobufNestedSessionKeybindsError::NestedKeybindsNotANestedSession
+        },
+        NestedSessionKeybindsError::NotSupported => {
+            ProtobufNestedSessionKeybindsError::NestedKeybindsNotSupported
+        },
+        NestedSessionKeybindsError::GuestUnresponsive => {
+            ProtobufNestedSessionKeybindsError::NestedKeybindsGuestUnresponsive
+        },
+        NestedSessionKeybindsError::GuestGone => {
+            ProtobufNestedSessionKeybindsError::NestedKeybindsGuestGone
+        },
+        NestedSessionKeybindsError::TooLarge => {
+            ProtobufNestedSessionKeybindsError::NestedKeybindsTooLarge
+        },
+        NestedSessionKeybindsError::Timeout => {
+            ProtobufNestedSessionKeybindsError::NestedKeybindsTimeout
+        },
+    }
+}
+
+fn nested_session_keybinds_error_from_protobuf(
+    error: ProtobufNestedSessionKeybindsError,
+) -> NestedSessionKeybindsError {
+    match error {
+        ProtobufNestedSessionKeybindsError::NestedKeybindsNotANestedSession => {
+            NestedSessionKeybindsError::NotANestedSession
+        },
+        ProtobufNestedSessionKeybindsError::NestedKeybindsNotSupported => {
+            NestedSessionKeybindsError::NotSupported
+        },
+        ProtobufNestedSessionKeybindsError::NestedKeybindsGuestUnresponsive => {
+            NestedSessionKeybindsError::GuestUnresponsive
+        },
+        ProtobufNestedSessionKeybindsError::NestedKeybindsGuestGone => {
+            NestedSessionKeybindsError::GuestGone
+        },
+        ProtobufNestedSessionKeybindsError::NestedKeybindsTooLarge => {
+            NestedSessionKeybindsError::TooLarge
+        },
+        ProtobufNestedSessionKeybindsError::NestedKeybindsTimeout => {
+            NestedSessionKeybindsError::Timeout
+        },
+    }
+}
+
+pub fn nested_session_keybinds_response_to_protobuf(
+    response: NestedSessionKeybindsResponse,
+) -> Result<ProtobufNestedSessionKeybindsResponse, &'static str> {
+    use super::generated_api::api::event::nested_session_keybinds_response::Response;
+    let response_field = match response {
+        Ok(nested_session_keybinds) => {
+            let mode: ProtobufInputMode = nested_session_keybinds.mode.try_into()?;
+            let base_mode = nested_session_keybinds
+                .base_mode
+                .map(ProtobufInputMode::try_from)
+                .transpose()?
+                .map(|base_mode| base_mode as i32);
+            Response::Ok(ProtobufNestedSessionKeybindsResult {
+                session_path: nested_session_keybinds.session_path,
+                mode: mode as i32,
+                base_mode,
+                keybinds: keybinds_to_protobuf(nested_session_keybinds.keybinds),
+                keybinds_generation: nested_session_keybinds.keybinds_generation,
+            })
+        },
+        Err(error) => Response::Err(nested_session_keybinds_error_to_protobuf(error) as i32),
+    };
+    Ok(ProtobufNestedSessionKeybindsResponse {
+        response: Some(response_field),
+    })
+}
+
+pub fn nested_session_keybinds_response_from_protobuf(
+    protobuf_response: ProtobufNestedSessionKeybindsResponse,
+) -> Result<NestedSessionKeybindsResponse, &'static str> {
+    use super::generated_api::api::event::nested_session_keybinds_response::Response;
+    match protobuf_response.response {
+        Some(Response::Ok(result)) => {
+            let mode: InputMode = ProtobufInputMode::try_from(result.mode)
+                .map_err(|_| "Malformed InputMode in NestedSessionKeybindsResponse")?
+                .try_into()?;
+            let base_mode = result
+                .base_mode
+                .and_then(|base_mode| ProtobufInputMode::try_from(base_mode).ok())
+                .and_then(|base_mode| InputMode::try_from(base_mode).ok());
+            Ok(Ok(NestedSessionKeybinds {
+                session_path: result.session_path,
+                mode,
+                base_mode,
+                keybinds: keybinds_from_protobuf(result.keybinds),
+                keybinds_generation: result.keybinds_generation,
+            }))
+        },
+        Some(Response::Err(error)) => {
+            let error = ProtobufNestedSessionKeybindsError::try_from(error)
+                .map_err(|_| "Unknown error in NestedSessionKeybindsResponse")?;
+            Ok(Err(nested_session_keybinds_error_from_protobuf(error)))
+        },
+        None => Err("NestedSessionKeybindsResponse missing response field"),
+    }
+}
+
 impl TryFrom<ProtobufSelectedText> for SelectedText {
     type Error = &'static str;
     fn try_from(protobuf_selected_text: ProtobufSelectedText) -> Result<Self, &'static str> {
@@ -3425,9 +3557,10 @@ fn serialize_nested_session_mode_update_event() {
     use prost::Message;
     let nested_session_mode_update_event = Event::NestedSessionModeUpdate {
         pane_id: PaneId::Terminal(3),
-        session_name: Some("guest session".to_owned()),
+        session_path: vec!["middle".to_owned(), "inner".to_owned()],
         mode: InputMode::Pane,
         base_mode: Some(InputMode::Locked),
+        keybinds_generation: 7,
     };
     let protobuf_event: ProtobufEvent =
         nested_session_mode_update_event.clone().try_into().unwrap();
@@ -3442,12 +3575,33 @@ fn serialize_nested_session_mode_update_event() {
 }
 
 #[test]
-fn serialize_nested_session_keybinds_event() {
+fn serialize_nested_session_ended_event() {
+    use prost::Message;
+    for reason in [
+        NestedSessionEndReason::Exited,
+        NestedSessionEndReason::Unresponsive,
+    ] {
+        let nested_session_ended_event = Event::NestedSessionEnded {
+            pane_id: PaneId::Terminal(3),
+            reason,
+        };
+        let protobuf_event: ProtobufEvent = nested_session_ended_event.clone().try_into().unwrap();
+        let serialized_protobuf_event = protobuf_event.encode_to_vec();
+        let deserialized_protobuf_event: ProtobufEvent =
+            Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+        let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+        assert_eq!(nested_session_ended_event, deserialized_event);
+    }
+}
+
+#[test]
+fn serialize_nested_session_keybinds_response() {
     use crate::data::BareKey;
     use prost::Message;
-    let nested_session_keybinds_event = Event::NestedSessionKeybinds {
-        pane_id: PaneId::Terminal(3),
-        session_name: Some("guest session".to_owned()),
+    let ok_response: NestedSessionKeybindsResponse = Ok(NestedSessionKeybinds {
+        session_path: vec!["guest session".to_owned()],
+        mode: InputMode::Pane,
+        base_mode: Some(InputMode::Normal),
         keybinds: vec![
             (
                 InputMode::Normal,
@@ -3466,16 +3620,29 @@ fn serialize_nested_session_keybinds_event() {
                 )],
             ),
         ],
-    };
-    let protobuf_event: ProtobufEvent = nested_session_keybinds_event.clone().try_into().unwrap();
-    let serialized_protobuf_event = protobuf_event.encode_to_vec();
-    let deserialized_protobuf_event: ProtobufEvent =
-        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
-    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
-    assert_eq!(
-        nested_session_keybinds_event, deserialized_event,
-        "Event properly serialized/deserialized without change"
-    );
+        keybinds_generation: 3,
+    });
+    let mut responses = vec![ok_response];
+    for error in [
+        NestedSessionKeybindsError::NotANestedSession,
+        NestedSessionKeybindsError::NotSupported,
+        NestedSessionKeybindsError::GuestUnresponsive,
+        NestedSessionKeybindsError::GuestGone,
+        NestedSessionKeybindsError::TooLarge,
+        NestedSessionKeybindsError::Timeout,
+    ] {
+        responses.push(Err(error));
+    }
+    for response in responses {
+        let encoded = nested_session_keybinds_response_to_protobuf(response.clone())
+            .unwrap()
+            .encode_to_vec();
+        let decoded = nested_session_keybinds_response_from_protobuf(
+            ProtobufNestedSessionKeybindsResponse::decode(encoded.as_slice()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(response, decoded);
+    }
 }
 
 #[test]

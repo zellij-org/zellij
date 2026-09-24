@@ -2885,7 +2885,7 @@ pub(crate) fn route_thread_main(
                                         retry_queue
                                     );
                                 },
-                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::RequestGuestKeybinds) => {
+                                Some(message @ zellij_utils::nested_session::NestedSessionMessage::RequestGuestKeybinds { .. }) => {
                                     let _ = send_to_screen_or_retry_queue!(
                                         senders,
                                         ScreenInstruction::NestedSessionMessageFromHost { client_id, message },

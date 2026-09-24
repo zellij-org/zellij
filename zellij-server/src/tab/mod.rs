@@ -4170,18 +4170,6 @@ impl Tab {
             pane.set_guest_session_name(session_name);
         }
     }
-    pub fn guest_session_name_on_pane(&self, pane_id: PaneId) -> Option<String> {
-        self.tiled_panes
-            .get_pane(pane_id)
-            .or_else(|| self.floating_panes.get_pane(pane_id))
-            .or_else(|| {
-                self.suppressed_panes
-                    .values()
-                    .find(|s_p| s_p.1.pid() == pane_id)
-                    .map(|s_p| &s_p.1)
-            })
-            .and_then(|pane| pane.guest_session_name())
-    }
     pub fn set_guest_modal_shortcuts_on_pane(
         &mut self,
         pane_id: PaneId,
@@ -8256,6 +8244,9 @@ pub fn pane_info_for_pane(
     let (default_fg, default_bg) = pane.get_pane_default_colors();
     pane_info.default_fg = default_fg;
     pane_info.default_bg = default_bg;
+    if pane.is_nested_guest() {
+        pane_info.nested_session_name = pane.guest_session_name();
+    }
 
     match pane_id {
         PaneId::Terminal(terminal_id) => {
