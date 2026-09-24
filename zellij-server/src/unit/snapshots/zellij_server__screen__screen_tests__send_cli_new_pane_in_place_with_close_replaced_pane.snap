@@ -17,6 +17,7 @@ Some(
                     originating_plugin: None,
                     use_terminal_title: false,
                     notify: false,
+                    env: {},
                 },
             ),
         ),

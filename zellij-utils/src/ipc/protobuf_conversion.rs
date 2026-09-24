@@ -5145,6 +5145,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Run>
                         .transpose()?,
                     use_terminal_title: cmd.use_terminal_title,
                     notify: cmd.notify,
+                    env: Default::default(),
                 },
             )),
             RunType::EditFile(edit) => Ok(crate::input::layout::Run::EditFile(
@@ -5256,6 +5257,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::RunCommandAc
                 .transpose()?,
             use_terminal_title: action.use_terminal_title,
             notify: action.notify,
+            env: Default::default(),
         })
     }
 }
