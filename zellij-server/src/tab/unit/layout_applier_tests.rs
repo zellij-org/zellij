@@ -7282,3 +7282,194 @@ fn test_override_retain_plugin_but_close_terminal_panes() {
         &display_area,
     ));
 }
+
+#[test]
+fn reapply_default_tab_template_preserves_command_pane() {
+    let kdl = r#"
+        layout {
+            default_tab_template {
+                children
+                pane size=8
+            }
+            tab {
+                pane command="ls"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl, None, None, Some(PathBuf::from("/tmp"))).unwrap();
+    let (_, tiled_layout, floating_layout) = layout.tabs().remove(0);
+    let terminal_ids = vec![(0, None), (1, None)];
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+    ) = create_layout_applier_fixtures(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &Rc::new(RefCell::new(KittyImageStore::default())),
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            tiled_layout.clone(),
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+    applier
+        .apply_tiled_panes_layout_to_existing_panes(&tiled_layout)
+        .unwrap();
+    let command = tiled_panes
+        .get_panes()
+        .find(|(id, _)| **id == PaneId::Terminal(0))
+        .unwrap()
+        .1;
+    let footer = tiled_panes
+        .get_panes()
+        .find(|(id, _)| **id == PaneId::Terminal(1))
+        .unwrap()
+        .1;
+    assert!(command.position_and_size().y < footer.position_and_size().y);
+}
+
+#[test]
+fn reapply_layout_matches_distinct_working_directories() {
+    let (tiled_layout, floating_layout) = parse_kdl_layout(
+        r#"
+        layout {
+            pane cwd="/first"
+            pane cwd="/second"
+        }
+    "#,
+    );
+    let terminal_ids = vec![(0, None), (1, None)];
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+    ) = create_layout_applier_fixtures(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &Rc::new(RefCell::new(KittyImageStore::default())),
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            tiled_layout.clone(),
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+    let (reordered_layout, _) = parse_kdl_layout(
+        r#"
+        layout {
+            pane cwd="/second"
+            pane cwd="/first"
+        }
+    "#,
+    );
+    applier
+        .apply_tiled_panes_layout_to_existing_panes(&reordered_layout)
+        .unwrap();
+    let first = tiled_panes
+        .get_panes()
+        .find(|(id, _)| **id == PaneId::Terminal(0))
+        .unwrap()
+        .1;
+    let second = tiled_panes
+        .get_panes()
+        .find(|(id, _)| **id == PaneId::Terminal(1))
+        .unwrap()
+        .1;
+    assert!(second.position_and_size().y < first.position_and_size().y);
+}

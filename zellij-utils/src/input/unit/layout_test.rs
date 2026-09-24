@@ -2535,3 +2535,53 @@ fn tiled_pane_still_rejects_zero_percent() {
     let result = SplitSize::from_str("1%");
     assert!(result.is_ok());
 }
+
+#[test]
+fn positioning_all_panes_preserves_default_tab_template_children() {
+    let children = [
+        r#"pane command="ls" name="command" borderless=true"#,
+        r#"pane { pane split_direction="vertical" { pane command="ls" name="command" borderless=true; }; }"#,
+        r#"pane command="ls" name="command" borderless=true; pane cwd="/other""#,
+    ];
+    for child in children {
+        for cwd in [None, Some(PathBuf::from("/tmp"))] {
+            for focus in ["", " focus=true"] {
+                let kdl = format!(
+                    r#"layout {{
+                        default_tab_template {{
+                            children
+                            pane size=8
+                        }}
+                        tab {{ {child}; }}
+                    }}"#
+                );
+                let kdl = kdl.replace("borderless=true", &format!("borderless=true{focus}"));
+                let layout = Layout::from_kdl(&kdl, None, None, cwd.clone()).unwrap();
+                let (_, tiled, _) = layout.tabs().remove(0);
+                let mut space = PaneGeom::default();
+                space.cols.set_inner(120);
+                space.rows.set_inner(40);
+                let original = tiled
+                    .position_panes_in_space(&space, None, false, false)
+                    .unwrap();
+                let positioned = tiled
+                    .position_panes_in_space(&space, Some(tiled.pane_count()), false, false)
+                    .unwrap();
+                assert_eq!(
+                    positioned, original,
+                    "child={child}, cwd={cwd:?}, focus={focus}"
+                );
+                let focused = tiled
+                    .position_panes_in_space(&space, Some(tiled.pane_count()), false, true)
+                    .unwrap();
+                assert_eq!(
+                    focused
+                        .iter()
+                        .filter(|(pane, _)| pane.focus == Some(true))
+                        .count(),
+                    1
+                );
+            }
+        }
+    }
+}
