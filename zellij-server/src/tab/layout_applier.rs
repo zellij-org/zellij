@@ -1056,38 +1056,64 @@ impl<'a> LayoutApplier<'a> {
             let mut viewport = viewport.borrow_mut();
             *viewport = (*display_area.borrow()).into();
         }
-        let boundary_geoms = tiled_panes.non_selectable_pane_geoms_inside_viewport();
+        let ui_pane_geoms = tiled_panes.non_selectable_pane_geoms_inside_viewport();
         {
-            // curly braces here is so that we free viewport immediately when we're done
             let mut viewport = viewport.borrow_mut();
-            for position_and_size in boundary_geoms {
-                if position_and_size.x == viewport.x
-                    && position_and_size.x + position_and_size.cols == viewport.x + viewport.cols
-                {
-                    if position_and_size.y == viewport.y {
-                        viewport.y += position_and_size.rows;
-                        viewport.rows -= position_and_size.rows;
-                    } else if position_and_size.y + position_and_size.rows
-                        == viewport.y + viewport.rows
-                    {
-                        viewport.rows -= position_and_size.rows;
-                    }
+            for geom in &ui_pane_geoms {
+                let row_strips = ui_pane_geoms.iter().map(|g| ((g.y, g.rows), (g.x, g.cols)));
+                if let Some(remaining_rows) = LayoutApplier::shrink_by_edge_strip(
+                    (viewport.y, viewport.rows),
+                    (viewport.x, viewport.cols),
+                    (geom.y, geom.rows),
+                    row_strips,
+                ) {
+                    (viewport.y, viewport.rows) = remaining_rows;
                 }
-                if position_and_size.y == viewport.y
-                    && position_and_size.y + position_and_size.rows == viewport.y + viewport.rows
-                {
-                    if position_and_size.x == viewport.x {
-                        viewport.x += position_and_size.cols;
-                        viewport.cols -= position_and_size.cols;
-                    } else if position_and_size.x + position_and_size.cols
-                        == viewport.x + viewport.cols
-                    {
-                        viewport.cols -= position_and_size.cols;
-                    }
+                let col_strips = ui_pane_geoms.iter().map(|g| ((g.x, g.cols), (g.y, g.rows)));
+                if let Some(remaining_cols) = LayoutApplier::shrink_by_edge_strip(
+                    (viewport.x, viewport.cols),
+                    (viewport.y, viewport.rows),
+                    (geom.x, geom.cols),
+                    col_strips,
+                ) {
+                    (viewport.x, viewport.cols) = remaining_cols;
                 }
             }
         }
         tiled_panes.set_pane_frames(pane_frame_style);
+    }
+    fn shrink_by_edge_strip(
+        (start, len): (usize, usize),
+        (cross_start, cross_len): (usize, usize),
+        (strip_start, strip_len): (usize, usize),
+        geoms: impl Iterator<Item = ((usize, usize), (usize, usize))>,
+    ) -> Option<(usize, usize)> {
+        let is_at_start = strip_start == start;
+        let is_at_end = strip_start + strip_len == start + len;
+        if strip_len == 0 || strip_len >= len || !(is_at_start || is_at_end) {
+            return None;
+        }
+        let mut cross_spans: Vec<(usize, usize)> = geoms
+            .filter(|(span, _)| *span == (strip_start, strip_len))
+            .map(|(_, cross_span)| cross_span)
+            .collect();
+        cross_spans.sort_unstable();
+        let mut covered_until = cross_start;
+        for (cross_span_start, cross_span_len) in cross_spans {
+            if cross_span_start > covered_until {
+                break;
+            }
+            covered_until = covered_until.max(cross_span_start + cross_span_len);
+        }
+        if covered_until < cross_start + cross_len {
+            return None;
+        }
+        let remaining_start = if is_at_start {
+            start + strip_len
+        } else {
+            start
+        };
+        Some((remaining_start, len - strip_len))
     }
     fn adjust_viewport(&mut self) -> Result<()> {
         // here we offset the viewport after applying a tiled panes layout
