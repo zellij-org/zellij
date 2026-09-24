@@ -2297,6 +2297,26 @@ pub(crate) fn route_action(
     Ok((should_break, Some(result)))
 }
 
+const SESSION_READY_WAIT: Duration = Duration::from_secs(10);
+const SESSION_READY_POLL_INTERVAL: Duration = Duration::from_millis(5);
+
+fn wait_for_session_to_be_ready(session_data: &Arc<RwLock<Option<SessionMetaData>>>) -> bool {
+    let deadline = std::time::Instant::now() + SESSION_READY_WAIT;
+    loop {
+        let ready = session_data
+            .read()
+            .map(|session_data| session_data.is_some())
+            .unwrap_or(false);
+        if ready {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        thread::sleep(SESSION_READY_POLL_INTERVAL);
+    }
+}
+
 // this should only be used for one-off startup instructions
 macro_rules! send_to_screen_or_retry_queue {
     ($senders:expr, $message:expr, $instruction: expr, $retry_queue:expr) => {{
@@ -2966,27 +2986,38 @@ pub(crate) fn route_thread_main(
                 // stale nested AnnounceAck landing after the AncestryUpdate that
                 // supersedes it, for instance). Once one instruction has to be
                 // parked, every instruction behind it is parked too.
-                let retried_count = retry_queue.len();
+                let mut retried_count = retry_queue.len();
                 let mut pending_instructions = std::mem::take(&mut retry_queue);
                 pending_instructions.push_back(instruction);
-                let mut deferred_instructions = VecDeque::new();
-                for (index, pending_instruction) in pending_instructions.into_iter().enumerate() {
-                    if !deferred_instructions.is_empty() {
-                        deferred_instructions.push_back(pending_instruction);
-                        continue;
+                loop {
+                    let mut deferred_instructions = VecDeque::new();
+                    for (index, pending_instruction) in pending_instructions.into_iter().enumerate()
+                    {
+                        if !deferred_instructions.is_empty() {
+                            deferred_instructions.push_back(pending_instruction);
+                            continue;
+                        }
+                        if index < retried_count {
+                            log::warn!("Server ready, retrying sending instruction.");
+                            thread::sleep(Duration::from_millis(5));
+                        }
+                        let should_break = handle_instruction(
+                            pending_instruction,
+                            Some(&mut deferred_instructions),
+                        )?;
+                        if should_break {
+                            break 'route_loop;
+                        }
                     }
-                    if index < retried_count {
-                        log::warn!("Server ready, retrying sending instruction.");
-                        thread::sleep(Duration::from_millis(5));
+                    if deferred_instructions.is_empty()
+                        || !wait_for_session_to_be_ready(&session_data)
+                    {
+                        retry_queue = deferred_instructions;
+                        break;
                     }
-                    let should_break =
-                        handle_instruction(pending_instruction, Some(&mut deferred_instructions))?;
-                    if should_break {
-                        break 'route_loop;
-                    }
+                    retried_count = deferred_instructions.len();
+                    pending_instructions = deferred_instructions;
                 }
-                // retry on loop around
-                retry_queue = deferred_instructions;
             },
             Err(IpcReceiveError::Disconnected) => {
                 break 'route_loop;

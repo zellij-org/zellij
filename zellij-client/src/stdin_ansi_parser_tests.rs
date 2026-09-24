@@ -1186,6 +1186,137 @@ fn a_bare_csi_introducer_is_fast_flushed_as_alt_open_bracket() {
 }
 
 #[test]
+fn a_bare_csi_introducer_waits_for_the_reply_body_while_replies_are_expected() {
+    let mut p = StdinAnsiParser::new();
+    p.open_own_query_batch();
+    let r1 = p.feed(b"\x1b[4;600;800t\x1b[");
+    assert!(r1.residue.is_empty());
+    assert!(
+        p.pending_partial().uses_reply_flush_guard(),
+        "an introducer held while replies are expected must get the long guard"
+    );
+    assert!(
+        p.finalize_fast_partial().is_empty(),
+        "the fast flush must not release the introducer of an expected reply"
+    );
+
+    let r2 = p.feed(b"6;25;12t");
+    assert!(
+        r2.residue.is_empty(),
+        "the reply body must not reach the keyboard as text: {:?}",
+        String::from_utf8_lossy(&r2.residue)
+    );
+    assert!(r2
+        .replies
+        .iter()
+        .any(|reply| matches!(reply, HostReply::PixelDimensions(_))));
+}
+
+#[test]
+fn a_bare_csi_introducer_is_fast_flushed_once_expected_replies_have_arrived() {
+    let mut p = StdinAnsiParser::new();
+    p.open_own_query_batch();
+    let _ = p.feed(b"\x1b[?62;22c");
+    assert!(!p.awaiting_replies());
+    let _ = p.feed(b"\x1b[");
+    assert_eq!(p.pending_partial(), PendingPartial::BareIntroducer);
+    assert_eq!(p.finalize_fast_partial(), b"\x1b[".to_vec());
+}
+
+#[test]
+fn a_fast_flushed_introducer_does_not_complete_a_reply_in_the_classifier() {
+    let mut p = StdinAnsiParser::new();
+    let _ = p.feed(b"\x1b[");
+    assert_eq!(p.finalize_fast_partial(), b"\x1b[".to_vec());
+    let out = p.feed(b"6;25;12t");
+    assert!(
+        out.replies.is_empty(),
+        "bytes already handed to the keyboard must not also be applied as a reply: {:?}",
+        out.replies
+    );
+}
+
+#[test]
+fn startup_replies_arriving_while_a_pane_query_is_forwarded_stay_with_zellij() {
+    let mut p = StdinAnsiParser::new();
+    p.open_own_query_batch();
+    p.open_forward(7);
+
+    let startup = p.feed(
+        b"\x1b[?997;1n\x1b[4;600;800t\x1b[6;25;12t\x1b]11;rgb:1111/1313/1313\x1b\\\x1b]10;rgb:ffff/ffff/ffff\x1b\\\x1b[?2026;2$y\x1b[?62;22c",
+    );
+    assert!(startup.residue.is_empty());
+    assert!(
+        startup.completed_forward.is_none(),
+        "zellij's own barrier must not close the pane's slot"
+    );
+    assert!(
+        startup.replies.len() >= 5,
+        "zellij still consumes its own replies"
+    );
+    assert_eq!(p.active_forward_token(), Some(7));
+
+    let pane = p.feed(b"\x1b]11;rgb:2222/2323/2323\x1b\\\x1b[?62;22c");
+    assert_eq!(
+        pane.completed_forward,
+        Some((7, b"\x1b]11;rgb:2222/2323/2323\x1b\\".to_vec())),
+        "the pane receives exactly the reply to its own query"
+    );
+    assert!(!p.awaiting_replies());
+}
+
+#[test]
+fn resize_pixel_requery_replies_are_not_handed_to_a_forwarding_pane() {
+    let mut p = StdinAnsiParser::new();
+    p.open_own_query_batch();
+    p.open_forward(3);
+    let first = p.feed(b"\x1b[4;600;800t\x1b[6;25;12t\x1b[?62;22c");
+    assert!(first.completed_forward.is_none());
+    let second = p.feed(b"\x1b[6;25;12t\x1b[?62;22c");
+    assert_eq!(
+        second.completed_forward,
+        Some((3, b"\x1b[6;25;12t".to_vec()))
+    );
+}
+
+#[test]
+fn a_late_reply_for_an_abandoned_forward_is_dropped_not_given_to_the_next_pane() {
+    let mut p = StdinAnsiParser::new();
+    p.open_forward(1);
+    assert_eq!(p.close_forward_on_timeout(1), Some((1, Vec::new())));
+    p.open_forward(2);
+
+    let late = p.feed(b"\x1b]11;rgb:1111/1313/1313\x1b\\\x1b[?62;22c");
+    assert!(late.residue.is_empty());
+    assert!(
+        late.completed_forward.is_none(),
+        "the abandoned slot's barrier must not complete another pane's slot"
+    );
+    assert_eq!(p.active_forward_token(), Some(2));
+
+    let own = p.feed(b"\x1b]10;rgb:ffff/ffff/ffff\x1b\\\x1b[?62;22c");
+    assert_eq!(
+        own.completed_forward,
+        Some((2, b"\x1b]10;rgb:ffff/ffff/ffff\x1b\\".to_vec()))
+    );
+}
+
+#[test]
+fn a_host_theme_notification_is_not_given_to_the_forwarding_pane() {
+    let mut p = StdinAnsiParser::new();
+    p.open_forward(5);
+    let out = p.feed(b"\x1b[?997;2n\x1b]11;rgb:1111/1313/1313\x1b\\\x1b[?62;22c");
+    assert!(out
+        .replies
+        .iter()
+        .any(|reply| matches!(reply, HostReply::HostTerminalThemeChanged(_))));
+    assert_eq!(
+        out.completed_forward,
+        Some((5, b"\x1b]11;rgb:1111/1313/1313\x1b\\".to_vec()))
+    );
+}
+
+#[test]
 fn an_introducer_with_a_body_byte_keeps_the_long_reply_guard() {
     for prefix in [b"\x1b]4".as_ref(), b"\x1b[?".as_ref()] {
         let pretty = String::from_utf8_lossy(prefix).replace('\x1b', "ESC");

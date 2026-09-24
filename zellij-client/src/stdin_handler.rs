@@ -22,6 +22,7 @@ pub(crate) fn stdin_loop(
     stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
     explicitly_disable_kitty_keyboard_protocol: bool,
     support_kitty_graphics_protocol: bool,
+    query_host_theme: bool,
     resize_sender: Option<std::sync::mpsc::Sender<()>>,
 ) {
     // On Windows we choose between the VT byte path (termwiz/kitty parsing)
@@ -45,14 +46,19 @@ pub(crate) fn stdin_loop(
         let can_query_terminal = true;
 
         if can_query_terminal {
-            let query_string = build_startup_query_string(support_kitty_graphics_protocol);
-            let _ = os_input
-                .get_stdout_writer()
-                .write(query_string.as_bytes())
-                .unwrap();
-            if support_kitty_graphics_protocol {
-                stdin_ansi_parser.lock().unwrap().expect_kitty_probe_reply();
-            } else {
+            let query_string =
+                build_startup_query_string(support_kitty_graphics_protocol, query_host_theme);
+            {
+                let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
+                stdin_ansi_parser.open_own_query_batch();
+                if support_kitty_graphics_protocol {
+                    stdin_ansi_parser.expect_kitty_probe_reply();
+                }
+                let mut stdout = os_input.get_stdout_writer();
+                let _ = stdout.write_all(query_string.as_bytes());
+                let _ = stdout.flush();
+            }
+            if !support_kitty_graphics_protocol {
                 let _ =
                     send_input_instructions.send(InputInstruction::AnsiStdinInstructions(vec![
                         HostReply::KittyGraphicsSupport(false),
@@ -384,7 +390,10 @@ fn realign_current_buffer(current_buffer: &mut Vec<u8>, input_parser: &InputPars
 /// Build the fire-and-forget host-query batch sent at client startup.
 /// The host's replies refine `Screen`'s cached state asynchronously as
 /// they arrive; the UI does not block on them.
-fn build_startup_query_string(support_kitty_graphics_protocol: bool) -> String {
+fn build_startup_query_string(
+    support_kitty_graphics_protocol: bool,
+    query_host_theme: bool,
+) -> String {
     // <ESC>[14t => get text area size in pixels,
     // <ESC>[16t => get character cell size in pixels
     // <ESC>]11;?<ESC>\ => get background color
@@ -399,9 +408,14 @@ fn build_startup_query_string(support_kitty_graphics_protocol: bool) -> String {
     } else {
         ""
     };
+    let host_theme_query = if query_host_theme {
+        crate::QUERY_HOST_THEME
+    } else {
+        ""
+    };
     format!(
-        "{}\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p{}\u{1b}[c",
-        PIXEL_SIZE_QUERY, kitty_graphics_probe
+        "{}{}\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p{}\u{1b}[c",
+        host_theme_query, PIXEL_SIZE_QUERY, kitty_graphics_probe
     )
 }
 
@@ -464,7 +478,7 @@ mod tests {
 
     #[test]
     fn startup_query_has_no_palette_register_loop() {
-        let query = build_startup_query_string(true);
+        let query = build_startup_query_string(true, false);
         assert_eq!(
             query,
             "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}\u{1b}[c"
@@ -491,8 +505,15 @@ mod tests {
     }
 
     #[test]
+    fn startup_query_leads_with_the_host_theme_query_when_requested() {
+        let query = build_startup_query_string(false, true);
+        assert!(query.starts_with("\u{1b}[?996n\u{1b}[14t\u{1b}[16t"));
+        assert!(query.ends_with("\u{1b}[c"));
+    }
+
+    #[test]
     fn startup_query_contains_kitty_probe_before_barrier() {
-        let query = build_startup_query_string(true);
+        let query = build_startup_query_string(true, false);
         assert!(query.contains("\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}"));
         let probe_pos = query.find("\u{1b}_Ga=q,i=31,").unwrap();
         let barrier_pos = query.find("\u{1b}[c").unwrap();
@@ -501,7 +522,7 @@ mod tests {
 
     #[test]
     fn startup_query_omits_kitty_probe_when_the_protocol_is_disabled() {
-        let query = build_startup_query_string(false);
+        let query = build_startup_query_string(false, false);
         assert!(!query.contains("\u{1b}_G"));
         assert!(query.ends_with("\u{1b}[c"));
         assert!(query.starts_with("\u{1b}[14t\u{1b}[16t"));
