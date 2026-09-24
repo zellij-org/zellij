@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: distributions -> allow using Zellij as a library (https://github.com/zellij-org/zellij/pull/5630)
 * fix: do not reuse client ids (https://github.com/zellij-org/zellij/pull/5630)
 * feat: nested sessions input-mode + keybindings reporting (https://github.com/zellij-org/zellij/issues/5561)
+* fix: control characters occasionally appearing in panes on startup (https://github.com/zellij-org/zellij/pull/5655)
 * fix: group bar-plugins on viewport edge for layout purposes (https://github.com/zellij-org/zellij/pull/5653)
 
 ## [0.45.1] - 2026-08-28

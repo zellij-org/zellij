@@ -2,7 +2,7 @@
 
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, col, keys, split_down_and_wait_for_prompt,
-    split_right_and_wait_for_prompt, start_zellij, FakePtyHandle, TestRunner, TestSession,
+    split_right_and_wait_for_prompt, FakePtyHandle, HostTerminal, TestRunner, TestSession,
     TERMINAL_SIZE,
 };
 
@@ -59,10 +59,14 @@ fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
+fn start_zellij() -> TestSession {
+    TestRunner::new(TERMINAL_SIZE)
+        .with_host_terminal(HostTerminal::Kitty)
+        .start()
+}
+
 fn setup_kitty_host(zellij: &TestSession, terminal: &FakePtyHandle) {
     terminal.disable_echo();
-    zellij.send_stdin(b"\x1b[6;21;8t");
-    zellij.send_stdin(b"\x1b_Gi=31;OK\x1b\\");
     zellij.send_stdin(b"Z");
     terminal.wait_for_stdin(
         "kitty handshake barrier keystroke reached the pane",

@@ -21,6 +21,69 @@ struct ReceivedBytesWithChangeSignal {
     received_bytes: Mutex<ReceivedBytes>,
     change_signal: Condvar,
     stdout_tap: Mutex<Option<crossbeam::channel::Sender<Vec<u8>>>>,
+    host_responder: Mutex<Option<HostResponder>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostTerminal {
+    Basic,
+    Kitty,
+    Manual,
+}
+
+const PRIMARY_DA_QUERY: &[u8] = b"\x1b[c";
+const PRIMARY_DA_REPLY: &[u8] = b"\x1b[?62;22c";
+const KITTY_GRAPHICS_PROBE_PREFIX: &[u8] = b"\x1b_Ga=q,i=31,";
+const KITTY_GRAPHICS_PROBE_REPLY: &[u8] = b"\x1b_Gi=31;OK\x1b\\";
+const CELL_SIZE_QUERY: &[u8] = b"\x1b[16t";
+const CELL_SIZE_REPLY: &[u8] = b"\x1b[6;21;8t";
+
+struct HostResponder {
+    host_terminal: HostTerminal,
+    stdin_tx: crossbeam::channel::Sender<Vec<u8>>,
+    carry: Vec<u8>,
+}
+
+impl HostResponder {
+    fn answers(&self) -> &'static [(&'static [u8], &'static [u8])] {
+        match self.host_terminal {
+            HostTerminal::Basic => &[(PRIMARY_DA_QUERY, PRIMARY_DA_REPLY)],
+            HostTerminal::Kitty => &[
+                (PRIMARY_DA_QUERY, PRIMARY_DA_REPLY),
+                (KITTY_GRAPHICS_PROBE_PREFIX, KITTY_GRAPHICS_PROBE_REPLY),
+                (CELL_SIZE_QUERY, CELL_SIZE_REPLY),
+            ],
+            HostTerminal::Manual => &[],
+        }
+    }
+
+    fn observe(&mut self, bytes: &[u8]) {
+        let answers = self.answers();
+        let mut data = std::mem::take(&mut self.carry);
+        data.extend_from_slice(bytes);
+        let mut replies = Vec::new();
+        let mut index = 0;
+        while index < data.len() {
+            if data[index] == 0x1b {
+                let rest = &data[index..];
+                if let Some((query, reply)) =
+                    answers.iter().find(|(query, _)| rest.starts_with(query))
+                {
+                    replies.extend_from_slice(reply);
+                    index += query.len();
+                    continue;
+                }
+                if answers.iter().any(|(query, _)| query.starts_with(rest)) {
+                    self.carry = rest.to_vec();
+                    break;
+                }
+            }
+            index += 1;
+        }
+        if !replies.is_empty() {
+            let _ = self.stdin_tx.send(replies);
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -41,6 +104,18 @@ impl ClientScreen {
         Box::new(ClientScreenWriter {
             inner: self.inner.clone(),
         })
+    }
+
+    pub fn set_host_terminal(
+        &self,
+        host_terminal: HostTerminal,
+        stdin_tx: crossbeam::channel::Sender<Vec<u8>>,
+    ) {
+        *self.inner.host_responder.lock().unwrap() = Some(HostResponder {
+            host_terminal,
+            stdin_tx,
+            carry: Vec::new(),
+        });
     }
 
     pub fn set_stdout_tap(&self, sender: crossbeam::channel::Sender<Vec<u8>>) {
@@ -144,6 +219,10 @@ impl std::io::Write for ClientScreenWriter {
             let _ = stdout_tap.send(buf.to_vec());
         }
         self.inner.change_signal.notify_all();
+        drop(received_bytes);
+        if let Some(host_responder) = self.inner.host_responder.lock().unwrap().as_mut() {
+            host_responder.observe(buf);
+        }
         Ok(buf.len())
     }
     fn flush(&mut self) -> std::io::Result<()> {

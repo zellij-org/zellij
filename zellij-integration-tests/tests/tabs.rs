@@ -442,6 +442,7 @@ fn move_tab_to_right() {
 
     let grid_snapshot = zellij.wait_until("second tab moved one position right", |grid_snapshot| {
         tabs_in_order(grid_snapshot, &["Tab #1", "Tab #3", "Tab #2"])
+            && grid_snapshot.status_bar_appears()
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();

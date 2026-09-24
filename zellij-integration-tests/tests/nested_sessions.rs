@@ -490,7 +490,7 @@ fn clicking_the_host_new_tab_button_while_descended_ascends_and_keeps_working() 
         "the host opened a second tab and undimmed after clicking the new tab button",
         |host_grid| {
             host_grid.lines().first().map_or(false, |tab_bar| {
-                tab_bar.contains("Tab #1") && tab_bar.contains("Tab #2")
+                tab_bar.contains(guest_session_name.as_str()) && tab_bar.contains("Tab #2")
             }) && normal_mode_bar_settled(host_grid)
         },
     );
@@ -507,7 +507,6 @@ fn clicking_the_host_new_tab_button_while_descended_ascends_and_keeps_working() 
         |host_grid| host_grid.contains("Pane #2") && normal_mode_bar_settled(host_grid),
     );
 
-    let _ = guest_session_name;
     nested.guest.quit();
     nested.host.quit();
 }
@@ -544,14 +543,14 @@ fn clicking_a_host_tab_while_descended_switches_tabs_and_ascends() {
         "the host now has two tabs with the second one focused on a host pane",
         |host_grid| {
             host_grid.lines().first().map_or(false, |tab_bar| {
-                tab_bar.contains("Tab #1") && tab_bar.contains("Tab #2")
+                tab_bar.contains(guest_session_name.as_str()) && tab_bar.contains("Tab #2")
             }) && normal_mode_bar_settled(host_grid)
         },
     );
     let first_tab_column = host_two_tabs
         .lines()
         .first()
-        .and_then(|tab_bar| display_column_of(tab_bar, "Tab #1"))
+        .and_then(|tab_bar| display_column_of(tab_bar, &guest_session_name))
         .expect("the first host tab ribbon is on the host tab bar")
         + 1;
     let second_tab_column = host_two_tabs
@@ -574,7 +573,7 @@ fn clicking_a_host_tab_while_descended_switches_tabs_and_ascends() {
         "clicking the second host tab switches away from the guest tab in normal mode",
         |host_grid| {
             host_grid.lines().first().map_or(false, |tab_bar| {
-                tab_bar.contains("Tab #1") && tab_bar.contains("Tab #2")
+                tab_bar.contains(guest_session_name.as_str()) && tab_bar.contains("Tab #2")
             }) && normal_mode_bar_settled(host_grid)
         },
     );
@@ -587,7 +586,6 @@ fn clicking_a_host_tab_while_descended_switches_tabs_and_ascends() {
         |host_grid| host_grid.contains("Pane #2") && normal_mode_bar_settled(host_grid),
     );
 
-    let _ = guest_session_name;
     nested.guest.quit();
     nested.host.quit();
 }
