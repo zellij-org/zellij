@@ -1059,63 +1059,61 @@ impl<'a> LayoutApplier<'a> {
         let ui_pane_geoms = tiled_panes.non_selectable_pane_geoms_inside_viewport();
         {
             let mut viewport = viewport.borrow_mut();
-            while LayoutApplier::remove_one_edge_strip(&mut viewport, &ui_pane_geoms) {}
+            for geom in &ui_pane_geoms {
+                let row_strips = ui_pane_geoms.iter().map(|g| ((g.y, g.rows), (g.x, g.cols)));
+                if let Some(remaining_rows) = LayoutApplier::shrink_by_edge_strip(
+                    (viewport.y, viewport.rows),
+                    (viewport.x, viewport.cols),
+                    (geom.y, geom.rows),
+                    row_strips,
+                ) {
+                    (viewport.y, viewport.rows) = remaining_rows;
+                }
+                let col_strips = ui_pane_geoms.iter().map(|g| ((g.x, g.cols), (g.y, g.rows)));
+                if let Some(remaining_cols) = LayoutApplier::shrink_by_edge_strip(
+                    (viewport.x, viewport.cols),
+                    (viewport.y, viewport.rows),
+                    (geom.x, geom.cols),
+                    col_strips,
+                ) {
+                    (viewport.x, viewport.cols) = remaining_cols;
+                }
+            }
         }
         tiled_panes.set_pane_frames(pane_frame_style);
-    }
-    fn remove_one_edge_strip(viewport: &mut Viewport, ui_pane_geoms: &[Viewport]) -> bool {
-        let rows = (viewport.y, viewport.rows);
-        let cols = (viewport.x, viewport.cols);
-        let as_row_strips = ui_pane_geoms.iter().map(|g| ((g.y, g.rows), (g.x, g.cols)));
-        let as_col_strips = ui_pane_geoms.iter().map(|g| ((g.x, g.cols), (g.y, g.rows)));
-        if let Some(remaining_rows) = LayoutApplier::shrink_by_edge_strip(rows, cols, as_row_strips)
-        {
-            (viewport.y, viewport.rows) = remaining_rows;
-            true
-        } else if let Some(remaining_cols) =
-            LayoutApplier::shrink_by_edge_strip(cols, rows, as_col_strips)
-        {
-            (viewport.x, viewport.cols) = remaining_cols;
-            true
-        } else {
-            false
-        }
     }
     fn shrink_by_edge_strip(
         (start, len): (usize, usize),
         (cross_start, cross_len): (usize, usize),
+        (strip_start, strip_len): (usize, usize),
         geoms: impl Iterator<Item = ((usize, usize), (usize, usize))>,
     ) -> Option<(usize, usize)> {
-        let geoms: Vec<_> = geoms.collect();
-        for &((strip_start, strip_len), _) in &geoms {
-            let is_at_start = strip_start == start;
-            let is_at_end = strip_start + strip_len == start + len;
-            if strip_len == 0 || strip_len >= len || !(is_at_start || is_at_end) {
-                continue;
-            }
-            let mut cross_spans: Vec<(usize, usize)> = geoms
-                .iter()
-                .filter(|(span, _)| *span == (strip_start, strip_len))
-                .map(|(_, cross_span)| *cross_span)
-                .collect();
-            cross_spans.sort_unstable();
-            let mut covered_until = cross_start;
-            for (cross_span_start, cross_span_len) in cross_spans {
-                if cross_span_start > covered_until {
-                    break;
-                }
-                covered_until = covered_until.max(cross_span_start + cross_span_len);
-            }
-            if covered_until >= cross_start + cross_len {
-                let remaining_start = if is_at_start {
-                    start + strip_len
-                } else {
-                    start
-                };
-                return Some((remaining_start, len - strip_len));
-            }
+        let is_at_start = strip_start == start;
+        let is_at_end = strip_start + strip_len == start + len;
+        if strip_len == 0 || strip_len >= len || !(is_at_start || is_at_end) {
+            return None;
         }
-        None
+        let mut cross_spans: Vec<(usize, usize)> = geoms
+            .filter(|(span, _)| *span == (strip_start, strip_len))
+            .map(|(_, cross_span)| cross_span)
+            .collect();
+        cross_spans.sort_unstable();
+        let mut covered_until = cross_start;
+        for (cross_span_start, cross_span_len) in cross_spans {
+            if cross_span_start > covered_until {
+                break;
+            }
+            covered_until = covered_until.max(cross_span_start + cross_span_len);
+        }
+        if covered_until < cross_start + cross_len {
+            return None;
+        }
+        let remaining_start = if is_at_start {
+            start + strip_len
+        } else {
+            start
+        };
+        Some((remaining_start, len - strip_len))
     }
     fn adjust_viewport(&mut self) -> Result<()> {
         // here we offset the viewport after applying a tiled panes layout
