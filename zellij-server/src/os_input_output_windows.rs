@@ -202,21 +202,31 @@ fn build_command_line(cmd: &RunCommand) -> Vec<u16> {
 /// Build a UTF-16 environment block (each entry `KEY=VALUE\0`, terminated by
 /// an extra `\0`) from the current process environment, adding
 /// `ZELLIJ_PANE_ID`.
-fn build_environment_block(terminal_id: u32) -> Vec<u16> {
+fn build_environment_block(terminal_id: u32, extra_env: &BTreeMap<String, String>) -> Vec<u16> {
+    // Windows environment variable names are case-insensitive
+    let is_pane_id = |key: &str| key.eq_ignore_ascii_case("ZELLIJ_PANE_ID");
+    let is_overridden =
+        |key: &str| is_pane_id(key) || extra_env.keys().any(|k| k.eq_ignore_ascii_case(key));
     let mut block: Vec<u16> = Vec::new();
     for (key, value) in std::env::vars() {
-        if key == "ZELLIJ_PANE_ID" {
-            continue;
+        if !is_overridden(&key) {
+            push_environment_entry(&mut block, &key, &value);
         }
-        let entry = format!("{}={}", key, value);
-        block.extend(OsStr::new(&entry).encode_wide());
-        block.push(0);
     }
-    let pane_entry = format!("ZELLIJ_PANE_ID={}", terminal_id);
-    block.extend(OsStr::new(&pane_entry).encode_wide());
-    block.push(0);
+    for (key, value) in extra_env {
+        if !is_pane_id(key) {
+            push_environment_entry(&mut block, key, value);
+        }
+    }
+    push_environment_entry(&mut block, "ZELLIJ_PANE_ID", &terminal_id.to_string());
     block.push(0); // double-null terminator
     block
+}
+
+fn push_environment_entry(block: &mut Vec<u16>, key: &str, value: &str) {
+    let entry = format!("{}={}", key, value);
+    block.extend(OsStr::new(&entry).encode_wide());
+    block.push(0);
 }
 
 /// Create an overlapped named-pipe pair for ConPTY output.
@@ -338,7 +348,7 @@ fn spawn_child_process(
 
     // --- command line & environment ---
     let mut cmd_line = build_command_line(cmd);
-    let env_block = build_environment_block(terminal_id);
+    let env_block = build_environment_block(terminal_id, &cmd.env);
 
     let cwd: Option<Vec<u16>> = cmd.cwd.as_ref().and_then(|p| {
         if p.exists() && p.is_dir() {
@@ -740,5 +750,45 @@ mod tests {
         // closing quote. The trailing backslash must be doubled.
         let s = build_command_line_string(&cmd("prog", &["C:\\my path\\"]));
         assert_eq!(s, "\"prog\" \"C:\\my path\\\\\"");
+    }
+}
+
+#[cfg(test)]
+mod env_block_tests {
+    use super::*;
+
+    fn entries(block: &[u16]) -> Vec<String> {
+        block
+            .split(|c| *c == 0)
+            .filter(|s| !s.is_empty())
+            .map(String::from_utf16_lossy)
+            .collect()
+    }
+
+    #[test]
+    fn extra_env_is_added_and_pane_id_wins() {
+        let extra: BTreeMap<String, String> = [
+            ("ZELLIJ_TEST_FOO".to_string(), "bar".to_string()),
+            ("zellij_pane_id".to_string(), "999".to_string()),
+        ]
+        .into();
+        let entries = entries(&build_environment_block(7, &extra));
+        assert!(entries.contains(&"ZELLIJ_TEST_FOO=bar".to_string()));
+        let pane_ids: Vec<_> = entries
+            .iter()
+            .filter(|e| e.to_ascii_uppercase().starts_with("ZELLIJ_PANE_ID="))
+            .collect();
+        assert_eq!(pane_ids, vec!["ZELLIJ_PANE_ID=7"]);
+    }
+
+    #[test]
+    fn extra_env_overrides_inherited_case_insensitively() {
+        let extra: BTreeMap<String, String> = [("path".to_string(), "C:\\x".to_string())].into();
+        let entries = entries(&build_environment_block(1, &extra));
+        let paths: Vec<_> = entries
+            .iter()
+            .filter(|e| e.to_ascii_uppercase().starts_with("PATH="))
+            .collect();
+        assert_eq!(paths, vec!["path=C:\\x"]);
     }
 }

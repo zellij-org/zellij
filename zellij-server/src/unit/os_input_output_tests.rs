@@ -284,3 +284,65 @@ fn client_buffer_reports_disconnect_when_receiver_is_gone() {
     assert!(matches!(result, Err(TrySendError::Disconnected(_))));
     assert_eq!(buffer.queued.load(Ordering::Acquire), 0);
 }
+
+#[cfg(unix)]
+#[test]
+fn spawn_applies_env_and_keeps_zellij_pane_id() {
+    use crate::panes::PaneId;
+    use std::collections::BTreeMap;
+    use zellij_utils::input::command::TerminalAction;
+
+    let server = make_server();
+    let env: BTreeMap<String, String> = [
+        ("ZELLIJ_TEST_FOO".to_string(), "bar baz".to_string()),
+        ("ZELLIJ_PANE_ID".to_string(), "999999".to_string()),
+    ]
+    .into();
+    let cmd = RunCommand {
+        command: PathBuf::from("sh"),
+        args: vec![
+            "-c".to_string(),
+            "printf 'env:%s|%s:end' \"$ZELLIJ_TEST_FOO\" \"$ZELLIJ_PANE_ID\"".to_string(),
+        ],
+        env,
+        ..Default::default()
+    };
+    let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> =
+        Box::new(|_pane_id, _exit_status, _run_command| {});
+    let (terminal_id, mut reader, _child_pid) = server
+        .spawn_terminal(TerminalAction::RunCommand(cmd), quit_cb, None)
+        .expect("spawn_terminal should succeed");
+
+    let mut output = Vec::new();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(async {
+        while std::time::Instant::now() < deadline
+            && !String::from_utf8_lossy(&output).contains(":end")
+        {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(500),
+                reader.read_chunk(4096),
+            )
+            .await
+            {
+                Ok(Ok(bytes)) if bytes.is_empty() => break,
+                Ok(Err(_)) => break,
+                Ok(Ok(bytes)) => output.extend_from_slice(&bytes),
+                Err(_) => {},
+            }
+        }
+    });
+
+    let output_str = String::from_utf8_lossy(&output);
+    let expected = format!("env:bar baz|{}:end", terminal_id);
+    assert!(
+        output_str.contains(&expected),
+        "expected output to contain '{}', got: '{}'",
+        expected,
+        output_str
+    );
+}
