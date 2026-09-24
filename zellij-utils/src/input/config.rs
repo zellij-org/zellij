@@ -19,9 +19,11 @@ use super::keybinds::Keybinds;
 use super::layout::RunPluginOrAlias;
 use super::options::Options;
 use super::plugins::{PluginAliases, PluginsConfigError};
-use super::theme::{Themes, UiConfig};
+use super::theme::{Theme, Themes, UiConfig};
 use super::web_client::WebClientConfig;
+use super::window::WindowConfig;
 use crate::cli::{CliArgs, Command};
+use crate::consts::{DEFAULT_LIGHT_THEME_NAME, DEFAULT_THEME_NAME};
 use crate::envs::EnvironmentVariables;
 use crate::{home, setup};
 
@@ -40,6 +42,7 @@ pub struct Config {
     pub env: EnvironmentVariables,
     pub background_plugins: HashSet<RunPluginOrAlias>,
     pub web_client: WebClientConfig,
+    pub window: WindowConfig,
 }
 
 #[derive(Error, Debug, Serialize, Deserialize)]
@@ -202,9 +205,25 @@ impl TryFrom<&CliArgs> for Config {
 
 impl Config {
     pub fn theme_config(&self, theme_name: Option<&String>) -> Option<Styling> {
+        self.theme(theme_name).map(|theme| theme.palette)
+    }
+    pub fn theme(&self, theme_name: Option<&String>) -> Option<Theme> {
         match &theme_name {
-            Some(theme_name) => self.themes.get_theme(theme_name).map(|theme| theme.palette),
-            None => self.themes.get_theme("default").map(|theme| theme.palette),
+            Some(theme_name) => self.themes.get_theme(theme_name).copied(),
+            None => self.themes.get_theme(DEFAULT_THEME_NAME).copied(),
+        }
+    }
+    pub fn theme_dark(&self) -> Option<Theme> {
+        self.host_theme(self.options.theme_dark.as_ref(), DEFAULT_THEME_NAME)
+    }
+    pub fn theme_light(&self) -> Option<Theme> {
+        self.host_theme(self.options.theme_light.as_ref(), DEFAULT_LIGHT_THEME_NAME)
+    }
+    fn host_theme(&self, configured: Option<&String>, implicit: &str) -> Option<Theme> {
+        match configured {
+            Some(name) => self.themes.get_theme(name).copied(),
+            None if self.options.theme.is_none() => self.themes.get_theme(implicit).copied(),
+            None => None,
         }
     }
     /// Gets default configuration from assets
@@ -270,6 +289,7 @@ impl Config {
         self.plugins.merge(other.plugins);
         self.ui = self.ui.merge(other.ui);
         self.env = self.env.merge(other.env);
+        self.window = self.window.merge(other.window);
         Ok(())
     }
     pub fn config_file_path(opts: &CliArgs) -> Option<PathBuf> {
@@ -908,6 +928,7 @@ mod config_test {
                 }
                 .into(),
                 sourced_from_external_file: false,
+                terminal_colors: None,
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
@@ -967,6 +988,7 @@ mod config_test {
                 }
                 .into(),
                 sourced_from_external_file: false,
+                terminal_colors: None,
             },
         );
         expected_themes.insert(
@@ -988,6 +1010,7 @@ mod config_test {
                 }
                 .into(),
                 sourced_from_external_file: false,
+                terminal_colors: None,
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
@@ -1034,6 +1057,7 @@ mod config_test {
                 }
                 .into(),
                 sourced_from_external_file: false,
+                terminal_colors: None,
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
@@ -1155,6 +1179,7 @@ mod config_test {
             "named_theme".into(),
             Theme {
                 sourced_from_external_file: false,
+                terminal_colors: None,
                 palette: Styling {
                     text_unselected: StyleDeclaration {
                         base: PaletteColor::Rgb((220, 215, 186)),
@@ -1321,6 +1346,7 @@ mod config_test {
             "named_theme".into(),
             Theme {
                 sourced_from_external_file: false,
+                terminal_colors: None,
                 palette: Styling {
                     text_unselected: StyleDeclaration {
                         base: PaletteColor::Rgb((220, 215, 186)),
@@ -1330,12 +1356,181 @@ mod config_test {
                         emphasis_3: PaletteColor::Rgb((172, 215, 205)),
                         background: PaletteColor::Rgb((31, 31, 40)),
                     },
+                    frame_unselected: None,
                     ..Default::default()
                 },
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
         assert_eq!(config.themes, expected_themes, "Theme defined in config")
+    }
+
+    #[test]
+    fn a_theme_can_declare_the_sixteen_terminal_colors() {
+        let config_contents = r##"
+            themes {
+                named_theme {
+                    text_unselected {
+                        base "#DCD7BA"
+                        emphasis_0 "#DCD7CD"
+                        emphasis_1 "#DCD8DD"
+                        emphasis_2 "#DCD899"
+                        emphasis_3 "#ACD7CD"
+                        background   "#1F1F28"
+                    }
+                    terminal_colors {
+                        black 1 1 1
+                        red "#ff0000"
+                        green "#0f0"
+                        yellow 4 4 4
+                        blue 5 5 5
+                        magenta 6 6 6
+                        cyan 7 7 7
+                        white 8 8 8
+                        bright_black 9 9 9
+                        bright_red 10 10 10
+                        bright_green 11 11 11
+                        bright_yellow 12 12 12
+                        bright_blue 13 13 13
+                        bright_magenta 14 14 14
+                        bright_cyan 15 15 15
+                        bright_white 16 16 16
+                    }
+                }
+            }
+            "##;
+
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        let table = config
+            .themes
+            .get_theme("named_theme")
+            .unwrap()
+            .terminal_colors
+            .expect("the theme carries no table");
+        assert_eq!(table.declared(), 16);
+        assert_eq!(table.get(0), Some(PaletteColor::Rgb((1, 1, 1))));
+        assert_eq!(table.get(1), Some(PaletteColor::Rgb((255, 0, 0))));
+        assert_eq!(table.get(2), Some(PaletteColor::Rgb((0, 255, 0))));
+        assert_eq!(table.get(15), Some(PaletteColor::Rgb((16, 16, 16))));
+    }
+
+    #[test]
+    fn a_theme_may_declare_only_some_of_the_terminal_colors() {
+        let config_contents = r##"
+            themes {
+                named_theme {
+                    terminal_colors {
+                        red 1 2 3
+                        bright_white 4 5 6
+                    }
+                }
+            }
+            "##;
+
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        let theme = config.themes.get_theme("named_theme").unwrap();
+        let table = theme.terminal_colors.expect("the theme carries no table");
+        assert_eq!(table.declared(), 2);
+        assert_eq!(table.get(1), Some(PaletteColor::Rgb((1, 2, 3))));
+        assert_eq!(table.get(15), Some(PaletteColor::Rgb((4, 5, 6))));
+        assert_eq!(table.get(0), None);
+        assert_eq!(
+            theme.palette,
+            Styling {
+                frame_unselected: None,
+                ..Styling::default()
+            },
+            "a table on its own must not disturb the slots"
+        );
+    }
+
+    #[test]
+    fn a_theme_without_a_terminal_colors_block_carries_no_table() {
+        let config_contents = r##"
+            themes {
+                named_theme {
+                    text_unselected {
+                        base "#DCD7BA"
+                        emphasis_0 "#DCD7CD"
+                        emphasis_1 "#DCD8DD"
+                        emphasis_2 "#DCD899"
+                        emphasis_3 "#ACD7CD"
+                        background   "#1F1F28"
+                    }
+                }
+            }
+            "##;
+
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        assert_eq!(
+            config
+                .themes
+                .get_theme("named_theme")
+                .unwrap()
+                .terminal_colors,
+            None
+        );
+    }
+
+    #[test]
+    fn a_palette_index_is_refused_in_the_terminal_colors_block() {
+        let config_contents = r##"
+            themes {
+                named_theme {
+                    terminal_colors {
+                        red 9
+                    }
+                }
+            }
+            "##;
+
+        let config = Config::from_kdl(config_contents, None);
+        assert!(config.is_err());
+        if let Err(ConfigError::KdlError(KdlError { error_message, .. })) = config {
+            assert_eq!(
+                error_message,
+                "red must be given as rgb or as a hex string: a palette index would resolve \
+                 through the very table it is defining"
+            )
+        } else {
+            panic!("a palette index was accepted: {:?}", config);
+        }
+    }
+
+    #[test]
+    fn a_legacy_palette_theme_can_carry_terminal_colors() {
+        let config_contents = r##"
+            themes {
+                named_theme {
+                    fg 1 1 1
+                    bg 2 2 2
+                    red 3 3 3
+                    green 4 4 4
+                    blue 5 5 5
+                    yellow 6 6 6
+                    magenta 7 7 7
+                    orange 8 8 8
+                    cyan 9 9 9
+                    black 10 10 10
+                    white 11 11 11
+                    terminal_colors {
+                        red 12 12 12
+                    }
+                }
+            }
+            "##;
+
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        let theme = config.themes.get_theme("named_theme").unwrap();
+        assert_eq!(
+            theme.palette.exit_code_error.base,
+            PaletteColor::Rgb((3, 3, 3)),
+            "the legacy palette was not read as a palette"
+        );
+        assert_eq!(
+            theme.terminal_colors.unwrap().get(1),
+            Some(PaletteColor::Rgb((12, 12, 12)))
+        );
     }
 
     #[test]

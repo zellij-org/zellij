@@ -19,6 +19,17 @@ fn main() {
     create_config_and_cache_folders();
     let opts = CliArgs::parse();
 
+    if let Some(Command::Setup(ref setup)) = opts.command {
+        if setup.install_desktop_entry {
+            commands::install_desktop_entry();
+            std::process::exit(0);
+        }
+        if setup.uninstall_desktop_entry {
+            commands::uninstall_desktop_entry();
+            std::process::exit(0);
+        }
+    }
+
     {
         let config = Config::try_from(&opts).ok();
         if let Some(Command::Action(cli_action)) = opts.command {
@@ -27,6 +38,10 @@ fn main() {
         }
         if let Some(Command::Subscribe(subscribe_cli)) = opts.command {
             commands::subscribe_to_session(subscribe_cli, opts.session, config);
+            std::process::exit(0);
+        }
+        if let Some(Command::Window(window_args)) = opts.command.clone() {
+            commands::start_window(window_args, opts);
             std::process::exit(0);
         }
         if let Some(Command::Sessions(Sessions::Run {

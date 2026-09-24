@@ -35,6 +35,7 @@ use crate::pty_writer::PtyWriteInstruction;
 use std::collections::{BTreeMap, HashSet};
 use std::env::set_var;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::{
     plugins::PluginInstruction,
@@ -107,7 +108,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
                 ServerInstruction::Render(output) => {
                     if let Some(output) = output {
                         // note this only takes a snapshot of the first client!
-                        let raw_snapshot = output.get(&1).unwrap();
+                        let raw_snapshot = output.get(&1).unwrap().ansi();
                         let snapshot =
                             take_snapshot_and_cursor_coordinates(raw_snapshot, &mut grid);
                         Some(snapshot)
@@ -760,6 +761,7 @@ impl MockScreen {
 
         let session_metadata = SessionMetaData {
             senders: ThreadSenders {
+                to_screen_priority: None,
                 to_screen: Some(to_screen.clone()),
                 to_pty: Some(to_pty.clone()),
                 to_plugin: Some(to_plugin.clone()),
@@ -11355,7 +11357,7 @@ fn kitty_query_replies_ok_when_capable_client_connected() {
     };
     let mut screen = create_new_screen(size, true, true);
     new_tab(&mut screen, 1, 0);
-    screen.update_kitty_graphics_support(1, true);
+    screen.update_kitty_graphics_support(1, true, false);
     assert_eq!(screen.kitty_host_capabilities.borrow().get(&1), Some(&true));
     let active_tab = screen.get_active_tab_mut(1).unwrap();
     let active_pane = active_tab.get_active_pane_mut(1).unwrap();
@@ -11374,7 +11376,7 @@ fn kitty_query_replies_enotsupported_when_no_capable_client() {
     };
     let mut screen = create_new_screen(size, true, true);
     new_tab(&mut screen, 1, 0);
-    screen.update_kitty_graphics_support(1, false);
+    screen.update_kitty_graphics_support(1, false, false);
     assert_eq!(
         screen.kitty_host_capabilities.borrow().get(&1),
         Some(&false)
@@ -11397,7 +11399,7 @@ fn kitty_query_is_ignored_when_the_protocol_is_disabled_in_the_config() {
     };
     let mut screen = create_new_screen_with_kitty_graphics(size, true, true, false);
     new_tab(&mut screen, 1, 0);
-    screen.update_kitty_graphics_support(1, true);
+    screen.update_kitty_graphics_support(1, true, false);
     assert_eq!(
         screen.kitty_host_capabilities.borrow().get(&1),
         Some(&false),
@@ -11421,8 +11423,8 @@ fn kitty_support_recomputed_on_client_detach() {
     let mut screen = create_new_screen(size, true, true);
     new_tab(&mut screen, 1, 0);
     screen.add_client(2, false).expect("TEST");
-    screen.update_kitty_graphics_support(1, false);
-    screen.update_kitty_graphics_support(2, true);
+    screen.update_kitty_graphics_support(1, false, false);
+    screen.update_kitty_graphics_support(2, true, false);
     screen.remove_client(2).expect("TEST");
     let active_tab = screen.get_active_tab_mut(1).unwrap();
     let active_pane = active_tab.get_active_pane_mut(1).unwrap();
@@ -11432,6 +11434,135 @@ fn kitty_support_recomputed_on_client_detach() {
     let reply = String::from_utf8(replies[0].clone()).unwrap();
     assert!(reply.starts_with("\x1b_Gi=31;ENOTSUPPORTED"));
     assert!(reply.ends_with("\x1b\\"));
+}
+
+#[test]
+fn kitty_local_media_is_recorded_per_client_and_dropped_on_detach() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+    screen.update_kitty_graphics_support(1, true, true);
+    screen.update_kitty_graphics_support(2, true, false);
+    assert_eq!(screen.kitty_local_media.borrow().get(&1), Some(&true));
+    assert_eq!(screen.kitty_local_media.borrow().get(&2), Some(&false));
+
+    screen.remove_client(1).expect("TEST");
+    assert_eq!(screen.kitty_local_media.borrow().get(&1), None);
+}
+
+#[test]
+fn kitty_local_media_is_refused_to_a_client_without_the_protocol() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen_with_kitty_graphics(size, true, true, false);
+    new_tab(&mut screen, 1, 0);
+    screen.update_kitty_graphics_support(1, true, true);
+    assert_eq!(
+        screen.kitty_local_media.borrow().get(&1),
+        Some(&false),
+        "media may not be promised where the protocol itself is disabled"
+    );
+}
+
+#[test]
+fn a_web_client_is_never_offered_local_media() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, true).expect("TEST");
+    assert_eq!(screen.kitty_local_media.borrow().get(&2), Some(&false));
+}
+
+#[test]
+fn an_undeclared_web_client_is_refused_kitty_and_sixel() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, true).expect("TEST");
+    assert_eq!(
+        screen.kitty_host_capabilities.borrow().get(&2),
+        Some(&false)
+    );
+    assert_eq!(
+        screen.sixel_host_capabilities.borrow().get(&2),
+        Some(&false)
+    );
+}
+
+#[test]
+fn a_structured_web_client_keeps_graphics_declared_before_its_attach() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.update_kitty_graphics_support(2, true, false);
+    screen.update_sixel_support(2, true);
+    screen.add_client(2, true).expect("TEST");
+    assert_eq!(
+        screen.kitty_host_capabilities.borrow().get(&2),
+        Some(&true),
+        "a declaration that arrived before the attach must not be erased by it"
+    );
+    assert_eq!(
+        screen.kitty_local_media.borrow().get(&2),
+        Some(&false),
+        "a remote client reads no shared media file"
+    );
+    assert_eq!(screen.sixel_host_capabilities.borrow().get(&2), Some(&true));
+}
+
+#[test]
+fn a_structured_web_client_keeps_graphics_declared_after_its_attach() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, true).expect("TEST");
+    screen.update_kitty_graphics_support(2, true, false);
+    screen.update_sixel_support(2, true);
+    assert_eq!(screen.kitty_host_capabilities.borrow().get(&2), Some(&true));
+    assert_eq!(screen.kitty_local_media.borrow().get(&2), Some(&false));
+    assert_eq!(screen.sixel_host_capabilities.borrow().get(&2), Some(&true));
+}
+
+#[test]
+fn a_structured_client_is_not_told_about_phone_layout_it_never_asked_for() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, true).expect("TEST");
+    screen.add_client(3, true).expect("TEST");
+    screen.update_structured_render_support(3, true);
+
+    screen.report_mobile_state();
+
+    assert!(
+        screen.last_mobile_state_sent.contains_key(&2),
+        "a browser is still told the phone layout"
+    );
+    assert!(
+        !screen.last_mobile_state_sent.contains_key(&3),
+        "a window is a web client but not a phone, and is told nothing about one"
+    );
 }
 
 #[test]
@@ -13355,13 +13486,14 @@ fn host_focus_changes_of_clients_on_different_panes_are_independent() {
     );
 }
 
-fn collect_forwarded_notifications(server_receiver: &ServerReceiver) -> String {
+fn collect_forwarded_notifications(screen: &mut Screen) -> String {
     let mut output = String::new();
-    while let Ok((instruction, _)) = server_receiver.try_recv() {
-        if let ServerInstruction::Render(Some(client_map)) = instruction {
-            for (_client_id, content) in client_map {
-                output.push_str(&content);
-            }
+    let mut queued: Vec<(ClientId, Vec<String>)> =
+        screen.pending_client_vte_instructions.drain().collect();
+    queued.sort_by_key(|(client_id, _)| *client_id);
+    for (_client_id, vte_instructions) in queued {
+        for vte_instruction in vte_instructions {
+            output.push_str(&vte_instruction);
         }
     }
     output
@@ -13392,7 +13524,7 @@ fn kitty_env() -> BTreeMap<String, String> {
 
 #[test]
 fn an_osc_9_notification_is_translated_for_an_osc_99_host() {
-    let (mut screen, server_receiver) =
+    let (mut screen, _server_receiver) =
         screen_with_a_client_for_notifications(HostNotificationProtocol::Auto, kitty_env());
 
     screen.forward_desktop_notifications(
@@ -13403,15 +13535,14 @@ fn an_osc_9_notification_is_translated_for_an_osc_99_host() {
     );
 
     assert!(
-        collect_forwarded_notifications(&server_receiver)
-            .contains("\u{1b}]99;;the build finished\u{7}"),
+        collect_forwarded_notifications(&mut screen).contains("\u{1b}]99;;the build finished\u{7}"),
         "an OSC 9 notification is re-rendered in the protocol the host speaks"
     );
 }
 
 #[test]
 fn an_osc_99_notification_reaching_an_osc_9_host_is_translated_down() {
-    let (mut screen, server_receiver) =
+    let (mut screen, _server_receiver) =
         screen_with_a_client_for_notifications(HostNotificationProtocol::Auto, BTreeMap::new());
 
     screen.forward_desktop_notifications(
@@ -13425,15 +13556,14 @@ fn an_osc_99_notification_reaching_an_osc_9_host_is_translated_down() {
     );
 
     assert!(
-        collect_forwarded_notifications(&server_receiver)
-            .contains("\u{1b}]9;the build finished\u{7}"),
+        collect_forwarded_notifications(&mut screen).contains("\u{1b}]9;the build finished\u{7}"),
         "an unrecognized host is spoken to in the legacy protocol"
     );
 }
 
 #[test]
 fn an_osc_99_request_with_nothing_to_show_is_not_sent_to_an_osc_9_host() {
-    let (mut screen, server_receiver) =
+    let (mut screen, _server_receiver) =
         screen_with_a_client_for_notifications(HostNotificationProtocol::Auto, BTreeMap::new());
 
     screen.forward_desktop_notifications(
@@ -13455,7 +13585,7 @@ fn an_osc_99_request_with_nothing_to_show_is_not_sent_to_an_osc_9_host() {
     );
 
     assert_eq!(
-        collect_forwarded_notifications(&server_receiver),
+        collect_forwarded_notifications(&mut screen),
         "",
         "unfinished chunks and closes have no legacy equivalent to send"
     );
@@ -13463,7 +13593,7 @@ fn an_osc_99_request_with_nothing_to_show_is_not_sent_to_an_osc_9_host() {
 
 #[test]
 fn an_osc_99_notification_reaching_an_osc_99_host_keeps_its_namespaced_identifier() {
-    let (mut screen, server_receiver) =
+    let (mut screen, _server_receiver) =
         screen_with_a_client_for_notifications(HostNotificationProtocol::Auto, kitty_env());
 
     screen.forward_desktop_notifications(
@@ -13476,7 +13606,7 @@ fn an_osc_99_notification_reaching_an_osc_99_host_keeps_its_namespaced_identifie
         7,
     );
 
-    let output = collect_forwarded_notifications(&server_receiver);
+    let output = collect_forwarded_notifications(&mut screen);
     assert!(
         output.contains("i=p7.myid") && output.contains("the build finished"),
         "the identifier is namespaced with the pane id, got: {:?}",
@@ -13486,7 +13616,7 @@ fn an_osc_99_notification_reaching_an_osc_99_host_keeps_its_namespaced_identifie
 
 #[test]
 fn the_configured_protocol_overrides_host_detection() {
-    let (mut screen, server_receiver) =
+    let (mut screen, _server_receiver) =
         screen_with_a_client_for_notifications(HostNotificationProtocol::Osc9, kitty_env());
 
     screen.forward_desktop_notifications(
@@ -13496,7 +13626,7 @@ fn the_configured_protocol_overrides_host_detection() {
         1,
     );
 
-    let output = collect_forwarded_notifications(&server_receiver);
+    let output = collect_forwarded_notifications(&mut screen);
     assert!(
         output.contains("\u{1b}]9;the build finished\u{7}") && !output.contains("\u{1b}]99;"),
         "a kitty host configured to osc9 is spoken to in osc9, got: {:?}",
@@ -13506,7 +13636,7 @@ fn the_configured_protocol_overrides_host_detection() {
 
 #[test]
 fn a_host_configured_to_bell_gets_a_bell_instead_of_a_notification() {
-    let (mut screen, server_receiver) =
+    let (mut screen, _server_receiver) =
         screen_with_a_client_for_notifications(HostNotificationProtocol::Bell, kitty_env());
 
     screen.forward_desktop_notifications(
@@ -13517,7 +13647,7 @@ fn a_host_configured_to_bell_gets_a_bell_instead_of_a_notification() {
         1,
     );
 
-    let output = collect_forwarded_notifications(&server_receiver);
+    let output = collect_forwarded_notifications(&mut screen);
     assert!(
         output.contains("\u{7}") && !output.contains("\u{1b}]"),
         "a bell is rung instead of a notification being sent, got: {:?}",
@@ -13527,7 +13657,7 @@ fn a_host_configured_to_bell_gets_a_bell_instead_of_a_notification() {
 
 #[test]
 fn a_host_configured_to_off_is_not_sent_anything() {
-    let (mut screen, server_receiver) =
+    let (mut screen, _server_receiver) =
         screen_with_a_client_for_notifications(HostNotificationProtocol::Off, kitty_env());
 
     screen.forward_desktop_notifications(
@@ -13538,7 +13668,7 @@ fn a_host_configured_to_off_is_not_sent_anything() {
     );
 
     assert_eq!(
-        collect_forwarded_notifications(&server_receiver),
+        collect_forwarded_notifications(&mut screen),
         "",
         "notifications are suppressed entirely"
     );
@@ -13546,7 +13676,7 @@ fn a_host_configured_to_off_is_not_sent_anything() {
 
 #[test]
 fn changing_the_configured_protocol_at_runtime_re_resolves_connected_clients() {
-    let (mut screen, server_receiver) =
+    let (mut screen, _server_receiver) =
         screen_with_a_client_for_notifications(HostNotificationProtocol::Auto, kitty_env());
     assert_eq!(
         screen.notification_protocol_for_client(&1),
@@ -13567,7 +13697,7 @@ fn changing_the_configured_protocol_at_runtime_re_resolves_connected_clients() {
         }],
         1,
     );
-    let output = collect_forwarded_notifications(&server_receiver);
+    let output = collect_forwarded_notifications(&mut screen);
     assert!(
         output.contains("\u{7}") && !output.contains("\u{1b}]"),
         "the reconfigured protocol is the one actually spoken, got: {:?}",
@@ -13604,7 +13734,7 @@ fn each_client_is_spoken_to_in_the_protocol_of_its_own_host() {
         1,
     );
 
-    let output = collect_forwarded_notifications(&server_receiver);
+    let output = collect_forwarded_notifications(&mut screen);
     assert!(
         output.contains("\u{1b}]99;;the build finished\u{7}"),
         "the kitty client gets the kitty protocol, got: {:?}",
@@ -13764,5 +13894,1069 @@ pub fn reported_pixel_dimensions_are_applied_to_existing_ptys() {
                 .all(|(width, height)| width.is_some() && height.is_some()),
         "existing ptys are resized with pixel dimensions once these are reported, got: {:?}",
         resizes_after_reply
+    );
+}
+
+fn rendered_payload_for_client(
+    server_receiver: &ServerReceiver,
+    client_id: ClientId,
+) -> Option<crate::output::RenderPayload> {
+    let mut payload = None;
+    while let Ok((instruction, _)) = server_receiver.try_recv() {
+        if let ServerInstruction::Render(Some(payloads)) = instruction {
+            if let Some(client_payload) = payloads.get(&client_id) {
+                payload = Some(client_payload.clone());
+            }
+        }
+    }
+    payload
+}
+
+const CLIPBOARD_SEQUENCE: &str = "\u{1b}]52;c;aGVsbG8=\u{1b}\\";
+
+#[test]
+fn a_queued_vte_instruction_reaches_an_ansi_client() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    while server_receiver.try_recv().is_ok() {}
+
+    screen.queue_vte_instruction_for_clients(vec![client_id], CLIPBOARD_SEQUENCE.to_owned());
+    screen.render_to_clients().expect("TEST");
+
+    let payload = rendered_payload_for_client(&server_receiver, client_id)
+        .expect("the client must have been rendered to");
+    assert!(
+        payload.ansi().contains(CLIPBOARD_SEQUENCE),
+        "an ansi client must receive the sequence inline"
+    );
+}
+
+#[test]
+fn a_queued_vte_instruction_reaches_a_structured_client() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.update_structured_render_support(client_id, true);
+    while server_receiver.try_recv().is_ok() {}
+
+    screen.queue_vte_instruction_for_clients(vec![client_id], CLIPBOARD_SEQUENCE.to_owned());
+    screen.render_to_clients().expect("TEST");
+
+    let payload = rendered_payload_for_client(&server_receiver, client_id)
+        .expect("the client must have been rendered to");
+    let frame = payload
+        .frame()
+        .expect("a structured client must be sent a frame, not an ansi string");
+    let view = zellij_utils::structured_render::decode(frame).expect("TEST");
+    let sideband = String::from_utf8_lossy(view.sideband()).to_string();
+    assert!(
+        sideband.contains(CLIPBOARD_SEQUENCE),
+        "a structured client must receive the sequence in the frame sideband, got {:?}",
+        sideband
+    );
+}
+
+struct DeliveredFrame {
+    seq: u64,
+    full_repaint: bool,
+    cols: u16,
+    rows: u16,
+    rows_written: Vec<(u16, u16, u16)>,
+    cursor: zellij_utils::structured_render::CursorState,
+    geometry: Option<zellij_utils::structured_render::GeometryRecord>,
+}
+
+fn delivered_frame(
+    server_receiver: &ServerReceiver,
+    client_id: ClientId,
+) -> Option<DeliveredFrame> {
+    let payload = rendered_payload_for_client(server_receiver, client_id)?;
+    let frame = payload
+        .frame()
+        .expect("a structured client must be sent a frame, not an ansi string");
+    let view = zellij_utils::structured_render::decode(frame).expect("TEST");
+    let header = view.header();
+    let rows_written = (0..header.row_record_count as usize)
+        .filter_map(|index| view.record(index))
+        .map(|record| (record.y, record.x0, record.len))
+        .collect();
+    Some(DeliveredFrame {
+        seq: header.seq,
+        full_repaint: header.full_repaint(),
+        cols: header.cols,
+        rows: header.rows,
+        rows_written,
+        cursor: view.cursor(),
+        geometry: view.geometry(),
+    })
+}
+
+fn structured_client_with<T>(
+    screen: &Screen,
+    client_id: ClientId,
+    inspect: impl FnOnce(&crate::output::StructuredClientState) -> T,
+) -> T {
+    let clients = screen.structured_render_clients.borrow();
+    let state = clients
+        .get(&client_id)
+        .expect("the client must have a structured render record");
+    inspect(state)
+}
+
+fn expire_in_flight_frame(screen: &Screen, client_id: ClientId) {
+    let overdue = crate::output::STRUCTURED_RENDER_DEADLINE + Duration::from_millis(50);
+    let mut clients = screen.structured_render_clients.borrow_mut();
+    let state = clients
+        .get_mut(&client_id)
+        .expect("the client must have a structured render record");
+    assert!(
+        state.in_flight.is_some(),
+        "a frame must be in flight before its deadline can expire"
+    );
+    state.in_flight_since = state
+        .in_flight_since
+        .and_then(|since| since.checked_sub(overdue));
+}
+
+fn structured_screen_with_client(
+    size: Size,
+    client_id: ClientId,
+) -> (Screen, TtyStdinBytes, ServerReceiver) {
+    let (mut screen, tty_stdin_bytes, server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.set_client_size(client_id, size);
+    screen.update_structured_render_support(client_id, true);
+    while server_receiver.try_recv().is_ok() {}
+    (screen, tty_stdin_bytes, server_receiver)
+}
+
+fn render_with_pending_output(screen: &mut Screen, client_id: ClientId) {
+    screen.queue_vte_instruction_for_clients(vec![client_id], CLIPBOARD_SEQUENCE.to_owned());
+    screen.render_to_clients().expect("TEST");
+}
+
+#[test]
+fn a_client_that_stops_acknowledging_is_repainted_in_full_after_the_deadline() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        structured_screen_with_client(size, client_id);
+
+    render_with_pending_output(&mut screen, client_id);
+    let first = delivered_frame(&server_receiver, client_id)
+        .expect("the first frame must reach the client");
+    assert_eq!(
+        structured_client_with(&screen, client_id, |state| state.in_flight),
+        Some(first.seq),
+        "the delivered frame must be in flight"
+    );
+
+    render_with_pending_output(&mut screen, client_id);
+    assert!(
+        delivered_frame(&server_receiver, client_id).is_none(),
+        "a client that has not acknowledged must not be sent a second frame"
+    );
+    assert!(
+        structured_client_with(&screen, client_id, |state| state.overlay.is_dirty()),
+        "the undelivered update must be waiting in the overlay"
+    );
+
+    expire_in_flight_frame(&screen, client_id);
+    render_with_pending_output(&mut screen, client_id);
+    assert!(
+        delivered_frame(&server_receiver, client_id).is_none(),
+        "the delivery attempt that finds the deadline expired sends nothing itself"
+    );
+    structured_client_with(&screen, client_id, |state| {
+        assert_eq!(
+            state.in_flight, None,
+            "the abandoned frame must no longer be in flight"
+        );
+        assert!(
+            !state.overlay.is_dirty(),
+            "the pending overlay must be discarded"
+        );
+        assert!(
+            state.force_full_repaint,
+            "the client must be marked for a full repaint"
+        );
+    });
+
+    render_with_pending_output(&mut screen, client_id);
+    let recovery = delivered_frame(&server_receiver, client_id)
+        .expect("a stalled client must be repainted after the deadline");
+    assert!(
+        recovery.full_repaint,
+        "the recovery frame must be flagged as a full redraw"
+    );
+    assert!(
+        recovery.seq > first.seq,
+        "the recovery frame must carry a fresh sequence number, got {} after {}",
+        recovery.seq,
+        first.seq
+    );
+    assert_eq!(
+        structured_client_with(&screen, client_id, |state| state.in_flight),
+        Some(recovery.seq),
+        "delivery must continue normally after the repaint"
+    );
+
+    screen
+        .handle_render_frame_ack(client_id, recovery.seq)
+        .expect("TEST");
+    assert_eq!(
+        structured_client_with(&screen, client_id, |state| state.in_flight),
+        None,
+        "the recovery frame must be acknowledged like any other"
+    );
+}
+
+#[test]
+fn an_acknowledgement_of_an_abandoned_frame_changes_nothing() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        structured_screen_with_client(size, client_id);
+
+    render_with_pending_output(&mut screen, client_id);
+    let abandoned = delivered_frame(&server_receiver, client_id)
+        .expect("the first frame must reach the client");
+
+    expire_in_flight_frame(&screen, client_id);
+    render_with_pending_output(&mut screen, client_id);
+    while server_receiver.try_recv().is_ok() {}
+
+    screen
+        .handle_render_frame_ack(client_id, abandoned.seq)
+        .expect("TEST");
+    assert!(
+        server_receiver.try_recv().is_err(),
+        "a late acknowledgement must not emit anything"
+    );
+    structured_client_with(&screen, client_id, |state| {
+        assert_eq!(
+            state.in_flight, None,
+            "a late acknowledgement must not arm a delivery"
+        );
+        assert!(
+            state.force_full_repaint,
+            "a late acknowledgement must not clear the pending repaint"
+        );
+    });
+
+    render_with_pending_output(&mut screen, client_id);
+    let recovery = delivered_frame(&server_receiver, client_id)
+        .expect("a stalled client must be repainted after the deadline");
+    screen
+        .handle_render_frame_ack(client_id, abandoned.seq)
+        .expect("TEST");
+    assert!(
+        server_receiver.try_recv().is_err(),
+        "a late acknowledgement must not emit anything once delivery has resumed"
+    );
+    assert_eq!(
+        structured_client_with(&screen, client_id, |state| state.in_flight),
+        Some(recovery.seq),
+        "a late acknowledgement must not release the frame now in flight"
+    );
+}
+
+#[test]
+fn a_resize_discards_the_pending_overlay_and_forces_a_full_repaint() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        structured_screen_with_client(size, client_id);
+
+    render_with_pending_output(&mut screen, client_id);
+    delivered_frame(&server_receiver, client_id).expect("the first frame must reach the client");
+    render_with_pending_output(&mut screen, client_id);
+    assert!(
+        structured_client_with(&screen, client_id, |state| state.overlay.is_dirty()),
+        "the undelivered update must be waiting in the overlay"
+    );
+
+    let resized = Size {
+        cols: 101,
+        rows: 24,
+    };
+    screen.set_client_size(client_id, resized);
+    screen.recompute_tab_size(0).expect("TEST");
+    render_with_pending_output(&mut screen, client_id);
+
+    let after_resize =
+        delivered_frame(&server_receiver, client_id).expect("a resized client must be repainted");
+    assert!(
+        after_resize.full_repaint,
+        "the frame that follows a resize must be flagged as a full redraw"
+    );
+    assert_eq!(
+        (after_resize.cols, after_resize.rows),
+        (resized.cols as u16, resized.rows as u16),
+        "the frame that follows a resize must carry the new viewport"
+    );
+    structured_client_with(&screen, client_id, |state| {
+        assert_eq!(
+            state.in_flight,
+            Some(after_resize.seq),
+            "the repaint that follows a resize must be the frame in flight"
+        );
+        assert!(
+            !state.overlay.is_dirty(),
+            "a resize must discard the pending overlay"
+        );
+        assert_eq!(
+            state.size, resized,
+            "the record must carry the new viewport"
+        );
+    });
+}
+
+#[test]
+fn an_acknowledgement_delivers_the_merged_overlay() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        structured_screen_with_client(size, client_id);
+
+    render_with_pending_output(&mut screen, client_id);
+    let first = delivered_frame(&server_receiver, client_id)
+        .expect("the first frame must reach the client");
+    render_with_pending_output(&mut screen, client_id);
+    assert!(
+        delivered_frame(&server_receiver, client_id).is_none(),
+        "a client that has not acknowledged must not be sent a second frame"
+    );
+
+    screen
+        .handle_render_frame_ack(client_id, first.seq)
+        .expect("TEST");
+    let merged = delivered_frame(&server_receiver, client_id)
+        .expect("an acknowledgement must release the merged overlay");
+    assert!(
+        merged.seq > first.seq,
+        "the merged frame must carry a fresh sequence number, got {} after {}",
+        merged.seq,
+        first.seq
+    );
+    structured_client_with(&screen, client_id, |state| {
+        assert_eq!(
+            state.in_flight,
+            Some(merged.seq),
+            "the merged frame must be in flight"
+        );
+        assert!(
+            !state.overlay.is_dirty(),
+            "the overlay must be emptied by the delivery"
+        );
+    });
+}
+
+fn geometry_of_next_frame(
+    screen: &mut Screen,
+    server_receiver: &ServerReceiver,
+    client_id: ClientId,
+) -> (
+    Option<zellij_utils::structured_render::GeometryRecord>,
+    bool,
+) {
+    render_with_pending_output(screen, client_id);
+    let frame = delivered_frame(server_receiver, client_id).expect("a frame must reach the client");
+    screen
+        .handle_render_frame_ack(client_id, frame.seq)
+        .expect("TEST");
+    while server_receiver.try_recv().is_ok() {}
+    (frame.geometry, !frame.rows_written.is_empty())
+}
+
+#[test]
+fn a_structured_client_is_told_the_pane_rectangles_and_is_not_told_again_when_nothing_moves() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        structured_screen_with_client(size, client_id);
+
+    let (geometry, _) = geometry_of_next_frame(&mut screen, &server_receiver, client_id);
+    let geometry = geometry.expect("the first frame must carry the pane rectangles");
+    assert_eq!(
+        geometry.panes.len(),
+        1,
+        "a single-pane tab must be described by a single rectangle, got {:?}",
+        geometry.panes
+    );
+    let only_pane = geometry.panes[0];
+    assert!(
+        only_pane.focused(),
+        "the one pane of a single-pane tab is the client's focused pane"
+    );
+    assert!(only_pane.selectable(), "a terminal pane is selectable");
+    assert!(
+        !only_pane.wants_mouse(),
+        "a pane that has not asked for mouse reporting must not claim it"
+    );
+    assert!(
+        only_pane.cols as usize <= size.cols && only_pane.rows as usize <= size.rows,
+        "a pane rectangle must fit the viewport, got {:?}",
+        only_pane
+    );
+
+    let (unchanged, wrote_cells) = geometry_of_next_frame(&mut screen, &server_receiver, client_id);
+    assert_eq!(
+        unchanged, None,
+        "an ordinary content frame must not repeat the pane rectangles"
+    );
+    let _ = wrote_cells;
+}
+
+#[test]
+fn splitting_a_pane_re_emits_the_pane_rectangles() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        structured_screen_with_client(size, client_id);
+
+    let (first, _) = geometry_of_next_frame(&mut screen, &server_receiver, client_id);
+    assert_eq!(
+        first
+            .expect("the first frame must carry the pane rectangles")
+            .panes
+            .len(),
+        1
+    );
+
+    screen
+        .get_active_tab_mut(client_id)
+        .expect("TEST")
+        .horizontal_split(PaneId::Terminal(2), None, client_id, None, None)
+        .expect("TEST");
+
+    let (split, _) = geometry_of_next_frame(&mut screen, &server_receiver, client_id);
+    let split = split.expect("a layout change must re-emit the pane rectangles");
+    assert_eq!(
+        split.panes.len(),
+        2,
+        "both panes of a split tab must be described, got {:?}",
+        split.panes
+    );
+    assert!(
+        split.panes[0].y < split.panes[1].y,
+        "a horizontal split stacks one pane above the other, got {:?}",
+        split.panes
+    );
+    assert_eq!(
+        split.panes.iter().filter(|pane| pane.focused()).count(),
+        1,
+        "exactly one pane is the client's focused pane"
+    );
+}
+
+#[test]
+fn moving_focus_re_emits_the_pane_rectangles() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        structured_screen_with_client(size, client_id);
+
+    screen
+        .get_active_tab_mut(client_id)
+        .expect("TEST")
+        .horizontal_split(PaneId::Terminal(2), None, client_id, None, None)
+        .expect("TEST");
+    let (before, _) = geometry_of_next_frame(&mut screen, &server_receiver, client_id);
+    let before = before.expect("the first frame must carry the pane rectangles");
+    let focused_before = before
+        .panes
+        .iter()
+        .position(|pane| pane.focused())
+        .expect("one pane must be focused");
+
+    screen
+        .get_active_tab_mut(client_id)
+        .expect("TEST")
+        .move_focus_up(client_id)
+        .expect("TEST");
+
+    let (after, _) = geometry_of_next_frame(&mut screen, &server_receiver, client_id);
+    let after = after.expect("a focus change must re-emit the pane rectangles");
+    let focused_after = after
+        .panes
+        .iter()
+        .position(|pane| pane.focused())
+        .expect("one pane must be focused");
+    assert_ne!(
+        focused_before, focused_after,
+        "the focused pane must have moved, got {:?} then {:?}",
+        before.panes, after.panes
+    );
+    let rectangles_of = |record: &zellij_utils::structured_render::GeometryRecord| {
+        record
+            .panes
+            .iter()
+            .map(|pane| (pane.x, pane.y, pane.cols, pane.rows))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        rectangles_of(&before),
+        rectangles_of(&after),
+        "a focus change moves no pane"
+    );
+}
+
+#[test]
+fn a_pane_that_turns_on_mouse_reporting_re_emits_the_pane_rectangles() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        structured_screen_with_client(size, client_id);
+
+    let (before, _) = geometry_of_next_frame(&mut screen, &server_receiver, client_id);
+    assert!(
+        !before
+            .expect("the first frame must carry the pane rectangles")
+            .panes
+            .iter()
+            .any(|pane| pane.wants_mouse()),
+        "no pane has asked for mouse reporting yet"
+    );
+
+    screen
+        .get_active_tab_mut(client_id)
+        .expect("TEST")
+        .handle_pty_bytes(1, b"\x1b[?1000h".to_vec())
+        .expect("TEST");
+
+    let (after, _) = geometry_of_next_frame(&mut screen, &server_receiver, client_id);
+    let after = after.expect("a mouse-request change must re-emit the pane rectangles");
+    assert!(
+        after.panes.iter().all(|pane| pane.wants_mouse()),
+        "the pane that asked for mouse reporting must say so, got {:?}",
+        after.panes
+    );
+}
+
+fn pane_resize_strategy() -> zellij_utils::data::ResizeStrategy {
+    zellij_utils::data::ResizeStrategy {
+        resize: Resize::Increase,
+        direction: None,
+        invert_on_boundaries: false,
+    }
+}
+
+#[test]
+fn a_pane_resize_releases_the_in_flight_frame() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        structured_screen_with_client(size, client_id);
+
+    render_with_pending_output(&mut screen, client_id);
+    let first = delivered_frame(&server_receiver, client_id)
+        .expect("the first frame must reach the client");
+    render_with_pending_output(&mut screen, client_id);
+    assert!(
+        delivered_frame(&server_receiver, client_id).is_none(),
+        "a client that has not acknowledged must not be sent a second frame"
+    );
+    assert!(
+        structured_client_with(&screen, client_id, |state| state.overlay.is_dirty()),
+        "the undelivered update must be waiting in the overlay"
+    );
+
+    screen.resize_pane_with_id(pane_resize_strategy(), PaneId::Terminal(1));
+
+    structured_client_with(&screen, client_id, |state| {
+        assert_eq!(
+            state.in_flight, None,
+            "a pane resize must release the in-flight slot"
+        );
+        assert!(
+            !state.overlay.is_dirty(),
+            "a pane resize must discard the pending overlay"
+        );
+        assert!(
+            state.force_full_repaint,
+            "a pane resize must mark the client for a full repaint"
+        );
+    });
+
+    screen.render_to_clients().expect("TEST");
+    let repaint = delivered_frame(&server_receiver, client_id)
+        .expect("a released client must be repainted without waiting for an acknowledgement");
+    assert!(
+        repaint.full_repaint,
+        "the frame that follows a pane resize must be flagged as a full redraw"
+    );
+    assert!(
+        repaint.seq > first.seq,
+        "the repaint must carry a fresh sequence number, got {} after {}",
+        repaint.seq,
+        first.seq
+    );
+    assert_eq!(
+        structured_client_with(&screen, client_id, |state| state.in_flight),
+        Some(repaint.seq),
+        "delivery must arm again on the repaint"
+    );
+}
+
+#[test]
+fn a_pane_resize_in_another_tab_leaves_delivery_armed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, _tty_stdin_bytes, server_receiver) =
+        structured_screen_with_client(size, client_id);
+    new_tab(&mut screen, 2, 1);
+    screen.go_to_tab(1, client_id).expect("TEST");
+    while server_receiver.try_recv().is_ok() {}
+
+    render_with_pending_output(&mut screen, client_id);
+    let first = delivered_frame(&server_receiver, client_id)
+        .expect("the first frame must reach the client");
+
+    screen.resize_pane_with_id(pane_resize_strategy(), PaneId::Terminal(2));
+
+    structured_client_with(&screen, client_id, |state| {
+        assert_eq!(
+            state.in_flight,
+            Some(first.seq),
+            "a resize in a tab the client is not looking at must leave delivery armed"
+        );
+        assert!(
+            !state.force_full_repaint,
+            "a resize in a tab the client is not looking at must not force a full repaint"
+        );
+    });
+}
+
+const FOLLOWED_CLIENT: ClientId = 1;
+const WATCHER_CLIENT: ClientId = 2;
+
+fn followed_size() -> Size {
+    Size {
+        cols: 121,
+        rows: 20,
+    }
+}
+
+fn watcher_screen(watcher_size: Size, structured: bool) -> (Screen, TtyStdinBytes, ServerReceiver) {
+    let (mut screen, tty_stdin_bytes, server_receiver) =
+        create_new_screen_with_capture(followed_size(), true, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.set_client_size(FOLLOWED_CLIENT, followed_size());
+    screen.set_followed_client(FOLLOWED_CLIENT).expect("TEST");
+    screen.add_watcher_client(WATCHER_CLIENT).expect("TEST");
+    screen.set_watcher_size(WATCHER_CLIENT, watcher_size);
+    if structured {
+        screen.update_structured_render_support(WATCHER_CLIENT, true);
+    }
+    while server_receiver.try_recv().is_ok() {}
+    (screen, tty_stdin_bytes, server_receiver)
+}
+
+fn render_for_watcher(screen: &mut Screen) {
+    screen
+        .watcher_clients
+        .get_mut(&WATCHER_CLIENT)
+        .expect("the watcher must be registered")
+        .set_force_render();
+    screen.render_to_clients().expect("TEST");
+}
+
+#[test]
+fn a_structured_watcher_smaller_than_the_followed_client_is_cropped() {
+    let watcher_size = Size { cols: 60, rows: 10 };
+    let (mut screen, _tty_stdin_bytes, server_receiver) = watcher_screen(watcher_size, true);
+
+    render_for_watcher(&mut screen);
+
+    let frame = delivered_frame(&server_receiver, WATCHER_CLIENT)
+        .expect("a structured watcher must be sent frames");
+    assert_eq!(
+        (frame.cols as usize, frame.rows as usize),
+        (watcher_size.cols, watcher_size.rows),
+        "a watcher's frames must carry the watcher's own viewport, not the followed client's"
+    );
+    assert!(
+        frame.full_repaint,
+        "a watcher's first frame must repaint it in full"
+    );
+    assert!(
+        !frame.rows_written.is_empty(),
+        "the followed client's screen must reach the watcher"
+    );
+    for (y, x0, len) in &frame.rows_written {
+        assert!(
+            (*y as usize) < watcher_size.rows && (x0 + len) as usize <= watcher_size.cols,
+            "a row at y {} spanning {}..{} escapes a {}x{} watcher",
+            y,
+            x0,
+            x0 + len,
+            watcher_size.cols,
+            watcher_size.rows
+        );
+    }
+    assert!(
+        (frame.cursor.x as usize) < watcher_size.cols
+            && (frame.cursor.y as usize) < watcher_size.rows,
+        "a cropped watcher must not be told to place its cursor outside its viewport, got {:?}",
+        (frame.cursor.x, frame.cursor.y)
+    );
+}
+
+#[test]
+fn a_structured_watcher_larger_than_the_followed_client_is_padded() {
+    let watcher_size = Size {
+        cols: 160,
+        rows: 30,
+    };
+    let (mut screen, _tty_stdin_bytes, server_receiver) = watcher_screen(watcher_size, true);
+
+    render_for_watcher(&mut screen);
+
+    let frame = delivered_frame(&server_receiver, WATCHER_CLIENT)
+        .expect("a structured watcher must be sent frames");
+    assert_eq!(
+        (frame.cols as usize, frame.rows as usize),
+        (watcher_size.cols, watcher_size.rows),
+        "a watcher's frames must carry the watcher's own viewport, not the followed client's"
+    );
+    assert!(
+        frame.full_repaint,
+        "the frame that fills a larger watcher must blank what the followed screen does not cover"
+    );
+    assert!(
+        !frame.rows_written.is_empty(),
+        "the followed client's screen must reach the watcher"
+    );
+    let followed = followed_size();
+    for (y, x0, len) in &frame.rows_written {
+        assert!(
+            (*y as usize) < followed.rows && (x0 + len) as usize <= followed.cols,
+            "the followed screen is {}x{} and cannot write a row at y {} spanning {}..{}",
+            followed.cols,
+            followed.rows,
+            y,
+            x0,
+            x0 + len
+        );
+    }
+    assert!(
+        frame.cursor.visible,
+        "a watcher larger than the screen it follows sees the whole cursor"
+    );
+}
+
+#[test]
+fn a_structured_watcher_is_told_pane_rectangles_clipped_to_its_own_viewport() {
+    let watcher_size = Size { cols: 60, rows: 10 };
+    let (mut screen, _tty_stdin_bytes, server_receiver) = watcher_screen(watcher_size, true);
+
+    render_for_watcher(&mut screen);
+
+    let frame = delivered_frame(&server_receiver, WATCHER_CLIENT)
+        .expect("a structured watcher must be sent frames");
+    let geometry = frame
+        .geometry
+        .expect("a watcher's first frame must carry the pane rectangles");
+    assert!(
+        !geometry.panes.is_empty(),
+        "the followed client's panes must reach the watcher"
+    );
+    let followed = followed_size();
+    assert!(
+        watcher_size.cols < followed.cols || watcher_size.rows < followed.rows,
+        "this test needs a watcher smaller than the screen it follows"
+    );
+    for pane in &geometry.panes {
+        assert!(
+            (pane.x + pane.cols) as usize <= watcher_size.cols
+                && (pane.y + pane.rows) as usize <= watcher_size.rows,
+            "a rectangle at {:?} escapes a {}x{} watcher",
+            pane,
+            watcher_size.cols,
+            watcher_size.rows
+        );
+        assert!(
+            pane.content_cols() <= pane.cols && pane.content_rows() <= pane.rows,
+            "a clipped rectangle must not keep a frame ring wider than itself, got {:?}",
+            pane
+        );
+    }
+    assert!(
+        geometry
+            .panes
+            .iter()
+            .any(|pane| (pane.x + pane.cols) as usize == watcher_size.cols),
+        "a pane wider than the watcher must be cut at the watcher's right edge, got {:?}",
+        geometry.panes
+    );
+}
+
+#[test]
+fn a_watcher_resize_resets_delivery_and_repaints_at_the_new_size() {
+    let watcher_size = Size { cols: 60, rows: 10 };
+    let (mut screen, _tty_stdin_bytes, server_receiver) = watcher_screen(watcher_size, true);
+
+    render_for_watcher(&mut screen);
+    delivered_frame(&server_receiver, WATCHER_CLIENT)
+        .expect("the first frame must reach the watcher");
+    render_for_watcher(&mut screen);
+    assert!(
+        structured_client_with(&screen, WATCHER_CLIENT, |state| state.overlay.is_dirty()),
+        "the undelivered update must be waiting in the overlay"
+    );
+
+    let resized = Size { cols: 80, rows: 24 };
+    screen.set_watcher_size(WATCHER_CLIENT, resized);
+    screen.render_to_clients().expect("TEST");
+
+    let after_resize = delivered_frame(&server_receiver, WATCHER_CLIENT)
+        .expect("a resized watcher must be repainted");
+    assert!(
+        after_resize.full_repaint,
+        "the frame that follows a resize must be flagged as a full redraw"
+    );
+    assert_eq!(
+        (after_resize.cols as usize, after_resize.rows as usize),
+        (resized.cols, resized.rows),
+        "the frame that follows a resize must carry the watcher's new viewport"
+    );
+    structured_client_with(&screen, WATCHER_CLIENT, |state| {
+        assert_eq!(
+            state.in_flight,
+            Some(after_resize.seq),
+            "the repaint that follows a resize must be the frame in flight"
+        );
+        assert!(
+            !state.overlay.is_dirty(),
+            "a resize must discard the pending overlay"
+        );
+        assert_eq!(
+            state.size, resized,
+            "the record must carry the watcher's new viewport"
+        );
+    });
+}
+
+#[test]
+fn an_acknowledgement_delivers_a_watchers_merged_overlay() {
+    let watcher_size = Size { cols: 60, rows: 10 };
+    let (mut screen, _tty_stdin_bytes, server_receiver) = watcher_screen(watcher_size, true);
+
+    render_for_watcher(&mut screen);
+    let first = delivered_frame(&server_receiver, WATCHER_CLIENT)
+        .expect("the first frame must reach the watcher");
+    render_for_watcher(&mut screen);
+    assert!(
+        delivered_frame(&server_receiver, WATCHER_CLIENT).is_none(),
+        "a watcher that has not acknowledged must not be sent a second frame"
+    );
+
+    screen
+        .handle_render_frame_ack(WATCHER_CLIENT, first.seq)
+        .expect("TEST");
+
+    let merged = delivered_frame(&server_receiver, WATCHER_CLIENT)
+        .expect("an acknowledgement must release the watcher's merged overlay");
+    assert!(
+        merged.seq > first.seq,
+        "the merged frame must carry a fresh sequence number, got {} after {}",
+        merged.seq,
+        first.seq
+    );
+    assert_eq!(
+        (merged.cols as usize, merged.rows as usize),
+        (watcher_size.cols, watcher_size.rows),
+        "the merged frame must still carry the watcher's viewport"
+    );
+    structured_client_with(&screen, WATCHER_CLIENT, |state| {
+        assert_eq!(
+            state.in_flight,
+            Some(merged.seq),
+            "the merged frame must be in flight"
+        );
+        assert!(
+            !state.overlay.is_dirty(),
+            "the overlay must be emptied by the delivery"
+        );
+    });
+}
+
+#[test]
+fn a_watcher_that_stops_acknowledging_is_repainted_in_full_after_the_deadline() {
+    let watcher_size = Size { cols: 60, rows: 10 };
+    let (mut screen, _tty_stdin_bytes, server_receiver) = watcher_screen(watcher_size, true);
+
+    render_for_watcher(&mut screen);
+    let first = delivered_frame(&server_receiver, WATCHER_CLIENT)
+        .expect("the first frame must reach the watcher");
+    render_for_watcher(&mut screen);
+    assert!(
+        delivered_frame(&server_receiver, WATCHER_CLIENT).is_none(),
+        "a watcher that has not acknowledged must not be sent a second frame"
+    );
+
+    expire_in_flight_frame(&screen, WATCHER_CLIENT);
+    render_for_watcher(&mut screen);
+    assert!(
+        delivered_frame(&server_receiver, WATCHER_CLIENT).is_none(),
+        "the delivery attempt that finds the deadline expired sends nothing itself"
+    );
+    structured_client_with(&screen, WATCHER_CLIENT, |state| {
+        assert_eq!(
+            state.in_flight, None,
+            "the abandoned frame must no longer be in flight"
+        );
+        assert!(
+            !state.overlay.is_dirty(),
+            "the pending overlay must be discarded"
+        );
+        assert!(
+            state.force_full_repaint,
+            "the watcher must be marked for a full repaint"
+        );
+    });
+    assert!(
+        screen
+            .watcher_clients
+            .get(&WATCHER_CLIENT)
+            .expect("the watcher must still be registered")
+            .should_force_render(),
+        "the recovery repaint needs the followed screen rendered in full"
+    );
+
+    screen.render_to_clients().expect("TEST");
+    let recovery = delivered_frame(&server_receiver, WATCHER_CLIENT)
+        .expect("a stalled watcher must be repainted after the deadline");
+    assert!(
+        recovery.full_repaint,
+        "the recovery frame must be flagged as a full redraw"
+    );
+    assert!(
+        recovery.seq > first.seq,
+        "the recovery frame must carry a fresh sequence number, got {} after {}",
+        recovery.seq,
+        first.seq
+    );
+    assert_eq!(
+        structured_client_with(&screen, WATCHER_CLIENT, |state| state.in_flight),
+        Some(recovery.seq),
+        "delivery must continue normally after the repaint"
+    );
+}
+
+#[test]
+fn a_pane_resize_releases_a_watchers_in_flight_frame() {
+    let watcher_size = Size { cols: 60, rows: 10 };
+    let (mut screen, _tty_stdin_bytes, server_receiver) = watcher_screen(watcher_size, true);
+
+    render_for_watcher(&mut screen);
+    let first = delivered_frame(&server_receiver, WATCHER_CLIENT)
+        .expect("the first frame must reach the watcher");
+    render_for_watcher(&mut screen);
+    assert!(
+        delivered_frame(&server_receiver, WATCHER_CLIENT).is_none(),
+        "a watcher that has not acknowledged must not be sent a second frame"
+    );
+
+    screen.resize_pane_with_id(pane_resize_strategy(), PaneId::Terminal(1));
+
+    structured_client_with(&screen, WATCHER_CLIENT, |state| {
+        assert_eq!(
+            state.in_flight, None,
+            "a resize of the followed tab must release the watcher's in-flight slot"
+        );
+        assert!(
+            state.force_full_repaint,
+            "the released watcher must be marked for a full repaint"
+        );
+    });
+    assert!(
+        screen
+            .watcher_clients
+            .get(&WATCHER_CLIENT)
+            .expect("the watcher must still be registered")
+            .should_force_render(),
+        "the repaint that follows a resize needs the followed screen rendered in full"
+    );
+
+    screen.render_to_clients().expect("TEST");
+    let repaint = delivered_frame(&server_receiver, WATCHER_CLIENT)
+        .expect("a released watcher must be repainted without waiting for an acknowledgement");
+    assert!(
+        repaint.full_repaint,
+        "the frame that follows a pane resize must be flagged as a full redraw"
+    );
+    assert!(
+        repaint.seq > first.seq,
+        "the repaint must carry a fresh sequence number, got {} after {}",
+        repaint.seq,
+        first.seq
+    );
+    assert_eq!(
+        (repaint.cols as usize, repaint.rows as usize),
+        (watcher_size.cols, watcher_size.rows),
+        "the repaint must still carry the watcher's viewport"
+    );
+}
+
+#[test]
+fn a_watcher_that_declares_nothing_still_receives_ansi() {
+    let watcher_size = Size { cols: 60, rows: 10 };
+    let (mut screen, _tty_stdin_bytes, server_receiver) = watcher_screen(watcher_size, false);
+
+    render_for_watcher(&mut screen);
+
+    let payload = rendered_payload_for_client(&server_receiver, WATCHER_CLIENT)
+        .expect("an ordinary watcher must be rendered to");
+    assert!(
+        payload.frame().is_none() && !payload.ansi().is_empty(),
+        "an ordinary watcher must keep receiving the ansi dialect"
+    );
+    assert!(
+        screen.structured_render_clients.borrow().is_empty(),
+        "a watcher that declares nothing must hold no structured record"
     );
 }

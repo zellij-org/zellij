@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -14,6 +14,7 @@ use zellij_utils::pane_size::Size;
 use zellij_utils::setup::Setup;
 
 use crate::client_screen::GridSnapshot;
+use crate::deadline::{ProgressDeadline, SERIALIZATION_PROGRESS};
 use crate::fake_client_os_api::{FakeClientHandle, FakeClientOsApi};
 use crate::fake_pty::FakePtyHandle;
 use crate::fake_server_os_api::FakeServerOsApi;
@@ -323,6 +324,17 @@ fn new_pane_cli_action(
     }
 }
 
+fn serialization_progress(layout_path: &Path, session_dir: Option<&Path>) -> (u64, usize) {
+    let layout_bytes = std::fs::metadata(layout_path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    let files_on_disk = session_dir
+        .and_then(|dir| std::fs::read_dir(dir).ok())
+        .map(|entries| entries.flatten().count())
+        .unwrap_or(0);
+    (layout_bytes, files_on_disk)
+}
+
 fn referenced_contents_files(layout: &str) -> impl Iterator<Item = &str> {
     layout
         .match_indices("contents_file=\"")
@@ -627,7 +639,8 @@ impl TestSession {
     pub fn wait_for_serialized_session(&self) {
         let layout_path = zellij_utils::consts::session_layout_cache_file_name(&self.session_name);
         let session_dir = layout_path.parent().map(|parent| parent.to_path_buf());
-        let deadline = std::time::Instant::now() + crate::default_timeout();
+        let mut deadline = ProgressDeadline::starting_now(SERIALIZATION_PROGRESS);
+        let mut written = serialization_progress(&layout_path, session_dir.as_deref());
         loop {
             if let Ok(layout) = std::fs::read_to_string(&layout_path) {
                 let referenced_contents_files_exist = session_dir.as_ref().map_or(true, |dir| {
@@ -637,13 +650,24 @@ impl TestSession {
                     return;
                 }
             }
-            if std::time::Instant::now() >= deadline {
+            let now = std::time::Instant::now();
+            if let Some(tripped) = deadline.tripped(now) {
                 panic!(
-                    "timed out waiting for session serialization at {}",
-                    layout_path.display()
+                    "timed out waiting for session serialization at {}\n{}",
+                    layout_path.display(),
+                    tripped
                 );
             }
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::thread::sleep(
+                deadline
+                    .remaining(now)
+                    .min(std::time::Duration::from_millis(10)),
+            );
+            let written_now = serialization_progress(&layout_path, session_dir.as_deref());
+            if written_now != written {
+                written = written_now;
+                deadline.note_progress(std::time::Instant::now());
+            }
         }
     }
 

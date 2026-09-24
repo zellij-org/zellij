@@ -1,8 +1,7 @@
 #![cfg(unix)]
 
-use std::time::Instant;
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, default_timeout, start_zellij, FakePtyHandle, PROMPT,
+    claim_first_terminal_and_wait_for_prompt, start_zellij, FakePtyHandle, PROMPT,
 };
 use zellij_utils::cli::CliAction;
 
@@ -58,21 +57,11 @@ fn no_focus_new_tab_action() -> CliAction {
 }
 
 fn wait_until_stdin_contains(handle: &FakePtyHandle, needle: &[u8]) {
-    let deadline = Instant::now() + default_timeout();
-    loop {
-        let bytes = handle.stdin_bytes();
-        if bytes.windows(needle.len()).any(|window| window == needle) {
-            return;
-        }
-        if Instant::now() >= deadline {
-            panic!(
-                "timed out waiting for pane to receive {:?}, received {:?}",
-                String::from_utf8_lossy(needle),
-                String::from_utf8_lossy(&bytes),
-            );
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
+    let needle = needle.to_vec();
+    handle.wait_for_stdin(
+        &format!("the pane to receive {:?}", String::from_utf8_lossy(&needle)),
+        move |stdin| stdin.windows(needle.len()).any(|window| window == needle),
+    );
 }
 
 fn stdin_contains(handle: &FakePtyHandle, needle: &[u8]) -> bool {

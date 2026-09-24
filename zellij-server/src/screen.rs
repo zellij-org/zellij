@@ -62,6 +62,7 @@ use zellij_utils::ipc::{
 };
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::{clean_string_from_control_and_linebreak, detect_theme_hue};
+use zellij_utils::structured_render;
 use zellij_utils::{
     consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
     envs::set_session_name,
@@ -73,7 +74,7 @@ use zellij_utils::{
     position::Position,
 };
 
-use crate::background_jobs::BackgroundJob;
+use crate::background_jobs::{BackgroundJob, REPAINT_DELAY_MS};
 use crate::notifications::NotificationProtocol;
 use crate::os_input_output::ResizeCache;
 use crate::pane_groups::PaneGroups;
@@ -86,10 +87,11 @@ use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
 
 use crate::{
     nested_guest::NestedGuestTracker,
-    output::{HostKittyState, Output},
+    output::{
+        HostKittyState, Output, RenderPayload, StructuredClientState, STRUCTURED_RENDER_DEADLINE,
+    },
     panes::kitty_graphics::{KittyHostSupport, KittyImageStore},
     panes::sixel::SixelImageStore,
-    panes::LinkHandler,
     panes::PaneId,
     plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction, PluginRenderAsset},
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
@@ -356,6 +358,7 @@ pub enum ScreenInstruction {
     PluginBytes(Vec<PluginRenderAsset>),
     Render,
     RenderToClients,
+    SendVteInstructionToClients(Vec<ClientId>, String),
     NewPane(
         PaneId,
         Option<InitialTitle>,
@@ -549,10 +552,19 @@ pub enum ScreenInstruction {
     SetKittyGraphicsSupport {
         client_id: ClientId,
         supported: bool,
+        local_media: bool,
     },
     SetSixelSupport {
         client_id: ClientId,
         supported: bool,
+    },
+    SetStructuredRenderSupport {
+        client_id: ClientId,
+        supported: bool,
+    },
+    RenderFrameAck {
+        client_id: ClientId,
+        seq: u64,
     },
     /// A pane's Grid intercepted an app-in-pane whitelisted query; Screen
     /// assigns a token, queues the forward, and dispatches to the client.
@@ -976,6 +988,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PluginBytes(..) => ScreenContext::PluginBytes,
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::RenderToClients => ScreenContext::RenderToClients,
+            ScreenInstruction::SendVteInstructionToClients(..) => {
+                ScreenContext::SendVteInstructionToClients
+            },
             ScreenInstruction::NewPane(..) => ScreenContext::NewPane,
             ScreenInstruction::OpenInPlaceEditor(..) => ScreenContext::OpenInPlaceEditor,
             ScreenInstruction::TogglePaneEmbedOrFloating(..) => {
@@ -1106,6 +1121,10 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::SetKittyGraphicsSupport
             },
             ScreenInstruction::SetSixelSupport { .. } => ScreenContext::SetSixelSupport,
+            ScreenInstruction::SetStructuredRenderSupport { .. } => {
+                ScreenContext::SetStructuredRenderSupport
+            },
+            ScreenInstruction::RenderFrameAck { .. } => ScreenContext::RenderFrameAck,
             ScreenInstruction::ForwardHostQuery { .. } => ScreenContext::ForwardHostQuery,
             ScreenInstruction::NestedSessionMessageFromPane { .. } => {
                 ScreenContext::NestedSessionMessageFromPane
@@ -1533,8 +1552,11 @@ pub(crate) struct Screen {
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     kitty_image_store: Rc<RefCell<KittyImageStore>>,
     kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
+    kitty_local_media: Rc<RefCell<HashMap<ClientId, bool>>>,
     sixel_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     client_kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
+    structured_render_clients: Rc<RefCell<HashMap<ClientId, StructuredClientState>>>,
+    pending_client_vte_instructions: HashMap<ClientId, Vec<String>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     connected_clients: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
@@ -1593,6 +1615,7 @@ pub(crate) struct Screen {
     render_blocker: RenderBlocker,
     watcher_clients: HashMap<ClientId, WatcherState>,
     followed_client_id: Option<ClientId>,
+    watcher_followed_content: Option<(ClientId, Option<Size>)>,
     cached_layouts: Vec<LayoutInfo>,
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
@@ -1745,8 +1768,11 @@ impl Screen {
             sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
             kitty_image_store: Rc::new(RefCell::new(KittyImageStore::default())),
             kitty_host_capabilities: Rc::new(RefCell::new(HashMap::new())),
+            kitty_local_media: Rc::new(RefCell::new(HashMap::new())),
             sixel_host_capabilities: Rc::new(RefCell::new(HashMap::new())),
             client_kitty_host_state: Rc::new(RefCell::new(HashMap::new())),
+            structured_render_clients: Rc::new(RefCell::new(HashMap::new())),
+            pending_client_vte_instructions: HashMap::new(),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
             active_tab_ids: BTreeMap::new(),
@@ -1800,6 +1826,7 @@ impl Screen {
             render_blocker: RenderBlocker::new(100),
             watcher_clients: HashMap::new(),
             followed_client_id: None,
+            watcher_followed_content: None,
             cached_layouts: vec![],
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
@@ -2718,12 +2745,26 @@ impl Screen {
         Ok(())
     }
 
-    pub fn update_kitty_graphics_support(&mut self, client_id: ClientId, supported: bool) {
+    pub fn update_kitty_graphics_support(
+        &mut self,
+        client_id: ClientId,
+        supported: bool,
+        local_media: bool,
+    ) {
         let supported = supported && self.support_kitty_graphics_protocol;
         self.kitty_host_capabilities
             .borrow_mut()
             .insert(client_id, supported);
+        self.kitty_local_media
+            .borrow_mut()
+            .insert(client_id, supported && local_media);
         self.push_kitty_host_support_to_tabs();
+    }
+
+    fn release_kitty_host_state(&mut self, client_id: ClientId) {
+        if let Some(mut state) = self.client_kitty_host_state.borrow_mut().remove(&client_id) {
+            state.release_media();
+        }
     }
 
     fn kitty_host_support_aggregate(&self) -> Option<KittyHostSupport> {
@@ -2746,6 +2787,191 @@ impl Screen {
                 tab.update_kitty_host_support(aggregate);
             }
         }
+    }
+
+    pub fn queue_vte_instruction_for_clients(
+        &mut self,
+        client_ids: Vec<ClientId>,
+        vte_instruction: String,
+    ) {
+        for client_id in client_ids {
+            self.pending_client_vte_instructions
+                .entry(client_id)
+                .or_default()
+                .push(vte_instruction.clone());
+        }
+    }
+    pub fn update_structured_render_support(&mut self, client_id: ClientId, supported: bool) {
+        if !supported {
+            self.release_structured_render_state(client_id);
+            return;
+        }
+        let size = self
+            .structured_client_viewport(client_id)
+            .unwrap_or_default();
+        {
+            let mut clients = self.structured_render_clients.borrow_mut();
+            let state = clients.entry(client_id).or_default();
+            state.enabled = true;
+            state.reset_viewport(size);
+        }
+        if let Some(watcher_state) = self.watcher_clients.get_mut(&client_id) {
+            watcher_state.set_force_render();
+        }
+        for tab in self.tabs.values_mut() {
+            tab.set_force_render();
+        }
+    }
+
+    fn structured_client_viewport(&self, client_id: ClientId) -> Option<Size> {
+        self.watcher_clients
+            .get(&client_id)
+            .map(|watcher_state| watcher_state.size())
+            .or_else(|| self.client_sizes.get(&client_id).copied())
+    }
+
+    fn sync_structured_client_viewports(&mut self) {
+        let clients = self.structured_render_clients.clone();
+        let mut clients = clients.borrow_mut();
+        for (client_id, state) in clients.iter_mut() {
+            if let Some(size) = self.structured_client_viewport(*client_id) {
+                if state.size != size {
+                    state.reset_viewport(size);
+                }
+            }
+        }
+    }
+
+    fn release_structured_delivery_for_tab(&mut self, tab_id: usize) {
+        if self.structured_render_clients.borrow().is_empty() {
+            return;
+        }
+        let followed_shows_tab = self
+            .followed_client_id
+            .and_then(|followed| self.active_tab_ids.get(&followed))
+            .map(|active| *active == tab_id)
+            .unwrap_or(false);
+        let mut released_watchers = vec![];
+        {
+            let clients = self.structured_render_clients.clone();
+            let mut clients = clients.borrow_mut();
+            for (client_id, state) in clients.iter_mut() {
+                let is_watcher = self.watcher_clients.contains_key(client_id);
+                let shows_tab = if is_watcher {
+                    followed_shows_tab
+                } else {
+                    self.active_tab_ids.get(client_id) == Some(&tab_id)
+                };
+                if !shows_tab {
+                    continue;
+                }
+                let size = state.size;
+                state.reset_viewport(size);
+                if is_watcher {
+                    released_watchers.push(*client_id);
+                }
+            }
+        }
+        if let Some(tab) = self.get_tab_by_id_mut(tab_id) {
+            tab.set_force_render();
+        }
+        for client_id in released_watchers {
+            if let Some(watcher_state) = self.watcher_clients.get_mut(&client_id) {
+                watcher_state.set_force_render();
+            }
+        }
+    }
+
+    fn pace_structured_payloads(
+        &mut self,
+        payloads: &mut HashMap<ClientId, RenderPayload>,
+    ) -> Result<()> {
+        let err_context = "failed to pace a structured render frame";
+        let structured: Vec<ClientId> = payloads
+            .iter()
+            .filter(|(_, payload)| matches!(payload, RenderPayload::Frame(_)))
+            .map(|(client_id, _)| *client_id)
+            .collect();
+        let mut abandoned = vec![];
+        {
+            let clients = self.structured_render_clients.clone();
+            let mut clients = clients.borrow_mut();
+            for client_id in structured {
+                let Some(state) = clients.get_mut(&client_id) else {
+                    continue;
+                };
+                let Some(RenderPayload::Frame(frame)) = payloads.get(&client_id) else {
+                    continue;
+                };
+                if state.in_flight.is_none() {
+                    let seq = structured_render::decode(frame)
+                        .map_err(|e| anyhow!("{}: {}", err_context, e))?
+                        .header()
+                        .seq;
+                    state.arm(seq);
+                    continue;
+                }
+                if state.delivery_deadline_expired() {
+                    let size = state.size;
+                    state.reset_viewport(size);
+                    payloads.remove(&client_id);
+                    abandoned.push(client_id);
+                    continue;
+                }
+                let view = structured_render::decode(frame)
+                    .map_err(|e| anyhow!("{}: {}", err_context, e))?;
+                state.overlay.merge_frame(&view);
+                payloads.remove(&client_id);
+            }
+        }
+        if abandoned.is_empty() {
+            return Ok(());
+        }
+        for client_id in abandoned {
+            log::warn!(
+                "client {} did not acknowledge a render frame within {:?}, repainting it in full",
+                client_id,
+                STRUCTURED_RENDER_DEADLINE
+            );
+            if let Some(watcher_state) = self.watcher_clients.get_mut(&client_id) {
+                watcher_state.set_force_render();
+            }
+        }
+        for tab in self.tabs.values_mut() {
+            tab.set_force_render();
+        }
+        self.render(None)
+    }
+
+    fn handle_render_frame_ack(&mut self, client_id: ClientId, seq: u64) -> Result<()> {
+        let clients = self.structured_render_clients.clone();
+        let mut clients = clients.borrow_mut();
+        let Some(state) = clients.get_mut(&client_id) else {
+            return Ok(());
+        };
+        if state.in_flight != Some(seq) {
+            return Ok(());
+        }
+        state.disarm();
+        if !state.overlay.is_dirty() {
+            return Ok(());
+        }
+        let next_seq = state.allocate_seq();
+        let frame = state.overlay.drain(next_seq);
+        state.arm(next_seq);
+        drop(clients);
+        let mut payloads = HashMap::new();
+        payloads.insert(client_id, RenderPayload::Frame(frame));
+        self.bus
+            .senders
+            .send_to_server(ServerInstruction::Render(Some(payloads)))
+            .context("failed to emit a paced render frame")
+    }
+
+    fn release_structured_render_state(&mut self, client_id: ClientId) {
+        self.structured_render_clients
+            .borrow_mut()
+            .remove(&client_id);
     }
 
     pub fn update_sixel_support(&mut self, client_id: ClientId, supported: bool) {
@@ -4177,6 +4403,8 @@ impl Screen {
             .any(|id| !self.watcher_clients.contains_key(id));
         let has_watchers = !self.watcher_clients.is_empty(); // No change needed
 
+        self.sync_structured_client_viewports();
+
         // Track whether non-watcher output was dirty for conditional watcher rendering
         let non_watcher_output_was_dirty;
 
@@ -4191,8 +4419,10 @@ impl Screen {
                 self.osc8_hyperlinks,
                 self.kitty_image_store.clone(),
                 self.kitty_host_capabilities.clone(),
+                self.kitty_local_media.clone(),
                 self.client_kitty_host_state.clone(),
                 self.sixel_host_capabilities.clone(),
+                self.structured_render_clients.clone(),
             );
 
             output.collect_ansi_pane_contents =
@@ -4204,6 +4434,15 @@ impl Screen {
                     tab.render(&mut output, None).context(err_context)?;
                 } else if !tab.is_pending() {
                     tabs_to_close.push(*tab_index);
+                }
+            }
+
+            for (client_id, vte_instructions) in self.pending_client_vte_instructions.drain() {
+                for vte_instruction in vte_instructions {
+                    output.add_post_vte_instruction_to_multiple_clients(
+                        std::iter::once(client_id),
+                        &vte_instruction,
+                    );
                 }
             }
 
@@ -4284,7 +4523,9 @@ impl Screen {
             }
 
             if non_watcher_output_was_dirty || has_bell {
-                let serialized_output = output.serialize().context(err_context)?;
+                let mut serialized_output = output.serialize().context(err_context)?;
+                self.pace_structured_payloads(&mut serialized_output)
+                    .context(err_context)?;
                 if !serialized_output.is_empty() {
                     let _ = self
                         .bus
@@ -4301,6 +4542,7 @@ impl Screen {
         } else {
             // No regular clients, output is not dirty
             non_watcher_output_was_dirty = false;
+            self.pending_client_vte_instructions.clear();
 
             // No regular clients but subscribers exist — query panes directly
             if !self.pane_render_subscribers.is_empty() {
@@ -4319,8 +4561,10 @@ impl Screen {
                     self.osc8_hyperlinks,
                     self.kitty_image_store.clone(),
                     self.kitty_host_capabilities.clone(),
+                    self.kitty_local_media.clone(),
                     self.client_kitty_host_state.clone(),
                     self.sixel_host_capabilities.clone(),
+                    self.structured_render_clients.clone(),
                 );
 
                 let focused_tab_index_of_followed_client_id =
@@ -4329,6 +4573,18 @@ impl Screen {
                     .tabs
                     .get(&focused_tab_index_of_followed_client_id)
                     .map(|tab| tab.size);
+
+                let followed_content = (followed_client_id, followed_content_size);
+                if self.watcher_followed_content != Some(followed_content) {
+                    self.watcher_followed_content = Some(followed_content);
+                    let mut structured = self.structured_render_clients.borrow_mut();
+                    for (watcher_id, watcher_state) in self.watcher_clients.iter_mut() {
+                        watcher_state.set_force_render();
+                        if let Some(state) = structured.get_mut(watcher_id) {
+                            state.force_full_repaint = true;
+                        }
+                    }
+                }
 
                 if let Some(tab) = self
                     .tabs
@@ -4356,11 +4612,26 @@ impl Screen {
 
                 // Send the rendered output to all watcher clients
                 if watcher_output.is_dirty() {
-                    let mut watcher_render_output: HashMap<ClientId, String> = HashMap::new();
+                    let mut watcher_render_output: HashMap<ClientId, RenderPayload> =
+                        HashMap::new();
 
                     // For each watcher, clone the output and serialize with size constraints
                     for (watcher_id, watcher_state) in &self.watcher_clients {
                         let mut watcher_specific_output = watcher_output.clone();
+                        let structured = self
+                            .structured_render_clients
+                            .borrow()
+                            .get(watcher_id)
+                            .map(|state| state.enabled)
+                            .unwrap_or(false);
+
+                        if structured {
+                            let frame = watcher_specific_output
+                                .serialize_watcher_frame(followed_client_id, *watcher_id)
+                                .context(err_context)?;
+                            watcher_render_output.insert(*watcher_id, RenderPayload::Frame(frame));
+                            continue;
+                        }
 
                         // Serialize this watcher's output with size constraints (cropping and padding handled inside)
                         let mut serialized_output = watcher_specific_output
@@ -4370,9 +4641,18 @@ impl Screen {
                         // Get the output for the followed client and map it to this watcher
                         if let Some(followed_output) = serialized_output.remove(&followed_client_id)
                         {
-                            watcher_render_output.insert(*watcher_id, followed_output);
+                            watcher_render_output
+                                .insert(*watcher_id, RenderPayload::Ansi(followed_output));
                         }
                     }
+
+                    // Clear force render flag for all watchers after successful render
+                    for watcher_state in self.watcher_clients.values_mut() {
+                        watcher_state.clear_force_render();
+                    }
+
+                    self.pace_structured_payloads(&mut watcher_render_output)
+                        .context(err_context)?;
 
                     // Send to server for delivery to watcher clients
                     if !watcher_render_output.is_empty() {
@@ -4381,11 +4661,6 @@ impl Screen {
                             .senders
                             .send_to_server(ServerInstruction::Render(Some(watcher_render_output)))
                             .context(err_context);
-                    }
-
-                    // Clear force render flag for all watchers after successful render
-                    for watcher_state in self.watcher_clients.values_mut() {
-                        watcher_state.clear_force_render();
                     }
                 }
             }
@@ -4571,9 +4846,6 @@ impl Screen {
         if all_clients.is_empty() || notifications.is_empty() {
             return;
         }
-        let mut output = Output::default();
-        let client_set: HashSet<ClientId> = all_clients.iter().copied().collect();
-        output.add_clients(&client_set, Rc::new(RefCell::new(LinkHandler::new())), None);
         let mut emitted_anything = false;
         for client_id in &all_clients {
             let protocol = self.notification_protocol_for_client(client_id);
@@ -4612,28 +4884,14 @@ impl Screen {
                 };
                 if let Some(raw) = raw {
                     emitted_anything = true;
-                    output.add_post_vte_instruction_to_multiple_clients(
-                        std::iter::once(*client_id),
-                        &raw,
-                    );
+                    self.queue_vte_instruction_for_clients(vec![*client_id], raw);
                 }
             }
         }
         if !emitted_anything {
             return;
         }
-        match output.serialize() {
-            Ok(serialized_output) if !serialized_output.is_empty() => {
-                let _ = self
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::Render(Some(serialized_output)));
-            },
-            Ok(_) => {},
-            Err(e) => {
-                log::error!("Failed to forward desktop notifications: {}", e);
-            },
-        }
+        let _ = self.render(None);
     }
 
     /// Clear bell notification for the currently focused pane of the given client.
@@ -5067,18 +5325,24 @@ impl Screen {
         };
 
         self.active_tab_ids.insert(client_id, tab_index);
-        self.client_kitty_host_state.borrow_mut().remove(&client_id);
+        self.release_kitty_host_state(client_id);
         self.connected_clients
             .borrow_mut()
             .insert(client_id, is_web_client);
         if is_web_client {
             self.kitty_host_capabilities
                 .borrow_mut()
-                .insert(client_id, false);
+                .entry(client_id)
+                .or_insert(false);
+            self.kitty_local_media
+                .borrow_mut()
+                .entry(client_id)
+                .or_insert(false);
             self.push_kitty_host_support_to_tabs();
             self.sixel_host_capabilities
                 .borrow_mut()
-                .insert(client_id, false);
+                .entry(client_id)
+                .or_insert(false);
             self.push_sixel_host_support_to_tabs();
         }
         self.tab_history.insert(client_id, tab_history);
@@ -5099,6 +5363,15 @@ impl Screen {
             .with_context(|| err_context(tab_index))?;
         if !self.nested_ancestry.is_empty() || !self.host_descend_keys.is_empty() {
             self.update_all_clients_nesting_mode_info();
+        }
+        if let Some(mode) = self.host_terminal_theme_mode {
+            let _ =
+                self.bus
+                    .senders
+                    .send_to_server(ServerInstruction::HostTerminalThemeModeChanged(
+                        Some(client_id),
+                        mode,
+                    ));
         }
         Ok(())
     }
@@ -5169,7 +5442,8 @@ impl Screen {
             self.tab_history.remove(&client_id);
         }
         self.connected_clients.borrow_mut().remove(&client_id);
-        self.client_kitty_host_state.borrow_mut().remove(&client_id);
+        self.release_kitty_host_state(client_id);
+        self.kitty_local_media.borrow_mut().remove(&client_id);
         let removed_kitty_capability = self
             .kitty_host_capabilities
             .borrow_mut()
@@ -5187,6 +5461,7 @@ impl Screen {
             self.push_sixel_host_support_to_tabs();
         }
         self.client_sizes.remove(&client_id);
+        self.release_structured_render_state(client_id);
         self.pane_render_subscribers.remove(&client_id);
         self.client_host_focused.remove(&client_id);
         self.client_notification_protocols.remove(&client_id);
@@ -5224,6 +5499,7 @@ impl Screen {
 
     pub fn remove_watcher_client(&mut self, client_id: ClientId) {
         self.watcher_clients.remove(&client_id);
+        self.release_structured_render_state(client_id);
     }
 
     pub fn set_followed_client(&mut self, client_id: ClientId) -> Result<()> {
@@ -5541,13 +5817,21 @@ impl Screen {
         Ok(())
     }
     fn report_mobile_state(&mut self) {
+        let structured_clients = self.structured_render_clients.borrow();
         let web_client_ids: Vec<ClientId> = self
             .connected_clients
             .borrow()
             .iter()
-            .filter(|(_client_id, is_web_client)| **is_web_client)
+            .filter(|(client_id, is_web_client)| {
+                **is_web_client
+                    && !structured_clients
+                        .get(*client_id)
+                        .map(|state| state.enabled)
+                        .unwrap_or(false)
+            })
             .map(|(client_id, _)| *client_id)
             .collect();
+        drop(structured_clients);
         if web_client_ids.is_empty() {
             self.last_mobile_state_sent
                 .retain(|client_id, _| self.connected_clients.borrow().contains_key(client_id));
@@ -6413,16 +6697,17 @@ impl Screen {
         }
     }
     pub fn resize_pane_with_id(&mut self, resize: ResizeStrategy, pane_id: PaneId) {
-        let mut found = false;
+        let mut resized_tab_id = None;
         for tab in self.tabs.values_mut() {
             if tab.has_pane_with_pid(&pane_id) {
                 tab.resize_pane_with_id(resize, pane_id).non_fatal();
-                found = true;
+                resized_tab_id = Some(tab.id);
                 break;
             }
         }
-        if !found {
-            log::error!("Failed to find pane with id: {:?} to resize", pane_id);
+        match resized_tab_id {
+            Some(tab_id) => self.release_structured_delivery_for_tab(tab_id),
+            None => log::error!("Failed to find pane with id: {:?} to resize", pane_id),
         }
     }
     pub fn break_pane(
@@ -7043,6 +7328,11 @@ impl Screen {
             )]))
             .with_context(err_context)?;
 
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::HostTerminalThemeModeChanged(None, mode));
+
         // forward DSR to opted-in terminal panes
         let mut pty_writes: Vec<(Vec<u8>, u32)> = vec![];
         for tab in self.tabs.values_mut() {
@@ -7321,6 +7611,11 @@ impl Screen {
                         let _ = self.sync_scroll_mode_on_focus(client_id);
                     }
                     should_render = true;
+                }
+                if mouse_effect.pane_resized {
+                    if let Some(tab_id) = self.active_tab_ids.get(&client_id).copied() {
+                        self.release_structured_delivery_for_tab(tab_id);
+                    }
                 }
                 if !mouse_effect.leave_clipboard_message && !is_bare_motion {
                     let target_plugin_ids =
@@ -8027,6 +8322,8 @@ fn find_already_running_panes(
 // The box is here in order to make the
 // NewClient enum smaller
 #[allow(clippy::boxed_local)]
+const RENDER_JOB_COALESCE: Duration = Duration::from_millis(REPAINT_DELAY_MS / 2);
+
 pub(crate) fn screen_thread_main(
     bus: Bus<ScreenInstruction>,
     max_panes: Option<usize>,
@@ -8039,16 +8336,8 @@ pub(crate) fn screen_thread_main(
     // bundled themes BEFORE `config.options` is moved out below. These
     // populate Screen's auto-switch state at startup; runtime updates
     // continue to flow through `propagate_configuration_changes`.
-    let host_theme_dark_styling = config
-        .options
-        .theme_dark
-        .as_ref()
-        .and_then(|name| config.themes.get_theme(name).map(|t| t.palette));
-    let host_theme_light_styling = config
-        .options
-        .theme_light
-        .as_ref()
-        .and_then(|name| config.themes.get_theme(name).map(|t| t.palette));
+    let host_theme_dark_styling = config.theme_dark().map(|theme| theme.palette);
+    let host_theme_light_styling = config.theme_light().map(|theme| theme.palette);
     if config.options.theme_dark.is_some() && host_theme_dark_styling.is_none() {
         log::warn!(
             "theme_dark='{}' not found in themes; auto-theme switch disabled for dark.",
@@ -8211,12 +8500,14 @@ pub(crate) fn screen_thread_main(
         HashMap::new();
     let mut plugin_loading_message_cache = HashMap::new();
     let mut keybind_intercepts = HashMap::new();
+    let mut last_render_job_at = Instant::now() - RENDER_JOB_COALESCE;
     loop {
         let (event, mut err_ctx) = screen
             .bus
             .recv()
             .context("failed to receive event on channel")?;
-        err_ctx.add_call(ContextType::Screen((&event).into()));
+        let screen_context: ScreenContext = (&event).into();
+        err_ctx.add_call(ContextType::Screen(screen_context));
         // here we start caching resizes, so that we'll send them in bulk at the end of each event
         // when this cache is Dropped, for more information, see the comments in PtyWriter
         let _resize_cache = ResizeCache::new(thread_senders.clone());
@@ -8243,10 +8534,13 @@ pub(crate) fn screen_thread_main(
                         .or_default()
                         .push(ScreenInstruction::PtyBytes(pid, vte_bytes));
                 }
-                let _ = screen
-                    .bus
-                    .senders
-                    .send_to_background_jobs(BackgroundJob::RenderToClients);
+                if last_render_job_at.elapsed() >= RENDER_JOB_COALESCE {
+                    last_render_job_at = Instant::now();
+                    let _ = screen
+                        .bus
+                        .senders
+                        .send_to_background_jobs(BackgroundJob::RenderToClients);
+                }
             },
             ScreenInstruction::PluginBytes(mut plugin_render_assets) => {
                 for plugin_render_asset in plugin_render_assets.iter_mut() {
@@ -8267,6 +8561,10 @@ pub(crate) fn screen_thread_main(
                 screen.render(Some(plugin_render_assets))?;
             },
             ScreenInstruction::Render => {
+                screen.render(None)?;
+            },
+            ScreenInstruction::SendVteInstructionToClients(client_ids, vte_instruction) => {
+                screen.queue_vte_instruction_for_clients(client_ids, vte_instruction);
                 screen.render(None)?;
             },
             ScreenInstruction::RenderToClients => {
@@ -8632,6 +8930,9 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.resize(client_id, strategy),
                     ?
                 );
+                if let Some(tab_id) = screen.active_tab_ids.get(&client_id).copied() {
+                    screen.release_structured_delivery_for_tab(tab_id);
+                }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
@@ -10067,14 +10368,25 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::SetKittyGraphicsSupport {
                 client_id,
                 supported,
+                local_media,
             } => {
-                screen.update_kitty_graphics_support(client_id, supported);
+                screen.update_kitty_graphics_support(client_id, supported, local_media);
             },
             ScreenInstruction::SetSixelSupport {
                 client_id,
                 supported,
             } => {
                 screen.update_sixel_support(client_id, supported);
+            },
+            ScreenInstruction::SetStructuredRenderSupport {
+                client_id,
+                supported,
+            } => {
+                screen.update_structured_render_support(client_id, supported);
+                screen.render(None)?;
+            },
+            ScreenInstruction::RenderFrameAck { client_id, seq } => {
+                screen.handle_render_frame_ack(client_id, seq)?;
             },
             ScreenInstruction::ForwardHostQuery { pane_id, query } => {
                 screen.forward_host_query(pane_id, query);

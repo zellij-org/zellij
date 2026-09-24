@@ -1,4 +1,5 @@
 use super::{crop_rgba, scale_rgba, KittyGrid, KittyPlacement, KittyVerticalAnchor};
+use crate::panes::kitty_graphics::parser::{DecodedImage, KittyCommand, KittyFormat};
 use crate::panes::kitty_graphics::store::KittyImageStore;
 use crate::panes::sixel::PixelRect;
 use std::cell::RefCell;
@@ -282,4 +283,103 @@ fn reverse_index_region_scroll_reaps_fully_below_margin() {
     grid.placements.push(test_placement(60, 20));
     grid.apply_region_scroll(0, 80, -20, 0, 0, false);
     assert_eq!(grid.placements.len(), 0);
+}
+
+fn transmitted(
+    grid: &mut KittyGrid,
+    width: u32,
+    height: u32,
+) -> (u32, super::super::store::InternalImageId) {
+    let command = KittyCommand {
+        image_id: Some(1),
+        pixel_width: Some(width),
+        pixel_height: Some(height),
+        ..Default::default()
+    };
+    let image = DecodedImage {
+        bytes: vec![0u8; (width * height * 4) as usize],
+        width,
+        height,
+        format: KittyFormat::Rgba32,
+    };
+    let pane_image_id = grid.transmit(&command, image).expect("a transmission");
+    let internal = grid.pane_image_id_map()[&pane_image_id];
+    (pane_image_id, internal)
+}
+
+#[test]
+fn an_unscaled_placement_emits_from_its_source_rectangle() {
+    let mut grid = test_grid();
+    let (pane_image_id, internal) = transmitted(&mut grid, 64, 64);
+    let command = KittyCommand {
+        image_id: Some(1),
+        source_x: 8,
+        source_y: 10,
+        source_w: 16,
+        source_h: 20,
+        ..Default::default()
+    };
+    let cell = SizeInPixels {
+        width: 10,
+        height: 20,
+    };
+    grid.place(
+        pane_image_id,
+        internal,
+        &command,
+        (0, 0),
+        cell,
+        KittyVerticalAnchor {
+            canonical_line: 0,
+            offset_px_from_line_start: 0,
+        },
+    )
+    .expect("a placement");
+
+    let mut changed_rects = HashMap::new();
+    changed_rects.insert(0, 2);
+    let chunks = grid.changed_kitty_chunks_in_viewport(changed_rects, 0, 40, 0, 0);
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0].source_px_x, 8);
+    assert_eq!(chunks[0].source_px_y, 10);
+    assert_eq!(chunks[0].source_px_width, 16);
+    assert_eq!(chunks[0].source_px_height, 20);
+}
+
+#[test]
+fn a_scaled_placement_emits_from_the_origin_of_its_cropped_variant() {
+    let mut grid = test_grid();
+    let (pane_image_id, internal) = transmitted(&mut grid, 64, 64);
+    let command = KittyCommand {
+        image_id: Some(1),
+        source_x: 8,
+        source_y: 10,
+        source_w: 16,
+        source_h: 20,
+        columns: 2,
+        rows: 2,
+        ..Default::default()
+    };
+    let cell = SizeInPixels {
+        width: 10,
+        height: 20,
+    };
+    grid.place(
+        pane_image_id,
+        internal,
+        &command,
+        (0, 0),
+        cell,
+        KittyVerticalAnchor {
+            canonical_line: 0,
+            offset_px_from_line_start: 0,
+        },
+    )
+    .expect("a placement");
+
+    let placement = &grid.placements()[0];
+    assert_eq!(placement.emit_x, 0);
+    assert_eq!(placement.emit_y, 0);
+    assert_eq!(placement.source_rect.x, 8);
+    assert_eq!(placement.source_rect.y, 10);
 }

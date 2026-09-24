@@ -118,5 +118,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/atelierbram/atelier-schemes-terminal/blob/master/schemes/base16-ateliersulphurpool.dark.terminal
+        terminal_colors {
+            black 32 39 70
+            red 201 73 34
+            green 172 151 57
+            yellow 192 139 48
+            blue 61 143 209
+            magenta 102 121 204
+            cyan 34 162 201
+            white 151 157 180
+            bright_black 107 115 148
+            bright_red 199 107 41
+            bright_green 41 50 86
+            bright_yellow 94 102 135
+            bright_blue 137 142 164
+            bright_magenta 223 226 241
+            bright_cyan 156 99 122
+            bright_white 245 247 255
+        }
     }
 }

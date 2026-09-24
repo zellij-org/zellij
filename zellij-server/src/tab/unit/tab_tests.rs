@@ -17911,3 +17911,95 @@ fn floating_plugin_panes_are_not_shown_again_when_their_tab_returns_with_the_sur
         "a plugin whose floating surface is hidden should not be told it is visible when its tab returns"
     );
 }
+
+fn left_click_at(row: usize, column: usize, shift: bool) -> zellij_utils::input::mouse::MouseEvent {
+    use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
+    let mut event = MouseEvent::new();
+    event.event_type = MouseEventType::Press;
+    event.left = true;
+    event.shift = shift;
+    event.position = zellij_utils::position::Position::new(row as i32, column as u16);
+    event
+}
+
+#[test]
+pub fn a_click_reaches_a_program_that_asked_for_the_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+
+    tab.handle_mouse_event(&left_click_at(5, 5, false), 1)
+        .unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(
+        writes.iter().any(|write| matches!(
+            write,
+            PtyWriteInstruction::Write(bytes, _, _)
+                if String::from_utf8_lossy(bytes).starts_with("\u{1b}[<0;")
+        )),
+        "expected the click to be forwarded, got {writes:?}"
+    );
+}
+
+#[test]
+pub fn a_shift_click_bypasses_a_program_that_asked_for_the_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+
+    tab.handle_mouse_event(&left_click_at(5, 5, true), 1)
+        .unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(
+        !writes.iter().any(|write| matches!(
+            write,
+            PtyWriteInstruction::Write(bytes, _, _)
+                if String::from_utf8_lossy(bytes).starts_with("\u{1b}[<")
+        )),
+        "shift must hold the click back from the program so the terminal can use it, got {writes:?}"
+    );
+}
+
+#[test]
+pub fn a_shift_right_click_is_still_the_programs_because_the_pane_decides_that_one() {
+    use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
+
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+
+    let mut event = MouseEvent::new();
+    event.event_type = MouseEventType::Press;
+    event.right = true;
+    event.shift = true;
+    event.position = zellij_utils::position::Position::new(5, 5);
+    tab.handle_mouse_event(&event, 1).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(
+        writes.iter().any(|write| matches!(
+            write,
+            PtyWriteInstruction::Write(bytes, _, _)
+                if String::from_utf8_lossy(bytes).starts_with("\u{1b}[<")
+        )),
+        "the right button never consulted terminal_wants_mouse, so shift does not move it; \
+         selection is a left-button gesture, got {writes:?}"
+    );
+}

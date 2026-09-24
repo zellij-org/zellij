@@ -27,6 +27,9 @@ use zellij_utils::input::options::DEFAULT_WORD_SEPARATORS;
 use zellij_utils::position::Position;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
+use zellij_utils::structured_render::{
+    PaneRect, PANE_FOCUSED, PANE_FRAMED, PANE_SELECTABLE, PANE_WANTS_MOUSE,
+};
 
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
@@ -57,7 +60,7 @@ use crate::{
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
-    ClientId, ServerInstruction,
+    ClientId,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -4965,6 +4968,13 @@ impl Tab {
                                     || previous_shape != &desired_cursor_shape
                             })
                             .unwrap_or(true);
+                        output.set_client_cursor(
+                            client_id,
+                            cursor_position_x,
+                            cursor_position_y,
+                            true,
+                            &desired_cursor_shape,
+                        );
                         if output.is_dirty() || cursor_changed_position_or_shape {
                             let show_cursor = "\u{1b}[?25h";
                             let goto_cursor_position = &format!(
@@ -4994,15 +5004,30 @@ impl Tab {
                             cursor_position_y + 1,
                             cursor_position_x + 1,
                         );
+                        output.set_client_cursor(
+                            client_id,
+                            cursor_position_x,
+                            cursor_position_y,
+                            false,
+                            "",
+                        );
                         output.add_post_vte_instruction_to_client(client_id, hide_cursor);
                         output.add_post_vte_instruction_to_client(client_id, goto_cursor_position);
                     } else {
                         let hide_cursor = "\u{1b}[?25l";
+                        output.set_client_cursor(
+                            client_id,
+                            cursor_position_x,
+                            cursor_position_y,
+                            false,
+                            "",
+                        );
                         output.add_post_vte_instruction_to_client(client_id, hide_cursor);
                     }
                 },
                 None => {
                     let hide_cursor = "\u{1b}[?25l";
+                    output.set_client_cursor(client_id, 0, 0, false, "");
                     output.add_post_vte_instruction_to_client(client_id, hide_cursor);
                 },
             }
@@ -6568,33 +6593,27 @@ impl Tab {
     fn write_selection_to_clipboard(&self, selection: &str) -> Result<()> {
         let err_context = || format!("failed to write selection to clipboard: '{}'", selection);
 
-        let mut output = Output::default();
-        let connected_clients: HashSet<ClientId> =
+        let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
-        output.add_clients(&connected_clients, self.link_handler.clone(), None);
-        let client_ids = connected_clients.iter().copied();
-        let clipboard_event =
-            match self
-                .clipboard_provider
-                .set_content(selection, &mut output, client_ids)
-            {
-                Ok(_) => output
-                    .serialize()
-                    .and_then(|serialized_output| {
-                        self.senders
-                            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-                    })
-                    .and_then(|_| {
-                        Ok(Event::CopyToClipboard(
-                            self.clipboard_provider.as_copy_destination(),
-                        ))
-                    })
-                    .with_context(err_context)?,
-                Err(err) => {
-                    Err::<(), _>(err).with_context(err_context).non_fatal();
-                    Event::SystemClipboardFailure
-                },
-            };
+        let clipboard_event = match self.clipboard_provider.set_content(selection) {
+            Ok(None) => Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
+            Ok(Some(vte_instruction)) => self
+                .senders
+                .send_to_screen(ScreenInstruction::SendVteInstructionToClients(
+                    connected_clients,
+                    vte_instruction,
+                ))
+                .and_then(|_| {
+                    Ok(Event::CopyToClipboard(
+                        self.clipboard_provider.as_copy_destination(),
+                    ))
+                })
+                .with_context(err_context)?,
+            Err(err) => {
+                Err::<(), _>(err).with_context(err_context).non_fatal();
+                Event::SystemClipboardFailure
+            },
+        };
         self.senders
             .send_to_plugin(PluginInstruction::Update(vec![(
                 None,
@@ -8084,6 +8103,41 @@ impl Tab {
             pane.toggle_pinned();
             self.set_force_render();
         }
+    }
+}
+
+pub fn pane_rect_for_pane(pane: &Box<dyn Pane>, framed: bool, focused: bool) -> PaneRect {
+    let cell = |value: usize| value.min(u16::MAX as usize) as u16;
+    let inset = |value: usize| value.min(u8::MAX as usize) as u8;
+    let x = pane.x();
+    let y = pane.y();
+    let cols = pane.cols();
+    let rows = pane.rows();
+    let left = pane.get_content_x().saturating_sub(x);
+    let top = pane.get_content_y().saturating_sub(y);
+    let mut flags = 0;
+    if framed {
+        flags |= PANE_FRAMED;
+    }
+    if focused {
+        flags |= PANE_FOCUSED;
+    }
+    if pane.selectable() {
+        flags |= PANE_SELECTABLE;
+    }
+    if pane.terminal_emulator_wants_mouse() {
+        flags |= PANE_WANTS_MOUSE;
+    }
+    PaneRect {
+        x: cell(x),
+        y: cell(y),
+        cols: cell(cols),
+        rows: cell(rows),
+        top: inset(top),
+        bottom: inset(rows.saturating_sub(top + pane.get_content_rows())),
+        left: inset(left),
+        right: inset(cols.saturating_sub(left + pane.get_content_columns())),
+        flags,
     }
 }
 

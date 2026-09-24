@@ -32,6 +32,17 @@ mod web_client_tests {
 
     use std::time::{Duration, Instant};
 
+    async fn wait_until(within: Duration, condition: impl Fn() -> bool) -> bool {
+        let start = Instant::now();
+        while start.elapsed() < within {
+            if condition() {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        condition()
+    }
+
     async fn wait_for_server(port: u16, timeout: Duration) -> Result<(), String> {
         let start = Instant::now();
         let url = format!("http://127.0.0.1:{}/info/version", port);
@@ -458,7 +469,24 @@ mod web_client_tests {
             .await
             .expect("Failed to send terminal input");
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        wait_until(Duration::from_secs(10), || {
+            let sent: Vec<ClientToServerMsg> = factory_for_verification
+                .mock_apis
+                .lock()
+                .unwrap()
+                .values()
+                .flat_map(|mock_api| mock_api.get_sent_messages())
+                .collect();
+            sent.iter()
+                .any(|msg| matches!(msg, ClientToServerMsg::TerminalResize { .. }))
+                && sent.iter().any(|msg| {
+                    matches!(
+                        msg,
+                        ClientToServerMsg::Key { .. } | ClientToServerMsg::Action { .. }
+                    )
+                })
+        })
+        .await;
 
         let mock_apis = factory_for_verification.mock_apis.lock().unwrap();
         let mut found_resize = false;
@@ -1512,7 +1540,14 @@ mod web_client_tests {
 
         let (mut regular_terminal_sink, _regular_terminal_stream) = regular_terminal_ws.split();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        wait_until(Duration::from_secs(10), || {
+            !session_manager_for_verification
+                .first_messages_sent
+                .lock()
+                .unwrap()
+                .is_empty()
+        })
+        .await;
 
         let regular_msg = {
             let all_messages = session_manager_for_verification
@@ -1568,7 +1603,15 @@ mod web_client_tests {
 
         let (mut readonly_terminal_sink, _readonly_terminal_stream) = readonly_terminal_ws.split();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        wait_until(Duration::from_secs(10), || {
+            session_manager_for_verification
+                .first_messages_sent
+                .lock()
+                .unwrap()
+                .len()
+                >= 2
+        })
+        .await;
 
         let readonly_msg = {
             let all_messages = session_manager_for_verification
@@ -1677,7 +1720,14 @@ mod web_client_tests {
 
         let (mut terminal_sink, _terminal_stream) = terminal_ws.split();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        wait_until(Duration::from_secs(10), || {
+            !session_manager_for_verification
+                .first_messages_sent
+                .lock()
+                .unwrap()
+                .is_empty()
+        })
+        .await;
 
         let all_messages = session_manager_for_verification
             .first_messages_sent
@@ -3226,6 +3276,488 @@ mod web_client_tests {
             Some(LayoutInfo::BuiltIn("welcome".to_owned())),
             "welcome=false must not record a pending welcome session"
         );
+    }
+
+    struct AttachedTestClient {
+        web_client_id: String,
+        control_sink: futures_util::stream::SplitSink<
+            tokio_tungstenite::WebSocketStream<
+                tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+            >,
+            Message,
+        >,
+        control_stream: futures_util::stream::SplitStream<
+            tokio_tungstenite::WebSocketStream<
+                tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+            >,
+        >,
+        terminal_stream: futures_util::stream::SplitStream<
+            tokio_tungstenite::WebSocketStream<
+                tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+            >,
+        >,
+        os_api: Arc<MockClientOsApi>,
+    }
+
+    impl AttachedTestClient {
+        async fn send_control(&mut self, payload: WebClientToWebServerControlMessagePayload) {
+            let message = WebClientToWebServerControlMessage {
+                web_client_id: self.web_client_id.clone(),
+                payload,
+            };
+            self.control_sink
+                .send(Message::Text(
+                    serde_json::to_string(&message).unwrap().into(),
+                ))
+                .await
+                .expect("failed to send a control message");
+        }
+
+        async fn next_control(&mut self) -> Option<serde_json::Value> {
+            self.next_control_within(Duration::from_secs(2)).await
+        }
+
+        async fn next_control_within(&mut self, within: Duration) -> Option<serde_json::Value> {
+            match timeout(within, self.control_stream.next()).await {
+                Ok(Some(Ok(Message::Text(text)))) => Some(serde_json::from_str(&text).unwrap()),
+                _ => None,
+            }
+        }
+
+        async fn next_terminal(&mut self) -> Option<Message> {
+            self.next_terminal_within(Duration::from_secs(2)).await
+        }
+
+        async fn next_terminal_within(&mut self, within: Duration) -> Option<Message> {
+            match timeout(within, self.terminal_stream.next()).await {
+                Ok(Some(Ok(message))) => Some(message),
+                _ => None,
+            }
+        }
+
+        async fn drain_terminal(&mut self) -> Vec<Message> {
+            let mut drained = vec![];
+            while let Some(message) = self.next_terminal_within(Duration::from_millis(300)).await {
+                drained.push(message);
+            }
+            drained
+        }
+
+        fn sent_to_session(&self) -> Vec<ClientToServerMsg> {
+            self.os_api.get_sent_messages()
+        }
+    }
+
+    async fn attach_test_client(
+        port: u16,
+        session_token: &str,
+        factory: &MockClientOsApiFactory,
+        structured: bool,
+    ) -> AttachedTestClient {
+        let web_client_id = create_client_session(port, session_token).await;
+        let os_api = factory
+            .mock_apis
+            .lock()
+            .unwrap()
+            .values()
+            .last()
+            .cloned()
+            .expect("the session request must have created a client os api");
+
+        let control_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/control?web_client_id={}",
+            port, web_client_id
+        );
+        let (control_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&control_ws_url, session_token),
+        )
+        .await
+        .expect("control websocket connection timed out")
+        .expect("failed to connect to the control websocket");
+        let (control_sink, control_stream) = control_ws.split();
+
+        let terminal_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/terminal/structured-test-session?web_client_id={}&rows=24&cols=80{}",
+            port,
+            web_client_id,
+            if structured { "&structured=true" } else { "" }
+        );
+        let (terminal_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&terminal_ws_url, session_token),
+        )
+        .await
+        .expect("terminal websocket connection timed out")
+        .expect("failed to connect to the terminal websocket");
+        let (_terminal_sink, terminal_stream) = terminal_ws.split();
+
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        AttachedTestClient {
+            web_client_id,
+            control_sink,
+            control_stream,
+            terminal_stream,
+            os_api,
+        }
+    }
+
+    async fn spawn_structured_test_server() -> (
+        u16,
+        tokio::task::JoinHandle<()>,
+        Arc<MockClientOsApiFactory>,
+    ) {
+        let session_manager = Arc::new(MockSessionManager::with_all_sessions_existing());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let factory_for_verification = client_os_api_factory.clone();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(serve_web_client(
+            Config::default(),
+            Options::default(),
+            Some(temp_config_path),
+            listener,
+            None,
+            Some(session_manager),
+            Some(client_os_api_factory),
+            addr.ip(),
+            port,
+        ));
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        (port, server_handle, factory_for_verification)
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_structured_client_declares_itself_and_is_served_frames() {
+        let _ = delete_db();
+        let test_token_name = "test_token_structured_client";
+        let (auth_token, _) =
+            create_token(Some(test_token_name.to_string()), false).expect("token");
+
+        let (port, server_handle, factory) = spawn_structured_test_server().await;
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let mut client = attach_test_client(port, &session_token, &factory, true).await;
+
+        wait_until(Duration::from_secs(10), || {
+            client
+                .sent_to_session()
+                .contains(&ClientToServerMsg::StructuredRenderSupport { supported: true })
+        })
+        .await;
+        let declarations = client.sent_to_session();
+        assert!(
+            declarations.contains(&ClientToServerMsg::StructuredRenderSupport { supported: true }),
+            "a structured client must be declared to the session, got {:?}",
+            declarations
+        );
+        assert!(
+            declarations.contains(&ClientToServerMsg::KittyGraphicsSupport {
+                supported: true,
+                local_media: false
+            }),
+            "a remote structured client gets inline kitty graphics and no shared-file media, got {:?}",
+            declarations
+        );
+        assert!(
+            declarations.contains(&ClientToServerMsg::SixelSupport { supported: true }),
+            "a remote structured client gets sixel, got {:?}",
+            declarations
+        );
+        assert!(
+            !declarations.iter().any(|msg| matches!(
+                msg,
+                ClientToServerMsg::ForegroundColor { .. }
+                    | ClientToServerMsg::BackgroundColor { .. }
+                    | ClientToServerMsg::ColorRegisters { .. }
+            )),
+            "a window answers host queries with its own colours, so the web server seeds none \
+             on its behalf, got {:?}",
+            declarations
+        );
+
+        client
+            .os_api
+            .queue_server_message(ServerToClientMsg::RenderFrame {
+                frame: vec![7, 8, 9],
+            });
+        assert_eq!(
+            client.next_terminal().await,
+            Some(Message::Binary(vec![7, 8, 9].into())),
+            "a render frame must reach a structured client as a binary message"
+        );
+
+        client
+            .send_control(WebClientToWebServerControlMessagePayload::RenderFrameAck { seq: 42 })
+            .await;
+        wait_until(Duration::from_secs(10), || {
+            client
+                .sent_to_session()
+                .contains(&ClientToServerMsg::RenderFrameAck { seq: 42 })
+        })
+        .await;
+        assert!(
+            client
+                .sent_to_session()
+                .contains(&ClientToServerMsg::RenderFrameAck { seq: 42 }),
+            "an acknowledgement must reach the session, got {:?}",
+            client.sent_to_session()
+        );
+
+        client
+            .os_api
+            .queue_server_message(ServerToClientMsg::HostTerminalThemeChanged {
+                mode: zellij_utils::data::HostTerminalThemeMode::Light,
+            });
+        let theme = client.next_control().await.expect("no theme message");
+        assert_eq!(theme["type"], "HostTerminalThemeChanged");
+        assert_eq!(theme["mode"], "Light");
+
+        client
+            .os_api
+            .queue_server_message(ServerToClientMsg::ForwardQueryToHost {
+                token: 11,
+                query_bytes: b"\x1b]11;?\x07".to_vec(),
+                resolve_async: false,
+            });
+        let query = client.next_control().await.expect("no host query");
+        assert_eq!(query["type"], "ForwardQueryToHost");
+        assert_eq!(query["token"], 11);
+        assert!(
+            !client
+                .sent_to_session()
+                .iter()
+                .any(|msg| matches!(msg, ClientToServerMsg::ForwardedReplyFromHost { .. })),
+            "the web server must not answer a structured client's host query for it"
+        );
+
+        client
+            .send_control(
+                WebClientToWebServerControlMessagePayload::ForwardedReplyFromHost {
+                    token: 11,
+                    reply_bytes: b"\x1b]11;rgb:0000/0000/0000\x07".to_vec(),
+                },
+            )
+            .await;
+        wait_until(Duration::from_secs(10), || {
+            client.sent_to_session().iter().any(|msg| {
+                matches!(msg, ClientToServerMsg::ForwardedReplyFromHost { token: 11, .. })
+            })
+        })
+        .await;
+        assert!(
+            client
+                .sent_to_session()
+                .contains(&ClientToServerMsg::ForwardedReplyFromHost {
+                    token: 11,
+                    reply_bytes: b"\x1b]11;rgb:0000/0000/0000\x07".to_vec(),
+                }),
+            "the client's own reply must reach the pane, got {:?}",
+            client.sent_to_session()
+        );
+
+        let key = zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char('a'))
+            .with_ctrl_modifier();
+        let mut mouse = zellij_utils::input::mouse::MouseEvent::new();
+        mouse.wheel_left = true;
+        client
+            .send_control(WebClientToWebServerControlMessagePayload::Key {
+                key: key.clone(),
+                raw_bytes: vec![0x01],
+                is_kitty_keyboard_protocol: false,
+            })
+            .await;
+        client
+            .send_control(WebClientToWebServerControlMessagePayload::Mouse { event: mouse })
+            .await;
+        client
+            .send_control(WebClientToWebServerControlMessagePayload::Paste {
+                chars: "pasted".to_owned(),
+            })
+            .await;
+        client
+            .send_control(WebClientToWebServerControlMessagePayload::Text {
+                chars: "\u{4f60}\u{597d}".to_owned(),
+            })
+            .await;
+        client
+            .send_control(WebClientToWebServerControlMessagePayload::Detach)
+            .await;
+        wait_until(Duration::from_secs(10), || {
+            client.sent_to_session().contains(&ClientToServerMsg::Action {
+                action: zellij_utils::input::actions::Action::Detach,
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            })
+        })
+        .await;
+        let typed = client.sent_to_session();
+        assert!(
+            typed.contains(&ClientToServerMsg::Key {
+                key,
+                raw_bytes: vec![0x01],
+                is_kitty_keyboard_protocol: false,
+            }),
+            "a structured client's key reaches the session typed, got {:?}",
+            typed
+        );
+        for action in [
+            zellij_utils::input::actions::Action::MouseEvent { event: mouse },
+            zellij_utils::input::actions::Action::Paste {
+                chars: "pasted".to_owned(),
+                pane_id: None,
+            },
+            zellij_utils::input::actions::Action::WriteChars {
+                chars: "\u{4f60}\u{597d}".to_owned(),
+            },
+            zellij_utils::input::actions::Action::Detach,
+        ] {
+            assert!(
+                typed.contains(&ClientToServerMsg::Action {
+                    action: action.clone(),
+                    terminal_id: None,
+                    client_id: None,
+                    is_cli_client: false,
+                }),
+                "a structured client's {:?} reaches the session, got {:?}",
+                action,
+                typed
+            );
+        }
+
+        client.os_api.queue_server_message(ServerToClientMsg::Exit {
+            exit_reason: zellij_utils::ipc::ExitReason::NormalDetached,
+        });
+        let exit = client.next_control().await.expect("no exit message");
+        assert_eq!(
+            exit["type"], "Exit",
+            "a window is told why it left, rather than having it painted at it"
+        );
+        assert_eq!(exit["reason"], "NormalDetached");
+
+        server_handle.abort();
+        revoke_token(test_token_name).expect("Failed to revoke test token");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_browser_client_is_untouched_by_the_structured_path() {
+        let _ = delete_db();
+        let test_token_name = "test_token_browser_unchanged";
+        let (auth_token, _) =
+            create_token(Some(test_token_name.to_string()), false).expect("token");
+
+        let (port, server_handle, factory) = spawn_structured_test_server().await;
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let mut client = attach_test_client(port, &session_token, &factory, false).await;
+
+        let declarations = client.sent_to_session();
+        assert!(
+            !declarations.iter().any(|msg| matches!(
+                msg,
+                ClientToServerMsg::StructuredRenderSupport { .. }
+                    | ClientToServerMsg::KittyGraphicsSupport { .. }
+                    | ClientToServerMsg::SixelSupport { .. }
+            )),
+            "a browser declares no render or graphics capability, got {:?}",
+            declarations
+        );
+
+        client
+            .os_api
+            .queue_server_message(ServerToClientMsg::Render {
+                content: "hello".to_owned(),
+            });
+        let rendered = client.drain_terminal().await;
+        assert!(
+            !rendered.is_empty() && rendered.iter().all(|m| matches!(m, Message::Text(_))),
+            "ansi output reaches a browser as text, got {:?}",
+            rendered
+        );
+
+        client
+            .os_api
+            .queue_server_message(ServerToClientMsg::RenderFrame {
+                frame: vec![7, 8, 9],
+            });
+        client
+            .os_api
+            .queue_server_message(ServerToClientMsg::HostTerminalThemeChanged {
+                mode: zellij_utils::data::HostTerminalThemeMode::Light,
+            });
+        client
+            .os_api
+            .queue_server_message(ServerToClientMsg::ForwardQueryToHost {
+                token: 11,
+                query_bytes: b"\x1b]11;?\x07".to_vec(),
+                resolve_async: false,
+            });
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        assert!(
+            client
+                .next_terminal_within(Duration::from_millis(300))
+                .await
+                .is_none(),
+            "a browser must never be sent a render frame"
+        );
+        assert!(
+            client
+                .next_control_within(Duration::from_millis(300))
+                .await
+                .is_none(),
+            "a browser must be sent neither the theme mode nor a host query"
+        );
+        assert!(
+            client
+                .sent_to_session()
+                .contains(&ClientToServerMsg::ForwardedReplyFromHost {
+                    token: 11,
+                    reply_bytes: Vec::new(),
+                }),
+            "the browser path still answers a host query with an empty reply, got {:?}",
+            client.sent_to_session()
+        );
+        assert!(
+            client
+                .sent_to_session()
+                .iter()
+                .any(|msg| matches!(msg, ClientToServerMsg::ColorRegisters { .. })),
+            "the browser path still seeds the host-query cache from its configuration, got {:?}",
+            client.sent_to_session()
+        );
+
+        let before = client.sent_to_session().len();
+        client
+            .send_control(WebClientToWebServerControlMessagePayload::Detach)
+            .await;
+        client
+            .send_control(WebClientToWebServerControlMessagePayload::Paste {
+                chars: "pasted".to_owned(),
+            })
+            .await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(
+            client.sent_to_session().len(),
+            before,
+            "a browser cannot reach the structured client's typed input lane, got {:?}",
+            client.sent_to_session()
+        );
+
+        server_handle.abort();
+        revoke_token(test_token_name).expect("Failed to revoke test token");
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
 }
 

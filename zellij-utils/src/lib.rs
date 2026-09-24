@@ -18,6 +18,7 @@ pub mod position;
 pub mod session_serialization;
 pub mod setup;
 pub mod shared;
+pub mod structured_render;
 
 // The following modules can't be used when targeting wasm
 #[cfg(not(target_family = "wasm"))]

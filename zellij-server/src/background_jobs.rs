@@ -28,6 +28,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
+use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::panes::PaneId;
@@ -122,7 +123,37 @@ static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_METADATA_WRITE_INTERVAL_MS: u64 = 1000;
 static UPDATE_AND_REPORT_CWDS_INTERVAL_MS: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
-static REPAINT_DELAY_MS: u64 = 10;
+pub static REPAINT_DELAY_MS: u64 = 10;
+
+#[derive(Debug, PartialEq, Eq)]
+enum RepaintWindowStep {
+    Render,
+    Close,
+}
+
+fn repaint_window_step(
+    last_render_request: &mut Option<Instant>,
+    window_start: &mut Instant,
+    owed_trailing_renders: &mut u8,
+    now: Instant,
+) -> RepaintWindowStep {
+    match *last_render_request {
+        Some(request) if request > *window_start => {
+            *window_start = now;
+            *last_render_request = Some(now);
+            *owed_trailing_renders = 1;
+            RepaintWindowStep::Render
+        },
+        _ if *owed_trailing_renders > 0 => {
+            *owed_trailing_renders -= 1;
+            RepaintWindowStep::Render
+        },
+        _ => {
+            *last_render_request = None;
+            RepaintWindowStep::Close
+        },
+    }
+}
 static HELP_TEXT_DEBOUNCE_DURATION: u64 = 5000;
 static COMMAND_OUTPUT_FLASH_DURATION_MS: u64 = 400;
 
@@ -452,49 +483,38 @@ pub(crate) fn background_jobs_main(
                 }
             },
             BackgroundJob::RenderToClients => {
-                // last_render_request being Some() represents a render request that is pending
-                // last_render_request is only ever set to Some() if an async task is spawned to
-                // send the actual render instruction
-                //
-                // given this:
-                // - if last_render_request is None and we received this job, we should spawn an
-                // async task to send the render instruction and log the current task time
-                // - if last_render_request is Some(), it means we're currently waiting to render,
-                // so we should log the render request and do nothing, once the async task has
-                // finished running, it will check to see if the render time was updated while it
-                // was running, and if so send this instruction again so the process can start anew
-                let (should_run_task, current_time) = {
+                let (window_is_closed, current_time) = {
                     let mut last_render_request = last_render_request.lock().unwrap();
-                    let should_run_task = last_render_request.is_none();
+                    let window_is_closed = last_render_request.is_none();
                     let current_time = Instant::now();
                     *last_render_request = Some(current_time);
-                    (should_run_task, current_time)
+                    (window_is_closed, current_time)
                 };
-                if should_run_task {
-                    runtime.spawn({
+                if window_is_closed {
+                    let _ = bus
+                        .senders
+                        .send_to_screen_priority(ScreenInstruction::RenderToClients);
+                    let _ = thread::Builder::new().name("repaint".to_string()).spawn({
                         let senders = bus.senders.clone();
                         let last_render_request = last_render_request.clone();
-                        let task_start_time = current_time;
-                        async move {
-                            tokio::time::sleep(std::time::Duration::from_millis(REPAINT_DELAY_MS))
-                                .await;
-                            let _ = senders.send_to_screen(ScreenInstruction::RenderToClients);
-                            {
+                        let mut window_start = current_time;
+                        let mut owed_trailing_renders = 1u8;
+                        move || loop {
+                            thread::sleep(Duration::from_millis(REPAINT_DELAY_MS));
+                            let step = {
                                 let mut last_render_request = last_render_request.lock().unwrap();
-                                if let Some(last_render_request) = *last_render_request {
-                                    if last_render_request > task_start_time {
-                                        // another render request was received while we were
-                                        // sleeping, schedule this job again so that we can also
-                                        // render that request
-                                        let _ = senders.send_to_background_jobs(
-                                            BackgroundJob::RenderToClients,
-                                        );
-                                    }
-                                }
-                                // reset the last_render_request so that the task will be spawned
-                                // again once a new request is received
-                                *last_render_request = None;
+                                repaint_window_step(
+                                    &mut last_render_request,
+                                    &mut window_start,
+                                    &mut owed_trailing_renders,
+                                    Instant::now(),
+                                )
+                            };
+                            if step == RepaintWindowStep::Close {
+                                break;
                             }
+                            let _ =
+                                senders.send_to_screen_priority(ScreenInstruction::RenderToClients);
                         }
                     });
                 }
@@ -1019,5 +1039,89 @@ mod tests {
         for name in ["live-a", "live-b", "live-c"] {
             assert!(!resurrectable.contains_key(name));
         }
+    }
+}
+
+#[cfg(test)]
+mod repaint_window_tests {
+    use super::*;
+
+    fn step(
+        last_render_request: &mut Option<Instant>,
+        window_start: &mut Instant,
+        owed: &mut u8,
+    ) -> RepaintWindowStep {
+        let now = *window_start + Duration::from_millis(REPAINT_DELAY_MS);
+        repaint_window_step(last_render_request, window_start, owed, now)
+    }
+
+    #[test]
+    fn a_window_with_no_further_requests_pays_one_trailing_render_before_closing() {
+        let opened_at = Instant::now();
+        let mut last_render_request = Some(opened_at);
+        let mut window_start = opened_at;
+        let mut owed = 1;
+
+        assert_eq!(
+            step(&mut last_render_request, &mut window_start, &mut owed),
+            RepaintWindowStep::Render,
+            "the render emitted when the window opened may have preempted unparsed output"
+        );
+        assert_eq!(
+            step(&mut last_render_request, &mut window_start, &mut owed),
+            RepaintWindowStep::Close
+        );
+        assert_eq!(last_render_request, None);
+    }
+
+    #[test]
+    fn a_newer_request_keeps_the_window_open_and_re_arms_the_trailing_render() {
+        let opened_at = Instant::now();
+        let mut window_start = opened_at;
+        let mut owed = 1;
+
+        let mut last_render_request = Some(opened_at + Duration::from_millis(1));
+        assert_eq!(
+            step(&mut last_render_request, &mut window_start, &mut owed),
+            RepaintWindowStep::Render
+        );
+        assert_eq!(
+            owed, 1,
+            "a coalesced render must re-arm the trailing render"
+        );
+        assert_eq!(
+            step(&mut last_render_request, &mut window_start, &mut owed),
+            RepaintWindowStep::Render
+        );
+        assert_eq!(
+            step(&mut last_render_request, &mut window_start, &mut owed),
+            RepaintWindowStep::Close
+        );
+    }
+
+    #[test]
+    fn a_request_arriving_during_the_trailing_render_reopens_the_window() {
+        let opened_at = Instant::now();
+        let mut last_render_request = Some(opened_at);
+        let mut window_start = opened_at;
+        let mut owed = 1;
+
+        assert_eq!(
+            step(&mut last_render_request, &mut window_start, &mut owed),
+            RepaintWindowStep::Render
+        );
+        last_render_request = Some(window_start + Duration::from_micros(1));
+        assert_eq!(
+            step(&mut last_render_request, &mut window_start, &mut owed),
+            RepaintWindowStep::Render
+        );
+        assert_eq!(
+            step(&mut last_render_request, &mut window_start, &mut owed),
+            RepaintWindowStep::Render
+        );
+        assert_eq!(
+            step(&mut last_render_request, &mut window_start, &mut owed),
+            RepaintWindowStep::Close
+        );
     }
 }

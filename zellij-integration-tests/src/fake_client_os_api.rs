@@ -18,6 +18,7 @@ type ServerSpawner = Box<dyn FnOnce(PathBuf) + Send>;
 fn server_message_name(msg: &ServerToClientMsg) -> String {
     match msg {
         ServerToClientMsg::Render { .. } => "Render",
+        ServerToClientMsg::RenderFrame { .. } => "RenderFrame",
         ServerToClientMsg::UnblockInputThread => "UnblockInputThread",
         ServerToClientMsg::Exit { .. } => "Exit",
         ServerToClientMsg::Connected => "Connected",
@@ -36,6 +37,7 @@ fn server_message_name(msg: &ServerToClientMsg) -> String {
         ServerToClientMsg::ForwardQueryToHost { .. } => "ForwardQueryToHost",
         ServerToClientMsg::MobileState { .. } => "MobileState",
         ServerToClientMsg::EmitNestedSessionFrame { .. } => "EmitNestedSessionFrame",
+        ServerToClientMsg::HostTerminalThemeChanged { .. } => "HostTerminalThemeChanged",
     }
     .to_string()
 }

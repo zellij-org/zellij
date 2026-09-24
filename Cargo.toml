@@ -16,6 +16,7 @@ rust-version.workspace = true
 
 [dependencies]
 zellij-client = { path = "zellij-client/", version = "0.46.0" }
+zellij-window = { path = "zellij-window/", version = "0.46.0", optional = true }
 zellij-server = { path = "zellij-server/", version = "0.46.0" }
 zellij-utils = { workspace = true }
 anyhow = { workspace = true }
@@ -61,9 +62,11 @@ members = [
     "zellij-utils",
     "zellij-tile",
     "zellij-tile-utils",
+    "zellij-window",
     "xtask",
     ".",
 ]
+default-members = ["."]
 
 [workspace.package]
 edition = "2021"
@@ -74,8 +77,10 @@ version = "0.46.0"
 rust-version = "1.95"
 
 [workspace.dependencies]
+alacritty_terminal = { version = "0.26", default-features = false }
 ansi_term = { version = "0.12.1", default-features = false }
 anyhow = { version = "1.0.70", default-features = false, features = ["backtrace", "std"] }
+arboard = { version = "3.6", default-features = false, features = ["wayland-data-control"] }
 async-trait = { version = "0.1", default-features = false }
 chrono = { version = "0.4.19", default-features = false, features = ["std", "clock"] }
 clap = { version = "4.6", default-features = false, features = ["std", "color", "help", "usage", "error-context", "suggestions", "wrap_help", "derive", "env"] }
@@ -83,18 +88,24 @@ crossterm = { version = "0.29", default-features = false, features = ["windows"]
 daemonize = { package = "daemonix", version = "0.1", default-features = false }
 dialoguer = { version = "0.11", default-features = false, features = ["password", "completion"] }
 fuzzy-matcher = { version = "0.3.7", default-features = false }
+glow = { version = "0.17", default-features = false }
+glutin = { version = "0.32", default-features = false, features = ["egl", "x11", "wayland", "libloading"] }
+glutin-winit = { version = "0.5", default-features = false, features = ["egl", "x11", "wayland"] }
 humantime = { version = "2.1.0", default-features = false }
 interprocess = { version = "2.2", default-features = false, features = ["tokio"] }
 isahc = { version = "1.7.2", default-features = false, features = ["http2", "text-decoding"] }
 kdl = { version = "4.5.0", default-features = false, features = ["span"] }
+khronos-egl = { version = "6.0", default-features = false, features = ["1_5", "dynamic"] }
 lazy_static = { version = "1.4.0", default-features = false }
 libc = { version = "0.2", default-features = false, features = ["std"] }
+libloading = { version = "0.8", default-features = false }
 log = { version = "0.4.17", default-features = false }
 miette = { version = "7.6", default-features = false, features = ["derive", "fancy"] }
 nix = { version = "0.30", default-features = false }
 notify-debouncer-full = { version = "0.5", default-features = false }
 notify = { version = "8.2", default-features = false, features = ["macos_kqueue"] }
 num_cpus = { version = "1.16", default-features = false }
+png = { version = "0.17", default-features = false }
 pretty-bytes = { version = "0.2.2", default-features = false }
 prost = { version = "0.12.6", default-features = false, features = ["std", "prost-derive"] }
 rand = { version = "0.10.2", default-features = false, features = ["std", "std_rng", "thread_rng"] }
@@ -106,6 +117,7 @@ strip-ansi-escapes = { version = "0.2.1", default-features = false }
 strum = { version = "0.28.0", default-features = false, features = ["std"] }
 strum_macros = { version = "0.28.0", default-features = false }
 suggest = { version = "0.5.1", default-features = false }
+swash = { version = "0.2", default-features = false, features = ["scale", "render", "std"] }
 tempfile = { version = "3.2.0", default-features = false }
 tokio = { version = "1.40", default-features = false, features = ["fs", "rt-multi-thread", "macros", "time", "process", "signal", "io-util", "io-std", "net"] }
 thiserror = { version = "2.0.18", default-features = false, features = ["std"] }
@@ -115,9 +127,11 @@ url = { version = "2.2.2", default-features = false, features = ["serde"] }
 uuid = { version = "1.4.1", default-features = false, features = ["serde", "v4", "std"] }
 vte = { version = "0.15", default-features = false, features = ["std"] }
 windows-sys = { version = "0.59", default-features = false }
+winit = { version = "0.30", default-features = false, features = ["x11", "wayland", "wayland-dlopen", "rwh_06"] }
 names = { version = "0.14.0", default-features = false }
 include_dir = { version = "0.7.3", default-features = false }
 sha2 = { version = "0.11", default-features = false }
+zellij-server = { path = "zellij-server/", version = "0.46.0" }
 zellij-utils = { path = "zellij-utils/", version = "0.46.0" }
 
 [profile.dev]
@@ -150,12 +164,25 @@ pkg-fmt = "tgz"
 
 [features]
 # See remarks in zellij_utils/Cargo.toml
-default = ["plugins_from_target", "vendored_curl", "web_server_capability"]
+default = ["plugins_from_target", "vendored_curl", "web_server_capability", "window"]
+window = ["dep:zellij-window"]
 plugins_from_target = ["zellij-utils/plugins_from_target"]
 disable_automatic_asset_installation = ["zellij-utils/disable_automatic_asset_installation"]
 vendored_curl = ["zellij-utils/vendored_curl"]
 unstable = ["zellij-client/unstable", "zellij-utils/unstable"]
-web_server_capability = ["zellij-client/web_server_capability", "zellij-server/web_server_capability", "zellij-utils/web_server_capability"]
+web_server_capability = ["zellij-client/web_server_capability", "zellij-server/web_server_capability", "zellij-utils/web_server_capability", "zellij-window?/web_server_capability"]
+
+[profile.dev.package.zellij-window]
+opt-level = 2
+
+[profile.dev.package.png]
+opt-level = 3
+
+[profile.dev.package.alacritty_terminal]
+opt-level = 3
+
+[profile.dev.package.swash]
+opt-level = 3
 
 # uncomment this when developing plugins in the Zellij UI to make plugin compilation faster
 # [profile.dev.package."*"]

@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
-use zellij_utils::{input::config::Config, ipc::MobileStatePayload, pane_size::Size};
+use zellij_utils::{
+    data::{HostTerminalThemeMode, KeyWithModifier},
+    input::config::Config,
+    input::mouse::MouseEvent,
+    ipc::{ExitReason, MobileStatePayload},
+    pane_size::Size,
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 
@@ -8,7 +14,7 @@ pub struct WebClientToWebServerControlMessage {
     pub payload: WebClientToWebServerControlMessagePayload,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "type")]
 pub enum WebClientToWebServerControlMessagePayload {
     TerminalResize(Size),
@@ -32,11 +38,46 @@ pub enum WebClientToWebServerControlMessagePayload {
         single_pane: bool,
         fit: bool,
     },
+    RenderFrameAck {
+        seq: u64,
+    },
+    ForwardedReplyFromHost {
+        token: u32,
+        reply_bytes: Vec<u8>,
+    },
+    Key {
+        key: KeyWithModifier,
+        raw_bytes: Vec<u8>,
+        is_kitty_keyboard_protocol: bool,
+    },
+    Mouse {
+        event: MouseEvent,
+    },
+    Paste {
+        chars: String,
+    },
+    Text {
+        chars: String,
+    },
+    Detach,
     #[serde(other)]
     Unknown,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl WebClientToWebServerControlMessagePayload {
+    pub fn needs_a_structured_client(&self) -> bool {
+        matches!(
+            self,
+            WebClientToWebServerControlMessagePayload::Key { .. }
+                | WebClientToWebServerControlMessagePayload::Mouse { .. }
+                | WebClientToWebServerControlMessagePayload::Paste { .. }
+                | WebClientToWebServerControlMessagePayload::Text { .. }
+                | WebClientToWebServerControlMessagePayload::Detach
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct TerminalMetricsPayload {
     pub cell_pixel_width: usize,
     pub cell_pixel_height: usize,
@@ -44,19 +85,40 @@ pub struct TerminalMetricsPayload {
     pub text_area_pixel_height: usize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "type")]
 pub enum WebServerToWebClientControlMessage {
     SetConfig(SetConfigPayload),
     QueryTerminalSize,
-    Log { lines: Vec<String> },
-    LogError { lines: Vec<String> },
-    SwitchedSession { new_session_name: String },
-    SetSoftKeyboard { on: bool },
-    MobileState { payload: MobileStatePayload },
+    Log {
+        lines: Vec<String>,
+    },
+    LogError {
+        lines: Vec<String>,
+    },
+    SwitchedSession {
+        new_session_name: String,
+    },
+    SetSoftKeyboard {
+        on: bool,
+    },
+    MobileState {
+        payload: MobileStatePayload,
+    },
+    HostTerminalThemeChanged {
+        mode: HostTerminalThemeMode,
+    },
+    ForwardQueryToHost {
+        token: u32,
+        query_bytes: Vec<u8>,
+        resolve_async: bool,
+    },
+    Exit {
+        reason: ExitReason,
+    },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct SetConfigPayload {
     pub font: String,
     pub theme: SetConfigPayloadTheme,
@@ -70,7 +132,7 @@ pub struct SetConfigPayload {
     pub font_size: Option<u16>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SetConfigPayloadTheme {
     #[serde(skip_serializing_if = "Option::is_none")]

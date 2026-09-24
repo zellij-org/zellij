@@ -116,5 +116,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/mattly/iterm-colors-pencil/blob/master/src/build.rb (light)
+        terminal_colors {
+            black 33 33 33
+            red 195 7 113
+            green 16 167 120
+            yellow 168 156 20
+            blue 0 142 196
+            magenta 82 60 121
+            cyan 32 165 186
+            white 217 217 217
+            bright_black 66 66 66
+            bright_red 251 0 122
+            bright_green 95 215 175
+            bright_yellow 243 228 48
+            bright_blue 32 187 252
+            bright_magenta 104 85 222
+            bright_cyan 79 184 204
+            bright_white 241 241 241
+        }
     }
 }

@@ -10,8 +10,11 @@ use crate::panes::sixel::SixelImageStore;
 use crate::panes::terminal_character::AnsiCode;
 use crate::panes::{LinkHandler, PaneId, Row, TerminalCharacter};
 use crate::ClientId;
+use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
+use base64::engine::Engine as _;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size, SizeInPixels};
 
@@ -30,6 +33,8 @@ fn create_test_output() -> Output {
         styled_underlines,
         osc8_hyperlinks,
         Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(HashMap::new())),
         Rc::new(RefCell::new(HashMap::new())),
         Rc::new(RefCell::new(HashMap::new())),
         Rc::new(RefCell::new(HashMap::new())),
@@ -255,7 +260,7 @@ fn test_serialize_single_client_simple_text() {
     let result = output.serialize().unwrap();
     assert_eq!(result.len(), 1, "Should have one client in result");
 
-    let client_output = result.get(&1).unwrap();
+    let client_output = result.get(&1).unwrap().ansi();
     // Verify contains goto instruction (y+1, x+1 for 1-indexed VTE)
     assert!(
         client_output.contains("\u{1b}[11;6H"),
@@ -290,13 +295,13 @@ fn test_serialize_multiple_clients() {
     let result = output.serialize().unwrap();
     assert_eq!(result.len(), 2, "Should have two clients in result");
 
-    let client1_output = result.get(&1).unwrap();
+    let client1_output = result.get(&1).unwrap().ansi();
     assert!(
         client1_output.contains("Hello"),
         "Client 1 should contain 'Hello'"
     );
 
-    let client2_output = result.get(&2).unwrap();
+    let client2_output = result.get(&2).unwrap().ansi();
     assert!(
         client2_output.contains("World"),
         "Client 2 should contain 'World'"
@@ -318,7 +323,7 @@ fn test_serialize_with_pre_and_post_vte_instructions() {
     output.add_post_vte_instruction_to_client(1, "\u{1b}[?25h");
 
     let result = output.serialize().unwrap();
-    let client_output = result.get(&1).unwrap();
+    let client_output = result.get(&1).unwrap().ansi();
 
     // Verify correct ordering
     let pre_vte_pos = client_output.find("\u{1b}[?1049h").unwrap();
@@ -537,6 +542,256 @@ fn test_serialize_with_size_hides_cursor_when_cropped() {
     );
 }
 
+fn create_watcher_output(watcher_id: ClientId, watcher_size: Size) -> Output {
+    let structured_render_clients = Rc::new(RefCell::new(HashMap::new()));
+    {
+        let mut clients = structured_render_clients.borrow_mut();
+        let state = clients
+            .entry(watcher_id)
+            .or_insert_with(super::super::StructuredClientState::default);
+        state.enabled = true;
+        state.reset_viewport(watcher_size);
+    }
+    Output::new(
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(Some(SizeInPixels {
+            height: 20,
+            width: 10,
+        }))),
+        true,
+        true,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(HashMap::new())),
+        structured_render_clients,
+    )
+}
+
+fn watcher_text(frame: &[u8], cols: usize, rows: usize) -> Vec<String> {
+    let view = zellij_utils::structured_render::decode(frame).expect("the frame must decode");
+    let mut screen = vec![vec![' '; cols]; rows];
+    for (record, cells) in view.rows() {
+        for (offset, cell) in cells.iter().enumerate() {
+            screen[record.y as usize][record.x0 as usize + offset] =
+                char::from_u32(cell.ch).unwrap_or(' ');
+        }
+    }
+    screen
+        .into_iter()
+        .map(|row| row.into_iter().collect())
+        .collect()
+}
+
+#[test]
+fn a_watcher_frame_is_cropped_to_a_watcher_smaller_than_the_screen_it_follows() {
+    let followed_id = 1;
+    let watcher_id = 2;
+    let watcher_size = Size { rows: 10, cols: 20 };
+    let mut output = create_watcher_output(watcher_id, watcher_size);
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    output.add_clients(&create_test_clients(1), link_handler, None);
+
+    output
+        .add_character_chunks_to_client(
+            followed_id,
+            vec![
+                create_character_chunk_from_str("1234567890", 15, 5),
+                create_character_chunk_from_str("below", 0, 15),
+                create_character_chunk_from_str("right", 25, 2),
+            ],
+            None,
+        )
+        .unwrap();
+
+    let frame = output
+        .serialize_watcher_frame(followed_id, watcher_id)
+        .unwrap();
+    let view = zellij_utils::structured_render::decode(&frame).unwrap();
+    assert_eq!(
+        (view.header().cols, view.header().rows),
+        (20, 10),
+        "the frame must carry the watcher's viewport"
+    );
+    let screen = watcher_text(&frame, watcher_size.cols, watcher_size.rows);
+    assert_eq!(
+        screen[5], "               12345",
+        "a run crossing the watcher's right edge must be truncated at it"
+    );
+    assert!(
+        screen.iter().all(|row| !row.contains("below")),
+        "a row below the watcher must not be in the frame"
+    );
+    assert!(
+        screen.iter().all(|row| !row.contains("right")),
+        "a run starting past the watcher's right edge must not be in the frame"
+    );
+}
+
+#[test]
+fn a_watcher_frame_leaves_a_larger_watcher_blank_outside_the_screen_it_follows() {
+    let followed_id = 1;
+    let watcher_id = 2;
+    let watcher_size = Size { rows: 4, cols: 12 };
+    let mut output = create_watcher_output(watcher_id, watcher_size);
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    output.add_clients(&create_test_clients(1), link_handler, None);
+
+    output
+        .add_character_chunks_to_client(
+            followed_id,
+            vec![create_character_chunk_from_str("hello", 0, 0)],
+            None,
+        )
+        .unwrap();
+
+    let frame = output
+        .serialize_watcher_frame(followed_id, watcher_id)
+        .unwrap();
+    let view = zellij_utils::structured_render::decode(&frame).unwrap();
+    assert_eq!(
+        (view.header().cols, view.header().rows),
+        (12, 4),
+        "the frame must carry the watcher's viewport"
+    );
+    assert!(
+        view.header().full_repaint(),
+        "the frame that fills a larger watcher must blank everything it does not cover"
+    );
+    let screen = watcher_text(&frame, watcher_size.cols, watcher_size.rows);
+    assert_eq!(screen[0], "hello       ", "the followed content is painted");
+    assert!(
+        screen[1..].iter().all(|row| row.trim().is_empty()),
+        "the rest of the watcher's viewport is blank, got {:?}",
+        screen
+    );
+}
+
+#[test]
+fn a_watcher_frame_hides_a_cursor_that_falls_outside_the_watcher() {
+    let followed_id = 1;
+    let watcher_id = 2;
+    let watcher_size = Size { rows: 10, cols: 20 };
+    let mut output = create_watcher_output(watcher_id, watcher_size);
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    output.add_clients(&create_test_clients(1), link_handler, None);
+
+    output.set_client_cursor(followed_id, 25, 5, true, "");
+    output
+        .add_character_chunks_to_client(
+            followed_id,
+            vec![create_character_chunk_from_str("Test", 0, 0)],
+            None,
+        )
+        .unwrap();
+
+    let frame = output
+        .serialize_watcher_frame(followed_id, watcher_id)
+        .unwrap();
+    let cursor = zellij_utils::structured_render::decode(&frame)
+        .unwrap()
+        .cursor();
+    assert!(
+        !cursor.visible,
+        "a cursor the watcher cannot show must be hidden rather than clamped"
+    );
+}
+
+#[test]
+fn a_watcher_frame_keeps_a_cursor_the_watcher_can_show() {
+    let followed_id = 1;
+    let watcher_id = 2;
+    let watcher_size = Size { rows: 10, cols: 20 };
+    let mut output = create_watcher_output(watcher_id, watcher_size);
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    output.add_clients(&create_test_clients(1), link_handler, None);
+
+    output.set_client_cursor(followed_id, 4, 3, true, "");
+    output
+        .add_character_chunks_to_client(
+            followed_id,
+            vec![create_character_chunk_from_str("Test", 0, 0)],
+            None,
+        )
+        .unwrap();
+
+    let frame = output
+        .serialize_watcher_frame(followed_id, watcher_id)
+        .unwrap();
+    let cursor = zellij_utils::structured_render::decode(&frame)
+        .unwrap()
+        .cursor();
+    assert!(cursor.visible, "an in-bounds cursor must stay visible");
+    assert_eq!(
+        (cursor.x, cursor.y),
+        (4, 3),
+        "an in-bounds cursor keeps the followed client's position"
+    );
+}
+
+#[test]
+fn a_watcher_is_told_the_links_it_can_see_and_they_are_cropped_with_its_cells() {
+    use crate::panes::terminal_character::{RcCharacterStyles, DEFAULT_STYLES};
+
+    let followed_id = 1;
+    let watcher_id = 2;
+    let watcher_size = Size { rows: 4, cols: 8 };
+    let mut output = create_watcher_output(watcher_id, watcher_size);
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    output.add_clients(&create_test_clients(1), link_handler.clone(), None);
+
+    let mut styles = DEFAULT_STYLES;
+    styles.link_anchor =
+        link_handler
+            .borrow_mut()
+            .dispatch_osc8(&[b"8", b"id=1", b"https://example.com/watched"]);
+    let styles = RcCharacterStyles::from(styles);
+
+    let inside: Vec<TerminalCharacter> = "abcd"
+        .chars()
+        .map(|character| TerminalCharacter::new_styled(character, styles.clone()))
+        .collect();
+    let outside: Vec<TerminalCharacter> = "efgh"
+        .chars()
+        .map(|character| TerminalCharacter::new_styled(character, styles.clone()))
+        .collect();
+    output
+        .add_character_chunks_to_client(
+            followed_id,
+            vec![
+                CharacterChunk::new(inside, 6, 1),
+                CharacterChunk::new(outside, 0, 9),
+            ],
+            None,
+        )
+        .unwrap();
+
+    let frame = output
+        .serialize_watcher_frame(followed_id, watcher_id)
+        .unwrap();
+    let view = zellij_utils::structured_render::decode(&frame).unwrap();
+    let table = view.links().entries;
+    assert_eq!(table.len(), 1, "one url, one entry");
+    assert_eq!(table[0].uri, "https://example.com/watched");
+
+    let mut ids = vec![vec![0u8; watcher_size.cols]; watcher_size.rows];
+    for (record, cells) in view.rows() {
+        for (offset, cell) in cells.iter().enumerate() {
+            ids[record.y as usize][record.x0 as usize + offset] = cell.link;
+        }
+    }
+    assert_eq!(
+        ids[1],
+        vec![0, 0, 0, 0, 0, 0, table[0].id, table[0].id],
+        "the part of the link the watcher can see keeps its id, the rest is clipped away"
+    );
+    assert!(
+        ids.iter().skip(2).all(|row| row.iter().all(|id| *id == 0)),
+        "a row below the watcher must not be in the frame"
+    );
+}
+
 #[test]
 fn test_add_character_chunks_to_multiple_clients() {
     let mut output = create_test_output();
@@ -553,7 +808,7 @@ fn test_add_character_chunks_to_multiple_clients() {
     assert_eq!(result.len(), 3, "Should have three clients in result");
 
     for client_id in 1..=3 {
-        let client_output = result.get(&client_id).unwrap();
+        let client_output = result.get(&client_id).unwrap().ansi();
         assert!(
             client_output.contains("Test"),
             "Client {} should contain the text",
@@ -987,8 +1242,8 @@ fn test_output_buffer_serialize() {
     let buffer = OutputBuffer::default();
 
     // Create a simple viewport with Row data
-    let mut columns = VecDeque::new();
-    columns.push_back(TerminalCharacter::new('A'));
+    let mut columns = Vec::new();
+    columns.push(TerminalCharacter::new('A'));
     let row = Row::from_columns(columns);
     let viewport = vec![row];
 
@@ -1006,8 +1261,8 @@ fn test_output_buffer_serialize() {
 fn test_output_buffer_changed_chunks_in_viewport_when_all_dirty() {
     let buffer = OutputBuffer::default();
 
-    let mut columns = VecDeque::new();
-    columns.push_back(TerminalCharacter::new('A'));
+    let mut columns = Vec::new();
+    columns.push(TerminalCharacter::new('A'));
     let row = Row::from_columns(columns);
     let viewport = vec![row];
 
@@ -1032,8 +1287,8 @@ fn test_output_buffer_changed_chunks_in_viewport_partial() {
 
     let rows: Vec<Row> = (0..10)
         .map(|_| {
-            let mut columns = VecDeque::new();
-            columns.push_back(TerminalCharacter::new('A'));
+            let mut columns = Vec::new();
+            columns.push(TerminalCharacter::new('A'));
             Row::from_columns(columns)
         })
         .collect();
@@ -1127,6 +1382,7 @@ type KittyTestParts = (
     Rc<RefCell<KittyImageStore>>,
     Rc<RefCell<HashMap<ClientId, bool>>>,
     Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
+    Rc<RefCell<HashMap<ClientId, bool>>>,
 );
 
 fn create_test_kitty_parts() -> KittyTestParts {
@@ -1134,7 +1390,18 @@ fn create_test_kitty_parts() -> KittyTestParts {
     let capabilities = Rc::new(RefCell::new(HashMap::new()));
     capabilities.borrow_mut().insert(1, true);
     let host_state = Rc::new(RefCell::new(HashMap::new()));
-    (kitty_image_store, capabilities, host_state)
+    (
+        kitty_image_store,
+        capabilities,
+        host_state,
+        Rc::new(RefCell::new(HashMap::new())),
+    )
+}
+
+fn create_test_kitty_parts_with_local_media() -> KittyTestParts {
+    let parts = create_test_kitty_parts();
+    parts.3.borrow_mut().insert(1, true);
+    parts
 }
 
 fn create_test_kitty_output(parts: &KittyTestParts) -> Output {
@@ -1150,7 +1417,9 @@ fn create_test_kitty_output(parts: &KittyTestParts) -> Output {
         true,
         parts.0.clone(),
         parts.1.clone(),
+        parts.3.clone(),
         parts.2.clone(),
+        Rc::new(RefCell::new(HashMap::new())),
         Rc::new(RefCell::new(HashMap::new())),
     )
 }
@@ -1204,7 +1473,12 @@ fn run_kitty_frame(
     let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
     output.add_clients(&client_ids, link_handler, floating_panes_stack);
     output.add_kitty_image_chunks_to_client(1, PaneId::Terminal(1), chunks, None);
-    output.serialize().unwrap().remove(&1).unwrap_or_default()
+    output
+        .serialize()
+        .unwrap()
+        .remove(&1)
+        .map(|payload| payload.ansi().to_owned())
+        .unwrap_or_default()
 }
 
 fn run_kitty_frame_for_panes(
@@ -1220,7 +1494,12 @@ fn run_kitty_frame_for_panes(
     for (pane_id, chunks) in chunks_by_pane {
         output.add_kitty_image_chunks_to_client(1, pane_id, chunks, None);
     }
-    output.serialize().unwrap().remove(&1).unwrap_or_default()
+    output
+        .serialize()
+        .unwrap()
+        .remove(&1)
+        .map(|payload| payload.ansi().to_owned())
+        .unwrap_or_default()
 }
 
 fn run_kitty_frame_with_host_clear(parts: &KittyTestParts, chunks: Vec<KittyImageChunk>) -> String {
@@ -1231,7 +1510,12 @@ fn run_kitty_frame_with_host_clear(parts: &KittyTestParts, chunks: Vec<KittyImag
     output.add_pre_vte_instruction_to_client(1, "\u{1b}[m\u{1b}[2J");
     output.mark_host_display_cleared_for_clients(std::iter::once(1));
     output.add_kitty_image_chunks_to_client(1, PaneId::Terminal(1), chunks, None);
-    output.serialize().unwrap().remove(&1).unwrap_or_default()
+    output
+        .serialize()
+        .unwrap()
+        .remove(&1)
+        .map(|payload| payload.ansi().to_owned())
+        .unwrap_or_default()
 }
 
 fn run_kitty_frame_with_unmarked_clear_string(
@@ -1244,7 +1528,12 @@ fn run_kitty_frame_with_unmarked_clear_string(
     output.add_clients(&client_ids, link_handler, None);
     output.add_pre_vte_instruction_to_client(1, "\u{1b}[m\u{1b}[2J");
     output.add_kitty_image_chunks_to_client(1, PaneId::Terminal(1), chunks, None);
-    output.serialize().unwrap().remove(&1).unwrap_or_default()
+    output
+        .serialize()
+        .unwrap()
+        .remove(&1)
+        .map(|payload| payload.ansi().to_owned())
+        .unwrap_or_default()
 }
 
 fn parse_kitty_placement_crops(output: &str) -> Vec<(usize, usize, usize, usize, usize, usize)> {
@@ -1292,6 +1581,133 @@ fn kitty_transmit_only_once_across_frames() {
     let combined = format!("{}{}", frame_a, frame_b);
     assert_eq!(combined.matches("\u{1b}_Ga=t").count(), 1);
     assert!(!frame_b.contains("\u{1b}_G"));
+}
+
+fn kitty_media_reference(frame: &str) -> (char, PathBuf, usize) {
+    let start = frame
+        .find("\u{1b}_Ga=t,q=2,f=32,t=")
+        .expect("no transmission");
+    let end = frame[start..].find("\u{1b}\\").unwrap() + start;
+    let command = &frame[start + 3..end];
+    let (control, payload) = command.split_once(';').unwrap();
+    let mut medium = ' ';
+    let mut size = 0usize;
+    for pair in control.split(',') {
+        match pair.split_once('=') {
+            Some(("t", value)) => medium = value.chars().next().unwrap(),
+            Some(("S", value)) => size = value.parse().unwrap(),
+            _ => {},
+        }
+    }
+    let name = String::from_utf8(BASE64_ENCODER.decode(payload).unwrap()).unwrap();
+    let path = match medium {
+        's' => Path::new("/dev/shm").join(name.trim_start_matches('/')),
+        _ => PathBuf::from(name),
+    };
+    (medium, path, size)
+}
+
+#[test]
+fn kitty_local_media_writes_the_pixels_to_a_file_the_client_can_read() {
+    let parts = create_test_kitty_parts_with_local_media();
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let frame = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 0, 0)], None);
+
+    assert!(!frame.contains("t=d"), "{}", frame);
+    assert!(!frame.contains("m=1"), "local media is never chunked");
+    let (medium, path, size) = kitty_media_reference(&frame);
+    assert!(
+        medium == 's' || medium == 't',
+        "unexpected medium {}",
+        medium
+    );
+    assert!(
+        path.to_string_lossy().contains("tty-graphics-protocol"),
+        "a client is only allowed to delete a {:?} file",
+        path
+    );
+    assert_eq!(size, 30 * 40 * 4);
+
+    let written = std::fs::read(&path).expect("the media file is missing");
+    assert_eq!(written.len(), size);
+    assert!(written.iter().all(|byte| *byte == 255));
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn kitty_local_media_carries_the_scaled_variant_when_the_chunk_names_one() {
+    let parts = create_test_kitty_parts_with_local_media();
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    parts
+        .0
+        .borrow_mut()
+        .add_scaled_variant(internal, (3, 2), vec![7u8; 20 * 30 * 4]);
+    let mut chunk = kitty_chunk(internal, 1, 0, 0);
+    chunk.scaled_px = Some((20, 30));
+
+    let frame = run_kitty_frame(&parts, vec![chunk], None);
+    let (_, path, size) = kitty_media_reference(&frame);
+    assert_eq!(size, 20 * 30 * 4);
+    let written = std::fs::read(&path).expect("the media file is missing");
+    assert!(
+        written.iter().all(|byte| *byte == 7),
+        "the full-size raster was written instead of the variant"
+    );
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn kitty_local_media_files_of_a_departed_client_are_reaped() {
+    let parts = create_test_kitty_parts_with_local_media();
+    let internal = store_test_kitty_image(&parts.0, 4, 4);
+    let frame = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 0, 0)], None);
+    let (_, path, _) = kitty_media_reference(&frame);
+    assert!(path.exists());
+
+    parts.2.borrow_mut().get_mut(&1).unwrap().release_media();
+    assert!(!path.exists(), "{:?} outlived the client", path);
+}
+
+#[test]
+fn kitty_local_media_is_reaped_when_the_image_leaves_the_store() {
+    let parts = create_test_kitty_parts_with_local_media();
+    let internal = store_test_kitty_image(&parts.0, 4, 4);
+    let frame = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 0, 0)], None);
+    let (_, path, _) = kitty_media_reference(&frame);
+    assert!(path.exists());
+
+    parts.0.borrow_mut().free(internal);
+    let frame = run_kitty_frame(&parts, vec![], None);
+    assert!(
+        frame.contains("\u{1b}_Ga=d,q=2,d=I,"),
+        "the host must be told the image is gone, got {:?}",
+        frame
+    );
+    assert!(!path.exists(), "{:?} outlived the image it carried", path);
+}
+
+#[test]
+fn kitty_local_media_is_reaped_when_the_host_display_is_cleared() {
+    let parts = create_test_kitty_parts_with_local_media();
+    let internal = store_test_kitty_image(&parts.0, 4, 4);
+    let frame = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 0, 0)], None);
+    let (_, path, _) = kitty_media_reference(&frame);
+    assert!(path.exists());
+
+    run_kitty_frame_with_host_clear(&parts, vec![kitty_chunk(internal, 1, 0, 0)]);
+    assert!(
+        !path.exists(),
+        "{:?} outlived the display it was written for",
+        path
+    );
+}
+
+#[test]
+fn a_client_without_local_media_still_gets_base64() {
+    let parts = create_test_kitty_parts();
+    let internal = store_test_kitty_image(&parts.0, 4, 4);
+    let frame = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 0, 0)], None);
+    assert!(frame.contains("\u{1b}_Ga=t,q=2,f=32,t=d,"), "{}", frame);
 }
 
 #[test]
@@ -1633,5 +2049,440 @@ fn kitty_host_ids_stay_within_signed_32_bit_range() {
                 }
             }
         }
+    }
+}
+
+mod cursor_shape_on_the_wire {
+    use super::super::super::wire_cursor_shape;
+    use crate::panes::terminal_character::CursorShape;
+    use zellij_utils::structured_render::{
+        CURSOR_BLINKING, CURSOR_SHAPE_BEAM, CURSOR_SHAPE_BLOCK, CURSOR_SHAPE_DEFAULT,
+        CURSOR_SHAPE_UNDERLINE,
+    };
+
+    fn wire(shape: CursorShape) -> u8 {
+        wire_cursor_shape(shape.get_csi_str())
+    }
+
+    #[test]
+    fn a_pane_that_asked_for_nothing_is_distinguishable_from_one_that_asked_for_a_block() {
+        assert_eq!(wire(CursorShape::Initial), CURSOR_SHAPE_DEFAULT);
+        assert_eq!(wire(CursorShape::Block), CURSOR_SHAPE_BLOCK);
+        assert_ne!(wire(CursorShape::Initial), wire(CursorShape::Block));
+    }
+
+    #[test]
+    fn every_shape_keeps_its_own_encoding_and_its_own_blink_bit() {
+        for (shape, expected) in [
+            (CursorShape::Block, CURSOR_SHAPE_BLOCK),
+            (
+                CursorShape::BlinkingBlock,
+                CURSOR_SHAPE_BLOCK | CURSOR_BLINKING,
+            ),
+            (CursorShape::Underline, CURSOR_SHAPE_UNDERLINE),
+            (
+                CursorShape::BlinkingUnderline,
+                CURSOR_SHAPE_UNDERLINE | CURSOR_BLINKING,
+            ),
+            (CursorShape::Beam, CURSOR_SHAPE_BEAM),
+            (
+                CursorShape::BlinkingBeam,
+                CURSOR_SHAPE_BEAM | CURSOR_BLINKING,
+            ),
+        ] {
+            assert_eq!(wire(shape), expected, "{:?}", shape);
+        }
+    }
+
+    #[test]
+    fn an_unrecognised_request_is_no_request_at_all() {
+        assert_eq!(wire_cursor_shape("\u{1b}[9 q"), CURSOR_SHAPE_DEFAULT);
+        assert_eq!(wire_cursor_shape(""), CURSOR_SHAPE_DEFAULT);
+    }
+}
+
+mod links_on_the_wire {
+    use super::super::super::{Output, StructuredClientState};
+    use crate::output::CharacterChunk;
+    use crate::panes::kitty_graphics::store::KittyImageStore;
+    use crate::panes::sixel::SixelImageStore;
+    use crate::panes::terminal_character::{RcCharacterStyles, DEFAULT_STYLES};
+    use crate::panes::{LinkHandler, TerminalCharacter};
+    use crate::{ClientId, RenderPayload};
+    use std::cell::RefCell;
+    use std::collections::{HashMap, HashSet};
+    use std::rc::Rc;
+    use zellij_utils::pane_size::{Size, SizeInPixels};
+    use zellij_utils::structured_render::{decode, LinkEntry};
+
+    const CLIENT: ClientId = 1;
+
+    struct Harness {
+        output: Output,
+        links: Rc<RefCell<LinkHandler>>,
+        clients: Rc<RefCell<HashMap<ClientId, StructuredClientState>>>,
+        size: Size,
+    }
+
+    impl Harness {
+        fn new(rows: usize, cols: usize) -> Self {
+            let size = Size { rows, cols };
+            let clients = Rc::new(RefCell::new(HashMap::new()));
+            {
+                let mut held = clients.borrow_mut();
+                let state = held
+                    .entry(CLIENT)
+                    .or_insert_with(StructuredClientState::default);
+                state.enabled = true;
+                state.reset_viewport(size);
+            }
+            let mut output = Output::new(
+                Rc::new(RefCell::new(SixelImageStore::default())),
+                Rc::new(RefCell::new(Some(SizeInPixels {
+                    height: 20,
+                    width: 10,
+                }))),
+                true,
+                true,
+                Rc::new(RefCell::new(KittyImageStore::default())),
+                Rc::new(RefCell::new(HashMap::new())),
+                Rc::new(RefCell::new(HashMap::new())),
+                Rc::new(RefCell::new(HashMap::new())),
+                Rc::new(RefCell::new(HashMap::new())),
+                clients.clone(),
+            );
+            let links = Rc::new(RefCell::new(LinkHandler::new()));
+            output.add_clients(&HashSet::from([CLIENT]), links.clone(), None);
+            Harness {
+                output,
+                links,
+                clients,
+                size,
+            }
+        }
+
+        fn anchor(&self, params: &str, uri: &str) -> RcCharacterStyles {
+            let mut styles = DEFAULT_STYLES;
+            styles.link_anchor =
+                self.links
+                    .borrow_mut()
+                    .dispatch_osc8(&[b"8", params.as_bytes(), uri.as_bytes()]);
+            RcCharacterStyles::from(styles)
+        }
+
+        fn detected(&self, uri: &str) -> RcCharacterStyles {
+            let mut styles = DEFAULT_STYLES;
+            styles.link_anchor = Some(self.links.borrow_mut().new_link_from_url(uri.to_owned()));
+            RcCharacterStyles::from(styles)
+        }
+
+        fn chunk(
+            &self,
+            y: usize,
+            x: usize,
+            runs: &[(&str, Option<RcCharacterStyles>)],
+        ) -> CharacterChunk {
+            let mut characters = Vec::new();
+            for (text, styles) in runs {
+                for character in text.chars() {
+                    characters.push(match styles {
+                        Some(styles) => TerminalCharacter::new_styled(character, styles.clone()),
+                        None => TerminalCharacter::new(character),
+                    });
+                }
+            }
+            CharacterChunk::new(characters, x, y)
+        }
+
+        fn frame(&mut self, chunks: Vec<CharacterChunk>) -> Frame {
+            self.output
+                .add_clients(&HashSet::from([CLIENT]), self.links.clone(), None);
+            self.output
+                .add_character_chunks_to_client(CLIENT, chunks, None)
+                .unwrap();
+            let mut payloads = self.output.serialize().unwrap();
+            match payloads.remove(&CLIENT) {
+                Some(RenderPayload::Frame(frame)) => Frame::of(&frame, self.size),
+                other => panic!("the structured client got {:?}", other),
+            }
+        }
+
+        fn force_full_repaint(&mut self) {
+            self.clients
+                .borrow_mut()
+                .get_mut(&CLIENT)
+                .unwrap()
+                .force_full_repaint = true;
+        }
+    }
+
+    struct Frame {
+        ids: Vec<Vec<u8>>,
+        table: Vec<LinkEntry>,
+    }
+
+    impl Frame {
+        fn of(frame: &[u8], size: Size) -> Self {
+            let view = decode(frame).expect("the server emitted an undecodable frame");
+            let mut ids = vec![vec![0u8; size.cols]; size.rows];
+            for (record, cells) in view.rows() {
+                for (offset, cell) in cells.iter().enumerate() {
+                    ids[record.y as usize][record.x0 as usize + offset] = cell.link;
+                }
+            }
+            Frame {
+                ids,
+                table: view.links().entries,
+            }
+        }
+
+        fn uri(&self, id: u8) -> Option<&str> {
+            self.table
+                .iter()
+                .find(|entry| entry.id == id)
+                .map(|entry| entry.uri.as_str())
+        }
+
+        fn row(&self, y: usize) -> &[u8] {
+            &self.ids[y]
+        }
+    }
+
+    #[test]
+    fn a_linked_cell_carries_an_id_the_table_resolves() {
+        let mut harness = Harness::new(2, 20);
+        let anchor = harness.anchor("id=1", "https://example.com/one");
+        let chunk = harness.chunk(0, 0, &[("ab", Some(anchor)), (" cd", None)]);
+        let frame = harness.frame(vec![chunk]);
+
+        assert_eq!(&frame.row(0)[..5], &[1, 1, 0, 0, 0]);
+        assert_eq!(frame.uri(1), Some("https://example.com/one"));
+        assert_eq!(frame.table.len(), 1);
+    }
+
+    #[test]
+    fn a_frame_that_links_nothing_carries_no_table() {
+        let mut harness = Harness::new(2, 20);
+        let chunk = harness.chunk(0, 0, &[("plain", None)]);
+        let frame = harness.frame(vec![chunk]);
+        assert!(frame.table.is_empty());
+        assert!(frame.row(0).iter().all(|id| *id == 0));
+    }
+
+    #[test]
+    fn a_link_split_across_a_line_wrap_keeps_one_id() {
+        let mut harness = Harness::new(3, 6);
+        let anchor = harness.anchor("id=1", "https://example.com/wrapped");
+        let first = harness.chunk(0, 3, &[("abc", Some(anchor.clone()))]);
+        let second = harness.chunk(1, 0, &[("def", Some(anchor))]);
+        let frame = harness.frame(vec![first, second]);
+
+        assert_eq!(frame.row(0), &[0, 0, 0, 1, 1, 1]);
+        assert_eq!(frame.row(1), &[1, 1, 1, 0, 0, 0]);
+        assert_eq!(frame.table.len(), 1, "one url, one entry");
+    }
+
+    #[test]
+    fn two_starts_that_name_the_same_url_share_one_id() {
+        let mut harness = Harness::new(1, 20);
+        let first = harness.anchor("id=7", "https://example.com/joined");
+        let second = harness.anchor("id=7", "https://example.com/joined");
+        let third = harness.anchor("", "https://example.com/joined");
+        let chunk = harness.chunk(
+            0,
+            0,
+            &[
+                ("ab", Some(first)),
+                ("  ", None),
+                ("cd", Some(second)),
+                ("  ", None),
+                ("ef", Some(third)),
+            ],
+        );
+        let frame = harness.frame(vec![chunk]);
+
+        assert_eq!(&frame.row(0)[..10], &[1, 1, 0, 0, 1, 1, 0, 0, 1, 1]);
+        assert_eq!(frame.table.len(), 1);
+    }
+
+    #[test]
+    fn an_auto_detected_url_travels_like_any_other_link() {
+        let mut harness = Harness::new(1, 20);
+        let detected = harness.detected("https://example.com/detected");
+        let chunk = harness.chunk(0, 0, &[("url", Some(detected))]);
+        let frame = harness.frame(vec![chunk]);
+
+        assert_eq!(&frame.row(0)[..4], &[1, 1, 1, 0]);
+        assert_eq!(frame.uri(1), Some("https://example.com/detected"));
+    }
+
+    #[test]
+    fn a_table_entry_is_stated_once_and_not_restated_while_it_is_live() {
+        let mut harness = Harness::new(2, 20);
+        let anchor = harness.anchor("", "https://example.com/once");
+        let first = harness.chunk(0, 0, &[("ab", Some(anchor.clone()))]);
+        assert_eq!(harness.frame(vec![first]).table.len(), 1);
+
+        let second = harness.chunk(1, 0, &[("cd", Some(anchor))]);
+        let frame = harness.frame(vec![second]);
+        assert!(
+            frame.table.is_empty(),
+            "the client already holds the entry: {:?}",
+            frame.table
+        );
+        assert_eq!(&frame.row(1)[..3], &[1, 1, 0]);
+    }
+
+    #[test]
+    fn an_id_is_reused_only_once_no_cell_on_screen_carries_it() {
+        let mut harness = Harness::new(1, 4);
+        let first = harness.anchor("", "https://example.com/first");
+        let chunk = harness.chunk(0, 0, &[("ab", Some(first))]);
+        assert_eq!(
+            harness.frame(vec![chunk]).uri(1),
+            Some("https://example.com/first")
+        );
+
+        let second = harness.anchor("", "https://example.com/second");
+        let chunk = harness.chunk(0, 0, &[("cd", Some(second))]);
+        let frame = harness.frame(vec![chunk]);
+        assert_eq!(
+            frame.uri(2),
+            Some("https://example.com/second"),
+            "the first id is still on screen, so the second link gets its own"
+        );
+
+        let chunk = harness.chunk(0, 0, &[("ef", None)]);
+        harness.frame(vec![chunk]);
+
+        let third = harness.anchor("", "https://example.com/third");
+        let chunk = harness.chunk(0, 0, &[("gh", Some(third))]);
+        let frame = harness.frame(vec![chunk]);
+        assert_eq!(
+            frame.uri(1),
+            Some("https://example.com/third"),
+            "with the screen clear of links the lowest id is free again"
+        );
+    }
+
+    #[test]
+    fn the_two_hundred_and_fifty_sixth_live_link_renders_as_plain_text() {
+        let mut harness = Harness::new(1, 512);
+        let mut runs = Vec::new();
+        for index in 0..256 {
+            runs.push((
+                "x",
+                Some(harness.anchor("", &format!("https://example.com/{}", index))),
+            ));
+        }
+        let runs: Vec<(&str, Option<RcCharacterStyles>)> = runs
+            .into_iter()
+            .map(|(text, styles)| (text, styles))
+            .collect();
+        let chunk = harness.chunk(0, 0, &runs);
+        let frame = harness.frame(vec![chunk]);
+
+        assert_eq!(frame.table.len(), 255);
+        assert_eq!(&frame.row(0)[254..257], &[255, 0, 0]);
+        assert!(
+            frame.uri(0).is_none(),
+            "the overflowing link must be plain text, never a wrong link"
+        );
+    }
+
+    #[test]
+    fn a_url_too_long_for_the_wire_is_carried_as_plain_text() {
+        let mut harness = Harness::new(1, 20);
+        let long = format!("https://example.com/{}", "a".repeat(4096));
+        let anchor = harness.anchor("", &long);
+        let chunk = harness.chunk(0, 0, &[("ab", Some(anchor))]);
+        let frame = harness.frame(vec![chunk]);
+
+        assert!(
+            frame.table.is_empty(),
+            "an absurd url must not be allowed to bloat the frame"
+        );
+        assert_eq!(&frame.row(0)[..3], &[0, 0, 0]);
+    }
+
+    #[test]
+    fn a_full_repaint_starts_a_new_generation_and_restates_the_table() {
+        let mut harness = Harness::new(1, 20);
+        let anchor = harness.anchor("", "https://example.com/kept");
+        let chunk = harness.chunk(0, 0, &[("ab", Some(anchor.clone()))]);
+        assert_eq!(harness.frame(vec![chunk]).table.len(), 1);
+
+        harness.force_full_repaint();
+        let chunk = harness.chunk(0, 0, &[("ab", Some(anchor))]);
+        let frame = harness.frame(vec![chunk]);
+        assert_eq!(
+            frame.uri(1),
+            Some("https://example.com/kept"),
+            "a repaint restates the table rather than trusting the client to have kept it"
+        );
+    }
+}
+
+mod blink_serialization {
+    use crate::panes::terminal_character::{AnsiCode, DEFAULT_STYLES, RESET_STYLES};
+
+    fn emitted(fast: Option<AnsiCode>, slow: Option<AnsiCode>) -> String {
+        format!("{}", DEFAULT_STYLES.blink_fast(fast).blink_slow(slow))
+    }
+
+    #[test]
+    fn the_shared_blink_cancel_is_emitted_once_and_never_after_an_on() {
+        let on = Some(AnsiCode::On);
+        let reset = Some(AnsiCode::Reset);
+        for (fast, slow, expected) in [
+            (None, None, ""),
+            (None, on, "\u{1b}[5m"),
+            (None, reset, "\u{1b}[25m"),
+            (on, None, "\u{1b}[6m"),
+            (on, on, "\u{1b}[6m\u{1b}[5m"),
+            (on, reset, "\u{1b}[25m\u{1b}[6m"),
+            (reset, None, "\u{1b}[25m"),
+            (reset, on, "\u{1b}[25m\u{1b}[5m"),
+            (reset, reset, "\u{1b}[25m"),
+        ] {
+            assert_eq!(
+                emitted(fast, slow),
+                expected,
+                "fast={:?} slow={:?}",
+                fast,
+                slow
+            );
+        }
+    }
+
+    #[test]
+    fn a_fast_blink_only_style_no_longer_cancels_itself() {
+        let emitted = format!("{}", RESET_STYLES.blink_fast(Some(AnsiCode::On)));
+        let at = emitted.find("\u{1b}[6m").expect("the fast blink code");
+        assert!(!emitted[at..].contains("\u{1b}[25m"), "{:?}", emitted);
+        assert_eq!(emitted.matches("\u{1b}[25m").count(), 1, "{:?}", emitted);
+    }
+
+    #[test]
+    fn a_slow_blink_only_style_emits_what_it_always_emitted() {
+        let emitted = format!("{}", RESET_STYLES.blink_slow(Some(AnsiCode::On)));
+        assert!(emitted.contains("\u{1b}[25m\u{1b}[5m"), "{:?}", emitted);
+        assert_eq!(emitted.matches("\u{1b}[25m").count(), 1, "{:?}", emitted);
+    }
+
+    #[test]
+    fn the_cancel_shared_by_bold_and_dim_reasserts_bold() {
+        let emitted = format!(
+            "{}",
+            RESET_STYLES
+                .bold(Some(AnsiCode::On))
+                .dim(Some(AnsiCode::Reset))
+        );
+        let last_cancel = emitted.rfind("\u{1b}[22m").expect("the shared cancel");
+        assert!(
+            emitted[last_cancel..].contains("\u{1b}[1m"),
+            "{:?}",
+            emitted
+        );
     }
 }

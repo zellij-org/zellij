@@ -23,6 +23,9 @@ pub const SYSTEM_DEFAULT_DATA_DIR_PREFIX: &str = system_default_data_dir();
 
 pub static ZELLIJ_DEFAULT_THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets/themes");
 
+pub const DEFAULT_THEME_NAME: &str = "default";
+pub const DEFAULT_LIGHT_THEME_NAME: &str = "default-light";
+
 pub const CLIENT_SERVER_CONTRACT_VERSION: usize = 1;
 
 pub fn session_info_cache_file_name(session_name: &str) -> PathBuf {

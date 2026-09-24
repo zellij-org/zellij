@@ -20,7 +20,7 @@ use crate::{
     output::Output,
     panes::{ActivePanes, PaneId},
     plugins::PluginInstruction,
-    tab::{pane_info_for_pane, Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH},
+    tab::{pane_info_for_pane, pane_rect_for_pane, Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH},
     thread_bus::ThreadSenders,
     ui::boundaries::Boundaries,
     ui::pane_contents_and_ui::PaneContentsAndUi,
@@ -1238,6 +1238,13 @@ impl TiledPanes {
                 let pane_is_one_liner_in_stack =
                     pane_is_stacked && pane.current_geom().rows.is_fixed();
                 let pane_is_selectable = pane.selectable();
+                for client_id in &connected_clients {
+                    let focused = active_panes.get(client_id) == Some(&pane.pid());
+                    output.add_pane_rect(
+                        *client_id,
+                        pane_rect_for_pane(pane, should_draw_pane_frames, focused),
+                    );
+                }
                 let show_help_text = active_panes.iter().any(|(client_id, pane_id)| {
                     pane_id == &pane.pid()
                         && help_text_visible.get(client_id).copied().unwrap_or(false)

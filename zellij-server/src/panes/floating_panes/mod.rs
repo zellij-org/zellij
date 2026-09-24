@@ -6,7 +6,7 @@ use zellij_utils::{
 
 use crate::panes::kitty_graphics::KittyHostSupport;
 use crate::resize_pty;
-use crate::tab::{pane_info_for_pane, Pane};
+use crate::tab::{pane_info_for_pane, pane_rect_for_pane, Pane};
 use floating_pane_grid::FloatingPaneGrid;
 
 use crate::{
@@ -581,6 +581,13 @@ impl FloatingPanes {
             } else {
                 true
             };
+            for client_id in &connected_clients {
+                let focused = active_panes.get(client_id) == Some(&pane.pid());
+                output.add_pane_rect(
+                    *client_id,
+                    pane_rect_for_pane(pane, should_draw_pane_frames, focused),
+                );
+            }
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
                 output,

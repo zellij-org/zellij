@@ -77,17 +77,22 @@ async fn handle_ws_control(socket: WebSocket, params: ControlParams, state: AppS
         .add_client_control_tx(&web_client_id, control_channel_tx);
 
     let send_message_to_server = |deserialized_msg: WebClientToWebServerControlMessage| {
-        let Some(client_connection) = state
-            .connection_table
-            .lock()
-            .unwrap()
-            .get_client_os_api(&deserialized_msg.web_client_id)
-            .cloned()
-        else {
+        let (client_os_api, is_structured) = {
+            let connection_table = state.connection_table.lock().unwrap();
+            (
+                connection_table
+                    .get_client_os_api(&deserialized_msg.web_client_id)
+                    .cloned(),
+                connection_table.is_client_structured(&deserialized_msg.web_client_id),
+            )
+        };
+        let Some(client_connection) = client_os_api else {
             log::error!("Unknown web_client_id: {}", deserialized_msg.web_client_id);
             return;
         };
-        let Some(client_msg) = control_payload_to_server_msg(deserialized_msg.payload) else {
+        let Some(client_msg) =
+            control_payload_to_server_msg(deserialized_msg.payload, is_structured)
+        else {
             return;
         };
 
@@ -146,6 +151,7 @@ async fn handle_ws_terminal(
         }),
         _ => None,
     };
+    let is_structured_client = params.structured.unwrap_or(false);
     let web_client_id = params.web_client_id;
 
     // Verify the session token owns this web_client_id
@@ -162,13 +168,12 @@ async fn handle_ws_terminal(
         return;
     }
 
-    let Some(os_input) = state
-        .connection_table
-        .lock()
-        .unwrap()
-        .get_client_os_api(&web_client_id)
-        .cloned()
-    else {
+    let os_input = {
+        let mut connection_table = state.connection_table.lock().unwrap();
+        connection_table.declare_client_structured(&web_client_id, is_structured_client);
+        connection_table.get_client_os_api(&web_client_id).cloned()
+    };
+    let Some(os_input) = os_input else {
         log::error!("Unknown web_client_id: {}", web_client_id);
         return;
     };
@@ -196,6 +201,7 @@ async fn handle_ws_terminal(
         client_size,
         client_pixel_dims,
         state.pending_welcome_sessions.clone(),
+        is_structured_client,
     );
 
     let terminal_channel_cancellation_token = CancellationToken::new();
@@ -328,7 +334,15 @@ async fn handle_ws_terminal(
 
 fn control_payload_to_server_msg(
     payload: WebClientToWebServerControlMessagePayload,
+    is_structured_client: bool,
 ) -> Option<ClientToServerMsg> {
+    if payload.needs_a_structured_client() && !is_structured_client {
+        log::warn!(
+            "Ignoring a structured-client control message from a client that did not declare \
+             itself one"
+        );
+        return None;
+    }
     let client_msg = match payload {
         WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
             ClientToServerMsg::TerminalResize { new_size: size }
@@ -394,6 +408,49 @@ fn control_payload_to_server_msg(
             single_pane,
             fit,
         } => ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit },
+        WebClientToWebServerControlMessagePayload::RenderFrameAck { seq } => {
+            ClientToServerMsg::RenderFrameAck { seq }
+        },
+        WebClientToWebServerControlMessagePayload::ForwardedReplyFromHost {
+            token,
+            reply_bytes,
+        } => ClientToServerMsg::ForwardedReplyFromHost { token, reply_bytes },
+        WebClientToWebServerControlMessagePayload::Key {
+            key,
+            raw_bytes,
+            is_kitty_keyboard_protocol,
+        } => ClientToServerMsg::Key {
+            key,
+            raw_bytes,
+            is_kitty_keyboard_protocol,
+        },
+        WebClientToWebServerControlMessagePayload::Mouse { event } => ClientToServerMsg::Action {
+            action: Action::MouseEvent { event },
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        },
+        WebClientToWebServerControlMessagePayload::Paste { chars } => ClientToServerMsg::Action {
+            action: Action::Paste {
+                chars,
+                pane_id: None,
+            },
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        },
+        WebClientToWebServerControlMessagePayload::Text { chars } => ClientToServerMsg::Action {
+            action: Action::WriteChars { chars },
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        },
+        WebClientToWebServerControlMessagePayload::Detach => ClientToServerMsg::Action {
+            action: Action::Detach,
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        },
         WebClientToWebServerControlMessagePayload::Unknown => {
             log::warn!("Ignoring unknown control message type from web client");
             return None;
@@ -580,6 +637,7 @@ mod tests {
     fn new_pane_in_tab_is_routed_to_the_requesting_client() {
         let client_msg = control_payload_to_server_msg(
             WebClientToWebServerControlMessagePayload::NewPaneInTab { tab_id: 2 },
+            false,
         )
         .expect("message dropped");
         match client_msg {
@@ -603,9 +661,174 @@ mod tests {
 
     #[test]
     fn unknown_control_message_is_dropped() {
-        assert!(
-            control_payload_to_server_msg(WebClientToWebServerControlMessagePayload::Unknown)
-                .is_none()
+        assert!(control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::Unknown,
+            false
+        )
+        .is_none());
+    }
+
+    fn structured_input_payloads() -> Vec<WebClientToWebServerControlMessagePayload> {
+        use zellij_utils::data::{BareKey, KeyWithModifier};
+        vec![
+            WebClientToWebServerControlMessagePayload::Key {
+                key: KeyWithModifier::new(BareKey::Char('a')),
+                raw_bytes: b"a".to_vec(),
+                is_kitty_keyboard_protocol: false,
+            },
+            WebClientToWebServerControlMessagePayload::Mouse {
+                event: MouseEvent::new(),
+            },
+            WebClientToWebServerControlMessagePayload::Paste {
+                chars: "text".to_owned(),
+            },
+            WebClientToWebServerControlMessagePayload::Text {
+                chars: "text".to_owned(),
+            },
+            WebClientToWebServerControlMessagePayload::Detach,
+        ]
+    }
+
+    #[test]
+    fn the_typed_input_lane_is_refused_to_a_client_that_did_not_declare_itself_structured() {
+        for payload in structured_input_payloads() {
+            assert!(
+                control_payload_to_server_msg(payload.clone(), false).is_none(),
+                "a browser must not reach the structured client's input lane, got {:?}",
+                payload
+            );
+        }
+    }
+
+    #[test]
+    fn a_structured_client_types_without_its_input_being_re_parsed() {
+        use zellij_utils::data::{BareKey, KeyWithModifier};
+        let key = KeyWithModifier::new(BareKey::Char('a')).with_alt_modifier();
+        let msg = control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::Key {
+                key: key.clone(),
+                raw_bytes: b"\x1ba".to_vec(),
+                is_kitty_keyboard_protocol: false,
+            },
+            true,
+        )
+        .expect("message dropped");
+        assert_eq!(
+            msg,
+            ClientToServerMsg::Key {
+                key,
+                raw_bytes: b"\x1ba".to_vec(),
+                is_kitty_keyboard_protocol: false,
+            }
         );
+    }
+
+    #[test]
+    fn a_structured_clients_mouse_paste_and_detach_become_the_actions_a_local_client_sends() {
+        let mut event = MouseEvent::new();
+        event.wheel_left = true;
+        let mouse = control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::Mouse { event },
+            true,
+        )
+        .expect("message dropped");
+        assert_eq!(
+            mouse,
+            ClientToServerMsg::Action {
+                action: Action::MouseEvent { event },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            },
+            "a typed mouse event keeps the fields an SGR encoding cannot carry"
+        );
+
+        let paste = control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::Paste {
+                chars: "pasted".to_owned(),
+            },
+            true,
+        )
+        .expect("message dropped");
+        assert_eq!(
+            paste,
+            ClientToServerMsg::Action {
+                action: Action::Paste {
+                    chars: "pasted".to_owned(),
+                    pane_id: None,
+                },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            }
+        );
+
+        let detach =
+            control_payload_to_server_msg(WebClientToWebServerControlMessagePayload::Detach, true)
+                .expect("message dropped");
+        assert_eq!(
+            detach,
+            ClientToServerMsg::Action {
+                action: Action::Detach,
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            }
+        );
+    }
+
+    #[test]
+    fn composed_text_is_typed_rather_than_pasted() {
+        let typed = control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::Text {
+                chars: "你好".to_owned(),
+            },
+            true,
+        )
+        .expect("message dropped");
+        assert_eq!(
+            typed,
+            ClientToServerMsg::Action {
+                action: Action::WriteChars {
+                    chars: "你好".to_owned()
+                },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            },
+            "an IME commit is typed text; the paste path would bracket it"
+        );
+    }
+
+    #[test]
+    fn the_typed_input_lane_round_trips_through_its_json_payload() {
+        let raw = serde_json::json!({
+            "web_client_id": "abc",
+            "payload": {
+                "type": "Mouse",
+                "event": {
+                    "event_type": "Press",
+                    "left": true,
+                    "right": false,
+                    "middle": false,
+                    "wheel_up": false,
+                    "wheel_down": false,
+                    "shift": false,
+                    "alt": false,
+                    "ctrl": false,
+                    "position": { "line": 3, "column": 7 },
+                }
+            }
+        });
+        let parsed: WebClientToWebServerControlMessage =
+            serde_json::from_value(raw).expect("parse");
+        match parsed.payload {
+            WebClientToWebServerControlMessagePayload::Mouse { event } => {
+                assert!(event.left);
+                assert_eq!(event.position.line.0, 3);
+                assert_eq!(event.position.column.0, 7);
+            },
+            other => panic!("expected Mouse, got {:?}", other),
+        }
     }
 }

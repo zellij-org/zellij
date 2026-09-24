@@ -24,11 +24,17 @@ message ServerToClientMsg {
     SetSoftKeyboardMsg set_soft_keyboard = 17;
     EmitNestedSessionFrameMsg emit_nested_session_frame = 18;
     MobileStateMsg mobile_state = 19;
+    RenderFrameMsg render_frame = 20;
+    HostThemeModeMsg host_theme_mode = 21;
   }
 }
 
 message RenderMsg {
   string content = 1;
+}
+
+message RenderFrameMsg {
+  bytes frame = 1;
 }
 
 message UnblockInputThreadMsg {
@@ -79,6 +85,10 @@ message RenamedSessionMsg {
 
 message ConfigFileUpdatedMsg {
   // Empty message
+}
+
+message HostThemeModeMsg {
+  HostTerminalThemeIndication mode = 1;
 }
 
 message PaneRenderUpdateMsg {

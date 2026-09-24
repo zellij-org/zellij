@@ -100,6 +100,7 @@ pub struct ConnectionTable {
     pub client_id_to_channels: HashMap<String, ClientChannels>,
     pub client_read_only_status: HashMap<String, bool>,
     pub client_session_token_hash: HashMap<String, String>,
+    pub client_structured_status: HashMap<String, bool>,
 }
 
 const MAX_PENDING_CONTROL_MESSAGES: usize = 64;
@@ -108,7 +109,7 @@ const MAX_PENDING_CONTROL_MESSAGES: usize = 64;
 pub struct ClientChannels {
     pub os_api: Box<dyn ClientOsApi>,
     pub control_channel_tx: Option<UnboundedSender<Message>>,
-    pub terminal_channel_tx: Option<UnboundedSender<String>>,
+    pub terminal_channel_tx: Option<UnboundedSender<Message>>,
     terminal_channel_cancellation_token: Option<CancellationToken>,
     pub should_not_reconnect: Arc<AtomicBool>,
     pending_control_messages: Vec<Message>,
@@ -140,7 +141,7 @@ impl ClientChannels {
         self.pending_control_messages.push(message);
     }
 
-    pub fn add_terminal_tx(&mut self, terminal_channel_tx: UnboundedSender<String>) {
+    pub fn add_terminal_tx(&mut self, terminal_channel_tx: UnboundedSender<Message>) {
         self.terminal_channel_tx = Some(terminal_channel_tx);
     }
 
@@ -162,7 +163,7 @@ impl ClientChannels {
 #[derive(Debug)]
 pub struct ClientConnectionBus {
     pub connection_table: Arc<Mutex<ConnectionTable>>,
-    pub stdout_channel_tx: Option<UnboundedSender<String>>,
+    pub stdout_channel_tx: Option<UnboundedSender<Message>>,
     pub control_channel_tx: Option<UnboundedSender<Message>>,
     pub web_client_id: String,
 }
@@ -263,6 +264,7 @@ pub struct TerminalParams {
     pub cols: Option<u16>,
     pub cell_width: Option<u16>,
     pub cell_height: Option<u16>,
+    pub structured: Option<bool>,
 }
 
 #[derive(Deserialize)]

@@ -2,6 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use crate::deadline::{ProgressDeadline, FAKE_PTY_PROGRESS};
 use async_trait::async_trait;
 use zellij_server::os_input_output::AsyncReader;
 use zellij_server::panes::PaneId;
@@ -44,6 +45,7 @@ impl FakePtyState {
 #[derive(Default)]
 pub(crate) struct FakePtyRegistry {
     next_terminal_id: u32,
+    generation: u64,
     pub fake_pty_states: HashMap<u32, FakePtyState>,
     pub spawn_queue: VecDeque<u32>,
 }
@@ -87,7 +89,12 @@ impl SharedPtys {
     }
 
     pub(crate) fn mutate<T>(&self, mutator: impl FnOnce(&mut FakePtyRegistry) -> T) -> T {
-        let result = mutator(&mut self.lock_registry());
+        let result = {
+            let mut fake_pty_registry = self.lock_registry();
+            let result = mutator(&mut fake_pty_registry);
+            fake_pty_registry.generation += 1;
+            result
+        };
         self.inner.change_signal.notify_all();
         result
     }
@@ -227,30 +234,47 @@ impl SharedPtys {
     pub(crate) fn wait_for<T>(
         &self,
         what: &str,
+        condition: impl FnMut(&mut FakePtyRegistry) -> Option<T>,
+    ) -> T {
+        self.wait_for_within(
+            ProgressDeadline::starting_now(FAKE_PTY_PROGRESS),
+            what,
+            condition,
+        )
+    }
+
+    fn wait_for_within<T>(
+        &self,
+        mut deadline: ProgressDeadline,
+        what: &str,
         mut condition: impl FnMut(&mut FakePtyRegistry) -> Option<T>,
     ) -> T {
-        let deadline = Instant::now() + crate::default_timeout();
         let mut fake_pty_registry = self.lock_registry();
         loop {
             if let Some(result) = condition(&mut fake_pty_registry) {
                 return result;
             }
             let now = Instant::now();
-            if now >= deadline {
+            if let Some(tripped) = deadline.tripped(now) {
                 panic!(
-                    "timed out waiting for: {}\n{}\n=== zellij log tail ({}) ===\n{}",
+                    "timed out waiting for: {}\n{}\n{}\n=== zellij log tail ({}) ===\n{}",
                     what,
+                    tripped,
                     fake_pty_registry.describe_all(),
                     crate::test_env::log_file_path().display(),
                     crate::test_env::log_tail(40),
                 );
             }
+            let generation = fake_pty_registry.generation;
             let (guard, _) = self
                 .inner
                 .change_signal
-                .wait_timeout(fake_pty_registry, deadline - now)
+                .wait_timeout(fake_pty_registry, deadline.remaining(now))
                 .unwrap();
             fake_pty_registry = guard;
+            if fake_pty_registry.generation != generation {
+                deadline.note_progress(Instant::now());
+            }
         }
     }
 
@@ -437,5 +461,110 @@ impl FakePtyHandle {
     pub fn wait_for_size_change(&self, last_seen: (u16, u16)) -> Option<(u16, u16)> {
         self.shared_ptys
             .wait_for_change(self.terminal_id, last_seen)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc as StdArc;
+
+    const NO_PROGRESS_MS: u64 = 200;
+    const HARD_CAP_MS: u64 = 600;
+
+    fn budgeted() -> ProgressDeadline {
+        ProgressDeadline::with_budgets(
+            FAKE_PTY_PROGRESS,
+            Duration::from_millis(NO_PROGRESS_MS),
+            Duration::from_millis(HARD_CAP_MS),
+        )
+    }
+
+    fn never(_fake_pty_registry: &mut FakePtyRegistry) -> Option<()> {
+        None
+    }
+
+    fn message_of(payload: Box<dyn std::any::Any + Send>) -> String {
+        match payload.downcast::<String>() {
+            Ok(message) => *message,
+            Err(payload) => match payload.downcast::<&'static str>() {
+                Ok(message) => (*message).to_owned(),
+                Err(_) => String::new(),
+            },
+        }
+    }
+
+    fn waiting_panic(shared_ptys: &SharedPtys) -> (String, Duration) {
+        let previous_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let started_at = Instant::now();
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            shared_ptys.wait_for_within(budgeted(), "a condition that never holds", never)
+        }));
+        let waited = started_at.elapsed();
+        std::panic::set_hook(previous_hook);
+        match outcome {
+            Ok(_) => panic!("the wait returned rather than expiring"),
+            Err(payload) => (message_of(payload), waited),
+        }
+    }
+
+    #[test]
+    fn a_silent_registry_trips_the_no_progress_tier() {
+        let shared_ptys = SharedPtys::default();
+        let (message, waited) = waiting_panic(&shared_ptys);
+        assert!(
+            message
+                .contains("no-progress deadline tripped: nothing changed in the fake pty registry"),
+            "{}",
+            message
+        );
+        assert!(
+            waited < Duration::from_millis(HARD_CAP_MS),
+            "silence waited {:?}, which is the hard cap rather than the no-progress tier",
+            waited
+        );
+    }
+
+    #[test]
+    fn a_registry_that_keeps_changing_outlives_the_no_progress_tier_and_stops_at_the_hard_cap() {
+        let shared_ptys = SharedPtys::default();
+        let stop = StdArc::new(AtomicBool::new(false));
+        let mutating = {
+            let shared_ptys = shared_ptys.clone();
+            let stop = stop.clone();
+            std::thread::spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    shared_ptys.mutate(|fake_pty_registry| {
+                        fake_pty_registry.spawn_queue.push_back(0);
+                        fake_pty_registry.spawn_queue.pop_front();
+                    });
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+            })
+        };
+        let (message, waited) = waiting_panic(&shared_ptys);
+        stop.store(true, Ordering::Relaxed);
+        mutating.join().unwrap();
+        assert!(
+            message.contains("hard cap tripped: the fake pty registry kept changing"),
+            "{}",
+            message
+        );
+        assert!(
+            waited >= Duration::from_millis(NO_PROGRESS_MS),
+            "a registry that kept changing expired after {:?}, inside the no-progress budget",
+            waited
+        );
+    }
+
+    #[test]
+    fn a_condition_that_already_holds_is_answered_without_waiting() {
+        let shared_ptys = SharedPtys::default();
+        let started_at = Instant::now();
+        let answer = shared_ptys.wait_for_within(budgeted(), "a condition that holds", |_| Some(7));
+        assert_eq!(answer, 7);
+        assert!(started_at.elapsed() < Duration::from_millis(NO_PROGRESS_MS));
     }
 }

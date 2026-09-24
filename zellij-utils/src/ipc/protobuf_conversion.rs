@@ -10,18 +10,18 @@ use crate::{
         FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
         ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalFocusChangedMsg,
         HostTerminalThemeChangedMsg,
-        HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
+        HostTerminalThemeIndication as ProtoHostTerminalThemeIndication, HostThemeModeMsg,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, KittyGraphicsSupportMsg,
         LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg, MobileActivePaneMsg,
         MobilePaneMsg, MobileRenderPrefsMsg, MobileSessionMsg, MobileSizeMsg, MobileStateMsg,
         MobileTabMsg, NestedSessionFrameFromHostMsg, PaneMetadata as ProtoPaneMetadata,
-        PaneRenderUpdateMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
-        RequestSessionListMsg, ServerToClientMsg as ProtoServerToClientMsg,
-        SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg, SixelSupportMsg,
-        SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
-        SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
-        TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
-        UnblockInputThreadMsg, WebServerStartedMsg,
+        PaneRenderUpdateMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderFrameAckMsg,
+        RenderFrameMsg, RenderMsg, RequestSessionListMsg,
+        ServerToClientMsg as ProtoServerToClientMsg, SetMobileRenderPreferencesMsg,
+        SetSoftKeyboardMsg, SixelSupportMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
+        StructuredRenderSupportMsg, SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg,
+        SwitchSessionMsg, TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg,
+        TerminalResizeMsg, UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
@@ -164,11 +164,13 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     NestedSessionFrameFromHostMsg { payload_bytes },
                 )
             },
-            ClientToServerMsg::KittyGraphicsSupport { supported } => {
-                client_to_server_msg::Message::KittyGraphicsSupport(KittyGraphicsSupportMsg {
-                    supported,
-                })
-            },
+            ClientToServerMsg::KittyGraphicsSupport {
+                supported,
+                local_media,
+            } => client_to_server_msg::Message::KittyGraphicsSupport(KittyGraphicsSupportMsg {
+                supported,
+                local_media,
+            }),
             ClientToServerMsg::SixelSupport { supported } => {
                 client_to_server_msg::Message::SixelSupport(SixelSupportMsg { supported })
             },
@@ -184,6 +186,14 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                 client_to_server_msg::Message::HostTerminalFocusChanged(
                     HostTerminalFocusChangedMsg { focused },
                 )
+            },
+            ClientToServerMsg::StructuredRenderSupport { supported } => {
+                client_to_server_msg::Message::StructuredRenderSupport(StructuredRenderSupportMsg {
+                    supported,
+                })
+            },
+            ClientToServerMsg::RenderFrameAck { seq } => {
+                client_to_server_msg::Message::RenderFrameAck(RenderFrameAckMsg { seq })
             },
         };
 
@@ -340,6 +350,7 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
             Some(client_to_server_msg::Message::KittyGraphicsSupport(msg)) => {
                 Ok(ClientToServerMsg::KittyGraphicsSupport {
                     supported: msg.supported,
+                    local_media: msg.local_media,
                 })
             },
             Some(client_to_server_msg::Message::SixelSupport(msg)) => {
@@ -361,6 +372,14 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     focused: msg.focused,
                 })
             },
+            Some(client_to_server_msg::Message::StructuredRenderSupport(msg)) => {
+                Ok(ClientToServerMsg::StructuredRenderSupport {
+                    supported: msg.supported,
+                })
+            },
+            Some(client_to_server_msg::Message::RenderFrameAck(msg)) => {
+                Ok(ClientToServerMsg::RenderFrameAck { seq: msg.seq })
+            },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
     }
@@ -372,6 +391,9 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
         let message = match msg {
             ServerToClientMsg::Render { content } => {
                 server_to_client_msg::Message::Render(RenderMsg { content })
+            },
+            ServerToClientMsg::RenderFrame { frame } => {
+                server_to_client_msg::Message::RenderFrame(RenderFrameMsg { frame })
             },
             ServerToClientMsg::UnblockInputThread => {
                 server_to_client_msg::Message::UnblockInputThread(UnblockInputThreadMsg {})
@@ -422,6 +444,12 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             },
             ServerToClientMsg::ConfigFileUpdated => {
                 server_to_client_msg::Message::ConfigFileUpdated(ConfigFileUpdatedMsg {})
+            },
+            ServerToClientMsg::HostTerminalThemeChanged { mode } => {
+                let proto_mode: ProtoHostTerminalThemeIndication = mode.into();
+                server_to_client_msg::Message::HostThemeMode(HostThemeModeMsg {
+                    mode: proto_mode as i32,
+                })
             },
             ServerToClientMsg::PaneRenderUpdate {
                 pane_id,
@@ -596,6 +624,9 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             Some(server_to_client_msg::Message::Render(render)) => Ok(ServerToClientMsg::Render {
                 content: render.content,
             }),
+            Some(server_to_client_msg::Message::RenderFrame(msg)) => {
+                Ok(ServerToClientMsg::RenderFrame { frame: msg.frame })
+            },
             Some(server_to_client_msg::Message::UnblockInputThread(_)) => {
                 Ok(ServerToClientMsg::UnblockInputThread)
             },
@@ -658,6 +689,14 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             },
             Some(server_to_client_msg::Message::RenamedSession(renamed)) => {
                 Ok(ServerToClientMsg::RenamedSession { name: renamed.name })
+            },
+            Some(server_to_client_msg::Message::HostThemeMode(msg)) => {
+                let proto_mode = ProtoHostTerminalThemeIndication::try_from(msg.mode)
+                    .ok()
+                    .ok_or_else(|| anyhow!("Unknown HostTerminalThemeIndication: {}", msg.mode))?;
+                Ok(ServerToClientMsg::HostTerminalThemeChanged {
+                    mode: proto_mode.into(),
+                })
             },
             Some(server_to_client_msg::Message::ConfigFileUpdated(_)) => {
                 Ok(ServerToClientMsg::ConfigFileUpdated)

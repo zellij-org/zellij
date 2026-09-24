@@ -1,0 +1,87 @@
+size: 40x120
+cursor: row=4 col=0 hidden shape=Default
+grid:
+|jinho@pochita /home/jinho/Documents/Temp/zellij/Chinese/第 二                                                             |
+| Chinese   第 一                         0  empty                                                                         |
+|           第 三                         0                                                                                |
+|           第 二                         0                                                                                |
+|           第 五                         0                                                                                |
+|           第 四                         0                                                                                |
+|           zellij-11.log          1.85 K                                                                                |
+|           zellij.log              979 B                                                                                |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|drwxr-xr-x 2 jinho jinho 0 2021-10-13 10:31              2.8K sum, 933G free  3/7  All                                  |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 0: cols 0-13 fg=Green bg=Background flags=BOLD
+row 0: cols 14-55 fg=Blue bg=Background flags=BOLD
+row 0: cols 56-56 fg=Foreground bg=Background flags=BOLD|WIDE_CHAR
+row 0: cols 57-57 fg=Foreground bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 0: cols 58-58 fg=Foreground bg=Background flags=BOLD|WIDE_CHAR
+row 0: cols 59-59 fg=Foreground bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 1: cols 0-8 fg=BrightBlue bg=Background flags=INVERSE|BOLD
+row 1: cols 10-10 fg=BrightRed bg=Background flags=BOLD
+row 1: cols 11-11 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR
+row 1: cols 12-12 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 1: cols 13-13 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR
+row 1: cols 14-14 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 1: cols 15-40 fg=BrightBlue bg=Background flags=BOLD
+row 1: cols 42-46 fg=Foreground bg=Red
+row 2: cols 10-10 fg=BrightRed bg=Background flags=BOLD
+row 2: cols 11-11 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR
+row 2: cols 12-12 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 2: cols 13-13 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR
+row 2: cols 14-14 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 2: cols 15-40 fg=BrightBlue bg=Background flags=BOLD
+row 3: cols 10-10 fg=BrightBlue bg=Background flags=INVERSE|BOLD
+row 3: cols 11-11 fg=BrightBlue bg=Background flags=INVERSE|BOLD|WIDE_CHAR
+row 3: cols 12-12 fg=BrightBlue bg=Background flags=INVERSE|BOLD|WIDE_CHAR_SPACER
+row 3: cols 13-13 fg=BrightBlue bg=Background flags=INVERSE|BOLD|WIDE_CHAR
+row 3: cols 14-14 fg=BrightBlue bg=Background flags=INVERSE|BOLD|WIDE_CHAR_SPACER
+row 3: cols 15-40 fg=BrightBlue bg=Background flags=INVERSE|BOLD
+row 4: cols 10-10 fg=BrightRed bg=Background flags=BOLD
+row 4: cols 11-11 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR
+row 4: cols 12-12 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 4: cols 13-13 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR
+row 4: cols 14-14 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 4: cols 15-40 fg=BrightBlue bg=Background flags=BOLD
+row 5: cols 10-10 fg=BrightRed bg=Background flags=BOLD
+row 5: cols 11-11 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR
+row 5: cols 12-12 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 5: cols 13-13 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR
+row 5: cols 14-14 fg=BrightBlue bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 5: cols 15-40 fg=BrightBlue bg=Background flags=BOLD
+row 6: cols 10-10 fg=BrightRed bg=Background flags=BOLD
+row 6: cols 11-40 fg=BrightGreen bg=Background flags=BOLD
+row 7: cols 10-10 fg=BrightRed bg=Background flags=BOLD
+row 20: cols 0-9 fg=Cyan bg=Background
+images:

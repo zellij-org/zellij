@@ -1,0 +1,196 @@
+size: 40x120
+cursor: row=39 col=24 visible shape=Default
+grid:
+|.rw-r--r--  2.1k aram 17 Feb 16:06  Cargo.toml                                                                          |
+|.rw-r--r--  3.3k aram 11 Jan 16:09  CODE_OF_CONDUCT.md                                                                  |
+|.rw-r--r--  3.5k aram 17 Feb 16:06  CONTRIBUTING.md                                                                     |
+|drwxr-xr-x     - aram 10 Feb 11:53  default-tiles                                                                       |
+|drwxr-xr-x     - aram 10 Feb 11:53  docs                                                                                |
+|.rw-r--r--  2.1k aram 10 Feb 11:53  GOVERNANCE.md                                                                       |
+|.rw-r--r--  1.1k aram 10 Feb 11:53  LICENSE.md                                                                          |
+|.rw-r--r--  4.7k aram 17 Feb 16:06  README.md                                                                           |
+|drwxr-xr-x     - aram 17 Feb 16:06  src                                                                                 |
+|drwxr-xr-x     - aram 17 Feb 16:08  target                                                                              |
+|drwxr-xr-x     - aram 17 Feb 16:06  zellij-tile                                                                         |
+|⋊> ~/c/zellij on main ⨯ omf theme                                                                           10:27:45    |
+|Installed:                                                                                                              |
+|agnoster        chain           default         plain                                                                   |
+|                                                                                                                        |
+|Available:                                                                                                              |
+|agnoster                eden                    lavender                scorphish                                       |
+|aight                   emoji-powerline         lolfish                 separation                                      |
+|ays                     es                      mars                    shellder                                        |
+|batman                  fishbone                mish                    simple-ass-prompt                               |
+|beloglazov              fishface                mokou                   simplevi                                        |
+|bira                    fishy-drupal            mtahmed                 slavic-cat                                      |
+|bobthefish              fisk                    nai                     spacefish                                       |
+|bongnoster              fox                     nelsonjchen             sushi                                           |
+|boxfish                 gentoo                  neolambda               syl20bnr                                        |
+|budspencer              gianu                   numist                  taktoa                                          |
+|cbjohnson               gitstatus               ocean                   technopagan                                     |
+|chain                   gnuykeaj                one                     toaster                                         |
+|clearance               godfather               pastfish                tomita                                          |
+|cmorrell                graystatus              perryh                  trout                                           |
+|coffeeandcode           harleen                 plain                   tweetjay                                        |
+|cor                     idan                    pure                    uggedal                                         |
+|cyan                    integral                pygmalion               will                                            |
+|dangerous               jacaetevha              random                  wolf-theme                                      |
+|default                 johanson                randomrussel            yimmy                                           |
+|dmorrell                kawasaki                redfish                 zeit                                            |
+|doughsay                krisleech               red-snapper             zephyr                                          |
+|eclm                    l                       robbyrussell            zish                                            |
+|edan                    lambda                  sashimi                                                                 |
+|⋊> ~/c/zellij on main ⨯                                                                                     10:27:46    |
+styles:
+row 0: cols 1-1 fg=Yellow bg=Background flags=BOLD
+row 0: cols 2-2 fg=Red bg=Background flags=BOLD
+row 0: cols 3-3 fg=idx244 bg=Background
+row 0: cols 4-4 fg=Yellow bg=Background
+row 0: cols 5-6 fg=idx244 bg=Background
+row 0: cols 7-7 fg=Yellow bg=Background
+row 0: cols 8-9 fg=idx244 bg=Background
+row 0: cols 12-14 fg=Green bg=Background flags=BOLD
+row 0: cols 15-15 fg=Green bg=Background
+row 0: cols 17-20 fg=Yellow bg=Background flags=BOLD
+row 0: cols 22-33 fg=Blue bg=Background
+row 0: cols 36-45 fg=Yellow bg=Background flags=BOLD|UNDERLINE
+row 1: cols 1-1 fg=Yellow bg=Background flags=BOLD
+row 1: cols 2-2 fg=Red bg=Background flags=BOLD
+row 1: cols 3-3 fg=idx244 bg=Background
+row 1: cols 4-4 fg=Yellow bg=Background
+row 1: cols 5-6 fg=idx244 bg=Background
+row 1: cols 7-7 fg=Yellow bg=Background
+row 1: cols 8-9 fg=idx244 bg=Background
+row 1: cols 12-14 fg=Green bg=Background flags=BOLD
+row 1: cols 15-15 fg=Green bg=Background
+row 1: cols 17-20 fg=Yellow bg=Background flags=BOLD
+row 1: cols 22-33 fg=Blue bg=Background
+row 2: cols 1-1 fg=Yellow bg=Background flags=BOLD
+row 2: cols 2-2 fg=Red bg=Background flags=BOLD
+row 2: cols 3-3 fg=idx244 bg=Background
+row 2: cols 4-4 fg=Yellow bg=Background
+row 2: cols 5-6 fg=idx244 bg=Background
+row 2: cols 7-7 fg=Yellow bg=Background
+row 2: cols 8-9 fg=idx244 bg=Background
+row 2: cols 12-14 fg=Green bg=Background flags=BOLD
+row 2: cols 15-15 fg=Green bg=Background
+row 2: cols 17-20 fg=Yellow bg=Background flags=BOLD
+row 2: cols 22-33 fg=Blue bg=Background
+row 3: cols 0-0 fg=Blue bg=Background flags=BOLD
+row 3: cols 1-1 fg=Yellow bg=Background flags=BOLD
+row 3: cols 2-2 fg=Red bg=Background flags=BOLD
+row 3: cols 3-3 fg=Green bg=Background flags=BOLD
+row 3: cols 4-4 fg=Yellow bg=Background
+row 3: cols 5-5 fg=idx244 bg=Background
+row 3: cols 6-6 fg=Green bg=Background
+row 3: cols 7-7 fg=Yellow bg=Background
+row 3: cols 8-8 fg=idx244 bg=Background
+row 3: cols 9-9 fg=Green bg=Background
+row 3: cols 15-15 fg=idx244 bg=Background
+row 3: cols 17-20 fg=Yellow bg=Background flags=BOLD
+row 3: cols 22-33 fg=Blue bg=Background
+row 3: cols 36-48 fg=Blue bg=Background flags=BOLD
+row 4: cols 0-0 fg=Blue bg=Background flags=BOLD
+row 4: cols 1-1 fg=Yellow bg=Background flags=BOLD
+row 4: cols 2-2 fg=Red bg=Background flags=BOLD
+row 4: cols 3-3 fg=Green bg=Background flags=BOLD
+row 4: cols 4-4 fg=Yellow bg=Background
+row 4: cols 5-5 fg=idx244 bg=Background
+row 4: cols 6-6 fg=Green bg=Background
+row 4: cols 7-7 fg=Yellow bg=Background
+row 4: cols 8-8 fg=idx244 bg=Background
+row 4: cols 9-9 fg=Green bg=Background
+row 4: cols 15-15 fg=idx244 bg=Background
+row 4: cols 17-20 fg=Yellow bg=Background flags=BOLD
+row 4: cols 22-33 fg=Blue bg=Background
+row 4: cols 36-39 fg=Blue bg=Background flags=BOLD
+row 5: cols 1-1 fg=Yellow bg=Background flags=BOLD
+row 5: cols 2-2 fg=Red bg=Background flags=BOLD
+row 5: cols 3-3 fg=idx244 bg=Background
+row 5: cols 4-4 fg=Yellow bg=Background
+row 5: cols 5-6 fg=idx244 bg=Background
+row 5: cols 7-7 fg=Yellow bg=Background
+row 5: cols 8-9 fg=idx244 bg=Background
+row 5: cols 12-14 fg=Green bg=Background flags=BOLD
+row 5: cols 15-15 fg=Green bg=Background
+row 5: cols 17-20 fg=Yellow bg=Background flags=BOLD
+row 5: cols 22-33 fg=Blue bg=Background
+row 6: cols 1-1 fg=Yellow bg=Background flags=BOLD
+row 6: cols 2-2 fg=Red bg=Background flags=BOLD
+row 6: cols 3-3 fg=idx244 bg=Background
+row 6: cols 4-4 fg=Yellow bg=Background
+row 6: cols 5-6 fg=idx244 bg=Background
+row 6: cols 7-7 fg=Yellow bg=Background
+row 6: cols 8-9 fg=idx244 bg=Background
+row 6: cols 12-14 fg=Green bg=Background flags=BOLD
+row 6: cols 15-15 fg=Green bg=Background
+row 6: cols 17-20 fg=Yellow bg=Background flags=BOLD
+row 6: cols 22-33 fg=Blue bg=Background
+row 7: cols 1-1 fg=Yellow bg=Background flags=BOLD
+row 7: cols 2-2 fg=Red bg=Background flags=BOLD
+row 7: cols 3-3 fg=idx244 bg=Background
+row 7: cols 4-4 fg=Yellow bg=Background
+row 7: cols 5-6 fg=idx244 bg=Background
+row 7: cols 7-7 fg=Yellow bg=Background
+row 7: cols 8-9 fg=idx244 bg=Background
+row 7: cols 12-14 fg=Green bg=Background flags=BOLD
+row 7: cols 15-15 fg=Green bg=Background
+row 7: cols 17-20 fg=Yellow bg=Background flags=BOLD
+row 7: cols 22-33 fg=Blue bg=Background
+row 7: cols 36-44 fg=Yellow bg=Background flags=BOLD|UNDERLINE
+row 8: cols 0-0 fg=Blue bg=Background flags=BOLD
+row 8: cols 1-1 fg=Yellow bg=Background flags=BOLD
+row 8: cols 2-2 fg=Red bg=Background flags=BOLD
+row 8: cols 3-3 fg=Green bg=Background flags=BOLD
+row 8: cols 4-4 fg=Yellow bg=Background
+row 8: cols 5-5 fg=idx244 bg=Background
+row 8: cols 6-6 fg=Green bg=Background
+row 8: cols 7-7 fg=Yellow bg=Background
+row 8: cols 8-8 fg=idx244 bg=Background
+row 8: cols 9-9 fg=Green bg=Background
+row 8: cols 15-15 fg=idx244 bg=Background
+row 8: cols 17-20 fg=Yellow bg=Background flags=BOLD
+row 8: cols 22-33 fg=Blue bg=Background
+row 8: cols 36-38 fg=Blue bg=Background flags=BOLD
+row 9: cols 0-0 fg=Blue bg=Background flags=BOLD
+row 9: cols 1-1 fg=Yellow bg=Background flags=BOLD
+row 9: cols 2-2 fg=Red bg=Background flags=BOLD
+row 9: cols 3-3 fg=Green bg=Background flags=BOLD
+row 9: cols 4-4 fg=Yellow bg=Background
+row 9: cols 5-5 fg=idx244 bg=Background
+row 9: cols 6-6 fg=Green bg=Background
+row 9: cols 7-7 fg=Yellow bg=Background
+row 9: cols 8-8 fg=idx244 bg=Background
+row 9: cols 9-9 fg=Green bg=Background
+row 9: cols 15-15 fg=idx244 bg=Background
+row 9: cols 17-20 fg=Yellow bg=Background flags=BOLD
+row 9: cols 22-33 fg=Blue bg=Background
+row 9: cols 36-41 fg=Blue bg=Background flags=BOLD
+row 10: cols 0-0 fg=Blue bg=Background flags=BOLD
+row 10: cols 1-1 fg=Yellow bg=Background flags=BOLD
+row 10: cols 2-2 fg=Red bg=Background flags=BOLD
+row 10: cols 3-3 fg=Green bg=Background flags=BOLD
+row 10: cols 4-4 fg=Yellow bg=Background
+row 10: cols 5-5 fg=idx244 bg=Background
+row 10: cols 6-6 fg=Green bg=Background
+row 10: cols 7-7 fg=Yellow bg=Background
+row 10: cols 8-8 fg=idx244 bg=Background
+row 10: cols 9-9 fg=Green bg=Background
+row 10: cols 15-15 fg=idx244 bg=Background
+row 10: cols 17-20 fg=Yellow bg=Background flags=BOLD
+row 10: cols 22-33 fg=Blue bg=Background
+row 10: cols 36-46 fg=Blue bg=Background flags=BOLD
+row 11: cols 0-1 fg=idx15 bg=idx6
+row 11: cols 3-12 fg=idx3 bg=Background
+row 11: cols 17-20 fg=idx2 bg=Background
+row 11: cols 24-26 fg=Foreground bg=Background flags=BOLD
+row 11: cols 28-32 fg=idx6 bg=Background
+row 11: cols 108-115 fg=idx240 bg=Background
+row 12: cols 0-9 fg=Foreground bg=Background flags=UNDERLINE
+row 13: cols 32-38 fg=idx6 bg=Background
+row 15: cols 0-9 fg=Foreground bg=Background flags=UNDERLINE
+row 39: cols 0-1 fg=idx15 bg=idx6
+row 39: cols 3-12 fg=idx3 bg=Background
+row 39: cols 17-20 fg=idx2 bg=Background
+row 39: cols 108-115 fg=idx240 bg=Background
+images:

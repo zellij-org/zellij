@@ -282,6 +282,16 @@ pub struct Setup {
     /// Generates auto-start script for the specified shell
     #[clap(long, value_name = "SHELL", value_parser)]
     pub generate_auto_start: Option<String>,
+
+    /// Install a desktop entry and icon so the zellij window appears in application launchers.
+    /// The entry runs this binary by absolute path, so re-run this after moving the binary.
+    /// Linux only for now
+    #[clap(long, value_parser, exclusive = true)]
+    pub install_desktop_entry: bool,
+
+    /// Remove the desktop entry and icon written by --install-desktop-entry
+    #[clap(long, value_parser, exclusive = true)]
+    pub uninstall_desktop_entry: bool,
 }
 
 impl Setup {
@@ -678,22 +688,20 @@ fn merge_attach_command_options(
     cli_config_options: Option<Options>,
     cli_args: &CliArgs,
 ) -> Option<Options> {
-    let cli_config_options = if let Some(Command::Sessions(Sessions::Attach { options, .. })) =
-        cli_args.command.clone()
-    {
-        match options.clone().as_deref() {
-            Some(SessionCommand::Options(options)) => match cli_config_options {
-                Some(cli_config_options) => {
-                    Some(cli_config_options.merge_from_cli(options.to_owned().into()))
-                },
-                None => Some(options.to_owned().into()),
-            },
-            _ => cli_config_options,
-        }
-    } else {
-        cli_config_options
+    let attach_options = match cli_args.command.clone() {
+        Some(Command::Sessions(Sessions::Attach { args, .. })) => args.options,
+        Some(Command::Window(window_args)) => window_args.attach.options,
+        _ => None,
     };
-    cli_config_options
+    match attach_options.as_deref() {
+        Some(SessionCommand::Options(options)) => match cli_config_options {
+            Some(cli_config_options) => {
+                Some(cli_config_options.merge_from_cli(options.to_owned().into()))
+            },
+            None => Some(options.to_owned().into()),
+        },
+        _ => cli_config_options,
+    }
 }
 
 #[cfg(test)]

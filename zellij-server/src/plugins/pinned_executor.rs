@@ -425,6 +425,7 @@ mod tests {
         let to_background_jobs = SenderWithContext::new(send_to_background_jobs);
 
         let senders = ThreadSenders {
+            to_screen_priority: None,
             to_pty: Some(to_pty),
             to_screen: Some(to_screen),
             to_plugin: Some(to_plugin),

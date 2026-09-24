@@ -14,6 +14,8 @@ mod keyboard_parser;
 mod nested_reannounce;
 #[cfg(feature = "web_server_capability")]
 pub mod remote_attach;
+mod server_launch;
+pub mod session_resolution;
 mod stdin_ansi_parser;
 mod stdin_handler;
 #[cfg(windows)]
@@ -22,15 +24,19 @@ mod stdin_handler_windows;
 pub mod web_client;
 
 use log::info;
+#[cfg(feature = "web_server_capability")]
 use std::env::current_exe;
 use std::io::{self, Write};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::{Path, PathBuf};
+#[cfg(feature = "web_server_capability")]
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use zellij_utils::errors::FatalError;
 use zellij_utils::shared::web_server_base_url;
+
+pub use server_launch::{launch_style, spawn_server, spawn_server_with, LaunchStyle, ServerLaunch};
 
 #[cfg(feature = "web_server_capability")]
 use futures_util::{SinkExt, StreamExt};
@@ -234,11 +240,15 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::EmitNestedSessionFrame { payload_bytes } => {
                 ClientInstruction::EmitNestedSessionFrame(payload_bytes)
             },
+            ServerToClientMsg::RenderFrame { .. } => ClientInstruction::UnblockInputThread,
             // Subscribe-only messages — not handled by regular interactive clients
             ServerToClientMsg::PaneRenderUpdate { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SubscribedPaneClosed { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SetSoftKeyboard { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::MobileState { .. } => ClientInstruction::UnblockInputThread,
+            ServerToClientMsg::HostTerminalThemeChanged { .. } => {
+                ClientInstruction::UnblockInputThread
+            },
         }
     }
 }
@@ -454,52 +464,6 @@ fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
     sock_dir.push(envs::get_session_name().unwrap());
     check_ipc_pipe_length(&sock_dir);
     sock_dir
-}
-
-/// Spawn the Zellij server process.
-///
-/// On Unix the server daemonizes (double-fork) inside start_server(), so
-/// the intermediate child exits immediately and `cmd.status()` returns.
-#[cfg(not(windows))]
-pub fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
-    let mut cmd = Command::new(current_exe()?);
-    cmd.arg("--server").arg(socket_path);
-    if debug {
-        cmd.arg("--debug");
-    }
-    let status = cmd.status()?;
-    if status.success() {
-        Ok(())
-    } else {
-        let msg = "Process returned non-zero exit code";
-        let err_msg = match status.code() {
-            Some(c) => format!("{}: {}", msg, c),
-            None => msg.to_string(),
-        };
-        Err(io::Error::new(io::ErrorKind::Other, err_msg))
-    }
-}
-
-/// Spawn the Zellij server process.
-///
-/// On Windows there is no daemonize — we launch the server as a background
-/// process with a hidden console.  We use CREATE_NO_WINDOW (not
-/// DETACHED_PROCESS) so the server gets valid standard handles;
-/// DETACHED_PROCESS leaves stdin/stdout/stderr as NULL, which breaks PTY
-/// creation, WASM plugin loading, and logging.
-#[cfg(windows)]
-pub fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
-    use std::os::windows::process::CommandExt;
-    let mut cmd = Command::new(current_exe()?);
-    cmd.arg("--server").arg(socket_path);
-    if debug {
-        cmd.arg("--debug");
-    }
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-    const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-    cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
-    cmd.spawn()?;
-    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -787,6 +751,12 @@ pub async fn run_remote_client_terminal_loop(
                             Ok(WebServerToWebClientControlMessage::MobileState{ .. }) => {
                                 // no-op
                             }
+                            Ok(WebServerToWebClientControlMessage::HostTerminalThemeChanged{ .. }) => {
+                            }
+                            Ok(WebServerToWebClientControlMessage::ForwardQueryToHost{ .. }) => {
+                            }
+                            Ok(WebServerToWebClientControlMessage::Exit{ .. }) => {
+                            }
                             Err(e) => {
                                 log::debug!("Ignoring unrecognized control message: {}", e);
                             }
@@ -835,13 +805,14 @@ pub fn start_remote_client(
 
     let connections = remote_attach::attach_to_remote_session(
         runtime.clone(),
-        os_input.clone(),
         remote_session_url,
         token,
         remember,
         forget,
         ca_cert.as_deref(),
         insecure,
+        remote_attach::ClientDeclaration::default(),
+        remote_attach::Prompting::Interactive,
     )?;
 
     let reconnect_to_session = None;
@@ -935,6 +906,124 @@ pub fn start_remote_client(
     Ok(reconnect_to_session)
 }
 
+pub struct Handshake {
+    pub message: ClientToServerMsg,
+    pub starts_server: bool,
+}
+
+pub fn first_message(
+    info: &ClientInfo,
+    cli_args: &CliArgs,
+    config_options: &Options,
+    terminal_window_size: Size,
+    host_terminal_env: std::collections::BTreeMap<String, String>,
+    tab_position_to_focus: Option<usize>,
+    pane_id_to_focus: Option<(u32, bool)>,
+) -> Handshake {
+    let is_web_client = false;
+    let layout_from_cli_args = |config_options: &Options| {
+        if let Some(layout_string) = &cli_args.layout_string {
+            Some(LayoutInfo::Stringified(layout_string.clone()))
+        } else {
+            cli_args
+                .layout
+                .as_ref()
+                .and_then(|l| {
+                    LayoutInfo::from_cli(
+                        &config_options.layout_dir,
+                        &Some(l.clone()),
+                        std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                    )
+                })
+                .or_else(|| {
+                    LayoutInfo::from_config(
+                        &config_options.layout_dir,
+                        &config_options.default_layout,
+                    )
+                })
+        }
+    };
+    let assets = |configuration_options: &Options,
+                  layout: Option<LayoutInfo>,
+                  force_run_layout_commands: bool,
+                  cwd: Option<PathBuf>,
+                  initial_panes: Option<Vec<CommandOrPlugin>>| {
+        CliAssets {
+            config_file_path: Config::config_file_path(cli_args),
+            config_dir: cli_args.config_dir.clone(),
+            should_ignore_config: cli_args.is_setup_clean(),
+            configuration_options: Some(configuration_options.clone()),
+            layout,
+            terminal_window_size,
+            data_dir: cli_args.data_dir.clone(),
+            is_debug: cli_args.debug,
+            max_panes: cli_args.max_panes,
+            force_run_layout_commands,
+            cwd,
+            host_terminal_env: host_terminal_env.clone(),
+            initial_panes,
+        }
+    };
+
+    match info {
+        ClientInfo::Attach(_name, attach_options) => Handshake {
+            message: ClientToServerMsg::AttachClient {
+                cli_assets: assets(
+                    attach_options,
+                    layout_from_cli_args(attach_options),
+                    false,
+                    None,
+                    None,
+                ),
+                tab_position_to_focus,
+                pane_to_focus: pane_id_to_focus.map(|(pane_id, is_plugin)| {
+                    zellij_utils::ipc::PaneReference { pane_id, is_plugin }
+                }),
+                is_web_client,
+            },
+            starts_server: false,
+        },
+        ClientInfo::Watch(..) => Handshake {
+            message: ClientToServerMsg::AttachWatcherClient {
+                terminal_size: terminal_window_size,
+                is_web_client,
+            },
+            starts_server: false,
+        },
+        ClientInfo::Resurrect(_name, path_to_layout, force_run_commands, cwd) => Handshake {
+            message: ClientToServerMsg::FirstClientConnected {
+                cli_assets: assets(
+                    config_options,
+                    Some(LayoutInfo::File(
+                        path_to_layout.display().to_string(),
+                        LayoutMetadata::default(),
+                    )),
+                    *force_run_commands,
+                    cwd.clone(),
+                    None,
+                ),
+                is_web_client,
+            },
+            starts_server: true,
+        },
+        ClientInfo::New(_name, layout_info, layout_cwd, initial_panes) => Handshake {
+            message: ClientToServerMsg::FirstClientConnected {
+                cli_assets: assets(
+                    config_options,
+                    layout_info
+                        .clone()
+                        .or_else(|| layout_from_cli_args(config_options)),
+                    false,
+                    layout_cwd.clone(),
+                    initial_panes.clone(),
+                ),
+                is_web_client,
+            },
+            starts_server: true,
+        },
+    }
+}
+
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
     cli_args: CliArgs,
@@ -1005,176 +1094,33 @@ pub fn start_client(
         include_kitty_exit: !explicitly_disable_kitty_keyboard_protocol,
     };
 
-    let (first_msg, ipc_pipe) = match info {
-        ClientInfo::Attach(name, config_options) => {
-            envs::set_session_name(name.clone());
-            os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe(Some(terminal_teardown));
-            let is_web_client = false;
+    let Handshake {
+        message: first_msg,
+        starts_server,
+    } = first_message(
+        &info,
+        &cli_args,
+        &config_options,
+        full_screen_ws,
+        host_terminal_env(),
+        tab_position_to_focus,
+        pane_id_to_focus,
+    );
 
-            let cli_assets = CliAssets {
-                config_file_path: Config::config_file_path(&cli_args),
-                config_dir: cli_args.config_dir.clone(),
-                should_ignore_config: cli_args.is_setup_clean(),
-                configuration_options: Some(config_options.clone()),
-                layout: if let Some(layout_string) = &cli_args.layout_string {
-                    Some(LayoutInfo::Stringified(layout_string.clone()))
-                } else {
-                    cli_args
-                        .layout
-                        .as_ref()
-                        .and_then(|l| {
-                            LayoutInfo::from_cli(
-                                &config_options.layout_dir,
-                                &Some(l.clone()),
-                                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-                            )
-                        })
-                        .or_else(|| {
-                            LayoutInfo::from_config(
-                                &config_options.layout_dir,
-                                &config_options.default_layout,
-                            )
-                        })
-                },
-                terminal_window_size: full_screen_ws,
-                data_dir: cli_args.data_dir.clone(),
-                is_debug: cli_args.debug,
-                max_panes: cli_args.max_panes,
-                force_run_layout_commands: false,
-                cwd: None,
-                host_terminal_env: host_terminal_env(),
-                initial_panes: None,
-            };
-            (
-                ClientToServerMsg::AttachClient {
-                    cli_assets,
-                    tab_position_to_focus,
-                    pane_to_focus: pane_id_to_focus.map(|(pane_id, is_plugin)| {
-                        zellij_utils::ipc::PaneReference { pane_id, is_plugin }
-                    }),
-                    is_web_client,
-                },
-                ipc_pipe,
-            )
-        },
-        ClientInfo::Watch(name, _config_options) => {
-            envs::set_session_name(name.clone());
-            os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe(Some(terminal_teardown));
-            let is_web_client = false;
+    envs::set_session_name(own_session_name.clone());
+    os_input.update_session_name(own_session_name.clone());
+    let ipc_pipe = create_ipc_pipe(Some(terminal_teardown));
 
-            (
-                ClientToServerMsg::AttachWatcherClient {
-                    terminal_size: full_screen_ws,
-                    is_web_client,
-                },
-                ipc_pipe,
-            )
-        },
-        ClientInfo::Resurrect(name, path_to_layout, force_run_commands, cwd) => {
-            envs::set_session_name(name.clone());
-
-            let cli_assets = CliAssets {
-                config_file_path: Config::config_file_path(&cli_args),
-                config_dir: cli_args.config_dir.clone(),
-                should_ignore_config: cli_args.is_setup_clean(),
-                configuration_options: Some(config_options.clone()),
-                layout: Some(LayoutInfo::File(
-                    path_to_layout.display().to_string(),
-                    LayoutMetadata::default(),
-                )),
-                terminal_window_size: full_screen_ws,
-                data_dir: cli_args.data_dir.clone(),
-                is_debug: cli_args.debug,
-                max_panes: cli_args.max_panes,
-                force_run_layout_commands: force_run_commands,
-                cwd,
-                host_terminal_env: host_terminal_env(),
-                initial_panes: None,
-            };
-
-            os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe(Some(terminal_teardown));
-
-            if let Err(e) = os_input.spawn_server(&*ipc_pipe, cli_args.debug) {
-                exit_after_startup_error(Some(terminal_teardown), spawn_server_error_message(e));
+    if starts_server {
+        if let Err(e) = os_input.spawn_server(&*ipc_pipe, cli_args.debug) {
+            exit_after_startup_error(Some(terminal_teardown), spawn_server_error_message(e));
+        }
+        if should_start_web_server {
+            if let Err(e) = spawn_web_server(&cli_args) {
+                log::error!("Failed to start web server: {}", e);
             }
-            if should_start_web_server {
-                if let Err(e) = spawn_web_server(&cli_args) {
-                    log::error!("Failed to start web server: {}", e);
-                }
-            }
-
-            let is_web_client = false;
-
-            (
-                ClientToServerMsg::FirstClientConnected {
-                    cli_assets,
-                    is_web_client,
-                },
-                ipc_pipe,
-            )
-        },
-        ClientInfo::New(name, layout_info, layout_cwd, initial_panes) => {
-            envs::set_session_name(name.clone());
-
-            let cli_assets = CliAssets {
-                config_file_path: Config::config_file_path(&cli_args),
-                config_dir: cli_args.config_dir.clone(),
-                should_ignore_config: cli_args.is_setup_clean(),
-                configuration_options: Some(config_options.clone()),
-                layout: layout_info.or_else(|| {
-                    cli_args
-                        .layout
-                        .as_ref()
-                        .and_then(|l| {
-                            LayoutInfo::from_cli(
-                                &config_options.layout_dir,
-                                &Some(l.clone()),
-                                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-                            )
-                        })
-                        .or_else(|| {
-                            LayoutInfo::from_config(
-                                &config_options.layout_dir,
-                                &config_options.default_layout,
-                            )
-                        })
-                }),
-                terminal_window_size: full_screen_ws,
-                data_dir: cli_args.data_dir.clone(),
-                is_debug: cli_args.debug,
-                max_panes: cli_args.max_panes,
-                force_run_layout_commands: false,
-                cwd: layout_cwd,
-                host_terminal_env: host_terminal_env(),
-                initial_panes,
-            };
-
-            os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe(Some(terminal_teardown));
-
-            if let Err(e) = os_input.spawn_server(&*ipc_pipe, cli_args.debug) {
-                exit_after_startup_error(Some(terminal_teardown), spawn_server_error_message(e));
-            }
-            if should_start_web_server {
-                if let Err(e) = spawn_web_server(&cli_args) {
-                    log::error!("Failed to start web server: {}", e);
-                }
-            }
-
-            let is_web_client = false;
-
-            (
-                ClientToServerMsg::FirstClientConnected {
-                    cli_assets,
-                    is_web_client,
-                },
-                ipc_pipe,
-            )
-        },
-    };
+        }
+    }
 
     os_input.connect_to_server(&*ipc_pipe);
     os_input.send_to_server(first_msg);

@@ -116,6 +116,25 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/catppuccin/alacritty/blob/main/catppuccin-frappe.toml
+        terminal_colors {
+            black 81 87 109
+            red 231 130 132
+            green 166 209 137
+            yellow 229 200 144
+            blue 140 170 238
+            magenta 244 184 228
+            cyan 129 200 190
+            white 181 191 226
+            bright_black 98 104 128
+            bright_red 231 130 132
+            bright_green 166 209 137
+            bright_yellow 229 200 144
+            bright_blue 140 170 238
+            bright_magenta 244 184 228
+            bright_cyan 129 200 190
+            bright_white 165 173 206
+        }
     }
 }
 

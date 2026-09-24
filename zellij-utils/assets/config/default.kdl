@@ -363,14 +363,18 @@ load_plugins {
 // }
 
 // Choose the theme that is specified in the themes section.
+// Setting this pins the session to one theme and turns off the automatic
+// dark/light switching described below. The theme Zellij used before the
+// "default" and "default-light" pair is bundled as "classic".
 // Default: default
 //
 // theme "default"
 
 // Themes to use when the host terminal reports a dark or light color palette.
-// Both must be set for automatic switching to take place, otherwise `theme`
-// remains authoritative. Until the host terminal reports (or if it never does),
-// the dark theme is used.
+// When neither is set and no `theme` is set either, the bundled "default" and
+// "default-light" themes are used. Setting only one of them pairs it with the
+// matching bundled default. Until the host terminal reports (or if it never
+// does), the dark theme is used.
 //
 // theme_dark "nightfox"
 // theme_light "dayfox"
@@ -404,8 +408,9 @@ load_plugins {
 // mouse_mode false
 
 // Configure the scroll back buffer size
-// This is the number of lines zellij stores for each pane in the scroll back
-// buffer. Excess number of lines are discarded in a FIFO fashion.
+// This is the number of display rows zellij stores for each pane in the scroll
+// back buffer. A logical line wider than the pane occupies one row per wrap.
+// Excess rows are discarded in a FIFO fashion.
 // (Requires restart)
 // Valid values: positive integers
 // Default value: 10000
@@ -633,3 +638,79 @@ load_plugins {
 web_client {
     font "monospace"
 }
+
+// Options for zellij's own window (`zellij window`). Every key is optional;
+// with the whole section absent the window behaves exactly as it does with no
+// configuration at all.
+//
+// window {
+//     // Font family to render with, resolved through the system's font
+//     // configuration. An unresolvable family falls back to the built-in font.
+//     font "Iosevka Term"
+//
+//     // Font size in pixels
+//     font_size 16
+//
+//     // Whether to consult the system's fonts for characters the primary font
+//     // lacks
+//     system_fonts true
+//
+//     // Whether the font's ligatures are formed, so that sequences like -> or
+//     // != are drawn as one shape.
+//     ligatures true
+//
+//     // The cursor shape to draw where the application in the pane has not
+//     // asked for one: "block", "bar" or "underline". An application that does
+//     // ask (with CSI <n> q) still gets the shape it asked for.
+//     cursor_style "block"
+//
+//     // Whether the cursor blinks. Unlike cursor_style, this wins over the
+//     // application: set it to force a blinking or a steady cursor whatever
+//     // the pane asks for. Leave it out to blink exactly when the application
+//     // asks for a blinking cursor.
+//     cursor_blink false
+//
+//     // The chords the window claims for itself to paste. List no
+//     // chords to leave them all to the session.
+//     paste_keys "Ctrl Shift v" "Shift Insert"
+//
+//     // Whether clicking an OSC 8 hyperlink opens it in the platform's default
+//     // handler. A plain left click opens it; over a pane whose program has
+//     // asked for mouse reporting, hold shift instead. Dragging is a selection
+//     // and never opens anything, and the click still reaches the pane either
+//     // way. Only http, https, ftp, ftps, mailto and file URLs are ever handed
+//     // to the opener.
+//     open_links true
+//
+//     // What an OSC 9 or OSC 99 notification from a pane does. "desktop" is
+//     // the default: it hands the notification to the desktop notification
+//     // service, falling back to a window-manager attention request when there
+//     // is no service to hand it to. "attention" only ever asks for attention;
+//     // "none" ignores them.
+//     notifications "desktop"
+//
+//     // Colors the window paints itself. `foreground` and
+//     // `background` default to the active Zellij theme; the sixteen ANSI
+//     // colors have no theme equivalent and default to the standard table.
+//     theme {
+//         foreground "#e5e5e5"
+//         background "#000000"
+//         cursor "#e5e5e5"
+//         black "#000000"
+//         red "#cd0000"
+//         green "#00cd00"
+//         yellow "#cdcd00"
+//         blue "#0000ee"
+//         magenta "#cd00cd"
+//         cyan "#00cdcd"
+//         white "#e5e5e5"
+//         bright_black "#7f7f7f"
+//         bright_red "#ff0000"
+//         bright_green "#00ff00"
+//         bright_yellow "#ffff00"
+//         bright_blue "#5c5cff"
+//         bright_magenta "#ff00ff"
+//         bright_cyan "#00ffff"
+//         bright_white "#ffffff"
+//     }
+// }

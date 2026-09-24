@@ -7,6 +7,7 @@ use crossbeam::channel::{Receiver, Sender};
 use zellij_utils::nested_session::{decode_payload, NestedFrameExtractor, NestedSessionMessage};
 
 use crate::client_screen::GridSnapshot;
+use crate::deadline::{ProgressDeadline, NESTED_FRAME_PROGRESS};
 use crate::fake_pty::FakePtyHandle;
 use crate::runner::{GuestResizer, TestRunner, TestSession};
 use crate::Size;
@@ -141,29 +142,34 @@ impl FrameLog {
         what: &str,
         mut matcher: impl FnMut(&NestedSessionMessage) -> bool,
     ) {
-        let deadline = Instant::now() + crate::default_timeout();
+        let mut deadline = ProgressDeadline::starting_now(NESTED_FRAME_PROGRESS);
         let mut messages = self.inner.messages.lock().unwrap();
         loop {
             if messages.iter().skip(since).any(|message| matcher(message)) {
                 return;
             }
             let now = Instant::now();
-            if now >= deadline {
+            if let Some(tripped) = deadline.tripped(now) {
                 panic!(
-                    "timed out waiting for nested frame: {} (after frame index {})\nframes seen: {:?}\n=== zellij log tail ({}) ===\n{}",
+                    "timed out waiting for nested frame: {} (after frame index {})\n{}\nframes seen: {:?}\n=== zellij log tail ({}) ===\n{}",
                     what,
                     since,
+                    tripped,
                     *messages,
                     crate::test_env::log_file_path().display(),
                     crate::test_env::log_tail(40),
                 );
             }
+            let frames_seen = messages.len();
             let (guard, _) = self
                 .inner
                 .signal
-                .wait_timeout(messages, deadline - now)
+                .wait_timeout(messages, deadline.remaining(now))
                 .unwrap();
             messages = guard;
+            if messages.len() != frames_seen {
+                deadline.note_progress(Instant::now());
+            }
         }
     }
 }

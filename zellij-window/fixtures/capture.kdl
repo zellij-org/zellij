@@ -1,0 +1,8 @@
+show_startup_tips false
+show_release_notes false
+mouse_hover_tips false
+simplified_ui false
+pane_frames true
+theme "default"
+default_shell "sh"
+host_notification_protocol "osc99"

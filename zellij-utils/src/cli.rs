@@ -154,6 +154,119 @@ pub enum Command {
         "zellij [--session <OTHER SESSION NAME>] subscribe [OPTIONS] --pane-id..."
     ))]
     Subscribe(SubscribeCli),
+
+    /// Open a session in zellij's own window, without a terminal emulator
+    #[clap(name = "window")]
+    Window(WindowArgs),
+}
+
+#[derive(Debug, Args, Default, Clone, Serialize, Deserialize)]
+pub struct AttachArgs {
+    /// Name of the session to attach to.
+    #[clap(value_parser)]
+    pub session_name: Option<String>,
+
+    /// Create a session if one does not exist.
+    #[clap(short, long, value_parser)]
+    pub create: bool,
+
+    /// Number of the session index in the active sessions ordered creation date.
+    #[clap(long, value_parser)]
+    pub index: Option<usize>,
+
+    /// Change the behaviour of zellij
+    #[clap(subcommand, name = "options")]
+    pub options: Option<Box<SessionCommand>>,
+
+    /// If resurrecting a dead session, immediately run all its commands on startup
+    #[clap(short, long)]
+    pub force_run_commands: bool,
+
+    /// Authentication token for remote sessions
+    #[clap(short('t'), long, value_parser)]
+    pub token: Option<String>,
+
+    /// Save session for automatic re-authentication (4 weeks)
+    #[clap(short('r'), long, value_parser)]
+    pub remember: bool,
+
+    /// Delete saved session before connecting
+    #[clap(long, value_parser)]
+    pub forget: bool,
+
+    /// Path to a custom CA certificate (PEM format) for verifying the remote server
+    #[clap(long, value_name = "FILE", value_parser)]
+    pub ca_cert: Option<PathBuf>,
+
+    /// Skip TLS certificate validation (DANGEROUS — development only)
+    #[clap(long, value_parser)]
+    pub insecure: bool,
+
+    /// Command to run in the first pane of the session, if it is created
+    #[clap(value_parser, last(true))]
+    pub initial_command: Vec<String>,
+
+    /// Close the initial command's pane immediately when it exits
+    #[clap(long, requires("initial_command"))]
+    pub close_on_exit: bool,
+
+    /// Start the initial command suspended, only running it after you first press ENTER
+    #[clap(long, requires("initial_command"))]
+    pub start_suspended: bool,
+}
+
+impl AttachArgs {
+    pub fn remote_url(&self) -> Option<&str> {
+        self.session_name
+            .as_deref()
+            .filter(|name| name.starts_with("http://") || name.starts_with("https://"))
+    }
+}
+
+#[derive(Debug, Args, Default, Clone, Serialize, Deserialize)]
+pub struct WindowArgs {
+    #[clap(flatten)]
+    pub attach: AttachArgs,
+
+    /// Follow the screen of the session's first client, read-only
+    #[clap(long, conflicts_with_all = &["create", "force_run_commands", "index", "initial_command"])]
+    pub watch: bool,
+
+    /// Render nothing and open no window; for fixture capture and debugging
+    #[clap(long, hide = true)]
+    pub headless: bool,
+
+    /// Record the received message stream to a fixture file
+    #[clap(long, value_name = "PATH", hide = true)]
+    pub record: Option<PathBuf>,
+
+    /// Rows to advertise while headless
+    #[clap(long, default_value_t = 40, hide = true)]
+    pub rows: usize,
+
+    /// Columns to advertise while headless
+    #[clap(long, default_value_t = 120, hide = true)]
+    pub cols: usize,
+
+    /// Character cell width in pixels to advertise while headless
+    #[clap(long, default_value_t = 10, hide = true)]
+    pub cell_width: usize,
+
+    /// Character cell height in pixels to advertise while headless
+    #[clap(long, default_value_t = 20, hide = true)]
+    pub cell_height: usize,
+
+    /// Detach after this many seconds
+    #[clap(long, value_name = "SECONDS", hide = true)]
+    pub duration_secs: Option<u64>,
+
+    #[clap(
+        long,
+        value_enum,
+        value_name = "MODE",
+        help = "Open the window windowed, maximized or fullscreen, overriding startup_mode in the window section of the configuration"
+    )]
+    pub startup_mode: Option<crate::input::window::StartupMode>,
 }
 
 #[derive(Debug, Parser, Clone, Serialize, Deserialize)]
@@ -326,61 +439,12 @@ pub enum Sessions {
     /// Attach to a session
     #[clap(visible_alias = "a")]
     Attach {
-        /// Name of the session to attach to.
-        #[clap(value_parser)]
-        session_name: Option<String>,
-
-        /// Create a session if one does not exist.
-        #[clap(short, long, value_parser)]
-        create: bool,
+        #[clap(flatten)]
+        args: AttachArgs,
 
         /// Create a detached session in the background if one does not exist
         #[clap(short('b'), long, value_parser)]
         create_background: bool,
-
-        /// Number of the session index in the active sessions ordered creation date.
-        #[clap(long, value_parser)]
-        index: Option<usize>,
-
-        /// Change the behaviour of zellij
-        #[clap(subcommand, name = "options")]
-        options: Option<Box<SessionCommand>>,
-
-        /// If resurrecting a dead session, immediately run all its commands on startup
-        #[clap(short, long)]
-        force_run_commands: bool,
-
-        /// Authentication token for remote sessions
-        #[clap(short('t'), long, value_parser)]
-        token: Option<String>,
-
-        /// Save session for automatic re-authentication (4 weeks)
-        #[clap(short('r'), long, value_parser)]
-        remember: bool,
-
-        /// Delete saved session before connecting
-        #[clap(long, value_parser)]
-        forget: bool,
-
-        /// Path to a custom CA certificate (PEM format) for verifying the remote server
-        #[clap(long, value_name = "FILE", value_parser)]
-        ca_cert: Option<PathBuf>,
-
-        /// Skip TLS certificate validation (DANGEROUS — development only)
-        #[clap(long, value_parser)]
-        insecure: bool,
-
-        /// Command to run in the first pane of the session, if it is created
-        #[clap(value_parser, last(true))]
-        initial_command: Vec<String>,
-
-        /// Close the initial command's pane immediately when it exits
-        #[clap(long, requires("initial_command"))]
-        close_on_exit: bool,
-
-        /// Start the initial command suspended, only running it after you first press ENTER
-        #[clap(long, requires("initial_command"))]
-        start_suspended: bool,
     },
 
     /// Watch a session (read-only)

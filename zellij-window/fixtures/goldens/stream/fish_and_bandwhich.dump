@@ -1,0 +1,50 @@
+size: 40x120
+cursor: row=4 col=88 hidden shape=Default
+grid:
+| Total Up / Down: 46Bps / 57Bps                                                                                         |
+|┌Utilization by process name───────────────────────────────────────────────────────────────────────────────────────┐    |
+|│Process                                              Connections              Up / Down                           │    |
+|│                                                                                                                  │    |
+|│firefox                                              3                        46Bps / 57Bps                       │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|│                                                                                                                  │    |
+|└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘    |
+| Press <SPACE> to pause. Use <TAB> to rearrange tables. (DNS queries hidden).                                           |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 0: cols 0-30 fg=idx2 bg=Background flags=BOLD
+row 2: cols 1-7 fg=idx3 bg=Background
+row 2: cols 54-64 fg=idx3 bg=Background
+row 2: cols 79-87 fg=idx3 bg=Background
+row 27: cols 0-76 fg=Foreground bg=Background flags=BOLD
+images:

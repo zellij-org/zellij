@@ -6244,6 +6244,56 @@ fn csi_2026_dollar_p_stays_local() {
 }
 
 #[test]
+fn a_synchronized_update_holds_renders_back_until_the_program_closes_it() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    parser.advance(&mut grid, b"\x1b[?2026hhello");
+    assert!(grid.is_mid_frame());
+    assert!(
+        grid.render(0, 0, &Style::default()).unwrap().is_none(),
+        "a paint inside a synchronized update must emit nothing for the pane"
+    );
+    parser.advance(&mut grid, b"\x1b[?2026l");
+    assert!(!grid.is_mid_frame());
+    assert!(
+        grid.render(0, 0, &Style::default()).unwrap().is_some(),
+        "the paint after the update closes must carry it"
+    );
+}
+
+#[test]
+fn a_synchronized_update_held_past_the_cap_releases_on_the_next_paint() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    parser.advance(&mut grid, b"\x1b[?2026hhello");
+    assert!(
+        grid.render(0, 0, &Style::default()).unwrap().is_none(),
+        "the update was opened and is still inside its cap"
+    );
+
+    grid.render_lock_opened_at =
+        Some(std::time::Instant::now() - std::time::Duration::from_millis(200));
+    let rendered = grid
+        .render(0, 0, &Style::default())
+        .unwrap()
+        .expect("a lock held past the cap must release on the next paint");
+    let (chunks, _, _, _) = rendered;
+    assert!(
+        chunks.iter().any(|chunk| chunk
+            .terminal_characters
+            .iter()
+            .map(|character| character.character)
+            .collect::<String>()
+            .contains("hello")),
+        "the released paint must carry what the program wrote before it died"
+    );
+    assert!(
+        !grid.is_mid_frame(),
+        "a released lock must also stop suppressing the cursor"
+    );
+}
+
+#[test]
 fn csi_2031_dollar_p_when_disabled_replies_reset() {
     // DECRQM mode 2031 (Application Theme Reporting) is per-pane state
     // tracked locally by Zellij. With no prior `CSI ? 2031 h`, the mode
@@ -8156,8 +8206,9 @@ fn kitty_marker_extended_absolute_cell_row(grid: &Grid) -> Option<isize> {
         .map(|row| row as isize)
 }
 
-fn kitty_scrollback_has_merged_wrapped_rows(grid: &Grid) -> bool {
-    grid.lines_above.iter().any(|row| row.width() > grid.width)
+fn kitty_scrollback_holds_wrapped_display_rows(grid: &Grid) -> bool {
+    grid.lines_above.iter().all(|row| row.width() <= grid.width)
+        && grid.lines_above.iter().any(|row| !row.is_canonical)
 }
 
 fn kitty_marker_viewport_row(grid: &Grid) -> Option<usize> {
@@ -8196,7 +8247,10 @@ fn kitty_placement_tracks_text_when_a_wrapped_row_moves_into_the_scrollback() {
     for _ in 0..5 {
         feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\r\nx");
     }
-    assert!(kitty_scrollback_has_merged_wrapped_rows(&grid));
+    assert!(
+        kitty_scrollback_holds_wrapped_display_rows(&grid),
+        "the wrapped line must be held in the scrollback as display rows"
+    );
     assert_eq!(
         Some(kitty_image_absolute_cell_row(&grid)),
         kitty_marker_absolute_cell_row(&grid),
@@ -8245,8 +8299,8 @@ fn kitty_wrapped_scrollback_setup(
         feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\r\nx");
     }
     assert!(
-        kitty_scrollback_has_merged_wrapped_rows(&grid),
-        "the wrapped line must have been merged into a single scrollback row"
+        kitty_scrollback_holds_wrapped_display_rows(&grid),
+        "the wrapped line must be held in the scrollback as display rows"
     );
     (grid, kitty_image_store, vte_parser, interceptor)
 }
@@ -9353,4 +9407,421 @@ fn a_character_wider_than_two_columns_advances_the_cursor_by_its_full_width() {
     assert_eq!(row.columns[0].width(), 3);
     assert_eq!(row.width(), 4);
     assert_eq!(cursor_position(&grid), Some((4, 0)));
+}
+
+const WIDE_LINE: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXY";
+
+fn viewport_canonical_flags(grid: &Grid) -> Vec<bool> {
+    grid.viewport.iter().map(|row| row.is_canonical).collect()
+}
+
+fn grid_with_wrapped_line_in_scrollback() -> (Grid, Vec<String>, Vec<bool>) {
+    let mut grid = create_grid_with_size_and_raw(5, 10, WIDE_LINE);
+    feed_bytes(&mut grid, b"\r\nA");
+    let texts_before = viewport_texts(&grid);
+    let canonical_before = viewport_canonical_flags(&grid);
+    feed_bytes(&mut grid, b"\r\nB\r\nC\r\nD\r\nE\r\nF");
+    assert_eq!(viewport_texts(&grid), vec!["B", "C", "D", "E", "F"]);
+    (grid, texts_before, canonical_before)
+}
+
+#[test]
+fn wrapped_line_round_trips_through_the_scrollback() {
+    let (mut grid, texts_before, canonical_before) = grid_with_wrapped_line_in_scrollback();
+    assert_eq!(
+        texts_before,
+        vec!["0123456789", "ABCDEFGHIJ", "KLMNOPQRST", "UVWXY", "A"]
+    );
+    assert_eq!(canonical_before, vec![true, false, false, false, true]);
+    grid.move_viewport_up(5);
+    assert_eq!(
+        viewport_texts(&grid),
+        texts_before,
+        "scrolling a wrapped line back in must restore its content"
+    );
+    assert_eq!(
+        viewport_canonical_flags(&grid),
+        canonical_before,
+        "scrolling a wrapped line back in must restore its wrap points"
+    );
+}
+
+#[test]
+fn wrapped_line_in_scrollback_survives_a_resize_round_trip() {
+    let (mut grid, texts_before, canonical_before) = grid_with_wrapped_line_in_scrollback();
+    grid.change_size(5, 5);
+    grid.change_size(5, 10);
+    grid.move_viewport_up(5);
+    assert_eq!(
+        viewport_texts(&grid),
+        texts_before,
+        "a narrower-then-wider resize must reproduce the logical line at the new width"
+    );
+    assert_eq!(
+        viewport_canonical_flags(&grid),
+        canonical_before,
+        "a narrower-then-wider resize must reproduce the original wrap points"
+    );
+}
+
+#[test]
+fn wrapped_line_in_scrollback_reflows_to_a_narrower_width() {
+    let (mut grid, _texts_before, _canonical_before) = grid_with_wrapped_line_in_scrollback();
+    grid.change_size(5, 5);
+    while !grid.lines_above.is_empty() {
+        grid.scroll_up_one_line();
+    }
+    assert_eq!(
+        viewport_texts(&grid),
+        ["01234", "56789", "ABCDE", "FGHIJ", "KLMNO"],
+        "a wrapped line pulled out of the scrollback must be split at the new width"
+    );
+}
+
+fn grid_with_interior_spaces_in_scrollback() -> Grid {
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"ABCDEFGH  IJKL");
+    feed_bytes(&mut grid, b"\r\nM\r\nN\r\nO\r\nP\r\nQ\r\nR");
+    assert!(
+        !grid.lines_above.is_empty(),
+        "the wrapped line must have left the viewport"
+    );
+    grid
+}
+
+#[test]
+fn dump_screen_rejoins_wrapped_scrollback_lines() {
+    let grid = grid_with_interior_spaces_in_scrollback();
+    let dump = grid.dump_screen(true);
+    assert_eq!(
+        dump.lines().next(),
+        Some("ABCDEFGH  IJKL"),
+        "a wrapped scrollback line must dump as one line, spaces at the wrap point included"
+    );
+}
+
+#[test]
+fn dump_screen_with_ansi_rejoins_wrapped_scrollback_lines() {
+    let grid = grid_with_interior_spaces_in_scrollback();
+    let dump = grid.dump_screen_with_ansi(true);
+    assert!(
+        dump.lines().next().unwrap().contains("ABCDEFGH  IJKL"),
+        "a wrapped scrollback line must dump as one line with ansi, spaces at the wrap point included, got {:?}",
+        dump.lines().next()
+    );
+}
+
+#[test]
+fn scrollback_capacity_counts_display_rows() {
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
+    let logical_lines = scroll_buffer_size / 2 + 100;
+    let mut content: Vec<u8> = Vec::with_capacity(logical_lines * 17);
+    for _ in 0..logical_lines {
+        content.extend_from_slice(b"012345678901234\r\n");
+    }
+    feed_bytes(&mut grid, &content);
+    assert_eq!(
+        grid.lines_above.len(),
+        scroll_buffer_size,
+        "the scroll buffer bounds display rows, not logical lines"
+    );
+}
+
+fn grid_with_sixel_in_a_wrapped_line() -> (Grid, Rc<RefCell<SixelImageStore>>) {
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let mut grid = Grid::new(
+        10,
+        20,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(Some(SizeInPixels {
+            width: 8,
+            height: 21,
+        }))),
+        sixel_image_store.clone(),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    feed_bytes(&mut grid, &vec![b'A'; 30]);
+    feed_bytes(&mut grid, b"\x1b[2;1H");
+    feed_bytes(&mut grid, &read_fixture("sixel-image-100px.six"));
+    (grid, sixel_image_store)
+}
+
+#[test]
+fn sixel_image_in_a_wrapped_line_survives_a_scrollback_round_trip() {
+    let (mut grid, sixel_image_store) = grid_with_sixel_in_a_wrapped_line();
+    assert_eq!(grid.sixel_image_cell_rows_in_viewport(), vec![1]);
+    for _ in 0..20 {
+        grid.add_canonical_line();
+    }
+    assert!(!grid.lines_above.is_empty());
+    while !grid.lines_above.is_empty() {
+        grid.scroll_up_one_line();
+    }
+    assert_eq!(
+        grid.sixel_image_cell_rows_in_viewport(),
+        vec![1],
+        "a sixel image inside a wrapped line must return to its row after a scrollback round trip"
+    );
+    assert_eq!(sixel_image_store.borrow().image_count(), 1);
+}
+
+#[test]
+fn sixel_image_in_a_wrapped_line_survives_a_resize() {
+    let (mut grid, sixel_image_store) = grid_with_sixel_in_a_wrapped_line();
+    for _ in 0..20 {
+        grid.add_canonical_line();
+    }
+    grid.change_size(10, 10);
+    grid.change_size(10, 20);
+    let _ = grid.read_changes(0, 0);
+    assert_eq!(
+        sixel_image_store.borrow().image_count(),
+        1,
+        "a sixel image inside a wrapped line must survive a resize while in the scrollback"
+    );
+}
+
+#[test]
+fn scrollback_length_counts_display_rows_after_a_narrowing_resize() {
+    let (mut grid, _texts_before, _canonical_before) = grid_with_wrapped_line_in_scrollback();
+    assert_eq!(grid.scrollback_position_and_length().1, 5);
+    grid.change_size(5, 5);
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        8,
+        "a 35 character line occupies seven rows at width five, plus the single row line after it"
+    );
+}
+
+#[test]
+fn scrollback_length_stays_exact_while_scrolling_through_a_resized_scrollback() {
+    let (mut grid, _texts_before, _canonical_before) = grid_with_wrapped_line_in_scrollback();
+    grid.change_size(5, 5);
+    let length_before = grid.scrollback_position_and_length().1;
+    let mut scrolled = 0;
+    while !grid.lines_above.is_empty() {
+        grid.scroll_up_one_line();
+        scrolled += 1;
+    }
+    assert_eq!(
+        scrolled, length_before,
+        "scrolling to the top must take exactly as many lines as the reported length"
+    );
+    assert_eq!(grid.scrollback_position_and_length().1, length_before);
+    while grid.scroll_down_one_line() || !grid.lines_below.is_empty() {}
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        length_before,
+        "a scroll round trip must not change the reported length"
+    );
+    assert_eq!(grid.lines_above.len(), length_before);
+}
+
+#[test]
+fn scrollback_length_stays_exact_when_stale_rows_are_evicted() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    let mut content: Vec<u8> = Vec::new();
+    for _ in 0..(scroll_buffer_size / 2) {
+        content.extend_from_slice(b"012345678901234\r\n");
+    }
+    feed_bytes(&mut grid, &content);
+    grid.change_size(5, 5);
+    let length_after_resize = grid.scrollback_position_and_length().1;
+    assert!(length_after_resize > grid.lines_above.len());
+    let mut more: Vec<u8> = Vec::new();
+    for _ in 0..scroll_buffer_size {
+        more.extend_from_slice(b"x\r\n");
+    }
+    feed_bytes(&mut grid, &more);
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scroll_buffer_size,
+        "once every stale row has been evicted the length must equal the stored row count"
+    );
+}
+
+fn scrollback_recount(grid: &mut Grid) -> usize {
+    let width = grid.width;
+    super::scrollback_display_row_count(&mut grid.lines_above, width)
+}
+
+fn filled_scrollback(rows: usize, cols: usize, line: &[u8], line_count: usize) -> Grid {
+    let mut grid = create_grid_with_size_and_raw(rows, cols, b"");
+    let mut content: Vec<u8> = Vec::new();
+    for _ in 0..line_count {
+        content.extend_from_slice(line);
+        content.extend_from_slice(b"\r\n");
+    }
+    feed_bytes(&mut grid, &content);
+    grid
+}
+
+fn repeated_lines(line: &[u8], line_count: usize) -> Vec<u8> {
+    let mut content: Vec<u8> = Vec::new();
+    for _ in 0..line_count {
+        content.extend_from_slice(line);
+        content.extend_from_slice(b"\r\n");
+    }
+    content
+}
+
+#[test]
+fn scrollback_length_matches_a_full_recount_while_rows_wrapped_at_another_width_are_evicted() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    for new_columns in [7usize, 10, 23] {
+        let mut grid = filled_scrollback(5, 10, b"012345678901234", scroll_buffer_size / 2 + 200);
+        assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+        grid.change_size(5, new_columns);
+        assert_eq!(
+            grid.scrollback_position_and_length().1,
+            scrollback_recount(&mut grid),
+            "the reported length must be exact right after a resize to width {new_columns}"
+        );
+        let batch = repeated_lines(b"abcdefghijklmnopqrst", 400);
+        for round in 0..8 {
+            feed_bytes(&mut grid, &batch);
+            assert_eq!(
+                grid.scrollback_position_and_length().1,
+                scrollback_recount(&mut grid),
+                "the reported length must stay exact at width {new_columns}, round {round}"
+            );
+        }
+    }
+}
+
+#[test]
+fn scrollback_length_matches_a_full_recount_when_long_wrapped_lines_are_evicted() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let long_line = vec![b'z'; 95];
+    let mut grid = filled_scrollback(5, 10, &long_line, scroll_buffer_size / 8);
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    grid.change_size(5, 13);
+    let batch = repeated_lines(&long_line, 200);
+    for round in 0..6 {
+        feed_bytes(&mut grid, &batch);
+        assert_eq!(
+            grid.scrollback_position_and_length().1,
+            scrollback_recount(&mut grid),
+            "a run wider than the viewport must be accounted exactly on eviction, round {round}"
+        );
+    }
+}
+
+#[test]
+fn scrollback_length_matches_a_full_recount_while_a_drag_changes_the_width_under_output() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = filled_scrollback(5, 20, b"0123456789012345678901234", scroll_buffer_size / 2);
+    let batch = repeated_lines(b"abcdefghijklmnopqrstuvwxy", 200);
+    for step in 0..12usize {
+        let width = 20 - (step % 6);
+        grid.change_size(5, width);
+        feed_bytes(&mut grid, &batch);
+        assert_eq!(
+            grid.scrollback_position_and_length().1,
+            scrollback_recount(&mut grid),
+            "the reported length must stay exact across drag step {step} at width {width}"
+        );
+    }
+}
+
+#[test]
+fn scrollback_length_matches_a_full_recount_across_a_scroll_round_trip_after_a_resize() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = filled_scrollback(5, 10, b"012345678901234", scroll_buffer_size / 2 + 50);
+    grid.change_size(5, 6);
+    let length_after_resize = grid.scrollback_position_and_length().1;
+    assert_eq!(length_after_resize, scrollback_recount(&mut grid));
+    for _ in 0..200 {
+        grid.scroll_up_one_line();
+    }
+    assert_eq!(
+        grid.scrollback_position_and_length().1 - grid.lines_below.len(),
+        scrollback_recount(&mut grid),
+        "scrolling into the scrollback must leave the reported length exact"
+    );
+    while grid.scroll_down_one_line() || !grid.lines_below.is_empty() {}
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "a scroll round trip must leave the reported length exact"
+    );
+    feed_bytes(&mut grid, &repeated_lines(b"abcdef", 300));
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "output after a scroll round trip must keep the reported length exact"
+    );
+}
+
+#[test]
+fn scrolling_down_after_a_resize_always_reaches_the_bottom() {
+    let mut failures = vec![];
+    for line_length in [5usize, 18, 30, 61] {
+        for rows in [5usize, 10] {
+            for cols in [10usize, 20] {
+                for scroll_up_by in [1usize, 3, 7, 15] {
+                    for new_rows in [4usize, 5, 10, 17] {
+                        for new_cols in [7usize, 10, 20, 33] {
+                            let mut content: Vec<u8> = Vec::new();
+                            for index in 0..40 {
+                                content.extend_from_slice(format!("l{:02}", index).as_bytes());
+                                content.extend_from_slice(&vec![b'.'; line_length]);
+                                content.extend_from_slice(b"\r\n");
+                            }
+                            let mut grid = create_grid_with_size_and_raw(rows, cols, &content);
+                            for _ in 0..scroll_up_by {
+                                grid.scroll_up_one_line();
+                            }
+                            if !grid.is_scrolled {
+                                continue;
+                            }
+                            grid.change_size(new_rows, new_cols);
+                            let mut scrolled = 0;
+                            while grid.is_scrolled && scrolled < 5_000 {
+                                grid.scroll_down_one_line();
+                                scrolled += 1;
+                            }
+                            if grid.is_scrolled {
+                                failures.push(format!(
+                                    "line length {} grid {}x{} scrolled up {} resized to {}x{}: viewport {} height {} lines_below {}",
+                                    line_length, rows, cols, scroll_up_by, new_rows, new_cols,
+                                    grid.viewport.len(), grid.height, grid.lines_below.len()
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} cases could not be scrolled back to the bottom:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn copy_a_wrapped_line_spanning_the_scrollback_boundary() {
+    let mut grid = create_grid_with_size_and_raw(5, 10, WIDE_LINE);
+    feed_bytes(&mut grid, b"\r\nA\r\nB\r\nC");
+    assert_eq!(scrollback_texts(&grid), vec!["0123456789", "ABCDEFGHIJ"]);
+    grid.start_selection(&Position::new(-2, 0));
+    grid.end_selection(&Position::new(2, 1));
+    assert_eq!(
+        grid.get_selected_text().unwrap(),
+        "0123456789ABCDEFGHIJKLMNOPQRSTUVWXY\nA",
+        "a selection crossing the scrollback boundary must rejoin the wrapped line"
+    );
 }

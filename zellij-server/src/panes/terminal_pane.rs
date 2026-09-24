@@ -237,6 +237,19 @@ impl Pane for TerminalPane {
         let mut index = 0;
         let mut capture_started = false;
         while index < bytes.len() {
+            if self.kitty_interceptor.is_ground() {
+                let rest = &bytes[index..];
+                let run = rest
+                    .iter()
+                    .position(|byte| *byte == 0x1b)
+                    .unwrap_or(rest.len());
+                if run > 0 {
+                    capture_started = false;
+                    forwarded.extend_from_slice(&rest[..run]);
+                    index += run;
+                    continue;
+                }
+            }
             let byte = bytes[index];
             index += 1;
             match self.kitty_interceptor.advance(byte) {
@@ -506,7 +519,9 @@ impl Pane for TerminalPane {
             }
             match self.grid.render(content_x, content_y, &self.style) {
                 Ok(rendered_assets) => {
-                    self.set_should_render(false);
+                    if rendered_assets.is_some() {
+                        self.set_should_render(false);
+                    }
                     return Ok(rendered_assets);
                 },
                 e => return e,

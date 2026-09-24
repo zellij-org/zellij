@@ -116,5 +116,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/catppuccin/alacritty/blob/main/catppuccin-mocha.toml
+        terminal_colors {
+            black 69 71 90
+            red 243 139 168
+            green 166 227 161
+            yellow 249 226 175
+            blue 137 180 250
+            magenta 245 194 231
+            cyan 148 226 213
+            white 186 194 222
+            bright_black 88 91 112
+            bright_red 243 139 168
+            bright_green 166 227 161
+            bright_yellow 249 226 175
+            bright_blue 137 180 250
+            bright_magenta 245 194 231
+            bright_cyan 148 226 213
+            bright_white 166 173 200
+        }
     }
 }

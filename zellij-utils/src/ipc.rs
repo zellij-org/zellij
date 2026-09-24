@@ -132,14 +132,14 @@ pub struct MobileSessionPayload {
     pub creation_secs_ago: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct MobileRenderPrefsPayload {
     pub single_pane: bool,
     pub fit: bool,
     pub active_pane_is_fullscreen: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct MobileStatePayload {
     pub session_name: String,
     pub now_secs: u64,
@@ -232,6 +232,7 @@ pub enum ClientToServerMsg {
     },
     KittyGraphicsSupport {
         supported: bool,
+        local_media: bool,
     },
     SixelSupport {
         supported: bool,
@@ -244,6 +245,12 @@ pub enum ClientToServerMsg {
     HostTerminalFocusChanged {
         focused: bool,
     },
+    StructuredRenderSupport {
+        supported: bool,
+    },
+    RenderFrameAck {
+        seq: u64,
+    },
 }
 
 // Types of messages sent from the server to the client
@@ -251,6 +258,9 @@ pub enum ClientToServerMsg {
 pub enum ServerToClientMsg {
     Render {
         content: String,
+    },
+    RenderFrame {
+        frame: Vec<u8>,
     },
     UnblockInputThread,
     Exit {
@@ -282,6 +292,9 @@ pub enum ServerToClientMsg {
         name: String,
     },
     ConfigFileUpdated,
+    HostTerminalThemeChanged {
+        mode: HostTerminalThemeMode,
+    },
     PaneRenderUpdate {
         pane_id: PaneId,
         viewport: Vec<String>,

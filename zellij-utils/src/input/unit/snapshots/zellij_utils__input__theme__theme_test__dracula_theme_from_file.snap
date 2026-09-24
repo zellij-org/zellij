@@ -592,5 +592,6 @@ expression: "format!(\"{:#?}\", theme)"
                 ),
             },
         },
+        terminal_colors: None,
     },
 }

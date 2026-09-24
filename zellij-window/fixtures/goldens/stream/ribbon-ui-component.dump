@@ -1,0 +1,49 @@
+size: 40x120
+cursor: row=1 col=0 visible shape=Default
+grid:
+| <n> RESIZE                                                                                                           |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 0: cols 0-2 fg=#0b0b0e bg=#9a95b3 flags=BOLD
+row 0: cols 3-3 fg=idx9 bg=#9a95b3 flags=BOLD
+row 0: cols 4-12 fg=idx0 bg=#9a95b3 flags=BOLD
+row 0: cols 13-13 fg=#9a95b3 bg=#0b0b0e flags=BOLD
+images:

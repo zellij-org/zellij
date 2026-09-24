@@ -1,0 +1,63 @@
+size: 40x120
+cursor: row=1 col=38 visible shape=Default
+grid:
+|Welcome to fish, the friendly interactive shell                                                                         |
+|⋊> ~/c/zellij on main ⨯ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ                                                           15:19:10                |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 1: cols 0-1 fg=BrightWhite bg=Cyan
+row 1: cols 3-12 fg=Yellow bg=Background
+row 1: cols 17-20 fg=Green bg=Background
+row 1: cols 24-24 fg=BrightRed bg=Background flags=WIDE_CHAR
+row 1: cols 25-25 fg=BrightRed bg=Background flags=WIDE_CHAR_SPACER
+row 1: cols 26-26 fg=BrightRed bg=Background flags=WIDE_CHAR
+row 1: cols 27-27 fg=BrightRed bg=Background flags=WIDE_CHAR_SPACER
+row 1: cols 28-28 fg=BrightRed bg=Background flags=WIDE_CHAR
+row 1: cols 29-29 fg=BrightRed bg=Background flags=WIDE_CHAR_SPACER
+row 1: cols 30-30 fg=BrightRed bg=Background flags=WIDE_CHAR
+row 1: cols 31-31 fg=BrightRed bg=Background flags=WIDE_CHAR_SPACER
+row 1: cols 32-32 fg=BrightRed bg=Background flags=WIDE_CHAR
+row 1: cols 33-33 fg=BrightRed bg=Background flags=WIDE_CHAR_SPACER
+row 1: cols 34-34 fg=BrightRed bg=Background flags=WIDE_CHAR
+row 1: cols 35-35 fg=BrightRed bg=Background flags=WIDE_CHAR_SPACER
+row 1: cols 36-36 fg=BrightRed bg=Background flags=WIDE_CHAR
+row 1: cols 37-37 fg=BrightRed bg=Background flags=WIDE_CHAR_SPACER
+row 1: cols 96-103 fg=#555555 bg=Background
+images:

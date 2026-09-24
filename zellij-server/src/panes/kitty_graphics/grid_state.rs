@@ -392,8 +392,8 @@ impl KittyGrid {
                 width: source_w,
                 height: source_h,
             },
-            emit_x: 0,
-            emit_y: 0,
+            emit_x: if is_scaled { 0 } else { source_x },
+            emit_y: if is_scaled { 0 } else { source_y },
             scaled_px: if is_scaled {
                 Some((dst_w, dst_h))
             } else {

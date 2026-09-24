@@ -1,0 +1,105 @@
+size: 40x120
+cursor: row=30 col=92 visible shape=Default
+grid:
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaＨ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｅ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｌ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｌ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｏ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaＨ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｅ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｌ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｌ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｏ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaＨ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｅ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｌ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｌ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｏ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaＨ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｅ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｌ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｌ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｏ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaＨ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｅ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｌ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｌ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｏ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaＨ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｅ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｌ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｌ                             |
+|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaｏ                             |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 0: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 0: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 1: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 1: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 3: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 3: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 4: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 5: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 5: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 6: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 6: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 7: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 7: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 8: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 8: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 9: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 9: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 10: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 10: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 11: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 11: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 12: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 12: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 13: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 13: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 14: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 14: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 15: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 15: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 16: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 16: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 17: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 17: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 18: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 18: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 19: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 19: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 20: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 21: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 21: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 22: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 22: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 23: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 23: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 24: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 24: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 25: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 25: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 26: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 26: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 27: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 27: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 28: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 28: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 29: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR
+row 29: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+images:

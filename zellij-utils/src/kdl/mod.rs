@@ -17,8 +17,11 @@ use crate::input::options::{
 };
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
-use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
+use crate::input::theme::{
+    FrameConfig, TerminalColors, Theme, Themes, UiConfig, TERMINAL_COLOR_NAMES,
+};
 use crate::input::web_client::WebClientConfig;
+use crate::input::window::WindowConfig;
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr};
@@ -1487,6 +1490,57 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
                 color.span().len(),
             ))
         }
+    }
+}
+
+pub fn palette_color_refusing_index(
+    color_name: &str,
+    colors: &KdlDocument,
+) -> Result<PaletteColor, ConfigError> {
+    let color = PaletteColor::try_from((color_name, colors))?;
+    if let PaletteColor::EightBit(_) = color {
+        let node = colors.get(color_name);
+        let (offset, len) = node
+            .map(|node| (node.span().offset(), node.span().len()))
+            .unwrap_or((colors.span().offset(), colors.span().len()));
+        return Err(ConfigError::new_kdl_error(
+            format!(
+                "{} must be given as rgb or as a hex string: a palette index would resolve \
+                 through the very table it is defining",
+                color_name
+            ),
+            offset,
+            len,
+        ));
+    }
+    Ok(color)
+}
+
+impl TerminalColors {
+    pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
+        let mut table = TerminalColors::default();
+        let Some(colors) = kdl.children() else {
+            return Ok(table);
+        };
+        for (slot, name) in TERMINAL_COLOR_NAMES.iter().enumerate() {
+            if colors.get(name).is_none() {
+                continue;
+            }
+            table.set(slot, palette_color_refusing_index(name, colors)?);
+        }
+        Ok(table)
+    }
+
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut node = KdlNode::new("terminal_colors");
+        let mut doc = KdlDocument::new();
+        for (slot, name) in TERMINAL_COLOR_NAMES.iter().enumerate() {
+            if let Some(color) = self.get(slot) {
+                doc.nodes_mut().push(color.to_kdl(name));
+            }
+        }
+        node.set_children(doc);
+        node
     }
 }
 
@@ -5468,6 +5522,10 @@ impl Config {
             let config_web_client = WebClientConfig::from_kdl(&web_client_config)?;
             config.web_client = config.web_client.merge(config_web_client);
         }
+        if let Some(window_config) = kdl_config.get("window") {
+            let config_window = WindowConfig::from_kdl(&window_config)?;
+            config.window = config.window.merge(config_window);
+        }
         Ok(config)
     }
     pub fn to_string(&self, add_comments: bool) -> String {
@@ -5496,6 +5554,10 @@ impl Config {
         }
 
         document.nodes_mut().push(self.web_client.to_kdl());
+
+        if let Some(window) = self.window.to_kdl() {
+            document.nodes_mut().push(window);
+        }
 
         document
             .nodes_mut()
@@ -5794,11 +5856,21 @@ impl Themes {
                 "fg", "bg", "red", "green", "blue", "yellow", "magenta", "orange", "cyan", "black",
                 "white",
             ]);
-            let theme = if theme_colors
+            let terminal_colors = match kdl_child_with_name!(theme_config, "terminal_colors") {
+                Some(node) => Some(TerminalColors::from_kdl(node)?),
+                None => None,
+            };
+            let declarations: Vec<&KdlNode> = theme_colors
                 .nodes()
                 .iter()
-                .all(|n| palette_color_names.contains(n.name().value()))
-            {
+                .filter(|node| node.name().value() != "terminal_colors")
+                .collect();
+            let looks_like_a_palette = theme_colors.nodes().is_empty()
+                || (!declarations.is_empty()
+                    && declarations
+                        .iter()
+                        .all(|n| palette_color_names.contains(n.name().value())));
+            let theme = if looks_like_a_palette {
                 // Older palette based theme definition
                 let palette = Palette {
                     fg: PaletteColor::try_from(("fg", theme_colors))?,
@@ -5817,6 +5889,7 @@ impl Themes {
                 Theme {
                     palette: palette.into(),
                     sourced_from_external_file,
+                    terminal_colors,
                 }
             } else {
                 // Newer theme definition with named styles
@@ -5898,6 +5971,7 @@ impl Themes {
                 Theme {
                     palette: s,
                     sourced_from_external_file,
+                    terminal_colors,
                 }
             };
             themes.insert(theme_name.into(), theme);
@@ -6020,6 +6094,11 @@ impl Themes {
             current_theme_node_children
                 .nodes_mut()
                 .push(theme.palette.multiplayer_user_colors.to_kdl());
+            if let Some(terminal_colors) = theme.terminal_colors {
+                current_theme_node_children
+                    .nodes_mut()
+                    .push(terminal_colors.to_kdl());
+            }
             current_theme_node.set_children(current_theme_node_children);
             themes.nodes_mut().push(current_theme_node);
         }
@@ -7545,6 +7624,51 @@ fn themes_to_string_with_multiple_theme_definitions() {
                 cyan 139 233 253
                 white 255 255 255
                 orange 255 184 108
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let sourced_from_external_file = false;
+    let deserialized =
+        Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
+    let serialized = Themes::to_kdl(&deserialized).unwrap();
+    let deserialized_from_serialized = Themes::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("themes")
+            .unwrap(),
+        sourced_from_external_file,
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn themes_to_string_with_terminal_colors() {
+    let fake_config = r##"
+        themes {
+           dracula {
+                fg 248 248 242
+                bg 40 42 54
+                black 0 0 0
+                red 255 85 85
+                green 80 250 123
+                yellow 241 250 140
+                blue 98 114 164
+                magenta 255 121 198
+                cyan 139 233 253
+                white 255 255 255
+                orange 255 184 108
+                terminal_colors {
+                    black 33 34 44
+                    red 255 85 85
+                    bright_white "#ffffff"
+                }
             }
         }"##;
     let document: KdlDocument = fake_config.parse().unwrap();

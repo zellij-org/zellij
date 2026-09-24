@@ -1301,3 +1301,8 @@ message ToggleFloatingPanesByTabIdAction { uint64 id = 1; }
 message PreviousSwapLayoutByTabIdAction { uint64 id = 1; }
 message NextSwapLayoutByTabIdAction { uint64 id = 1; }
 message MoveTabByTabIdAction { uint64 id = 1; Direction direction = 2; }
+
+enum HostTerminalThemeIndication {
+  HOST_TERMINAL_THEME_INDICATION_DARK = 0;
+  HOST_TERMINAL_THEME_INDICATION_LIGHT = 1;
+}

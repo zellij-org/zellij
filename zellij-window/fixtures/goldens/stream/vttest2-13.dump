@@ -1,0 +1,60 @@
+size: 40x120
+cursor: row=22 col=31 visible shape=Default
+grid:
+|                   Graphic rendition test pattern:                                                                      |
+|                                                                                                                        |
+|                                                                                                                        |
+|vanilla                                bold                                                                             |
+|                                                                                                                        |
+|     underline                              bold underline                                                              |
+|                                                                                                                        |
+|blink                                  bold blink                                                                       |
+|                                                                                                                        |
+|     underline blink                        bold underline blink                                                        |
+|                                                                                                                        |
+|negative                               bold negative                                                                    |
+|                                                                                                                        |
+|     underline negative                     bold underline negative                                                     |
+|                                                                                                                        |
+|blink negative                         bold blink negative                                                              |
+|                                                                                                                        |
+|     underline blink negative               bold underline blink negative                                               |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|Light background. Push <RETURN>                                                                                         |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 3: cols 39-42 fg=Foreground bg=Background flags=BOLD
+row 5: cols 5-13 fg=Foreground bg=Background flags=UNDERLINE
+row 5: cols 44-57 fg=Foreground bg=Background flags=BOLD|UNDERLINE
+row 7: cols 0-4 fg=Foreground bg=Background flags=BLINK_SLOW
+row 7: cols 39-48 fg=Foreground bg=Background flags=BOLD|BLINK_SLOW
+row 9: cols 5-19 fg=Foreground bg=Background flags=UNDERLINE|BLINK_SLOW
+row 9: cols 44-63 fg=Foreground bg=Background flags=BOLD|UNDERLINE|BLINK_SLOW
+row 11: cols 0-7 fg=Foreground bg=Background flags=INVERSE
+row 11: cols 39-51 fg=Foreground bg=Background flags=INVERSE|BOLD
+row 13: cols 5-22 fg=Foreground bg=Background flags=INVERSE|UNDERLINE
+row 13: cols 44-66 fg=Foreground bg=Background flags=INVERSE|BOLD|UNDERLINE
+row 15: cols 0-13 fg=Foreground bg=Background flags=INVERSE|BLINK_SLOW
+row 15: cols 39-57 fg=Foreground bg=Background flags=INVERSE|BOLD|BLINK_SLOW
+row 17: cols 5-28 fg=Foreground bg=Background flags=INVERSE|UNDERLINE|BLINK_SLOW
+row 17: cols 44-72 fg=Foreground bg=Background flags=INVERSE|BOLD|UNDERLINE|BLINK_SLOW
+images:

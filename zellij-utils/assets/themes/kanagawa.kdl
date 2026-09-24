@@ -116,5 +116,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/rebelot/kanagawa.nvim/blob/master/extras/alacritty_kanagawa.toml (wave)
+        terminal_colors {
+            black 9 6 24
+            red 195 64 67
+            green 118 148 106
+            yellow 192 163 110
+            blue 126 156 216
+            magenta 149 127 184
+            cyan 106 149 137
+            white 200 192 147
+            bright_black 114 113 105
+            bright_red 232 36 36
+            bright_green 152 187 108
+            bright_yellow 230 195 132
+            bright_blue 127 180 202
+            bright_magenta 147 138 169
+            bright_cyan 122 168 159
+            bright_white 220 215 186
+        }
     }
 }

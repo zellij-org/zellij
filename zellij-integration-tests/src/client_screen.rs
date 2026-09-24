@@ -4,6 +4,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 
+use crate::deadline::{ProgressDeadline, CLIENT_SCREEN_PROGRESS};
 use zellij_server::panes::kitty_graphics::KittyImageStore;
 pub use zellij_server::panes::terminal_character::AnsiCode;
 use zellij_server::panes::{LinkHandler, TerminalPane};
@@ -58,19 +59,20 @@ impl ClientScreen {
     }
 
     pub fn wait_until_raw_output(&self, what: &str, predicate: impl Fn(&[u8]) -> bool) -> Vec<u8> {
-        let deadline = Instant::now() + crate::default_timeout();
+        let mut deadline = ProgressDeadline::starting_now(CLIENT_SCREEN_PROGRESS);
         let mut received_bytes = self.inner.received_bytes.lock().unwrap();
         loop {
             if predicate(&received_bytes.bytes) {
                 return received_bytes.bytes.clone();
             }
             let now = Instant::now();
-            if now >= deadline {
+            if let Some(tier) = deadline.expired(now) {
                 let size = *self.size.lock().unwrap();
                 let grid_snapshot = render_bytes(&received_bytes.bytes, size);
                 panic!(
-                    "timed out waiting for: {}\nlast rendered grid:\n{}\n=== (received {} stdout bytes, generation {}) ===\n=== zellij log tail ({}) ===\n{}",
+                    "timed out waiting for: {}\n{}\nlast rendered grid:\n{}\n=== (received {} stdout bytes, generation {}) ===\n=== zellij log tail ({}) ===\n{}",
                     what,
+                    deadline.explain(tier, now),
                     grid_snapshot.text,
                     received_bytes.bytes.len(),
                     received_bytes.generation,
@@ -82,11 +84,11 @@ impl ClientScreen {
             let (guard, _) = self
                 .inner
                 .change_signal
-                .wait_timeout(received_bytes, deadline - now)
+                .wait_timeout(received_bytes, deadline.remaining(now))
                 .unwrap();
             received_bytes = guard;
-            if received_bytes.generation == last_generation {
-                continue;
+            if received_bytes.generation != last_generation {
+                deadline.note_progress(Instant::now());
             }
         }
     }
@@ -96,7 +98,7 @@ impl ClientScreen {
         what: &str,
         predicate: impl Fn(&GridSnapshot) -> bool,
     ) -> GridSnapshot {
-        let deadline = Instant::now() + crate::default_timeout();
+        let mut deadline = ProgressDeadline::starting_now(CLIENT_SCREEN_PROGRESS);
         let mut received_bytes = self.inner.received_bytes.lock().unwrap();
         loop {
             let size = *self.size.lock().unwrap();
@@ -105,10 +107,11 @@ impl ClientScreen {
                 return grid_snapshot;
             }
             let now = Instant::now();
-            if now >= deadline {
+            if let Some(tier) = deadline.expired(now) {
                 panic!(
-                    "timed out waiting for: {}\ncursor: {:?}\nlast rendered grid:\n{}\n=== (received {} stdout bytes, generation {}) ===\n=== zellij log tail ({}) ===\n{}",
+                    "timed out waiting for: {}\n{}\ncursor: {:?}\nlast rendered grid:\n{}\n=== (received {} stdout bytes, generation {}) ===\n=== zellij log tail ({}) ===\n{}",
                     what,
+                    deadline.explain(tier, now),
                     grid_snapshot.cursor,
                     grid_snapshot.text,
                     received_bytes.bytes.len(),
@@ -121,11 +124,11 @@ impl ClientScreen {
             let (guard, _) = self
                 .inner
                 .change_signal
-                .wait_timeout(received_bytes, deadline - now)
+                .wait_timeout(received_bytes, deadline.remaining(now))
                 .unwrap();
             received_bytes = guard;
-            if received_bytes.generation == last_generation {
-                continue;
+            if received_bytes.generation != last_generation {
+                deadline.note_progress(Instant::now());
             }
         }
     }

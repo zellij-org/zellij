@@ -350,9 +350,9 @@ fn partial_osc_overflow_falls_back_to_residue() {
     // residue and parsing resumes from a clean state.
     let mut p = StdinAnsiParser::new();
     let _ = p.feed(b"\x1b]52;c;");
-    let chunk = vec![b'A'; 1024 * 1024]; // 1 MB
+    let chunk = vec![b'A'; 64 * 1024];
     let mut total_residue = 0usize;
-    for _ in 0..110 {
+    for _ in 0..20 {
         let out = p.feed(&chunk);
         total_residue += out.residue.len();
     }

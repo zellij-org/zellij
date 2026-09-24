@@ -239,7 +239,10 @@ fn is_user_input(event: &InputEvent) -> bool {
 /// malformed sequence and flush the buffered bytes back to residue —
 /// same observable behaviour as today for unterminated OSC, just
 /// bounded.
+#[cfg(not(test))]
 const PARTIAL_BUFFER_CAP_BYTES: usize = 100 * 1024 * 1024;
+#[cfg(test)]
+const PARTIAL_BUFFER_CAP_BYTES: usize = 1024 * 1024;
 
 const PASTE_START_MARKER: &[u8] = b"\x1b[200~";
 const PASTE_END_MARKER: &[u8] = b"\x1b[201~";

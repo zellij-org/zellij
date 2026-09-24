@@ -151,7 +151,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_util::sync::CancellationToken;
 
 pub fn render_to_client(
-    mut stdout_channel_rx: UnboundedReceiver<String>,
+    mut stdout_channel_rx: UnboundedReceiver<Message>,
     mut client_channel_tx: SplitSink<WebSocket, Message>,
     cancellation_token: CancellationToken,
     should_not_reconnect: Arc<AtomicBool>,
@@ -182,9 +182,9 @@ pub fn render_to_client(
                 }
                 result = stdout_channel_rx.recv() => {
                     match result {
-                        Some(rendered_bytes) => {
+                        Some(message) => {
                             if client_channel_tx
-                                .send(Message::Text(rendered_bytes.into()))
+                                .send(message)
                                 .await
                                 .is_err()
                             {

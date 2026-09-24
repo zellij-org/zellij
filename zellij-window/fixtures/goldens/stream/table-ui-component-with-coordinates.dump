@@ -1,0 +1,50 @@
+size: 40x120
+cursor: row=8 col=0 visible shape=Default
+grid:
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|    title1                                                                                                              |
+|    content 1                                                                                                           |
+|    content 11                                                                                                          |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 4: cols 4-14 fg=#a2bc8c bg=Background flags=BOLD
+row 5: cols 4-4 fg=#d8d5e6 bg=Background flags=BOLD
+row 5: cols 5-8 fg=#e5a985 bg=Background flags=BOLD
+row 5: cols 9-14 fg=#d8d5e6 bg=Background flags=BOLD
+row 6: cols 4-14 fg=#d8d5e6 bg=#3a3358 flags=BOLD
+images:

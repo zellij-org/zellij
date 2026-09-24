@@ -40,6 +40,7 @@ pub struct MouseEffect {
     pub group_toggle: Option<PaneId>,
     pub group_add: Option<PaneId>,
     pub ungroup: bool,
+    pub pane_resized: bool,
 }
 
 impl MouseEffect {
@@ -50,6 +51,17 @@ impl MouseEffect {
             group_toggle: None,
             group_add: None,
             ungroup: false,
+            pane_resized: false,
+        }
+    }
+    pub fn pane_resized() -> Self {
+        MouseEffect {
+            state_changed: true,
+            leave_clipboard_message: false,
+            group_toggle: None,
+            group_add: None,
+            ungroup: false,
+            pane_resized: true,
         }
     }
     pub fn leave_clipboard_message() -> Self {
@@ -59,6 +71,7 @@ impl MouseEffect {
             group_toggle: None,
             group_add: None,
             ungroup: false,
+            pane_resized: false,
         }
     }
     pub fn state_changed_and_leave_clipboard_message() -> Self {
@@ -68,6 +81,7 @@ impl MouseEffect {
             group_toggle: None,
             group_add: None,
             ungroup: false,
+            pane_resized: false,
         }
     }
     pub fn group_toggle(pane_id: PaneId) -> Self {
@@ -77,6 +91,7 @@ impl MouseEffect {
             group_toggle: Some(pane_id),
             group_add: None,
             ungroup: false,
+            pane_resized: false,
         }
     }
     pub fn group_add(pane_id: PaneId) -> Self {
@@ -86,6 +101,7 @@ impl MouseEffect {
             group_toggle: None,
             group_add: Some(pane_id),
             ungroup: false,
+            pane_resized: false,
         }
     }
     pub fn ungroup() -> Self {
@@ -95,6 +111,7 @@ impl MouseEffect {
             group_toggle: None,
             group_add: None,
             ungroup: true,
+            pane_resized: false,
         }
     }
 }
@@ -503,7 +520,9 @@ impl MouseHandler {
         } else {
             None
         };
-        let terminal_wants_mouse = if Some(pane_id) == active_pane_id {
+        let terminal_wants_mouse = if event.shift {
+            false
+        } else if Some(pane_id) == active_pane_id {
             let relative_position = pane.relative_position(position);
             pane.mouse_left_click(&relative_position, false).is_some()
         } else {
@@ -766,7 +785,7 @@ impl MouseHandler {
                 let state_changed = Self::continue_pane_resize_with_mouse(tab, position, client_id)
                     .with_context(err_context)?;
                 if state_changed {
-                    Ok(MouseEffect::state_changed())
+                    Ok(MouseEffect::pane_resized())
                 } else {
                     Ok(MouseEffect::default())
                 }
@@ -915,8 +934,9 @@ impl MouseHandler {
                     Self::focus_pane_at(tab, &position, client_id).with_context(err_context)?;
                 }
             }
+            return Ok(MouseEffect::state_changed());
         }
-        Ok(MouseEffect::state_changed())
+        Ok(MouseEffect::pane_resized())
     }
 
     fn execute_focus_pane(
@@ -995,7 +1015,7 @@ impl MouseHandler {
             .ok_or_else(|| anyhow!("Failed to find pane {active_pane_id:?}"))
             .with_context(err_context)?;
 
-        let terminal_wants_mouse = pane.terminal_emulator_wants_mouse();
+        let terminal_wants_mouse = !click_event.shift && pane.terminal_emulator_wants_mouse();
 
         if terminal_wants_mouse {
             let relative_position = pane.relative_position(&click_event.position);
@@ -1835,7 +1855,7 @@ impl MouseHandler {
         }
 
         tab.set_force_render();
-        Ok(MouseEffect::state_changed())
+        Ok(MouseEffect::pane_resized())
     }
 
     fn handle_resize_scroll_down(
@@ -1870,7 +1890,7 @@ impl MouseHandler {
         }
 
         tab.set_force_render();
-        Ok(MouseEffect::state_changed())
+        Ok(MouseEffect::pane_resized())
     }
 
     fn get_pane_at<'a>(

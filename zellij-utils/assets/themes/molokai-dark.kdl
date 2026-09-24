@@ -116,5 +116,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/mbadolato/iTerm2-Color-Schemes/blob/master/alacritty/Molokai.toml
+        terminal_colors {
+            black 18 18 18
+            red 250 37 115
+            green 152 225 35
+            yellow 223 212 96
+            blue 16 128 208
+            magenta 135 0 255
+            cyan 67 168 208
+            white 187 187 187
+            bright_black 85 85 85
+            bright_red 246 102 157
+            bright_green 177 224 95
+            bright_yellow 255 242 109
+            bright_blue 0 175 255
+            bright_magenta 175 135 255
+            bright_cyan 81 206 255
+            bright_white 255 255 255
+        }
     }
 }

@@ -1,0 +1,45 @@
+size: 40x120
+cursor: row=13 col=67 visible shape=Default
+grid:
+|********************************************************************************                                        |
+|*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*                                        |
+|*+                                                                            +*                                        |
+|*+                                                                            +*                                        |
+|*+                                                                            +*                                        |
+|*+                                                                            +*                                        |
+|*+                                                                            +*                                        |
+|*+                                                                            +*                                        |
+|*+        EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE        +*                                        |
+|*+        E                                                          E        +*                                        |
+|*+        E The screen should be cleared,  and have an unbroken bor- E        +*                                        |
+|*+        E der of *'s and +'s around the edge,   and exactly in the E        +*                                        |
+|*+        E middle  there should be a frame of E's around this  text E        +*                                        |
+|*+        E with  one (1) free position around it.    Push <RETURN>  E        +*                                        |
+|*+        E                                                          E        +*                                        |
+|*+        EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE        +*                                        |
+|*+                                                                            +*                                        |
+|*+                                                                            +*                                        |
+|*+                                                                            +*                                        |
+|*+                                                                            +*                                        |
+|*+                                                                            +*                                        |
+|*+                                                                            +*                                        |
+|*+                                ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++          |
+|********************************************************************************                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+images:

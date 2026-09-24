@@ -196,6 +196,9 @@ impl SixelGrid {
             .iter()
             .map(|(image_id, pixel_rect)| (*image_id, pixel_rect))
     }
+    pub fn has_images(&self) -> bool {
+        !self.sixel_image_locations.is_empty()
+    }
     pub fn cut_off_rect_from_images(
         &mut self,
         rect_to_cut_out: PixelRect,

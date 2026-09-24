@@ -13,7 +13,7 @@ use crate::{
     ServerInstruction, SessionMetaData, SessionState,
 };
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 use zellij_utils::{
     channels::SenderWithContext,
@@ -36,6 +36,8 @@ use zellij_utils::{
 use crate::ClientId;
 
 const ACTION_COMPLETION_TIMEOUT: Duration = Duration::from_secs(1);
+const SESSION_READINESS_POLL_INTERVAL: Duration = Duration::from_millis(5);
+const SESSION_READINESS_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone)]
 pub struct ActionCompletionResult {
@@ -1245,7 +1247,7 @@ pub(crate) fn route_action(
         },
         Action::MouseEvent { event } => {
             senders
-                .send_to_screen(ScreenInstruction::MouseEvent(
+                .send_to_screen_priority(ScreenInstruction::MouseEvent(
                     event,
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
@@ -2250,6 +2252,21 @@ macro_rules! send_to_screen_or_retry_queue {
     }};
 }
 
+macro_rules! send_to_screen_priority_or_retry_queue {
+    ($senders:expr, $message:expr, $instruction: expr, $retry_queue:expr) => {{
+        match $senders.as_ref() {
+            Some(senders) => senders.send_to_screen_priority($message),
+            None => {
+                log::warn!("Server not ready, trying to place instruction in retry queue...");
+                if let Some(retry_queue) = $retry_queue.as_mut() {
+                    retry_queue.push_back($instruction);
+                }
+                Ok(())
+            },
+        }
+    }};
+}
+
 pub(crate) fn route_thread_main(
     session_data: Arc<RwLock<Option<SessionMetaData>>>,
     session_state: Arc<RwLock<SessionState>>,
@@ -2310,6 +2327,30 @@ pub(crate) fn route_thread_main(
                                 send_to_screen_or_retry_queue!(
                                     senders,
                                     ScreenInstruction::WatcherTerminalResize(client_id, *new_size),
+                                    instruction.clone(),
+                                    retry_queue
+                                )
+                                .with_context(err_context)?;
+                            },
+                            ClientToServerMsg::StructuredRenderSupport { supported } => {
+                                send_to_screen_or_retry_queue!(
+                                    senders,
+                                    ScreenInstruction::SetStructuredRenderSupport {
+                                        client_id,
+                                        supported: *supported,
+                                    },
+                                    instruction.clone(),
+                                    retry_queue
+                                )
+                                .with_context(err_context)?;
+                            },
+                            ClientToServerMsg::RenderFrameAck { seq } => {
+                                send_to_screen_priority_or_retry_queue!(
+                                    senders,
+                                    ScreenInstruction::RenderFrameAck {
+                                        client_id,
+                                        seq: *seq,
+                                    },
                                     instruction.clone(),
                                     retry_queue
                                 )
@@ -2524,12 +2565,16 @@ pub(crate) fn route_thread_main(
                             )
                             .with_context(err_context)?;
                         },
-                        ClientToServerMsg::KittyGraphicsSupport { supported } => {
+                        ClientToServerMsg::KittyGraphicsSupport {
+                            supported,
+                            local_media,
+                        } => {
                             send_to_screen_or_retry_queue!(
                                 senders,
                                 ScreenInstruction::SetKittyGraphicsSupport {
                                     client_id,
-                                    supported
+                                    supported,
+                                    local_media
                                 },
                                 instruction,
                                 retry_queue
@@ -2543,6 +2588,27 @@ pub(crate) fn route_thread_main(
                                     client_id,
                                     supported
                                 },
+                                instruction,
+                                retry_queue
+                            )
+                            .with_context(err_context)?;
+                        },
+                        ClientToServerMsg::StructuredRenderSupport { supported } => {
+                            send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::SetStructuredRenderSupport {
+                                    client_id,
+                                    supported
+                                },
+                                instruction,
+                                retry_queue
+                            )
+                            .with_context(err_context)?;
+                        },
+                        ClientToServerMsg::RenderFrameAck { seq } => {
+                            send_to_screen_priority_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::RenderFrameAck { client_id, seq },
                                 instruction,
                                 retry_queue
                             )
@@ -2909,6 +2975,23 @@ pub(crate) fn route_thread_main(
                 }
                 // retry on loop around
                 retry_queue = deferred_instructions;
+                if !retry_queue.is_empty() && wait_for_session(&session_data) {
+                    let mut deferred_instructions = VecDeque::new();
+                    for pending_instruction in std::mem::take(&mut retry_queue) {
+                        if !deferred_instructions.is_empty() {
+                            deferred_instructions.push_back(pending_instruction);
+                            continue;
+                        }
+                        let should_break = handle_instruction(
+                            pending_instruction,
+                            Some(&mut deferred_instructions),
+                        )?;
+                        if should_break {
+                            break 'route_loop;
+                        }
+                    }
+                    retry_queue = deferred_instructions;
+                }
             },
             Err(IpcReceiveError::Disconnected) => {
                 break 'route_loop;
@@ -2940,6 +3023,24 @@ pub(crate) fn route_thread_main(
     // route thread exited, make sure we clean up
     let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
     Ok(())
+}
+
+fn wait_for_session(session_data: &Arc<RwLock<Option<SessionMetaData>>>) -> bool {
+    let deadline = Instant::now() + SESSION_READINESS_TIMEOUT;
+    loop {
+        let ready = session_data
+            .read()
+            .map(|session_data| session_data.is_some())
+            .unwrap_or(false);
+        if ready {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            log::error!("Server never became ready; parked instructions stay parked.");
+            return false;
+        }
+        thread::sleep(SESSION_READINESS_POLL_INTERVAL);
+    }
 }
 
 fn request_panes_from_screen(

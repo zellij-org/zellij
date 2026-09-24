@@ -116,5 +116,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/EdenEast/nightfox.nvim/blob/main/extra/nightfox/alacritty.toml
+        terminal_colors {
+            black 57 59 68
+            red 201 79 109
+            green 129 178 154
+            yellow 219 192 116
+            blue 113 156 214
+            magenta 157 121 214
+            cyan 99 205 207
+            white 223 223 224
+            bright_black 87 88 96
+            bright_red 209 105 131
+            bright_green 142 186 164
+            bright_yellow 224 201 137
+            bright_blue 134 171 220
+            bright_magenta 186 161 226
+            bright_cyan 122 213 214
+            bright_white 228 228 229
+        }
     }
 }

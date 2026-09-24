@@ -6745,6 +6745,7 @@ Config {
                     ),
                 },
             },
+            terminal_colors: None,
         },
         "theme-from-config": Theme {
             sourced_from_external_file: false,
@@ -7335,6 +7336,7 @@ Config {
                     ),
                 },
             },
+            terminal_colors: None,
         },
         "theme-from-layout": Theme {
             sourced_from_external_file: false,
@@ -7925,6 +7927,7 @@ Config {
                     ),
                 },
             },
+            terminal_colors: None,
         },
     },
     plugins: PluginAliases {
@@ -8087,5 +8090,23 @@ Config {
         mac_option_is_meta: true,
         base_url: None,
         font_size: None,
+    },
+    window: WindowConfig {
+        font: None,
+        font_size: None,
+        system_fonts: None,
+        ligatures: None,
+        cursor_style: None,
+        cursor_blink: None,
+        paste_keys: None,
+        zoom_in_keys: None,
+        zoom_out_keys: None,
+        zoom_reset_keys: None,
+        middle_click_paste: None,
+        open_links: None,
+        bell: None,
+        notifications: None,
+        startup_mode: None,
+        theme: None,
     },
 }

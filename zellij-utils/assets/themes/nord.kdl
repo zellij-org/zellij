@@ -116,5 +116,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/nordtheme/alacritty/blob/main/src/nord.yaml
+        terminal_colors {
+            black 59 66 82
+            red 191 97 106
+            green 163 190 140
+            yellow 235 203 139
+            blue 129 161 193
+            magenta 180 142 173
+            cyan 136 192 208
+            white 229 233 240
+            bright_black 76 86 106
+            bright_red 191 97 106
+            bright_green 163 190 140
+            bright_yellow 235 203 139
+            bright_blue 129 161 193
+            bright_magenta 180 142 173
+            bright_cyan 143 188 187
+            bright_white 236 239 244
+        }
     }
 }

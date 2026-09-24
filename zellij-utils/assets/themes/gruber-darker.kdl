@@ -116,5 +116,24 @@ themes {
             player_9 199 60 63
             player_10 255 255 255
         }
+        // terminal_colors: https://github.com/mbadolato/iTerm2-Color-Schemes/blob/master/alacritty/Gruber%20Darker.toml
+        terminal_colors {
+            black 24 24 24
+            red 255 10 54
+            green 66 220 0
+            yellow 255 219 0
+            blue 146 167 203
+            magenta 160 149 203
+            cyan 144 170 158
+            white 228 228 228
+            bright_black 84 73 78
+            bright_red 255 56 81
+            bright_green 66 220 0
+            bright_yellow 255 219 0
+            bright_blue 146 167 203
+            bright_magenta 175 175 218
+            bright_cyan 144 170 158
+            bright_white 245 245 245
+        }
     }
 }
