@@ -79,8 +79,8 @@ pub use super::generated_api::api::{
     resize::{Resize as ProtobufResize, ResizeDirection as ProtobufResizeDirection},
 };
 use crate::data::{
-    CommandOrPlugin, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier,
-    NewPanePlacement, PaneId, PluginTag, ResizeStrategy, UnblockCondition,
+    BorderStyleOverride, CommandOrPlugin, Direction, FloatingPaneCoordinates, InputMode,
+    KeyWithModifier, NewPanePlacement, PaneId, PluginTag, ResizeStrategy, UnblockCondition,
 };
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
@@ -430,6 +430,7 @@ impl TryFrom<ProtobufAction> for Action {
                         .and_then(|d| d.try_into().ok());
                     let near_current_pane = payload.near_current_pane;
                     let borderless = payload.borderless;
+                    let border_style = payload.border_style.map(BorderStyleOverride::from);
                     if let Some(payload) = payload.command {
                         let pane_name = payload.pane_name.clone();
                         let run_command_action: RunCommandAction = payload.try_into()?;
@@ -440,6 +441,7 @@ impl TryFrom<ProtobufAction> for Action {
                             near_current_pane,
                             no_focus: false,
                             borderless,
+                            border_style,
                             tab_id: None,
                         })
                     } else {
@@ -450,6 +452,7 @@ impl TryFrom<ProtobufAction> for Action {
                             near_current_pane,
                             no_focus: false,
                             borderless,
+                            border_style,
                             tab_id: None,
                         })
                     }
@@ -848,6 +851,22 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("NextSwapLayout should not have a payload"),
                 None => Ok(Action::NextSwapLayout),
             },
+            Some(ProtobufActionName::ApplyTiledSwapLayout) => {
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::ApplyTiledSwapLayoutPayload(name)) => {
+                        Ok(Action::ApplyTiledSwapLayout { name })
+                    },
+                    _ => Err("Wrong payload for Action::ApplyTiledSwapLayout"),
+                }
+            },
+            Some(ProtobufActionName::ApplyFloatingSwapLayout) => {
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::ApplyFloatingSwapLayoutPayload(name)) => {
+                        Ok(Action::ApplyFloatingSwapLayout { name })
+                    },
+                    _ => Err("Wrong payload for Action::ApplyFloatingSwapLayout"),
+                }
+            },
             Some(ProtobufActionName::OverrideLayout) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::OverrideLayoutPayload(payload)) => {
                     Ok(Action::OverrideLayout {
@@ -1211,6 +1230,8 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::ToggleFloatingPanesByTabId { .. }
             | Action::PreviousSwapLayoutByTabId { .. }
             | Action::NextSwapLayoutByTabId { .. }
+            | Action::ApplyTiledSwapLayoutByTabId { .. }
+            | Action::ApplyFloatingSwapLayoutByTabId { .. }
             | Action::MoveTabByTabId { .. } => {
                 Err("These are CLI-only actions, not available in keybindings")
             },
@@ -1487,6 +1508,7 @@ impl TryFrom<Action> for ProtobufAction {
                 pane_name,
                 near_current_pane,
                 borderless,
+                border_style,
                 ..
             } => {
                 let direction = direction.and_then(|direction| {
@@ -1508,6 +1530,7 @@ impl TryFrom<Action> for ProtobufAction {
                             command,
                             near_current_pane,
                             borderless,
+                            border_style: border_style.map(|b| b.into()),
                         },
                     )),
                 })
@@ -1798,6 +1821,14 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::NextSwapLayout as i32,
                 optional_payload: None,
             }),
+            Action::ApplyTiledSwapLayout { name } => Ok(ProtobufAction {
+                name: ProtobufActionName::ApplyTiledSwapLayout as i32,
+                optional_payload: Some(OptionalPayload::ApplyTiledSwapLayoutPayload(name)),
+            }),
+            Action::ApplyFloatingSwapLayout { name } => Ok(ProtobufAction {
+                name: ProtobufActionName::ApplyFloatingSwapLayout as i32,
+                optional_payload: Some(OptionalPayload::ApplyFloatingSwapLayoutPayload(name)),
+            }),
             Action::OverrideLayout {
                 tabs,
                 retain_existing_terminal_panes,
@@ -2066,6 +2097,7 @@ impl TryFrom<Action> for ProtobufAction {
             }
             | Action::TogglePaneBorderless { pane_id: _ }
             | Action::SetPaneBorderless { .. }
+            | Action::SetPaneBorderStyle { .. }
             | Action::SkipConfirm { action: _ }
             | Action::SwitchSession { .. }
             | Action::SaveSession
@@ -2554,6 +2586,7 @@ impl TryFrom<ProtobufFloatingPaneCoordinates> for FloatingPaneCoordinates {
             height: protobuf_coords.height.and_then(|h| h.try_into().ok()),
             pinned: protobuf_coords.pinned,
             borderless: protobuf_coords.borderless,
+            border_style: protobuf_coords.border_style.map(BorderStyleOverride::from),
         })
     }
 }
@@ -2568,6 +2601,7 @@ impl TryFrom<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
             height: coords.height.and_then(|h| h.try_into().ok()),
             pinned: coords.pinned,
             borderless: coords.borderless,
+            border_style: coords.border_style.map(|b| b.into()),
         })
     }
 }
@@ -2581,6 +2615,7 @@ impl TryFrom<ProtobufNewPanePlacement> for NewPanePlacement {
         match protobuf_placement.placement_variant {
             Some(PlacementVariant::NoPreference(opts)) => Ok(NewPanePlacement::NoPreference {
                 borderless: opts.borderless,
+                border_style: opts.border_style.map(BorderStyleOverride::from),
             }),
             Some(PlacementVariant::Tiled(tiled)) => {
                 let direction = tiled
@@ -2590,6 +2625,7 @@ impl TryFrom<ProtobufNewPanePlacement> for NewPanePlacement {
                 Ok(NewPanePlacement::Tiled {
                     direction,
                     borderless: tiled.borderless,
+                    border_style: tiled.border_style.map(BorderStyleOverride::from),
                 })
             },
             Some(PlacementVariant::Floating(floating)) => {
@@ -2603,6 +2639,7 @@ impl TryFrom<ProtobufNewPanePlacement> for NewPanePlacement {
                     pane_id_to_replace,
                     close_replaced_pane: config.close_replaced_pane,
                     borderless: config.borderless,
+                    border_style: config.border_style.map(BorderStyleOverride::from),
                 })
             },
             Some(PlacementVariant::Stacked(stacked)) => {
@@ -2610,6 +2647,7 @@ impl TryFrom<ProtobufNewPanePlacement> for NewPanePlacement {
                 Ok(NewPanePlacement::Stacked {
                     pane_id_to_stack_under: pane_id,
                     borderless: stacked.borderless,
+                    border_style: stacked.border_style.map(BorderStyleOverride::from),
                 })
             },
             None => Err("NewPanePlacement must have a placement variant"),
@@ -2624,14 +2662,17 @@ impl TryFrom<NewPanePlacement> for ProtobufNewPanePlacement {
         use super::generated_api::api::action::NoPreferenceOptions;
 
         let placement_variant = match placement {
-            NewPanePlacement::NoPreference { borderless } => {
-                Some(PlacementVariant::NoPreference(NoPreferenceOptions {
-                    borderless,
-                }))
-            },
+            NewPanePlacement::NoPreference {
+                borderless,
+                border_style,
+            } => Some(PlacementVariant::NoPreference(NoPreferenceOptions {
+                borderless,
+                border_style: border_style.map(|b| b.into()),
+            })),
             NewPanePlacement::Tiled {
                 direction,
                 borderless,
+                border_style,
             } => {
                 let direction = direction.and_then(|d| {
                     let protobuf_direction: ProtobufResizeDirection = d.try_into().ok()?;
@@ -2640,6 +2681,7 @@ impl TryFrom<NewPanePlacement> for ProtobufNewPanePlacement {
                 Some(PlacementVariant::Tiled(ProtobufTiledPlacement {
                     direction,
                     borderless,
+                    border_style: border_style.map(|b| b.into()),
                 }))
             },
             NewPanePlacement::Floating(coords) => {
@@ -2652,22 +2694,26 @@ impl TryFrom<NewPanePlacement> for ProtobufNewPanePlacement {
                 pane_id_to_replace,
                 close_replaced_pane,
                 borderless,
+                border_style,
             } => {
                 let pane_id_to_replace = pane_id_to_replace.and_then(|id| id.try_into().ok());
                 Some(PlacementVariant::InPlace(ProtobufInPlaceConfig {
                     pane_id_to_replace,
                     close_replaced_pane,
                     borderless,
+                    border_style: border_style.map(|b| b.into()),
                 }))
             },
             NewPanePlacement::Stacked {
                 pane_id_to_stack_under,
                 borderless,
+                border_style,
             } => {
                 let pane_id = pane_id_to_stack_under.and_then(|id| id.try_into().ok());
                 Some(PlacementVariant::Stacked(ProtobufStackedPlacement {
                     pane_id,
                     borderless,
+                    border_style: border_style.map(|b| b.into()),
                 }))
             },
         };
@@ -3017,6 +3063,7 @@ impl TryFrom<ProtobufCommandOrPlugin> for CommandOrPlugin {
                     path: std::path::PathBuf::from(&f.path),
                     line_number: f.line_number.map(|n| n as usize),
                     cwd: f.cwd.map(std::path::PathBuf::from),
+                    border_style: None,
                 }))
             },
             None => Err("CommandOrPlugin must have command_or_plugin_type"),
@@ -3159,6 +3206,7 @@ impl TryFrom<ProtobufTiledPaneLayout> for TiledPaneLayout {
             pane_initial_contents: protobuf.pane_initial_contents,
             default_fg: None,
             default_bg: None,
+            border_style: protobuf.border_style.map(BorderStyleOverride::from),
         })
     }
 }
@@ -3190,6 +3238,7 @@ impl TryFrom<TiledPaneLayout> for ProtobufTiledPaneLayout {
             exclude_from_sync: internal.exclude_from_sync,
             hide_floating_panes: internal.hide_floating_panes,
             pane_initial_contents: internal.pane_initial_contents,
+            border_style: internal.border_style.map(|b| b.into()),
         })
     }
 }
@@ -3217,6 +3266,7 @@ impl TryFrom<ProtobufFloatingPaneLayout> for FloatingPaneLayout {
             borderless: protobuf.borderless,
             default_fg: None,
             default_bg: None,
+            border_style: protobuf.border_style.map(BorderStyleOverride::from),
         })
     }
 }
@@ -3242,6 +3292,7 @@ impl TryFrom<FloatingPaneLayout> for ProtobufFloatingPaneLayout {
             pane_initial_contents: internal.pane_initial_contents,
             logical_position: internal.logical_position.map(|p| p as u32),
             borderless: internal.borderless,
+            border_style: internal.border_style.map(|b| b.into()),
         })
     }
 }
@@ -3361,6 +3412,110 @@ impl TryFrom<SwapFloatingLayout> for ProtobufSwapFloatingLayout {
 mod tests {
     use super::*;
     use crate::input::options::PaneFrameStyle;
+
+    #[test]
+    fn new_tiled_pane_action_carries_a_border_style_over_protobuf() {
+        use crate::data::LineStyle;
+        let original = Action::NewTiledPane {
+            direction: None,
+            command: None,
+            pane_name: None,
+            near_current_pane: false,
+            no_focus: false,
+            borderless: None,
+            border_style: Some(BorderStyleOverride {
+                all: Some(LineStyle::Double),
+                top: Some(LineStyle::Heavy),
+                rounded_corners: Some(true),
+                ..Default::default()
+            }),
+            tab_id: None,
+        };
+        let protobuf: ProtobufAction = original.clone().try_into().expect("encode");
+        let decoded: Action = protobuf.try_into().expect("decode");
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn a_new_pane_placement_carries_a_border_style_over_protobuf() {
+        use super::super::generated_api::api::action::NewPanePlacement as ProtobufNewPanePlacement;
+        use crate::data::LineStyle;
+        for original in [
+            NewPanePlacement::NoPreference {
+                borderless: None,
+                border_style: Some(BorderStyleOverride {
+                    all: Some(LineStyle::Double),
+                    ..Default::default()
+                }),
+            },
+            NewPanePlacement::Tiled {
+                direction: None,
+                borderless: Some(true),
+                border_style: Some(BorderStyleOverride {
+                    left: Some(LineStyle::Heavy),
+                    ..Default::default()
+                }),
+            },
+            NewPanePlacement::InPlace {
+                pane_id_to_replace: None,
+                close_replaced_pane: false,
+                borderless: None,
+                border_style: Some(BorderStyleOverride {
+                    bottom: Some(LineStyle::Dashed),
+                    ..Default::default()
+                }),
+            },
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under: None,
+                borderless: None,
+                border_style: Some(BorderStyleOverride {
+                    rounded_corners: Some(false),
+                    ..Default::default()
+                }),
+            },
+            NewPanePlacement::Floating(Some(FloatingPaneCoordinates::default().with_border_style(
+                Some(BorderStyleOverride {
+                    all: Some(LineStyle::HeavyDashed),
+                    ..Default::default()
+                }),
+            ))),
+        ] {
+            let protobuf: ProtobufNewPanePlacement = original.clone().try_into().expect("encode");
+            let decoded: NewPanePlacement = protobuf.try_into().expect("decode");
+            assert_eq!(original, decoded);
+        }
+    }
+
+    #[test]
+    fn pane_layouts_carry_border_styles_over_protobuf() {
+        use super::super::generated_api::api::action::{
+            FloatingPaneLayout as ProtobufFloatingPaneLayout,
+            TiledPaneLayout as ProtobufTiledPaneLayout,
+        };
+        use crate::data::LineStyle;
+        use crate::input::layout::{FloatingPaneLayout, TiledPaneLayout};
+        let border_style = Some(BorderStyleOverride {
+            all: Some(LineStyle::Double),
+            top: Some(LineStyle::Heavy),
+            rounded_corners: Some(true),
+            ..Default::default()
+        });
+        let tiled = TiledPaneLayout {
+            border_style,
+            ..Default::default()
+        };
+        let protobuf: ProtobufTiledPaneLayout = tiled.clone().try_into().expect("encode");
+        let decoded: TiledPaneLayout = protobuf.try_into().expect("decode");
+        assert_eq!(decoded.border_style, border_style);
+
+        let floating = FloatingPaneLayout {
+            border_style,
+            ..Default::default()
+        };
+        let protobuf: ProtobufFloatingPaneLayout = floating.clone().try_into().expect("encode");
+        let decoded: FloatingPaneLayout = protobuf.try_into().expect("decode");
+        assert_eq!(decoded.border_style, border_style);
+    }
 
     #[test]
     fn set_pane_frame_style_action_protobuf_round_trip() {

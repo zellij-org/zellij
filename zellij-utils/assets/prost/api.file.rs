@@ -8,4 +8,6 @@ pub struct File {
     pub line_number: ::core::option::Option<i32>,
     #[prost(string, optional, tag="3")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="4")]
+    pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
 }

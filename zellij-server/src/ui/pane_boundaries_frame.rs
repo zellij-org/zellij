@@ -3,13 +3,14 @@ use crate::panes::{
     AnsiCode, CharacterStyles, RcCharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
 use crate::tab::GuestChoiceIndicator;
+use crate::ui::border_glyphs::{self, Corner};
 use crate::ui::boundaries::boundary_type;
 use crate::ui::hint_text::{
     exit_code_segments, hover_segments, rerun_segments, resize_segments, HintExitStatus, HintLevel,
     HintSegment, HintTier,
 };
 use crate::ClientId;
-use zellij_utils::data::{client_id_to_colors, PaletteColor, Style};
+use zellij_utils::data::{client_slot_to_colors, BorderStyle, LineStyle, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::{Offset, PaneGeom, Viewport};
 use zellij_utils::position::Position;
@@ -79,7 +80,9 @@ pub struct FrameParams {
     pub focused_client: Option<ClientId>,
     pub is_main_client: bool, // more accurately: is_focused_for_main_client
     pub other_focused_clients: Vec<ClientId>,
+    pub other_focused_client_slots: Vec<usize>,
     pub style: Style,
+    pub border_style: BorderStyle,
     pub color: Option<PaletteColor>,
     pub other_cursors_exist_in_session: bool,
     pub pane_is_stacked_under: bool,
@@ -108,11 +111,13 @@ pub struct PaneFrame {
     pub title: String,
     pub scroll_position: (usize, usize), // (position, length)
     pub style: Style,
+    pub border_style: BorderStyle,
     pub color: Option<PaletteColor>,
     pub focused_client: Option<ClientId>,
     pub is_main_client: bool,
     pub other_cursors_exist_in_session: bool,
     pub other_focused_clients: Vec<ClientId>,
+    pub other_focused_client_slots: Vec<usize>,
     exit_status: Option<ExitStatus>,
     is_first_run: bool,
     pane_is_stacked_over: bool,
@@ -147,10 +152,12 @@ impl PaneFrame {
             title: main_title,
             scroll_position,
             style: frame_params.style,
+            border_style: frame_params.border_style,
             color: frame_params.color,
             focused_client: frame_params.focused_client,
             is_main_client: frame_params.is_main_client,
             other_focused_clients: frame_params.other_focused_clients,
+            other_focused_client_slots: frame_params.other_focused_client_slots,
             other_cursors_exist_in_session: frame_params.other_cursors_exist_in_session,
             exit_status: None,
             is_first_run: false,
@@ -191,33 +198,67 @@ impl PaneFrame {
         self.color = Some(color);
         self.color_override = Some(color);
     }
-    fn client_cursor(&self, client_id: ClientId) -> Vec<TerminalCharacter> {
-        let color = client_id_to_colors(client_id, self.style.colors.multiplayer_user_colors);
+    fn client_cursor(&self, display_slot: usize) -> Vec<TerminalCharacter> {
+        let color = client_slot_to_colors(display_slot, self.style.colors.multiplayer_user_colors);
         background_color(" ", color.map(|c| c.0))
     }
+    fn top_horizontal(&self) -> &'static str {
+        border_glyphs::horizontal(self.border_style.top)
+    }
+    fn bottom_horizontal(&self) -> &'static str {
+        border_glyphs::horizontal(self.border_style.bottom)
+    }
+    fn left_vertical(&self) -> &'static str {
+        border_glyphs::vertical(self.border_style.left)
+    }
+    fn right_vertical(&self) -> &'static str {
+        border_glyphs::vertical(self.border_style.right)
+    }
+    fn title_separator_left(&self) -> &'static str {
+        border_glyphs::title_separator_left(self.border_style.top)
+    }
+    fn title_separator_right(&self) -> &'static str {
+        border_glyphs::title_separator_right(self.border_style.top)
+    }
+    fn horizontal_style_of_corner(&self, corner: Corner) -> LineStyle {
+        match corner {
+            Corner::TopLeft | Corner::TopRight => self.border_style.top,
+            Corner::BottomLeft | Corner::BottomRight => self.border_style.bottom,
+        }
+    }
+    fn vertical_style_of_corner(&self, corner: Corner) -> LineStyle {
+        match corner {
+            Corner::TopLeft | Corner::BottomLeft => self.border_style.left,
+            Corner::TopRight | Corner::BottomRight => self.border_style.right,
+        }
+    }
     fn get_corner(&self, corner: &'static str) -> &'static str {
-        let corner = if !self.should_draw_pane_frames
+        if !self.should_draw_pane_frames
             && (corner == boundary_type::TOP_LEFT || corner == boundary_type::TOP_RIGHT)
         {
-            boundary_type::HORIZONTAL
-        } else if self.pane_is_stacked_under && corner == boundary_type::TOP_RIGHT {
-            boundary_type::BOTTOM_RIGHT
-        } else if self.pane_is_stacked_under && corner == boundary_type::TOP_LEFT {
-            boundary_type::BOTTOM_LEFT
-        } else {
-            corner
+            return self.top_horizontal();
+        }
+        let style_corner = match corner {
+            boundary_type::TOP_LEFT => Corner::TopLeft,
+            boundary_type::TOP_RIGHT => Corner::TopRight,
+            boundary_type::BOTTOM_LEFT => Corner::BottomLeft,
+            _ => Corner::BottomRight,
         };
-        if self.style.rounded_corners {
-            match corner {
-                boundary_type::TOP_RIGHT => boundary_type::TOP_RIGHT_ROUND,
-                boundary_type::TOP_LEFT => boundary_type::TOP_LEFT_ROUND,
-                boundary_type::BOTTOM_RIGHT => boundary_type::BOTTOM_RIGHT_ROUND,
-                boundary_type::BOTTOM_LEFT => boundary_type::BOTTOM_LEFT_ROUND,
-                _ => corner,
+        let shape_corner = if self.pane_is_stacked_under {
+            match style_corner {
+                Corner::TopRight => Corner::BottomRight,
+                Corner::TopLeft => Corner::BottomLeft,
+                other => other,
             }
         } else {
-            corner
-        }
+            style_corner
+        };
+        border_glyphs::corner(
+            shape_corner,
+            self.horizontal_style_of_corner(style_corner),
+            self.vertical_style_of_corner(style_corner),
+            self.border_style.rounded_corners,
+        )
     }
     fn render_title_right_side(
         &self,
@@ -310,8 +351,8 @@ impl PaneFrame {
         }
     }
     fn render_my_focus(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
-        let mut left_separator = foreground_color(boundary_type::VERTICAL_LEFT, self.color);
-        let mut right_separator = foreground_color(boundary_type::VERTICAL_RIGHT, self.color);
+        let mut left_separator = foreground_color(self.title_separator_left(), self.color);
+        let mut right_separator = foreground_color(self.title_separator_right(), self.color);
         let full_indication_text = "MY FOCUS";
         let mut full_indication = vec![];
         full_indication.append(&mut left_separator);
@@ -340,16 +381,16 @@ impl PaneFrame {
         &self,
         max_length: usize,
     ) -> Option<(Vec<TerminalCharacter>, usize)> {
-        let mut left_separator = foreground_color(boundary_type::VERTICAL_LEFT, self.color);
-        let mut right_separator = foreground_color(boundary_type::VERTICAL_RIGHT, self.color);
+        let mut left_separator = foreground_color(self.title_separator_left(), self.color);
+        let mut right_separator = foreground_color(self.title_separator_right(), self.color);
         let full_indication_text = "MY FOCUS AND:";
         let short_indication_text = "+";
         let mut full_indication = foreground_color(full_indication_text, self.color);
         let mut full_indication_len = full_indication_text.width();
         let mut short_indication = foreground_color(short_indication_text, self.color);
         let mut short_indication_len = short_indication_text.width();
-        for client_id in &self.other_focused_clients {
-            let mut text = self.client_cursor(*client_id);
+        for display_slot in &self.other_focused_client_slots {
+            let mut text = self.client_cursor(*display_slot);
             full_indication_len += 2;
             full_indication.push(EMPTY_TERMINAL_CHARACTER);
             full_indication.append(&mut text.clone());
@@ -383,8 +424,8 @@ impl PaneFrame {
         &self,
         max_length: usize,
     ) -> Option<(Vec<TerminalCharacter>, usize)> {
-        let mut left_separator = foreground_color(boundary_type::VERTICAL_LEFT, self.color);
-        let mut right_separator = foreground_color(boundary_type::VERTICAL_RIGHT, self.color);
+        let mut left_separator = foreground_color(self.title_separator_left(), self.color);
+        let mut right_separator = foreground_color(self.title_separator_right(), self.color);
         let full_indication_text = if self.other_focused_clients.len() == 1 {
             "FOCUSED USER:"
         } else {
@@ -397,8 +438,8 @@ impl PaneFrame {
         let mut middle_indication_len = middle_indication_text.width();
         let mut short_indication = vec![];
         let mut short_indication_len = 0;
-        for client_id in &self.other_focused_clients {
-            let mut text = self.client_cursor(*client_id);
+        for display_slot in &self.other_focused_client_slots {
+            let mut text = self.client_cursor(*display_slot);
             full_indication_len += 2;
             full_indication.push(EMPTY_TERMINAL_CHARACTER);
             full_indication.append(&mut text.clone());
@@ -563,7 +604,7 @@ impl PaneFrame {
                 col += right_side_len;
                 continue;
             } else {
-                title_line.append(&mut foreground_color(boundary_type::HORIZONTAL, self.color));
+                title_line.append(&mut foreground_color(self.top_horizontal(), self.color));
             }
             if col == self.geom.x + self.geom.cols - 1 {
                 break;
@@ -605,7 +646,7 @@ impl PaneFrame {
                 col += *middle_len;
                 continue;
             } else {
-                title_line.append(&mut foreground_color(boundary_type::HORIZONTAL, self.color));
+                title_line.append(&mut foreground_color(self.top_horizontal(), self.color));
             }
             if col == self.geom.x + self.geom.cols - 1 {
                 break;
@@ -640,7 +681,7 @@ impl PaneFrame {
                 col += *middle_len;
                 continue;
             } else {
-                title_line.append(&mut foreground_color(boundary_type::HORIZONTAL, self.color));
+                title_line.append(&mut foreground_color(self.top_horizontal(), self.color));
             }
             if col == self.geom.x + self.geom.cols - 1 {
                 break;
@@ -663,7 +704,7 @@ impl PaneFrame {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle = String::new();
         for _ in (left_side_len + right_side_len)..total_title_length {
-            middle.push_str(boundary_type::HORIZONTAL);
+            middle.push_str(self.top_horizontal());
         }
         let mut ret = vec![];
         ret.append(&mut left_boundary);
@@ -685,7 +726,7 @@ impl PaneFrame {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle_padding = String::new();
         for _ in *left_side_len..total_title_length {
-            middle_padding.push_str(boundary_type::HORIZONTAL);
+            middle_padding.push_str(self.top_horizontal());
         }
         let mut ret = vec![];
         ret.append(&mut left_boundary);
@@ -702,7 +743,7 @@ impl PaneFrame {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle_padding = String::new();
         for _ in 0..total_title_length {
-            middle_padding.push_str(boundary_type::HORIZONTAL);
+            middle_padding.push_str(self.top_horizontal());
         }
         let mut ret = vec![];
         ret.append(&mut left_boundary);
@@ -812,7 +853,7 @@ impl PaneFrame {
                 line.push(EMPTY_TERMINAL_CHARACTER);
             }
         }
-        line.append(&mut foreground_color(boundary_type::VERTICAL, None));
+        line.append(&mut foreground_color(self.left_vertical(), None));
         for _ in 0..corner_padding {
             line.push(EMPTY_TERMINAL_CHARACTER);
         }
@@ -824,7 +865,7 @@ impl PaneFrame {
         for _ in 0..corner_padding {
             line.push(EMPTY_TERMINAL_CHARACTER);
         }
-        line.append(&mut foreground_color(boundary_type::VERTICAL, None));
+        line.append(&mut foreground_color(self.right_vertical(), None));
         let mut occupied_columns = entry_start + full_width_entry_length;
         let (mut scroll_part, scroll_length) = self
             .bracketed_scroll_indicator(usable_cols.saturating_sub(occupied_columns))
@@ -973,9 +1014,9 @@ impl PaneFrame {
     fn focused_users_part(&self, label: &str) -> (Vec<TerminalCharacter>, usize) {
         let mut content = foreground_color(label, self.color);
         let mut content_length = label.width();
-        for client_id in &self.other_focused_clients {
+        for display_slot in &self.other_focused_client_slots {
             content.push(EMPTY_TERMINAL_CHARACTER);
-            content.append(&mut self.client_cursor(*client_id));
+            content.append(&mut self.client_cursor(*display_slot));
             content_length += 2;
         }
         self.bracketed_title_part_from_characters(content, content_length)
@@ -983,12 +1024,12 @@ impl PaneFrame {
     fn focused_users_cursors_part(&self) -> (Vec<TerminalCharacter>, usize) {
         let mut content = vec![];
         let mut content_length = 0;
-        for client_id in &self.other_focused_clients {
+        for display_slot in &self.other_focused_client_slots {
             if content_length > 0 {
                 content.push(EMPTY_TERMINAL_CHARACTER);
                 content_length += 1;
             }
-            content.append(&mut self.client_cursor(*client_id));
+            content.append(&mut self.client_cursor(*display_slot));
             content_length += 1;
         }
         self.bracketed_title_part_from_characters(content, content_length)
@@ -1045,7 +1086,7 @@ impl PaneFrame {
         };
         let right_start = width.saturating_sub(right_length).max(middle_end);
         let fill_character = if self.pane_is_stacked {
-            foreground_color(boundary_type::HORIZONTAL, self.color)
+            foreground_color(self.bottom_horizontal(), self.color)
                 .into_iter()
                 .next()
                 .unwrap_or(EMPTY_TERMINAL_CHARACTER)
@@ -1096,7 +1137,7 @@ impl PaneFrame {
         let padding_len = max_undertitle_length.saturating_sub(text_len);
         let mut padding = String::new();
         for _ in 0..padding_len {
-            padding.push_str(boundary_type::HORIZONTAL);
+            padding.push_str(self.bottom_horizontal());
         }
 
         let mut ret = vec![];
@@ -1130,7 +1171,7 @@ impl PaneFrame {
         let padding_len = max_undertitle_length.saturating_sub(help_text_len);
         let mut padding = String::new();
         for _ in 0..padding_len {
-            padding.push_str(boundary_type::HORIZONTAL);
+            padding.push_str(self.bottom_horizontal());
         }
 
         let mut ret = vec![];
@@ -1183,7 +1224,7 @@ impl PaneFrame {
                 // render exit status and tips
                 let mut padding = String::new();
                 for _ in full_text_len..max_undertitle_length {
-                    padding.push_str(boundary_type::HORIZONTAL);
+                    padding.push_str(self.bottom_horizontal());
                 }
                 let mut ret = vec![];
                 ret.append(&mut left_boundary);
@@ -1196,7 +1237,7 @@ impl PaneFrame {
                 // render only exit status
                 let mut padding = String::new();
                 for _ in first_part_len..max_undertitle_length {
-                    padding.push_str(boundary_type::HORIZONTAL);
+                    padding.push_str(self.bottom_horizontal());
                 }
                 let mut ret = vec![];
                 ret.append(&mut left_boundary);
@@ -1213,7 +1254,7 @@ impl PaneFrame {
                 let full_text_len = first_part_len;
                 let mut padding = String::new();
                 for _ in full_text_len..max_undertitle_length {
-                    padding.push_str(boundary_type::HORIZONTAL);
+                    padding.push_str(self.bottom_horizontal());
                 }
                 let mut ret = vec![];
                 ret.append(&mut left_boundary);
@@ -1241,7 +1282,7 @@ impl PaneFrame {
                 // render exit status and tips
                 let mut padding = String::new();
                 for _ in hover_shortcuts_len..max_undertitle_length {
-                    padding.push_str(boundary_type::HORIZONTAL);
+                    padding.push_str(self.bottom_horizontal());
                 }
                 let mut ret = vec![];
                 ret.append(&mut left_boundary);
@@ -1369,7 +1410,7 @@ impl PaneFrame {
                                 // bottom right corner
                                 self.get_corner(boundary_type::BOTTOM_RIGHT)
                             } else {
-                                boundary_type::HORIZONTAL
+                                self.bottom_horizontal()
                             };
 
                             let mut boundary_character = foreground_color(boundary, self.color);
@@ -1381,9 +1422,9 @@ impl PaneFrame {
                     }
                 } else {
                     let boundary_character_left =
-                        foreground_color(boundary_type::VERTICAL, self.color);
+                        foreground_color(self.left_vertical(), self.color);
                     let boundary_character_right =
-                        foreground_color(boundary_type::VERTICAL, self.color);
+                        foreground_color(self.right_vertical(), self.color);
 
                     let x = self.geom.x;
                     let y = self.geom.y + row;
@@ -1421,7 +1462,7 @@ impl PaneFrame {
             Some(ExitStatus::Exited) => {
                 self.render_hint_segments(&exit_code_segments(HintExitStatus::Exited))
             },
-            None => (foreground_color(boundary_type::HORIZONTAL, self.color), 1),
+            None => (foreground_color(self.bottom_horizontal(), self.color), 1),
         }
     }
     fn second_held_title_part_full(&self) -> (Vec<TerminalCharacter>, usize) {
@@ -1438,7 +1479,7 @@ impl PaneFrame {
         let mut ret = vec![];
         let mut padding = String::new();
         for _ in 0..max_undertitle_length {
-            padding.push_str(boundary_type::HORIZONTAL);
+            padding.push_str(self.bottom_horizontal());
         }
         ret.append(&mut left_boundary);
         ret.append(&mut foreground_color(&padding, self.color));
@@ -1467,7 +1508,9 @@ mod tests {
                 focused_client: None,
                 is_main_client: true,
                 other_focused_clients: vec![],
+                other_focused_client_slots: vec![],
                 style: Style::default(),
+                border_style: BorderStyle::default(),
                 color: None,
                 other_cursors_exist_in_session: false,
                 pane_is_stacked_over: false,
@@ -1494,6 +1537,94 @@ mod tests {
 
     fn characters_to_string(chars: &[TerminalCharacter]) -> String {
         chars.iter().map(|c| c.character).collect()
+    }
+
+    fn frame_rows(border_style: BorderStyle) -> Vec<String> {
+        let mut frame = pane_frame_with(false, false, 10);
+        frame.border_style = border_style;
+        frame.geom.rows = 3;
+        frame.mouse_hover_tips = false;
+        frame.show_help_text = false;
+        let (chunks, _) = frame.render().unwrap();
+        let mut rows: Vec<(usize, usize, String)> = chunks
+            .iter()
+            .map(|c| (c.y, c.x, characters_to_string(&c.terminal_characters)))
+            .collect();
+        rows.sort();
+        let mut by_row: Vec<String> = vec![String::new(); 3];
+        for (y, _x, text) in rows {
+            by_row[y].push_str(&text);
+        }
+        by_row
+    }
+
+    #[test]
+    fn single_line_frame_with_rounded_corners() {
+        let rows = frame_rows(BorderStyle {
+            rounded_corners: true,
+            ..Default::default()
+        });
+        assert!(rows[0].starts_with('╭'), "{}", rows[0]);
+        assert!(rows[0].ends_with('╮'), "{}", rows[0]);
+        assert_eq!(rows[1], "││");
+        assert_eq!(rows[2], "╰────────╯");
+    }
+
+    #[test]
+    fn double_top_border_with_single_sides() {
+        let rows = frame_rows(BorderStyle {
+            top: LineStyle::Double,
+            rounded_corners: true,
+            ..Default::default()
+        });
+        assert!(rows[0].starts_with('╒'), "{}", rows[0]);
+        assert!(rows[0].ends_with('╕'), "{}", rows[0]);
+        assert_eq!(rows[1], "││");
+        assert_eq!(rows[2], "╰────────╯");
+    }
+
+    #[test]
+    fn all_double_border() {
+        let rows = frame_rows(BorderStyle {
+            top: LineStyle::Double,
+            right: LineStyle::Double,
+            bottom: LineStyle::Double,
+            left: LineStyle::Double,
+            rounded_corners: true,
+        });
+        assert!(rows[0].starts_with('╔'), "{}", rows[0]);
+        assert!(rows[0].ends_with('╗'), "{}", rows[0]);
+        assert_eq!(rows[1], "║║");
+        assert_eq!(rows[2], "╚════════╝");
+    }
+
+    #[test]
+    fn heavy_and_double_corner_falls_back_to_the_horizontal_arm() {
+        let rows = frame_rows(BorderStyle {
+            top: LineStyle::Double,
+            right: LineStyle::Heavy,
+            bottom: LineStyle::Heavy,
+            left: LineStyle::Heavy,
+            rounded_corners: false,
+        });
+        assert!(rows[0].starts_with('╔'), "{}", rows[0]);
+        assert!(rows[0].ends_with('╗'), "{}", rows[0]);
+        assert_eq!(rows[1], "┃┃");
+        assert_eq!(rows[2], "┗━━━━━━━━┛");
+    }
+
+    #[test]
+    fn dashed_border_uses_light_corners() {
+        let rows = frame_rows(BorderStyle {
+            top: LineStyle::Dashed,
+            right: LineStyle::Dashed,
+            bottom: LineStyle::Dashed,
+            left: LineStyle::Dashed,
+            rounded_corners: false,
+        });
+        assert!(rows[0].starts_with('┌'), "{}", rows[0]);
+        assert_eq!(rows[1], "┆┆");
+        assert_eq!(rows[2], "└┄┄┄┄┄┄┄┄┘");
     }
 
     #[test]

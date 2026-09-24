@@ -23,7 +23,7 @@ use zellij_utils::{
         UnblockCondition,
     },
     envs,
-    errors::prelude::*,
+    errors::{prelude::*, ErrorContext},
     input::{
         actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
@@ -678,8 +678,12 @@ pub(crate) fn route_action(
                 Some(direction) => NewPanePlacement::Tiled {
                     direction: Some(direction),
                     borderless: None,
+                    border_style: None,
                 },
-                None => NewPanePlacement::NoPreference { borderless: None },
+                None => NewPanePlacement::NoPreference {
+                    borderless: None,
+                    border_style: None,
+                },
             };
             senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
@@ -782,7 +786,12 @@ pub(crate) fn route_action(
                     } else {
                         NewPanePlacement::Tiled {
                             direction: split_direction,
-                            borderless: None,
+                            borderless: floating_pane_coordinates
+                                .as_ref()
+                                .and_then(|c| c.borderless),
+                            border_style: floating_pane_coordinates
+                                .as_ref()
+                                .and_then(|c| c.border_style),
                         }
                     },
                     start_suppressed,
@@ -889,6 +898,7 @@ pub(crate) fn route_action(
                     NewPanePlacement::Stacked {
                         pane_id_to_stack_under: None,
                         borderless: None,
+                        border_style: None,
                     },
                     if no_focus {
                         ClientTabIndexOrPaneId::TabIndexNoFocus(tab_id)
@@ -902,6 +912,7 @@ pub(crate) fn route_action(
                     NewPanePlacement::Stacked {
                         pane_id_to_stack_under: Some(pane_id.into()),
                         borderless: None,
+                        border_style: None,
                     },
                     ClientTabIndexOrPaneId::PaneId(pane_id),
                 )
@@ -910,6 +921,7 @@ pub(crate) fn route_action(
                     NewPanePlacement::Stacked {
                         pane_id_to_stack_under: None,
                         borderless: None,
+                        border_style: None,
                     },
                     if no_focus {
                         ClientTabIndexOrPaneId::ClientIdNoFocus(client_id)
@@ -937,6 +949,7 @@ pub(crate) fn route_action(
             near_current_pane,
             no_focus,
             borderless,
+            border_style,
             tab_id,
         } => {
             let run_cmd = run_command
@@ -951,6 +964,7 @@ pub(crate) fn route_action(
                     NewPanePlacement::Tiled {
                         direction,
                         borderless,
+                        border_style,
                     },
                     false,
                     client_tab_index_or_paneid,
@@ -1008,6 +1022,7 @@ pub(crate) fn route_action(
                     NewPanePlacement::Tiled {
                         direction: command.direction,
                         borderless: None,
+                        border_style: None,
                     },
                     false,
                     client_tab_index_or_paneid,
@@ -1333,6 +1348,24 @@ pub(crate) fn route_action(
             senders
                 .send_to_screen(ScreenInstruction::NextSwapLayout(
                     client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ApplyTiledSwapLayout { name } => {
+            senders
+                .send_to_screen(ScreenInstruction::ApplyTiledSwapLayout(
+                    client_id,
+                    name,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ApplyFloatingSwapLayout { name } => {
+            senders
+                .send_to_screen(ScreenInstruction::ApplyFloatingSwapLayout(
+                    client_id,
+                    name,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
@@ -1897,6 +1930,18 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::SetPaneBorderStyle {
+            pane_id,
+            border_style,
+        } => {
+            senders
+                .send_to_screen(ScreenInstruction::SetPaneBorderStyle(
+                    pane_id.into(),
+                    border_style,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::TogglePaneInGroup => {
             senders
                 .send_to_screen(ScreenInstruction::TogglePaneInGroup(
@@ -2160,6 +2205,24 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ApplyTiledSwapLayoutByTabId { id, name } => {
+            senders
+                .send_to_screen(ScreenInstruction::ApplyTiledSwapLayoutWithTabId(
+                    id as usize,
+                    name,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ApplyFloatingSwapLayoutByTabId { id, name } => {
+            senders
+                .send_to_screen(ScreenInstruction::ApplyFloatingSwapLayoutWithTabId(
+                    id as usize,
+                    name,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::MoveTabByTabId { id, direction } => {
             senders
                 .send_to_screen(ScreenInstruction::MoveTabWithTabId(
@@ -2257,13 +2320,21 @@ pub(crate) fn route_thread_main(
     to_server: SenderWithContext<ServerInstruction>,
     mut receiver: IpcReceiverWithContext<ClientToServerMsg>,
     client_id: ClientId,
+    first_instruction: Option<ClientToServerMsg>,
 ) -> Result<()> {
     let mut retry_queue = VecDeque::new();
     let err_context = || format!("failed to handle instruction for client {client_id}");
     let mut seen_cli_pipes = HashSet::new();
     let mut consecutive_unknown_messages_received = 0;
+    let mut first_instruction =
+        first_instruction.map(|instruction| (instruction, ErrorContext::default()));
+    let mut cleanup_requested = false;
     'route_loop: loop {
-        match receiver.try_recv_client_msg() {
+        let received = match first_instruction.take() {
+            Some(instruction) => Ok(instruction),
+            None => receiver.try_recv_client_msg(),
+        };
+        match received {
             Ok((instruction, err_ctx)) => {
                 consecutive_unknown_messages_received = 0;
                 err_ctx.update_thread_ctx();
@@ -2674,7 +2745,6 @@ pub(crate) fn route_thread_main(
                             }
                         },
                         ClientToServerMsg::ClientExited => {
-                            let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
                             return Ok(true);
                         },
                         ClientToServerMsg::KillSession => {
@@ -2927,6 +2997,7 @@ pub(crate) fn route_thread_main(
                         },
                     );
                     let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
+                    cleanup_requested = true;
                     break 'route_loop;
                 }
             },
@@ -2938,7 +3009,9 @@ pub(crate) fn route_thread_main(
         let _ = os_input.send_to_client(client_id, ServerToClientMsg::UnblockInputThread);
     }
     // route thread exited, make sure we clean up
-    let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
+    if !cleanup_requested {
+        let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
+    }
     Ok(())
 }
 

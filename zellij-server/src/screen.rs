@@ -40,11 +40,12 @@ use crate::route::NotificationEnd;
 
 use log::{debug, warn};
 use zellij_utils::data::{
-    CommandOrPlugin, Direction, EventType, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
-    HostTerminalThemeMode, KeyWithModifier, LayoutInfo, LayoutWithError, ListPanesResponse,
-    ListTabsResponse, NewPanePlacement, PaneContents, PaneInfo, PaneListEntry, PaneManifest,
-    PaneRenderReport, PaneScrollbackResponse, PluginPermission, RegexHighlight, Resize,
-    ResizeStrategy, SessionInfo, Styling, TabInfo, ThemeHue, WebSharing,
+    BorderStyle, BorderStyleOverride, CommandOrPlugin, Direction, EventType,
+    FloatingPaneCoordinates, GetFocusedPaneInfoResponse, HostTerminalThemeMode, KeyWithModifier,
+    LayoutInfo, LayoutWithError, ListPanesResponse, ListTabsResponse, NewPanePlacement,
+    PaneContents, PaneInfo, PaneListEntry, PaneManifest, PaneRenderReport, PaneScrollbackResponse,
+    PluginPermission, RegexHighlight, Resize, ResizeStrategy, SessionInfo, Styling, TabInfo,
+    ThemeHue, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
@@ -647,6 +648,8 @@ pub enum ScreenInstruction {
     },
     PreviousSwapLayout(ClientId, Option<NotificationEnd>),
     NextSwapLayout(ClientId, Option<NotificationEnd>),
+    ApplyTiledSwapLayout(ClientId, String, Option<NotificationEnd>),
+    ApplyFloatingSwapLayout(ClientId, String, Option<NotificationEnd>),
     OverrideLayout(
         Option<PathBuf>,        // cwd (applies to all tabs)
         Option<TerminalAction>, // default_shell (applies to all tabs)
@@ -812,6 +815,8 @@ pub enum ScreenInstruction {
         auto_layout: bool,
         rounded_corners: bool,
         hide_session_name: bool,
+        border_style: BorderStyle,
+        floating_border_style: BorderStyle,
         stacked_resize: bool,
         stacked_pane_list: bool,
         default_editor: Option<PathBuf>,
@@ -890,6 +895,7 @@ pub enum ScreenInstruction {
     ),
     TogglePaneBorderless(PaneId, Option<NotificationEnd>),
     SetPaneBorderless(PaneId, bool, Option<NotificationEnd>),
+    SetPaneBorderStyle(PaneId, BorderStyleOverride, Option<NotificationEnd>),
     AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
     // message
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, bool, ClientId), // panes_to_group, panes_to_ungroup, bool -> for all clients
@@ -959,6 +965,8 @@ pub enum ScreenInstruction {
     ToggleFloatingPanesWithTabId(usize, Option<TerminalAction>, Option<NotificationEnd>),
     PreviousSwapLayoutWithTabId(usize, Option<NotificationEnd>),
     NextSwapLayoutWithTabId(usize, Option<NotificationEnd>),
+    ApplyTiledSwapLayoutWithTabId(usize, String, Option<NotificationEnd>),
+    ApplyFloatingSwapLayoutWithTabId(usize, String, Option<NotificationEnd>),
     MoveTabWithTabId(usize, Direction, Option<NotificationEnd>),
     SetSoftKeyboard {
         client_id: ClientId,
@@ -1165,6 +1173,10 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
+            ScreenInstruction::ApplyTiledSwapLayout(..) => ScreenContext::ApplyTiledSwapLayout,
+            ScreenInstruction::ApplyFloatingSwapLayout(..) => {
+                ScreenContext::ApplyFloatingSwapLayout
+            },
             ScreenInstruction::OverrideLayout(..) => ScreenContext::OverrideLayout,
             ScreenInstruction::OverrideLayoutComplete(..) => ScreenContext::OverrideLayoutComplete,
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
@@ -1255,6 +1267,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::TogglePaneBorderless(..) => ScreenContext::TogglePaneBorderless,
             ScreenInstruction::SetPaneBorderless(..) => ScreenContext::SetPaneBorderless,
+            ScreenInstruction::SetPaneBorderStyle(..) => ScreenContext::SetPaneBorderStyle,
             ScreenInstruction::AddHighlightPaneFrameColorOverride(..) => {
                 ScreenContext::AddHighlightPaneFrameColorOverride
             },
@@ -1360,6 +1373,12 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::NextSwapLayoutWithTabId(..) => {
                 ScreenContext::NextSwapLayoutWithTabId
+            },
+            ScreenInstruction::ApplyTiledSwapLayoutWithTabId(..) => {
+                ScreenContext::ApplyTiledSwapLayoutWithTabId
+            },
+            ScreenInstruction::ApplyFloatingSwapLayoutWithTabId(..) => {
+                ScreenContext::ApplyFloatingSwapLayoutWithTabId
             },
             ScreenInstruction::MoveTabWithTabId(..) => ScreenContext::MoveTabWithTabId,
             ScreenInstruction::SetSoftKeyboard { .. } => ScreenContext::SetSoftKeyboard,
@@ -1538,6 +1557,8 @@ pub(crate) struct Screen {
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     connected_clients: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+    client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
+    highest_client_id_seen: ClientId,
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_ids: BTreeMap<ClientId, usize>,
     client_sizes: HashMap<ClientId, Size>,
@@ -1597,6 +1618,8 @@ pub(crate) struct Screen {
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
+    last_reported_plugin_tab_indices: HashMap<PluginId, usize>,
+    state_report_target: Option<(PluginId, ClientId)>,
     next_forward_token: u32,
     pending_forwarded_queries: HashMap<u32, PendingForwardEntry>,
     forward_queue: VecDeque<PendingForward>,
@@ -1750,6 +1773,8 @@ impl Screen {
             client_kitty_host_state: Rc::new(RefCell::new(HashMap::new())),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
+            client_display_slots: Rc::new(RefCell::new(HashMap::new())),
+            highest_client_id_seen: 0,
             active_tab_ids: BTreeMap::new(),
             client_sizes: HashMap::new(),
             global_last_active_tab_id: 0,
@@ -1805,6 +1830,8 @@ impl Screen {
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
             background_plugin_subscriptions: HashMap::new(),
+            last_reported_plugin_tab_indices: HashMap::new(),
+            state_report_target: None,
             next_forward_token: 1, // 0 is reserved as the startup sentinel
             pending_forwarded_queries: HashMap::new(),
             forward_queue: VecDeque::new(),
@@ -4849,6 +4876,7 @@ impl Screen {
             self.pane_frame_style,
             self.auto_layout,
             self.connected_clients.clone(),
+            self.client_display_slots.clone(),
             self.session_is_mirrored,
             client_id,
             self.copy_options.clone(),
@@ -5032,8 +5060,8 @@ impl Screen {
             })
             .with_context(err_context)?;
 
-        if !self.active_tab_ids.contains_key(&client_id) {
-            // this means this is a new client and we need to add it to our state properly
+        let client_has_since_disconnected = client_id <= self.highest_client_id_seen;
+        if !self.active_tab_ids.contains_key(&client_id) && !client_has_since_disconnected {
             self.add_client(client_id, is_web_client)
                 .with_context(err_context)?;
         }
@@ -5061,8 +5089,16 @@ impl Screen {
             format!("failed to attach client {client_id} to tab with index {tab_index}")
         };
 
-        // Set followed_client_id to the first regular client if not already set
-        if self.followed_client_id.is_none() && !self.watcher_clients.contains_key(&client_id) {
+        let followed_client_is_gone = self
+            .followed_client_id
+            .map(|followed_client_id| {
+                !self
+                    .connected_clients
+                    .borrow()
+                    .contains_key(&followed_client_id)
+            })
+            .unwrap_or(true);
+        if followed_client_is_gone && !self.watcher_clients.contains_key(&client_id) {
             self.followed_client_id = Some(client_id);
         }
 
@@ -5097,11 +5133,13 @@ impl Screen {
             bail!("Can't find a valid tab to attach client to!");
         };
 
+        self.highest_client_id_seen = self.highest_client_id_seen.max(client_id);
         self.active_tab_ids.insert(client_id, tab_index);
         self.client_kitty_host_state.borrow_mut().remove(&client_id);
         self.connected_clients
             .borrow_mut()
             .insert(client_id, is_web_client);
+        self.assign_display_slot(client_id);
         if is_web_client {
             self.kitty_host_capabilities
                 .borrow_mut()
@@ -5136,6 +5174,7 @@ impl Screen {
 
     pub fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to remove client {client_id}");
+        self.highest_client_id_seen = self.highest_client_id_seen.max(client_id);
 
         self.set_client_dimmed(client_id, false, None);
         let passthrough_panes: Vec<PaneId> = self
@@ -5218,7 +5257,10 @@ impl Screen {
             self.push_sixel_host_support_to_tabs();
         }
         self.client_sizes.remove(&client_id);
+        self.client_display_slots.borrow_mut().remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
+        self.background_plugin_subscriptions
+            .retain(|(_plugin_id, c_id), _subscriptions| c_id != &client_id);
         self.last_forwarded_osc7.remove(&client_id);
         self.client_host_focused.remove(&client_id);
         self.client_notification_protocols.remove(&client_id);
@@ -5297,6 +5339,7 @@ impl Screen {
                 is_fullscreen_active: tab.is_fullscreen_active(),
                 is_sync_panes_active: tab.is_sync_panes_active(),
                 are_floating_panes_visible: tab.are_floating_panes_visible(),
+                other_focused_client_slots: self.display_slots_of_clients(&all_focused_clients),
                 other_focused_clients: all_focused_clients,
                 active_swap_layout_name,
                 is_swap_layout_dirty,
@@ -5344,6 +5387,8 @@ impl Screen {
                     is_fullscreen_active: tab.is_fullscreen_active(),
                     is_sync_panes_active: tab.is_sync_panes_active(),
                     are_floating_panes_visible: tab.are_floating_panes_visible(),
+                    other_focused_client_slots: self
+                        .display_slots_of_clients(&other_focused_clients),
                     other_focused_clients,
                     active_swap_layout_name,
                     is_swap_layout_dirty,
@@ -5400,6 +5445,20 @@ impl Screen {
         }
 
         Ok(pane_manifest)
+    }
+
+    fn report_pane_and_tab_state_to_plugin(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+    ) -> Result<()> {
+        self.state_report_target = Some((plugin_id, client_id));
+        let pane_state = self.generate_and_report_pane_state();
+        let tab_state = self.generate_and_report_tab_state();
+        self.state_report_target = None;
+        pane_state?;
+        tab_state?;
+        Ok(())
     }
 
     fn collect_pane_list(&self, show_all: bool) -> Result<ListPanesResponse> {
@@ -5473,6 +5532,45 @@ impl Screen {
             false
         }
     }
+    fn assign_display_slot(&mut self, client_id: ClientId) {
+        let mut display_slots = self.client_display_slots.borrow_mut();
+        if display_slots.contains_key(&client_id) {
+            return;
+        }
+        let taken: HashSet<usize> = display_slots.values().copied().collect();
+        let mut slot = 1;
+        while taken.contains(&slot) {
+            slot += 1;
+        }
+        display_slots.insert(client_id, slot);
+    }
+    fn display_slots_of_clients(&self, client_ids: &[ClientId]) -> Vec<usize> {
+        let display_slots = self.client_display_slots.borrow();
+        client_ids
+            .iter()
+            .map(|client_id| display_slots.get(client_id).copied().unwrap_or(0))
+            .collect()
+    }
+    fn report_plugin_tab_indices(&mut self) {
+        let mut current: HashMap<PluginId, usize> = HashMap::new();
+        for tab in self.tabs.values() {
+            for plugin_id in tab.get_plugin_ids() {
+                current.insert(plugin_id, tab.position);
+            }
+        }
+        if current == self.last_reported_plugin_tab_indices {
+            return;
+        }
+        let tab_indices: Vec<(PluginId, usize)> = current
+            .iter()
+            .map(|(plugin_id, tab_index)| (*plugin_id, *tab_index))
+            .collect();
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::UpdatePluginTabIndices(tab_indices));
+        self.last_reported_plugin_tab_indices = current;
+    }
     fn log_and_report_session_state(&mut self) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
 
@@ -5480,6 +5578,7 @@ impl Screen {
         self.revert_fit_disabled_without_reference_client()
             .with_context(err_context)?;
         self.reconcile_all_single_pane_focus();
+        self.report_plugin_tab_indices();
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
@@ -5880,7 +5979,7 @@ impl Screen {
         Ok(())
     }
 
-    fn client_id(&mut self, client_id: ClientId) -> Option<u16> {
+    fn client_id(&mut self, client_id: ClientId) -> Option<ClientId> {
         if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
@@ -6171,6 +6270,13 @@ impl Screen {
     /// Returns plugin IDs from the client's active tab plus background plugins
     /// subscribed to the given event type.
     fn targeted_plugin_ids(&self, client_id: ClientId, event_type: EventType) -> Vec<PluginId> {
+        if let Some((target_plugin_id, target_client_id)) = self.state_report_target {
+            return if target_client_id == client_id {
+                vec![target_plugin_id]
+            } else {
+                vec![]
+            };
+        }
         let mut plugin_ids = Vec::new();
         // Active-tab plugins
         if let Some(active_tab_id) = self.active_tab_ids.get(&client_id) {
@@ -6712,6 +6818,7 @@ impl Screen {
                         height: Some(PercentOrFixed::Fixed(pane.rows())),
                         pinned: Some(pane.current_geom().is_pinned),
                         borderless: Some(pane.borderless()),
+                        border_style: None,
                     };
                     new_active_tab.add_floating_pane(
                         pane,
@@ -6880,6 +6987,8 @@ impl Screen {
         auto_layout: bool,
         rounded_corners: bool,
         hide_session_name: bool,
+        border_style: BorderStyle,
+        floating_border_style: BorderStyle,
         stacked_resize: bool,
         stacked_pane_list: bool,
         default_editor: Option<PathBuf>,
@@ -6906,6 +7015,10 @@ impl Screen {
         self.default_mode_info.update_theme(theme);
         self.default_mode_info
             .update_rounded_corners(rounded_corners);
+        self.default_mode_info
+            .update_border_styles(border_style, floating_border_style);
+        self.style.border_style = border_style;
+        self.style.floating_border_style = floating_border_style;
         // `default_mode_info` is the fallback used by `change_mode` for
         // clients that don't yet have a per-client `mode_info` entry, so its
         // keybinds and base mode must be kept in sync with reconfigures.
@@ -6946,6 +7059,7 @@ impl Screen {
         for tab in self.tabs.values_mut() {
             tab.update_theme(theme);
             tab.update_rounded_corners(rounded_corners);
+            tab.update_border_styles(border_style, floating_border_style);
             tab.update_default_shell(default_shell.clone());
             tab.update_default_editor(self.default_editor.clone());
             tab.update_auto_layout(auto_layout);
@@ -7294,6 +7408,18 @@ impl Screen {
             }
         }
     }
+    pub fn set_pane_border_style(
+        &mut self,
+        pane_id: PaneId,
+        border_style: BorderStyleOverride,
+    ) -> bool {
+        for (_tab_id, tab) in self.tabs.iter_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                return tab.set_pane_border_style(pane_id, border_style);
+            }
+        }
+        false
+    }
     pub fn handle_mouse_event(&mut self, event: MouseEvent, client_id: ClientId) {
         let is_bare_motion = event.event_type == MouseEventType::Motion
             && !event.left
@@ -7510,6 +7636,7 @@ impl Screen {
                         focused_clients,
                         default_fg,
                         default_bg,
+                        p.border_style_override(),
                     )
                 })
                 .collect();
@@ -7539,7 +7666,7 @@ impl Screen {
                     PaneLayoutMetadata::new(
                         pane_id,
                         p.position_and_size(),
-                        false, // floating panes are never borderless
+                        p.borderless(),
                         p.invoked_with().clone(),
                         p.custom_title(),
                         !focused_clients.is_empty(),
@@ -7551,6 +7678,7 @@ impl Screen {
                         focused_clients,
                         default_fg,
                         default_bg,
+                        p.border_style_override(),
                     )
                 })
                 .collect();
@@ -7668,6 +7796,7 @@ impl Screen {
                 is_fullscreen_active: tab.is_fullscreen_active(),
                 is_sync_panes_active: tab.is_sync_panes_active(),
                 are_floating_panes_visible: tab.are_floating_panes_visible(),
+                other_focused_client_slots: self.display_slots_of_clients(&all_focused_clients),
                 other_focused_clients: all_focused_clients,
                 active_swap_layout_name,
                 is_swap_layout_dirty,
@@ -8415,6 +8544,7 @@ pub(crate) fn screen_thread_main(
                                     NewPanePlacement::Tiled {
                                         direction: Some(direction),
                                         borderless,
+                                        border_style: None,
                                     } => {
                                         if direction == Direction::Left
                                             || direction == Direction::Right
@@ -10429,6 +10559,58 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
+            ScreenInstruction::ApplyTiledSwapLayout(client_id, layout_name, mut completion_tx) => {
+                let mut applied = false;
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, _client_id: ClientId| {
+                        applied = tab.apply_tiled_swap_layout(&layout_name)?;
+                        Ok::<(), anyhow::Error>(())
+                    },
+                    ?
+                );
+                if !applied {
+                    log::error!("Tiled swap layout not found or incompatible: {layout_name}");
+                    if let Some(ref mut c) = completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!(
+                            "Tiled swap layout not found or incompatible: {layout_name}"
+                        ));
+                    }
+                }
+                drop(completion_tx);
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ApplyFloatingSwapLayout(
+                client_id,
+                layout_name,
+                mut completion_tx,
+            ) => {
+                let mut applied = false;
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, _client_id: ClientId| {
+                        applied = tab.apply_floating_swap_layout(&layout_name)?;
+                        Ok::<(), anyhow::Error>(())
+                    },
+                    ?
+                );
+                if !applied {
+                    log::error!("Floating swap layout not found or incompatible: {layout_name}");
+                    if let Some(ref mut c) = completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!(
+                            "Floating swap layout not found or incompatible: {layout_name}"
+                        ));
+                    }
+                }
+                drop(completion_tx);
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
             ScreenInstruction::OverrideLayout(
                 cwd,
                 default_shell,
@@ -10828,6 +11010,7 @@ pub(crate) fn screen_thread_main(
                     new_pane_placement = NewPanePlacement::Tiled {
                         direction: None,
                         borderless: None,
+                        border_style: None,
                     };
                 }
                 if should_be_in_place {
@@ -11603,6 +11786,8 @@ pub(crate) fn screen_thread_main(
                 auto_layout,
                 rounded_corners,
                 hide_session_name,
+                border_style,
+                floating_border_style,
                 stacked_resize,
                 stacked_pane_list,
                 default_editor,
@@ -11636,6 +11821,8 @@ pub(crate) fn screen_thread_main(
                         auto_layout,
                         rounded_corners,
                         hide_session_name,
+                        border_style,
+                        floating_border_style,
                         stacked_resize,
                         stacked_pane_list,
                         default_editor,
@@ -12062,6 +12249,16 @@ pub(crate) fn screen_thread_main(
                 screen.set_pane_borderless(pane_id, borderless);
                 let _ = screen.render(None);
             },
+            ScreenInstruction::SetPaneBorderStyle(pane_id, border_style, mut completion_tx) => {
+                if !screen.set_pane_border_style(pane_id, border_style) {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(c) = completion_tx.as_mut() {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                let _ = screen.render(None);
+            },
             ScreenInstruction::GroupAndUngroupPanes(
                 pane_ids_to_group,
                 pane_ids_to_ungroup,
@@ -12322,7 +12519,10 @@ pub(crate) fn screen_thread_main(
                 } else {
                     screen
                         .background_plugin_subscriptions
-                        .insert((plugin_id, client_id), subscriptions);
+                        .entry((plugin_id, client_id))
+                        .or_default()
+                        .extend(subscriptions);
+                    screen.report_pane_and_tab_state_to_plugin(plugin_id, client_id)?;
                 }
             },
             ScreenInstruction::ClearHintTextCache => {
@@ -12796,6 +12996,60 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::NextSwapLayoutWithTabId(tab_id, mut _completion_tx) => {
                 if let Some(tab) = screen.tabs.get_mut(&tab_id) {
                     tab.next_swap_layout().non_fatal();
+                } else {
+                    log::error!("Tab with id {} not found", tab_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ApplyTiledSwapLayoutWithTabId(
+                tab_id,
+                layout_name,
+                mut _completion_tx,
+            ) => {
+                if let Some(tab) = screen.tabs.get_mut(&tab_id) {
+                    let applied = tab.apply_tiled_swap_layout(&layout_name)?;
+                    if !applied {
+                        log::error!("Tiled swap layout not found or incompatible: {layout_name}");
+                        if let Some(ref mut c) = _completion_tx {
+                            c.set_exit_status(1);
+                            c.set_error_message(format!(
+                                "Tiled swap layout not found or incompatible: {layout_name}"
+                            ));
+                        }
+                    }
+                } else {
+                    log::error!("Tab with id {} not found", tab_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ApplyFloatingSwapLayoutWithTabId(
+                tab_id,
+                layout_name,
+                mut _completion_tx,
+            ) => {
+                if let Some(tab) = screen.tabs.get_mut(&tab_id) {
+                    let applied = tab.apply_floating_swap_layout(&layout_name)?;
+                    if !applied {
+                        log::error!(
+                            "Floating swap layout not found or incompatible: {layout_name}"
+                        );
+                        if let Some(ref mut c) = _completion_tx {
+                            c.set_exit_status(1);
+                            c.set_error_message(format!(
+                                "Floating swap layout not found or incompatible: {layout_name}"
+                            ));
+                        }
+                    }
                 } else {
                     log::error!("Tab with id {} not found", tab_id);
                     if let Some(ref mut c) = _completion_tx {

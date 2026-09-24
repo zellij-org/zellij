@@ -8,4 +8,6 @@ pub struct Command {
     pub args: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(string, optional, tag="3")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="4")]
+    pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
 }

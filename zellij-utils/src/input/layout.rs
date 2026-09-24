@@ -11,7 +11,10 @@
 #[cfg(not(target_family = "wasm"))]
 use crate::downloader::Downloader;
 use crate::{
-    data::{Direction, LayoutInfo, LayoutMetadata, LayoutParsingError, LayoutWithError},
+    data::{
+        BorderStyleOverride, Direction, LayoutInfo, LayoutMetadata, LayoutParsingError,
+        LayoutWithError,
+    },
     home::{default_layout_dir, find_default_config_dir},
     input::{
         command::RunCommand,
@@ -789,6 +792,8 @@ pub struct FloatingPaneLayout {
     pub y: Option<PercentOrFixed>,
     pub pinned: Option<bool>,
     pub borderless: Option<bool>,
+    #[serde(default)]
+    pub border_style: Option<BorderStyleOverride>,
     pub run: Option<Run>,
     pub focus: Option<bool>,
     pub already_running: bool,
@@ -808,6 +813,7 @@ impl FloatingPaneLayout {
             y: None,
             pinned: None,
             borderless: None,
+            border_style: None,
             run: None,
             focus: None,
             already_running: false,
@@ -838,6 +844,7 @@ impl From<&TiledPaneLayout> for FloatingPaneLayout {
             name: pane_layout.name.clone(),
             run: pane_layout.run.clone(),
             focus: pane_layout.focus,
+            border_style: pane_layout.border_style,
             ..Default::default()
         }
     }
@@ -851,6 +858,8 @@ pub struct TiledPaneLayout {
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
     pub borderless: Option<bool>,
+    #[serde(default)]
+    pub border_style: Option<BorderStyleOverride>,
     pub focus: Option<bool>,
     pub external_children_index: Option<usize>,
     pub children_are_stacked: bool,
@@ -1606,6 +1615,21 @@ impl Layout {
         // TODO: ideally these should not be hard-coded
         // we should load layouts by name from the config
         // and load them from a hashmap or some such
+        if let Some(layout) = path
+            .to_str()
+            .and_then(|name| crate::distribution::builtin_layout(name))
+        {
+            return Ok((
+                format!("{} layout", layout.name),
+                layout.layout.to_owned(),
+                layout.swap_layout.map(|swap_layout| {
+                    (
+                        format!("{} swap layout", layout.name),
+                        swap_layout.to_owned(),
+                    )
+                }),
+            ));
+        }
         match path.to_str() {
             Some("default") => Ok((
                 "Default layout".into(),

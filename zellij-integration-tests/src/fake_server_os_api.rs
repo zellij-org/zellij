@@ -164,25 +164,23 @@ impl ServerOsApi for FakeServerOsApi {
         }
         Ok(())
     }
-    fn new_client(
+    fn register_client(
         &mut self,
         client_id: ClientId,
-        stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
-        let ipc_receiver = IpcReceiverWithContext::new(stream);
-        let non_blocking_client_sender = NonBlockingClientSender::new(ipc_receiver.get_sender());
+        receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()> {
+        let non_blocking_client_sender = NonBlockingClientSender::new(receiver.get_sender());
         self.non_blocking_client_senders
             .lock()
             .unwrap()
             .insert(client_id, non_blocking_client_sender);
-        Ok(ipc_receiver)
+        Ok(())
     }
-    fn new_client_with_reply(
+    fn register_client_with_reply(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
         _reply_stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+    ) -> Result<()> {
         unimplemented!("windows dual-pipe IPC is not used by the test harness")
     }
     fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
