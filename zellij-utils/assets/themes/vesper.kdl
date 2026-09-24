@@ -116,5 +116,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/mbadolato/iTerm2-Color-Schemes/blob/master/alacritty/Vesper.toml
+        terminal_colors {
+            black 16 16 16
+            red 245 161 145
+            green 144 185 159
+            yellow 230 185 157
+            blue 172 161 207
+            magenta 226 158 202
+            cyan 234 131 165
+            white 160 160 160
+            bright_black 126 126 126
+            bright_red 255 128 128
+            bright_green 153 255 228
+            bright_yellow 255 199 153
+            bright_blue 185 174 218
+            bright_magenta 236 170 214
+            bright_cyan 245 145 178
+            bright_white 255 255 255
+        }
     }
 }

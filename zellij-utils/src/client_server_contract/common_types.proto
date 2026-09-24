@@ -1368,3 +1368,8 @@ message StartRenamePaneByPaneIdAction { PaneId pane_id = 1; }
 message StartRenameTabByTabIdAction { uint64 id = 1; }
 message DismissInfoPopupsAction {}
 message OpenContextMenuAction {}
+
+enum HostTerminalThemeIndication {
+  HOST_TERMINAL_THEME_INDICATION_DARK = 0;
+  HOST_TERMINAL_THEME_INDICATION_LIGHT = 1;
+}

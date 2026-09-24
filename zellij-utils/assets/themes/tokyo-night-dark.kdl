@@ -120,5 +120,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/folke/tokyonight.nvim/blob/main/extras/alacritty/tokyonight_night.toml
+        terminal_colors {
+            black 21 22 30
+            red 247 118 142
+            green 158 206 106
+            yellow 224 175 104
+            blue 122 162 247
+            magenta 187 154 247
+            cyan 125 207 255
+            white 169 177 214
+            bright_black 65 72 104
+            bright_red 255 137 157
+            bright_green 159 224 68
+            bright_yellow 250 186 74
+            bright_blue 141 176 255
+            bright_magenta 199 169 255
+            bright_cyan 164 218 255
+            bright_white 192 202 245
+        }
     }
 }

@@ -1,0 +1,50 @@
+size: 40x120
+cursor: row=39 col=27 visible shape=Default
+grid:
+|                                                                                                                        |
+|     34 root      -2   0       0      0      0 S   0.0   0.0   0:00.00 rcuc/3                                           |
+|                                                                                                                        |
+|     35 root      20   0       0      0      0 S   0.0   0.0   0:00.90 ksoftirqd/3                                      |
+|                                                                                                                        |
+|     37 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/3:0H-kblockd                             |
+|                                                                                                                        |
+|     38 root      20   0       0      0      0 S   0.0   0.0   0:00.00 kdevtmpfs                                        |
+|                                                                                                                        |
+|     39 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 netns                                            |
+|                                                                                                                        |
+|     40 root      20   0       0      0      0 S   0.0   0.0   0:00.00 rcu_tasks_kthre                                  |
+|                                                                                                                        |
+|     41 root      20   0       0      0      0 S   0.0   0.0   0:00.00 kauditd                                          |
+|                                                                                                                        |
+|     44 root      20   0       0      0      0 S   0.0   0.0   0:00.00 khungtaskd                                       |
+|                                                                                                                        |
+|     45 root      20   0       0      0      0 S   0.0   0.0   0:00.00 oom_reaper                                       |
+|                                                                                                                        |
+|     46 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 writeback                                        |
+|                                                                                                                        |
+|     47 root      20   0       0      0      0 S   0.0   0.0   0:00.00 kcompactd0                                       |
+|                                                                                                                        |
+|     48 root      25   5       0      0      0 S   0.0   0.0   0:00.00 ksmd                                             |
+|                                                                                                                        |
+|     49 root      39  19       0      0      0 S   0.0   0.0   0:00.00 khugepaged                                       |
+|                                                                                                                        |
+|    137 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kintegrityd                                      |
+|                                                                                                                        |
+|    138 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kblockd                                          |
+|                                                                                                                        |
+|    139 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 blkcg_punt_bio                                   |
+|                                                                                                                        |
+|    140 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 ata_sff                                          |
+|                                                                                                                        |
+|    141 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 edac-poller                                      |
+|                                                                                                                        |
+|⏎                                                                                                                       |
+|⋊> ~/c/zellij on fix-top ⨯                                                                                              |
+|13:00:53                                                                                                                |
+styles:
+row 37: cols 0-0 fg=idx237 bg=Background
+row 38: cols 0-1 fg=idx15 bg=idx6
+row 38: cols 3-12 fg=idx3 bg=Background
+row 38: cols 17-23 fg=idx2 bg=Background
+row 39: cols 0-7 fg=idx240 bg=Background
+images:

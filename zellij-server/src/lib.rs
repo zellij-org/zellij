@@ -51,6 +51,7 @@ use wasmi::Engine;
 
 use crate::{
     os_input_output::{env_value, PaneEnv, ServerOsApi},
+    output::RenderPayload,
     panes::PaneId,
     plugins::{plugin_thread_main, PluginInstruction},
     pty::{get_default_shell, pty_thread_main, Pty, PtyInstruction},
@@ -64,8 +65,9 @@ use zellij_utils::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
     data::{
-        ConfigSnapshot, ConnectToSession, Direction, InputMode, KeyWithModifier,
-        KeybindPresetSource, LayoutInfo, LayoutWithError, SettingKey, Style, WebSharing,
+        ConfigSnapshot, ConnectToSession, Direction, HostTerminalThemeMode, InputMode,
+        KeyWithModifier, KeybindPresetSource, LayoutInfo, LayoutWithError, SettingKey, Style,
+        Styling, WebSharing,
     },
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
@@ -92,7 +94,7 @@ use zellij_utils::{
     ipc::{
         ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
     },
-    shared::{default_palette, web_server_base_url},
+    shared::web_server_base_url,
 };
 
 pub use zellij_utils::data::ClientId;
@@ -111,7 +113,7 @@ pub enum ServerInstruction {
         bool, // is_web_client
         ClientId,
     ),
-    Render(Option<HashMap<ClientId, String>>),
+    Render(Option<HashMap<ClientId, RenderPayload>>),
     UnblockInputThread,
     ClientExit(ClientId, Option<NotificationEnd>),
     RemoveClient(ClientId),
@@ -145,6 +147,7 @@ pub enum ServerInstruction {
         write_config_to_disk: bool,
     },
     ConfigWrittenToDisk(Config),
+    HostTerminalThemeModeChanged(Option<ClientId>, HostTerminalThemeMode),
     FailedToWriteConfigToDisk(ClientId, Option<PathBuf>), // Pathbuf - file we failed to write
     ReadConfig {
         client_id: ClientId,
@@ -275,6 +278,9 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::WebServerStarted(..) => ServerContext::WebServerStarted,
             ServerInstruction::FailedToStartWebServer(..) => ServerContext::FailedToStartWebServer,
             ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
+            ServerInstruction::HostTerminalThemeModeChanged(..) => {
+                ServerContext::HostTerminalThemeModeChanged
+            },
             ServerInstruction::SendWebClientsForbidden(..) => {
                 ServerContext::SendWebClientsForbidden
             },
@@ -497,12 +503,18 @@ impl SessionConfiguration {
                     .themes
                     .get_theme(from)
                     .ok_or_else(|| format!("There is no theme called {}", from))?;
-                let path = config_blocks::create_theme_file(&theme_dir, name, &source.palette)?;
+                let path = config_blocks::create_theme_file(
+                    &theme_dir,
+                    name,
+                    &source.palette,
+                    source.terminal_colors.as_ref(),
+                )?;
                 Ok((
                     path,
                     Theme {
                         sourced_from_external_file: true,
                         palette: source.palette.clone(),
+                        terminal_colors: source.terminal_colors,
                     },
                 ))
             },
@@ -523,6 +535,10 @@ impl SessionConfiguration {
                     Theme {
                         sourced_from_external_file: true,
                         palette,
+                        terminal_colors: config
+                            .themes
+                            .get_theme(name)
+                            .and_then(|theme| theme.terminal_colors),
                     },
                 ))
             },
@@ -1115,16 +1131,8 @@ impl SessionMetaData {
                     ..Default::default()
                 })
             });
-            let host_theme_dark = new_config
-                .options
-                .theme_dark
-                .as_ref()
-                .and_then(|name| new_config.theme_config(Some(name)));
-            let host_theme_light = new_config
-                .options
-                .theme_light
-                .as_ref()
-                .and_then(|name| new_config.theme_config(Some(name)));
+            let host_theme_dark = new_config.theme_dark().map(|theme| theme.palette);
+            let host_theme_light = new_config.theme_light().map(|theme| theme.palette);
             if new_config.options.theme_dark.is_some() && host_theme_dark.is_none() {
                 log::warn!(
                     "theme_dark='{}' not found in themes; auto-theme switch disabled for dark.",
@@ -1166,7 +1174,7 @@ impl SessionMetaData {
                         .unwrap_or_else(Default::default),
                     theme: new_config
                         .theme_config(new_config.options.theme.as_ref())
-                        .unwrap_or_else(|| default_palette().into()),
+                        .unwrap_or_else(Styling::default),
                     host_theme_dark,
                     host_theme_light,
                     explicit_theme_hue: new_config.options.explicit_theme_hue,
@@ -3118,7 +3126,7 @@ pub fn start_server_impl(
                     style: Style {
                         colors: config
                             .theme_config(runtime_config_options.theme.as_ref())
-                            .unwrap_or_else(|| default_palette().into()),
+                            .unwrap_or_else(Styling::default),
                         rounded_corners: config.ui.pane_frames.rounded_corners,
                         hide_session_name: config.ui.pane_frames.hide_session_name,
                         border_style: config.ui.pane_frames.resolved_border_style(),
@@ -3315,7 +3323,7 @@ pub fn start_server_impl(
                     style: Style {
                         colors: config
                             .theme_config(runtime_config_options.theme.as_ref())
-                            .unwrap_or_else(|| default_palette().into()),
+                            .unwrap_or_else(Styling::default),
                         rounded_corners: config.ui.pane_frames.rounded_corners,
                         hide_session_name: config.ui.pane_frames.hide_session_name,
                         border_style: config.ui.pane_frames.resolved_border_style(),
@@ -3665,17 +3673,13 @@ pub fn start_server_impl(
                 let client_ids = session_state.read().unwrap().client_ids();
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
-                if let Some(output) = &serialized_output {
-                    for (client_id, client_render_instruction) in output.iter() {
-                        send_to_client!(
-                            *client_id,
-                            os_input,
-                            ServerToClientMsg::Render {
-                                content: client_render_instruction.clone()
-                            },
-                            session_state,
-                            session_data
-                        );
+                if let Some(output) = serialized_output {
+                    for (client_id, client_render_instruction) in output {
+                        let msg = match client_render_instruction {
+                            RenderPayload::Ansi(content) => ServerToClientMsg::Render { content },
+                            RenderPayload::Frame(frame) => ServerToClientMsg::RenderFrame { frame },
+                        };
+                        send_to_client!(client_id, os_input, msg, session_state, session_data);
                     }
                 } else {
                     // Session is exiting - disconnect all regular clients
@@ -3870,6 +3874,21 @@ pub fn start_server_impl(
                         client_id,
                         os_input,
                         ServerToClientMsg::ConfigFileUpdated,
+                        session_state,
+                        session_data
+                    );
+                }
+            },
+            ServerInstruction::HostTerminalThemeModeChanged(client_id, mode) => {
+                let client_ids = match client_id {
+                    Some(client_id) => vec![client_id],
+                    None => session_state.read().unwrap().client_ids(),
+                };
+                for client_id in client_ids {
+                    send_to_client!(
+                        client_id,
+                        os_input,
+                        ServerToClientMsg::HostTerminalThemeChanged { mode },
                         session_state,
                         session_data
                     );
@@ -4385,6 +4404,9 @@ fn init_session(
     );
 
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
+    let (to_screen_priority, screen_priority_receiver): ChannelWithContext<ScreenInstruction> =
+        channels::unbounded();
+    let to_screen_priority = SenderWithContext::new(to_screen_priority);
     let to_screen = SenderWithContext::new(to_screen);
 
     let (to_screen_bounded, bounded_screen_receiver): ChannelWithContext<ScreenInstruction> =
@@ -4471,7 +4493,8 @@ fn init_session(
                 Some(&to_pty_writer),
                 Some(&to_background_jobs),
                 Some(os_input.clone()),
-            );
+            )
+            .with_priority(screen_priority_receiver, &to_screen_priority);
             let max_panes = cli_assets.max_panes;
 
             let client_attributes_clone = client_attributes.clone();
@@ -4636,6 +4659,7 @@ fn init_session(
     SessionMetaData {
         senders: ThreadSenders {
             to_screen: Some(to_screen),
+            to_screen_priority: Some(to_screen_priority),
             to_pty: Some(to_pty),
             to_plugin: Some(to_plugin),
             to_pty_writer: Some(to_pty_writer),
@@ -5164,7 +5188,7 @@ mod theme_file_tests {
         let session_configuration = session_with_theme_dir(&theme_dir);
         let mut palette = zellij_utils::data::DEFAULT_STYLES;
         palette.text_unselected.base = zellij_utils::data::PaletteColor::Rgb((1, 2, 3));
-        let path = config_blocks::create_theme_file(&theme_dir, "dracula", &palette).unwrap();
+        let path = config_blocks::create_theme_file(&theme_dir, "dracula", &palette, None).unwrap();
         let (deleted_path, replacement) = session_configuration
             .delete_theme_file(&1, "dracula")
             .unwrap();

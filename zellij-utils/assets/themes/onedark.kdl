@@ -116,5 +116,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/joshdick/onedark.vim/blob/main/term/One%20Dark.Xresources
+        terminal_colors {
+            black 44 50 60
+            red 224 108 117
+            green 152 195 121
+            yellow 229 192 123
+            blue 97 175 239
+            magenta 198 120 221
+            cyan 86 182 194
+            white 92 99 112
+            bright_black 62 68 82
+            bright_red 224 108 117
+            bright_green 152 195 121
+            bright_yellow 229 192 123
+            bright_blue 97 175 239
+            bright_magenta 198 120 221
+            bright_cyan 86 182 194
+            bright_white 171 178 191
+        }
     }
 }

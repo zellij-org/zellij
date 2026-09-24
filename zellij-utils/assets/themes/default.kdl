@@ -1,0 +1,146 @@
+themes {
+    default {
+        text_unselected {
+            base 216 213 230
+            background 11 11 14
+            emphasis_0 229 169 133
+            emphasis_1 135 165 194
+            emphasis_2 162 188 140
+            emphasis_3 217 140 255
+        }
+        text_selected {
+            base 216 213 230
+            background 58 51 88
+            emphasis_0 229 169 133
+            emphasis_1 135 165 194
+            emphasis_2 162 188 140
+            emphasis_3 217 140 255
+        }
+        ribbon_selected {
+            base 11 11 14
+            background 162 188 140
+            emphasis_0 79 26 34
+            emphasis_1 79 26 34
+            emphasis_2 11 11 14
+            emphasis_3 99 11 20
+        }
+        ribbon_unselected {
+            base 11 11 14
+            background 154 149 179
+            emphasis_0 79 26 34
+            emphasis_1 180 175 201
+            emphasis_2 20 49 79
+            emphasis_3 99 11 20
+        }
+        table_title {
+            base 162 188 140
+            background 11 11 14
+            emphasis_0 229 169 133
+            emphasis_1 135 165 194
+            emphasis_2 162 188 140
+            emphasis_3 217 140 255
+        }
+        table_cell_selected {
+            base 216 213 230
+            background 58 51 88
+            emphasis_0 229 169 133
+            emphasis_1 135 165 194
+            emphasis_2 162 188 140
+            emphasis_3 217 140 255
+        }
+        table_cell_unselected {
+            base 216 213 230
+            background 11 11 14
+            emphasis_0 229 169 133
+            emphasis_1 135 165 194
+            emphasis_2 162 188 140
+            emphasis_3 217 140 255
+        }
+        list_selected {
+            base 216 213 230
+            background 58 51 88
+            emphasis_0 229 169 133
+            emphasis_1 135 165 194
+            emphasis_2 162 188 140
+            emphasis_3 217 140 255
+        }
+        list_unselected {
+            base 216 213 230
+            background 11 11 14
+            emphasis_0 229 169 133
+            emphasis_1 135 165 194
+            emphasis_2 162 188 140
+            emphasis_3 217 140 255
+        }
+        frame_unselected {
+            base 107 102 130
+            background 11 11 14
+            emphasis_0 233 202 138
+            emphasis_1 135 165 194
+            emphasis_2 176 163 217
+            emphasis_3 217 140 255
+        }
+        frame_selected {
+            base 162 188 140
+            background 11 11 14
+            emphasis_0 233 202 138
+            emphasis_1 135 165 194
+            emphasis_2 211 160 199
+            emphasis_3 229 169 133
+        }
+        frame_highlight {
+            base 233 202 138
+            background 11 11 14
+            emphasis_0 143 199 192
+            emphasis_1 176 163 217
+            emphasis_2 233 202 138
+            emphasis_3 233 202 138
+        }
+        exit_code_success {
+            base 162 188 140
+            background 11 11 14
+            emphasis_0 143 199 192
+            emphasis_1 11 11 14
+            emphasis_2 211 160 199
+            emphasis_3 135 165 194
+        }
+        exit_code_error {
+            base 216 143 151
+            background 11 11 14
+            emphasis_0 233 202 138
+            emphasis_1 229 169 133
+            emphasis_2 138 134 163
+            emphasis_3 176 163 217
+        }
+        multiplayer_user_colors {
+            player_1 211 160 199
+            player_2 135 165 194
+            player_3 176 163 217
+            player_4 233 202 138
+            player_5 143 199 192
+            player_6 229 169 133
+            player_7 216 143 151
+            player_8 138 134 163
+            player_9 162 188 140
+            player_10 217 194 168
+        }
+        terminal_colors {
+            black 34 29 51
+            red 216 143 151
+            green 162 188 140
+            yellow 233 202 138
+            blue 135 165 194
+            magenta 211 160 199
+            cyan 143 199 192
+            white 216 213 230
+            bright_black 138 134 163
+            bright_red 226 155 163
+            bright_green 182 204 162
+            bright_yellow 242 219 167
+            bright_blue 155 182 207
+            bright_magenta 224 181 215
+            bright_cyan 168 214 208
+            bright_white 241 239 247
+        }
+    }
+}

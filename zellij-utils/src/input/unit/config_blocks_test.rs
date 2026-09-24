@@ -91,18 +91,18 @@ fn a_theme_file_is_created_once_under_the_theme_name() {
     let dir = tempfile::tempdir().unwrap();
     let theme_dir = dir.path().join("themes");
     let palette = sample_palette();
-    let path = create_theme_file(&theme_dir, "mine", &palette).unwrap();
+    let path = create_theme_file(&theme_dir, "mine", &palette, None).unwrap();
     assert_eq!(path, theme_dir.join("mine.kdl"));
     let theme = read_theme(&path, "mine").unwrap();
     assert!(theme.sourced_from_external_file);
     assert_eq!(styling_colours(&theme.palette), styling_colours(&palette));
-    let again = create_theme_file(&theme_dir, "mine", &palette).unwrap_err();
+    let again = create_theme_file(&theme_dir, "mine", &palette, None).unwrap_err();
     assert!(again.contains("already exists"));
     assert!(again.contains("mine.kdl"));
-    assert!(create_theme_file(&theme_dir, "no/slashes", &palette)
+    assert!(create_theme_file(&theme_dir, "no/slashes", &palette, None)
         .unwrap_err()
         .contains("cannot be a file name"));
-    assert!(create_theme_file(&theme_dir, "", &palette).is_err());
+    assert!(create_theme_file(&theme_dir, "", &palette, None).is_err());
 }
 
 #[test]
@@ -110,7 +110,7 @@ fn a_theme_folder_that_is_a_file_is_reported() {
     let dir = tempfile::tempdir().unwrap();
     let not_a_folder = dir.path().join("themes");
     std::fs::write(&not_a_folder, "").unwrap();
-    let error = create_theme_file(&not_a_folder, "mine", &sample_palette()).unwrap_err();
+    let error = create_theme_file(&not_a_folder, "mine", &sample_palette(), None).unwrap_err();
     assert!(error.contains("not a folder"));
 }
 

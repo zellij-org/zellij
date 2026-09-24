@@ -1,13 +1,14 @@
 use crate::panes::grid::Row;
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::terminal_character::{Cursor, LinkAnchor};
+use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 struct DetectedLink {
     url: String,
-    start_position: HyperlinkPosition,
-    end_position: HyperlinkPosition,
+    cells: Vec<HyperlinkPosition>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -43,26 +44,46 @@ impl HyperlinkTracker {
         }
     }
 
+    #[inline]
     pub fn update(
         &mut self,
         ch: char,
         cursor: &Cursor,
         viewport: &mut VecDeque<Row>,
         lines_above: &mut VecDeque<Row>,
-        link_handler: &mut LinkHandler,
+        link_handler: &Rc<RefCell<LinkHandler>>,
     ) {
         if ch == ' ' && cursor.x == 0 {
             // skip carriage return
             return;
         }
+        self.update_while_relevant(ch, cursor, viewport, lines_above, link_handler);
+    }
 
+    #[inline]
+    pub fn can_begin_a_url(ch: char) -> bool {
+        matches!(ch, 'h' | 'f' | 'm')
+    }
+
+    #[inline]
+    pub fn is_idle(&self) -> bool {
+        self.start_position.is_none()
+    }
+
+    fn update_while_relevant(
+        &mut self,
+        ch: char,
+        cursor: &Cursor,
+        viewport: &mut VecDeque<Row>,
+        lines_above: &mut VecDeque<Row>,
+        link_handler: &Rc<RefCell<LinkHandler>>,
+    ) {
         let current_pos = HyperlinkPosition::from_cursor(cursor);
 
-        // Check if cursor moved non-contiguously
-        if self.should_reset_due_to_cursor_jump(&current_pos) {
+        if self.should_reset_due_to_cursor_jump(&current_pos, viewport) {
             if self.is_currently_tracking() {
                 // Finalize the current URL before resetting
-                self.finalize_and_apply(viewport, lines_above, link_handler);
+                self.finalize_and_apply(viewport, lines_above, &mut link_handler.borrow_mut());
             } else {
                 self.clear();
             }
@@ -70,13 +91,13 @@ impl HyperlinkTracker {
 
         if self.is_currently_tracking() {
             if self.is_url_terminator(ch) {
-                self.finalize_and_apply(viewport, lines_above, link_handler);
+                self.finalize_and_apply(viewport, lines_above, &mut link_handler.borrow_mut());
             } else {
                 self.buffer.push(ch);
                 self.cursor_positions.push(current_pos.clone());
             }
         } else {
-            if matches!(ch, 'h' | 'f' | 'm') {
+            if Self::can_begin_a_url(ch) {
                 self.buffer.push(ch);
                 self.cursor_positions.push(current_pos.clone());
                 self.start_position = Some(current_pos.clone());
@@ -122,16 +143,17 @@ impl HyperlinkTracker {
         }
     }
 
-    fn should_reset_due_to_cursor_jump(&self, current_pos: &HyperlinkPosition) -> bool {
+    fn should_reset_due_to_cursor_jump(
+        &self,
+        current_pos: &HyperlinkPosition,
+        viewport: &VecDeque<Row>,
+    ) -> bool {
         if let Some(last_pos) = &self.last_cursor {
-            // Check if cursor moved non-contiguously
-            let is_contiguous =
-                // Same line, next column
-                (current_pos.y == last_pos.y && current_pos.x == last_pos.x + 1) ||
-                // Next line, first column (line wrap)
-                (current_pos.y == last_pos.y + 1 && current_pos.x == 0) ||
-                // Same position (overwrite)
-                (current_pos.y == last_pos.y && current_pos.x == last_pos.x);
+            let is_contiguous = (current_pos.y == last_pos.y && current_pos.x == last_pos.x + 1)
+                || (current_pos.y == last_pos.y + 1
+                    && current_pos.x == 0
+                    && continues_the_line_above(viewport, current_pos.y))
+                || (current_pos.y == last_pos.y && current_pos.x == last_pos.x);
 
             !is_contiguous
         } else {
@@ -178,21 +200,21 @@ impl HyperlinkTracker {
             let chars_trimmed = original_len.saturating_sub(trimmed_len);
 
             // Find the end position by walking back from the last position
-            let end_position = if chars_trimmed > 0 && trimmed_len > 0 {
-                // Use the position of the last character that's actually in the trimmed URL
-                self.cursor_positions.get(trimmed_len.saturating_sub(1))
+            let kept = if chars_trimmed > 0 {
+                trimmed_len
             } else {
-                // No trimming occurred, use the last position
-                self.cursor_positions.last()
+                self.cursor_positions.len()
             };
-            let Some(end_position) = end_position.copied() else {
+            let cells: Vec<HyperlinkPosition> =
+                self.cursor_positions.iter().take(kept).copied().collect();
+            if cells.is_empty() {
+                self.clear();
                 return;
-            };
+            }
 
             let detected_link = DetectedLink {
                 url: trimmed_url.clone(),
-                start_position: self.start_position.clone().unwrap(),
-                end_position,
+                cells,
             };
 
             self.apply_hyperlink_to_grid(&detected_link, viewport, lines_above, link_handler);
@@ -209,57 +231,31 @@ impl HyperlinkTracker {
         link_handler: &mut LinkHandler,
     ) {
         let link_anchor_start = link_handler.new_link_from_url(link.url.clone());
+        let Some(last) = link.cells.last().copied() else {
+            return;
+        };
 
-        let start_pos = &link.start_position;
-        let end_pos = &link.end_position;
-
-        for y in start_pos.y..=end_pos.y {
-            let row = if y < 0 {
-                // Row is in lines_above
-                let lines_above_index = (lines_above.len() as isize + y) as usize;
-                lines_above.get_mut(lines_above_index)
-            } else if (y as usize) < viewport.len() {
-                // Row is in viewport
-                viewport.get_mut(y as usize)
-            } else {
-                // Row is beyond bounds, skip
-                None
+        for cell in &link.cells {
+            let Some(row) = row_at(viewport, lines_above, cell.y) else {
+                continue;
             };
+            let index = row.absolute_character_index(cell.x.max(0) as usize);
+            if let Some(character) = row.columns.get_mut(index) {
+                character
+                    .styles
+                    .update(|styles| styles.link_anchor = Some(link_anchor_start.clone()));
+            }
+        }
 
-            if let Some(row) = row {
-                let start_x = if y == start_pos.y {
-                    start_pos.x.max(0) as usize
-                } else {
-                    0
-                };
-                let end_x = if y == end_pos.y {
-                    (end_pos.x + 1).max(0) as usize
-                } else {
-                    row.width()
-                };
-
-                // Convert width-based positions to character indices
-                let start_char_index = row.absolute_character_index(start_x);
-                let end_char_index = row.absolute_character_index(end_x.min(row.width()));
-
-                for char_index in
-                    start_char_index..=end_char_index.min(row.columns.len().saturating_sub(1))
-                {
-                    if let Some(character) = row.columns.get_mut(char_index) {
-                        character.styles.update(|styles| {
-                            if y == start_pos.y && char_index == start_char_index {
-                                // First character gets the start anchor
-                                styles.link_anchor = Some(link_anchor_start.clone());
-                            } else if y == end_pos.y && char_index == end_char_index {
-                                // Last character gets the end anchor
-                                styles.link_anchor = Some(LinkAnchor::End);
-                            } else {
-                                // Middle characters get the same start anchor
-                                styles.link_anchor = Some(link_anchor_start.clone());
-                            }
-                        });
-                    }
-                }
+        let Some(row) = row_at(viewport, lines_above, last.y) else {
+            return;
+        };
+        let after = row.absolute_character_index(last.x.max(0) as usize + 1);
+        if let Some(character) = row.columns.get_mut(after) {
+            if character.styles.link_anchor.is_none() {
+                character
+                    .styles
+                    .update(|styles| styles.link_anchor = Some(LinkAnchor::End));
             }
         }
     }
@@ -311,6 +307,30 @@ impl HyperlinkTracker {
     }
 }
 
+fn row_at<'a>(
+    viewport: &'a mut VecDeque<Row>,
+    lines_above: &'a mut VecDeque<Row>,
+    y: isize,
+) -> Option<&'a mut Row> {
+    if y < 0 {
+        let index = lines_above.len() as isize + y;
+        return usize::try_from(index)
+            .ok()
+            .and_then(|index| lines_above.get_mut(index));
+    }
+    viewport.get_mut(y as usize)
+}
+
+fn continues_the_line_above(viewport: &VecDeque<Row>, y: isize) -> bool {
+    if y < 0 {
+        return false;
+    }
+    viewport
+        .get(y as usize)
+        .map(|row| !row.is_canonical)
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -324,9 +344,9 @@ mod tests {
     }
 
     fn create_test_row(width: usize) -> Row {
-        let mut columns = VecDeque::new();
+        let mut columns = Vec::new();
         for _ in 0..width {
-            columns.push_back(TerminalCharacter::new(' '));
+            columns.push(TerminalCharacter::new(' '));
         }
         Row::from_columns(columns).canonical()
     }
@@ -344,6 +364,14 @@ mod tests {
         (0..rows).map(|_| create_test_row(cols)).collect()
     }
 
+    fn wrapped_viewport(rows: usize, cols: usize) -> VecDeque<Row> {
+        let mut viewport = create_test_viewport(rows, cols);
+        for row in viewport.iter_mut().skip(1) {
+            row.is_canonical = false;
+        }
+        viewport
+    }
+
     #[test]
     fn test_new_tracker_is_empty() {
         let tracker = HyperlinkTracker::new();
@@ -358,7 +386,7 @@ mod tests {
         let mut tracker = HyperlinkTracker::new();
         let mut viewport = create_test_viewport(10, 80);
         let mut lines_above = VecDeque::new();
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let url = "http://example.com";
 
@@ -366,23 +394,11 @@ mod tests {
 
         for (i, ch) in url.chars().enumerate() {
             let cursor = create_test_cursor(i, 0);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
 
         let cursor = create_test_cursor(url.len(), 0);
-        tracker.update(
-            ' ',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update(' ', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
         let row = &viewport[0];
         let mut link_id = None;
@@ -405,7 +421,8 @@ mod tests {
         }
 
         if let Some(id) = link_id {
-            let links = link_handler.links();
+            let binding = link_handler.borrow();
+            let links = binding.links();
             let stored_link = links.get(&id);
             assert!(
                 stored_link.is_some(),
@@ -425,7 +442,7 @@ mod tests {
         let mut tracker = HyperlinkTracker::new();
         let mut viewport = create_test_viewport(10, 80);
         let mut lines_above = VecDeque::new();
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let url = "https://secure.example.com";
 
@@ -433,23 +450,11 @@ mod tests {
 
         for (i, ch) in url.chars().enumerate() {
             let cursor = create_test_cursor(i, 0);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
 
         let cursor = create_test_cursor(url.len(), 0);
-        tracker.update(
-            ' ',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update(' ', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
         let row = &viewport[0];
         let mut link_id = None;
@@ -472,7 +477,8 @@ mod tests {
         }
 
         if let Some(id) = link_id {
-            let links = link_handler.links();
+            let binding = link_handler.borrow();
+            let links = binding.links();
             let stored_link = links.get(&id);
             assert!(
                 stored_link.is_some(),
@@ -492,7 +498,7 @@ mod tests {
         let mut tracker = HyperlinkTracker::new();
         let mut viewport = create_test_viewport(10, 80);
         let mut lines_above = VecDeque::new();
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let url = "ftp://files.example.com";
 
@@ -500,13 +506,7 @@ mod tests {
 
         for (i, ch) in url.chars().enumerate() {
             let cursor = create_test_cursor(i, 0);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
 
         let cursor = create_test_cursor(url.len(), 0);
@@ -515,7 +515,7 @@ mod tests {
             &cursor,
             &mut viewport,
             &mut lines_above,
-            &mut link_handler,
+            &link_handler,
         );
 
         let row = &viewport[0];
@@ -536,7 +536,7 @@ mod tests {
         let mut tracker = HyperlinkTracker::new();
         let mut viewport = create_test_viewport(10, 80);
         let mut lines_above = VecDeque::new();
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let url = "mailto:user@example.com";
 
@@ -544,23 +544,11 @@ mod tests {
 
         for (i, ch) in url.chars().enumerate() {
             let cursor = create_test_cursor(i, 0);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
 
         let cursor = create_test_cursor(url.len(), 0);
-        tracker.update(
-            ' ',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update(' ', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
         let row = &viewport[0];
         for i in 0..url.len() {
@@ -580,7 +568,7 @@ mod tests {
         let mut tracker = HyperlinkTracker::new();
         let mut viewport = create_test_viewport(10, 80);
         let mut lines_above = VecDeque::new();
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let url_with_punct = "http://example.com.";
         let expected_trimmed_url = "http://example.com";
@@ -589,23 +577,11 @@ mod tests {
 
         for (i, ch) in url_with_punct.chars().enumerate() {
             let cursor = create_test_cursor(i, 0);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
 
         let cursor = create_test_cursor(url_with_punct.len(), 0);
-        tracker.update(
-            ' ',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update(' ', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
         let row = &viewport[0];
         let mut link_id = None;
@@ -617,7 +593,8 @@ mod tests {
             }
         }
         if let Some(id) = link_id {
-            let links = link_handler.links();
+            let binding = link_handler.borrow();
+            let links = binding.links();
             let stored_link = links.get(&id);
             assert!(
                 stored_link.is_some(),
@@ -639,7 +616,7 @@ mod tests {
         let mut tracker = HyperlinkTracker::new();
         let mut viewport = create_test_viewport(10, 80);
         let mut lines_above = VecDeque::new();
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let short_url = "http://";
 
@@ -647,23 +624,11 @@ mod tests {
 
         for (i, ch) in short_url.chars().enumerate() {
             let cursor = create_test_cursor(i, 0);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
 
         let cursor = create_test_cursor(short_url.len(), 0);
-        tracker.update(
-            ' ',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update(' ', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
         let row = &viewport[0];
         for i in 0..short_url.len() {
@@ -683,30 +648,18 @@ mod tests {
         let mut tracker = HyperlinkTracker::new();
         let mut viewport = create_test_viewport(10, 80);
         let mut lines_above = VecDeque::new();
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let partial_url = "http://exam";
         for (i, ch) in partial_url.chars().enumerate() {
             let cursor = create_test_cursor(i, 0);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
 
         assert!(tracker.is_currently_tracking());
 
         let cursor = create_test_cursor(50, 5);
-        tracker.update(
-            'h',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update('h', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
         assert_eq!(tracker.buffer, "h");
         assert_eq!(tracker.cursor_positions.len(), 1);
@@ -715,9 +668,9 @@ mod tests {
     #[test]
     fn test_line_wrap_continuation() {
         let mut tracker = HyperlinkTracker::new();
-        let mut viewport = create_test_viewport(10, 80);
+        let mut viewport = wrapped_viewport(10, 80);
         let mut lines_above = VecDeque::new();
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let cursor1 = create_test_cursor(79, 0);
         tracker.update(
@@ -725,7 +678,7 @@ mod tests {
             &cursor1,
             &mut viewport,
             &mut lines_above,
-            &mut link_handler,
+            &link_handler,
         );
 
         let cursor2 = create_test_cursor(0, 1);
@@ -734,7 +687,7 @@ mod tests {
             &cursor2,
             &mut viewport,
             &mut lines_above,
-            &mut link_handler,
+            &link_handler,
         );
 
         assert!(tracker.is_currently_tracking());
@@ -747,16 +700,10 @@ mod tests {
         let mut tracker = HyperlinkTracker::new();
         let mut viewport = create_test_viewport(10, 80);
         let mut lines_above = VecDeque::new();
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let cursor = create_test_cursor(0, 5);
-        tracker.update(
-            'h',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update('h', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
         tracker.offset_cursor_lines(2);
 
@@ -770,45 +717,28 @@ mod tests {
         let mut tracker = HyperlinkTracker::new();
         let mut viewport = create_test_viewport(10, 80);
         let mut lines_above = VecDeque::new();
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let url_part1 = "http://very-long-";
         let url_part2 = "domain.example.com";
         let full_url = format!("{}{}", url_part1, url_part2);
+        viewport[1].is_canonical = false;
 
         populate_row_with_text(&mut viewport[0], url_part1, 0);
         populate_row_with_text(&mut viewport[1], url_part2, 0);
 
         for (i, ch) in url_part1.chars().enumerate() {
             let cursor = create_test_cursor(i, 0);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
 
         for (i, ch) in url_part2.chars().enumerate() {
             let cursor = create_test_cursor(i, 1);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
 
         let cursor = create_test_cursor(url_part2.len(), 1);
-        tracker.update(
-            ' ',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update(' ', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
         let row0 = &viewport[0];
         let mut link_id = None;
@@ -821,7 +751,8 @@ mod tests {
         }
 
         if let Some(id) = link_id {
-            let links = link_handler.links();
+            let binding = link_handler.borrow();
+            let links = binding.links();
             let stored_link = links.get(&id);
             assert!(
                 stored_link.is_some(),
@@ -862,6 +793,201 @@ mod tests {
         }
     }
 
+    fn anchors(row: &Row, cols: usize) -> Vec<Option<LinkAnchor>> {
+        (0..cols)
+            .map(|column| {
+                let index = row.absolute_character_index(column);
+                row.columns
+                    .get(index)
+                    .and_then(|character| character.styles.link_anchor)
+            })
+            .collect()
+    }
+
+    fn feed(
+        tracker: &mut HyperlinkTracker,
+        viewport: &mut VecDeque<Row>,
+        lines_above: &mut VecDeque<Row>,
+        link_handler: &Rc<RefCell<LinkHandler>>,
+        text: &str,
+        x: usize,
+        y: usize,
+    ) {
+        populate_row_with_text(&mut viewport[y], text, x);
+        for (offset, character) in text.chars().enumerate() {
+            let cursor = create_test_cursor(x + offset, y);
+            tracker.update(character, &cursor, viewport, lines_above, link_handler);
+        }
+    }
+
+    #[test]
+    fn a_new_line_after_a_url_does_not_continue_it() {
+        let mut tracker = HyperlinkTracker::new();
+        let mut viewport = create_test_viewport(10, 40);
+        let mut lines_above = VecDeque::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+
+        let url = "https://www.fastmail.com";
+        feed(
+            &mut tracker,
+            &mut viewport,
+            &mut lines_above,
+            &link_handler,
+            url,
+            0,
+            0,
+        );
+        feed(
+            &mut tracker,
+            &mut viewport,
+            &mut lines_above,
+            &link_handler,
+            "2",
+            0,
+            1,
+        );
+
+        let stored = link_handler.borrow().links();
+        let uris: Vec<String> = stored.values().map(|link| link.uri.clone()).collect();
+        assert_eq!(
+            uris,
+            vec![url.to_owned()],
+            "the digit on the line below must not join the url"
+        );
+
+        let marked = anchors(&viewport[0], 40);
+        assert!(
+            marked[..url.len()]
+                .iter()
+                .all(|anchor| matches!(anchor, Some(LinkAnchor::Start(_)))),
+            "every character of the url belongs to the link: {:?}",
+            marked
+        );
+        assert_eq!(
+            marked[url.len()],
+            Some(LinkAnchor::End),
+            "the cell after the url closes it"
+        );
+        assert!(
+            marked[url.len() + 1..]
+                .iter()
+                .all(|anchor| anchor.is_none()),
+            "the rest of the line is not part of the link: {:?}",
+            marked
+        );
+        assert!(
+            anchors(&viewport[1], 40)
+                .iter()
+                .all(|anchor| anchor.is_none()),
+            "the line below carries no part of the link"
+        );
+    }
+
+    #[test]
+    fn a_url_that_really_wrapped_keeps_both_of_its_rows() {
+        let mut tracker = HyperlinkTracker::new();
+        let mut viewport = create_test_viewport(10, 20);
+        viewport[1].is_canonical = false;
+        let mut lines_above = VecDeque::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+
+        feed(
+            &mut tracker,
+            &mut viewport,
+            &mut lines_above,
+            &link_handler,
+            "https://example.com/",
+            0,
+            0,
+        );
+        feed(
+            &mut tracker,
+            &mut viewport,
+            &mut lines_above,
+            &link_handler,
+            "path x",
+            0,
+            1,
+        );
+
+        let stored = link_handler.borrow().links();
+        let uris: Vec<String> = stored.values().map(|link| link.uri.clone()).collect();
+        assert_eq!(uris, vec!["https://example.com/path".to_owned()]);
+
+        assert!(
+            anchors(&viewport[0], 20)
+                .iter()
+                .all(|anchor| matches!(anchor, Some(LinkAnchor::Start(_)))),
+            "the wrapped row is link to its last column"
+        );
+        let second = anchors(&viewport[1], 20);
+        assert!(second[..4]
+            .iter()
+            .all(|anchor| matches!(anchor, Some(LinkAnchor::Start(_)))));
+        assert_eq!(second[4], Some(LinkAnchor::End));
+        assert!(second[5..].iter().all(|anchor| anchor.is_none()));
+    }
+
+    #[test]
+    fn the_last_character_of_a_url_is_part_of_the_link() {
+        let mut tracker = HyperlinkTracker::new();
+        let mut viewport = create_test_viewport(10, 40);
+        let mut lines_above = VecDeque::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+
+        let url = "https://example.com";
+        feed(
+            &mut tracker,
+            &mut viewport,
+            &mut lines_above,
+            &link_handler,
+            &format!("{} ", url),
+            0,
+            0,
+        );
+
+        let marked = anchors(&viewport[0], 40);
+        assert!(
+            matches!(marked[url.len() - 1], Some(LinkAnchor::Start(_))),
+            "the final character of the url used to be left outside the link"
+        );
+        assert_eq!(marked[url.len()], Some(LinkAnchor::End));
+    }
+
+    #[test]
+    fn the_terminator_does_not_clobber_the_link_that_follows_the_url() {
+        let mut tracker = HyperlinkTracker::new();
+        let mut viewport = create_test_viewport(10, 40);
+        let mut lines_above = VecDeque::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+
+        let url = "https://example.com";
+        let neighbour = link_handler
+            .borrow_mut()
+            .dispatch_osc8(&[b"8", b"", b"https://example.com/neighbour"])
+            .expect("an osc 8 anchor");
+        let after = viewport[0].absolute_character_index(url.len());
+        viewport[0].columns[after]
+            .styles
+            .update(|styles| styles.link_anchor = Some(neighbour));
+
+        feed(
+            &mut tracker,
+            &mut viewport,
+            &mut lines_above,
+            &link_handler,
+            &format!("{} ", url),
+            0,
+            0,
+        );
+
+        assert_eq!(
+            anchors(&viewport[0], 40)[url.len()],
+            Some(neighbour),
+            "the cell after the detected url already belonged to another link"
+        );
+    }
+
     #[test]
     fn test_url_terminators() {
         let terminators = vec![
@@ -876,7 +1002,7 @@ mod tests {
             let mut tracker = HyperlinkTracker::new();
             let mut viewport = create_test_viewport(10, 80);
             let mut lines_above = VecDeque::new();
-            let mut link_handler = LinkHandler::new();
+            let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
             let url = "http://example.com";
 
@@ -884,13 +1010,7 @@ mod tests {
 
             for (i, ch) in url.chars().enumerate() {
                 let cursor = create_test_cursor(i, idx);
-                tracker.update(
-                    ch,
-                    &cursor,
-                    &mut viewport,
-                    &mut lines_above,
-                    &mut link_handler,
-                );
+                tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
             }
 
             let cursor = create_test_cursor(url.len(), idx);
@@ -899,7 +1019,7 @@ mod tests {
                 &cursor,
                 &mut viewport,
                 &mut lines_above,
-                &mut link_handler,
+                &link_handler,
             );
 
             let row = &viewport[idx];
@@ -922,16 +1042,10 @@ mod tests {
         let mut tracker = HyperlinkTracker::new();
         let mut viewport = create_test_viewport(10, 80);
         let mut lines_above = VecDeque::new();
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let cursor = create_test_cursor(0, 0);
-        tracker.update(
-            ' ',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update(' ', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
         assert!(!tracker.is_currently_tracking());
         assert!(tracker.buffer.is_empty());
@@ -965,20 +1079,29 @@ mod tests {
     #[test]
     fn test_contiguous_cursor_movement() {
         let mut tracker = HyperlinkTracker::new();
+        let wrapped = wrapped_viewport(10, 80);
+        let fresh_lines = create_test_viewport(10, 80);
 
         tracker.last_cursor = Some(HyperlinkPosition { x: 5, y: 2 });
 
         let next_col = HyperlinkPosition { x: 6, y: 2 };
-        assert!(!tracker.should_reset_due_to_cursor_jump(&next_col));
+        assert!(!tracker.should_reset_due_to_cursor_jump(&next_col, &wrapped));
 
         let next_line = HyperlinkPosition { x: 0, y: 3 };
-        assert!(!tracker.should_reset_due_to_cursor_jump(&next_line));
+        assert!(
+            !tracker.should_reset_due_to_cursor_jump(&next_line, &wrapped),
+            "a row that continues the one above it is a wrap"
+        );
+        assert!(
+            tracker.should_reset_due_to_cursor_jump(&next_line, &fresh_lines),
+            "a row of its own is a new line, not a wrap"
+        );
 
         let same_pos = HyperlinkPosition { x: 5, y: 2 };
-        assert!(!tracker.should_reset_due_to_cursor_jump(&same_pos));
+        assert!(!tracker.should_reset_due_to_cursor_jump(&same_pos, &wrapped));
 
         let jump = HyperlinkPosition { x: 10, y: 5 };
-        assert!(tracker.should_reset_due_to_cursor_jump(&jump));
+        assert!(tracker.should_reset_due_to_cursor_jump(&jump, &wrapped));
     }
 
     #[test]
@@ -1040,7 +1163,7 @@ mod tests {
         let mut tracker = HyperlinkTracker::new();
         let mut viewport = create_test_viewport(10, 80);
         let mut lines_above = VecDeque::new();
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let url1 = "http://first.com";
         let url2 = "https://second.com";
@@ -1050,43 +1173,19 @@ mod tests {
 
         for (i, ch) in url1.chars().enumerate() {
             let cursor = create_test_cursor(i, 0);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
 
         let cursor = create_test_cursor(url1.len(), 0);
-        tracker.update(
-            ' ',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update(' ', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
         for (i, ch) in url2.chars().enumerate() {
             let cursor = create_test_cursor(url1.len() + 1 + i, 0);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
 
         let cursor = create_test_cursor(url1.len() + 1 + url2.len(), 0);
-        tracker.update(
-            ' ',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update(' ', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
         let row = &viewport[0];
 
@@ -1106,7 +1205,8 @@ mod tests {
                 second_link_id = Some(*id);
             }
         }
-        let links = link_handler.links();
+        let binding = link_handler.borrow();
+        let links = binding.links();
 
         if let Some(id1) = first_link_id {
             let stored_link1 = links.get(&id1);
@@ -1151,30 +1251,18 @@ mod tests {
             lines_above.push_back(create_test_row(80));
         }
 
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let url = "http://example.com";
         for (i, ch) in url.chars().enumerate() {
             let cursor = create_test_cursor(i, 0);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
 
         tracker.offset_cursor_lines(2);
 
         let cursor = create_test_cursor(url.len(), 0);
-        tracker.update(
-            ' ',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update(' ', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
         let lines_above_index = lines_above.len().saturating_sub(2);
         if let Some(row) = lines_above.get(lines_above_index) {
@@ -1196,53 +1284,30 @@ mod tests {
         let mut tracker = HyperlinkTracker::new();
         let mut viewport = create_test_viewport(10, 80);
         let mut lines_above = VecDeque::new();
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let url1 = "http://first.com";
         populate_row_with_text(&mut viewport[0], url1, 0);
 
         for (i, ch) in url1.chars().enumerate() {
             let cursor = create_test_cursor(i, 0);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
         let cursor = create_test_cursor(url1.len(), 0);
-        tracker.update(
-            ' ',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update(' ', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
         let url2 = "https://second.com";
         populate_row_with_text(&mut viewport[1], url2, 0);
 
         for (i, ch) in url2.chars().enumerate() {
             let cursor = create_test_cursor(i, 1);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
         let cursor = create_test_cursor(url2.len(), 1);
-        tracker.update(
-            ' ',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update(' ', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
-        let links = link_handler.links();
+        let binding = link_handler.borrow();
+        let links = binding.links();
 
         assert_eq!(links.len(), 2, "Should have 2 links stored");
 
@@ -1276,7 +1341,7 @@ mod tests {
         let mut tracker = HyperlinkTracker::new();
         let mut viewport = create_test_viewport(10, 80);
         let mut lines_above = VecDeque::new();
-        let mut link_handler = LinkHandler::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
 
         let url = "http://test.com";
 
@@ -1284,23 +1349,11 @@ mod tests {
 
         for (i, ch) in url.chars().enumerate() {
             let cursor = create_test_cursor(i, 0);
-            tracker.update(
-                ch,
-                &cursor,
-                &mut viewport,
-                &mut lines_above,
-                &mut link_handler,
-            );
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
         }
 
         let cursor = create_test_cursor(url.len(), 0);
-        tracker.update(
-            ' ',
-            &cursor,
-            &mut viewport,
-            &mut lines_above,
-            &mut link_handler,
-        );
+        tracker.update(' ', &cursor, &mut viewport, &mut lines_above, &link_handler);
 
         let row = &viewport[0];
 
@@ -1313,7 +1366,8 @@ mod tests {
             if let Some(ref anchor) = character.styles.link_anchor {
                 match anchor {
                     LinkAnchor::Start(id) => {
-                        let links = link_handler.links();
+                        let binding = link_handler.borrow();
+                        let links = binding.links();
                         let stored_link = links.get(id);
                         assert!(
                             stored_link.is_some(),

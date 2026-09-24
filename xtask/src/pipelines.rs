@@ -41,6 +41,7 @@ pub fn make(sh: &Shell, flags: flags::Make) -> anyhow::Result<()> {
                 flags::Test {
                     args: vec![],
                     no_web: flags.no_web,
+                    no_window: false,
                 },
             )
         })

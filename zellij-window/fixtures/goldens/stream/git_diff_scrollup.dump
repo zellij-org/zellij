@@ -1,0 +1,122 @@
+size: 40x120
+cursor: row=27 col=1 visible shape=Default
+grid:
+|                                                                                                                        |
+|src/terminal_pane/scroll.rs                                                                                             |
+|───────────────────────────────────────────────────────────────────────────────────────────────────────────────────     |
+|Welcome to fish, the friendly interactive shell                                                                         |
+|⋊> ~/c/mosaic on main ⨯ git diff                                                                            11:25:22    |
+|                                                                                                                        |
+|src/terminal_pane/scroll.rs                                                                                             |
+|───────────────────────────────────────────────────────────────────────────────────────────────────────────────────     |
+|                                                                                                                        |
+|────────────────────────────────────────────────┐                                                                       |
+|use crate::terminal_pane::terminal_character::{ │                                                                       |
+|────────────────────────────────────────────────┘                                                                       |
+|5                                                                                                                       |
+|    CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,                                                       |
+|};                                                                                                                      |
+|                                                                                                                        |
+|use crate::utils::logging::debug_log_to_file;                                                                           |
+|                                                                                                                        |
+|/*                                                                                                                      |
+| * Scroll                                                                                                               |
+| *                                                                                                                      |
+|                                                                                                                        |
+|──────────────┐                                                                                                         |
+|impl Scroll { │                                                                                                         |
+|──────────────┘                                                                                                         |
+|663                                                                                                                     |
+|    pub fn move_current_buffer_to_alternative_buffer(&mut self) {                                                       |
+|:                                                                                                                       |
+|                                                                                                                        |
+|                                                                                                                        |
+|        self.clear_all();                                                                                               |
+|    }                                                                                                                   |
+|    pub fn override_current_buffer_with_alternative_buffer(&mut self) {                                                 |
+|        if let Some(alternative_buffer) = self.alternative_buffer.as_mut() {                                            |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 1: cols 0-26 fg=idx4 bg=Background
+row 2: cols 0-114 fg=idx4 bg=Background
+row 4: cols 0-1 fg=idx15 bg=idx6
+row 4: cols 3-12 fg=idx3 bg=Background
+row 4: cols 17-20 fg=idx2 bg=Background
+row 4: cols 24-26 fg=Foreground bg=Background flags=BOLD
+row 4: cols 28-31 fg=idx6 bg=Background
+row 4: cols 108-115 fg=idx240 bg=Background
+row 6: cols 0-26 fg=idx4 bg=Background
+row 7: cols 0-114 fg=idx4 bg=Background
+row 9: cols 0-48 fg=idx4 bg=Background
+row 10: cols 0-2 fg=idx203 bg=Background
+row 10: cols 3-3 fg=idx231 bg=Background
+row 10: cols 4-8 fg=idx203 bg=Background
+row 10: cols 9-47 fg=idx231 bg=Background
+row 10: cols 48-48 fg=idx4 bg=Background
+row 11: cols 0-48 fg=idx4 bg=Background
+row 12: cols 0-0 fg=idx4 bg=Background
+row 13: cols 0-39 fg=idx231 bg=Background
+row 13: cols 40-63 fg=idx141 bg=Background
+row 13: cols 64-64 fg=idx231 bg=Background
+row 14: cols 0-1 fg=idx231 bg=Background
+row 16: cols 0-2 fg=idx203 bg=idx22
+row 16: cols 3-3 fg=idx231 bg=idx22
+row 16: cols 4-8 fg=idx203 bg=idx22
+row 16: cols 9-44 fg=idx231 bg=idx22
+row 16: cols 45-119 fg=Foreground bg=idx22
+row 17: cols 0-119 fg=Foreground bg=idx22
+row 18: cols 0-1 fg=idx242 bg=Background
+row 19: cols 0-8 fg=idx242 bg=Background
+row 20: cols 0-1 fg=idx242 bg=Background
+row 22: cols 0-14 fg=idx4 bg=Background
+row 23: cols 0-3 fg=idx81 bg=Background
+row 23: cols 4-4 fg=idx231 bg=Background
+row 23: cols 5-10 fg=idx149 bg=Background
+row 23: cols 11-13 fg=idx231 bg=Background
+row 23: cols 14-14 fg=idx4 bg=Background
+row 24: cols 0-14 fg=idx4 bg=Background
+row 25: cols 0-2 fg=idx4 bg=Background
+row 26: cols 0-3 fg=idx231 bg=Background
+row 26: cols 4-6 fg=idx203 bg=Background
+row 26: cols 7-7 fg=idx231 bg=Background
+row 26: cols 8-9 fg=idx81 bg=Background
+row 26: cols 10-10 fg=idx231 bg=Background
+row 26: cols 11-51 fg=idx149 bg=Background
+row 26: cols 52-52 fg=idx231 bg=Background
+row 26: cols 53-56 fg=idx203 bg=Background
+row 26: cols 57-57 fg=idx231 bg=Background
+row 26: cols 58-61 fg=idx208 bg=Background
+row 26: cols 62-64 fg=idx231 bg=Background
+row 30: cols 0-12 fg=idx231 bg=idx22
+row 30: cols 13-21 fg=idx81 bg=idx22
+row 30: cols 22-24 fg=idx231 bg=idx22
+row 30: cols 25-119 fg=Foreground bg=idx22
+row 31: cols 0-4 fg=idx231 bg=Background
+row 32: cols 0-3 fg=idx231 bg=Background
+row 32: cols 4-6 fg=idx203 bg=Background
+row 32: cols 7-7 fg=idx231 bg=Background
+row 32: cols 8-9 fg=idx81 bg=Background
+row 32: cols 10-10 fg=idx231 bg=Background
+row 32: cols 11-57 fg=idx149 bg=Background
+row 32: cols 58-58 fg=idx231 bg=Background
+row 32: cols 59-62 fg=idx203 bg=Background
+row 32: cols 63-63 fg=idx231 bg=Background
+row 32: cols 64-67 fg=idx208 bg=Background
+row 32: cols 68-70 fg=idx231 bg=Background
+row 33: cols 0-7 fg=idx231 bg=Background
+row 33: cols 8-9 fg=idx203 bg=Background
+row 33: cols 10-10 fg=idx231 bg=Background
+row 33: cols 11-13 fg=idx81 bg=Background
+row 33: cols 14-14 fg=idx231 bg=Background
+row 33: cols 15-18 fg=idx149 bg=Background
+row 33: cols 19-39 fg=idx231 bg=Background
+row 33: cols 40-40 fg=idx203 bg=Background
+row 33: cols 41-65 fg=idx231 bg=Background
+row 33: cols 66-71 fg=idx81 bg=Background
+row 33: cols 72-75 fg=idx231 bg=Background
+images:
