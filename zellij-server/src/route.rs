@@ -854,6 +854,7 @@ fn route_action_with_origin(
             near_current_pane,
             no_focus,
             tab_id,
+            env: _,
         } => {
             let command = command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -976,6 +977,7 @@ fn route_action_with_origin(
             near_current_pane,
             no_focus,
             tab_id,
+            env: _,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -1003,6 +1005,7 @@ fn route_action_with_origin(
             pane_id_to_replace,
             close_replaced_pane,
             tab_id,
+            env: _,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -1042,6 +1045,7 @@ fn route_action_with_origin(
             near_current_pane,
             no_focus,
             tab_id,
+            env: _,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -1106,6 +1110,7 @@ fn route_action_with_origin(
             borderless,
             border_style,
             tab_id,
+            env: _,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -1216,6 +1221,7 @@ fn route_action_with_origin(
             cwd,
             initial_panes,
             first_pane_unblock_condition,
+            env: _,
         } => {
             let shell = default_shell.clone();
             let is_web_client = false; // actions cannot be initiated directly from the web

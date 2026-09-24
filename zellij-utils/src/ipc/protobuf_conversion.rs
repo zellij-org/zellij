@@ -1779,8 +1779,10 @@ impl From<crate::input::actions::Action>
                 near_current_pane,
                 no_focus,
                 tab_id,
+                env,
                 ..
             } => ActionType::NewFloatingPane(NewFloatingPaneAction {
+                env: env.into_iter().collect(),
                 command: command.map(|c| c.into()),
                 pane_name,
                 coordinates: coordinates.map(|c| c.into()),
@@ -1797,8 +1799,10 @@ impl From<crate::input::actions::Action>
                 borderless,
                 border_style,
                 tab_id,
+                env,
                 ..
             } => ActionType::NewTiledPane(NewTiledPaneAction {
+                env: env.into_iter().collect(),
                 direction: direction.map(|d| direction_to_proto_i32(d)),
                 command: command.map(|c| c.into()),
                 pane_name,
@@ -1816,8 +1820,10 @@ impl From<crate::input::actions::Action>
                 pane_id_to_replace,
                 close_replaced_pane,
                 tab_id,
+                env,
                 ..
             } => ActionType::NewInPlacePane(NewInPlacePaneAction {
+                env: env.into_iter().collect(),
                 command: command.map(|c| c.into()),
                 pane_name,
                 near_current_pane,
@@ -1832,8 +1838,10 @@ impl From<crate::input::actions::Action>
                 near_current_pane,
                 no_focus,
                 tab_id,
+                env,
                 ..
             } => ActionType::NewStackedPane(NewStackedPaneAction {
+                env: env.into_iter().collect(),
                 command: command.map(|c| c.into()),
                 pane_name,
                 near_current_pane,
@@ -1848,8 +1856,10 @@ impl From<crate::input::actions::Action>
                 near_current_pane,
                 no_focus,
                 tab_id,
+                env,
                 ..
             } => ActionType::NewBlockingPane(NewBlockingPaneAction {
+                env: env.into_iter().collect(),
                 placement: Some(placement.into()),
                 pane_name,
                 command: command.map(|c| c.into()),
@@ -1900,7 +1910,9 @@ impl From<crate::input::actions::Action>
                 cwd,
                 initial_panes,
                 first_pane_unblock_condition,
+                env,
             } => ActionType::NewTab(NewTabAction {
+                env: env.into_iter().collect(),
                 tiled_layout: tiled_layout.map(|l| l.into()),
                 floating_layouts: floating_layouts.into_iter().map(|l| l.into()).collect(),
                 swap_tiled_layouts: swap_tiled_layouts
@@ -2808,6 +2820,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             }),
             ActionType::NewFloatingPane(new_floating_action) => {
                 Ok(crate::input::actions::Action::NewFloatingPane {
+                    env: new_floating_action.env.into_iter().collect(),
                     command: new_floating_action
                         .command
                         .map(|c| c.try_into())
@@ -2824,6 +2837,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::NewTiledPane(new_tiled_action) => {
                 Ok(crate::input::actions::Action::NewTiledPane {
+                    env: new_tiled_action.env.into_iter().collect(),
                     direction: new_tiled_action
                         .direction
                         .map(|d| proto_i32_to_direction(d))
@@ -2839,6 +2853,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::NewInPlacePane(new_in_place_action) => {
                 Ok(crate::input::actions::Action::NewInPlacePane {
+                    env: new_in_place_action.env.into_iter().collect(),
                     command: new_in_place_action
                         .command
                         .map(|c| c.try_into())
@@ -2855,6 +2870,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::NewStackedPane(new_stacked_action) => {
                 Ok(crate::input::actions::Action::NewStackedPane {
+                    env: new_stacked_action.env.into_iter().collect(),
                     command: new_stacked_action
                         .command
                         .map(|c| c.try_into())
@@ -2867,6 +2883,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::NewBlockingPane(new_blocking_action) => {
                 Ok(crate::input::actions::Action::NewBlockingPane {
+                    env: new_blocking_action.env.into_iter().collect(),
                     placement: new_blocking_action
                         .placement
                         .ok_or_else(|| anyhow!("NewBlockingPane missing placement"))?
@@ -2918,6 +2935,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::UndoRenamePane(_) => Ok(crate::input::actions::Action::UndoRenamePane),
             ActionType::NewTab(new_tab_action) => Ok(crate::input::actions::Action::NewTab {
+                env: new_tab_action.env.into_iter().collect(),
                 tiled_layout: new_tab_action
                     .tiled_layout
                     .map(|l| l.try_into())
@@ -4649,6 +4667,7 @@ impl From<crate::input::command::RunCommandAction>
             originating_plugin: action.originating_plugin.map(|op| op.into()),
             use_terminal_title: action.use_terminal_title,
             notify: action.notify,
+            env: action.env.into_iter().collect(),
         }
     }
 }
@@ -4752,6 +4771,7 @@ impl From<crate::input::layout::Run>
                         originating_plugin: cmd.originating_plugin.map(|op| op.into()),
                         use_terminal_title: cmd.use_terminal_title,
                         notify: cmd.notify,
+                        env: cmd.env.into_iter().collect(),
                     },
                 )),
             },
@@ -5145,7 +5165,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Run>
                         .transpose()?,
                     use_terminal_title: cmd.use_terminal_title,
                     notify: cmd.notify,
-                    env: Default::default(),
+                    env: cmd.env.into_iter().collect(),
                 },
             )),
             RunType::EditFile(edit) => Ok(crate::input::layout::Run::EditFile(
@@ -5257,7 +5277,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::RunCommandAc
                 .transpose()?,
             use_terminal_title: action.use_terminal_title,
             notify: action.notify,
-            env: Default::default(),
+            env: action.env.into_iter().collect(),
         })
     }
 }
