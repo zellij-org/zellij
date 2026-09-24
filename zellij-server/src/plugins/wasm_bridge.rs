@@ -690,10 +690,11 @@ impl WasmBridge {
             return Ok(());
         }
 
-        let mut new_plugins = HashSet::new();
-        for plugin_id in self.plugin_map.lock().unwrap().plugin_ids() {
-            new_plugins.insert(plugin_id);
-        }
+        let new_plugins: HashSet<PluginId> = {
+            let plugin_map = self.plugin_map.lock().unwrap();
+            self.connected_clients.lock().unwrap().push(client_id);
+            plugin_map.plugin_ids().into_iter().collect()
+        };
         for plugin_id in new_plugins {
             if self
                 .plugin_map
@@ -785,7 +786,6 @@ impl WasmBridge {
                 },
             )
         }
-        self.connected_clients.lock().unwrap().push(client_id);
         Ok(())
     }
     pub fn resize_plugin(
