@@ -27,6 +27,16 @@ const CLI_STYLES: Styles = Styles::styled()
     .valid(ansi(AnsiColor::Green))
     .invalid(ansi(AnsiColor::Yellow));
 
+pub fn parse_env_var(s: &str) -> Result<(String, String), String> {
+    match s.split_once('=') {
+        Some((key, value)) if !key.is_empty() => Ok((key.to_owned(), value.to_owned())),
+        _ => Err(format!(
+            "invalid environment variable '{}', expected KEY=VALUE",
+            s
+        )),
+    }
+}
+
 fn validate_session(name: &str) -> Result<String, String> {
     #[cfg(unix)]
     {
@@ -900,6 +910,9 @@ pub enum Sessions {
         /// Border line style, eg. "double" or "top:double,left:single,rounded"
         #[clap(long, value_parser)]
         border_style: Option<String>,
+        /// Set an environment variable for the new pane(s), eg. -e FOO=bar (can be repeated)
+        #[clap(short, long, value_name = "KEY=VALUE", value_parser = parse_env_var)]
+        env: Vec<(String, String)>,
     },
     /// Load a plugin
     /// Returns: Created pane ID (format: plugin_<id>)
@@ -1386,6 +1399,15 @@ pub enum CliAction {
         /// Border line style, eg. "double" or "top:double,left:single,rounded"
         #[clap(long, value_parser)]
         border_style: Option<String>,
+        /// Set an environment variable for the new pane, eg. -e FOO=bar (can be repeated)
+        #[clap(
+            short,
+            long,
+            value_name = "KEY=VALUE",
+            value_parser = parse_env_var,
+            conflicts_with("plugin")
+        )]
+        env: Vec<(String, String)>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -1632,6 +1654,9 @@ pub enum CliAction {
             help = "if set, will create the tab without changing the focus of any client"
         )]
         no_focus: bool,
+        /// Set an environment variable for the new pane(s), eg. -e FOO=bar (can be repeated)
+        #[clap(short, long, value_name = "KEY=VALUE", value_parser = parse_env_var)]
+        env: Vec<(String, String)>,
     },
     /// Move the focused tab in the specified direction. [right|left]
     MoveTab {
@@ -2053,6 +2078,82 @@ mod tests {
     fn max_panes_must_be_at_least_one() {
         assert!(try_parse(&["--max-panes", "0"]).is_err());
         assert_eq!(try_parse(&["--max-panes", "1"]).unwrap().max_panes, Some(1));
+    }
+
+    #[test]
+    fn parse_env_var_accepts_key_value() {
+        assert_eq!(parse_env_var("FOO=bar"), Ok(("FOO".into(), "bar".into())));
+        assert_eq!(parse_env_var("A=b=c"), Ok(("A".into(), "b=c".into())));
+        assert_eq!(parse_env_var("EMPTY="), Ok(("EMPTY".into(), "".into())));
+        assert_eq!(
+            parse_env_var("MSG=a=b c ü"),
+            Ok(("MSG".into(), "a=b c ü".into()))
+        );
+    }
+
+    #[test]
+    fn parse_env_var_rejects_malformed() {
+        assert!(parse_env_var("FOO").is_err());
+        assert!(parse_env_var("=bar").is_err());
+        assert!(parse_env_var("").is_err());
+    }
+
+    #[test]
+    fn run_accepts_repeated_env() {
+        let cli = try_parse(&["run", "-e", "A=1", "--env", "B=2", "--", "htop"]).unwrap();
+        match cli.command {
+            Some(Command::Sessions(Sessions::Run { env, .. })) => assert_eq!(
+                env,
+                vec![
+                    ("A".to_owned(), "1".to_owned()),
+                    ("B".to_owned(), "2".to_owned())
+                ]
+            ),
+            other => panic!("Expected Run, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn new_pane_accepts_env_without_command() {
+        let cli = try_parse(&["action", "new-pane", "-e", "A=1"]).unwrap();
+        match cli.command {
+            Some(Command::Action(action)) => match *action {
+                CliAction::NewPane { env, command, .. } => {
+                    assert_eq!(env, vec![("A".to_owned(), "1".to_owned())]);
+                    assert!(command.is_empty());
+                },
+                other => panic!("Expected NewPane, got {:?}", other),
+            },
+            other => panic!("Expected Action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn new_pane_env_conflicts_with_plugin() {
+        assert!(try_parse(&["action", "new-pane", "-p", "zellij:strider", "-e", "A=1"]).is_err());
+    }
+
+    #[test]
+    fn new_pane_rejects_malformed_env() {
+        assert!(try_parse(&["action", "new-pane", "-e", "NOEQUALS"]).is_err());
+    }
+
+    #[test]
+    fn new_tab_accepts_env() {
+        let cli = try_parse(&["action", "new-tab", "-e", "A=1", "-e", "A=2"]).unwrap();
+        match cli.command {
+            Some(Command::Action(action)) => match *action {
+                CliAction::NewTab { env, .. } => assert_eq!(
+                    env,
+                    vec![
+                        ("A".to_owned(), "1".to_owned()),
+                        ("A".to_owned(), "2".to_owned())
+                    ]
+                ),
+                other => panic!("Expected NewTab, got {:?}", other),
+            },
+            other => panic!("Expected Action, got {:?}", other),
+        }
     }
 
     #[test]

@@ -37,6 +37,7 @@ fn new_pane_action(stacked: bool, no_focus: bool, tab_id: Option<usize>) -> CliA
         borderless: None,
         tab_id,
         border_style: None,
+        env: vec![],
     }
 }
 

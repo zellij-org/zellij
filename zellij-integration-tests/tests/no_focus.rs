@@ -37,6 +37,7 @@ fn no_focus_new_pane_action(command: &[&str]) -> CliAction {
         borderless: None,
         tab_id: None,
         border_style: None,
+        env: vec![],
     }
 }
 
@@ -55,6 +56,7 @@ fn no_focus_new_tab_action() -> CliAction {
         block_until_exit_failure: false,
         block_until_exit: false,
         no_focus: true,
+        env: vec![],
     }
 }
 
