@@ -1302,6 +1302,7 @@ impl Action {
                 borderless,
                 border_style,
                 tab_id,
+                env,
             } => {
                 let border_style =
                     BorderStyleOverride::from_optional_cli_string(border_style.as_deref())?;
@@ -1324,6 +1325,7 @@ impl Action {
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir.clone()));
+                let env: BTreeMap<String, String> = env.into_iter().collect();
                 let unblock_condition = unblock_condition.or_else(|| {
                     if block_until_exit_success {
                         Some(UnblockCondition::OnExitSuccess)
@@ -1354,6 +1356,7 @@ impl Action {
                             hold_on_close,
                             hold_on_start,
                             notify,
+                            env: env.clone(),
                             ..Default::default()
                         })
                     } else {
@@ -1394,7 +1397,7 @@ impl Action {
                         near_current_pane,
                         no_focus,
                         tab_id,
-                        env: Default::default(),
+                        env: env.clone(),
                     }])
                 } else if let Some(plugin) = plugin {
                     let plugin = match RunPluginLocation::parse(&plugin, cwd.clone()) {
@@ -1472,6 +1475,7 @@ impl Action {
                         hold_on_close,
                         hold_on_start,
                         notify,
+                        env: env.clone(),
                         ..Default::default()
                     };
                     if floating {
@@ -1487,7 +1491,7 @@ impl Action {
                             near_current_pane,
                             no_focus,
                             tab_id,
-                            env: Default::default(),
+                            env: env.clone(),
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane {
@@ -1498,7 +1502,7 @@ impl Action {
                             pane_id_to_replace,
                             close_replaced_pane,
                             tab_id,
-                            env: Default::default(),
+                            env: env.clone(),
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
@@ -1507,7 +1511,7 @@ impl Action {
                             near_current_pane,
                             no_focus,
                             tab_id,
-                            env: Default::default(),
+                            env: env.clone(),
                         }])
                     } else {
                         Ok(vec![Action::NewTiledPane {
@@ -1519,7 +1523,7 @@ impl Action {
                             borderless,
                             border_style,
                             tab_id,
-                            env: Default::default(),
+                            env: env.clone(),
                         }])
                     }
                 } else {
@@ -1536,7 +1540,7 @@ impl Action {
                             near_current_pane,
                             no_focus,
                             tab_id,
-                            env: Default::default(),
+                            env: env.clone(),
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane {
@@ -1547,7 +1551,7 @@ impl Action {
                             pane_id_to_replace,
                             close_replaced_pane,
                             tab_id,
-                            env: Default::default(),
+                            env: env.clone(),
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
@@ -1556,7 +1560,7 @@ impl Action {
                             near_current_pane,
                             no_focus,
                             tab_id,
-                            env: Default::default(),
+                            env: env.clone(),
                         }])
                     } else {
                         Ok(vec![Action::NewTiledPane {
@@ -1568,7 +1572,7 @@ impl Action {
                             borderless,
                             border_style,
                             tab_id,
-                            env: Default::default(),
+                            env: env.clone(),
                         }])
                     }
                 }
@@ -1722,6 +1726,7 @@ impl Action {
                 block_until_exit_failure,
                 block_until_exit,
                 no_focus,
+                env,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
@@ -1747,6 +1752,15 @@ impl Action {
                     close_on_exit,
                     start_suspended,
                 );
+                let env: BTreeMap<String, String> = env.into_iter().collect();
+                let initial_panes = initial_panes.map(|mut panes| {
+                    for pane in panes.iter_mut() {
+                        if let CommandOrPlugin::Command(run_command_action) = pane {
+                            run_command_action.env = env.clone();
+                        }
+                    }
+                    panes
+                });
                 if let Some(raw_layout) = layout_string {
                     let layout_source_name = "layout-string".to_owned();
                     let path_to_raw_layout = layout_source_name.clone();
@@ -1817,7 +1831,7 @@ impl Action {
                                 cwd: None,
                                 initial_panes: initial_panes.clone(),
                                 first_pane_unblock_condition,
-                                env: Default::default(),
+                                env: env.clone(),
                             });
                         }
                         Ok(new_tab_actions)
@@ -1836,7 +1850,7 @@ impl Action {
                             cwd: None,
                             initial_panes,
                             first_pane_unblock_condition,
-                            env: Default::default(),
+                            env: env.clone(),
                         }])
                     }
                 } else if let Some(layout_path) = layout {
@@ -1935,7 +1949,7 @@ impl Action {
                                 cwd: None, // the cwd is done through the layout
                                 initial_panes: initial_panes.clone(),
                                 first_pane_unblock_condition,
-                                env: Default::default(),
+                                env: env.clone(),
                             });
                         }
                         Ok(new_tab_actions)
@@ -1954,7 +1968,7 @@ impl Action {
                             cwd: None, // the cwd is done through the layout
                             initial_panes,
                             first_pane_unblock_condition,
-                            env: Default::default(),
+                            env: env.clone(),
                         }])
                     }
                 } else {
@@ -1969,7 +1983,7 @@ impl Action {
                         cwd,
                         initial_panes,
                         first_pane_unblock_condition,
-                        env: Default::default(),
+                        env: env.clone(),
                     }])
                 }
             },
@@ -4009,6 +4023,7 @@ mod tests {
             block_until_exit_success: false,
             block_until_exit_failure: false,
             no_focus: false,
+            env: vec![],
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4046,6 +4061,7 @@ mod tests {
             block_until_exit_success: false,
             block_until_exit_failure: false,
             no_focus: false,
+            env: vec![],
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_err());
@@ -4148,6 +4164,7 @@ mod tests {
             tab_id: None,
             border_style: border_style.map(|s| s.to_string()),
             notify: Default::default(),
+            env: vec![],
         }
     }
 
@@ -4307,6 +4324,163 @@ mod tests {
 
     // Tab-targeting for pane creation commands
 
+    fn new_pane_cli(command: Vec<String>, env: Vec<(String, String)>) -> CliAction {
+        CliAction::NewPane {
+            direction: None,
+            command,
+            plugin: None,
+            cwd: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            pane_id: None,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            no_focus: false,
+            borderless: None,
+            tab_id: None,
+            border_style: None,
+            env,
+            notify: Default::default(),
+        }
+    }
+
+    fn env_pairs(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    fn env_map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        env_pairs(pairs).into_iter().collect()
+    }
+
+    fn from_cli(cli_action: CliAction) -> Vec<Action> {
+        Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None).unwrap()
+    }
+
+    #[test]
+    fn new_shell_pane_carries_env_on_action() {
+        let actions = from_cli(new_pane_cli(
+            vec![],
+            env_pairs(&[("A", "1"), ("A", "2"), ("B", "x")]),
+        ));
+        match &actions[0] {
+            Action::NewTiledPane { command, env, .. } => {
+                assert!(command.is_none());
+                assert_eq!(env, &env_map(&[("A", "2"), ("B", "x")]));
+            },
+            other => panic!("Expected NewTiledPane, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn new_command_pane_carries_env_on_action_and_command() {
+        let mut cli = new_pane_cli(vec!["htop".into()], env_pairs(&[("A", "1")]));
+        if let CliAction::NewPane {
+            start_suspended, ..
+        } = &mut cli
+        {
+            *start_suspended = true;
+        }
+        match &from_cli(cli)[0] {
+            Action::NewTiledPane {
+                command: Some(command),
+                env,
+                ..
+            } => {
+                assert_eq!(env, &env_map(&[("A", "1")]));
+                assert_eq!(command.env, env_map(&[("A", "1")]));
+                assert!(command.hold_on_start);
+            },
+            other => panic!("Expected NewTiledPane with command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn new_pane_placement_variants_carry_env() {
+        let expected = env_map(&[("A", "1")]);
+        for (floating, in_place, stacked, blocking) in [
+            (true, false, false, false),
+            (false, true, false, false),
+            (false, false, true, false),
+            (false, false, false, true),
+        ] {
+            let mut cli = new_pane_cli(vec![], env_pairs(&[("A", "1")]));
+            if let CliAction::NewPane {
+                floating: f,
+                in_place: i,
+                stacked: s,
+                blocking: b,
+                ..
+            } = &mut cli
+            {
+                *f = floating;
+                *i = in_place;
+                *s = stacked;
+                *b = blocking;
+            }
+            let env = match from_cli(cli).remove(0) {
+                Action::NewFloatingPane { env, .. }
+                | Action::NewInPlacePane { env, .. }
+                | Action::NewStackedPane { env, .. }
+                | Action::NewBlockingPane { env, .. } => env,
+                other => panic!("unexpected action {:?}", other),
+            };
+            assert_eq!(env, expected);
+        }
+    }
+
+    #[test]
+    fn new_tab_carries_env() {
+        let cli = CliAction::NewTab {
+            name: None,
+            layout: None,
+            layout_string: None,
+            layout_dir: None,
+            cwd: None,
+            initial_command: vec!["htop".into()],
+            initial_plugin: None,
+            close_on_exit: false,
+            start_suspended: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            no_focus: false,
+            env: env_pairs(&[("A", "1")]),
+        };
+        match &from_cli(cli)[0] {
+            Action::NewTab {
+                env,
+                initial_panes: Some(panes),
+                ..
+            } => {
+                assert_eq!(env, &env_map(&[("A", "1")]));
+                match &panes[0] {
+                    CommandOrPlugin::Command(c) => assert_eq!(c.env, env_map(&[("A", "1")])),
+                    other => panic!("expected command, got {:?}", other),
+                }
+            },
+            other => panic!("Expected NewTab, got {:?}", other),
+        }
+    }
+
     #[test]
     fn test_new_pane_tiled_with_tab_id() {
         let cli_action = CliAction::NewPane {
@@ -4340,6 +4514,7 @@ mod tests {
             tab_id: Some(3),
             border_style: None,
             notify: Default::default(),
+            env: vec![],
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4386,6 +4561,7 @@ mod tests {
             tab_id: None,
             border_style: None,
             notify: Default::default(),
+            env: vec![],
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4432,6 +4608,7 @@ mod tests {
             tab_id: None,
             border_style: None,
             notify: Default::default(),
+            env: vec![],
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4480,6 +4657,7 @@ mod tests {
             tab_id: None,
             border_style: None,
             notify: Default::default(),
+            env: vec![],
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_err());
@@ -4519,6 +4697,7 @@ mod tests {
             tab_id: Some(5),
             border_style: None,
             notify: Default::default(),
+            env: vec![],
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4565,6 +4744,7 @@ mod tests {
             tab_id: Some(1),
             border_style: None,
             notify: Default::default(),
+            env: vec![],
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4611,6 +4791,7 @@ mod tests {
             tab_id: Some(2),
             border_style: None,
             notify: Default::default(),
+            env: vec![],
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4723,6 +4904,7 @@ mod tests {
             tab_id: Some(2),
             border_style: None,
             notify: Default::default(),
+            env: vec![],
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4769,6 +4951,7 @@ mod tests {
             tab_id: Some(1),
             border_style: None,
             notify: Default::default(),
+            env: vec![],
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
