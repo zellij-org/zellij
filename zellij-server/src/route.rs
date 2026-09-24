@@ -8,7 +8,7 @@ use crate::{
     os_input_output::ServerOsApi,
     panes::PaneId,
     plugins::PluginInstruction,
-    pty::{ClientTabIndexOrPaneId, PtyInstruction},
+    pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction},
     screen::ScreenInstruction,
     ServerInstruction, SessionMetaData, SessionState,
 };
@@ -26,7 +26,7 @@ use zellij_utils::{
     errors::{prelude::*, ErrorContext},
     input::{
         actions::{Action, SearchDirection, SearchOption},
-        command::TerminalAction,
+        command::{RunCommand, RunCommandAction, TerminalAction},
     },
     ipc::{
         ClientToServerMsg, ExitReason, IpcReceiveError, IpcReceiverWithContext, ServerToClientMsg,
@@ -215,6 +215,35 @@ fn new_pane_routing(
     } else {
         ClientTabIndexOrPaneId::ClientId(client_id)
     }
+}
+
+/// Resolves the terminal to spawn for a new pane: the given command or else the default shell,
+/// with the requested environment variables applied.
+///
+/// When no default shell is configured, `None` normally lets the pty thread pick the user's
+/// shell. If environment variables were requested we must build that shell command here, since
+/// they would otherwise be lost.
+fn terminal_action_with_env(
+    command: Option<RunCommandAction>,
+    default_shell: &Option<TerminalAction>,
+    env: &BTreeMap<String, String>,
+) -> Option<TerminalAction> {
+    let terminal_action = command
+        .map(|cmd| TerminalAction::RunCommand(cmd.into()))
+        .or_else(|| default_shell.clone());
+    if env.is_empty() {
+        return terminal_action;
+    }
+    // same as a configured default shell (see lib.rs), so the pane keeps the shell's own title
+    let mut terminal_action = terminal_action.unwrap_or_else(|| {
+        TerminalAction::RunCommand(RunCommand {
+            command: get_default_shell(),
+            use_terminal_title: true,
+            ..Default::default()
+        })
+    });
+    terminal_action.merge_env(env);
+    Some(terminal_action)
 }
 
 pub(crate) fn route_action(
@@ -705,11 +734,9 @@ pub(crate) fn route_action(
             near_current_pane,
             no_focus,
             tab_id,
-            env: _,
+            env,
         } => {
-            let command = command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let command = terminal_action_with_env(command, &default_shell, &env);
             let set_pane_blocking = true;
 
             let notification_end = if let Some(condition) = unblock_condition {
@@ -825,11 +852,9 @@ pub(crate) fn route_action(
             near_current_pane,
             no_focus,
             tab_id,
-            env: _,
+            env,
         } => {
-            let run_cmd = run_command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let run_cmd = terminal_action_with_env(run_command, &default_shell, &env);
             let client_tab_index_or_paneid =
                 new_pane_routing(no_focus, near_current_pane, tab_id, pane_id, client_id);
             senders
@@ -852,11 +877,9 @@ pub(crate) fn route_action(
             pane_id_to_replace,
             close_replaced_pane,
             tab_id,
-            env: _,
+            env,
         } => {
-            let run_cmd = run_command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let run_cmd = terminal_action_with_env(run_command, &default_shell, &env);
             let explicit_pane_id_to_replace: Option<PaneId> = pane_id_to_replace
                 .and_then(|pane_id_to_replace| pane_id_to_replace.try_into().ok());
             let pane_id = explicit_pane_id_to_replace.or(pane_id);
@@ -891,11 +914,9 @@ pub(crate) fn route_action(
             near_current_pane,
             no_focus,
             tab_id,
-            env: _,
+            env,
         } => {
-            let run_cmd = run_command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let run_cmd = terminal_action_with_env(run_command, &default_shell, &env);
 
             let (pane_placement, client_tab_index_or_paneid) = if let Some(tab_id) = tab_id {
                 (
@@ -955,11 +976,9 @@ pub(crate) fn route_action(
             borderless,
             border_style,
             tab_id,
-            env: _,
+            env,
         } => {
-            let run_cmd = run_command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let run_cmd = terminal_action_with_env(run_command, &default_shell, &env);
             let client_tab_index_or_paneid =
                 new_pane_routing(no_focus, near_current_pane, tab_id, pane_id, client_id);
             senders
@@ -1054,7 +1073,7 @@ pub(crate) fn route_action(
             cwd,
             initial_panes,
             first_pane_unblock_condition,
-            env: _,
+            env,
         } => {
             let shell = default_shell.clone();
             let is_web_client = false; // actions cannot be initiated directly from the web
@@ -1073,6 +1092,7 @@ pub(crate) fn route_action(
             senders
                 .send_to_screen(ScreenInstruction::NewTab(
                     cwd,
+                    env,
                     shell,
                     tab_layout,
                     floating_panes_layout,

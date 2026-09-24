@@ -487,6 +487,7 @@ pub enum ScreenInstruction {
     UndoRenamePane(ClientId, Option<NotificationEnd>),
     NewTab(
         Option<PathBuf>,
+        BTreeMap<String, String>, // env
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
@@ -7176,6 +7177,7 @@ impl Screen {
                 .unwrap_or(false);
             self.bus.senders.send_to_plugin(PluginInstruction::NewTab(
                 None,
+                BTreeMap::new(),
                 default_shell,
                 Some(tiled_panes_layout),
                 floating_panes_layout,
@@ -7257,6 +7259,7 @@ impl Screen {
             .unwrap_or(false);
         self.bus.senders.send_to_plugin(PluginInstruction::NewTab(
             None,
+            BTreeMap::new(),
             default_shell,
             Some(tiled_panes_layout),
             floating_panes_layout,
@@ -10485,6 +10488,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::NewTab(
                 cwd,
+                env,
                 default_shell,
                 layout,
                 floating_panes_layout,
@@ -10524,6 +10528,7 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_plugin(PluginInstruction::NewTab(
                         cwd,
+                        env,
                         default_shell,
                         layout,
                         floating_panes_layout,
@@ -10712,6 +10717,7 @@ pub(crate) fn screen_thread_main(
                                 .senders
                                 .send_to_plugin(PluginInstruction::NewTab(
                                     None,
+                                    BTreeMap::new(),
                                     default_shell,
                                     None,
                                     vec![],
