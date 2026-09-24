@@ -97,6 +97,7 @@ pub enum PluginInstruction {
     UpdateClientVisiblePlugins(HashMap<ClientId, HashSet<PluginId>>),
     NewTab(
         Option<PathBuf>,
+        BTreeMap<String, String>, // env
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
@@ -673,6 +674,7 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::NewTab(
                 cwd,
+                env,
                 terminal_action,
                 mut tab_layout,
                 mut floating_panes_layout,
@@ -774,6 +776,7 @@ pub(crate) fn plugin_thread_main(
                 }
                 drop(bus.senders.send_to_pty(PtyInstruction::NewTab(
                     cwd,
+                    env,
                     terminal_action,
                     tab_layout,
                     floating_panes_layout,
