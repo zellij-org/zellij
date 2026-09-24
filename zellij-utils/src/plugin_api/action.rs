@@ -411,6 +411,7 @@ impl TryFrom<ProtobufAction> for Action {
                             near_current_pane,
                             no_focus: false,
                             tab_id: None,
+                            env: Default::default(),
                         })
                     } else {
                         Ok(Action::NewFloatingPane {
@@ -420,6 +421,7 @@ impl TryFrom<ProtobufAction> for Action {
                             near_current_pane,
                             no_focus: false,
                             tab_id: None,
+                            env: Default::default(),
                         })
                     }
                 },
@@ -446,6 +448,7 @@ impl TryFrom<ProtobufAction> for Action {
                             borderless,
                             border_style,
                             tab_id: None,
+                            env: Default::default(),
                         })
                     } else {
                         Ok(Action::NewTiledPane {
@@ -457,6 +460,7 @@ impl TryFrom<ProtobufAction> for Action {
                             borderless,
                             border_style,
                             tab_id: None,
+                            env: Default::default(),
                         })
                     }
                 },
@@ -585,6 +589,7 @@ impl TryFrom<ProtobufAction> for Action {
                             cwd,
                             initial_panes,
                             first_pane_unblock_condition,
+                            env: Default::default(),
                         })
                     },
                     None => {
@@ -600,6 +605,7 @@ impl TryFrom<ProtobufAction> for Action {
                             cwd: None,
                             initial_panes: None,
                             first_pane_unblock_condition: None,
+                            env: Default::default(),
                         })
                     },
                     _ => Err("Wrong payload for Action::NewTab"),
@@ -1100,6 +1106,7 @@ impl TryFrom<ProtobufAction> for Action {
                     near_current_pane: false,
                     no_focus: false,
                     tab_id: None,
+                    env: Default::default(),
                 }),
             },
             Some(ProtobufActionName::NewBlockingPane) => match protobuf_action.optional_payload {
@@ -1123,6 +1130,7 @@ impl TryFrom<ProtobufAction> for Action {
                         near_current_pane,
                         no_focus: false,
                         tab_id: None,
+                        env: Default::default(),
                     })
                 },
                 _ => Err("Wrong payload for Action::NewBlockingPane"),
@@ -1144,6 +1152,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_id_to_replace,
                             close_replaced_pane,
                             tab_id: None,
+                            env: Default::default(),
                         })
                     } else {
                         Ok(Action::NewInPlacePane {
@@ -1154,6 +1163,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_id_to_replace,
                             close_replaced_pane,
                             tab_id: None,
+                            env: Default::default(),
                         })
                     }
                 },
@@ -1758,6 +1768,7 @@ impl TryFrom<Action> for ProtobufAction {
                 cwd,
                 initial_panes,
                 first_pane_unblock_condition,
+                env: _,
             } => {
                 // Always send payload (even if all fields are default)
                 let protobuf_tiled_layout = tiled_layout
@@ -3710,6 +3721,7 @@ mod tests {
                 ..Default::default()
             }),
             tab_id: None,
+            env: Default::default(),
         };
         let protobuf: ProtobufAction = original.clone().try_into().expect("encode");
         let decoded: Action = protobuf.try_into().expect("decode");

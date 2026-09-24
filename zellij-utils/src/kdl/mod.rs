@@ -595,6 +595,7 @@ impl Action {
                         near_current_pane: false,
                         no_focus: false,
                         tab_id: None,
+                        env: Default::default(),
                     });
                 } else {
                     let direction = Direction::from_str(string.as_str()).map_err(|_| {
@@ -835,6 +836,7 @@ impl Action {
                 cwd,
                 initial_panes: _,
                 first_pane_unblock_condition: _,
+                env: _,
             } => {
                 let mut node = KdlNode::new("NewTab");
                 let mut children = KdlDocument::new();
@@ -1886,6 +1888,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         cwd: None,
                         initial_panes: None,
                         first_pane_unblock_condition: None,
+                        env: Default::default(),
                     });
                 }
 
@@ -1957,6 +1960,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         cwd,
                         initial_panes: None,
                         first_pane_unblock_condition: None,
+                        env: Default::default(),
                     })
                 } else {
                     let (layout, floating_panes_layout) = layout.new_tab();
@@ -1972,6 +1976,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         cwd,
                         initial_panes: None,
                         first_pane_unblock_condition: None,
+                        env: Default::default(),
                     })
                 }
             },
@@ -2186,6 +2191,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         near_current_pane: false,
                         no_focus: false,
                         tab_id: None,
+                        env: Default::default(),
                     })
                 } else if in_place {
                     Ok(Action::NewInPlacePane {
@@ -2196,6 +2202,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         pane_id_to_replace: None,
                         close_replaced_pane,
                         tab_id: None,
+                        env: Default::default(),
                     })
                 } else if stacked {
                     Ok(Action::NewStackedPane {
@@ -2204,6 +2211,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         near_current_pane: false,
                         no_focus: false,
                         tab_id: None,
+                        env: Default::default(),
                     })
                 } else {
                     Ok(Action::NewTiledPane {
@@ -2215,6 +2223,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         borderless: None,
                         border_style,
                         tab_id: None,
+                        env: Default::default(),
                     })
                 }
             },
@@ -2449,6 +2458,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 near_current_pane: false,
                 no_focus: false,
                 tab_id: None,
+                env: Default::default(),
             }),
             "CloseFocusByPaneId"
             | "ToggleFocusFullscreenByPaneId"
@@ -9288,6 +9298,7 @@ fn context_menu_parses_explicit_targets_and_new_by_id_actions() {
                 near_current_pane: false,
                 no_focus: false,
                 tab_id: None,
+                env: Default::default(),
             }
             .into()],
             vec![ContextMenuAction::ClickedTab(ClickedTabAction::Move(

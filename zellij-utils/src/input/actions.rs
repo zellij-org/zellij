@@ -286,6 +286,7 @@ pub enum Action {
         near_current_pane: bool,
         no_focus: bool,
         tab_id: Option<usize>,
+        env: BTreeMap<String, String>,
     },
     /// Open the file in a new pane using the default editor
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -310,6 +311,7 @@ pub enum Action {
         near_current_pane: bool,
         no_focus: bool,
         tab_id: Option<usize>,
+        env: BTreeMap<String, String>,
     },
     /// Open a new tiled (embedded, non-floating) pane
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
@@ -322,6 +324,7 @@ pub enum Action {
         borderless: Option<bool>,
         border_style: Option<BorderStyleOverride>,
         tab_id: Option<usize>,
+        env: BTreeMap<String, String>,
     },
     /// Open a new pane in place of the focused one, suppressing it instead
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
@@ -333,6 +336,7 @@ pub enum Action {
         pane_id_to_replace: Option<PaneId>,
         close_replaced_pane: bool,
         tab_id: Option<usize>,
+        env: BTreeMap<String, String>,
     },
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
     NewStackedPane {
@@ -341,6 +345,7 @@ pub enum Action {
         near_current_pane: bool,
         no_focus: bool,
         tab_id: Option<usize>,
+        env: BTreeMap<String, String>,
     },
     /// Embed focused pane in tab if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
@@ -375,6 +380,7 @@ pub enum Action {
         cwd: Option<PathBuf>,
         initial_panes: Option<Vec<CommandOrPlugin>>,
         first_pane_unblock_condition: Option<UnblockCondition>,
+        env: BTreeMap<String, String>,
     },
     /// Do nothing.
     NoOp,
@@ -1327,6 +1333,7 @@ impl Action {
                         near_current_pane,
                         no_focus,
                         tab_id,
+                        env: Default::default(),
                     }])
                 } else if let Some(plugin) = plugin {
                     let plugin = match RunPluginLocation::parse(&plugin, cwd.clone()) {
@@ -1418,6 +1425,7 @@ impl Action {
                             near_current_pane,
                             no_focus,
                             tab_id,
+                            env: Default::default(),
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane {
@@ -1428,6 +1436,7 @@ impl Action {
                             pane_id_to_replace,
                             close_replaced_pane,
                             tab_id,
+                            env: Default::default(),
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
@@ -1436,6 +1445,7 @@ impl Action {
                             near_current_pane,
                             no_focus,
                             tab_id,
+                            env: Default::default(),
                         }])
                     } else {
                         Ok(vec![Action::NewTiledPane {
@@ -1447,6 +1457,7 @@ impl Action {
                             borderless,
                             border_style,
                             tab_id,
+                            env: Default::default(),
                         }])
                     }
                 } else {
@@ -1463,6 +1474,7 @@ impl Action {
                             near_current_pane,
                             no_focus,
                             tab_id,
+                            env: Default::default(),
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane {
@@ -1473,6 +1485,7 @@ impl Action {
                             pane_id_to_replace,
                             close_replaced_pane,
                             tab_id,
+                            env: Default::default(),
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
@@ -1481,6 +1494,7 @@ impl Action {
                             near_current_pane,
                             no_focus,
                             tab_id,
+                            env: Default::default(),
                         }])
                     } else {
                         Ok(vec![Action::NewTiledPane {
@@ -1492,6 +1506,7 @@ impl Action {
                             borderless,
                             border_style,
                             tab_id,
+                            env: Default::default(),
                         }])
                     }
                 }
@@ -1740,6 +1755,7 @@ impl Action {
                                 cwd: None,
                                 initial_panes: initial_panes.clone(),
                                 first_pane_unblock_condition,
+                                env: Default::default(),
                             });
                         }
                         Ok(new_tab_actions)
@@ -1758,6 +1774,7 @@ impl Action {
                             cwd: None,
                             initial_panes,
                             first_pane_unblock_condition,
+                            env: Default::default(),
                         }])
                     }
                 } else if let Some(layout_path) = layout {
@@ -1856,6 +1873,7 @@ impl Action {
                                 cwd: None, // the cwd is done through the layout
                                 initial_panes: initial_panes.clone(),
                                 first_pane_unblock_condition,
+                                env: Default::default(),
                             });
                         }
                         Ok(new_tab_actions)
@@ -1874,6 +1892,7 @@ impl Action {
                             cwd: None, // the cwd is done through the layout
                             initial_panes,
                             first_pane_unblock_condition,
+                            env: Default::default(),
                         }])
                     }
                 } else {
@@ -1888,6 +1907,7 @@ impl Action {
                         cwd,
                         initial_panes,
                         first_pane_unblock_condition,
+                        env: Default::default(),
                     }])
                 }
             },

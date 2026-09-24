@@ -1017,6 +1017,7 @@ Config {
                     near_current_pane: false,
                     no_focus: false,
                     tab_id: None,
+                    env: {},
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -1391,6 +1392,7 @@ Config {
                     near_current_pane: false,
                     no_focus: false,
                     tab_id: None,
+                    env: {},
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -1898,6 +1900,7 @@ Config {
                     cwd: None,
                     initial_panes: None,
                     first_pane_unblock_condition: None,
+                    env: {},
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -5767,6 +5770,7 @@ Config {
                     cwd: None,
                     initial_panes: None,
                     first_pane_unblock_condition: None,
+                    env: {},
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -6415,6 +6419,7 @@ Config {
                             near_current_pane: false,
                             no_focus: false,
                             tab_id: None,
+                            env: {},
                         },
                     ),
                 ],
@@ -6477,6 +6482,7 @@ Config {
                             cwd: None,
                             initial_panes: None,
                             first_pane_unblock_condition: None,
+                            env: {},
                         },
                     ),
                 ],
@@ -6546,6 +6552,7 @@ Config {
                             cwd: None,
                             initial_panes: None,
                             first_pane_unblock_condition: None,
+                            env: {},
                         },
                     ),
                 ],

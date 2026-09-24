@@ -468,6 +468,7 @@ impl KeybindProcessor {
                                 cwd: None,
                                 initial_panes: _,
                                 first_pane_unblock_condition: _,
+                                env: _,
                             }
                         )
                     },
