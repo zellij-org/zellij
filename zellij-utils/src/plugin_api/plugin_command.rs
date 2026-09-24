@@ -45,7 +45,7 @@ pub use super::generated_api::api::{
         GenerateRandomNameResponse as ProtobufGenerateRandomNameResponse,
         GenerateWebLoginTokenPayload, GetFocusedPaneInfoPayload,
         GetFocusedPaneInfoResponse as ProtobufGetFocusedPaneInfoResponse, GetLayoutDirPayload,
-        GetLayoutDirResponse as ProtobufGetLayoutDirResponse,
+        GetLayoutDirResponse as ProtobufGetLayoutDirResponse, GetNestedSessionKeybindsPayload,
         GetPaneCwdPayload as ProtobufGetPaneCwdPayload,
         GetPaneCwdResponse as ProtobufGetPaneCwdResponse, GetPaneInfoPayload,
         GetPaneInfoResponse as ProtobufGetPaneInfoResponse, GetPanePidPayload,
@@ -2521,6 +2521,16 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::CurrentSessionLastSavedTime) => {
                 Ok(PluginCommand::CurrentSessionLastSavedTime)
             },
+            Some(CommandName::GetNestedSessionKeybinds) => match protobuf_plugin_command.payload {
+                Some(Payload::GetNestedSessionKeybindsPayload(payload)) => {
+                    let pane_id = payload
+                        .pane_id
+                        .ok_or("Malformed pane_id for GetNestedSessionKeybinds")
+                        .and_then(|pane_id| pane_id.try_into())?;
+                    Ok(PluginCommand::GetNestedSessionKeybinds(pane_id))
+                },
+                _ => Err("Malformed payload for GetNestedSessionKeybinds"),
+            },
             Some(CommandName::GetPaneInfo) => match protobuf_plugin_command.payload {
                 Some(Payload::GetPaneInfoPayload(get_pane_info_payload)) => {
                     let pane_id = get_pane_info_payload
@@ -4323,6 +4333,17 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     CurrentSessionLastSavedTimePayload {},
                 )),
             }),
+            PluginCommand::GetNestedSessionKeybinds(pane_id) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::GetNestedSessionKeybinds as i32,
+                    payload: Some(Payload::GetNestedSessionKeybindsPayload(
+                        GetNestedSessionKeybindsPayload {
+                            pane_id: Some(protobuf_pane_id),
+                        },
+                    )),
+                })
+            },
             PluginCommand::GetPaneInfo(pane_id) => {
                 let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
                 Ok(ProtobufPluginCommand {

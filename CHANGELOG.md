@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: upstream Yazelix graphics and stacked-pane fixes, named swap-layout selection and configurable pane-border styles (https://github.com/zellij-org/zellij/pull/5630)
 * feat: distributions -> allow using Zellij as a library (https://github.com/zellij-org/zellij/pull/5630)
 * fix: do not reuse client ids (https://github.com/zellij-org/zellij/pull/5630)
+* feat: nested sessions input-mode + keybindings reporting (https://github.com/zellij-org/zellij/issues/5561)
 
 ## [0.45.1] - 2026-08-28
 * fix: nested-session detection over SSH (https://github.com/zellij-org/zellij/pull/5522)

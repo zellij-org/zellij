@@ -8,7 +8,10 @@ use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
-use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
+use zellij_utils::plugin_api::event::{
+    nested_session_keybinds_response_from_protobuf, ProtobufNestedSessionKeybindsResponse,
+    ProtobufPaneScrollbackResponse,
+};
 use zellij_utils::plugin_api::generated_api::api::plugin_command::{
     hide_floating_panes_response, save_session_response, show_floating_panes_response,
 };
@@ -1303,6 +1306,17 @@ pub fn focus_host_session() {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+}
+
+pub fn get_nested_session_keybinds(pane_id: PaneId) -> NestedSessionKeybindsResponse {
+    let plugin_command = PluginCommand::GetNestedSessionKeybinds(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response_bytes = bytes_from_stdin().unwrap();
+    let protobuf_response =
+        ProtobufNestedSessionKeybindsResponse::decode(response_bytes.as_slice()).unwrap();
+    nested_session_keybinds_response_from_protobuf(protobuf_response).unwrap()
 }
 
 /// Toggle the UI pane frames on or off

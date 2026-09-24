@@ -10,7 +10,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -100,6 +100,63 @@ pub mod event {
         HintTextPayload(super::HintTextPayload),
         #[prost(message, tag="43")]
         ActivePaneScrollPayload(super::ActivePaneScrollPayload),
+        #[prost(message, tag="44")]
+        NestedSessionModeUpdatePayload(super::NestedSessionModeUpdatePayload),
+        #[prost(message, tag="45")]
+        NestedSessionEndedPayload(super::NestedSessionEndedPayload),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NestedSessionModeUpdatePayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(string, repeated, tag="2")]
+    pub session_path: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(enumeration="super::input_mode::InputMode", tag="3")]
+    pub mode: i32,
+    #[prost(enumeration="super::input_mode::InputMode", optional, tag="4")]
+    pub base_mode: ::core::option::Option<i32>,
+    #[prost(uint64, tag="5")]
+    pub keybinds_generation: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NestedSessionEndedPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(enumeration="NestedSessionEndReason", tag="2")]
+    pub reason: i32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NestedSessionKeybindsResult {
+    #[prost(string, repeated, tag="1")]
+    pub session_path: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(enumeration="super::input_mode::InputMode", tag="2")]
+    pub mode: i32,
+    #[prost(enumeration="super::input_mode::InputMode", optional, tag="3")]
+    pub base_mode: ::core::option::Option<i32>,
+    #[prost(message, repeated, tag="4")]
+    pub keybinds: ::prost::alloc::vec::Vec<InputModeKeybinds>,
+    #[prost(uint64, tag="5")]
+    pub keybinds_generation: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NestedSessionKeybindsResponse {
+    #[prost(oneof="nested_session_keybinds_response::Response", tags="1, 2")]
+    pub response: ::core::option::Option<nested_session_keybinds_response::Response>,
+}
+/// Nested message and enum types in `NestedSessionKeybindsResponse`.
+pub mod nested_session_keybinds_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Response {
+        #[prost(message, tag="1")]
+        Ok(super::NestedSessionKeybindsResult),
+        #[prost(enumeration="super::NestedSessionKeybindsError", tag="2")]
+        Err(i32),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -616,6 +673,8 @@ pub struct PaneInfo {
     pub default_fg: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="25")]
     pub default_bg: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="26")]
+    pub nested_session_name: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -898,6 +957,8 @@ pub enum EventType {
     SoftKeyboardVisibilityChanged = 47,
     HintText = 48,
     ActivePaneScroll = 49,
+    NestedSessionModeUpdate = 50,
+    NestedSessionEnded = 51,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -954,6 +1015,8 @@ impl EventType {
             EventType::SoftKeyboardVisibilityChanged => "SoftKeyboardVisibilityChanged",
             EventType::HintText => "HintText",
             EventType::ActivePaneScroll => "ActivePaneScroll",
+            EventType::NestedSessionModeUpdate => "NestedSessionModeUpdate",
+            EventType::NestedSessionEnded => "NestedSessionEnded",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1007,6 +1070,72 @@ impl EventType {
             "SoftKeyboardVisibilityChanged" => Some(Self::SoftKeyboardVisibilityChanged),
             "HintText" => Some(Self::HintText),
             "ActivePaneScroll" => Some(Self::ActivePaneScroll),
+            "NestedSessionModeUpdate" => Some(Self::NestedSessionModeUpdate),
+            "NestedSessionEnded" => Some(Self::NestedSessionEnded),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum NestedSessionEndReason {
+    NestedSessionExited = 0,
+    NestedSessionUnresponsive = 1,
+}
+impl NestedSessionEndReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            NestedSessionEndReason::NestedSessionExited => "NestedSessionExited",
+            NestedSessionEndReason::NestedSessionUnresponsive => "NestedSessionUnresponsive",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "NestedSessionExited" => Some(Self::NestedSessionExited),
+            "NestedSessionUnresponsive" => Some(Self::NestedSessionUnresponsive),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum NestedSessionKeybindsError {
+    NestedKeybindsNotANestedSession = 0,
+    NestedKeybindsNotSupported = 1,
+    NestedKeybindsGuestUnresponsive = 2,
+    NestedKeybindsGuestGone = 3,
+    NestedKeybindsTooLarge = 4,
+    NestedKeybindsTimeout = 5,
+}
+impl NestedSessionKeybindsError {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            NestedSessionKeybindsError::NestedKeybindsNotANestedSession => "NestedKeybindsNotANestedSession",
+            NestedSessionKeybindsError::NestedKeybindsNotSupported => "NestedKeybindsNotSupported",
+            NestedSessionKeybindsError::NestedKeybindsGuestUnresponsive => "NestedKeybindsGuestUnresponsive",
+            NestedSessionKeybindsError::NestedKeybindsGuestGone => "NestedKeybindsGuestGone",
+            NestedSessionKeybindsError::NestedKeybindsTooLarge => "NestedKeybindsTooLarge",
+            NestedSessionKeybindsError::NestedKeybindsTimeout => "NestedKeybindsTimeout",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "NestedKeybindsNotANestedSession" => Some(Self::NestedKeybindsNotANestedSession),
+            "NestedKeybindsNotSupported" => Some(Self::NestedKeybindsNotSupported),
+            "NestedKeybindsGuestUnresponsive" => Some(Self::NestedKeybindsGuestUnresponsive),
+            "NestedKeybindsGuestGone" => Some(Self::NestedKeybindsGuestGone),
+            "NestedKeybindsTooLarge" => Some(Self::NestedKeybindsTooLarge),
+            "NestedKeybindsTimeout" => Some(Self::NestedKeybindsTimeout),
             _ => None,
         }
     }

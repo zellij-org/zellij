@@ -8244,6 +8244,9 @@ pub fn pane_info_for_pane(
     let (default_fg, default_bg) = pane.get_pane_default_colors();
     pane_info.default_fg = default_fg;
     pane_info.default_bg = default_bg;
+    if pane.is_nested_guest() {
+        pane_info.nested_session_name = pane.guest_session_name();
+    }
 
     match pane_id {
         PaneId::Terminal(terminal_id) => {

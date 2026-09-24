@@ -324,6 +324,7 @@ pub enum ScreenContext {
     NestedSessionMessageFromPane,
     NestedGuestPingTick,
     NestedSessionMessageFromHost,
+    GetNestedSessionKeybinds,
     GuestModalChoice,
     ForwardedReplyFromHost,
     ResumePaneAfterForward,

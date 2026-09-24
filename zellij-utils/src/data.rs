@@ -1047,7 +1047,63 @@ pub enum Event {
     SoftKeyboardVisibilityChanged(bool),
     HintText(BTreeMap<usize, StyledText>),
     ActivePaneScroll(Option<(usize, usize)>),
+    NestedSessionModeUpdate {
+        pane_id: PaneId,
+        session_path: Vec<String>,
+        mode: InputMode,
+        base_mode: Option<InputMode>,
+        keybinds_generation: u64,
+    },
+    NestedSessionEnded {
+        pane_id: PaneId,
+        reason: NestedSessionEndReason,
+    },
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NestedSessionEndReason {
+    Exited,
+    Unresponsive,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NestedSessionKeybinds {
+    pub session_path: Vec<String>,
+    pub mode: InputMode,
+    pub base_mode: Option<InputMode>,
+    pub keybinds: KeybindsVec,
+    pub keybinds_generation: u64,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NestedSessionKeybindsError {
+    NotANestedSession,
+    NotSupported,
+    GuestUnresponsive,
+    GuestGone,
+    TooLarge,
+    Timeout,
+}
+
+impl fmt::Display for NestedSessionKeybindsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let description = match self {
+            NestedSessionKeybindsError::NotANestedSession => "no nested session in this pane",
+            NestedSessionKeybindsError::NotSupported => {
+                "the nested session cannot report its keybindings"
+            },
+            NestedSessionKeybindsError::GuestUnresponsive => "the nested session is not responding",
+            NestedSessionKeybindsError::GuestGone => "the nested session has ended",
+            NestedSessionKeybindsError::TooLarge => {
+                "the nested session's keybindings are too large to send"
+            },
+            NestedSessionKeybindsError::Timeout => "the nested session did not answer in time",
+        };
+        write!(f, "{}", description)
+    }
+}
+
+pub type NestedSessionKeybindsResponse = Result<NestedSessionKeybinds, NestedSessionKeybindsError>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum HostTerminalThemeMode {
@@ -2621,6 +2677,7 @@ pub struct PaneInfo {
     pub default_fg: Option<String>,
     /// The default background color of this pane, if set (e.g. "#001a3a")
     pub default_bg: Option<String>,
+    pub nested_session_name: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -4003,6 +4060,7 @@ pub enum PluginCommand {
     DeleteAllDeadSessionsAndReply,     // no payload; sends a response back
     SetSoftKeyboard(bool),
     FocusHostSession,
+    GetNestedSessionKeybinds(PaneId),
 }
 
 // Response type for plugin API methods that open a pane in a new tab

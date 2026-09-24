@@ -13299,3 +13299,355 @@ pub fn cli_pipe_is_released_when_plugin_panics_while_handling_it() {
          otherwise the `zellij pipe` client stays blocked until the plugin is unloaded"
     );
 }
+
+enum NestedKeybindsAnswer {
+    Reply(zellij_utils::data::NestedSessionKeybindsResponse),
+    NeverAnswer,
+}
+
+struct NestedKeybindsScenario {
+    rendered: Vec<(u32, String)>,
+    keybinds_requests: usize,
+    request_to_result: Option<std::time::Duration>,
+}
+
+fn run_nested_keybinds_scenario(
+    plugin_configurations: Vec<BTreeMap<String, String>>,
+    answer: NestedKeybindsAnswer,
+    events_to_send: Vec<Event>,
+    result_marker: &'static str,
+) -> NestedKeybindsScenario {
+    let temp_folder = tempdir().unwrap();
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) =
+        create_plugin_thread(Some(plugin_host_folder), None);
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let rendered = Arc::new(Mutex::new(vec![]));
+    let keybinds_requests = Arc::new(Mutex::new(0));
+    let request_to_result = Arc::new(Mutex::new(None));
+    let screen_thread = std::thread::Builder::new()
+        .name("fake_screen_thread".to_string())
+        .spawn({
+            let rendered = rendered.clone();
+            let keybinds_requests = keybinds_requests.clone();
+            let request_to_result = request_to_result.clone();
+            let cache_path = cache_path.clone();
+            let plugin_thread_sender = plugin_thread_sender.clone();
+            move || {
+                let mut unanswered_channels = vec![];
+                let mut request_received_at = None;
+                loop {
+                    let (event, _err_ctx) = screen_receiver
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    match event {
+                        ScreenInstruction::RequestPluginPermissions(
+                            plugin_id,
+                            plugin_permission,
+                        ) => {
+                            let _ = plugin_thread_sender.send(
+                                PluginInstruction::PermissionRequestResult(
+                                    plugin_id,
+                                    Some(client_id),
+                                    plugin_permission.permissions,
+                                    PermissionStatus::Granted,
+                                    Some(cache_path.clone()),
+                                ),
+                            );
+                        },
+                        ScreenInstruction::GetNestedSessionKeybinds {
+                            response_channel, ..
+                        } => {
+                            *keybinds_requests.lock().unwrap() += 1;
+                            request_received_at = Some(std::time::Instant::now());
+                            match &answer {
+                                NestedKeybindsAnswer::Reply(response) => {
+                                    let _ = response_channel.send(response.clone());
+                                },
+                                NestedKeybindsAnswer::NeverAnswer => {
+                                    unanswered_channels.push(response_channel);
+                                },
+                            }
+                        },
+                        ScreenInstruction::PluginBytes(plugin_render_assets) => {
+                            for asset in plugin_render_assets {
+                                let bytes = String::from_utf8_lossy(&asset.bytes).to_string();
+                                if bytes.contains(result_marker) {
+                                    if let Some(received_at) = request_received_at {
+                                        request_to_result
+                                            .lock()
+                                            .unwrap()
+                                            .get_or_insert(received_at.elapsed());
+                                    }
+                                }
+                                rendered.lock().unwrap().push((asset.plugin_id, bytes));
+                            }
+                        },
+                        ScreenInstruction::Exit => {
+                            break;
+                        },
+                        _ => {},
+                    }
+                }
+                drop(unanswered_channels);
+            }
+        })
+        .unwrap();
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    for (index, configuration) in plugin_configurations.into_iter().enumerate() {
+        let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+            _allow_exec_host_cmd: false,
+            location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+            configuration: PluginUserConfiguration::new(configuration),
+            ..Default::default()
+        });
+        let _ = plugin_thread_sender.send(PluginInstruction::Load(
+            Some(false),
+            false,
+            false,
+            Some(format!("plugin_{}", index)),
+            run_plugin,
+            Some(1),
+            None,
+            client_id,
+            size,
+            None,
+            None,
+            false,
+            None,
+            None,
+            None,
+        ));
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    for event in events_to_send {
+        let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+            None,
+            Some(client_id),
+            event,
+        )]));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(2000));
+    teardown();
+    screen_thread.join().unwrap();
+
+    let rendered = rendered.lock().unwrap().clone();
+    let keybinds_requests = *keybinds_requests.lock().unwrap();
+    let request_to_result = *request_to_result.lock().unwrap();
+    NestedKeybindsScenario {
+        rendered,
+        keybinds_requests,
+        request_to_result,
+    }
+}
+
+fn nested_keybinds_key() -> Event {
+    Event::Key(
+        KeyWithModifier::new(BareKey::Char('m'))
+            .with_ctrl_modifier()
+            .with_alt_modifier(),
+    )
+}
+
+fn sample_nested_session_keybinds() -> zellij_utils::data::NestedSessionKeybinds {
+    zellij_utils::data::NestedSessionKeybinds {
+        session_path: vec!["middle".to_owned(), "inner".to_owned()],
+        mode: InputMode::Pane,
+        base_mode: Some(InputMode::Normal),
+        keybinds: vec![
+            (
+                InputMode::Normal,
+                vec![(
+                    KeyWithModifier::new(BareKey::Char('p')).with_ctrl_modifier(),
+                    vec![Action::SwitchToMode {
+                        input_mode: InputMode::Pane,
+                    }],
+                )],
+            ),
+            (
+                InputMode::Pane,
+                vec![
+                    (
+                        KeyWithModifier::new(BareKey::Char('x')),
+                        vec![Action::CloseFocus],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Esc),
+                        vec![Action::SwitchToMode {
+                            input_mode: InputMode::Normal,
+                        }],
+                    ),
+                ],
+            ),
+        ],
+        keybinds_generation: 7,
+    }
+}
+
+#[test]
+#[ignore]
+pub fn get_nested_session_keybinds_returns_the_answer_to_the_plugin() {
+    let scenario = run_nested_keybinds_scenario(
+        vec![BTreeMap::new()],
+        NestedKeybindsAnswer::Reply(Ok(sample_nested_session_keybinds())),
+        vec![nested_keybinds_key()],
+        "Nested keybinds",
+    );
+    assert_eq!(scenario.keybinds_requests, 1);
+    assert!(
+        scenario.rendered.iter().any(|(_, bytes)| bytes.contains(
+            "Nested keybinds ok: path=[\"middle\", \"inner\"], mode=Pane, base_mode=Some(Normal), generation=7, bindings=3"
+        )),
+        "expected the plugin to render the answer, rendered: {:?}",
+        scenario.rendered
+    );
+}
+
+#[test]
+#[ignore]
+pub fn get_nested_session_keybinds_times_out_when_the_guest_never_answers() {
+    let scenario = run_nested_keybinds_scenario(
+        vec![BTreeMap::new()],
+        NestedKeybindsAnswer::NeverAnswer,
+        vec![nested_keybinds_key()],
+        "Nested keybinds",
+    );
+    assert_eq!(scenario.keybinds_requests, 1);
+    assert!(
+        scenario
+            .rendered
+            .iter()
+            .any(|(_, bytes)| bytes.contains("Nested keybinds error: Timeout")),
+        "expected the plugin to receive a timeout, rendered: {:?}",
+        scenario.rendered
+    );
+    let waited = scenario
+        .request_to_result
+        .expect("the plugin never rendered its result");
+    assert!(
+        waited >= std::time::Duration::from_millis(900),
+        "the plugin gave up after {:?}, before the one second timeout",
+        waited
+    );
+}
+
+#[test]
+#[ignore]
+pub fn get_nested_session_keybinds_passes_errors_to_the_plugin() {
+    let scenario = run_nested_keybinds_scenario(
+        vec![BTreeMap::new()],
+        NestedKeybindsAnswer::Reply(Err(
+            zellij_utils::data::NestedSessionKeybindsError::GuestGone,
+        )),
+        vec![nested_keybinds_key()],
+        "Nested keybinds",
+    );
+    assert_eq!(scenario.keybinds_requests, 1);
+    assert!(
+        scenario
+            .rendered
+            .iter()
+            .any(|(_, bytes)| bytes.contains("Nested keybinds error: GuestGone")),
+        "expected the plugin to receive GuestGone, rendered: {:?}",
+        scenario.rendered
+    );
+}
+
+#[test]
+#[ignore]
+pub fn get_nested_session_keybinds_answers_only_the_plugin_that_asked() {
+    let asking_plugin = BTreeMap::new();
+    let mut other_plugin = BTreeMap::new();
+    other_plugin.insert("skip_nested_keybinds_request".to_owned(), "true".to_owned());
+    other_plugin.insert(
+        "subscribe_nested_session_events".to_owned(),
+        "true".to_owned(),
+    );
+    let scenario = run_nested_keybinds_scenario(
+        vec![asking_plugin, other_plugin],
+        NestedKeybindsAnswer::Reply(Ok(sample_nested_session_keybinds())),
+        vec![nested_keybinds_key()],
+        "Nested keybinds",
+    );
+    assert_eq!(scenario.keybinds_requests, 1);
+    let rendering_plugins: std::collections::HashSet<u32> = scenario
+        .rendered
+        .iter()
+        .map(|(plugin_id, _)| *plugin_id)
+        .collect();
+    assert_eq!(
+        rendering_plugins.len(),
+        2,
+        "expected both plugins to render, rendered: {:?}",
+        scenario.rendered
+    );
+    let plugins_that_got_the_answer: std::collections::HashSet<u32> = scenario
+        .rendered
+        .iter()
+        .filter(|(_, bytes)| bytes.contains("Nested keybinds ok"))
+        .map(|(plugin_id, _)| *plugin_id)
+        .collect();
+    assert_eq!(
+        plugins_that_got_the_answer.len(),
+        1,
+        "expected exactly one plugin to see the answer, rendered: {:?}",
+        scenario.rendered
+    );
+    assert!(
+        !scenario
+            .rendered
+            .iter()
+            .any(|(_, bytes)| bytes.contains("Nested mode update")
+                || bytes.contains("NestedSession")),
+        "no nested session event should reach the plugin that did not ask, rendered: {:?}",
+        scenario.rendered
+    );
+}
+
+#[test]
+#[ignore]
+pub fn nested_session_events_reach_subscribed_plugins() {
+    let mut subscribed = BTreeMap::new();
+    subscribed.insert(
+        "subscribe_nested_session_events".to_owned(),
+        "true".to_owned(),
+    );
+    let scenario = run_nested_keybinds_scenario(
+        vec![subscribed],
+        NestedKeybindsAnswer::NeverAnswer,
+        vec![
+            Event::NestedSessionModeUpdate {
+                pane_id: zellij_utils::data::PaneId::Terminal(1),
+                session_path: vec!["middle".to_owned(), "inner".to_owned()],
+                mode: InputMode::Locked,
+                base_mode: Some(InputMode::Normal),
+                keybinds_generation: 3,
+            },
+            Event::NestedSessionEnded {
+                pane_id: zellij_utils::data::PaneId::Terminal(1),
+                reason: zellij_utils::data::NestedSessionEndReason::Unresponsive,
+            },
+        ],
+        "Nested",
+    );
+    assert_eq!(scenario.keybinds_requests, 0);
+    assert!(
+        scenario.rendered.iter().any(|(_, bytes)| bytes.contains(
+            "Nested mode update: pane=Terminal(1), path=[\"middle\", \"inner\"], mode=Locked, generation=3"
+        )),
+        "expected the mode update to be rendered, rendered: {:?}",
+        scenario.rendered
+    );
+    assert!(
+        scenario.rendered.iter().any(|(_, bytes)| bytes
+            .contains("Nested session ended: pane=Terminal(1), reason=Unresponsive")),
+        "expected the ended event to be rendered, rendered: {:?}",
+        scenario.rendered
+    );
+}
