@@ -2576,3 +2576,24 @@ fn tiled_pane_still_rejects_zero_percent() {
     let result = SplitSize::from_str("1%");
     assert!(result.is_ok());
 }
+
+#[test]
+fn run_merge_env_only_affects_command() {
+    use crate::input::command::RunCommand;
+    let env: BTreeMap<String, String> = [("FOO".to_string(), "bar".to_string())].into();
+
+    let mut command = Run::Command(RunCommand::new(PathBuf::from("htop")));
+    command.merge_env(&env);
+    match &command {
+        Run::Command(c) => assert_eq!(c.env, env),
+        _ => panic!("expected Run::Command"),
+    }
+
+    let mut cwd = Run::Cwd(PathBuf::from("/tmp"));
+    cwd.merge_env(&env);
+    assert_eq!(cwd, Run::Cwd(PathBuf::from("/tmp")));
+
+    let mut edit = Run::EditFile(PathBuf::from("f"), None, None);
+    edit.merge_env(&env);
+    assert_eq!(edit, Run::EditFile(PathBuf::from("f"), None, None));
+}

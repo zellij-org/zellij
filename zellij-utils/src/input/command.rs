@@ -1,6 +1,7 @@
 //! Trigger a command
 use crate::data::{Direction, OriginatingPlugin};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
@@ -10,6 +11,11 @@ pub enum TerminalAction {
 }
 
 impl TerminalAction {
+    pub fn merge_env(&mut self, env: &BTreeMap<String, String>) {
+        if let TerminalAction::RunCommand(run_command) = self {
+            run_command.merge_env(env);
+        }
+    }
     pub fn change_cwd(&mut self, new_cwd: PathBuf) {
         match self {
             TerminalAction::OpenFile(open_file_payload) => {
@@ -72,6 +78,8 @@ pub struct RunCommand {
     pub originating_plugin: Option<OriginatingPlugin>,
     #[serde(default)]
     pub use_terminal_title: bool,
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
 }
 
 impl std::fmt::Display for RunCommand {
@@ -109,6 +117,8 @@ pub struct RunCommandAction {
     pub originating_plugin: Option<OriginatingPlugin>,
     #[serde(default)]
     pub use_terminal_title: bool,
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
 }
 
 impl From<RunCommandAction> for RunCommand {
@@ -121,6 +131,7 @@ impl From<RunCommandAction> for RunCommand {
             hold_on_start: action.hold_on_start,
             originating_plugin: action.originating_plugin,
             use_terminal_title: action.use_terminal_title,
+            env: action.env,
         }
     }
 }
@@ -136,6 +147,7 @@ impl From<RunCommand> for RunCommandAction {
             hold_on_start: run_command.hold_on_start,
             originating_plugin: run_command.originating_plugin,
             use_terminal_title: run_command.use_terminal_title,
+            env: run_command.env,
         }
     }
 }
@@ -167,5 +179,76 @@ impl RunCommand {
     pub fn with_cwd(mut self, cwd: PathBuf) -> Self {
         self.cwd = Some(cwd);
         self
+    }
+    /// Set the given environment variables for this command, overriding existing ones with the
+    /// same name
+    pub fn merge_env(&mut self, env: &BTreeMap<String, String>) {
+        self.env
+            .extend(env.iter().map(|(k, v)| (k.clone(), v.clone())));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn env(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn run_command_merge_env_overwrites_and_adds() {
+        let mut cmd = RunCommand {
+            env: env(&[("A", "old"), ("B", "keep")]),
+            ..Default::default()
+        };
+        cmd.merge_env(&env(&[("A", "new"), ("C", "added")]));
+        assert_eq!(cmd.env, env(&[("A", "new"), ("B", "keep"), ("C", "added")]));
+    }
+
+    #[test]
+    fn run_command_merge_empty_env_is_noop() {
+        let mut cmd = RunCommand {
+            env: env(&[("A", "1")]),
+            ..Default::default()
+        };
+        cmd.merge_env(&BTreeMap::new());
+        assert_eq!(cmd.env, env(&[("A", "1")]));
+    }
+
+    #[test]
+    fn terminal_action_merge_env_only_touches_run_command() {
+        let mut run = TerminalAction::RunCommand(RunCommand::default());
+        run.merge_env(&env(&[("A", "1")]));
+        match run {
+            TerminalAction::RunCommand(c) => assert_eq!(c.env, env(&[("A", "1")])),
+            _ => panic!("expected RunCommand"),
+        }
+
+        let payload = OpenFilePayload::new(PathBuf::from("f"), None, None);
+        let mut open_file = TerminalAction::OpenFile(payload.clone());
+        open_file.merge_env(&env(&[("A", "1")]));
+        match open_file {
+            TerminalAction::OpenFile(p) => assert_eq!(p, payload),
+            _ => panic!("expected OpenFile"),
+        }
+    }
+
+    #[test]
+    fn env_survives_run_command_action_conversions() {
+        let action = RunCommandAction {
+            command: PathBuf::from("cmd"),
+            hold_on_start: true,
+            env: env(&[("FOO", "bar")]),
+            ..Default::default()
+        };
+        let run_command: RunCommand = action.into();
+        assert_eq!(run_command.env, env(&[("FOO", "bar")]));
+        let back: RunCommandAction = run_command.into();
+        assert_eq!(back.env, env(&[("FOO", "bar")]));
     }
 }
