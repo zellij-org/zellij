@@ -5085,6 +5085,66 @@ fn titles_frame_style_with_fixed_size_pane() {
     assert_snapshot!(snapshot);
 }
 
+fn render_split_row_of_ui_panes_at_top(pane_frame_style: PaneFrameStyle) -> String {
+    let layout = r#"
+        layout {
+            pane size=1 split_direction="vertical" {
+                pane size=55
+                pane
+            }
+            pane
+        }
+    "#;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
+    tab.set_pane_frames(pane_frame_style);
+    let mut panes_by_position: Vec<(usize, usize, u32)> = tab
+        .tiled_panes
+        .get_panes()
+        .filter_map(|(pane_id, pane)| match pane_id {
+            PaneId::Terminal(terminal_id) => Some((pane.y(), pane.x(), *terminal_id)),
+            PaneId::Plugin(_) => None,
+        })
+        .collect();
+    panes_by_position.sort_unstable();
+    let [(_, _, left_bar_id), (_, _, right_bar_id), (_, _, main_pane_id)] = panes_by_position[..]
+    else {
+        panic!("unexpected panes: {:?}", panes_by_position);
+    };
+    tab.set_pane_selectable(PaneId::Terminal(left_bar_id), false);
+    tab.set_pane_selectable(PaneId::Terminal(right_bar_id), false);
+    tab.handle_pty_bytes(left_bar_id, Vec::from("I am the left bar".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(right_bar_id, Vec::from("I am the right bar".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(main_pane_id, Vec::from("I am the main pane".as_bytes()))
+        .unwrap();
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    )
+}
+
+#[test]
+fn titles_frame_style_with_split_row_of_ui_panes_at_top() {
+    let snapshot = render_split_row_of_ui_panes_at_top(PaneFrameStyle::Titles);
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn no_frame_style_with_split_row_of_ui_panes_at_top() {
+    let snapshot = render_split_row_of_ui_panes_at_top(PaneFrameStyle::None);
+    assert_snapshot!(snapshot);
+}
+
 #[test]
 fn tab_with_nested_layout() {
     let layout = r#"
