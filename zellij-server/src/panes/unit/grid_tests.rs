@@ -9399,3 +9399,104 @@ fn a_character_wider_than_two_columns_advances_the_cursor_by_its_full_width() {
     assert_eq!(row.width(), 4);
     assert_eq!(cursor_position(&grid), Some((4, 0)));
 }
+
+fn create_sized_grid_with_content(rows: usize, columns: usize, content: &str) -> Grid {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        rows,
+        columns,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    vte_parser.advance(&mut grid, content.as_bytes());
+    grid
+}
+
+fn feed(grid: &mut Grid, content: &str) {
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(grid, content.as_bytes());
+}
+
+#[test]
+fn same_size_forced_reflow_keeps_cursor_at_start_of_wrapped_row() {
+    let mut grid = create_sized_grid_with_content(5, 10, "0123456789a\u{8}");
+    assert_eq!(cursor_position(&grid), Some((0, 1)));
+
+    grid.force_change_size(5, 10);
+    assert_eq!(cursor_position(&grid), Some((0, 1)));
+
+    feed(&mut grid, "\rX");
+    assert_eq!(rendered_row(&grid, 0), "0123456789");
+    assert_eq!(rendered_row(&grid, 1), "X");
+}
+
+#[test]
+fn height_only_resize_keeps_cursor_at_start_of_wrapped_row() {
+    let mut grid = create_sized_grid_with_content(5, 10, "0123456789a\u{8}");
+
+    grid.force_change_size(6, 10);
+    assert_eq!(cursor_position(&grid), Some((0, 1)));
+
+    grid.change_size(7, 10);
+    assert_eq!(cursor_position(&grid), Some((0, 1)));
+
+    feed(&mut grid, "\rX");
+    assert_eq!(rendered_row(&grid, 0), "0123456789");
+    assert_eq!(rendered_row(&grid, 1), "X");
+}
+
+#[test]
+fn prompt_redraw_after_same_size_reflow_does_not_duplicate_wrapped_prompt() {
+    let prompt = "> ~/c/zellij-code-2 on main";
+    let mut grid = create_sized_grid_with_content(5, 20, prompt);
+    for _ in 0..3 {
+        feed(&mut grid, "\r");
+        grid.force_change_size(5, 20);
+        feed(&mut grid, "\u{1b}[1A\u{1b}[J");
+        feed(&mut grid, prompt);
+    }
+    assert_eq!(rendered_row(&grid, 0), "> ~/c/zellij-code-2 ");
+    assert_eq!(rendered_row(&grid, 1).trim_end(), "on main");
+    assert_eq!(grid.viewport.len(), 2);
+}
+
+#[test]
+fn saved_cursor_follows_its_own_line_when_wrapped_lines_are_above_it() {
+    let mut grid = create_sized_grid_with_content(
+        6,
+        10,
+        "0123456789abcdefghij\n\rXY\u{1b}7Z\n\rline3\n\rline4",
+    );
+
+    grid.change_size(6, 20);
+    feed(&mut grid, "\u{1b}8Q");
+
+    assert_eq!(rendered_row(&grid, 0), "0123456789abcdefghij");
+    assert_eq!(rendered_row(&grid, 1), "XYQ");
+    assert_eq!(rendered_row(&grid, 2), "line3");
+    assert_eq!(rendered_row(&grid, 3), "line4");
+}
+
+#[test]
+fn shrinking_keeps_cursor_on_its_own_line_when_it_sits_past_the_content() {
+    let mut grid = create_sized_grid_with_content(6, 31, "first\n\r> prompt text here okay \x1b[J");
+    assert_eq!(cursor_position(&grid), Some((24, 1)));
+
+    grid.change_size(6, 23);
+    assert_eq!(cursor_position(&grid), Some((22, 1)));
+
+    feed(&mut grid, "\rX");
+    assert_eq!(rendered_row(&grid, 0), "first");
+    assert_eq!(rendered_row(&grid, 1), "X prompt text here okay");
+    assert_eq!(grid.viewport.len(), 2);
+}

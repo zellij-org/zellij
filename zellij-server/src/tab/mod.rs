@@ -1957,9 +1957,6 @@ impl Tab {
             .non_fatal();
         }
         self.set_force_render();
-        self.senders
-            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
-            .with_context(|| format!("failed to apply cached resizes"))?;
         Ok(())
     }
     fn relayout_tiled_panes(&mut self, search_backwards: bool) -> Result<()> {
@@ -2014,9 +2011,6 @@ impl Tab {
         // we do this so that the new swap layout has a chance to pass through the constraint system
         self.tiled_panes.resize(display_area);
         self.set_should_clear_display_before_rendering();
-        self.senders
-            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
-            .with_context(|| format!("failed to apply cached resizes"))?;
         Ok(())
     }
     fn settled_tiled_pane_count(&self) -> usize {
@@ -5211,9 +5205,6 @@ impl Tab {
             let _ = self.relayout_tiled_panes(false);
         }
         self.set_should_clear_display_before_rendering();
-        self.senders
-            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
-            .with_context(|| format!("failed to update plugins with mode info"))?;
         LayoutApplier::offset_viewport(
             self.viewport.clone(),
             self.display_area.clone(),
