@@ -583,14 +583,7 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
                     };
                     let host_image_id = host_state.next_host_image_id;
                     host_state.next_host_image_id += 1;
-                    emit_kitty_transmit(
-                        &mut out,
-                        host_image_id,
-                        width,
-                        height,
-                        &b64,
-                        compressed,
-                    )?;
+                    emit_kitty_transmit(&mut out, host_image_id, width, height, &b64, compressed)?;
                     host_state.transmitted.insert(image_key, host_image_id);
                     host_image_id
                 },

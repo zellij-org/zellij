@@ -2815,7 +2815,11 @@ impl Screen {
     }
 
     pub fn update_kitty_zlib_support(&mut self, client_id: ClientId, supported: bool) {
-        if let Some(capability) = self.kitty_host_capabilities.borrow_mut().get_mut(&client_id) {
+        if let Some(capability) = self
+            .kitty_host_capabilities
+            .borrow_mut()
+            .get_mut(&client_id)
+        {
             capability.zlib = supported;
         }
     }
