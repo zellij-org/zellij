@@ -1744,20 +1744,20 @@ impl Grid {
 
             self.viewport = VecDeque::from(new_viewport_rows);
 
-            let cursor_line_first_y = self.canonical_line_y_coordinates(cursor_canonical_line_index);
+            let cursor_line_first_y =
+                self.canonical_line_y_coordinates(cursor_canonical_line_index);
             let cursor_line_last_y = self.last_row_of_line_starting_at(cursor_line_first_y);
             let mut new_cursor_y =
                 cursor_line_first_y + (cursor_index_in_canonical_line / new_columns);
-            let mut saved_cursor_y_coordinates =
-                match (
-                    saved_cursor_canonical_line_index,
-                    saved_cursor_index_in_canonical_line,
-                ) {
-                    (Some(line_index), Some(index_in_line)) => Some(
-                        self.canonical_line_y_coordinates(line_index) + index_in_line / new_columns,
-                    ),
-                    _ => None,
-                };
+            let mut saved_cursor_y_coordinates = match (
+                saved_cursor_canonical_line_index,
+                saved_cursor_index_in_canonical_line,
+            ) {
+                (Some(line_index), Some(index_in_line)) => Some(
+                    self.canonical_line_y_coordinates(line_index) + index_in_line / new_columns,
+                ),
+                _ => None,
+            };
 
             // A cursor at EOL has two equivalent positions - end of this line or beginning of
             // next. If not already at the beginning of line, bias to EOL so add character logic
