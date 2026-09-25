@@ -399,6 +399,43 @@ fn can_unbind_multiple_keys_globally() {
 }
 
 #[test]
+fn can_unbind_keys_across_multiple_global_unbind_nodes() {
+    // Regression: `KdlDocument::get("unbind")` returns only the first `unbind` node,
+    // so multiple top-level `unbind` lines used to silently drop all but the first.
+    let default_config_contents = r#"
+        keybinds {
+            normal {
+                bind "Ctrl g" { SwitchToMode "Locked"; }
+                bind "z" { TogglePaneFrames; }
+                bind "r" { TogglePaneFrames; }
+            }
+        }
+    "#;
+    let config_contents = r#"
+        keybinds {
+            unbind "Ctrl g"
+            unbind "z"
+            unbind "r"
+        }
+    "#;
+    let default_config = Config::from_kdl(default_config_contents, None).unwrap();
+    let config = Config::from_kdl(config_contents, Some(default_config)).unwrap();
+    let ctrl_g = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Normal,
+        &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+    );
+    let z = config
+        .keybinds
+        .get_actions_for_key_in_mode(&InputMode::Normal, &KeyWithModifier::new(BareKey::Char('z')));
+    let r = config
+        .keybinds
+        .get_actions_for_key_in_mode(&InputMode::Normal, &KeyWithModifier::new(BareKey::Char('r')));
+    assert_eq!(ctrl_g, None, "first unbind node applied");
+    assert_eq!(z, None, "second unbind node applied (previously silently dropped)");
+    assert_eq!(r, None, "third unbind node applied (previously silently dropped)");
+}
+
+#[test]
 fn can_unbind_multiple_keys_per_single_mode() {
     let default_config_contents = r#"
         keybinds {
