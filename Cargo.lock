@@ -5062,6 +5062,7 @@ dependencies = [
  "async-trait",
  "base64",
  "crossbeam",
+ "flate2",
  "insta",
  "interprocess",
  "log",

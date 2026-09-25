@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: nested sessions input-mode + keybindings reporting (https://github.com/zellij-org/zellij/issues/5561)
 * fix: control characters occasionally appearing in panes on startup (https://github.com/zellij-org/zellij/pull/5655)
 * fix: group bar-plugins on viewport edge for layout purposes (https://github.com/zellij-org/zellij/pull/5653)
+* fix: compress kitty images if the host terminal supports it (https://github.com/zellij-org/zellij/pull/5608)
 
 ## [0.45.1] - 2026-08-28
 * fix: nested-session detection over SSH (https://github.com/zellij-org/zellij/pull/5522)

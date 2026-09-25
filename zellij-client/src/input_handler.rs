@@ -356,6 +356,10 @@ impl InputHandler {
                 self.os_input
                     .send_to_server(ClientToServerMsg::KittyGraphicsSupport { supported });
             },
+            AnsiStdinInstruction::KittyZlibSupport(supported) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::KittyZlibSupport { supported });
+            },
             AnsiStdinInstruction::SixelSupport(supported) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::SixelSupport { supported });

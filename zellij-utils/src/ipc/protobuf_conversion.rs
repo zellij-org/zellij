@@ -14,16 +14,16 @@ use crate::{
         HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, KittyGraphicsSupportMsg,
-        LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg, MobileActivePaneMsg,
-        MobilePaneMsg, MobileRenderPrefsMsg, MobileSessionMsg, MobileSizeMsg, MobileStateMsg,
-        MobileTabMsg, NestedSessionFrameFromHostMsg, PaneMetadata as ProtoPaneMetadata,
-        PaneRenderUpdateMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
-        RequestSessionListMsg, ServerToClientMsg as ProtoServerToClientMsg,
-        SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg, SixelSupportMsg,
-        SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
-        SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
-        TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
-        UnblockInputThreadMsg, WebServerStartedMsg,
+        KittyZlibSupportMsg, LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg,
+        MobileActivePaneMsg, MobilePaneMsg, MobileRenderPrefsMsg, MobileSessionMsg, MobileSizeMsg,
+        MobileStateMsg, MobileTabMsg, NestedSessionFrameFromHostMsg,
+        PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, QueryTerminalSizeMsg,
+        RenamedSessionMsg, RenderMsg, RequestSessionListMsg,
+        ServerToClientMsg as ProtoServerToClientMsg, SetMobileRenderPreferencesMsg,
+        SetSoftKeyboardMsg, SixelSupportMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
+        SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
+        TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
+        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
@@ -170,6 +170,9 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                 client_to_server_msg::Message::KittyGraphicsSupport(KittyGraphicsSupportMsg {
                     supported,
                 })
+            },
+            ClientToServerMsg::KittyZlibSupport { supported } => {
+                client_to_server_msg::Message::KittyZlibSupport(KittyZlibSupportMsg { supported })
             },
             ClientToServerMsg::SixelSupport { supported } => {
                 client_to_server_msg::Message::SixelSupport(SixelSupportMsg { supported })
@@ -345,6 +348,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
             },
             Some(client_to_server_msg::Message::KittyGraphicsSupport(msg)) => {
                 Ok(ClientToServerMsg::KittyGraphicsSupport {
+                    supported: msg.supported,
+                })
+            },
+            Some(client_to_server_msg::Message::KittyZlibSupport(msg)) => {
+                Ok(ClientToServerMsg::KittyZlibSupport {
                     supported: msg.supported,
                 })
             },

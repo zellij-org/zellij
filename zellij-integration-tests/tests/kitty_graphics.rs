@@ -65,6 +65,12 @@ fn start_zellij() -> TestSession {
         .start()
 }
 
+fn start_zellij_with_a_zlib_capable_host() -> TestSession {
+    TestRunner::new(TERMINAL_SIZE)
+        .with_host_terminal(HostTerminal::KittyZlib)
+        .start()
+}
+
 fn setup_kitty_host(zellij: &TestSession, terminal: &FakePtyHandle) {
     terminal.disable_echo();
     zellij.send_stdin(b"Z");
@@ -103,6 +109,41 @@ fn pane_kitty_image_reaches_client_with_transmit_and_placement() {
         expected_prefix.as_bytes(),
         &before_placement[before_placement.len().saturating_sub(16)..]
     );
+
+    zellij.quit();
+}
+
+#[test]
+fn kitty_image_is_zlib_compressed_when_the_host_confirms_zlib_support() {
+    use base64::Engine as _;
+    use std::io::Read;
+
+    let mut zellij = start_zellij_with_a_zlib_capable_host();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    setup_kitty_host(&zellij, &terminal);
+
+    terminal.output(RGB_2X2_A_T);
+
+    let compressed_header: &[u8] = b"\x1b_Ga=t,q=2,f=32,o=z,t=d,i=2000000000,s=2,v=2,m=0;";
+    let bytes = zellij.wait_until_raw_output(
+        "compressed kitty transmit and placement reach the client",
+        |bytes| {
+            contains_bytes(bytes, compressed_header)
+                && contains_bytes(bytes, PLACEMENT)
+                && !contains_bytes(bytes, TRANSMIT_HEADER)
+        },
+    );
+
+    let payload_start = find_bytes(&bytes, compressed_header).unwrap() + compressed_header.len();
+    let payload_len = find_bytes(&bytes[payload_start..], b"\x1b\\").unwrap();
+    let compressed = base64::engine::general_purpose::STANDARD
+        .decode(&bytes[payload_start..payload_start + payload_len])
+        .unwrap();
+    let mut inflated = Vec::new();
+    flate2::read::ZlibDecoder::new(&compressed[..])
+        .read_to_end(&mut inflated)
+        .unwrap();
+    assert_eq!(inflated, vec![0xffu8; 2 * 2 * 4]);
 
     zellij.quit();
 }

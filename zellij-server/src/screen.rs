@@ -89,7 +89,7 @@ use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
 use crate::{
     nested_guest::NestedGuestTracker,
     output::{HostKittyState, Output},
-    panes::kitty_graphics::{KittyHostSupport, KittyImageStore},
+    panes::kitty_graphics::{KittyHostCapability, KittyHostSupport, KittyImageStore},
     panes::sixel::SixelImageStore,
     panes::LinkHandler,
     panes::PaneId,
@@ -549,6 +549,10 @@ pub enum ScreenInstruction {
     TerminalForegroundColor(String),
     TerminalColorRegisters(Vec<(usize, String)>),
     SetKittyGraphicsSupport {
+        client_id: ClientId,
+        supported: bool,
+    },
+    SetKittyZlibSupport {
         client_id: ClientId,
         supported: bool,
     },
@@ -1118,6 +1122,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SetKittyGraphicsSupport { .. } => {
                 ScreenContext::SetKittyGraphicsSupport
             },
+            ScreenInstruction::SetKittyZlibSupport { .. } => ScreenContext::SetKittyZlibSupport,
             ScreenInstruction::SetSixelSupport { .. } => ScreenContext::SetSixelSupport,
             ScreenInstruction::ForwardHostQuery { .. } => ScreenContext::ForwardHostQuery,
             ScreenInstruction::NestedSessionMessageFromPane { .. } => {
@@ -1583,7 +1588,7 @@ pub(crate) struct Screen {
     stacked_pane_list: Rc<RefCell<bool>>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     kitty_image_store: Rc<RefCell<KittyImageStore>>,
-    kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
+    kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, KittyHostCapability>>>,
     sixel_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     client_kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
@@ -2803,8 +2808,20 @@ impl Screen {
         let supported = supported && self.support_kitty_graphics_protocol;
         self.kitty_host_capabilities
             .borrow_mut()
-            .insert(client_id, supported);
+            .entry(client_id)
+            .or_default()
+            .graphics = supported;
         self.push_kitty_host_support_to_tabs();
+    }
+
+    pub fn update_kitty_zlib_support(&mut self, client_id: ClientId, supported: bool) {
+        if let Some(capability) = self
+            .kitty_host_capabilities
+            .borrow_mut()
+            .get_mut(&client_id)
+        {
+            capability.zlib = supported;
+        }
     }
 
     fn kitty_host_support_aggregate(&self) -> Option<KittyHostSupport> {
@@ -2816,7 +2833,7 @@ impl Screen {
             None
         } else {
             Some(KittyHostSupport::from_host_capability(
-                capabilities.values().any(|supported| *supported),
+                capabilities.values().any(|capability| capability.graphics),
             ))
         }
     }
@@ -5606,7 +5623,7 @@ impl Screen {
         if is_web_client {
             self.kitty_host_capabilities
                 .borrow_mut()
-                .insert(client_id, false);
+                .insert(client_id, KittyHostCapability::default());
             self.push_kitty_host_support_to_tabs();
             self.sixel_host_capabilities
                 .borrow_mut()
@@ -10723,6 +10740,12 @@ pub(crate) fn screen_thread_main(
                 supported,
             } => {
                 screen.update_kitty_graphics_support(client_id, supported);
+            },
+            ScreenInstruction::SetKittyZlibSupport {
+                client_id,
+                supported,
+            } => {
+                screen.update_kitty_zlib_support(client_id, supported);
             },
             ScreenInstruction::SetSixelSupport {
                 client_id,
