@@ -29,7 +29,7 @@ struct StoredImage {
     image: KittyImage,
     refcount: usize,
     lru_stamp: u64,
-    base64_cache: HashMap<Option<ScaledImageKey>, String>,
+    base64_cache: HashMap<(Option<ScaledImageKey>, bool), String>,
 }
 
 #[derive(Debug, Clone)]
@@ -141,26 +141,32 @@ impl KittyImageStore {
         &mut self,
         id: InternalImageId,
         variant: Option<ScaledImageKey>,
+        compressed: bool,
     ) -> Option<String> {
         let stored = self.images.get_mut(&id)?;
-        if let Some(cached) = stored.base64_cache.get(&variant) {
+        if let Some(cached) = stored.base64_cache.get(&(variant, compressed)) {
             return Some(cached.clone());
         }
         let bytes = match variant {
             Some(key) => stored.image.scaled_variants.get(&key)?,
             None => &stored.image.rgba,
         };
-        // Paired with `o=z` in `emit_kitty_transmit`; zlib is part of the base kitty protocol.
-        let mut encoder = flate2::write::ZlibEncoder::new(
-            Vec::with_capacity(bytes.len() / 8),
-            flate2::Compression::fast(),
-        );
-        let compressed = encoder
-            .write_all(bytes)
-            .and_then(|_| encoder.finish())
-            .ok()?;
-        let encoded = BASE64_ENCODER.encode(&compressed);
-        stored.base64_cache.insert(variant, encoded.clone());
+        let encoded = if compressed {
+            let mut encoder = flate2::write::ZlibEncoder::new(
+                Vec::with_capacity(bytes.len() / 8),
+                flate2::Compression::fast(),
+            );
+            let deflated = encoder
+                .write_all(bytes)
+                .and_then(|_| encoder.finish())
+                .ok()?;
+            BASE64_ENCODER.encode(&deflated)
+        } else {
+            BASE64_ENCODER.encode(bytes)
+        };
+        stored
+            .base64_cache
+            .insert((variant, compressed), encoded.clone());
         Some(encoded)
     }
     pub fn add_scaled_variant(&mut self, id: InternalImageId, key: ScaledImageKey, bytes: Vec<u8>) {
@@ -174,7 +180,9 @@ impl KittyImageStore {
                     .insert(key, bytes)
                     .map(|old| old.len())
                     .unwrap_or(0);
-                stored.base64_cache.remove(&Some(key));
+                stored
+                    .base64_cache
+                    .retain(|(cached_variant, _), _| *cached_variant != Some(key));
                 stored.lru_stamp = lru_stamp;
                 Some((old_len, new_len))
             },
@@ -195,7 +203,9 @@ impl KittyImageStore {
                 .drain()
                 .map(|(_, bytes)| bytes.len())
                 .sum::<usize>();
-            stored.base64_cache.retain(|key, _| key.is_none());
+            stored
+                .base64_cache
+                .retain(|(cached_variant, _), _| cached_variant.is_none());
         }
     }
     pub fn refcount(&self, id: InternalImageId) -> Option<usize> {

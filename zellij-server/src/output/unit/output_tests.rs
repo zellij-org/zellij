@@ -6,6 +6,7 @@ use crate::panes::kitty_graphics::parser::{
     DecodedImage, KittyAction, KittyCommandParser, KittyFormat,
 };
 use crate::panes::kitty_graphics::store::{InternalImageId, KittyImageStore};
+use crate::panes::kitty_graphics::KittyHostCapability;
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::terminal_character::AnsiCode;
 use crate::panes::{LinkHandler, PaneId, Row, TerminalCharacter};
@@ -1125,14 +1126,20 @@ fn test_pane_defaults_preserved_when_right_covered() {
 
 type KittyTestParts = (
     Rc<RefCell<KittyImageStore>>,
-    Rc<RefCell<HashMap<ClientId, bool>>>,
+    Rc<RefCell<HashMap<ClientId, KittyHostCapability>>>,
     Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
 );
 
 fn create_test_kitty_parts() -> KittyTestParts {
     let kitty_image_store = Rc::new(RefCell::new(KittyImageStore::default()));
     let capabilities = Rc::new(RefCell::new(HashMap::new()));
-    capabilities.borrow_mut().insert(1, true);
+    capabilities.borrow_mut().insert(
+        1,
+        KittyHostCapability {
+            graphics: true,
+            zlib: true,
+        },
+    );
     let host_state = Rc::new(RefCell::new(HashMap::new()));
     (kitty_image_store, capabilities, host_state)
 }
@@ -1357,6 +1364,76 @@ fn kitty_transmit_payload_is_zlib_compressed_rgba() {
     );
 }
 
+fn decode_kitty_transmit_payload(payload_b64: &str) -> Vec<u8> {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine as _;
+    STANDARD.decode(payload_b64).unwrap()
+}
+
+#[test]
+fn kitty_transmit_payload_is_raw_rgba_when_host_lacks_zlib() {
+    let parts = create_test_kitty_parts();
+    parts.1.borrow_mut().insert(
+        1,
+        KittyHostCapability {
+            graphics: true,
+            zlib: false,
+        },
+    );
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let output = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 0, 0)], None);
+    let (control, payload) = kitty_transmit_control_and_payload(&output);
+    assert!(control.starts_with("a=t,q=2,f=32,t=d,i=2000000000,s=30,v=40,m="));
+    assert!(!output.contains("o=z"));
+    assert_eq!(
+        decode_kitty_transmit_payload(&payload),
+        vec![255u8; 30 * 40 * 4]
+    );
+}
+
+#[test]
+fn kitty_transmit_compression_follows_each_client_capability() {
+    let parts = create_test_kitty_parts();
+    parts.1.borrow_mut().insert(
+        2,
+        KittyHostCapability {
+            graphics: true,
+            zlib: false,
+        },
+    );
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let mut output = create_test_kitty_output(&parts);
+    let client_ids: HashSet<ClientId> = create_test_clients(2);
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    output.add_clients(&client_ids, link_handler, None);
+    for client_id in [1, 2] {
+        output.add_kitty_image_chunks_to_client(
+            client_id,
+            PaneId::Terminal(1),
+            vec![kitty_chunk(internal, 1, 0, 0)],
+            None,
+        );
+    }
+    let mut frames = output.serialize().unwrap();
+    let compressed_frame = frames.remove(&1).unwrap();
+    let raw_frame = frames.remove(&2).unwrap();
+
+    let (compressed_control, compressed_payload) =
+        kitty_transmit_control_and_payload(&compressed_frame);
+    assert!(compressed_control.starts_with("a=t,q=2,f=32,o=z,t=d,"));
+    assert_eq!(
+        inflate_kitty_transmit_payload(&compressed_payload),
+        vec![255u8; 30 * 40 * 4]
+    );
+
+    let (raw_control, raw_payload) = kitty_transmit_control_and_payload(&raw_frame);
+    assert!(raw_control.starts_with("a=t,q=2,f=32,t=d,"));
+    assert_eq!(
+        decode_kitty_transmit_payload(&raw_payload),
+        vec![255u8; 30 * 40 * 4]
+    );
+}
+
 #[test]
 fn kitty_transmit_chunks_incompressible_payload() {
     let parts = create_test_kitty_parts();
@@ -1553,7 +1630,10 @@ fn kitty_occlusion_crops_exclude_covered_quarter() {
 #[test]
 fn kitty_capability_gating_suppresses_all_apc() {
     let parts_with_false = create_test_kitty_parts();
-    parts_with_false.1.borrow_mut().insert(1, false);
+    parts_with_false
+        .1
+        .borrow_mut()
+        .insert(1, KittyHostCapability::default());
     let internal = store_test_kitty_image(&parts_with_false.0, 30, 40);
     let output = run_kitty_frame(
         &parts_with_false,

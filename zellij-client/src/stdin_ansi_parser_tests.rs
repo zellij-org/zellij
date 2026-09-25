@@ -1691,6 +1691,105 @@ fn kitty_probe_reply_fragmented_across_feeds() {
     }
 }
 
+fn zlib_replies(replies: &[HostReply]) -> Vec<bool> {
+    replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::KittyZlibSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect()
+}
+
+fn graphics_replies(replies: &[HostReply]) -> Vec<bool> {
+    replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::KittyGraphicsSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect()
+}
+
+fn parser_expecting_both_kitty_probes() -> StdinAnsiParser {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    parser.expect_kitty_zlib_probe_reply();
+    parser
+}
+
+#[test]
+fn kitty_zlib_probe_ok_reply_classifies_true() {
+    let mut parser = parser_expecting_both_kitty_probes();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b_Gi=32;OK\x1b\\");
+    assert!(residue.is_empty());
+    assert_eq!(zlib_replies(&replies), vec![true]);
+    assert!(graphics_replies(&replies).is_empty());
+}
+
+#[test]
+fn kitty_zlib_probe_error_reply_classifies_false() {
+    let mut parser = parser_expecting_both_kitty_probes();
+    let (replies, residue) = feed_once(
+        &mut parser,
+        b"\x1b_Gi=32;ENODATA:Insufficient image data\x1b\\",
+    );
+    assert!(residue.is_empty());
+    assert_eq!(zlib_replies(&replies), vec![false]);
+}
+
+#[test]
+fn kitty_zlib_probe_absence_resolves_false_on_barrier() {
+    let mut parser = parser_expecting_both_kitty_probes();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b_Gi=31;OK\x1b\\\x1b[?62;22c");
+    assert!(residue.is_empty());
+    assert_eq!(graphics_replies(&replies), vec![true]);
+    assert_eq!(zlib_replies(&replies), vec![false]);
+}
+
+#[test]
+fn both_kitty_probe_replies_in_one_chunk_are_classified_in_order() {
+    let mut parser = parser_expecting_both_kitty_probes();
+    let (replies, residue) = feed_once(
+        &mut parser,
+        b"\x1b_Gi=31;OK\x1b\\\x1b_Gi=32;OK\x1b\\\x1b[?62;22c",
+    );
+    assert!(residue.is_empty());
+    assert_eq!(graphics_replies(&replies), vec![true]);
+    assert_eq!(zlib_replies(&replies), vec![true]);
+    let graphics_position = replies
+        .iter()
+        .position(|r| matches!(r, HostReply::KittyGraphicsSupport(_)))
+        .unwrap();
+    let zlib_position = replies
+        .iter()
+        .position(|r| matches!(r, HostReply::KittyZlibSupport(_)))
+        .unwrap();
+    assert!(graphics_position < zlib_position);
+}
+
+#[test]
+fn kitty_zlib_probe_reply_fragmented_across_feeds() {
+    let full = b"\x1b_Gi=32;OK\x1b\\";
+    for split in 1..full.len() {
+        let mut parser = parser_expecting_both_kitty_probes();
+        let r1 = parser.feed(&full[..split]);
+        let r2 = parser.feed(&full[split..]);
+        assert!(r1.residue.is_empty(), "split at {}", split);
+        assert!(r2.residue.is_empty(), "split at {}", split);
+        let replies: Vec<HostReply> = r1.replies.into_iter().chain(r2.replies).collect();
+        assert_eq!(zlib_replies(&replies), vec![true], "split at {}", split);
+    }
+}
+
+#[test]
+fn kitty_zlib_reply_outside_probe_window_is_not_classified() {
+    let mut parser = StdinAnsiParser::new();
+    let out = parser.feed(b"\x1b_Gi=32;OK\x1b\\");
+    assert!(out.replies.is_empty());
+    assert!(out.residue.is_empty());
+}
+
 #[test]
 fn apc_outside_probe_window_is_not_classified() {
     let mut parser = StdinAnsiParser::new();

@@ -28,6 +28,7 @@ struct ReceivedBytesWithChangeSignal {
 pub enum HostTerminal {
     Basic,
     Kitty,
+    KittyZlib,
     Manual,
 }
 
@@ -35,6 +36,8 @@ const PRIMARY_DA_QUERY: &[u8] = b"\x1b[c";
 const PRIMARY_DA_REPLY: &[u8] = b"\x1b[?62;22c";
 const KITTY_GRAPHICS_PROBE_PREFIX: &[u8] = b"\x1b_Ga=q,i=31,";
 const KITTY_GRAPHICS_PROBE_REPLY: &[u8] = b"\x1b_Gi=31;OK\x1b\\";
+const KITTY_ZLIB_PROBE_PREFIX: &[u8] = b"\x1b_Ga=q,i=32,";
+const KITTY_ZLIB_PROBE_REPLY: &[u8] = b"\x1b_Gi=32;OK\x1b\\";
 const CELL_SIZE_QUERY: &[u8] = b"\x1b[16t";
 const CELL_SIZE_REPLY: &[u8] = b"\x1b[6;21;8t";
 
@@ -51,6 +54,12 @@ impl HostResponder {
             HostTerminal::Kitty => &[
                 (PRIMARY_DA_QUERY, PRIMARY_DA_REPLY),
                 (KITTY_GRAPHICS_PROBE_PREFIX, KITTY_GRAPHICS_PROBE_REPLY),
+                (CELL_SIZE_QUERY, CELL_SIZE_REPLY),
+            ],
+            HostTerminal::KittyZlib => &[
+                (PRIMARY_DA_QUERY, PRIMARY_DA_REPLY),
+                (KITTY_GRAPHICS_PROBE_PREFIX, KITTY_GRAPHICS_PROBE_REPLY),
+                (KITTY_ZLIB_PROBE_PREFIX, KITTY_ZLIB_PROBE_REPLY),
                 (CELL_SIZE_QUERY, CELL_SIZE_REPLY),
             ],
             HostTerminal::Manual => &[],

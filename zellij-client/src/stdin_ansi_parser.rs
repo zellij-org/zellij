@@ -65,6 +65,7 @@ pub enum HostReply {
     /// terminal's color-palette theme mode (CSI 2031).
     HostTerminalThemeChanged(HostTerminalThemeMode),
     KittyGraphicsSupport(bool),
+    KittyZlibSupport(bool),
     SixelSupport(bool),
 }
 
@@ -336,6 +337,7 @@ pub struct StdinAnsiParser {
     nested_frame_extractor: nested_session::NestedFrameExtractor,
     in_bracketed_paste: bool,
     startup_kitty_probe: StartupKittyProbe,
+    startup_kitty_zlib_probe: StartupKittyProbe,
     partial_apc: Vec<u8>,
 }
 
@@ -361,12 +363,17 @@ impl StdinAnsiParser {
             nested_frame_extractor: nested_session::NestedFrameExtractor::new(),
             in_bracketed_paste: false,
             startup_kitty_probe: StartupKittyProbe::NotSent,
+            startup_kitty_zlib_probe: StartupKittyProbe::NotSent,
             partial_apc: Vec::new(),
         }
     }
 
     pub fn expect_kitty_probe_reply(&mut self) {
         self.startup_kitty_probe = StartupKittyProbe::AwaitingReply;
+    }
+
+    pub fn expect_kitty_zlib_probe_reply(&mut self) {
+        self.startup_kitty_zlib_probe = StartupKittyProbe::AwaitingReply;
     }
 
     /// Open a forwarding window for `token`. Subsequent reply events that
@@ -578,6 +585,10 @@ impl StdinAnsiParser {
                                 self.startup_kitty_probe = StartupKittyProbe::Resolved;
                                 out.replies.push(HostReply::KittyGraphicsSupport(false));
                             }
+                            if self.startup_kitty_zlib_probe == StartupKittyProbe::AwaitingReply {
+                                self.startup_kitty_zlib_probe = StartupKittyProbe::Resolved;
+                                out.replies.push(HostReply::KittyZlibSupport(false));
+                            }
                             if let Some(reply) = HostReply::sixel_support_from_primary_da(&raw) {
                                 out.replies.push(reply);
                             }
@@ -757,6 +768,15 @@ impl StdinAnsiParser {
                                 payload, b"i=31;OK",
                             )));
                             self.startup_kitty_probe = StartupKittyProbe::Resolved;
+                        }
+                        if self.startup_kitty_zlib_probe == StartupKittyProbe::AwaitingReply
+                            && payload.first() == Some(&b'G')
+                            && contains_subslice(payload, b"i=32")
+                        {
+                            replies.push(HostReply::KittyZlibSupport(contains_subslice(
+                                payload, b"i=32;OK",
+                            )));
+                            self.startup_kitty_zlib_probe = StartupKittyProbe::Resolved;
                         }
                         i += len;
                         continue;

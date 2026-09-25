@@ -239,6 +239,9 @@ pub enum ClientToServerMsg {
     KittyGraphicsSupport {
         supported: bool,
     },
+    KittyZlibSupport {
+        supported: bool,
+    },
     SixelSupport {
         supported: bool,
     },
