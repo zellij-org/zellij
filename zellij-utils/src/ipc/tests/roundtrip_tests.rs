@@ -4117,6 +4117,7 @@ fn test_server_messages() {
     });
     test_server_roundtrip!(ServerToClientMsg::SetSoftKeyboard { on: true });
     test_server_roundtrip!(ServerToClientMsg::SetSoftKeyboard { on: false });
+    test_server_roundtrip!(ServerToClientMsg::ToggleMouseMode);
     test_server_roundtrip!(ServerToClientMsg::MobileState {
         payload: MobileStatePayload {
             session_name: String::new(),

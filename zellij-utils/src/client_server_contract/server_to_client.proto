@@ -24,6 +24,7 @@ message ServerToClientMsg {
     SetSoftKeyboardMsg set_soft_keyboard = 17;
     EmitNestedSessionFrameMsg emit_nested_session_frame = 18;
     MobileStateMsg mobile_state = 19;
+    ToggleMouseModeMsg toggle_mouse_mode = 20;
   }
 }
 
@@ -105,6 +106,10 @@ message SetSoftKeyboardMsg {
 
 message EmitNestedSessionFrameMsg {
   bytes payload_bytes = 1;
+}
+
+message ToggleMouseModeMsg {
+  // Empty message
 }
 
 message MobileSizeMsg {
