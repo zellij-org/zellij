@@ -145,7 +145,7 @@ impl<'a> MainScreen<'a> {
     }
 
     fn render_title(&self, layout: &Layout, y: usize) {
-        let title = Text::new(layout.title_text).color_range(2, ..);
+        let title = Text::from(layout.title_text).color_range(2, ..);
         print_text_with_coordinates(title, layout.base_x, y, None, None);
     }
 
@@ -238,7 +238,7 @@ impl<'a> MainScreen<'a> {
 
     fn render_info(&self, layout: &Layout, y: usize) {
         if let Some(info) = self.info {
-            let info_text = Text::new(info).color_range(1, ..);
+            let info_text = Text::from(info.clone()).color_range(1, ..);
             print_text_with_coordinates(info_text, layout.base_x, y, None, None);
         }
     }
@@ -252,8 +252,8 @@ impl<'a> MainScreen<'a> {
     }
 
     fn render_unencrypted_warning(&self, x: usize, y: usize, state: &mut MainScreenState) {
-        let warning_text = Text::new(Self::WARNING_TEXT).color_range(1, ..3);
-        let more_info_line = Text::new(format!("{}{}", Self::MORE_INFO_TEXT, Self::SSL_URL));
+        let warning_text = Text::from(Self::WARNING_TEXT).color_range(1, ..3);
+        let more_info_line = Text::from(format!("{}{}", Self::MORE_INFO_TEXT, Self::SSL_URL));
 
         let url_x = x + Self::MORE_INFO_TEXT.chars().count();
         let url_y = y + 1;
@@ -275,11 +275,11 @@ impl<'a> MainScreen<'a> {
 
     fn render_link_help(&self, x: usize, y: usize) {
         let help_text = if self.link_executable.is_some() {
-            Text::new(Self::HELP_TEXT_WITH_CLICK)
+            Text::from(Self::HELP_TEXT_WITH_CLICK)
                 .color_range(3, 6..=10)
                 .color_range(3, 15..=25)
         } else {
-            Text::new(Self::HELP_TEXT_SHIFT_ONLY).color_range(3, 6..=16)
+            Text::from(Self::HELP_TEXT_SHIFT_ONLY).color_range(3, 6..=16)
         };
         print_text_with_coordinates(help_text, x, y, None, None);
     }

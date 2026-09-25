@@ -538,11 +538,11 @@ pub fn ribbon_as_line_part(
     dimmed: bool,
 ) -> LinePart {
     let ribbon_text = if dimmed {
-        Text::new(text).disabled()
+        Text::from(text).disabled()
     } else if is_selected {
-        Text::new(text).selected()
+        Text::from(text).selected()
     } else {
-        Text::new(text)
+        Text::from(text)
     };
     let part = serialize_ribbon(&ribbon_text);
     let mut len = text.width() + 2;
@@ -600,27 +600,29 @@ pub fn style_key_with_modifier(
 
     if no_common_modifier || key.len() == 1 {
         let key_string_text = format!(" {} ", key.join(key_separator));
+        let key_string_text_width = key_string_text.width();
         let text = if dimmed {
-            Text::new(&key_string_text).disabled().opaque()
+            Text::from(key_string_text).disabled().opaque()
         } else if let Some(color_index) = color_index {
-            Text::new(&key_string_text)
+            Text::from(key_string_text)
                 .color_range(color_index, ..)
                 .opaque()
         } else {
-            Text::new(&key_string_text).opaque()
+            Text::from(key_string_text).opaque()
         };
         LinePart {
             part: serialize_text(&text),
-            len: key_string_text.width(),
+            len: key_string_text_width,
             ..Default::default()
         }
     } else {
         let key_string_without_modifier = format!("{}", key.join(key_separator));
         let key_string_text = format!(" {} <{}> ", modifier_str, key_string_without_modifier);
+        let key_string_text_width = key_string_text.width();
         let text = if dimmed {
-            Text::new(&key_string_text).disabled().opaque()
+            Text::from(key_string_text).disabled().opaque()
         } else if let Some(color_index) = color_index {
-            Text::new(&key_string_text)
+            Text::from(key_string_text)
                 .color_range(color_index, ..modifier_str.width() + 1)
                 .color_range(
                     color_index,
@@ -629,11 +631,11 @@ pub fn style_key_with_modifier(
                 )
                 .opaque()
         } else {
-            Text::new(&key_string_text).opaque()
+            Text::from(key_string_text).opaque()
         };
         LinePart {
             part: serialize_text(&text),
-            len: key_string_text.width(),
+            len: key_string_text_width,
             ..Default::default()
         }
     }

@@ -6,27 +6,27 @@ use zellij_tile::prelude::*;
 pub fn render_instruction_line(y: usize, max_cols: usize) {
     if max_cols > 78 {
         let text = "Help: go back with <Ctrl c>, go to root with /, <Ctrl e> - toggle hidden files";
-        let text = Text::new(text)
+        let text = Text::from(text)
             .color_range(3, 19..27)
             .color_range(3, 45..46)
             .color_range(3, 48..56);
         print_text_with_coordinates(text, 0, y, Some(max_cols), None);
     } else if max_cols > 56 {
         let text = "Help: <Ctrl c> - back, / - root, <Ctrl e> - hidden files";
-        let text = Text::new(text)
+        let text = Text::from(text)
             .color_range(3, 6..14)
             .color_range(3, 23..24)
             .color_range(3, 33..41);
         print_text_with_coordinates(text, 0, y, Some(max_cols), None);
     } else if max_cols > 25 {
         let text = "<Ctrl c> - back, / - root";
-        let text = Text::new(text).color_range(3, ..8).color_range(3, 17..18);
+        let text = Text::from(text).color_range(3, ..8).color_range(3, 17..18);
         print_text_with_coordinates(text, 0, y, Some(max_cols), None);
     }
 }
 
 pub fn render_list_tip(y: usize, max_cols: usize) {
-    let tip = Text::new(format!("(<↓↑> - Navigate, <TAB> - Select)"))
+    let tip = Text::from(format!("(<↓↑> - Navigate, <TAB> - Select)"))
         .color_range(3, 1..5)
         .color_range(3, 18..23);
     print_text_with_coordinates(tip, 0, y, Some(max_cols), None);
@@ -72,7 +72,7 @@ pub fn calculate_list_bounds(
 
 pub fn render_search_term(search_term: &str) {
     let prompt = "FIND: ";
-    let text = Text::new(format!("{}{}_", prompt, search_term))
+    let text = Text::from(format!("{}{}_", prompt, search_term))
         .color_range(2, 0..prompt.len())
         .color_range(3, prompt.len()..);
     print_text(text);
@@ -84,7 +84,7 @@ pub fn render_virtual_root_header(_cols: usize) {
     let title = "Computer";
     let prompt_len = prompt.width();
     let path_end = prompt_len + title.width();
-    let text = Text::new(format!("{}{}", prompt, title))
+    let text = Text::from(format!("{}{}", prompt, title))
         .color_range(2, 0..prompt_len)
         .color_range(0, prompt_len..path_end);
     print_text(text);
@@ -113,7 +113,7 @@ pub fn render_current_path(
     };
     if max_cols > prompt_len + current_path_len + enter_tip.width() + 13 {
         let path_end = prompt_len + current_path_len;
-        let current_path = Text::new(format!(
+        let current_path = Text::from(format!(
             "{}{} (<ENTER> - {})",
             prompt, current_path, enter_tip
         ))
@@ -137,7 +137,7 @@ pub fn render_current_path(
         };
         let current_path_len = current_path.width();
         let path_end = prompt_len + current_path_len;
-        let current_path = Text::new(format!("{}{} <ENTER>", prompt, current_path))
+        let current_path = Text::from(format!("{}{} <ENTER>", prompt, current_path))
             .color_range(2, 0..prompt_len)
             .color_range(0, prompt_len..path_end)
             .color_range(3, path_end + 1..path_end + 9);

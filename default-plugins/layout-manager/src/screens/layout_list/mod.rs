@@ -491,7 +491,7 @@ impl LayoutListScreen {
                 );
             } else {
                 // Render "No layout selected" message (moved from LayoutDetail)
-                let msg = Text::new("No layout selected").color_all(2);
+                let msg = Text::from("No layout selected").color_all(2);
                 print_text_with_coordinates(msg, detail_x + base_x, table_y, None, None);
             }
         }

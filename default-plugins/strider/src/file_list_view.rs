@@ -148,9 +148,9 @@ impl FileListView {
                     format!("{}{}", file_or_folder_name, padding)
                 };
                 let mut text_element = if is_selected {
-                    Text::new(text).selected()
+                    Text::from(text).selected()
                 } else {
-                    Text::new(text)
+                    Text::from(text)
                 };
                 if entry.is_folder() {
                     text_element = text_element.color_range(0, ..);

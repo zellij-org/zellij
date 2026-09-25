@@ -941,10 +941,10 @@ pub fn render_unified_results(
 
     // Empty header row
     table = table.add_styled_row(vec![
-        Text::new(" "),
-        Text::new(" "),
-        Text::new(" "),
-        Text::new(" "),
+        Text::from(" "),
+        Text::from(" "),
+        Text::from(" "),
+        Text::from(" "),
     ]);
 
     let visible_count = end - start;
@@ -964,7 +964,7 @@ pub fn render_unified_results(
             .cloned()
             .collect();
 
-        let mut name_cell = Text::new(display_name).color_range(1, ..);
+        let mut name_cell = Text::from(display_name).color_range(1, ..);
         if !display_indices.is_empty() {
             name_cell = name_cell.color_indices(3, display_indices);
         }
@@ -976,11 +976,11 @@ pub fn render_unified_results(
             &row.details_color_ranges
         };
         let details_text = if abbreviate_details {
-            &row.abbr_details
+            row.abbr_details.clone()
         } else {
-            &row.full_details
+            row.full_details.clone()
         };
-        let mut details_cell = Text::new(details_text);
+        let mut details_cell = Text::from(details_text);
         for (color_idx, range) in &color_ranges.ranges {
             details_cell = details_cell.color_range(*color_idx, range.clone());
         }
@@ -990,36 +990,52 @@ pub fn render_unified_results(
         } else {
             row.full_tag
         };
-        let tag_cell = Text::new(tag_text).color_range(0, ..);
+        let tag_cell = Text::from(tag_text).color_range(0, ..);
 
         // 4th column
         let fourth_cell = if row_index == 0 && has_hidden_above {
             let (summary_text, active_count, resurrectable_count) = if abbreviate_fourth_col {
-                (&above_summary_short, above_active, above_resurrectable)
+                (
+                    above_summary_short.clone(),
+                    above_active,
+                    above_resurrectable,
+                )
             } else {
-                (&above_summary_full, above_active, above_resurrectable)
+                (
+                    above_summary_full.clone(),
+                    above_active,
+                    above_resurrectable,
+                )
             };
-            Text::new(summary_text)
-                .color_substring(2, &format!("+{}", active_count))
-                .color_substring(2, &format!("+{}", resurrectable_count))
+            Text::from(summary_text)
+                .color_substring(2, format!("+{}", active_count))
+                .color_substring(2, format!("+{}", resurrectable_count))
         } else if row_index == 0 && selected_index.is_none() {
             let tab_hint_text = if abbreviate_fourth_col {
                 tab_header_short
             } else {
                 tab_header_full
             };
-            Text::new(tab_hint_text).color_substring(3, "<TAB>")
+            Text::from(tab_hint_text).color_substring(3, "<TAB>")
         } else if row_index == visible_count - 1 && has_hidden_below {
             let (summary_text, active_count, resurrectable_count) = if abbreviate_fourth_col {
-                (&below_summary_short, below_active, below_resurrectable)
+                (
+                    below_summary_short.clone(),
+                    below_active,
+                    below_resurrectable,
+                )
             } else {
-                (&below_summary_full, below_active, below_resurrectable)
+                (
+                    below_summary_full.clone(),
+                    below_active,
+                    below_resurrectable,
+                )
             };
-            Text::new(summary_text)
-                .color_substring(2, &format!("+{}", active_count))
-                .color_substring(2, &format!("+{}", resurrectable_count))
+            Text::from(summary_text)
+                .color_substring(2, format!("+{}", active_count))
+                .color_substring(2, format!("+{}", resurrectable_count))
         } else {
-            Text::new(" ")
+            Text::from(" ")
         };
 
         if is_selected {
@@ -1069,9 +1085,9 @@ pub fn render_screen_toggle(
     let first_ribbon_x = key_indication_x + key_indication_len;
     let second_ribbon_x = first_ribbon_x + first_ribbon_length;
     let third_ribbon_x = second_ribbon_x + second_ribbon_length;
-    let mut new_session_text = Text::new(new_session_text);
-    let mut running_sessions_text = Text::new(running_sessions_text);
-    let mut exited_sessions_text = Text::new(exited_sessions_text);
+    let mut new_session_text = Text::from(new_session_text);
+    let mut running_sessions_text = Text::from(running_sessions_text);
+    let mut exited_sessions_text = Text::from(exited_sessions_text);
     match active_screen {
         ActiveScreen::NewSession => {
             new_session_text = new_session_text.selected();
@@ -1092,7 +1108,7 @@ pub fn render_screen_toggle(
         PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
     };
     print_text_with_coordinates(
-        Text::new(key_indication_text).color_range(3, ..).opaque(),
+        Text::from(key_indication_text).color_range(3, ..).opaque(),
         key_indication_x,
         y,
         None,
@@ -1343,7 +1359,7 @@ pub fn render_layout_selection_list(
     let layout_search_term = new_session_info.layout_search_term();
     let search_term_len = layout_search_term.width();
     let layout_indication_line = if max_cols_of_new_session_block > 73 + search_term_len {
-        Text::new(format!(
+        Text::from(format!(
             "New session layout: {}_ (Search and select from list, <ENTER> when done)",
             layout_search_term
         ))
@@ -1351,7 +1367,7 @@ pub fn render_layout_selection_list(
         .color_range(3, 20..20 + search_term_len)
         .color_range(3, 52 + search_term_len..59 + search_term_len)
     } else {
-        Text::new(format!(
+        Text::from(format!(
             "New session layout: {}_ <ENTER>",
             layout_search_term
         ))
@@ -1374,12 +1390,12 @@ pub fn render_layout_selection_list(
             break;
         } else {
             let mut layout_cell = if is_builtin {
-                Text::new(format!("{} (built-in)", layout_name))
+                Text::from(format!("{} (built-in)", layout_name))
                     .color_range(1, 0..layout_name_len)
                     .color_range(0, layout_name_len + 1..)
                     .color_indices(3, indices)
             } else {
-                Text::new(format!("{}", layout_name))
+                Text::from(format!("{}", layout_name))
                     .color_range(1, ..)
                     .color_indices(3, indices)
             };
@@ -1387,9 +1403,9 @@ pub fn render_layout_selection_list(
                 layout_cell = layout_cell.selected();
             }
             let arrow_cell = if is_selected {
-                Text::new(format!("<↓↑>")).selected().color_range(3, ..)
+                Text::from(format!("<↓↑>")).selected().color_range(3, ..)
             } else {
-                Text::new(format!("    ")).color_range(3, ..)
+                Text::from(format!("    ")).color_range(3, ..)
             };
             table = table.add_styled_row(vec![arrow_cell, layout_cell]);
         }
@@ -1400,7 +1416,7 @@ pub fn render_layout_selection_list(
 
 pub fn render_error(error_text: &str, rows: usize, columns: usize, x: usize, y: usize) {
     print_text_with_coordinates(
-        Text::new(format!("Error: {}", error_text)).color_range(3, ..),
+        Text::from(format!("Error: {}", error_text)).color_range(3, ..),
         x,
         y + rows,
         Some(columns),
@@ -1418,7 +1434,7 @@ pub fn render_renaming_session_screen(
     if rows == 0 || columns == 0 {
         return;
     }
-    let text = Text::new(format!(
+    let text = Text::from(format!(
         "New name for current session: {}_ (<ENTER> when done)",
         new_session_name
     ))
@@ -1431,7 +1447,7 @@ pub fn render_renaming_session_screen(
     if new_session_name.contains('/') {
         let error_text = "Error: session name cannot contain '/'";
         print_text_with_coordinates(
-            Text::new(error_text).color_range(3, ..),
+            Text::from(error_text).color_range(3, ..),
             x,
             y + 2,
             None,
@@ -1626,7 +1642,7 @@ pub fn render_unsaved_changes_line(
         return; // Not enough space to render
     };
 
-    let text = Text::new(&msg)
+    let text = Text::from(msg)
         .color_substring(3, shortcut_text)
         .color_substring(2, &time_text);
     print_text_with_coordinates(text, x, y, None, None);

@@ -175,7 +175,7 @@ impl ZellijPlugin for State {
         }
         match &mut self.current_screen {
             Screen::RebindLeaders(rebind_leaders_screen) => {
-                rebind_leaders_screen.render(rows, cols, self.ui_size, &notification);
+                rebind_leaders_screen.render(rows, cols, self.ui_size, notification);
             },
             Screen::Presets(presets_screen) => {
                 if self.is_setup_wizard {
@@ -183,14 +183,14 @@ impl ZellijPlugin for State {
                         rows,
                         cols,
                         self.ui_size,
-                        &notification,
+                        notification,
                     )
                 } else {
                     presets_screen.render_reset_keybindings_screen(
                         rows,
                         cols,
                         self.ui_size,
-                        &notification,
+                        notification,
                     )
                 }
             },

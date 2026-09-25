@@ -432,7 +432,7 @@ pub fn text_copied_hint(copy_destination: CopyDestination) -> LinePart {
         CopyDestination::System => "Text copied to system clipboard",
     };
     LinePart {
-        part: serialize_text(&Text::new(&hint).color_range(2, ..).opaque()),
+        part: serialize_text(&Text::from(hint).color_range(2, ..).opaque()),
         len: hint.len(),
     }
 }
