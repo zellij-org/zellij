@@ -4229,6 +4229,56 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
 }
 
 #[test]
+pub fn send_cli_override_layout_action_apply_only_to_active_tab() {
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let main_client_id = mock_screen.main_client_id;
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let override_layout_action = CliAction::OverrideLayout {
+        layout: None,
+        layout_string: Some(
+            "layout { tab { pane split_direction=\"horizontal\" { pane; pane; }; }; }".into(),
+        ),
+        layout_dir: None,
+        retain_existing_terminal_panes: false,
+        retain_existing_plugin_panes: false,
+        apply_only_to_active_tab: true,
+    };
+    send_cli_action_to_server(&session_metadata, override_layout_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+    let received_plugin_instructions = received_plugin_instructions.lock().unwrap();
+    let (tab_layouts, forwarded_client_id) = received_plugin_instructions
+        .iter()
+        .find_map(|instruction| match instruction {
+            PluginInstruction::OverrideLayout(_, _, tab_layouts, _, _, client_id, _) => {
+                Some((tab_layouts.clone(), *client_id))
+            },
+            _ => None,
+        })
+        .expect("OverrideLayout instruction should be sent to the plugin thread");
+    assert_eq!(
+        tab_layouts.len(),
+        1,
+        "the layout should be applied to the active tab of a connected client"
+    );
+    assert_eq!(tab_layouts[0].tab_index, 0);
+    assert_eq!(forwarded_client_id, main_client_id);
+}
+
+#[test]
 pub fn send_cli_next_tab_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
