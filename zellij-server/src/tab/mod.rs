@@ -5498,7 +5498,9 @@ impl Tab {
             connected_clients.insert(override_id);
         }
 
-        if connected_clients.is_empty() || !self.tiled_panes.has_active_panes() {
+        let has_tiled_panes_to_render = self.tiled_panes.has_active_panes()
+            || (client_id_override.is_some() && self.tiled_panes.has_panes());
+        if connected_clients.is_empty() || !has_tiled_panes_to_render {
             return Ok(());
         }
         if self.stacked_pane_list_is_active() {
@@ -5537,7 +5539,8 @@ impl Tab {
         let no_ui_fullscreen_active = self.tiled_panes.fullscreen_covers_ui();
         if !no_ui_fullscreen_active
             && ((self.floating_panes.panes_are_visible()
-                && self.floating_panes.has_active_panes_for(client_id_override))
+                && (self.floating_panes.has_active_panes_for(client_id_override)
+                    || (client_id_override.is_some() && self.floating_panes.has_panes())))
                 || self.floating_panes.has_pinned_panes())
         {
             self.floating_panes
