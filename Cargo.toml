@@ -42,10 +42,8 @@ vte = { workspace = true }
 
 [workspace]
 members = [
-    "default-plugins/compact-bar",
-    "default-plugins/status-bar",
+    "default-plugins/bars",
     "default-plugins/strider",
-    "default-plugins/tab-bar",
     "default-plugins/fixture-plugin-for-tests",
     "default-plugins/session-manager",
     "default-plugins/configuration",
@@ -54,7 +52,6 @@ members = [
     "default-plugins/share",
     "default-plugins/multiple-select",
     "default-plugins/layout-manager",
-    "default-plugins/link",
     "zellij-client",
     "zellij-integration-tests",
     "zellij-server",

@@ -15,10 +15,10 @@ use zellij_utils::input::plugins::PluginConfig;
 
 const NAME: &str = "testdist";
 const SIDEBAR_BYTES: &[u8] = b"sidebar plugin bytes";
-const REPLACED_STATUS_BAR_BYTES: &[u8] = b"replacement status-bar bytes";
-const REMOVED_BUILTIN: &str = "strider";
-const REPLACED_BUILTIN: &str = "status-bar";
-const UNTOUCHED_BUILTIN: &str = "tab-bar";
+const REPLACED_STATUS_BAR_BYTES: &[u8] = b"replacement strider bytes";
+const REMOVED_BUILTIN: &str = "share";
+const REPLACED_BUILTIN: &str = "strider";
+const UNTOUCHED_BUILTIN: &str = "bars";
 
 const BUNDLED_CONFIG: &str = r#"
 plugins {
@@ -196,7 +196,7 @@ fn the_bundled_config_is_layered_over_zellij_defaults() {
         "the bundled alias should be present"
     );
     assert!(
-        config.plugins.aliases.contains_key(UNTOUCHED_BUILTIN),
+        config.plugins.aliases.contains_key("tab-bar"),
         "Zellij's default aliases should survive the layering"
     );
     assert_eq!(

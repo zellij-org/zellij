@@ -383,6 +383,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "bars"
+version = "0.1.0"
+dependencies = [
+ "ansi_term",
+ "lazy_static",
+ "rand 0.10.2",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "unicode-width 0.2.2",
+ "zellij-tile",
+ "zellij-tile-utils",
+]
+
+[[package]]
 name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -655,16 +671,6 @@ name = "colorsys"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4dfdf9179d546b55ff3f88c9d93ecfaa3e9760163da5a1080af5243230dbbb70"
-
-[[package]]
-name = "compact-bar"
-version = "0.1.0"
-dependencies = [
- "ansi_term",
- "unicode-width 0.2.2",
- "zellij-tile",
- "zellij-tile-utils",
-]
 
 [[package]]
 name = "concurrent-queue"
@@ -2122,13 +2128,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "link"
-version = "0.1.0"
-dependencies = [
- "zellij-tile",
-]
-
-[[package]]
 name = "linux-raw-sys"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3461,22 +3460,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
-name = "status-bar"
-version = "0.1.0"
-dependencies = [
- "ansi_term",
- "lazy_static",
- "rand 0.10.2",
- "regex",
- "serde",
- "serde_json",
- "thiserror 2.0.19",
- "unicode-width 0.2.2",
- "zellij-tile",
- "zellij-tile-utils",
-]
-
-[[package]]
 name = "strider"
 version = "0.2.0"
 dependencies = [
@@ -3643,16 +3626,6 @@ dependencies = [
  "rustix 0.38.44",
  "windows-sys 0.52.0",
  "winx",
-]
-
-[[package]]
-name = "tab-bar"
-version = "0.1.0"
-dependencies = [
- "ansi_term",
- "unicode-width 0.2.2",
- "zellij-tile",
- "zellij-tile-utils",
 ]
 
 [[package]]

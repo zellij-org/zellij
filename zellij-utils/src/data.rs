@@ -3041,6 +3041,63 @@ pub struct PluginIds {
     pub client_id: ClientId,
 }
 
+pub type SlotId = u32;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum SlotKind {
+    Pane,
+    Background,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Slot {
+    pub id: SlotId,
+    pub kind: SlotKind,
+    pub configuration: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct EventContext {
+    pub slot_id: Option<SlotId>,
+    pub client_id: Option<ClientId>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub enum Render {
+    #[default]
+    Nothing,
+    All,
+    Client(ClientId),
+    Slots(Vec<SlotId>),
+}
+
+impl Render {
+    pub fn merge(self, other: Render) -> Render {
+        match (self, other) {
+            (Render::Nothing, other) => other,
+            (this, Render::Nothing) => this,
+            (Render::All, _) | (_, Render::All) => Render::All,
+            (Render::Client(a), Render::Client(b)) if a == b => Render::Client(a),
+            (Render::Slots(mut a), Render::Slots(b)) => {
+                for slot_id in b {
+                    if !a.contains(&slot_id) {
+                        a.push(slot_id);
+                    }
+                }
+                Render::Slots(a)
+            },
+            _ => Render::All,
+        }
+    }
+    pub fn from_bool(should_render: bool) -> Render {
+        if should_render {
+            Render::All
+        } else {
+            Render::Nothing
+        }
+    }
+}
+
 /// Tag used to identify the plugin in layout and config kdl files
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct PluginTag(String);
@@ -4061,6 +4118,10 @@ pub enum PluginCommand {
     SetSoftKeyboard(bool),
     FocusHostSession,
     GetNestedSessionKeybinds(PaneId),
+    SetSelectableFor(SlotId, bool),
+    HideSlot(SlotId),
+    ShowSlot(SlotId, bool),
+    CloseSlot(SlotId),
 }
 
 // Response type for plugin API methods that open a pane in a new tab

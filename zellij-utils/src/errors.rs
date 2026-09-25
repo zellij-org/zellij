@@ -543,6 +543,7 @@ pub enum PluginContext {
     AddClient,
     RemoveClient,
     UpdatePluginTabIndices,
+    UpdateClientVisiblePlugins,
     NewTab,
     OverrideLayout,
     ApplyCachedEvents,

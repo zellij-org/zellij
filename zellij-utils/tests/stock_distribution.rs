@@ -53,6 +53,21 @@ fn every_builtin_plugin_resolves_and_nothing_else_does() {
         }
     }
     assert!(!distribution::is_builtin_plugin_name("sidebar"));
+    for legacy_name in ["tab-bar", "status-bar", "compact-bar", "link"] {
+        let run_plugin =
+            RunPlugin::from_url(&format!("zellij:{}", legacy_name)).expect("the url should parse");
+        let plugin = PluginConfig::from_run_plugin(&run_plugin)
+            .unwrap_or_else(|| panic!("'{}' should redirect to the bars plugin", legacy_name));
+        assert_eq!(plugin.location.display(), "zellij:bars");
+        assert_eq!(
+            plugin
+                .initial_userspace_configuration
+                .inner()
+                .get("role")
+                .map(|s| s.as_str()),
+            Some(legacy_name)
+        );
+    }
     let unknown = RunPlugin::from_url("zellij:sidebar").expect("the url should parse");
     assert!(PluginConfig::from_run_plugin(&unknown).is_none());
 }

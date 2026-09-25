@@ -292,7 +292,7 @@ macro_rules! grant_permissions_and_log_actions_in_thread_struct_variant {
     };
 }
 
-fn create_plugin_thread(
+pub(super) fn create_plugin_thread(
     zellij_cwd: Option<PathBuf>,
     session_env_vars: Option<std::collections::BTreeMap<String, String>>,
 ) -> (

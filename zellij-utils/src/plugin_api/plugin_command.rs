@@ -123,7 +123,8 @@ pub use super::generated_api::api::{
         SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
         SetPaneBorderStylePayload, SetPaneBorderlessPayload, SetPaneColorPayload,
         SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
-        SetPaneRegexHighlightsPayload, SetSelfMouseSelectionSupportPayload,
+        SetPaneRegexHighlightsPayload, SetSelectableForPayload, SetSelfMouseSelectionSupportPayload,
+        ShowSlotPayload, SlotCommandResponse as ProtobufSlotCommandResponse,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
         ShowCursorPayload, ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
@@ -2521,6 +2522,27 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::CurrentSessionLastSavedTime) => {
                 Ok(PluginCommand::CurrentSessionLastSavedTime)
             },
+            Some(CommandName::SetSelectableFor) => match protobuf_plugin_command.payload {
+                Some(Payload::SetSelectableForPayload(payload)) => Ok(
+                    PluginCommand::SetSelectableFor(payload.slot_id, payload.selectable),
+                ),
+                _ => Err("Mismatched payload for SetSelectableFor"),
+            },
+            Some(CommandName::HideSlot) => match protobuf_plugin_command.payload {
+                Some(Payload::HideSlotPayload(slot_id)) => Ok(PluginCommand::HideSlot(slot_id)),
+                _ => Err("Mismatched payload for HideSlot"),
+            },
+            Some(CommandName::ShowSlot) => match protobuf_plugin_command.payload {
+                Some(Payload::ShowSlotPayload(payload)) => Ok(PluginCommand::ShowSlot(
+                    payload.slot_id,
+                    payload.should_float_if_hidden,
+                )),
+                _ => Err("Mismatched payload for ShowSlot"),
+            },
+            Some(CommandName::CloseSlot) => match protobuf_plugin_command.payload {
+                Some(Payload::CloseSlotPayload(slot_id)) => Ok(PluginCommand::CloseSlot(slot_id)),
+                _ => Err("Mismatched payload for CloseSlot"),
+            },
             Some(CommandName::GetNestedSessionKeybinds) => match protobuf_plugin_command.payload {
                 Some(Payload::GetNestedSessionKeybindsPayload(payload)) => {
                     let pane_id = payload
@@ -4333,6 +4355,30 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     CurrentSessionLastSavedTimePayload {},
                 )),
             }),
+            PluginCommand::SetSelectableFor(slot_id, selectable) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetSelectableFor as i32,
+                payload: Some(Payload::SetSelectableForPayload(SetSelectableForPayload {
+                    slot_id,
+                    selectable,
+                })),
+            }),
+            PluginCommand::HideSlot(slot_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::HideSlot as i32,
+                payload: Some(Payload::HideSlotPayload(slot_id)),
+            }),
+            PluginCommand::ShowSlot(slot_id, should_float_if_hidden) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::ShowSlot as i32,
+                    payload: Some(Payload::ShowSlotPayload(ShowSlotPayload {
+                        slot_id,
+                        should_float_if_hidden,
+                    })),
+                })
+            },
+            PluginCommand::CloseSlot(slot_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::CloseSlot as i32,
+                payload: Some(Payload::CloseSlotPayload(slot_id)),
+            }),
             PluginCommand::GetNestedSessionKeybinds(pane_id) => {
                 let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
                 Ok(ProtobufPluginCommand {
@@ -5475,6 +5521,21 @@ mod tests {
         match decoded {
             PluginCommand::ToggleFloatingPanes { tab_id } => assert_eq!(tab_id, Some(2)),
             other => panic!("expected ToggleFloatingPanes, got {:?}", other),
+        }
+    }
+}
+
+impl From<Result<(), String>> for ProtobufSlotCommandResponse {
+    fn from(result: Result<(), String>) -> Self {
+        ProtobufSlotCommandResponse { error: result.err() }
+    }
+}
+
+impl From<ProtobufSlotCommandResponse> for Result<(), String> {
+    fn from(response: ProtobufSlotCommandResponse) -> Self {
+        match response.error {
+            Some(error) => Err(error),
+            None => Ok(()),
         }
     }
 }

@@ -1,5 +1,6 @@
 use crate::plugins::plugin_map::{
-    PluginEnv, PluginMap, PluginMetadata, RunningPlugin, VecDequeInputStream, WriteOutputStream,
+    PluginEnv, PluginMap, PluginMetadata, RunningPlugin, SharedEnv, VecDequeInputStream,
+    WriteOutputStream,
 };
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
 use crate::plugins::wasm_bridge::{LoadingContext, PluginCache};
@@ -140,9 +141,20 @@ impl<'a> PluginLoader<'a> {
                 .or_else(|_e| self.interpret_module())?
         };
         let (store, instance) = self.create_plugin_environment(module)?;
-        self.load_plugin_instance(store, &instance)?;
+        self.load_plugin_instance(store, &instance, false)?;
         self.clone_instance_for_other_clients()?;
         Ok(())
+    }
+    pub fn start_shared_plugin(&mut self) -> Result<Arc<Mutex<RunningPlugin>>> {
+        let module = if self.skip_cache {
+            self.interpret_module()?
+        } else {
+            self.load_module_from_memory()
+                .or_else(|_e| self.interpret_module())?
+        };
+        let (mut store, instance) = self.create_plugin_environment(module)?;
+        store.data_mut().shared = Some(SharedEnv::default());
+        self.load_plugin_instance(store, &instance, true)
     }
     fn record_plugin_metadata(&mut self) {
         self.plugin_map.insert_metadata(
@@ -183,7 +195,8 @@ impl<'a> PluginLoader<'a> {
         &mut self,
         mut store: Store<PluginEnv>,
         instance: &Instance,
-    ) -> Result<()> {
+        shared: bool,
+    ) -> Result<Arc<Mutex<RunningPlugin>>> {
         let err_context = || format!("failed to load plugin from instance {instance:#?}");
         let main_user_instance = instance.clone();
         let start_function = instance
@@ -220,13 +233,18 @@ impl<'a> PluginLoader<'a> {
             self.size.rows,
             self.size.cols,
         )));
-        self.plugin_map.insert(
-            self.plugin_id,
-            self.client_id,
-            plugin.clone(),
-            subscriptions,
-            workers,
-        );
+        if shared {
+            self.plugin_map
+                .insert_shared(self.plugin_id, (plugin.clone(), subscriptions, workers));
+        } else {
+            self.plugin_map.insert(
+                self.plugin_id,
+                self.client_id,
+                plugin.clone(),
+                subscriptions,
+                workers,
+            );
+        }
 
         start_function
             .call(&mut plugin.lock().unwrap().store, ())
@@ -245,7 +263,7 @@ impl<'a> PluginLoader<'a> {
             .call(&mut plugin.lock().unwrap().store, ())
             .with_context(err_context)?;
 
-        Ok(())
+        Ok(plugin)
     }
     pub fn create_plugin_environment(
         &self,
@@ -294,6 +312,7 @@ impl<'a> PluginLoader<'a> {
             stdin_pipe,
             stdout_pipe,
             store_limits: create_optimized_store_limits(),
+            shared: None,
         };
         let mut store = Store::new(&self.engine, plugin_env);
 
@@ -405,6 +424,7 @@ impl<'a> PluginLoader<'a> {
             stdin_pipe,
             stdout_pipe,
             store_limits: create_optimized_store_limits(),
+            shared: None,
         };
         let mut store = Store::new(&self.engine, plugin_env);
 

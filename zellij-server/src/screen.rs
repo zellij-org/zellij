@@ -1656,6 +1656,8 @@ pub(crate) struct Screen {
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
     last_reported_plugin_tab_indices: HashMap<PluginId, usize>,
+    last_reported_client_visible_plugins: HashMap<ClientId, HashSet<PluginId>>,
+    pending_selectable_panes: HashMap<PaneId, bool>,
     state_report_target: Option<(PluginId, ClientId)>,
     next_forward_token: u32,
     pending_forwarded_queries: HashMap<u32, PendingForwardEntry>,
@@ -1878,6 +1880,8 @@ impl Screen {
             pane_render_subscribers: HashMap::new(),
             background_plugin_subscriptions: HashMap::new(),
             last_reported_plugin_tab_indices: HashMap::new(),
+            last_reported_client_visible_plugins: HashMap::new(),
+            pending_selectable_panes: HashMap::new(),
             state_report_target: None,
             next_forward_token: 1, // 0 is reserved as the startup sentinel
             pending_forwarded_queries: HashMap::new(),
@@ -6057,14 +6061,52 @@ impl Screen {
             .send_to_plugin(PluginInstruction::UpdatePluginTabIndices(tab_indices));
         self.last_reported_plugin_tab_indices = current;
     }
+    fn apply_pending_selectable_panes(&mut self) {
+        if self.pending_selectable_panes.is_empty() {
+            return;
+        }
+        let pending: Vec<(PaneId, bool)> = self.pending_selectable_panes.drain().collect();
+        for (pane_id, selectable) in pending {
+            let tab = self
+                .tabs
+                .values_mut()
+                .find(|tab| tab.has_pane_with_pid(&pane_id));
+            match tab {
+                Some(tab) => tab.set_pane_selectable(pane_id, selectable),
+                None => {
+                    self.pending_selectable_panes.insert(pane_id, selectable);
+                },
+            }
+        }
+    }
+    fn report_client_visible_plugins(&mut self) {
+        let mut visible: HashMap<ClientId, HashSet<PluginId>> = HashMap::new();
+        for (client_id, tab_id) in self.active_tab_ids.iter() {
+            if let Some(tab) = self.tabs.get(tab_id) {
+                visible.insert(*client_id, tab.get_plugin_ids().into_iter().collect());
+            }
+        }
+        if visible == self.last_reported_client_visible_plugins {
+            return;
+        }
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::UpdateClientVisiblePlugins(
+                visible.clone(),
+            ));
+        self.last_reported_client_visible_plugins = visible;
+    }
     fn log_and_report_session_state(&mut self) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
+        self.apply_pending_selectable_panes();
 
         self.update_active_pane_ids();
         self.revert_fit_disabled_without_reference_client()
             .with_context(err_context)?;
         self.reconcile_all_single_pane_focus();
         self.report_plugin_tab_indices();
+        self.report_client_visible_plugins();
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
@@ -10198,9 +10240,10 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
-                if !found_plugin {
-                    pending_events_waiting_for_tab
-                        .push(ScreenInstruction::SetSelectable(pid, selectable));
+                if found_plugin {
+                    screen.pending_selectable_panes.remove(&pid);
+                } else {
+                    screen.pending_selectable_panes.insert(pid, selectable);
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;

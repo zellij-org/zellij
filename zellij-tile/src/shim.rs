@@ -44,6 +44,7 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
     ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
     ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse, ProtobufShowFloatingPanesResponse,
+    ProtobufSlotCommandResponse,
     RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
@@ -90,6 +91,31 @@ pub fn show_cursor(cursor_position: Option<(usize, usize)>) {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+}
+
+fn run_slot_command(plugin_command: PluginCommand) -> Result<(), String> {
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response =
+        ProtobufSlotCommandResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    response.into()
+}
+
+pub fn set_selectable_for(slot_id: SlotId, selectable: bool) -> Result<(), String> {
+    run_slot_command(PluginCommand::SetSelectableFor(slot_id, selectable))
+}
+
+pub fn hide_slot(slot_id: SlotId) -> Result<(), String> {
+    run_slot_command(PluginCommand::HideSlot(slot_id))
+}
+
+pub fn show_slot(slot_id: SlotId, should_float_if_hidden: bool) -> Result<(), String> {
+    run_slot_command(PluginCommand::ShowSlot(slot_id, should_float_if_hidden))
+}
+
+pub fn close_slot(slot_id: SlotId) -> Result<(), String> {
+    run_slot_command(PluginCommand::CloseSlot(slot_id))
 }
 
 pub fn request_permission(permissions: &[PermissionType]) {
