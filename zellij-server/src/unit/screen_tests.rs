@@ -1,5 +1,5 @@
 use super::{screen_thread_main, CopyOptions, Screen, ScreenInstruction};
-use crate::panes::kitty_graphics::KittyImageStore;
+use crate::panes::kitty_graphics::{KittyHostCapability, KittyImageStore};
 use crate::panes::PaneId;
 use crate::{
     channels::SenderWithContext, os_input_output::ServerOsApi, route::route_action,
@@ -11456,7 +11456,13 @@ fn kitty_query_replies_ok_when_capable_client_connected() {
     let mut screen = create_new_screen(size, true, true);
     new_tab(&mut screen, 1, 0);
     screen.update_kitty_graphics_support(1, true);
-    assert_eq!(screen.kitty_host_capabilities.borrow().get(&1), Some(&true));
+    assert_eq!(
+        screen.kitty_host_capabilities.borrow().get(&1),
+        Some(&KittyHostCapability {
+            graphics: true,
+            zlib: false,
+        })
+    );
     let active_tab = screen.get_active_tab_mut(1).unwrap();
     let active_pane = active_tab.get_active_pane_mut(1).unwrap();
     active_pane.handle_pty_bytes(b"\x1b_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\x1b\\".to_vec());
@@ -11477,7 +11483,7 @@ fn kitty_query_replies_enotsupported_when_no_capable_client() {
     screen.update_kitty_graphics_support(1, false);
     assert_eq!(
         screen.kitty_host_capabilities.borrow().get(&1),
-        Some(&false)
+        Some(&KittyHostCapability::default())
     );
     let active_tab = screen.get_active_tab_mut(1).unwrap();
     let active_pane = active_tab.get_active_pane_mut(1).unwrap();
@@ -11500,7 +11506,7 @@ fn kitty_query_is_ignored_when_the_protocol_is_disabled_in_the_config() {
     screen.update_kitty_graphics_support(1, true);
     assert_eq!(
         screen.kitty_host_capabilities.borrow().get(&1),
-        Some(&false),
+        Some(&KittyHostCapability::default()),
         "a capable host must still be recorded as incapable when the protocol is disabled"
     );
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -11509,6 +11515,54 @@ fn kitty_query_is_ignored_when_the_protocol_is_disabled_in_the_config() {
     assert!(
         active_pane.drain_messages_to_pty().is_empty(),
         "a disabled protocol must not reply to queries at all"
+    );
+}
+
+#[test]
+fn kitty_zlib_support_is_recorded_alongside_graphics_support() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.update_kitty_graphics_support(1, true);
+    screen.update_kitty_zlib_support(1, true);
+    assert_eq!(
+        screen.kitty_host_capabilities.borrow().get(&1),
+        Some(&KittyHostCapability {
+            graphics: true,
+            zlib: true,
+        })
+    );
+    screen.update_kitty_graphics_support(1, true);
+    assert_eq!(
+        screen.kitty_host_capabilities.borrow().get(&1),
+        Some(&KittyHostCapability {
+            graphics: true,
+            zlib: true,
+        }),
+        "a repeated graphics answer must not reset the recorded zlib support"
+    );
+}
+
+#[test]
+fn kitty_zlib_support_before_graphics_support_is_ignored() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.update_kitty_zlib_support(1, true);
+    assert_eq!(screen.kitty_host_capabilities.borrow().get(&1), None);
+    screen.update_kitty_graphics_support(1, true);
+    assert_eq!(
+        screen.kitty_host_capabilities.borrow().get(&1),
+        Some(&KittyHostCapability {
+            graphics: true,
+            zlib: false,
+        })
     );
 }
 

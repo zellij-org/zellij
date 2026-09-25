@@ -4,7 +4,10 @@ use crate::panes::Row;
 
 use crate::panes::Selection;
 use crate::{
-    panes::kitty_graphics::store::{InternalImageId, KittyImageStore, ScaledImageKey},
+    panes::kitty_graphics::{
+        store::{InternalImageId, KittyImageStore, ScaledImageKey},
+        KittyHostCapability,
+    },
     panes::sixel::SixelImageStore,
     panes::terminal_character::{AnsiCode, CharacterStyles},
     panes::{LinkHandler, PaneId, TerminalCharacter, DEFAULT_STYLES, EMPTY_TERMINAL_CHARACTER},
@@ -401,6 +404,7 @@ pub struct KittyFrameInput<'a> {
     pub kitty_image_store: &'a mut KittyImageStore,
     pub host_state: &'a mut HostKittyState,
     pub host_display_cleared: bool,
+    pub compressed: bool,
 }
 
 fn pane_sort_key(pane_id: PaneId) -> (u8, u32) {
@@ -416,8 +420,10 @@ fn emit_kitty_transmit(
     width: usize,
     height: usize,
     b64: &str,
+    compressed: bool,
 ) -> Result<()> {
     let err_context = "failed to serialize kitty transmit";
+    let compression = if compressed { "o=z," } else { "" };
     let mut parts: Vec<&str> = vec![];
     let mut index = 0;
     while index < b64.len() {
@@ -433,7 +439,8 @@ fn emit_kitty_transmit(
         if part_index == 0 {
             write!(
                 out,
-                "\u{1b}_Ga=t,q=2,f=32,t=d,i={},s={},v={},m={};{}\u{1b}\\",
+                "\u{1b}_Ga=t,q=2,f=32,{}t=d,i={},s={},v={},m={};{}\u{1b}\\",
+                compression,
                 host_image_id,
                 width,
                 height,
@@ -463,6 +470,7 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
         kitty_image_store,
         host_state,
         host_display_cleared,
+        compressed,
     } = kitty_input;
     let mut out = String::new();
     if host_display_cleared {
@@ -565,13 +573,17 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
                         Some(dims) => dims,
                         None => continue,
                     };
-                    let b64 = match kitty_image_store.base64_for(chunk.internal_image_id, variant) {
+                    let b64 = match kitty_image_store.base64_for(
+                        chunk.internal_image_id,
+                        variant,
+                        compressed,
+                    ) {
                         Some(b64) => b64,
                         None => continue,
                     };
                     let host_image_id = host_state.next_host_image_id;
                     host_state.next_host_image_id += 1;
-                    emit_kitty_transmit(&mut out, host_image_id, width, height, &b64)?;
+                    emit_kitty_transmit(&mut out, host_image_id, width, height, &b64, compressed)?;
                     host_state.transmitted.insert(image_key, host_image_id);
                     host_image_id
                 },
@@ -638,7 +650,7 @@ pub struct Output {
     link_handler: Option<Rc<RefCell<LinkHandler>>>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     kitty_image_store: Rc<RefCell<KittyImageStore>>,
-    kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
+    kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, KittyHostCapability>>>,
     kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
     sixel_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
@@ -657,7 +669,7 @@ impl Output {
         styled_underlines: bool,
         osc8_hyperlinks: bool,
         kitty_image_store: Rc<RefCell<KittyImageStore>>,
-        kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
+        kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, KittyHostCapability>>>,
         kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
         sixel_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     ) -> Self {
@@ -898,12 +910,13 @@ impl Output {
             let kitty_chunks_by_pane = self.client_kitty_chunks.remove(&client_id);
             let kitty_rendered_panes = self.client_rendered_kitty_panes.remove(&client_id);
             let kitty_visible_panes = self.client_kitty_visible_panes.remove(&client_id);
-            let client_host_is_kitty_capable = self
+            let client_kitty_capability = self
                 .kitty_host_capabilities
                 .borrow()
                 .get(&client_id)
                 .copied()
-                .unwrap_or(false);
+                .unwrap_or_default();
+            let client_host_is_kitty_capable = client_kitty_capability.graphics;
             let client_host_is_sixel_capable = self
                 .sixel_host_capabilities
                 .borrow()
@@ -922,6 +935,7 @@ impl Output {
                     kitty_image_store: &mut *kitty_image_store,
                     host_state: kitty_host_state_map.entry(client_id).or_default(),
                     host_display_cleared,
+                    compressed: client_kitty_capability.zlib,
                 })
             } else {
                 None

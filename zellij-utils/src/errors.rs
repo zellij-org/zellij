@@ -319,6 +319,7 @@ pub enum ScreenContext {
     TerminalForegroundColor,
     TerminalColorRegisters,
     SetKittyGraphicsSupport,
+    SetKittyZlibSupport,
     SetSixelSupport,
     ForwardHostQuery,
     NestedSessionMessageFromPane,
