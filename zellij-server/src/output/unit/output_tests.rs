@@ -6,6 +6,7 @@ use crate::panes::kitty_graphics::parser::{
     DecodedImage, KittyAction, KittyCommandParser, KittyFormat,
 };
 use crate::panes::kitty_graphics::store::{InternalImageId, KittyImageStore};
+use crate::panes::kitty_graphics::KittyHostCapability;
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::terminal_character::AnsiCode;
 use crate::panes::{LinkHandler, PaneId, Row, TerminalCharacter};
@@ -1125,14 +1126,20 @@ fn test_pane_defaults_preserved_when_right_covered() {
 
 type KittyTestParts = (
     Rc<RefCell<KittyImageStore>>,
-    Rc<RefCell<HashMap<ClientId, bool>>>,
+    Rc<RefCell<HashMap<ClientId, KittyHostCapability>>>,
     Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
 );
 
 fn create_test_kitty_parts() -> KittyTestParts {
     let kitty_image_store = Rc::new(RefCell::new(KittyImageStore::default()));
     let capabilities = Rc::new(RefCell::new(HashMap::new()));
-    capabilities.borrow_mut().insert(1, true);
+    capabilities.borrow_mut().insert(
+        1,
+        KittyHostCapability {
+            graphics: true,
+            zlib: true,
+        },
+    );
     let host_state = Rc::new(RefCell::new(HashMap::new()));
     (kitty_image_store, capabilities, host_state)
 }
@@ -1171,6 +1178,56 @@ fn store_test_kitty_image(
         .unwrap()
 }
 
+fn store_test_kitty_image_with_bytes(
+    kitty_image_store: &Rc<RefCell<KittyImageStore>>,
+    width: u32,
+    height: u32,
+    bytes: Vec<u8>,
+) -> InternalImageId {
+    kitty_image_store
+        .borrow_mut()
+        .store_image(DecodedImage {
+            bytes,
+            width,
+            height,
+            format: KittyFormat::Rgba32,
+        })
+        .unwrap()
+}
+
+fn kitty_transmit_control_and_payload(output: &str) -> (String, String) {
+    let mut control = String::new();
+    let mut payload = String::new();
+    let mut search_start = 0;
+    while let Some(position) = output[search_start..].find("\u{1b}_G") {
+        let start = search_start + position + 3;
+        let end = start + output[start..].find("\u{1b}\\").unwrap();
+        let (apc_control, apc_payload) = output[start..end]
+            .split_once(';')
+            .unwrap_or((&output[start..end], ""));
+        if apc_control.starts_with("a=t,") {
+            control = apc_control.to_owned();
+            payload.push_str(apc_payload);
+        } else if apc_control.starts_with("q=2,m=") {
+            payload.push_str(apc_payload);
+        }
+        search_start = end + 2;
+    }
+    (control, payload)
+}
+
+fn inflate_kitty_transmit_payload(payload_b64: &str) -> Vec<u8> {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine as _;
+    use std::io::Read;
+    let compressed = STANDARD.decode(payload_b64).unwrap();
+    let mut inflated = Vec::new();
+    flate2::read::ZlibDecoder::new(&compressed[..])
+        .read_to_end(&mut inflated)
+        .unwrap();
+    inflated
+}
+
 fn kitty_chunk(
     internal_image_id: InternalImageId,
     placement_uid: u64,
@@ -1188,8 +1245,7 @@ fn kitty_chunk(
         cell_offset_x: 0,
         cell_offset_y: 0,
         z_index: 0,
-        dest_cells: (3, 2),
-        scaled_px: None,
+        scaled_image: None,
         placement_uid,
     }
 }
@@ -1295,14 +1351,119 @@ fn kitty_transmit_only_once_across_frames() {
 }
 
 #[test]
+fn kitty_transmit_payload_is_zlib_compressed_rgba() {
+    let parts = create_test_kitty_parts();
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let output = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 0, 0)], None);
+    let (control, payload) = kitty_transmit_control_and_payload(&output);
+    assert!(control.starts_with("a=t,q=2,f=32,o=z,t=d,i=2000000000,s=30,v=40,m="));
+    assert!(payload.len() < 30 * 40 * 4);
+    assert_eq!(
+        inflate_kitty_transmit_payload(&payload),
+        vec![255u8; 30 * 40 * 4]
+    );
+}
+
+fn decode_kitty_transmit_payload(payload_b64: &str) -> Vec<u8> {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine as _;
+    STANDARD.decode(payload_b64).unwrap()
+}
+
+#[test]
+fn kitty_transmit_payload_is_raw_rgba_when_host_lacks_zlib() {
+    let parts = create_test_kitty_parts();
+    parts.1.borrow_mut().insert(
+        1,
+        KittyHostCapability {
+            graphics: true,
+            zlib: false,
+        },
+    );
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let output = run_kitty_frame(&parts, vec![kitty_chunk(internal, 1, 0, 0)], None);
+    let (control, payload) = kitty_transmit_control_and_payload(&output);
+    assert!(control.starts_with("a=t,q=2,f=32,t=d,i=2000000000,s=30,v=40,m="));
+    assert!(!output.contains("o=z"));
+    assert_eq!(
+        decode_kitty_transmit_payload(&payload),
+        vec![255u8; 30 * 40 * 4]
+    );
+}
+
+#[test]
+fn kitty_transmit_compression_follows_each_client_capability() {
+    let parts = create_test_kitty_parts();
+    parts.1.borrow_mut().insert(
+        2,
+        KittyHostCapability {
+            graphics: true,
+            zlib: false,
+        },
+    );
+    let internal = store_test_kitty_image(&parts.0, 30, 40);
+    let mut output = create_test_kitty_output(&parts);
+    let client_ids: HashSet<ClientId> = create_test_clients(2);
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    output.add_clients(&client_ids, link_handler, None);
+    for client_id in [1, 2] {
+        output.add_kitty_image_chunks_to_client(
+            client_id,
+            PaneId::Terminal(1),
+            vec![kitty_chunk(internal, 1, 0, 0)],
+            None,
+        );
+    }
+    let mut frames = output.serialize().unwrap();
+    let compressed_frame = frames.remove(&1).unwrap();
+    let raw_frame = frames.remove(&2).unwrap();
+
+    let (compressed_control, compressed_payload) =
+        kitty_transmit_control_and_payload(&compressed_frame);
+    assert!(compressed_control.starts_with("a=t,q=2,f=32,o=z,t=d,"));
+    assert_eq!(
+        inflate_kitty_transmit_payload(&compressed_payload),
+        vec![255u8; 30 * 40 * 4]
+    );
+
+    let (raw_control, raw_payload) = kitty_transmit_control_and_payload(&raw_frame);
+    assert!(raw_control.starts_with("a=t,q=2,f=32,t=d,"));
+    assert_eq!(
+        decode_kitty_transmit_payload(&raw_payload),
+        vec![255u8; 30 * 40 * 4]
+    );
+}
+
+#[test]
+fn kitty_transmit_chunks_incompressible_payload() {
+    let parts = create_test_kitty_parts();
+    let mut state: u32 = 0x9e37_79b9;
+    let rgba: Vec<u8> = (0..64 * 64 * 4)
+        .map(|_| {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (state >> 24) as u8
+        })
+        .collect();
+    let internal = store_test_kitty_image_with_bytes(&parts.0, 64, 64, rgba.clone());
+    let mut chunk = kitty_chunk(internal, 1, 0, 0);
+    chunk.source_px_width = 64;
+    chunk.source_px_height = 64;
+    let output = run_kitty_frame(&parts, vec![chunk], None);
+    assert!(output.contains("\u{1b}_Ga=t,q=2,f=32,o=z,t=d,i=2000000000,s=64,v=64,m=1;"));
+    assert!(output.contains("\u{1b}_Gq=2,m=1;"));
+    assert!(output.contains("\u{1b}_Gq=2,m=0;"));
+    let (_, payload) = kitty_transmit_control_and_payload(&output);
+    assert_eq!(inflate_kitty_transmit_payload(&payload), rgba);
+}
+
+#[test]
 fn kitty_placement_bytes_with_negative_z() {
     let parts = create_test_kitty_parts();
     let internal = store_test_kitty_image(&parts.0, 30, 40);
     let mut chunk = kitty_chunk(internal, 1, 5, 3);
     chunk.z_index = -1;
     let output = run_kitty_frame(&parts, vec![chunk], None);
-    assert!(output.contains("\u{1b}_Ga=t,q=2,f=32,t=d,i=2000000000,s=30,v=40,m=1;"));
-    assert!(output.contains("\u{1b}_Gq=2,m=0;"));
+    assert!(output.contains("\u{1b}_Ga=t,q=2,f=32,o=z,t=d,i=2000000000,s=30,v=40,m=0;"));
     let placement = "\u{1b}[4;6H\u{1b}[m\u{1b}_Ga=p,q=2,i=2000000000,p=1,x=0,y=0,w=30,h=40,X=0,Y=0,z=-1,C=1\u{1b}\\";
     assert!(output.contains(placement));
     let save_position = output.find("\u{1b}[s").unwrap();
@@ -1384,7 +1545,7 @@ fn kitty_diff_move_remove_free_retransmit() {
     assert!(frame_4.contains("\u{1b}_Ga=d,q=2,d=I,i=2000000000\u{1b}\\"));
     let new_internal = store_test_kitty_image(&parts.0, 30, 40);
     let frame_5 = run_kitty_frame(&parts, vec![kitty_chunk(new_internal, 2, 0, 0)], None);
-    assert!(frame_5.contains("\u{1b}_Ga=t,q=2,f=32,t=d,i=2000000001,"));
+    assert!(frame_5.contains("\u{1b}_Ga=t,q=2,f=32,o=z,t=d,i=2000000001,"));
 }
 
 #[test]
@@ -1433,7 +1594,6 @@ fn kitty_occlusion_crops_exclude_covered_quarter() {
     let mut chunk = kitty_chunk(internal, 1, 0, 0);
     chunk.source_px_width = 40;
     chunk.source_px_height = 80;
-    chunk.dest_cells = (4, 4);
     let output = run_kitty_frame(&parts, vec![chunk], Some(floating_panes_stack));
     let crops = parse_kitty_placement_crops(&output);
     let crop_set: HashSet<(usize, usize, usize, usize, usize, usize)> =
@@ -1470,7 +1630,10 @@ fn kitty_occlusion_crops_exclude_covered_quarter() {
 #[test]
 fn kitty_capability_gating_suppresses_all_apc() {
     let parts_with_false = create_test_kitty_parts();
-    parts_with_false.1.borrow_mut().insert(1, false);
+    parts_with_false
+        .1
+        .borrow_mut()
+        .insert(1, KittyHostCapability::default());
     let internal = store_test_kitty_image(&parts_with_false.0, 30, 40);
     let output = run_kitty_frame(
         &parts_with_false,
@@ -1559,7 +1722,6 @@ fn kitty_emitted_bytes_roundtrip_through_our_parser() {
     chunk.cell_offset_x = 3;
     chunk.cell_offset_y = 4;
     chunk.z_index = -1;
-    chunk.dest_cells = (2, 2);
     let output = run_kitty_frame(&parts, vec![chunk.clone()], None);
     let commands = extract_kitty_commands(&output);
     assert!(
@@ -1632,6 +1794,123 @@ fn kitty_host_ids_stay_within_signed_32_bit_range() {
                     );
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn kitty_cropped_placements_preserve_pixels_after_cell_resize() {
+    use crate::panes::kitty_graphics::grid_state::{KittyGrid, KittyVerticalAnchor};
+    use crate::panes::kitty_graphics::parser::KittyCommand;
+
+    let colors = [
+        [255, 0, 0, 255],
+        [0, 255, 0, 255],
+        [0, 0, 255, 255],
+        [255; 4],
+    ];
+    for scaled in [false, true] {
+        let parts = create_test_kitty_parts();
+        let cell = Rc::new(RefCell::new(Some(SizeInPixels {
+            width: 10,
+            height: 20,
+        })));
+        let mut grid = KittyGrid::new(cell.clone(), parts.0.clone());
+        let image = DecodedImage {
+            bytes: (0..40)
+                .flat_map(|y| (0..20).flat_map(move |x| colors[y / 20 * 2 + x / 10]))
+                .collect(),
+            width: 20,
+            height: 40,
+            format: KittyFormat::Rgba32,
+        };
+        let image_id = grid
+            .transmit(
+                &KittyCommand {
+                    image_id: Some(1),
+                    ..Default::default()
+                },
+                image,
+            )
+            .unwrap();
+        let internal = grid.pane_image_id_map()[&image_id];
+        for i in 0..4 {
+            let command = KittyCommand {
+                image_id: Some(image_id),
+                placement_id: Some(i as u32 + 1),
+                source_x: (i % 2 * 10) as u32,
+                source_y: (i / 2 * 20) as u32,
+                source_w: 10,
+                source_h: 20,
+                columns: u32::from(scaled),
+                rows: u32::from(scaled),
+                ..Default::default()
+            };
+            grid.place(
+                image_id,
+                internal,
+                &command,
+                (i * 20, 0),
+                cell.borrow().unwrap(),
+                KittyVerticalAnchor {
+                    canonical_line: 0,
+                    offset_px_from_line_start: 0,
+                },
+            )
+            .unwrap();
+        }
+        let mut host_images = HashMap::new();
+        let mut host_placements = std::collections::BTreeMap::<u32, KittyCommand>::new();
+        for size in [(10, 20), (15, 30)] {
+            *cell.borrow_mut() = Some(SizeInPixels {
+                width: size.0,
+                height: size.1,
+            });
+            grid.character_cell_size_possibly_changed();
+            let chunks = grid.viewport_kitty_chunks(20, 0, 50, 0, 0);
+            let output = run_kitty_frame(&parts, chunks, None);
+            let mut parser = KittyCommandParser::new();
+            for raw in extract_kitty_commands(&output) {
+                if let Some(command) = parser.parse(&raw) {
+                    let command = command.unwrap();
+                    match command.action {
+                        KittyAction::Transmit => {
+                            host_images.insert(command.image_id.unwrap(), command.image.unwrap());
+                        },
+                        KittyAction::Display => {
+                            host_placements.insert(command.placement_id.unwrap(), command);
+                        },
+                        KittyAction::Delete => {
+                            let id = command.image_id.unwrap();
+                            host_images.remove(&id);
+                            host_placements.retain(|_, placement| placement.image_id != Some(id));
+                        },
+                        _ => {},
+                    }
+                }
+            }
+            assert_eq!(host_placements.len(), 4);
+            assert_eq!(host_images.len(), if scaled { 4 } else { 1 });
+            for (i, command) in host_placements.values().enumerate() {
+                let image = &host_images[&command.image_id.unwrap()];
+                let expected_size = if scaled { size } else { (10, 20) };
+                assert_eq!(
+                    (command.source_w as usize, command.source_h as usize),
+                    expected_size
+                );
+                for y in command.source_y..command.source_y + command.source_h {
+                    for x in command.source_x..command.source_x + command.source_w {
+                        let offset = ((y * image.width + x) * 4) as usize;
+                        assert_eq!(
+                            &image.bytes[offset..offset + 4],
+                            &colors[i],
+                            "scaled={scaled}, cell={size:?}, placement={i}"
+                        );
+                    }
+                }
+            }
+            let scaled_bytes = if scaled { 4 * size.0 * size.1 * 4 } else { 0 };
+            assert_eq!(parts.0.borrow().total_bytes(), 20 * 40 * 4 + scaled_bytes);
         }
     }
 }

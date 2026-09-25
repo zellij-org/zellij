@@ -12,6 +12,7 @@ use std::{
     fmt::{Display, Error, Formatter},
     io::{self, Read, Write},
     marker::PhantomData,
+    time::Duration,
 };
 
 // Protobuf imports
@@ -31,12 +32,17 @@ type SessionId = u64;
 /// A bidirectional byte stream that supports cloning for simultaneous read/write.
 pub trait IpcStream: Read + Write + Send + 'static {
     fn try_clone_stream(&self) -> io::Result<Box<dyn IpcStream>>;
+    fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()>;
 }
 
 impl IpcStream for LocalSocketStream {
     fn try_clone_stream(&self) -> io::Result<Box<dyn IpcStream>> {
         use interprocess::TryClone;
         Ok(Box::new(self.try_clone()?))
+    }
+    fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        use interprocess::local_socket::traits::Stream;
+        self.set_recv_timeout(timeout)
     }
 }
 
@@ -231,6 +237,9 @@ pub enum ClientToServerMsg {
         payload_bytes: Vec<u8>,
     },
     KittyGraphicsSupport {
+        supported: bool,
+    },
+    KittyZlibSupport {
         supported: bool,
     },
     SixelSupport {
@@ -489,6 +498,10 @@ where
     pub fn get_sender<F: Serialize>(&self) -> IpcSenderWithContext<F> {
         let socket = self.receiver.get_ref().try_clone_stream().unwrap();
         IpcSenderWithContext::from_boxed(socket)
+    }
+
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.receiver.get_ref().set_read_timeout(timeout)
     }
 }
 

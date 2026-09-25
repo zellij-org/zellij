@@ -75,19 +75,18 @@ impl ServerOsApi for FakeInputOutput {
         unimplemented!()
     }
 
-    fn new_client(
+    fn register_client(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        _receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()> {
         unimplemented!()
     }
-    fn new_client_with_reply(
+    fn register_client_with_reply(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
         _reply_stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+    ) -> Result<()> {
         unimplemented!()
     }
 
@@ -199,6 +198,7 @@ fn create_layout_applier_fixtures(
         viewport.clone(),
         connected_clients_set.clone(),
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashMap::new())),
         mode_info.clone(),
         character_cell_size.clone(),
         stacked_resize,
@@ -218,6 +218,7 @@ fn create_layout_applier_fixtures(
         viewport.clone(),
         connected_clients_set,
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashMap::new())),
         mode_info,
         character_cell_size.clone(),
         fullscreen_covers_ui,
@@ -335,6 +336,7 @@ fn create_layout_applier_fixtures_with_receivers(
         viewport.clone(),
         connected_clients_set.clone(),
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashMap::new())),
         mode_info.clone(),
         character_cell_size.clone(),
         stacked_resize,
@@ -354,6 +356,7 @@ fn create_layout_applier_fixtures_with_receivers(
         viewport.clone(),
         connected_clients_set,
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashMap::new())),
         mode_info,
         character_cell_size.clone(),
         fullscreen_covers_ui,
@@ -7281,4 +7284,225 @@ fn test_override_retain_plugin_but_close_terminal_panes() {
         &viewport,
         &display_area,
     ));
+}
+
+fn viewport_after_applying_layout_with_plugins(
+    kdl_layout: &str,
+    terminal_ids: Vec<(u32, Option<RunCommand>)>,
+    plugin_ids: Vec<(&str, u32)>,
+    size: Size,
+) -> Viewport {
+    let (tiled_layout, floating_layout) = parse_kdl_layout(kdl_layout);
+    let mut new_plugin_ids = HashMap::new();
+    for (location, plugin_id) in plugin_ids {
+        let plugin = RunPluginOrAlias::from_url(location, &None, None, None).unwrap();
+        new_plugin_ids
+            .entry(plugin)
+            .or_insert_with(Vec::new)
+            .push(plugin_id);
+    }
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+    ) = create_layout_applier_fixtures(size);
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &Rc::new(RefCell::new(KittyImageStore::default())),
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+    applier
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            new_plugin_ids,
+            1,
+        )
+        .unwrap();
+    let viewport = *viewport.borrow();
+    viewport
+}
+
+#[test]
+fn test_split_row_of_borderless_plugins_at_top_is_offset_out_of_viewport() {
+    let kdl_layout = r#"
+        layout {
+            pane size=1 split_direction="vertical" {
+                pane size=55 borderless=true {
+                    plugin location="zellij:compact-bar"
+                }
+                pane borderless=true {
+                    plugin location="zellij:status-bar"
+                }
+            }
+            pane
+        }
+    "#;
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let viewport = viewport_after_applying_layout_with_plugins(
+        kdl_layout,
+        vec![(1, None)],
+        vec![("zellij:compact-bar", 100), ("zellij:status-bar", 101)],
+        size,
+    );
+    assert_eq!(
+        viewport,
+        Viewport {
+            x: 0,
+            y: 1,
+            rows: 39,
+            cols: 120,
+        }
+    );
+}
+
+#[test]
+fn test_split_rows_of_borderless_plugins_at_top_and_bottom_are_offset_out_of_viewport() {
+    let kdl_layout = r#"
+        layout {
+            pane size=1 split_direction="vertical" {
+                pane size=55 borderless=true {
+                    plugin location="zellij:compact-bar"
+                }
+                pane borderless=true {
+                    plugin location="zellij:status-bar"
+                }
+            }
+            pane
+            pane size=2 split_direction="vertical" {
+                pane borderless=true {
+                    plugin location="zellij:tab-bar"
+                }
+                pane borderless=true {
+                    plugin location="zellij:strider"
+                }
+            }
+        }
+    "#;
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let viewport = viewport_after_applying_layout_with_plugins(
+        kdl_layout,
+        vec![(1, None)],
+        vec![
+            ("zellij:compact-bar", 100),
+            ("zellij:status-bar", 101),
+            ("zellij:tab-bar", 102),
+            ("zellij:strider", 103),
+        ],
+        size,
+    );
+    assert_eq!(
+        viewport,
+        Viewport {
+            x: 0,
+            y: 1,
+            rows: 37,
+            cols: 120,
+        }
+    );
+}
+
+#[test]
+fn test_split_row_mixing_borderless_plugin_and_terminal_is_not_offset_out_of_viewport() {
+    let kdl_layout = r#"
+        layout {
+            pane size=1 split_direction="vertical" {
+                pane size=55 borderless=true {
+                    plugin location="zellij:compact-bar"
+                }
+                pane
+            }
+            pane
+        }
+    "#;
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let viewport = viewport_after_applying_layout_with_plugins(
+        kdl_layout,
+        vec![(1, None), (2, None)],
+        vec![("zellij:compact-bar", 100)],
+        size,
+    );
+    assert_eq!(
+        viewport,
+        Viewport {
+            x: 0,
+            y: 0,
+            rows: 40,
+            cols: 120,
+        }
+    );
+}
+
+#[test]
+fn test_borderless_plugins_filling_the_screen_leave_a_non_empty_viewport() {
+    let kdl_layout = r#"
+        layout {
+            pane split_direction="vertical" {
+                pane borderless=true {
+                    plugin location="zellij:compact-bar"
+                }
+                pane borderless=true {
+                    plugin location="zellij:status-bar"
+                }
+            }
+        }
+    "#;
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let viewport = viewport_after_applying_layout_with_plugins(
+        kdl_layout,
+        vec![],
+        vec![("zellij:compact-bar", 100), ("zellij:status-bar", 101)],
+        size,
+    );
+    assert!(viewport.rows > 0 && viewport.cols > 0, "{:?}", viewport);
 }

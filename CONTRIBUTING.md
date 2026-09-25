@@ -17,6 +17,9 @@ For those willing to take up such large projects, please check with the maintain
 
 If you're still eager to contribute minor fixes, please note that we might take a long while to get to them.
 
+### LLM Generated Issues/PR Descriptions
+Please avoid using LLMs to generate the description text of issues/PRs. These descriptions tend to be needlessly wordy and force the maintainers to spend time reading large swaths of text that do little aside from describing minor adjustments.
+
 ## Building
 
 To build Zellij, we're using cargo xtask. This is a standalone package shipped

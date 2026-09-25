@@ -1,6 +1,6 @@
 pub mod floating_pane_grid;
 use zellij_utils::{
-    data::{Direction, FloatingPaneCoordinates, PaneInfo, ResizeStrategy},
+    data::{BorderStyle, Direction, FloatingPaneCoordinates, PaneInfo, ResizeStrategy},
     position::Position,
 };
 
@@ -41,6 +41,7 @@ pub struct FloatingPanes {
     viewport: Rc<RefCell<Viewport>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+    client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     default_mode_info: ModeInfo,
@@ -70,6 +71,7 @@ impl FloatingPanes {
         viewport: Rc<RefCell<Viewport>>,
         connected_clients: Rc<RefCell<HashSet<ClientId>>>,
         connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+        client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         fullscreen_covers_ui: Rc<RefCell<bool>>,
@@ -86,6 +88,7 @@ impl FloatingPanes {
             viewport,
             connected_clients,
             connected_clients_in_app,
+            client_display_slots,
             mode_info,
             character_cell_size,
             session_is_mirrored,
@@ -598,6 +601,7 @@ impl FloatingPanes {
                 mouse_scroll_resize,
                 mouse_hover_tips,
                 self.dimmed_clients.clone(),
+                &self.client_display_slots.borrow(),
             );
             for client_id in &connected_clients {
                 let client_mode = self
@@ -1708,6 +1712,17 @@ impl FloatingPanes {
         self.style.rounded_corners = rounded_corners;
         for pane in self.panes.values_mut() {
             pane.update_rounded_corners(rounded_corners);
+        }
+    }
+    pub fn update_border_styles(
+        &mut self,
+        border_style: BorderStyle,
+        floating_border_style: BorderStyle,
+    ) {
+        self.style.border_style = border_style;
+        self.style.floating_border_style = floating_border_style;
+        for pane in self.panes.values_mut() {
+            pane.invalidate_frame_cache();
         }
     }
     pub fn next_selectable_pane_id_above(&mut self, pane_id: &PaneId) -> Option<PaneId> {

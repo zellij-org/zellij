@@ -8,7 +8,10 @@ use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
-use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
+use zellij_utils::plugin_api::event::{
+    nested_session_keybinds_response_from_protobuf, ProtobufNestedSessionKeybindsResponse,
+    ProtobufPaneScrollbackResponse,
+};
 use zellij_utils::plugin_api::generated_api::api::plugin_command::{
     hide_floating_panes_response, save_session_response, show_floating_panes_response,
 };
@@ -1305,6 +1308,17 @@ pub fn focus_host_session() {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn get_nested_session_keybinds(pane_id: PaneId) -> NestedSessionKeybindsResponse {
+    let plugin_command = PluginCommand::GetNestedSessionKeybinds(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response_bytes = bytes_from_stdin().unwrap();
+    let protobuf_response =
+        ProtobufNestedSessionKeybindsResponse::decode(response_bytes.as_slice()).unwrap();
+    nested_session_keybinds_response_from_protobuf(protobuf_response).unwrap()
+}
+
 /// Toggle the UI pane frames on or off
 pub fn toggle_pane_frames() {
     let plugin_command = PluginCommand::TogglePaneFrames;
@@ -1399,6 +1413,24 @@ pub fn previous_swap_layout() {
 /// Change to the next [swap layout](https://zellij.dev/documentation/swap-layouts.html)
 pub fn next_swap_layout() {
     let plugin_command = PluginCommand::NextSwapLayout;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Applies the named tiled [swap layout](https://zellij.dev/documentation/swap-layouts.html)
+/// without changing floating pane visibility or focus. Unknown or incompatible names are a no-op.
+pub fn apply_tiled_swap_layout(layout_name: &str) {
+    let plugin_command = PluginCommand::ApplyTiledSwapLayout(layout_name.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Applies the named floating [swap layout](https://zellij.dev/documentation/swap-layouts.html)
+/// without changing floating pane visibility or focus. Unknown or incompatible names are a no-op.
+pub fn apply_floating_swap_layout(layout_name: &str) {
+    let plugin_command = PluginCommand::ApplyFloatingSwapLayout(layout_name.to_owned());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -2580,6 +2612,13 @@ pub fn toggle_pane_borderless(pane_id: PaneId) {
 /// * `borderless` - true for borderless, false for bordered
 pub fn set_pane_borderless(pane_id: PaneId, borderless: bool) {
     let plugin_command = PluginCommand::SetPaneBorderless(pane_id, borderless);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn set_pane_border_style(pane_id: PaneId, border_style: BorderStyleOverride) {
+    let plugin_command = PluginCommand::SetPaneBorderStyle(pane_id, border_style);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

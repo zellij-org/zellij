@@ -75,11 +75,17 @@ use zellij_utils::{
         options::Options,
         plugins::PluginAliases,
     },
-    ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
+    ipc::{
+        ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
+    },
     shared::{default_palette, web_server_base_url},
 };
 
-pub type ClientId = u16;
+pub use zellij_utils::data::ClientId;
+
+const ACCEPT_ERROR_BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
+
+const PRE_HANDSHAKE_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
@@ -464,6 +470,11 @@ impl SessionMetaData {
                     auto_layout: new_config.options.auto_layout.unwrap_or(true),
                     rounded_corners: new_config.ui.pane_frames.rounded_corners,
                     hide_session_name: new_config.ui.pane_frames.hide_session_name,
+                    border_style: new_config.ui.pane_frames.resolved_border_style(),
+                    floating_border_style: new_config
+                        .ui
+                        .pane_frames
+                        .resolved_floating_border_style(),
                     stacked_resize: new_config.options.stacked_resize.unwrap_or(true),
                     stacked_pane_list: new_config.options.stacked_pane_list.unwrap_or(true),
                     default_editor: new_config.options.scrollback_editor.clone(),
@@ -640,6 +651,7 @@ pub(crate) struct SessionState {
     /// empty synthetic reply so `Screen`'s `forward_in_flight` slot
     /// releases and the queued forwards keep moving.
     forwards_in_flight: HashMap<u32, ClientId>,
+    next_client_id: ClientId,
 }
 
 impl SessionState {
@@ -650,26 +662,33 @@ impl SessionState {
             watchers: HashMap::new(),
             last_active_client: None,
             forwards_in_flight: HashMap::new(),
+            next_client_id: 1,
         }
     }
     pub fn new_client(&mut self) -> ClientId {
-        let all_ids: HashSet<ClientId> = self
+        let client_id = match self.next_client_id.checked_add(1) {
+            Some(following_client_id) => {
+                let client_id = self.next_client_id;
+                self.next_client_id = following_client_id;
+                client_id
+            },
+            None => self.lowest_unused_client_id(),
+        };
+        self.clients.insert(client_id, None);
+        client_id
+    }
+    fn lowest_unused_client_id(&self) -> ClientId {
+        let taken: HashSet<ClientId> = self
             .clients
             .keys()
             .copied()
             .chain(self.watchers.keys().copied())
             .collect();
-
-        let mut next_client_id = 1;
-        loop {
-            if all_ids.contains(&next_client_id) {
-                next_client_id += 1;
-            } else {
-                break;
-            }
+        let mut client_id = 1;
+        while taken.contains(&client_id) {
+            client_id += 1;
         }
-        self.clients.insert(next_client_id, None);
-        next_client_id
+        client_id
     }
     pub fn associate_pipe_with_client(&mut self, pipe_id: String, client_id: ClientId) {
         self.pipes.insert(pipe_id, client_id);
@@ -893,6 +912,54 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     start_server_impl(os_input, socket_path, true);
 }
 
+fn handle_new_connection(
+    session_data: Arc<RwLock<Option<SessionMetaData>>>,
+    session_state: Arc<RwLock<SessionState>>,
+    mut os_input: Box<dyn ServerOsApi>,
+    to_server: SenderWithContext<ServerInstruction>,
+    stream: interprocess::local_socket::Stream,
+    #[cfg(windows)] reply_stream: interprocess::local_socket::Stream,
+) -> Result<()> {
+    let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
+        IpcReceiverWithContext::new(stream);
+
+    let _ = receiver.set_read_timeout(Some(PRE_HANDSHAKE_READ_TIMEOUT));
+    let first_instruction = match receiver.try_recv_client_msg() {
+        Ok((instruction, _err_ctx)) => instruction,
+        Err(_) => return Ok(()),
+    };
+    let _ = receiver.set_read_timeout(None);
+
+    if let ClientToServerMsg::ConnStatus = first_instruction {
+        let mut sender = receiver.get_sender::<ServerToClientMsg>();
+        let _ = sender.send_server_msg(ServerToClientMsg::Connected);
+        return Ok(());
+    }
+
+    let client_id = session_state.write().unwrap().new_client();
+
+    #[cfg(windows)]
+    let registered = os_input.register_client_with_reply(client_id, reply_stream);
+    #[cfg(not(windows))]
+    let registered = os_input.register_client(client_id, &receiver);
+
+    if let Err(err) = registered {
+        log::error!("Failed to register client {}: {:?}", client_id, err);
+        let _ = session_state.write().unwrap().remove_client(client_id);
+        return Ok(());
+    }
+
+    route_thread_main(
+        session_data,
+        session_state,
+        os_input,
+        to_server,
+        receiver,
+        client_id,
+        Some(first_instruction),
+    )
+}
+
 pub fn start_server_impl(
     mut os_input: Box<dyn ServerOsApi>,
     socket_path: PathBuf,
@@ -946,41 +1013,41 @@ pub fn start_server_impl(
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {
-                            let mut os_input = os_input.clone();
-                            let client_id = session_state.write().unwrap().new_client();
+                            let os_input = os_input.clone();
 
                             #[cfg(windows)]
-                            let reply_stream = reply_listener
-                                .accept()
-                                .expect("failed to accept reply connection");
-
-                            #[cfg(windows)]
-                            let receiver = os_input
-                                .new_client_with_reply(client_id, stream, reply_stream)
-                                .unwrap();
-                            #[cfg(not(windows))]
-                            let receiver = os_input.new_client(client_id, stream).unwrap();
+                            let reply_stream = match reply_listener.accept() {
+                                Ok(reply_stream) => reply_stream,
+                                Err(err) => {
+                                    log::error!("Failed to accept reply connection: {:?}", err);
+                                    continue;
+                                },
+                            };
 
                             let session_data = session_data.clone();
                             let session_state = session_state.clone();
                             let to_server = to_server.clone();
-                            thread::Builder::new()
+                            let spawn_result = thread::Builder::new()
                                 .name("server_router".to_string())
                                 .spawn(move || {
-                                    route_thread_main(
+                                    handle_new_connection(
                                         session_data,
                                         session_state,
                                         os_input,
                                         to_server,
-                                        receiver,
-                                        client_id,
+                                        stream,
+                                        #[cfg(windows)]
+                                        reply_stream,
                                     )
                                     .fatal()
-                                })
-                                .unwrap();
+                                });
+                            if let Err(err) = spawn_result {
+                                log::error!("Failed to spawn router thread: {:?}", err);
+                            }
                         },
                         Err(err) => {
-                            panic!("err {:?}", err);
+                            log::error!("Failed to accept connection: {:?}", err);
+                            thread::sleep(ACCEPT_ERROR_BACKOFF);
                         },
                     }
                 }
@@ -999,10 +1066,15 @@ pub fn start_server_impl(
                     == Some(LayoutInfo::BuiltIn("welcome".to_owned()))
                     || config.options.default_layout == Some(PathBuf::from("welcome"));
 
-                let successfully_written_config = Config::write_config_to_disk_if_it_does_not_exist(
-                    config.to_string(true),
-                    &cli_assets.config_file_path,
-                );
+                let successfully_written_config =
+                    if zellij_utils::distribution::bundled_config().is_some() {
+                        false
+                    } else {
+                        Config::write_config_to_disk_if_it_does_not_exist(
+                            config.to_string(true),
+                            &cli_assets.config_file_path,
+                        )
+                    };
                 // if we successfully wrote the config to disk, it means two things:
                 // 1. It did not exist beforehand
                 // 2. The config folder is writeable
@@ -1026,6 +1098,11 @@ pub fn start_server_impl(
                             .unwrap_or_else(|| default_palette().into()),
                         rounded_corners: config.ui.pane_frames.rounded_corners,
                         hide_session_name: config.ui.pane_frames.hide_session_name,
+                        border_style: config.ui.pane_frames.resolved_border_style(),
+                        floating_border_style: config
+                            .ui
+                            .pane_frames
+                            .resolved_floating_border_style(),
                     },
                 };
 
@@ -1207,6 +1284,11 @@ pub fn start_server_impl(
                             .unwrap_or_else(|| default_palette().into()),
                         rounded_corners: config.ui.pane_frames.rounded_corners,
                         hide_session_name: config.ui.pane_frames.hide_session_name,
+                        border_style: config.ui.pane_frames.resolved_border_style(),
+                        floating_border_style: config
+                            .ui
+                            .pane_frames
+                            .resolved_floating_border_style(),
                     },
                 };
 
@@ -1389,22 +1471,14 @@ pub fn start_server_impl(
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state, session_data);
                     drop(completion_tx); // prevent deadlock with route thread
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
-                        .unwrap();
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
-                        .unwrap();
+                    if let Some(session_data) = session_data.write().unwrap().as_ref() {
+                        let _ = session_data
+                            .senders
+                            .send_to_screen(ScreenInstruction::RemoveClient(client_id));
+                        let _ = session_data
+                            .senders
+                            .send_to_plugin(PluginInstruction::RemoveClient(client_id));
+                    }
                     if !session_state.read().unwrap().active_clients_are_connected() {
                         *session_data.write().unwrap() = None;
                         let client_ids_to_cleanup: Vec<ClientId> = session_state
@@ -1455,22 +1529,14 @@ pub fn start_server_impl(
                     }
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state, session_data);
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
-                        .unwrap();
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
-                        .unwrap();
+                    if let Some(session_data) = session_data.write().unwrap().as_ref() {
+                        let _ = session_data
+                            .senders
+                            .send_to_screen(ScreenInstruction::RemoveClient(client_id));
+                        let _ = session_data
+                            .senders
+                            .send_to_plugin(PluginInstruction::RemoveClient(client_id));
+                    }
                 }
             },
             ServerInstruction::SendWebClientsForbidden(client_id) => {
@@ -1535,22 +1601,14 @@ pub fn start_server_impl(
                                      // by us having to wait for session_data to send cleanup
                                      // signals to the various threads
                 for client_id in client_ids {
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
-                        .unwrap();
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
-                        .unwrap();
+                    if let Some(session_data) = session_data.write().unwrap().as_ref() {
+                        let _ = session_data
+                            .senders
+                            .send_to_screen(ScreenInstruction::RemoveClient(client_id));
+                        let _ = session_data
+                            .senders
+                            .send_to_plugin(PluginInstruction::RemoveClient(client_id));
+                    }
                 }
             },
             ServerInstruction::Render(serialized_output) => {
@@ -1616,7 +1674,6 @@ pub fn start_server_impl(
             },
             ServerInstruction::ConnStatus(client_id) => {
                 let _ = os_input.send_to_client(client_id, ServerToClientMsg::Connected);
-                remove_client!(client_id, os_input, session_state, session_data);
             },
             ServerInstruction::Log(
                 lines_to_log,

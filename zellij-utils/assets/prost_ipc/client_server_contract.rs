@@ -71,6 +71,40 @@ pub struct Style {
     pub rounded_corners: bool,
     #[prost(bool, tag="3")]
     pub hide_session_name: bool,
+    #[prost(message, optional, tag="4")]
+    pub border_style: ::core::option::Option<BorderStyle>,
+    #[prost(message, optional, tag="5")]
+    pub floating_border_style: ::core::option::Option<BorderStyle>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BorderStyle {
+    #[prost(enumeration="LineStyle", tag="1")]
+    pub top: i32,
+    #[prost(enumeration="LineStyle", tag="2")]
+    pub right: i32,
+    #[prost(enumeration="LineStyle", tag="3")]
+    pub bottom: i32,
+    #[prost(enumeration="LineStyle", tag="4")]
+    pub left: i32,
+    #[prost(bool, tag="5")]
+    pub rounded_corners: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BorderStyleOverride {
+    #[prost(enumeration="LineStyle", optional, tag="1")]
+    pub all: ::core::option::Option<i32>,
+    #[prost(enumeration="LineStyle", optional, tag="2")]
+    pub top: ::core::option::Option<i32>,
+    #[prost(enumeration="LineStyle", optional, tag="3")]
+    pub right: ::core::option::Option<i32>,
+    #[prost(enumeration="LineStyle", optional, tag="4")]
+    pub bottom: ::core::option::Option<i32>,
+    #[prost(enumeration="LineStyle", optional, tag="5")]
+    pub left: ::core::option::Option<i32>,
+    #[prost(bool, optional, tag="6")]
+    pub rounded_corners: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -120,7 +154,7 @@ pub struct RgbColor {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Action {
-    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151")]
+    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 156, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155")]
     pub action_type: ::core::option::Option<action::ActionType>,
 }
 /// Nested message and enum types in `Action`.
@@ -320,6 +354,8 @@ pub mod action {
         TogglePaneBorderless(super::TogglePaneBorderlessAction),
         #[prost(message, tag="96")]
         SetPaneBorderless(super::SetPaneBorderlessAction),
+        #[prost(message, tag="156")]
+        SetPaneBorderStyle(super::SetPaneBorderStyleAction),
         #[prost(message, tag="97")]
         SaveSession(super::SaveSessionAction),
         #[prost(message, tag="98")]
@@ -430,6 +466,14 @@ pub mod action {
         SelectCommandAtScrollPosition(super::SelectCommandAtScrollPositionAction),
         #[prost(message, tag="151")]
         CopyLastCommandOutput(super::CopyLastCommandOutputAction),
+        #[prost(message, tag="152")]
+        ApplyTiledSwapLayout(super::ApplyTiledSwapLayoutAction),
+        #[prost(message, tag="153")]
+        ApplyFloatingSwapLayout(super::ApplyFloatingSwapLayoutAction),
+        #[prost(message, tag="154")]
+        ApplyTiledSwapLayoutByTabId(super::ApplyTiledSwapLayoutByTabIdAction),
+        #[prost(message, tag="155")]
+        ApplyFloatingSwapLayoutByTabId(super::ApplyFloatingSwapLayoutByTabIdAction),
     }
 }
 // Action message definitions (all 92 variants)
@@ -656,6 +700,18 @@ pub struct PreviousSwapLayoutAction {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NextSwapLayoutAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ApplyTiledSwapLayoutAction {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ApplyFloatingSwapLayoutAction {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -929,6 +985,8 @@ pub struct NewTiledPaneAction {
     pub tab_id: ::core::option::Option<u32>,
     #[prost(bool, tag="10")]
     pub no_focus: bool,
+    #[prost(message, optional, tag="11")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1346,6 +1404,14 @@ pub struct SetPaneColorAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetPaneBorderStyleAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Position {
     /// Changed from uint32 to int32 to support negative line numbers
     #[prost(int32, tag="1")]
@@ -1498,6 +1564,8 @@ pub mod new_pane_placement {
 pub struct NoPreferencePlacement {
     #[prost(bool, optional, tag="1")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="2")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1506,6 +1574,8 @@ pub struct TiledPlacement {
     pub direction: ::core::option::Option<i32>,
     #[prost(bool, optional, tag="2")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="3")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1514,6 +1584,8 @@ pub struct StackedPlacement {
     pub pane_id_to_stack_under: ::core::option::Option<PaneId>,
     #[prost(bool, optional, tag="2")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="3")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1524,6 +1596,8 @@ pub struct NewPanePlacementInPlace {
     pub close_replaced_pane: bool,
     #[prost(bool, optional, tag="3")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="4")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1562,6 +1636,8 @@ pub struct FloatingPaneCoordinates {
     pub pinned: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="6")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="7")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1636,9 +1712,11 @@ pub struct TiledPaneLayout {
     pub pane_initial_contents: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="14")]
     pub default_fg: ::core::option::Option<::prost::alloc::string::String>,
-    /// NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
     #[prost(string, optional, tag="15")]
     pub default_bg: ::core::option::Option<::prost::alloc::string::String>,
+    /// NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
+    #[prost(message, optional, tag="16")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1671,6 +1749,8 @@ pub struct FloatingPaneLayout {
     pub default_fg: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="14")]
     pub default_bg: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="15")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2237,6 +2317,22 @@ pub struct NextSwapLayoutByTabIdAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ApplyTiledSwapLayoutByTabIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+    #[prost(string, tag="2")]
+    pub name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ApplyFloatingSwapLayoutByTabIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+    #[prost(string, tag="2")]
+    pub name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MoveTabByTabIdAction {
     #[prost(uint64, tag="1")]
     pub id: u64,
@@ -2396,6 +2492,41 @@ impl KeyModifier {
             "KEY_MODIFIER_ALT" => Some(Self::Alt),
             "KEY_MODIFIER_SHIFT" => Some(Self::Shift),
             "KEY_MODIFIER_SUPER" => Some(Self::Super),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum LineStyle {
+    Single = 0,
+    Double = 1,
+    Heavy = 2,
+    Dashed = 3,
+    HeavyDashed = 4,
+}
+impl LineStyle {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            LineStyle::Single => "LINE_STYLE_SINGLE",
+            LineStyle::Double => "LINE_STYLE_DOUBLE",
+            LineStyle::Heavy => "LINE_STYLE_HEAVY",
+            LineStyle::Dashed => "LINE_STYLE_DASHED",
+            LineStyle::HeavyDashed => "LINE_STYLE_HEAVY_DASHED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "LINE_STYLE_SINGLE" => Some(Self::Single),
+            "LINE_STYLE_DOUBLE" => Some(Self::Double),
+            "LINE_STYLE_HEAVY" => Some(Self::Heavy),
+            "LINE_STYLE_DASHED" => Some(Self::Dashed),
+            "LINE_STYLE_HEAVY_DASHED" => Some(Self::HeavyDashed),
             _ => None,
         }
     }
@@ -3068,7 +3199,7 @@ impl ThemeHue {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -3130,6 +3261,8 @@ pub mod client_to_server_msg {
         SetMobileRenderPreferences(super::SetMobileRenderPreferencesMsg),
         #[prost(message, tag="27")]
         HostTerminalFocusChanged(super::HostTerminalFocusChangedMsg),
+        #[prost(message, tag="28")]
+        KittyZlibSupport(super::KittyZlibSupportMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3296,6 +3429,12 @@ pub struct NestedSessionFrameFromHostMsg {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct KittyGraphicsSupportMsg {
+    #[prost(bool, tag="1")]
+    pub supported: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct KittyZlibSupportMsg {
     #[prost(bool, tag="1")]
     pub supported: bool,
 }

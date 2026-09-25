@@ -13,7 +13,7 @@ use zellij_utils::input::options::Options;
 use zellij_utils::pane_size::Size;
 use zellij_utils::setup::Setup;
 
-use crate::client_screen::GridSnapshot;
+use crate::client_screen::{GridSnapshot, HostTerminal};
 use crate::fake_client_os_api::{FakeClientHandle, FakeClientOsApi};
 use crate::fake_pty::FakePtyHandle;
 use crate::fake_server_os_api::FakeServerOsApi;
@@ -29,6 +29,7 @@ pub struct TestRunner {
     env: std::collections::HashMap<String, String>,
     stdout_tap: Option<crossbeam::channel::Sender<Vec<u8>>>,
     skip_concurrency_slot: bool,
+    host_terminal: Option<HostTerminal>,
 }
 
 impl TestRunner {
@@ -41,6 +42,7 @@ impl TestRunner {
             env: std::collections::HashMap::new(),
             stdout_tap: None,
             skip_concurrency_slot: false,
+            host_terminal: None,
         }
     }
 
@@ -69,6 +71,11 @@ impl TestRunner {
 
     pub fn with_stdout_tap(mut self, sender: crossbeam::channel::Sender<Vec<u8>>) -> Self {
         self.stdout_tap = Some(sender);
+        self
+    }
+
+    pub fn with_host_terminal(mut self, host_terminal: HostTerminal) -> Self {
+        self.host_terminal = Some(host_terminal);
         self
     }
 
@@ -151,6 +158,14 @@ impl TestRunner {
 
         let (fake_client_os_api, fake_client_handle) =
             FakeClientOsApi::new_with_env(self.size, Some(server_spawner), self.env);
+        let host_terminal = self.host_terminal.unwrap_or(if self.stdout_tap.is_some() {
+            HostTerminal::Manual
+        } else {
+            HostTerminal::Basic
+        });
+        fake_client_handle
+            .client_screen
+            .set_host_terminal(host_terminal, fake_client_handle.stdin_tx.clone());
         if let Some(stdout_tap) = self.stdout_tap {
             fake_client_handle.client_screen.set_stdout_tap(stdout_tap);
         }
@@ -320,6 +335,7 @@ fn new_pane_cli_action(
         no_focus: false,
         borderless: None,
         tab_id: None,
+        border_style: None,
     }
 }
 

@@ -354,19 +354,32 @@ fn spawn_web_server(_cli_args: &CliArgs) -> Result<String, String> {
     Ok("".to_owned())
 }
 
-fn check_ipc_pipe_length(ipc_pipe: &Path) {
+fn ipc_pipe_length_error(ipc_pipe: &Path) -> Option<String> {
     use zellij_utils::consts::ZELLIJ_SOCK_MAX_LENGTH;
     let path_len = ipc_pipe.as_os_str().len();
-    if path_len >= ZELLIJ_SOCK_MAX_LENGTH {
-        eprintln!(
-            "Error: the IPC socket path is too long ({} bytes, max {}):\n  {}\n\n\
-             This is usually caused by a long $TMPDIR path.\n\
-             To fix this, set a shorter socket directory, eg.:\n  \
-             ZELLIJ_SOCKET_DIR=/tmp/zellij zellij",
-            path_len,
-            ZELLIJ_SOCK_MAX_LENGTH - 1,
-            ipc_pipe.display()
-        );
+    if path_len < ZELLIJ_SOCK_MAX_LENGTH {
+        return None;
+    }
+    Some(format!(
+        "Error: the IPC socket path is too long ({} bytes, max {}):\n  {}\n\n\
+         This is usually caused by a long $TMPDIR path.\n\
+         To fix this, set a shorter socket directory, eg.:\n  \
+         ZELLIJ_SOCKET_DIR=/tmp/{} {}",
+        path_len,
+        ZELLIJ_SOCK_MAX_LENGTH - 1,
+        ipc_pipe.display(),
+        zellij_utils::distribution::name(),
+        zellij_utils::distribution::name()
+    ))
+}
+
+fn session_ipc_pipe_length_error(sock_dir: &Path, session_name: &str) -> Option<String> {
+    ipc_pipe_length_error(&sock_dir.join(session_name))
+}
+
+fn check_ipc_pipe_length(ipc_pipe: &Path) {
+    if let Some(message) = ipc_pipe_length_error(ipc_pipe) {
+        eprintln!("{}", message);
         std::process::exit(1);
     }
 }
@@ -408,14 +421,18 @@ fn exit_after_startup_error(teardown: Option<TerminalTeardown>, message: String)
 
 fn spawn_server_error_message(e: io::Error) -> String {
     format!(
-        "Error: failed to start the Zellij server process:\n\n\
+        "Error: failed to start the {} server process:\n\n\
          Reason: {}\n\n\
-         This can happen if the Zellij binary cannot be executed, or if the server \
+         This can happen if the {} binary cannot be executed, or if the server \
          could not create its session socket - for example due to a permission issue \
          in the socket directory.\n\
          To fix a socket directory issue, set a writable socket directory, eg.:\n  \
-         ZELLIJ_SOCKET_DIR=/tmp/zellij-$USER zellij",
-        e
+         ZELLIJ_SOCKET_DIR=/tmp/{}-$USER {}",
+        zellij_utils::distribution::display_name(),
+        e,
+        zellij_utils::distribution::display_name(),
+        zellij_utils::distribution::name(),
+        zellij_utils::distribution::name()
     )
 }
 
@@ -425,15 +442,19 @@ fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
         exit_after_startup_error(
             teardown,
             format!(
-                "Error: failed to create the Zellij socket directory:\n  {}\n\n\
+                "Error: failed to create the {} socket directory:\n  {}\n\n\
                  Reason: {}\n\n\
                  This usually means the directory (or one of its parents) is owned by \
-                 another user or is not writable - for example if Zellij was previously \
+                 another user or is not writable - for example if {} was previously \
                  run with `sudo`, or if $XDG_RUNTIME_DIR points to a directory you do not \
                  own.\nTo fix this, remove or correct the offending directory, or set a \
-                 writable socket directory, eg.:\n  ZELLIJ_SOCKET_DIR=/tmp/zellij-$USER zellij",
+                 writable socket directory, eg.:\n  ZELLIJ_SOCKET_DIR=/tmp/{}-$USER {}",
+                zellij_utils::distribution::display_name(),
                 sock_dir.display(),
-                e
+                e,
+                zellij_utils::distribution::display_name(),
+                zellij_utils::distribution::name(),
+                zellij_utils::distribution::name()
             ),
         );
     }
@@ -441,18 +462,22 @@ fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
         exit_after_startup_error(
             teardown,
             format!(
-                "Error: failed to set permissions (0700) on the Zellij socket directory:\n  {}\n\n\
+                "Error: failed to set permissions (0700) on the {} socket directory:\n  {}\n\n\
                  Reason: {}\n\n\
                  This usually means the directory is owned by another user.\n\
                  To fix this, remove or correct the offending directory, or set a writable \
-                 socket directory, eg.:\n  ZELLIJ_SOCKET_DIR=/tmp/zellij-$USER zellij",
+                 socket directory, eg.:\n  ZELLIJ_SOCKET_DIR=/tmp/{}-$USER {}",
+                zellij_utils::distribution::display_name(),
                 sock_dir.display(),
-                e
+                e,
+                zellij_utils::distribution::name(),
+                zellij_utils::distribution::name()
             ),
         );
     }
-    sock_dir.push(envs::get_session_name().unwrap());
-    check_ipc_pipe_length(&sock_dir);
+    let session_name = envs::get_session_name().unwrap();
+    check_ipc_pipe_length(&sock_dir.join(&session_name));
+    sock_dir.push(session_name);
     sock_dir
 }
 
@@ -672,7 +697,10 @@ pub async fn run_remote_client_terminal_loop(
                     if reannounce_scheduler.on_tick(std::time::Instant::now()) {
                         let announce = nested_session::NestedSessionMessage::Announce {
                             session_name: session_name.clone(),
-                            capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
+                            capabilities: vec![
+                                nested_session::NestedSessionCapability::NestedControl,
+                                nested_session::NestedSessionCapability::HintReporting,
+                            ],
                         };
                         let mut stdout = os_input.get_stdout_writer();
                         if stdout
@@ -869,7 +897,10 @@ pub fn start_remote_client(
     stdout.write_all(ENABLE_FOCUS_REPORTING.as_bytes()).unwrap();
     let announce = nested_session::NestedSessionMessage::Announce {
         session_name: remote_session_name.clone(),
-        capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
+        capabilities: vec![
+            nested_session::NestedSessionCapability::NestedControl,
+            nested_session::NestedSessionCapability::HintReporting,
+        ],
     };
     stdout
         .write_all(&nested_session::encode_frame(&announce))
@@ -953,6 +984,10 @@ pub fn start_client(
     info!("Starting Zellij client!");
 
     let own_session_name = info.get_session_name().to_owned();
+    if let Some(message) = session_ipc_pipe_length_error(&ZELLIJ_SOCK_DIR, &own_session_name) {
+        eprintln!("{}", message);
+        std::process::exit(1);
+    }
 
     let explicitly_disable_kitty_keyboard_protocol = config_options
         .support_kitty_keyboard_protocol
@@ -986,7 +1021,6 @@ pub fn start_client(
         stdout
             .write_all(ENABLE_HOST_THEME_NOTIFY.as_bytes())
             .unwrap();
-        stdout.write_all(QUERY_HOST_THEME.as_bytes()).unwrap();
     }
     envs::set_zellij("0".to_string());
     config.env.set_vars();
@@ -1187,7 +1221,10 @@ pub fn start_client(
     stdout.write_all(ENABLE_FOCUS_REPORTING.as_bytes()).unwrap();
     let announce = nested_session::NestedSessionMessage::Announce {
         session_name: own_session_name.clone(),
-        capabilities: vec![nested_session::NestedSessionCapability::NestedControl],
+        capabilities: vec![
+            nested_session::NestedSessionCapability::NestedControl,
+            nested_session::NestedSessionCapability::HintReporting,
+        ],
     };
     stdout
         .write_all(&nested_session::encode_frame(&announce))
@@ -1241,6 +1278,7 @@ pub fn start_client(
                     stdin_ansi_parser,
                     explicitly_disable_kitty_keyboard_protocol,
                     support_kitty_graphics_protocol,
+                    !is_a_reconnect,
                     Some(resize_sender),
                 )
             }
@@ -1290,18 +1328,28 @@ pub fn start_client(
         .name("signal_listener".to_string())
         .spawn({
             let os_input = os_input.clone();
+            let stdin_ansi_parser = stdin_ansi_parser.clone();
             move || {
                 os_input.handle_signals(
                     Box::new({
                         let os_api = os_input.clone();
+                        let stdin_ansi_parser = stdin_ansi_parser.clone();
                         move || {
                             os_api.send_to_server(ClientToServerMsg::TerminalResize {
                                 new_size: os_api.get_terminal_size(),
                             });
                             #[cfg(not(windows))]
-                            let _ = os_api
-                                .get_stdout_writer()
-                                .write(crate::stdin_handler::PIXEL_SIZE_QUERY.as_bytes());
+                            {
+                                let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
+                                stdin_ansi_parser.open_own_query_batch();
+                                let mut stdout = os_api.get_stdout_writer();
+                                let _ = stdout
+                                    .write_all(crate::stdin_handler::PIXEL_SIZE_QUERY.as_bytes());
+                                let _ = stdout.write_all(stdin_ansi_parser::PRIMARY_DA_QUERY);
+                                let _ = stdout.flush();
+                            }
+                            #[cfg(windows)]
+                            let _ = &stdin_ansi_parser;
                         }
                     }),
                     Box::new({
@@ -1537,6 +1585,11 @@ pub fn start_client(
                     let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
                     let stale_forward = stdin_ansi_parser.take_active_forward();
                     stdin_ansi_parser.open_forward(token);
+                    let mut blob = query_bytes;
+                    blob.extend_from_slice(stdin_ansi_parser::PRIMARY_DA_QUERY);
+                    let mut out = os_input.get_stdout_writer();
+                    let _ = out.write_all(&blob);
+                    let _ = out.flush();
                     stale_forward
                 };
                 if let Some((stale_token, stale_reply_bytes)) = stale_forward {
@@ -1574,16 +1627,6 @@ pub fn start_client(
                         );
                     },
                 );
-                // 3. Write the query + Primary-DA barrier in a single
-                //    write_all. The barrier closes the window on the
-                //    parser side when its reply arrives — the timer
-                //    task's eventual wake-up finds an empty slot for
-                //    this token and no-ops.
-                let mut blob = query_bytes;
-                blob.extend_from_slice(b"\x1b[c");
-                let mut out = os_input.get_stdout_writer();
-                let _ = out.write_all(&blob);
-                let _ = out.flush();
             },
             ClientInstruction::EmitNestedSessionFrame(payload_bytes) => {
                 if nested_reannounce.host_contacted() {

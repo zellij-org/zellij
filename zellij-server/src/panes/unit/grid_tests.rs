@@ -3304,6 +3304,51 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
 }
 
 #[test]
+fn sixel_replacement_reaps_covered_images_without_reusing_live_ids() {
+    let (mut grid, _) = new_kitty_grid(10, 25);
+    let mut parser = vte::Parser::new();
+    for step in 0..18u8 {
+        let width = if step < 12 { 20 } else { 10 + (step % 3) * 10 };
+        if step >= 12 {
+            parser.advance(&mut grid, b"\x1b[3;4H   ");
+        }
+        let bytes = format!(
+            "\u{1b}[3;4H\u{1b}P9;1q\"1;1;{};12#1;2;{};0;0#1!{}~-!{}~\u{1b}\\",
+            width,
+            step * 5,
+            width,
+            width
+        );
+        parser.advance(&mut grid, bytes.as_bytes());
+        grid.read_changes(0, 0);
+        let coordinates: Vec<_> = grid.sixel_grid.image_coordinates().collect();
+        assert_eq!(coordinates.len(), 1, "obsolete image at step {}", step);
+        let (id, rect) = coordinates[0];
+        let mut store = grid.sixel_grid.sixel_image_store.borrow_mut();
+        assert_eq!(store.image_count(), 1, "storage after step {}", step);
+        let serialized = store
+            .serialize_image(id, 0, 0, rect.width, rect.height)
+            .expect("replacement image survives reaping");
+        let decoded = sixel_image::SixelImage::new(serialized.as_bytes()).unwrap();
+        assert!(decoded.pixels.iter().flatten().all(|pixel| {
+            pixel.on
+                && decoded.color_registers[&pixel.color]
+                    == sixel_image::SixelColor::Rgb(step * 5, 0, 0)
+        }));
+    }
+    parser.advance(&mut grid, b"\x1b[3;4H   ");
+    let (_, sixel_chunks, _) = grid.read_changes(0, 0);
+    assert!(
+        sixel_chunks.is_empty(),
+        "erased rasters must not be replayed"
+    );
+    assert_eq!(grid.sixel_grid.sixel_image_store.borrow().image_count(), 0);
+    parser.advance(&mut grid, b"\x1b[3;4H\x1bP0;0q\"1;1;20;12?\x1b\\");
+    let (_, sixel_chunks, _) = grid.read_changes(0, 0);
+    assert_eq!(sixel_chunks.len(), 1);
+}
+
+#[test]
 pub fn sixel_images_are_reaped_when_resetting() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -7250,7 +7295,7 @@ fn kitty_c_r_scaling_produces_exact_cell_rect_and_variant() {
     assert_eq!(
         kitty_image_store
             .borrow()
-            .scaled_variant(internal_id, (3, 2))
+            .scaled_variant(internal_id, placement.scaled_image().unwrap())
             .unwrap()
             .len(),
         30 * 40 * 4
@@ -9353,4 +9398,105 @@ fn a_character_wider_than_two_columns_advances_the_cursor_by_its_full_width() {
     assert_eq!(row.columns[0].width(), 3);
     assert_eq!(row.width(), 4);
     assert_eq!(cursor_position(&grid), Some((4, 0)));
+}
+
+fn create_sized_grid_with_content(rows: usize, columns: usize, content: &str) -> Grid {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        rows,
+        columns,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    vte_parser.advance(&mut grid, content.as_bytes());
+    grid
+}
+
+fn feed(grid: &mut Grid, content: &str) {
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(grid, content.as_bytes());
+}
+
+#[test]
+fn same_size_forced_reflow_keeps_cursor_at_start_of_wrapped_row() {
+    let mut grid = create_sized_grid_with_content(5, 10, "0123456789a\u{8}");
+    assert_eq!(cursor_position(&grid), Some((0, 1)));
+
+    grid.force_change_size(5, 10);
+    assert_eq!(cursor_position(&grid), Some((0, 1)));
+
+    feed(&mut grid, "\rX");
+    assert_eq!(rendered_row(&grid, 0), "0123456789");
+    assert_eq!(rendered_row(&grid, 1), "X");
+}
+
+#[test]
+fn height_only_resize_keeps_cursor_at_start_of_wrapped_row() {
+    let mut grid = create_sized_grid_with_content(5, 10, "0123456789a\u{8}");
+
+    grid.force_change_size(6, 10);
+    assert_eq!(cursor_position(&grid), Some((0, 1)));
+
+    grid.change_size(7, 10);
+    assert_eq!(cursor_position(&grid), Some((0, 1)));
+
+    feed(&mut grid, "\rX");
+    assert_eq!(rendered_row(&grid, 0), "0123456789");
+    assert_eq!(rendered_row(&grid, 1), "X");
+}
+
+#[test]
+fn prompt_redraw_after_same_size_reflow_does_not_duplicate_wrapped_prompt() {
+    let prompt = "> ~/c/zellij-code-2 on main";
+    let mut grid = create_sized_grid_with_content(5, 20, prompt);
+    for _ in 0..3 {
+        feed(&mut grid, "\r");
+        grid.force_change_size(5, 20);
+        feed(&mut grid, "\u{1b}[1A\u{1b}[J");
+        feed(&mut grid, prompt);
+    }
+    assert_eq!(rendered_row(&grid, 0), "> ~/c/zellij-code-2 ");
+    assert_eq!(rendered_row(&grid, 1).trim_end(), "on main");
+    assert_eq!(grid.viewport.len(), 2);
+}
+
+#[test]
+fn saved_cursor_follows_its_own_line_when_wrapped_lines_are_above_it() {
+    let mut grid = create_sized_grid_with_content(
+        6,
+        10,
+        "0123456789abcdefghij\n\rXY\u{1b}7Z\n\rline3\n\rline4",
+    );
+
+    grid.change_size(6, 20);
+    feed(&mut grid, "\u{1b}8Q");
+
+    assert_eq!(rendered_row(&grid, 0), "0123456789abcdefghij");
+    assert_eq!(rendered_row(&grid, 1), "XYQ");
+    assert_eq!(rendered_row(&grid, 2), "line3");
+    assert_eq!(rendered_row(&grid, 3), "line4");
+}
+
+#[test]
+fn shrinking_keeps_cursor_on_its_own_line_when_it_sits_past_the_content() {
+    let mut grid = create_sized_grid_with_content(6, 31, "first\n\r> prompt text here okay \x1b[J");
+    assert_eq!(cursor_position(&grid), Some((24, 1)));
+
+    grid.change_size(6, 23);
+    assert_eq!(cursor_position(&grid), Some((22, 1)));
+
+    feed(&mut grid, "\rX");
+    assert_eq!(rendered_row(&grid, 0), "first");
+    assert_eq!(rendered_row(&grid, 1), "X prompt text here okay");
+    assert_eq!(grid.viewport.len(), 2);
 }

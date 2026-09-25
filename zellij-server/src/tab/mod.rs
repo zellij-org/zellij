@@ -17,8 +17,9 @@ use unicode_width::UnicodeWidthStr;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    Direction, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
-    PluginPermission, RegexHighlight, ResizeStrategy, Style, StyledText, WebSharing,
+    BorderStyle, BorderStyleOverride, Direction, KeyWithModifier, NewPanePlacement, PaneInfo,
+    PermissionStatus, PermissionType, PluginPermission, RegexHighlight, ResizeStrategy, Style,
+    StyledText, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -267,6 +268,7 @@ pub(crate) struct Tab {
     word_separators: String,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+    client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
     // the below are the configured values - the ones that will be set if and when the web server
     // is brought online
     web_server_ip: IpAddr,
@@ -627,6 +629,10 @@ pub trait Pane {
     fn load_pane_name(&mut self);
     fn set_borderless(&mut self, borderless: bool);
     fn borderless(&self) -> bool;
+    fn set_border_style_override(&mut self, _border_style: BorderStyleOverride) {}
+    fn border_style_override(&self) -> BorderStyleOverride {
+        BorderStyleOverride::default()
+    }
     fn set_exclude_from_sync(&mut self, exclude_from_sync: bool);
     fn exclude_from_sync(&self) -> bool;
 
@@ -700,6 +706,9 @@ pub trait Pane {
         false
     }
     fn consume_bell(&mut self) {}
+    fn osc7_payload(&self) -> Option<&str> {
+        None
+    }
     fn set_bell_notification(&mut self, _val: bool) {}
     fn get_bell_notification(&self) -> bool {
         false
@@ -751,6 +760,7 @@ pub trait Pane {
     fn update_kitty_host_support(&mut self, _supported: KittyHostSupport) {}
     fn update_sixel_host_support(&mut self, _supported: bool) {}
     fn update_rounded_corners(&mut self, _rounded_corners: bool) {}
+    fn invalidate_frame_cache(&mut self) {}
     fn set_should_be_suppressed(&mut self, _should_be_suppressed: bool) {}
     fn query_should_be_suppressed(&self) -> bool {
         false
@@ -862,6 +872,7 @@ impl Tab {
         pane_frame_style: PaneFrameStyle,
         auto_layout: bool,
         connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+        client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
         session_is_mirrored: bool,
         client_id: Option<ClientId>,
         copy_options: CopyOptions,
@@ -918,6 +929,7 @@ impl Tab {
             viewport.clone(),
             connected_clients.clone(),
             connected_clients_in_app.clone(),
+            client_display_slots.clone(),
             mode_info.clone(),
             character_cell_size.clone(),
             stacked_resize.clone(),
@@ -935,6 +947,7 @@ impl Tab {
             viewport.clone(),
             connected_clients.clone(),
             connected_clients_in_app.clone(),
+            client_display_slots.clone(),
             mode_info.clone(),
             character_cell_size.clone(),
             fullscreen_covers_ui.clone(),
@@ -1028,6 +1041,7 @@ impl Tab {
             osc133_command_selection: true,
             word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
             connected_clients_in_app,
+            client_display_slots,
             web_server_ip,
             web_server_port,
             panes_with_pending_bell: HashSet::new(),
@@ -1681,6 +1695,7 @@ impl Tab {
                     self.mouse_scroll_resize,
                     self.mouse_hover_tips,
                     self.dimmed_clients.clone(),
+                    &self.client_display_slots.borrow(),
                 );
                 pane_contents_and_ui.set_frame_geom_override(Some(header_geom));
                 pane_contents_and_ui.set_stack_list_entry(
@@ -1904,10 +1919,16 @@ impl Tab {
         }
     }
     fn relayout_floating_panes(&mut self, search_backwards: bool) -> Result<()> {
-        if let Some(layout_candidate) = self
+        let layout_candidate = self
             .swap_layouts
-            .swap_floating_panes(&self.floating_panes, search_backwards)
-        {
+            .swap_floating_panes(&self.floating_panes, search_backwards);
+        self.apply_floating_layout_candidate(layout_candidate)
+    }
+    fn apply_floating_layout_candidate(
+        &mut self,
+        layout_candidate: Option<Vec<FloatingPaneLayout>>,
+    ) -> Result<()> {
+        if let Some(layout_candidate) = layout_candidate {
             LayoutApplier::new(
                 &self.viewport,
                 &self.senders,
@@ -1936,9 +1957,6 @@ impl Tab {
             .non_fatal();
         }
         self.set_force_render();
-        self.senders
-            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
-            .with_context(|| format!("failed to apply cached resizes"))?;
         Ok(())
     }
     fn relayout_tiled_panes(&mut self, search_backwards: bool) -> Result<()> {
@@ -1946,10 +1964,16 @@ impl Tab {
             self.tiled_panes.unset_fullscreen();
         }
         self.dissolve_stack_lists_for_classic_mutation();
-        if let Some(layout_candidate) = self
+        let layout_candidate = self
             .swap_layouts
-            .swap_tiled_panes(&self.tiled_panes, search_backwards)
-        {
+            .swap_tiled_panes(&self.tiled_panes, search_backwards);
+        self.apply_tiled_layout_candidate(layout_candidate)
+    }
+    fn apply_tiled_layout_candidate(
+        &mut self,
+        layout_candidate: Option<TiledPaneLayout>,
+    ) -> Result<()> {
+        if let Some(layout_candidate) = layout_candidate {
             let application_res = LayoutApplier::new(
                 &self.viewport,
                 &self.senders,
@@ -1987,10 +2011,47 @@ impl Tab {
         // we do this so that the new swap layout has a chance to pass through the constraint system
         self.tiled_panes.resize(display_area);
         self.set_should_clear_display_before_rendering();
-        self.senders
-            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
-            .with_context(|| format!("failed to apply cached resizes"))?;
         Ok(())
+    }
+    fn settled_tiled_pane_count(&self) -> usize {
+        let mut pane_count = self.tiled_panes.visible_panes_count();
+        if self.tiled_panes.fullscreen_is_active() {
+            pane_count += self.tiled_panes.panes_to_hide_count();
+        }
+        if self.stacked_pane_list_is_active() {
+            pane_count += self.suppressed_stack_list_members().count();
+        }
+        pane_count
+    }
+    pub fn apply_tiled_swap_layout(&mut self, layout_name: &str) -> Result<bool> {
+        let Some((position, layout_candidate)) = self
+            .swap_layouts
+            .tiled_layout_candidate_by_name(layout_name, self.settled_tiled_pane_count())
+        else {
+            return Ok(false);
+        };
+        if self.tiled_panes.fullscreen_is_active() {
+            self.tiled_panes.unset_fullscreen();
+        }
+        self.dissolve_stack_lists_for_classic_mutation();
+        self.swap_layouts
+            .set_current_tiled_layout_position(position);
+        self.apply_tiled_layout_candidate(Some(layout_candidate))?;
+        Ok(true)
+    }
+    pub fn apply_floating_swap_layout(&mut self, layout_name: &str) -> Result<bool> {
+        let Some((position, layout_candidate)) =
+            self.swap_layouts.floating_layout_candidate_by_name(
+                layout_name,
+                self.floating_panes.visible_panes_count(),
+            )
+        else {
+            return Ok(false);
+        };
+        self.swap_layouts
+            .set_current_floating_layout_position(position);
+        self.apply_floating_layout_candidate(Some(layout_candidate))?;
+        Ok(true)
     }
     pub fn previous_swap_layout(&mut self) -> Result<()> {
         let search_backwards = true;
@@ -2280,7 +2341,15 @@ impl Tab {
         Ok(())
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
-        self.focus_pane_id = None;
+        let is_connected_to_this_tab = self.connected_clients.borrow().contains(&client_id);
+        if is_connected_to_this_tab {
+            let is_last_connected_client = self.connected_clients.borrow().len() == 1;
+            self.focus_pane_id = if is_last_connected_client {
+                self.tiled_panes.focused_pane_id(client_id)
+            } else {
+                None
+            };
+        }
         self.mode_info
             .borrow_mut()
             .get_mut(&client_id)
@@ -2480,8 +2549,9 @@ impl Tab {
         blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         let invoked_with = self.normalize_invoked_with_for_default_shell(invoked_with);
-        match new_pane_placement {
-            NewPanePlacement::NoPreference { borderless } => self.new_no_preference_pane(
+        let border_style = new_pane_placement.get_border_style();
+        let result = match new_pane_placement {
+            NewPanePlacement::NoPreference { borderless, .. } => self.new_no_preference_pane(
                 pid,
                 initial_pane_title,
                 invoked_with,
@@ -2494,6 +2564,7 @@ impl Tab {
             NewPanePlacement::Tiled {
                 direction: None,
                 borderless,
+                ..
             } => self.new_tiled_pane(
                 pid,
                 initial_pane_title,
@@ -2507,6 +2578,7 @@ impl Tab {
             NewPanePlacement::Tiled {
                 direction: Some(direction),
                 borderless,
+                ..
             } => {
                 let is_vertical = direction == Direction::Left || direction == Direction::Right;
                 let focused_client_id = client_id.filter(|_| should_focus_pane);
@@ -2585,6 +2657,7 @@ impl Tab {
                 pane_id_to_replace,
                 close_replaced_pane,
                 borderless,
+                ..
             } => self.new_in_place_pane(
                 pid,
                 initial_pane_title,
@@ -2598,6 +2671,7 @@ impl Tab {
             NewPanePlacement::Stacked {
                 pane_id_to_stack_under,
                 borderless,
+                ..
             } => self.new_stacked_pane(
                 pid,
                 initial_pane_title,
@@ -2609,7 +2683,11 @@ impl Tab {
                 blocking_notification,
                 borderless,
             ),
+        };
+        if let Some(border_style) = border_style {
+            self.set_pane_border_style(pid, border_style);
         }
+        result
     }
     pub fn new_no_preference_pane(
         &mut self,
@@ -5127,9 +5205,6 @@ impl Tab {
             let _ = self.relayout_tiled_panes(false);
         }
         self.set_should_clear_display_before_rendering();
-        self.senders
-            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
-            .with_context(|| format!("failed to update plugins with mode info"))?;
         LayoutApplier::offset_viewport(
             self.viewport.clone(),
             self.display_area.clone(),
@@ -7555,6 +7630,21 @@ impl Tab {
             pane.update_rounded_corners(rounded_corners);
         }
     }
+    pub fn update_border_styles(
+        &mut self,
+        border_style: BorderStyle,
+        floating_border_style: BorderStyle,
+    ) {
+        self.style.border_style = border_style;
+        self.style.floating_border_style = floating_border_style;
+        self.floating_panes
+            .update_border_styles(border_style, floating_border_style);
+        self.tiled_panes
+            .update_border_styles(border_style, floating_border_style);
+        for (_, pane) in self.suppressed_panes.values_mut() {
+            pane.invalidate_frame_cache();
+        }
+    }
     pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
         self.arrow_fonts = should_support_arrow_fonts;
         self.floating_panes
@@ -7829,6 +7919,27 @@ impl Tab {
 
         log::error!("Pane with id {:?} not found", pane_id);
         Ok(())
+    }
+    pub fn set_pane_border_style(
+        &mut self,
+        pane_id: PaneId,
+        border_style: BorderStyleOverride,
+    ) -> bool {
+        if let Some(pane) = self.floating_panes.get_pane_mut(pane_id) {
+            pane.set_border_style_override(border_style);
+            self.set_force_render();
+            return true;
+        }
+        if let Some(pane) = self.tiled_panes.get_pane_mut(pane_id) {
+            pane.set_border_style_override(border_style);
+            self.set_force_render();
+            return true;
+        }
+        if let Some(pane) = self.suppressed_panes.get_mut(&pane_id) {
+            pane.1.set_border_style_override(border_style);
+            return true;
+        }
+        false
     }
     pub fn get_viewport(&self) -> Viewport {
         self.viewport.borrow().clone()
@@ -8124,6 +8235,9 @@ pub fn pane_info_for_pane(
     let (default_fg, default_bg) = pane.get_pane_default_colors();
     pane_info.default_fg = default_fg;
     pane_info.default_bg = default_bg;
+    if pane.is_nested_guest() {
+        pane_info.nested_session_name = pane.guest_session_name();
+    }
 
     match pane_id {
         PaneId::Terminal(terminal_id) => {

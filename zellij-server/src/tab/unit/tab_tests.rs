@@ -70,19 +70,18 @@ impl ServerOsApi for FakeInputOutput {
     fn send_to_client(&self, _client_id: ClientId, _msg: ServerToClientMsg) -> Result<()> {
         unimplemented!()
     }
-    fn new_client(
+    fn register_client(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        _receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()> {
         unimplemented!()
     }
-    fn new_client_with_reply(
+    fn register_client_with_reply(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
         _reply_stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+    ) -> Result<()> {
         unimplemented!()
     }
     fn remove_client(&mut self, _client_id: ClientId) -> Result<()> {
@@ -212,6 +211,7 @@ fn create_new_tab_with_plugin_receiver(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -303,6 +303,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -400,6 +401,7 @@ fn create_new_tab_with_cell_size(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -910,6 +912,7 @@ pub fn split_in_direction_without_a_connected_client_still_creates_the_pane() {
         NewPanePlacement::Tiled {
             direction: Some(Direction::Down),
             borderless: None,
+            border_style: None,
         },
         None,
         None,
@@ -940,6 +943,7 @@ pub fn split_in_direction_without_a_connected_client_splits_the_existing_pane() 
         NewPanePlacement::Tiled {
             direction: Some(Direction::Right),
             borderless: None,
+            border_style: None,
         },
         None,
         None,

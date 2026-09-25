@@ -127,6 +127,7 @@ impl SwapLayouts {
         if self.swap_floating_layouts.is_empty() {
             return None;
         }
+        let pane_count = floating_panes.visible_panes_count();
         let initial_position = self.current_floating_layout_position;
 
         macro_rules! progress_layout {
@@ -161,10 +162,8 @@ impl SwapLayouts {
                 .nth(self.current_floating_layout_position)
             {
                 Some(swap_layout) => {
-                    for (constraint, layout) in swap_layout.0.iter() {
-                        if self.state_fits_floating_panes_constraint(constraint, floating_panes) {
-                            return Some(layout.clone());
-                        };
+                    if let Some(layout) = self.floating_layout_candidate(swap_layout, pane_count) {
+                        return Some(layout);
                     }
                     progress_layout!();
                 },
@@ -178,41 +177,87 @@ impl SwapLayouts {
         }
         None
     }
-    fn state_fits_tiled_panes_constraint(
-        &self,
-        constraint: &LayoutConstraint,
-        tiled_panes: &TiledPanes,
-    ) -> bool {
+    fn state_fits_pane_count_constraint(constraint: &LayoutConstraint, pane_count: usize) -> bool {
         match constraint {
-            LayoutConstraint::MaxPanes(max_panes) => {
-                tiled_panes.visible_panes_count() <= *max_panes
-            },
-            LayoutConstraint::MinPanes(min_panes) => {
-                tiled_panes.visible_panes_count() >= *min_panes
-            },
-            LayoutConstraint::ExactPanes(pane_count) => {
-                tiled_panes.visible_panes_count() == *pane_count
-            },
+            LayoutConstraint::MaxPanes(max_panes) => pane_count <= *max_panes,
+            LayoutConstraint::MinPanes(min_panes) => pane_count >= *min_panes,
+            LayoutConstraint::ExactPanes(exact_panes) => pane_count == *exact_panes,
             LayoutConstraint::NoConstraint => true,
         }
     }
-    fn state_fits_floating_panes_constraint(
+    fn tiled_layout_candidate(
         &self,
-        constraint: &LayoutConstraint,
-        floating_panes: &FloatingPanes,
-    ) -> bool {
-        match constraint {
-            LayoutConstraint::MaxPanes(max_panes) => {
-                floating_panes.visible_panes_count() <= *max_panes
-            },
-            LayoutConstraint::MinPanes(min_panes) => {
-                floating_panes.visible_panes_count() >= *min_panes
-            },
-            LayoutConstraint::ExactPanes(pane_count) => {
-                floating_panes.visible_panes_count() == *pane_count
-            },
-            LayoutConstraint::NoConstraint => true,
+        swap_layout: &SwapTiledLayout,
+        pane_count: usize,
+    ) -> Option<TiledPaneLayout> {
+        for (constraint, layout) in swap_layout.0.iter() {
+            if Self::state_fits_pane_count_constraint(constraint, pane_count) {
+                let focus_layout_if_not_focused = true;
+                let display_area = self.display_area.borrow();
+                // TODO: reuse the assets from position_panes_in_space here?
+                let display_area = PaneGeom::from(&*display_area);
+                if layout
+                    .position_panes_in_space(
+                        &display_area,
+                        Some(pane_count),
+                        false,
+                        focus_layout_if_not_focused,
+                    )
+                    .is_ok()
+                {
+                    return Some(layout.clone());
+                }
+            };
         }
+        None
+    }
+    fn floating_layout_candidate(
+        &self,
+        swap_layout: &SwapFloatingLayout,
+        pane_count: usize,
+    ) -> Option<Vec<FloatingPaneLayout>> {
+        for (constraint, layout) in swap_layout.0.iter() {
+            if Self::state_fits_pane_count_constraint(constraint, pane_count) {
+                return Some(layout.clone());
+            };
+        }
+        None
+    }
+    pub fn tiled_layout_candidate_by_name(
+        &self,
+        layout_name: &str,
+        pane_count: usize,
+    ) -> Option<(usize, TiledPaneLayout)> {
+        self.swap_tiled_layouts
+            .iter()
+            .enumerate()
+            .filter(|(_, layout)| layout.1.as_deref() == Some(layout_name))
+            .find_map(|(position, layout)| {
+                self.tiled_layout_candidate(layout, pane_count)
+                    .map(|layout| (position, layout))
+            })
+    }
+    pub fn floating_layout_candidate_by_name(
+        &self,
+        layout_name: &str,
+        pane_count: usize,
+    ) -> Option<(usize, Vec<FloatingPaneLayout>)> {
+        self.swap_floating_layouts
+            .iter()
+            .enumerate()
+            .filter(|(_, layout)| layout.1.as_deref() == Some(layout_name))
+            .find_map(|(position, layout)| {
+                self.floating_layout_candidate(layout, pane_count)
+                    .map(|layout| (position, layout))
+            })
+    }
+    pub fn set_current_tiled_layout_position(&mut self, position: usize) {
+        self.current_tiled_layout_position = position;
+        self.is_tiled_damaged = false;
+    }
+    pub fn set_current_floating_layout_position(&mut self, position: usize) {
+        self.current_floating_layout_position = position;
+        self.is_floating_damaged = false;
     }
     pub fn swap_tiled_panes(
         &mut self,
@@ -222,6 +267,7 @@ impl SwapLayouts {
         if self.swap_tiled_layouts.is_empty() {
             return None;
         }
+        let pane_count = tiled_panes.visible_panes_count();
 
         macro_rules! progress_layout {
             () => {{
@@ -256,25 +302,8 @@ impl SwapLayouts {
                 .nth(self.current_tiled_layout_position)
             {
                 Some(swap_layout) => {
-                    for (constraint, layout) in swap_layout.0.iter() {
-                        if self.state_fits_tiled_panes_constraint(constraint, tiled_panes) {
-                            let focus_layout_if_not_focused = true;
-                            let display_area = self.display_area.borrow();
-                            // TODO: reuse the assets from position_panes_in_space here?
-                            let pane_count = tiled_panes.visible_panes_count();
-                            let display_area = PaneGeom::from(&*display_area);
-                            if layout
-                                .position_panes_in_space(
-                                    &display_area,
-                                    Some(pane_count),
-                                    false,
-                                    focus_layout_if_not_focused,
-                                )
-                                .is_ok()
-                            {
-                                return Some(layout.clone());
-                            }
-                        };
+                    if let Some(layout) = self.tiled_layout_candidate(swap_layout, pane_count) {
+                        return Some(layout);
                     }
                     progress_layout!();
                 },

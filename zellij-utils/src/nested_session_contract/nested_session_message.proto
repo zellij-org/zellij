@@ -15,12 +15,18 @@ message NestedSessionMessage {
     AncestryUpdate ancestry_update = 12;
     Ping ping = 13;
     ShortcutUpdate shortcut_update = 14;
+    GuestModeUpdate guest_mode_update = 15;
+    RequestGuestKeybinds request_guest_keybinds = 16;
+    GuestKeybindsReply guest_keybinds_reply = 18;
   }
+  reserved 17;
 }
 
 enum NestedCapability {
   NESTED_CAPABILITY_UNSPECIFIED = 0;
   NESTED_CAPABILITY_NESTED_CONTROL = 1;
+  // The peer can report its input mode and keybindings to its host.
+  NESTED_CAPABILITY_HINT_REPORTING = 2;
 }
 
 enum NestedDirection {
@@ -77,4 +83,41 @@ message AncestryUpdate {
 }
 
 message Ping {
+}
+
+message GuestModeUpdate {
+  string mode = 1;
+  string base_mode = 2;
+  repeated string session_path = 3;
+  uint64 keybinds_generation = 4;
+}
+
+message RequestGuestKeybinds {
+  uint64 request_id = 1;
+}
+
+enum GuestKeybindsError {
+  GUEST_KEYBINDS_ERROR_UNSPECIFIED = 0;
+  GUEST_KEYBINDS_ERROR_NOT_NESTED = 1;
+  GUEST_KEYBINDS_ERROR_UNSUPPORTED = 2;
+  GUEST_KEYBINDS_ERROR_GUEST_UNRESPONSIVE = 3;
+  GUEST_KEYBINDS_ERROR_GUEST_GONE = 4;
+  GUEST_KEYBINDS_ERROR_TOO_LARGE = 5;
+  GUEST_KEYBINDS_ERROR_TIMEOUT = 6;
+}
+
+message GuestKeybinds {
+  repeated string session_path = 1;
+  string mode = 2;
+  string base_mode = 3;
+  uint64 keybinds_generation = 4;
+  bytes keybinds_payload = 5;
+}
+
+message GuestKeybindsReply {
+  uint64 request_id = 1;
+  oneof result {
+    GuestKeybinds keybinds = 2;
+    GuestKeybindsError error = 3;
+  }
 }

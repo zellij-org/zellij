@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 * (BREAKING CHANGE zellij-tile) `NestedListItem::new` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611)
 * (BREAKING CHANGE zellij-tile) `Text::new` is replaced by `Text::from` (https://github.com/zellij-org/zellij/pull/5611)
+* fix: forward OSC7 (cwd changes) to host terminal (https://github.com/zellij-org/zellij/pull/4867)
+* performance: reduce server memory usage by not copying the builtin plugins onto the heap (https://github.com/zellij-org/zellij/pull/5622)
+* feat: upstream Yazelix graphics and stacked-pane fixes, named swap-layout selection and configurable pane-border styles (https://github.com/zellij-org/zellij/pull/5630)
+* feat: distributions -> allow using Zellij as a library (https://github.com/zellij-org/zellij/pull/5630)
+* fix: do not reuse client ids (https://github.com/zellij-org/zellij/pull/5630)
+* feat: nested sessions input-mode + keybindings reporting (https://github.com/zellij-org/zellij/issues/5561)
+* fix: control characters occasionally appearing in panes on startup (https://github.com/zellij-org/zellij/pull/5655)
+* fix: group bar-plugins on viewport edge for layout purposes (https://github.com/zellij-org/zellij/pull/5653)
+* fix: resize state and correctness (https://github.com/zellij-org/zellij/pull/5656)
+* fix: compress kitty images if the host terminal supports it (https://github.com/zellij-org/zellij/pull/5608)
+* fix: add websocket heartbeat to webserver to prevernt idle disconnect through proxies (https://github.com/zellij-org/zellij/pull/4633)
 
 ## [0.45.1] - 2026-08-28
 * fix: nested-session detection over SSH (https://github.com/zellij-org/zellij/pull/5522)

@@ -791,6 +791,165 @@ pub fn has_bell_reflects_grid_ring_bell() {
 }
 
 #[test]
+pub fn osc7_payload_stored_from_pty_bytes() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    assert!(
+        terminal_pane.osc7_payload().is_none(),
+        "Initially osc7_payload should be None"
+    );
+
+    // Send OSC 7 sequence: \x1b]7;file://localhost/tmp\x1b\\
+    let osc7_bytes = b"\x1b]7;file://localhost/tmp\x1b\\";
+    terminal_pane.handle_pty_bytes(osc7_bytes.to_vec());
+
+    assert_eq!(
+        terminal_pane.drain_osc7_cwd(),
+        Some(std::path::PathBuf::from("/tmp")),
+        "OSC 7 should still update Zellij's internal CWD tracking"
+    );
+    assert!(terminal_pane.drain_osc7_cwd().is_none());
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/tmp"),
+        "The forwarding URI should persist after the internal CWD update is drained"
+    );
+}
+
+#[test]
+pub fn osc7_payload_updated_on_subsequent_osc7() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    let osc7_first = b"\x1b]7;file://localhost/first\x1b\\";
+    terminal_pane.handle_pty_bytes(osc7_first.to_vec());
+    assert_eq!(terminal_pane.osc7_payload(), Some("file://localhost/first"));
+
+    let osc7_second = b"\x1b]7;file://localhost/second\x1b\\";
+    terminal_pane.handle_pty_bytes(osc7_second.to_vec());
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/second")
+    );
+}
+
+#[test]
+pub fn osc7_payload_preserves_percent_encoding() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    let osc7_bytes = b"\x1b]7;file://localhost/path%20with%20spaces\x1b\\";
+    terminal_pane.handle_pty_bytes(osc7_bytes.to_vec());
+    assert_eq!(
+        terminal_pane.drain_osc7_cwd(),
+        Some(std::path::PathBuf::from("/path with spaces")),
+    );
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/path%20with%20spaces"),
+    );
+}
+
+#[test]
+pub fn osc7_payload_works_with_bel_terminator() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    // BEL (\x07) is an alternative terminator for OSC sequences
+    let osc7_bytes = b"\x1b]7;file://localhost/tmp\x07";
+    terminal_pane.handle_pty_bytes(osc7_bytes.to_vec());
+    assert_eq!(terminal_pane.osc7_payload(), Some("file://localhost/tmp"),);
+}
+
+#[test]
+pub fn osc7_payload_rejects_c0_control_characters() {
+    // Test the Grid's osc_dispatch directly, since the VTE parser strips
+    // control characters before they reach osc_dispatch. This validates
+    // the defense-in-depth guard in the b"7" handler.
+    use vte::Perform;
+
+    let mut terminal_pane = make_terminal_pane_for_bell();
+    let params: &[&[u8]] = &[b"7", b"file://host/path\x01bad"];
+    terminal_pane.grid.osc_dispatch(params, false);
+    assert!(
+        terminal_pane.osc7_payload().is_none(),
+        "URIs with C0 control characters should be rejected"
+    );
+}
+
+#[test]
+pub fn osc7_payload_rejects_c1_control_characters() {
+    // C1 control characters (U+0080..U+009F) include ST (U+009C) which
+    // could terminate the OSC sequence in the parent terminal.
+    use vte::Perform;
+
+    let mut terminal_pane = make_terminal_pane_for_bell();
+    // U+009C (ST) in UTF-8 is 0xC2 0x9C
+    let params: &[&[u8]] = &[b"7", "file://host/path\u{9c}bad".as_bytes()];
+    terminal_pane.grid.osc_dispatch(params, false);
+    assert!(
+        terminal_pane.osc7_payload().is_none(),
+        "URIs with C1 control characters should be rejected"
+    );
+}
+
+#[test]
+pub fn osc7_payload_rejects_an_empty_payload() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    terminal_pane.handle_pty_bytes(b"\x1b]7;file://localhost/tmp\x1b\\".to_vec());
+    terminal_pane.handle_pty_bytes(b"\x1b]7;\x1b\\".to_vec());
+
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/tmp"),
+        "An empty OSC 7 is rejected and the previous URI is retained"
+    );
+}
+
+#[test]
+pub fn osc7_payload_rejects_invalid_utf8() {
+    use vte::Perform;
+
+    let mut terminal_pane = make_terminal_pane_for_bell();
+    terminal_pane.handle_pty_bytes(b"\x1b]7;file://localhost/tmp\x1b\\".to_vec());
+
+    let params: &[&[u8]] = &[b"7", b"file://localhost/\xff\xfe"];
+    terminal_pane.grid.osc_dispatch(params, false);
+
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/tmp"),
+        "A non-UTF-8 OSC 7 is rejected and the previous URI is retained"
+    );
+}
+
+#[test]
+pub fn osc7_payload_joins_semicolon_separated_segments() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    terminal_pane.handle_pty_bytes(b"\x1b]7;file://localhost/a;b;c\x1b\\".to_vec());
+
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/a;b;c"),
+        "A URI containing semicolons is reassembled from the split params"
+    );
+}
+
+#[test]
+pub fn osc7_payload_is_cleared_by_a_terminal_reset() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    terminal_pane.handle_pty_bytes(b"\x1b]7;file://localhost/tmp\x1b\\".to_vec());
+    assert_eq!(terminal_pane.osc7_payload(), Some("file://localhost/tmp"));
+
+    terminal_pane.handle_pty_bytes(b"\x1bc".to_vec());
+
+    assert!(
+        terminal_pane.osc7_payload().is_none(),
+        "RIS clears the reported working directory"
+    );
+}
+
+#[test]
 pub fn frameless_pane_position_is_on_frame() {
     let mut fake_win_size = PaneGeom {
         x: 10,
@@ -921,7 +1080,7 @@ fn create_guest_modal_pane() -> TerminalPane {
 fn press_key(
     pane: &mut TerminalPane,
     bare_key: zellij_utils::data::BareKey,
-    client_id: u16,
+    client_id: crate::ClientId,
 ) -> Option<crate::tab::AdjustedInput> {
     let key = zellij_utils::data::KeyWithModifier::new(bare_key);
     pane.adjust_input_to_terminal(&Some(key), vec![], false, Some(client_id))

@@ -151,7 +151,10 @@ fn mouse_click_new_tab_button_in_tab_bar_opens_a_new_tab() {
     new_tab_terminal.output(PROMPT);
 
     let grid_snapshot = zellij.wait_until("a second tab opened", |grid_snapshot| {
-        grid_snapshot.contains("Tab #1") && grid_snapshot.contains("Tab #2")
+        grid_snapshot.contains("Tab #1")
+            && grid_snapshot.contains("Tab #2")
+            && grid_snapshot.contains("$ ")
+            && grid_snapshot.status_bar_appears()
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
