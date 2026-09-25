@@ -710,11 +710,8 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn heartbeat_does_not_ping_before_the_first_interval() {
         let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
-        let early = tokio::time::timeout(
-            PING_INTERVAL - Duration::from_millis(1),
-            heartbeat.tick(),
-        )
-        .await;
+        let early =
+            tokio::time::timeout(PING_INTERVAL - Duration::from_millis(1), heartbeat.tick()).await;
         assert!(early.is_err(), "no ping may be sent right after connecting");
     }
 
