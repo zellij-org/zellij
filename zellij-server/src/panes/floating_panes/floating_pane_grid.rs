@@ -625,7 +625,8 @@ impl<'a> FloatingPaneGrid<'a> {
             .copied();
         next_index
     }
-    pub fn pane_id_on_edge(&self, direction: Direction) -> Option<PaneId> {
+    pub fn pane_id_on_edge(&self, direction: Direction, z_indices: &[PaneId]) -> Option<PaneId> {
+        let z_pos = |pane_id: &PaneId| z_indices.iter().position(|p_id| p_id == pane_id);
         let panes = self.panes.borrow();
         let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
             .iter()
@@ -635,32 +636,32 @@ impl<'a> FloatingPaneGrid<'a> {
         let next_index = panes
             .iter()
             .enumerate()
-            .max_by(|(_, (_, a)), (_, (_, b))| match direction {
+            .max_by(|(_, (a_id, a)), (_, (b_id, b))| match direction {
                 Direction::Left => {
                     let x_comparison = a.x().cmp(&b.x());
                     match x_comparison {
-                        Ordering::Equal => a.y().cmp(&b.y()),
+                        Ordering::Equal => z_pos(a_id).cmp(&z_pos(b_id)),
                         _ => x_comparison,
                     }
                 },
                 Direction::Right => {
                     let x_comparison = b.x().cmp(&a.x());
                     match x_comparison {
-                        Ordering::Equal => a.y().cmp(&b.y()),
+                        Ordering::Equal => z_pos(a_id).cmp(&z_pos(b_id)),
                         _ => x_comparison,
                     }
                 },
                 Direction::Up => {
                     let y_comparison = a.y().cmp(&b.y());
                     match y_comparison {
-                        Ordering::Equal => a.x().cmp(&b.x()),
+                        Ordering::Equal => z_pos(a_id).cmp(&z_pos(b_id)),
                         _ => y_comparison,
                     }
                 },
                 Direction::Down => {
                     let y_comparison = b.y().cmp(&a.y());
                     match y_comparison {
-                        Ordering::Equal => b.x().cmp(&a.x()),
+                        Ordering::Equal => z_pos(a_id).cmp(&z_pos(b_id)),
                         _ => y_comparison,
                     }
                 },
