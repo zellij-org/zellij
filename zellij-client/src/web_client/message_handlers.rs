@@ -152,6 +152,7 @@ use tokio_util::sync::CancellationToken;
 
 pub fn render_to_client(
     mut stdout_channel_rx: UnboundedReceiver<String>,
+    mut frame_channel_rx: UnboundedReceiver<Message>,
     mut client_channel_tx: SplitSink<WebSocket, Message>,
     cancellation_token: CancellationToken,
     should_not_reconnect: Arc<AtomicBool>,
@@ -192,6 +193,11 @@ pub fn render_to_client(
                             }
                         }
                         None => break,
+                    }
+                }
+                Some(frame) = frame_channel_rx.recv() => {
+                    if client_channel_tx.send(frame).await.is_err() {
+                        break;
                     }
                 }
             }
