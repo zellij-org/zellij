@@ -344,6 +344,8 @@ pub enum ScreenContext {
     MouseEvent,
     Copy,
     ToggleTab,
+    ShowQuitPrompt,
+    HideQuitPrompt,
     AddClient,
     RemoveClient,
     UpdateSearch,

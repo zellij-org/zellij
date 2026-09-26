@@ -367,6 +367,13 @@ pub struct Options {
     #[serde(default)]
     pub visual_bell: Option<bool>,
 
+    /// Whether to show a confirmation prompt before quitting (e.g. with Ctrl+q / the Quit action)
+    /// Quitting exits the current client from the session; the session ends when the last client quits
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub confirm_quit: Option<bool>,
+
     /// Whether to focus panes on mouse hover (true or false)
     /// default is false
     #[clap(long, value_parser)]
@@ -570,6 +577,7 @@ impl Options {
         let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
         let mouse_hover_tips = other.mouse_hover_tips.or(self.mouse_hover_tips);
         let visual_bell = other.visual_bell.or(self.visual_bell);
+        let confirm_quit = other.confirm_quit.or(self.confirm_quit);
         let focus_follows_mouse = other.focus_follows_mouse.or(self.focus_follows_mouse);
         let mouse_click_through = other.mouse_click_through.or(self.mouse_click_through);
         let osc133_command_selection = other
@@ -649,6 +657,7 @@ impl Options {
             mouse_hover_effects,
             mouse_hover_tips,
             visual_bell,
+            confirm_quit,
             focus_follows_mouse,
             mouse_click_through,
             osc133_command_selection,
@@ -741,6 +750,7 @@ impl Options {
         let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
         let mouse_hover_tips = other.mouse_hover_tips.or(self.mouse_hover_tips);
         let visual_bell = other.visual_bell.or(self.visual_bell);
+        let confirm_quit = other.confirm_quit.or(self.confirm_quit);
         let focus_follows_mouse = merge_bool(other.focus_follows_mouse, self.focus_follows_mouse);
         let mouse_click_through = merge_bool(other.mouse_click_through, self.mouse_click_through);
         let osc133_command_selection = other
@@ -820,6 +830,7 @@ impl Options {
             mouse_hover_effects,
             mouse_hover_tips,
             visual_bell,
+            confirm_quit,
             focus_follows_mouse,
             mouse_click_through,
             osc133_command_selection,

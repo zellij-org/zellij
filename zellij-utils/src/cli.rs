@@ -1754,4 +1754,12 @@ mod tests {
         let result = try_parse(&["subscribe"]);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn options_confirm_quit_is_a_flag_not_a_positional() {
+        let cli =
+            CliArgs::try_parse_from(["zellij", "options", "--confirm-quit", "false"]).unwrap();
+        let options = cli.options().expect("expected Command::Options");
+        assert_eq!(options.confirm_quit, Some(false));
+    }
 }
