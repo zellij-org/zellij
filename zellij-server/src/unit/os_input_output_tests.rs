@@ -157,7 +157,6 @@ fn spawn_and_read_output() {
 
     // Read output from the spawned terminal
     let mut output = Vec::new();
-    let mut buf = [0u8; 4096];
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -170,12 +169,15 @@ fn spawn_and_read_output() {
             if std::time::Instant::now() > deadline {
                 break;
             }
-            match tokio::time::timeout(std::time::Duration::from_millis(500), reader.read(&mut buf))
-                .await
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(500),
+                reader.read_chunk(4096),
+            )
+            .await
             {
-                Ok(Ok(0)) => break,
-                Ok(Ok(n)) => {
-                    output.extend_from_slice(&buf[..n]);
+                Ok(Ok(bytes)) if bytes.is_empty() => break,
+                Ok(Ok(bytes)) => {
+                    output.extend_from_slice(&bytes);
                     let s = String::from_utf8_lossy(&output);
                     if s.contains(test_message) {
                         break;

@@ -53,21 +53,14 @@ impl TerminalBytes {
         let mut err_ctx = get_current_ctx();
         err_ctx.add_call(ContextType::AsyncTask);
         loop {
-            if let Err(err) = self.async_reader.wait_readable().await {
-                log::error!("{}", err);
-                break;
-            }
-            let mut buf = vec![0u8; READ_BUFFER_SIZE];
-            match self.async_reader.read(&mut buf).await {
-                Ok(0) => break, // EOF
+            match self.async_reader.read_chunk(READ_BUFFER_SIZE).await {
+                Ok(bytes) if bytes.is_empty() => break,
                 Err(err) => {
                     log::error!("{}", err);
                     break;
                 },
-                Ok(n_bytes) => {
+                Ok(bytes) => {
                     self.activity_flag.store(true, Ordering::Relaxed);
-                    let bytes = buf[..n_bytes].to_vec();
-                    drop(buf);
                     if self.debug {
                         let _ = debug_to_file(&bytes, self.terminal_id as i32);
                     }

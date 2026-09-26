@@ -13,7 +13,6 @@ use std::{
     },
 };
 
-use tokio::io::AsyncReadExt;
 use tokio::net::windows::named_pipe::NamedPipeServer;
 
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, S_OK};
@@ -98,11 +97,17 @@ impl ConPtyAsyncReader {
 
 #[async_trait]
 impl AsyncReader for ConPtyAsyncReader {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
-        self.pipe()?.read(buf).await
-    }
-    async fn wait_readable(&mut self) -> Result<(), io::Error> {
-        self.pipe()?.readable().await
+    async fn read_chunk(&mut self, max: usize) -> Result<Vec<u8>, io::Error> {
+        let pipe = self.pipe()?;
+        loop {
+            pipe.readable().await?;
+            let mut buf = vec![0u8; max];
+            match pipe.try_read(&mut buf) {
+                Ok(n) => return Ok(buf[..n].to_vec()),
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(e),
+            }
+        }
     }
 }
 

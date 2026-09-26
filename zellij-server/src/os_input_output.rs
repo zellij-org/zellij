@@ -335,16 +335,13 @@ pub(crate) struct NullAsyncReader;
 // used. See https://smallcultfollowing.com/babysteps/blog/2019/10/26/async-fn-in-traits-are-hard/
 #[async_trait]
 pub trait AsyncReader: Send + Sync {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error>;
-    async fn wait_readable(&mut self) -> Result<(), io::Error> {
-        Ok(())
-    }
+    async fn read_chunk(&mut self, max: usize) -> Result<Vec<u8>, io::Error>;
 }
 
 #[async_trait]
 impl AsyncReader for NullAsyncReader {
-    async fn read(&mut self, _buf: &mut [u8]) -> Result<usize, io::Error> {
-        Ok(0) // EOF
+    async fn read_chunk(&mut self, _max: usize) -> Result<Vec<u8>, io::Error> {
+        Ok(Vec::new())
     }
 }
 
