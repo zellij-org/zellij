@@ -2811,3 +2811,46 @@ mod web_session_ownership_tests {
         );
     }
 }
+
+// THE FORK'S RAW_BYTES FIX, HELD (65fa642; nexus#373). Stock 0.43.1's parse_stdin attached the
+// WHOLE message as raw_bytes to EVERY key event termwiz parsed from it, and the server writes
+// raw_bytes to the pty for an unbound key, so an N-char WebSocket message was written N times
+// ("section" -> "sectionionions"). Clients batch text (iOS autocorrect, dictation, a laggy link),
+// and nothing noticed when a rebuild could have dropped the fix. These pin it: the message's
+// bytes ride on the FIRST key event and the rest carry none.
+mod parse_stdin_raw_bytes {
+    use super::MockClientOsApi;
+    use crate::web_client::message_handlers::parse_stdin;
+    use zellij_utils::input::mouse::MouseEvent;
+    use zellij_utils::ipc::ClientToServerMsg;
+
+    fn raw_bytes_per_key(message: &[u8]) -> Vec<Vec<u8>> {
+        let os_api = MockClientOsApi::new();
+        parse_stdin(message, Box::new(os_api.clone()), &mut MouseEvent::new(), false);
+        os_api
+            .get_sent_messages()
+            .into_iter()
+            .filter_map(|msg| match msg {
+                ClientToServerMsg::Key(_, raw_bytes, _) => Some(raw_bytes),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_multi_char_message_is_written_once_not_once_per_char() {
+        let raw = raw_bytes_per_key(b"section");
+        assert_eq!(raw.len(), 7, "one key event per character");
+        assert_eq!(raw[0], b"section".to_vec(), "the message rides on the FIRST key event");
+        assert_eq!(
+            raw.concat(),
+            b"section".to_vec(),
+            "the pty must receive the message ONCE, not once per character"
+        );
+    }
+
+    #[test]
+    fn a_single_char_message_is_unchanged() {
+        assert_eq!(raw_bytes_per_key(b"x"), vec![b"x".to_vec()]);
+    }
+}
