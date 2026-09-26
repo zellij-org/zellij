@@ -5,6 +5,8 @@ use axum::extract::ws::{CloseFrame, Message};
 use std::sync::{atomic::AtomicBool, Arc};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
+use zellij_utils::ipc::ClientToServerMsg;
+use zellij_utils::pane_size::Size;
 
 impl ConnectionTable {
     pub fn add_new_client(
@@ -77,8 +79,9 @@ impl ConnectionTable {
         }
         self.client_read_only_status.remove(client_id);
         self.client_id_to_session.remove(client_id);
-        // If this client owned a session's size, release ownership so the
-        // remaining clients can resize again.
+        self.client_size.remove(client_id);
+        // If this client owned a session's size, release ownership: the next
+        // client to type takes it.
         self.session_size_owner
             .retain(|_, owner| owner.as_str() != client_id);
     }
@@ -88,35 +91,52 @@ impl ConnectionTable {
             .insert(client_id.to_owned(), session_name);
     }
 
-    /// Make `requester_id` the size owner of its session: every OTHER client of
-    /// that session now mirrors the owner's size (their TerminalResize is
-    /// dropped, see `resize_allowed`) and can never re-clamp it. Returns the
-    /// number of other clients now mirroring. Clients are NOT detached — they
-    /// stay attached and simply follow the owner's size.
-    pub fn claim_session_size_owner(&mut self, requester_id: &str) -> usize {
-        let Some(session) = self.client_id_to_session.get(requester_id).cloned() else {
-            return 0;
+    // THE SESSION FOLLOWS ITS MOST RECENTLY ACTIVE WEB CLIENT (zellient#7; tmux's
+    // `window-size latest`). The session server renders a session at the MINIMUM
+    // of its clients' registered sizes (min_client_terminal_size), so one idle
+    // web client (a phone, a laptop tab, a client that never sent TerminalResize
+    // and sat at the daemon's fd0 fallback of 80x24) held every other window of
+    // that session to a small box, and no client-side resize could lift it: the
+    // old claim only dropped non-owners' FUTURE resizes, while the size they had
+    // already registered still fed the minimum. Now the web layer RE-REGISTERS
+    // every other web client of the session at the owner's size (a
+    // TerminalResize sent on that client's own server connection), so the
+    // minimum is the owner and the others mirror it. A client becomes the owner
+    // by typing (or by an explicit DetachOtherClients claim). Native clients are
+    // untouched: the orchestrator's headless ones attach at 2000x500 and never
+    // clamp.
+
+    /// The size a web client registers with when it attaches: the size owner's,
+    /// else the size its session last took from a web client, else NO_CLAMP_SIZE.
+    /// Never the fd0 fallback, which is how a silent attacher clamped everyone.
+    pub fn attach_size(&self, client_id: &str) -> Size {
+        let Some(session) = self.client_id_to_session.get(client_id) else {
+            return NO_CLAMP_SIZE;
         };
-        let others = self
-            .client_id_to_session
-            .iter()
-            .filter(|(id, sess)| id.as_str() != requester_id && **sess == session)
-            .count();
         self.session_size_owner
-            .insert(session, requester_id.to_owned());
-        others
+            .get(session)
+            .and_then(|owner| self.client_size.get(owner))
+            .or_else(|| self.session_size.get(session))
+            .copied()
+            .unwrap_or(NO_CLAMP_SIZE)
     }
 
-    /// True if `client_id` is allowed to resize its session: allowed when there
-    /// is no size owner for that session, or this client IS the owner. A
-    /// non-owner's resize is dropped so it can only mirror.
-    pub fn resize_allowed(&self, client_id: &str) -> bool {
-        let Some(session) = self.client_id_to_session.get(client_id) else {
-            return true; // unknown session — don't block
+    /// A client reported its size. With no owner it is registered as-is; the
+    /// owner's size is imposed on every other web client of the session; any
+    /// other client's size is only remembered (it mirrors the owner until it
+    /// becomes the owner itself). Returns the resizes to send.
+    pub fn on_terminal_resize(&mut self, client_id: &str, size: Size) -> Vec<Resize> {
+        self.client_size.insert(client_id.to_owned(), size);
+        let Some(session) = self.client_id_to_session.get(client_id).cloned() else {
+            return self.resize_for(client_id, size).into_iter().collect();
         };
-        match self.session_size_owner.get(session) {
-            Some(owner) => owner == client_id,
-            None => true,
+        match self.session_size_owner.get(&session) {
+            Some(owner) if owner != client_id => vec![],
+            Some(_) => self.impose(&session, client_id, size),
+            None => {
+                self.session_size.insert(session, size);
+                self.resize_for(client_id, size).into_iter().collect()
+            },
         }
     }
 
@@ -124,6 +144,85 @@ impl ConnectionTable {
         self.client_id_to_channels
             .get(client_id)
             .map(|c| c.should_not_reconnect.clone())
+    }
+
+    /// The client typed: it becomes its session's size owner, and the session
+    /// follows it. Nothing to send when it already owns the session, or when it
+    /// has never reported a size (it has no size to impose).
+    pub fn on_user_input(&mut self, client_id: &str) -> Vec<Resize> {
+        let Some(session) = self.client_id_to_session.get(client_id).cloned() else {
+            return vec![];
+        };
+        if self.session_size_owner.get(&session).map(String::as_str) == Some(client_id) {
+            return vec![];
+        }
+        let Some(size) = self.client_size.get(client_id).copied() else {
+            return vec![];
+        };
+        self.session_size_owner
+            .insert(session.clone(), client_id.to_owned());
+        self.impose(&session, client_id, size)
+    }
+
+    /// An explicit claim (DetachOtherClients: Zellient's Ctrl+0 and Ctrl+Shift+O).
+    /// Returns how many other web clients of the session now mirror the
+    /// requester, and the resizes that make them.
+    pub fn claim_session_size_owner(&mut self, requester_id: &str) -> (usize, Vec<Resize>) {
+        let Some(session) = self.client_id_to_session.get(requester_id).cloned() else {
+            return (0, vec![]);
+        };
+        let others = self.others_in_session(&session, requester_id).len();
+        self.session_size_owner
+            .insert(session.clone(), requester_id.to_owned());
+        let resizes = match self.client_size.get(requester_id).copied() {
+            Some(size) => self.impose(&session, requester_id, size),
+            None => vec![],
+        };
+        (others, resizes)
+    }
+
+    /// Register `owner` and every other web client of `session` at `size`.
+    fn impose(&mut self, session: &str, owner: &str, size: Size) -> Vec<Resize> {
+        self.session_size.insert(session.to_owned(), size);
+        let mut out: Vec<Resize> = self.resize_for(owner, size).into_iter().collect();
+        for other in self.others_in_session(session, owner) {
+            out.extend(self.resize_for(&other, size));
+        }
+        out
+    }
+
+    fn others_in_session(&self, session: &str, except: &str) -> Vec<String> {
+        self.client_id_to_session
+            .iter()
+            .filter(|(id, sess)| id.as_str() != except && sess.as_str() == session)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    fn resize_for(&self, client_id: &str, size: Size) -> Option<Resize> {
+        self.client_id_to_channels
+            .get(client_id)
+            .map(|c| (c.os_api.clone(), size))
+    }
+}
+
+/// A web client that has not reported a size registers at this instead of the
+/// daemon's fd0 fallback (80x24): too large ever to be its session's minimum.
+/// The orchestrator's headless clients use the same size for the same reason.
+pub const NO_CLAMP_SIZE: Size = Size {
+    rows: 500,
+    cols: 2000,
+};
+
+/// A resize to send: the client's own server connection, and the size to
+/// register for it.
+pub type Resize = (Box<dyn ClientOsApi>, Size);
+
+/// Send resizes the connection table decided on. Called with the table's lock
+/// released: each is an IPC write to the session server.
+pub fn send_resizes(resizes: Vec<Resize>) {
+    for (os_api, size) in resizes {
+        os_api.send_to_server(ClientToServerMsg::TerminalResize { new_size: size });
     }
 }
 

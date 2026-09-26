@@ -2854,3 +2854,153 @@ mod parse_stdin_raw_bytes {
         assert_eq!(raw_bytes_per_key(b"x"), vec![b"x".to_vec()]);
     }
 }
+
+// ZELLIENT#7: THE SESSION FOLLOWS ITS MOST RECENTLY ACTIVE WEB CLIENT. Zellij renders a session
+// at the minimum of its clients' registered sizes, so one idle web client held every other
+// window of the session small (session-3 sat at 80x24 with 3 clients, 2 of them web), and the
+// old claim only dropped non-owners' later resizes. These pin the connection table's decisions:
+// who gets registered at what, on which client's own server connection.
+mod session_size_follows_the_active_client {
+    use super::MockClientOsApi;
+    use crate::web_client::connection_manager::{send_resizes, NO_CLAMP_SIZE};
+    use crate::web_client::message_handlers::is_user_activity;
+    use crate::web_client::types::ConnectionTable;
+    use zellij_utils::ipc::ClientToServerMsg;
+    use zellij_utils::pane_size::Size;
+
+    const BIG: Size = Size { rows: 60, cols: 200 };
+    const SMALL: Size = Size { rows: 24, cols: 80 };
+
+    fn table_with(clients: &[&str]) -> (ConnectionTable, Vec<MockClientOsApi>) {
+        let mut t = ConnectionTable::default();
+        let mocks: Vec<MockClientOsApi> = clients.iter().map(|_| MockClientOsApi::new()).collect();
+        for (id, mock) in clients.iter().zip(&mocks) {
+            t.add_new_client(id.to_string(), Box::new(mock.clone()));
+            t.set_client_session(id, "s".to_string());
+        }
+        (t, mocks)
+    }
+
+    /// The sizes the session server was told for this client, in order.
+    fn registered(mock: &MockClientOsApi) -> Vec<Size> {
+        mock.get_sent_messages()
+            .into_iter()
+            .filter_map(|m| match m {
+                ClientToServerMsg::TerminalResize { new_size } => Some(new_size),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_silent_client_never_registers_at_the_80x24_fallback() {
+        let (t, _) = table_with(&["a"]);
+        assert_eq!(t.attach_size("a"), NO_CLAMP_SIZE, "no size known yet: never clamp");
+        assert_eq!(ConnectionTable::default().attach_size("nobody"), NO_CLAMP_SIZE);
+    }
+
+    #[test]
+    fn a_late_silent_attacher_takes_the_sessions_size() {
+        let (mut t, mocks) = table_with(&["big"]);
+        send_resizes(t.on_terminal_resize("big", BIG));
+        assert_eq!(registered(&mocks[0]), vec![BIG]);
+        t.set_client_session("late", "s".to_string());
+        assert_eq!(t.attach_size("late"), BIG, "the late attacher must not clamp the session");
+    }
+
+    #[test]
+    fn typing_moves_the_session_to_that_client_and_everyone_mirrors_it() {
+        let (mut t, mocks) = table_with(&["big", "small"]);
+        send_resizes(t.on_terminal_resize("big", BIG));
+        send_resizes(t.on_terminal_resize("small", SMALL));
+        // No owner yet: each registered as reported (the old behaviour).
+        assert_eq!(registered(&mocks[0]), vec![BIG]);
+        assert_eq!(registered(&mocks[1]), vec![SMALL]);
+
+        // BIG types: it owns the session, SMALL is re-registered at BIG's size.
+        send_resizes(t.on_user_input("big"));
+        assert_eq!(registered(&mocks[0]).last(), Some(&BIG));
+        assert_eq!(registered(&mocks[1]).last(), Some(&BIG), "SMALL must mirror BIG");
+
+        // Typing again as the owner sends nothing.
+        assert!(t.on_user_input("big").is_empty());
+
+        // SMALL types: the session follows SMALL, and BIG mirrors it.
+        send_resizes(t.on_user_input("small"));
+        assert_eq!(registered(&mocks[1]).last(), Some(&SMALL));
+        assert_eq!(registered(&mocks[0]).last(), Some(&SMALL));
+
+        // BIG types: back to BIG.
+        send_resizes(t.on_user_input("big"));
+        assert_eq!(registered(&mocks[0]).last(), Some(&BIG));
+        assert_eq!(registered(&mocks[1]).last(), Some(&BIG));
+    }
+
+    #[test]
+    fn the_owners_resize_is_mirrored_and_a_non_owners_is_only_remembered() {
+        let (mut t, mocks) = table_with(&["owner", "other"]);
+        send_resizes(t.on_terminal_resize("owner", BIG));
+        send_resizes(t.on_terminal_resize("other", SMALL));
+        send_resizes(t.on_user_input("owner"));
+        let before = registered(&mocks[1]).len();
+
+        let bigger = Size { rows: 70, cols: 220 };
+        send_resizes(t.on_terminal_resize("owner", bigger));
+        assert_eq!(registered(&mocks[0]).last(), Some(&bigger));
+        assert_eq!(registered(&mocks[1]).last(), Some(&bigger), "the owner's resize is mirrored");
+
+        let smaller = Size { rows: 20, cols: 70 };
+        assert!(t.on_terminal_resize("other", smaller).is_empty(), "a non-owner cannot resize");
+        assert_eq!(registered(&mocks[1]).len(), before + 1);
+        // ...but its size is remembered: when it types, the session takes it.
+        send_resizes(t.on_user_input("other"));
+        assert_eq!(registered(&mocks[0]).last(), Some(&smaller));
+    }
+
+    #[test]
+    fn an_explicit_claim_reregisters_every_other_client_at_the_claimers_size() {
+        let (mut t, mocks) = table_with(&["claimer", "b", "c"]);
+        send_resizes(t.on_terminal_resize("claimer", BIG));
+        send_resizes(t.on_terminal_resize("b", SMALL));
+        let (others, resizes) = t.claim_session_size_owner("claimer");
+        assert_eq!(others, 2);
+        send_resizes(resizes);
+        for m in &mocks {
+            assert_eq!(registered(m).last(), Some(&BIG));
+        }
+    }
+
+    #[test]
+    fn clients_of_other_sessions_are_never_touched() {
+        let (mut t, mocks) = table_with(&["a", "b"]);
+        let elsewhere = MockClientOsApi::new();
+        t.add_new_client("x".to_string(), Box::new(elsewhere.clone()));
+        t.set_client_session("x", "other-session".to_string());
+        send_resizes(t.on_terminal_resize("a", BIG));
+        send_resizes(t.on_user_input("a"));
+        assert!(registered(&elsewhere).is_empty());
+        assert_eq!(registered(&mocks[1]).last(), Some(&BIG));
+    }
+
+    #[test]
+    fn the_owner_leaving_releases_the_session() {
+        let (mut t, _) = table_with(&["owner", "other"]);
+        send_resizes(t.on_terminal_resize("owner", BIG));
+        send_resizes(t.on_user_input("owner"));
+        t.remove_client("owner");
+        assert!(t.session_size_owner.is_empty());
+        assert!(!t.on_terminal_resize("other", SMALL).is_empty(), "no owner: it registers again");
+    }
+
+    #[test]
+    fn only_the_user_acting_counts_as_activity() {
+        for key in [&b"a"[..], b"\r", b"\x1b[A", b"\x1b[15~", b"\x1b[97;5u", b"\x1b[<0;10;5M",
+                    b"\x1b[I", b"\x1b[200~pasted\x1b[201~", b"\x1b"] {
+            assert!(is_user_activity(key), "{:?} is the user", key);
+        }
+        for reply in [&b"\x1b[?1;2c"[..], b"\x1b[>0;276;0c", b"\x1b[12;40R", b"\x1b[0n",
+                      b"\x1b[4;600;800t", b"\x1b]11;rgb:0000/0000/0000\x1b\\", b"\x1bP1$r0m\x1b\\", b""] {
+            assert!(!is_user_activity(reply), "{:?} is the terminal answering, not the user", reply);
+        }
+    }
+}

@@ -77,7 +77,21 @@ pub fn zellij_server_listener(
 
                     reload_config_from_disk(&mut config, &mut config_options, &config_file_path);
 
-                    let full_screen_ws = os_input.get_terminal_size();
+                    // Register at the size the session already has from its web clients
+                    // (zellient#7), never at get_terminal_size_using_fd(0): the daemon's
+                    // fd0 is /dev/null, which falls back to 80x24, and a client that stayed
+                    // silent at that size clamped the session for every other client.
+                    let attaching_to = PathBuf::from(path.clone())
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(str::to_owned);
+                    let full_screen_ws = {
+                        let mut table = connection_table.lock().unwrap();
+                        if let Some(name) = attaching_to {
+                            table.set_client_session(&web_client_id, name);
+                        }
+                        table.attach_size(&web_client_id)
+                    };
                     let mut sent_init_messages = false;
 
                     let palette = config

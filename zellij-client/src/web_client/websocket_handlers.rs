@@ -2,8 +2,9 @@ use crate::web_client::control_message::{
     SetConfigPayload, WebClientToWebServerControlMessage,
     WebClientToWebServerControlMessagePayload, WebServerToWebClientControlMessage,
 };
+use crate::web_client::connection_manager::send_resizes;
 use crate::web_client::message_handlers::{
-    parse_stdin, render_to_client, send_control_messages_to_client,
+    is_user_activity, parse_stdin, render_to_client, send_control_messages_to_client,
 };
 use crate::web_client::server_listener::zellij_server_listener;
 use crate::web_client::session_management::session_creation_policy;
@@ -65,34 +66,33 @@ async fn handle_ws_control(socket: WebSocket, state: AppState) {
         };
         let client_msg = match deserialized_msg.payload {
             WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
-                // Drop resizes from a client that is not the size owner of its
-                // session, so other clients mirror the owner and can never
-                // re-clamp it.
-                if !state
+                // The connection table decides who is registered at what: the
+                // size owner's resize is imposed on every web client of its
+                // session; a non-owner's is remembered and it mirrors the owner.
+                let resizes = state
                     .connection_table
                     .lock()
                     .unwrap()
-                    .resize_allowed(&deserialized_msg.web_client_id)
-                {
-                    return;
-                }
-                ClientToServerMsg::TerminalResize { new_size: size }
+                    .on_terminal_resize(&deserialized_msg.web_client_id, size);
+                send_resizes(resizes);
+                return;
             },
             WebClientToWebServerControlMessagePayload::TerminalPixelDimensions(
                 pixel_dimensions,
             ) => ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions },
             WebClientToWebServerControlMessagePayload::DetachOtherClients => {
-                let others = state
+                let (others, resizes) = state
                     .connection_table
                     .lock()
                     .unwrap()
                     .claim_session_size_owner(&deserialized_msg.web_client_id);
                 log::info!(
-                    "{} claimed session size ownership; {} other client(s) now mirror it",
+                    "{} claimed session size ownership; {} other web client(s) re-registered at its size",
                     deserialized_msg.web_client_id,
                     others
                 );
-                return; // control-only message: nothing to forward to the session server
+                send_resizes(resizes);
+                return; // the resizes above are the only messages to the session server
             },
         };
 
@@ -261,6 +261,16 @@ async fn handle_ws_terminal(
                     log::error!("Unknown web_client_id: {}", web_client_id);
                     continue;
                 };
+                // Typing makes this client its session's size owner (zellient#7);
+                // a terminal's automatic replies to queries do not.
+                if is_user_activity(msg.as_bytes()) {
+                    let resizes = state
+                        .connection_table
+                        .lock()
+                        .unwrap()
+                        .on_user_input(&web_client_id);
+                    send_resizes(resizes);
+                }
                 parse_stdin(
                     msg.as_bytes(),
                     client_connection.clone(),

@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 use crate::os_input_output::ClientOsApi;
 use crate::web_client::session_management::spawn_new_session;
 use std::path::PathBuf;
+use zellij_utils::pane_size::Size;
 use zellij_utils::{
     input::{config::Config, options::Options},
     ipc::ClientToServerMsg,
@@ -100,10 +101,17 @@ pub struct ConnectionTable {
     // web_client_id -> session name it attached to, so "detach other clients"
     // can be scoped to the requester's session.
     pub client_id_to_session: HashMap<String, String>,
-    // session name -> web_client_id that owns the session size. While an owner
-    // is set, TerminalResize from any OTHER client of that session is dropped,
-    // so they mirror the owner's size and can never re-clamp it.
+    // session name -> web_client_id that owns the session size: the most
+    // recently ACTIVE web client of that session (tmux `window-size latest`).
+    // Every other web client of the session is registered at the owner's size,
+    // so zellij's minimum-over-clients is the owner. See connection_manager.rs.
     pub session_size_owner: HashMap<String, String>,
+    // web_client_id -> the size that client last reported (TerminalResize).
+    pub client_size: HashMap<String, Size>,
+    // session name -> the size the web layer last registered for it. A late
+    // attacher that has not reported a size yet registers at this, never at the
+    // daemon's fd0 fallback (80x24).
+    pub session_size: HashMap<String, Size>,
 }
 
 #[derive(Debug, Clone)]

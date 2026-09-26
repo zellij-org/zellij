@@ -81,6 +81,28 @@ pub fn send_control_messages_to_client(
     });
 }
 
+/// Whether a terminal-socket message is the USER acting (keys, paste, mouse,
+/// focus), which makes the client its session's size owner (zellient#7), rather
+/// than the client's terminal emulator answering a query on its own: device
+/// attributes (CSI ... c), cursor position (CSI ... R), status (CSI ... n),
+/// window reports (CSI ... t), and OSC / DCS / APC strings. Were those counted,
+/// every attached client would take ownership in turn each time the session
+/// server queried them, and the session's size would flap between them.
+pub fn is_user_activity(buf: &[u8]) -> bool {
+    match buf {
+        [] => false,
+        [0x1b, b']' | b'P' | b'_', ..] => false,
+        [0x1b, b'[', params @ .., last] => {
+            let is_report = matches!(last, b'c' | b'R' | b'n' | b't');
+            let report_params = params
+                .iter()
+                .all(|b| b.is_ascii_digit() || matches!(b, b';' | b'?' | b'>' | b'='));
+            !(is_report && report_params)
+        },
+        _ => true,
+    }
+}
+
 pub fn parse_stdin(
     buf: &[u8],
     os_input: Box<dyn ClientOsApi>,
