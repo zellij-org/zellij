@@ -454,6 +454,7 @@ impl MockScreen {
         )
         .should_silently_fail();
         let debug = false;
+        let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
         let screen_thread = std::thread::Builder::new()
             .name("screen_thread".to_string())
             .spawn(move || {
@@ -465,6 +466,7 @@ impl MockScreen {
                     config,
                     debug,
                     Box::new(Layout::default()),
+                    default_keybinds,
                 )
                 .expect("TEST")
             })
@@ -540,6 +542,7 @@ impl MockScreen {
         )
         .should_silently_fail();
         let debug = false;
+        let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
         let screen_thread = std::thread::Builder::new()
             .name("screen_thread".to_string())
             .spawn(move || {
@@ -551,6 +554,7 @@ impl MockScreen {
                     config,
                     debug,
                     Box::new(Layout::default()),
+                    default_keybinds,
                 )
                 .expect("TEST")
             })
@@ -14823,4 +14827,114 @@ mod nested_hint_reporting {
             vec![(11, Err(NestedSessionKeybindsError::TooLarge))]
         );
     }
+}
+
+fn keybinds_with_quit_on(c: char) -> crate::SharedKeybinds {
+    std::sync::Arc::new(vec![(
+        InputMode::Normal,
+        vec![(
+            zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char(c)),
+            vec![Action::Quit],
+        )],
+    )])
+}
+
+#[test]
+fn client_mode_and_keybinds_entries_are_removed_on_disconnect() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.add_client(2, false).expect("TEST");
+    screen.change_mode(InputMode::Tab, None, 1).expect("TEST");
+    screen.change_mode(InputMode::Pane, None, 2).expect("TEST");
+    assert!(screen.mode_info.contains_key(&2));
+    assert!(screen.client_keybinds.contains_key(&2));
+
+    screen.remove_client(2).expect("TEST");
+
+    assert!(!screen.mode_info.contains_key(&2));
+    assert!(!screen.client_keybinds.contains_key(&2));
+    for tab in screen.tabs.values() {
+        assert_eq!(tab.get_client_input_mode(2), None);
+        assert_eq!(tab.get_client_input_mode(1), Some(InputMode::Tab));
+    }
+    assert!(screen.mode_info.contains_key(&1));
+    assert!(screen.client_keybinds.contains_key(&1));
+}
+
+#[test]
+fn reconfiguring_one_client_keybinds_does_not_affect_another() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+    let original = keybinds_with_quit_on('a');
+    screen.update_keybinds(original.clone(), 1);
+    screen.update_keybinds(original.clone(), 2);
+    screen
+        .change_mode(InputMode::Normal, None, 1)
+        .expect("TEST");
+    screen
+        .change_mode(InputMode::Normal, None, 2)
+        .expect("TEST");
+
+    let reconfigured = keybinds_with_quit_on('b');
+    screen.update_keybinds(reconfigured.clone(), 1);
+
+    assert_eq!(screen.keybinds_for_client(1), *reconfigured);
+    assert_eq!(screen.keybinds_for_client(2), *original);
+    assert!(std::sync::Arc::ptr_eq(
+        screen.client_keybinds.get(&1).unwrap(),
+        &reconfigured
+    ));
+    assert!(std::sync::Arc::ptr_eq(
+        &screen.default_keybinds,
+        &reconfigured
+    ));
+    for mode_info in screen.mode_info.values() {
+        assert!(mode_info.keybinds.is_empty());
+    }
+}
+
+#[test]
+fn per_client_modes_are_kept_across_tabs() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.add_client(2, false).expect("TEST");
+    screen
+        .change_mode(InputMode::Normal, None, 2)
+        .expect("TEST");
+    screen.change_mode(InputMode::Pane, None, 1).expect("TEST");
+
+    for tab in screen.tabs.values() {
+        assert_eq!(tab.get_client_input_mode(1), Some(InputMode::Pane));
+        assert_ne!(tab.get_client_input_mode(2), Some(InputMode::Pane));
+    }
+
+    new_tab(&mut screen, 3, 2);
+    assert_eq!(
+        screen.get_active_tab(1).unwrap().get_client_input_mode(1),
+        Some(InputMode::Pane)
+    );
+    screen.switch_tab_prev(None, true, 1).expect("TEST");
+    assert_eq!(
+        screen.get_active_tab(1).unwrap().get_client_input_mode(1),
+        Some(InputMode::Pane)
+    );
+    assert_eq!(
+        screen.get_active_tab(2).unwrap().get_client_input_mode(2),
+        Some(InputMode::Normal)
+    );
 }

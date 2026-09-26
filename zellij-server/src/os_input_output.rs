@@ -30,7 +30,10 @@ use std::{
     io::{self, Write},
     path::PathBuf,
     process::Command,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
 };
 
 pub use async_trait::async_trait;
@@ -211,10 +214,58 @@ fn build_command(
 // this client and we'll stop sending messages to it.
 // If the client ever becomes responsive again, we'll send one final "Buffer full" message so it
 // knows what happened.
+const CLIENT_BUFFER_LIMIT: usize = 5000;
+
+#[derive(Clone)]
+struct ClientBuffer {
+    sender: channels::Sender<ServerToClientMsg>,
+    queued: Arc<AtomicUsize>,
+    limit: usize,
+}
+
+struct ClientBufferReceiver {
+    receiver: channels::Receiver<ServerToClientMsg>,
+    queued: Arc<AtomicUsize>,
+}
+
+fn client_buffer(limit: usize) -> (ClientBuffer, ClientBufferReceiver) {
+    let (sender, receiver) = channels::unbounded();
+    let queued = Arc::new(AtomicUsize::new(0));
+    (
+        ClientBuffer {
+            sender,
+            queued: queued.clone(),
+            limit,
+        },
+        ClientBufferReceiver { receiver, queued },
+    )
+}
+
+impl ClientBuffer {
+    fn try_send(&self, msg: ServerToClientMsg) -> Result<(), TrySendError<ServerToClientMsg>> {
+        if self.queued.fetch_add(1, Ordering::AcqRel) >= self.limit {
+            self.queued.fetch_sub(1, Ordering::AcqRel);
+            return Err(TrySendError::Full(msg));
+        }
+        self.sender.send(msg).map_err(|err| {
+            self.queued.fetch_sub(1, Ordering::AcqRel);
+            TrySendError::Disconnected(err.0)
+        })
+    }
+}
+
+impl ClientBufferReceiver {
+    fn recv(&self) -> Option<ServerToClientMsg> {
+        let msg = self.receiver.recv().ok()?;
+        self.queued.fetch_sub(1, Ordering::AcqRel);
+        Some(msg)
+    }
+}
+
 #[derive(Clone)]
 struct ClientSender {
     client_id: ClientId,
-    client_buffer_sender: channels::Sender<ServerToClientMsg>,
+    client_buffer_sender: ClientBuffer,
 }
 
 impl ClientSender {
@@ -229,10 +280,10 @@ impl ClientSender {
         // We, the zellij maintainers, have decided against an unbounded
         // queue for the time being because we want to prevent e.g. the whole session being killed
         // (by OOM-killers or some other mechanism) just because a single client doesn't respond.
-        let (client_buffer_sender, client_buffer_receiver) = channels::bounded(5000);
+        let (client_buffer_sender, client_buffer_receiver) = client_buffer(CLIENT_BUFFER_LIMIT);
         std::thread::spawn(move || {
             let err_context = || format!("failed to send message to client {client_id}");
-            for msg in client_buffer_receiver.iter() {
+            while let Some(msg) = client_buffer_receiver.recv() {
                 sender
                     .send_server_msg(msg)
                     .with_context(err_context)
@@ -285,6 +336,9 @@ pub(crate) struct NullAsyncReader;
 #[async_trait]
 pub trait AsyncReader: Send + Sync {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error>;
+    async fn wait_readable(&mut self) -> Result<(), io::Error> {
+        Ok(())
+    }
 }
 
 #[async_trait]

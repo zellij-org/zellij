@@ -74,19 +74,23 @@ use std::time::Duration;
 /// between builds that do not share every mode, key and action, minus whatever they do not
 /// have in common.
 pub fn keybinds_to_protobuf(keybinds: KeybindsVec) -> Vec<ProtobufInputModeKeybinds> {
+    keybinds_ref_to_protobuf(&keybinds)
+}
+
+pub fn keybinds_ref_to_protobuf(keybinds: &KeybindsVec) -> Vec<ProtobufInputModeKeybinds> {
     let mut protobuf_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
     for (input_mode, input_mode_keybinds) in keybinds {
-        let Ok(mode) = ProtobufInputMode::try_from(input_mode) else {
+        let Ok(mode) = ProtobufInputMode::try_from(*input_mode) else {
             continue;
         };
         let mut key_binds: Vec<ProtobufKeyBind> = vec![];
         for (key, actions) in input_mode_keybinds {
-            let Ok(protobuf_key) = ProtobufKey::try_from(key) else {
+            let Ok(protobuf_key) = ProtobufKey::try_from(key.clone()) else {
                 continue;
             };
             let mut protobuf_actions: Vec<ProtobufAction> = vec![];
             for action in actions {
-                if let Ok(protobuf_action) = action.try_into() {
+                if let Ok(protobuf_action) = action.clone().try_into() {
                     protobuf_actions.push(protobuf_action);
                 }
             }
@@ -101,6 +105,19 @@ pub fn keybinds_to_protobuf(keybinds: KeybindsVec) -> Vec<ProtobufInputModeKeybi
         });
     }
     protobuf_keybinds
+}
+
+pub fn event_to_protobuf_with_keybinds(
+    event: Event,
+    keybinds: Option<&KeybindsVec>,
+) -> Result<ProtobufEvent, &'static str> {
+    let mut protobuf_event: ProtobufEvent = event.try_into()?;
+    if let (Some(keybinds), Some(event::Payload::ModeUpdatePayload(payload))) =
+        (keybinds, protobuf_event.payload.as_mut())
+    {
+        payload.keybinds = keybinds_ref_to_protobuf(keybinds);
+    }
+    Ok(protobuf_event)
 }
 
 /// Converts a keybinding table back out of its protobuf form.
@@ -3667,5 +3684,70 @@ fn a_key_with_no_protobuf_form_costs_only_its_own_binding() {
             InputMode::Normal,
             vec![(representable_key, vec![Action::CloseFocus])]
         )]
+    );
+}
+
+#[test]
+fn event_to_protobuf_with_keybinds_matches_embedded_keybinds() {
+    use crate::data::BareKey;
+    use prost::Message;
+    let keybinds: KeybindsVec = vec![
+        (
+            InputMode::Normal,
+            vec![
+                (
+                    KeyWithModifier::new(BareKey::Char('p')).with_ctrl_modifier(),
+                    vec![Action::SwitchToMode {
+                        input_mode: InputMode::Pane,
+                    }],
+                ),
+                (
+                    KeyWithModifier::new(BareKey::Char('q')).with_ctrl_modifier(),
+                    vec![Action::Quit],
+                ),
+            ],
+        ),
+        (
+            InputMode::Pane,
+            vec![(
+                KeyWithModifier::new(BareKey::Esc),
+                vec![Action::SwitchToMode {
+                    input_mode: InputMode::Normal,
+                }],
+            )],
+        ),
+    ];
+    let mode_info_without_keybinds = ModeInfo {
+        mode: InputMode::Pane,
+        base_mode: Some(InputMode::Normal),
+        session_name: Some("session".to_owned()),
+        ..Default::default()
+    };
+    let mode_info_with_keybinds = ModeInfo {
+        keybinds: keybinds.clone(),
+        ..mode_info_without_keybinds.clone()
+    };
+    let expected: ProtobufEvent = Event::ModeUpdate(mode_info_with_keybinds)
+        .try_into()
+        .unwrap();
+    let with_shared_keybinds = event_to_protobuf_with_keybinds(
+        Event::ModeUpdate(mode_info_without_keybinds.clone()),
+        Some(&keybinds),
+    )
+    .unwrap();
+    assert_eq!(
+        expected.encode_to_vec(),
+        with_shared_keybinds.encode_to_vec()
+    );
+
+    let expected_empty: ProtobufEvent = Event::ModeUpdate(mode_info_without_keybinds.clone())
+        .try_into()
+        .unwrap();
+    let without_shared_keybinds =
+        event_to_protobuf_with_keybinds(Event::ModeUpdate(mode_info_without_keybinds), None)
+            .unwrap();
+    assert_eq!(
+        expected_empty.encode_to_vec(),
+        without_shared_keybinds.encode_to_vec()
     );
 }

@@ -15,8 +15,10 @@ use crate::plugins::shared::{
 };
 
 use crate::plugins::plugin_worker::MessageToWorker;
+use crate::plugins::shared::SharedEventBatchEntry;
 use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
+use crate::SharedKeybinds;
 use highway::{HighwayHash, PortableHash};
 use log::info;
 use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, RecommendedCache};
@@ -36,9 +38,8 @@ use zellij_utils::data::{
     PipeSource,
 };
 use zellij_utils::downloader::Downloader;
-use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::permission::PermissionCache;
-use zellij_utils::plugin_api::event::ProtobufEvent;
+use zellij_utils::plugin_api::event::{event_to_protobuf_with_keybinds, ProtobufEvent};
 
 use prost::Message;
 
@@ -115,7 +116,7 @@ pub struct LoadingContext {
     pub default_shell: Option<TerminalAction>,
     pub layout_dir: Option<PathBuf>,
     pub default_mode: InputMode,
-    pub keybinds: Keybinds,
+    pub keybinds: SharedKeybinds,
     pub plugin_dir: PathBuf,
     pub size: Size,
 }
@@ -234,8 +235,8 @@ pub struct WasmBridge {
     available_layouts: Vec<LayoutInfo>,
     available_layout_errors: Vec<LayoutWithError>,
     default_mode: InputMode,
-    default_keybinds: Keybinds,
-    keybinds: HashMap<ClientId, Keybinds>,
+    default_keybinds: SharedKeybinds,
+    keybinds: HashMap<ClientId, SharedKeybinds>,
     base_modes: HashMap<ClientId, InputMode>,
     downloader: Downloader,
     previous_pane_render_report: Option<PaneRenderReport>,
@@ -260,7 +261,7 @@ impl WasmBridge {
         available_layouts: Vec<LayoutInfo>,
         available_layout_errors: Vec<LayoutWithError>,
         default_mode: InputMode,
-        default_keybinds: Keybinds,
+        default_keybinds: SharedKeybinds,
     ) -> Self {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
@@ -1420,6 +1421,8 @@ impl WasmBridge {
             .lock()
             .unwrap()
             .retain(|c| c != &client_id);
+        self.keybinds.remove(&client_id);
+        self.base_modes.remove(&client_id);
         self.remove_client_from_shared_instances(client_id);
 
         // Remove client from cached pane render report
@@ -1597,7 +1600,7 @@ impl WasmBridge {
                 self.send_keybinds_payload_to_plugin(
                     plugin_id,
                     client_id,
-                    self.keybinds_of_client(client_id).to_keybinds_vec(),
+                    self.keybinds_of_client(client_id).as_ref().clone(),
                 );
             }
             return;
@@ -1608,7 +1611,7 @@ impl WasmBridge {
                 .running_plugins_and_subscriptions()
                 .iter()
                 .find(|(pid, cid, _, _)| *pid == plugin_id && *cid == client_id)
-                .map(|(_, _, rp, _)| rp.lock().unwrap().store.data().keybinds.to_keybinds_vec())
+                .map(|(_, _, rp, _)| rp.lock().unwrap().store.data().keybinds.as_ref().clone())
         };
         if let Some(keybinds) = keybinds {
             self.send_keybinds_payload_to_plugin(plugin_id, client_id, keybinds);
@@ -1670,7 +1673,7 @@ impl WasmBridge {
     pub fn reconfigure(
         &mut self,
         client_id: ClientId,
-        keybinds: Option<Keybinds>,
+        keybinds: Option<SharedKeybinds>,
         default_mode: Option<InputMode>,
         default_shell: Option<TerminalAction>,
         layout_dir: Option<PathBuf>,
@@ -1713,7 +1716,7 @@ impl WasmBridge {
                     self.send_keybinds_payload_to_plugin(
                         instance_id,
                         client_id,
-                        keybinds.to_keybinds_vec(),
+                        keybinds.as_ref().clone(),
                     );
                 }
             }
@@ -1755,7 +1758,7 @@ impl WasmBridge {
         }
         // Send InitialKeybinds to subscribed plugins after reconfiguration
         if let Some(keybinds) = keybinds.as_ref() {
-            let keybinds_payload = keybinds.to_keybinds_vec();
+            let keybinds_payload = keybinds.as_ref().clone();
             for plugin_id in plugins_subscribed_to_initial_keybinds {
                 self.send_keybinds_payload_to_plugin(
                     plugin_id,
@@ -2292,7 +2295,7 @@ impl WasmBridge {
             None
         }
     }
-    fn keybinds_of_client(&self, client_id: ClientId) -> &Keybinds {
+    fn keybinds_of_client(&self, client_id: ClientId) -> &SharedKeybinds {
         self.keybinds
             .get(&client_id)
             .unwrap_or(&self.default_keybinds)
@@ -2649,7 +2652,7 @@ impl WasmBridge {
                 self.send_keybinds_payload_to_plugin(
                     instance_id,
                     client_id,
-                    self.keybinds_of_client(client_id).to_keybinds_vec(),
+                    self.keybinds_of_client(client_id).as_ref().clone(),
                 );
             }
             self.notify_shared_background_subscriptions(instance_id);
@@ -2709,10 +2712,11 @@ impl WasmBridge {
         instance_id: PluginId,
         event: &Event,
         client_id: Option<ClientId>,
-    ) -> Event {
+    ) -> (Event, Option<SharedKeybinds>) {
         match event {
             Event::ModeUpdate(mode_info) => {
                 let mut mode_info = mode_info.clone();
+                mode_info.keybinds = vec![];
                 if mode_info.base_mode.is_none() {
                     mode_info.base_mode = Some(
                         client_id
@@ -2720,40 +2724,41 @@ impl WasmBridge {
                             .unwrap_or(self.default_mode),
                     );
                 }
-                if self.shared_instance_subscribes_to(instance_id, EventType::InitialKeybinds) {
-                    mode_info.keybinds = vec![];
+                let keybinds = if self
+                    .shared_instance_subscribes_to(instance_id, EventType::InitialKeybinds)
+                {
+                    None
                 } else {
-                    mode_info.keybinds = match client_id {
-                        Some(client_id) => self.keybinds_of_client(client_id).to_keybinds_vec(),
-                        None => self.default_keybinds.to_keybinds_vec(),
-                    };
-                }
-                Event::ModeUpdate(mode_info)
+                    Some(match client_id {
+                        Some(client_id) => self.keybinds_of_client(client_id).clone(),
+                        None => self.default_keybinds.clone(),
+                    })
+                };
+                (Event::ModeUpdate(mode_info), keybinds)
             },
-            event => event.clone(),
+            event => (event.clone(), None),
         }
     }
     fn push_shared_event(
         &self,
-        batches: &mut BTreeMap<PluginId, Vec<(Event, EventContext)>>,
+        batches: &mut BTreeMap<PluginId, Vec<SharedEventBatchEntry>>,
         instance_id: PluginId,
         slot_id: Option<PluginId>,
         client_id: Option<ClientId>,
         event: &Event,
     ) {
         let context = shared_event_context(event, slot_id, client_id);
+        let (event, keybinds) = self.prepare_shared_event(instance_id, event, client_id);
         let batch = batches.entry(instance_id).or_default();
         if batch
             .iter()
-            .any(|(existing, existing_context)| existing_context == &context && existing == event)
+            .any(|(existing, existing_context, existing_keybinds)| {
+                existing_context == &context && existing == &event && existing_keybinds == &keybinds
+            })
         {
             return;
         }
-        let event = self.prepare_shared_event(instance_id, event, client_id);
-        batches
-            .entry(instance_id)
-            .or_default()
-            .push((event, context));
+        batch.push((event, context, keybinds));
     }
     fn dispatch_shared_updates(
         &mut self,
@@ -2763,7 +2768,7 @@ impl WasmBridge {
         if self.shared_instances.is_empty() {
             return updates;
         }
-        let mut batches: BTreeMap<PluginId, Vec<(Event, EventContext)>> = BTreeMap::new();
+        let mut batches: BTreeMap<PluginId, Vec<SharedEventBatchEntry>> = BTreeMap::new();
         let mut legacy_updates = vec![];
         let all_instance_ids: Vec<PluginId> = self.shared_instances.keys().copied().collect();
         for (plugin_id, client_id, event) in updates {
@@ -3040,19 +3045,18 @@ pub fn apply_event_to_plugin(
     match check_event_permission(running_plugin.store.data(), event) {
         (PermissionStatus::Granted, _) => {
             let mut event = event.clone();
+            let mut keybinds = None;
             if let Event::ModeUpdate(mode_info) = &mut event {
+                mode_info.keybinds = vec![];
                 if mode_info.base_mode.is_none() {
                     mode_info.base_mode = Some(running_plugin.store.data().default_mode);
                 }
-                if plugin_subscriptions.contains(&EventType::InitialKeybinds) {
-                    // Plugin caches keybindings via InitialKeybinds — send lightweight ModeUpdate
-                    mode_info.keybinds = vec![];
-                } else {
-                    // Legacy plugin — send full keybindings as before
-                    mode_info.keybinds = running_plugin.store.data().keybinds.to_keybinds_vec();
+                if !plugin_subscriptions.contains(&EventType::InitialKeybinds) {
+                    keybinds = Some(running_plugin.store.data().keybinds.clone());
                 }
             }
-            let protobuf_event: Result<ProtobufEvent, _> = event.clone().try_into();
+            let is_permission_request_result = matches!(event, Event::PermissionRequestResult(..));
+            let protobuf_event = event_to_protobuf_with_keybinds(event, keybinds.as_deref());
             match protobuf_event {
                 Ok(protobuf_event) => {
                     let update = instance
@@ -3064,7 +3068,7 @@ pub fn apply_event_to_plugin(
                         .call(&mut running_plugin.store, ())
                         .with_context(err_context)?;
                     let mut should_render = should_render == 1;
-                    if let Event::PermissionRequestResult(..) = event {
+                    if is_permission_request_result {
                         // we always render in this case, otherwise the request permission screen stays on
                         // screen
                         should_render = true;

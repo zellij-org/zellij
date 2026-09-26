@@ -937,7 +937,7 @@ impl Tab {
             fullscreen_covers_ui.clone(),
             session_is_mirrored,
             pane_frame_style,
-            default_mode_info.clone(),
+            default_mode_info.mode,
             style,
             os_api.clone(),
             senders.clone(),
@@ -953,7 +953,7 @@ impl Tab {
             fullscreen_covers_ui.clone(),
             pane_frame_style,
             session_is_mirrored,
-            default_mode_info.clone(),
+            default_mode_info.mode,
             style,
             os_api.clone(),
             senders.clone(),
@@ -2350,10 +2350,7 @@ impl Tab {
                 None
             };
         }
-        self.mode_info
-            .borrow_mut()
-            .get_mut(&client_id)
-            .map(|c| c.change_to_default_mode()); // TODO: no races?
+        self.mode_info.borrow_mut().remove(&client_id);
         self.connected_clients.borrow_mut().remove(&client_id);
         self.mouse_help_text_visible.remove(&client_id);
         self.mouse_last_pane_id.remove(&client_id);

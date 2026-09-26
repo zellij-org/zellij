@@ -83,6 +83,11 @@ impl RawFdAsyncReader {
 
 #[async_trait]
 impl AsyncReader for RawFdAsyncReader {
+    async fn wait_readable(&mut self) -> Result<(), io::Error> {
+        let async_fd = self.get_async_fd()?;
+        let _guard = async_fd.readable().await?;
+        Ok(())
+    }
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
         let async_fd = self.get_async_fd()?;
         loop {

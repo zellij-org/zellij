@@ -12,20 +12,21 @@ use crate::plugins::zellij_exports::{wasi_read_bytes, wasi_read_string, wasi_wri
 use crate::plugins::PluginInstruction;
 use crate::screen::ScreenInstruction;
 use crate::ui::loading_indication::LoadingIndication;
-use crate::{thread_bus::ThreadSenders, ClientId};
+use crate::{thread_bus::ThreadSenders, ClientId, SharedKeybinds};
 use prost::Message;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use wasmi::Engine;
+use zellij_utils::data::KeybindsVec;
 use zellij_utils::data::{
     Event, EventContext, EventType, PermissionStatus, PipeMessage, PipeSource, Render, Slot,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::TerminalAction;
 use zellij_utils::input::layout::RunPluginLocation;
-use zellij_utils::plugin_api::event::ProtobufEvent;
+use zellij_utils::plugin_api::event::{event_to_protobuf_with_keybinds, ProtobufEvent};
 use zellij_utils::plugin_api::pipe_message::ProtobufPipeMessage;
 use zellij_utils::plugin_api::shared_plugin::{
     ProtobufEventContext, ProtobufRenderRequest, ProtobufSlot,
@@ -35,6 +36,8 @@ pub const SHARED_PIPE_CLIENT: ClientId = ClientId::MAX;
 pub const SHARED_MARKER_EXPORT: &str = "zellij_shared_plugin";
 
 pub type SharedKey = (RunPluginLocation, Option<String>);
+
+pub type SharedEventBatchEntry = (Event, EventContext, Option<SharedKeybinds>);
 
 fn read_leb_u32(bytes: &[u8], position: &mut usize) -> Option<u32> {
     let mut result: u32 = 0;
@@ -256,12 +259,11 @@ fn render_from_return_value(running_plugin: &RunningPlugin, value: i32) -> Rende
 pub fn call_update(
     running_plugin: &mut RunningPlugin,
     event: &Event,
+    keybinds: Option<&KeybindsVec>,
     context: EventContext,
 ) -> Result<Render> {
     let protobuf_context: ProtobufEventContext = context.into();
-    let protobuf_event: ProtobufEvent = event
-        .clone()
-        .try_into()
+    let protobuf_event: ProtobufEvent = event_to_protobuf_with_keybinds(event.clone(), keybinds)
         .map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
     wasi_write_object(running_plugin.store.data(), &protobuf_context.encode_to_vec())?;
     wasi_write_object(running_plugin.store.data(), &protobuf_event.encode_to_vec())?;
@@ -417,7 +419,7 @@ pub fn apply_events_job(
     senders: ThreadSenders,
     plugin_map: Arc<Mutex<PluginMap>>,
     instance_id: PluginId,
-    events: Vec<(Event, EventContext)>,
+    events: Vec<SharedEventBatchEntry>,
 ) {
     let Some((running_plugin, subscriptions)) = lookup(&plugin_map, instance_id) else {
         return;
@@ -426,14 +428,15 @@ pub fn apply_events_job(
     let mut running_plugin = running_plugin.lock().unwrap();
     let mut render = Render::Nothing;
     let strip_keybinds = subscriptions.contains(&EventType::InitialKeybinds);
-    for (mut event, context) in events {
+    for (mut event, context, mut keybinds) in events {
         let Ok(event_type) = EventType::from_str(&event.to_string()) else {
             continue;
         };
+        if let Event::ModeUpdate(mode_info) = &mut event {
+            mode_info.keybinds = vec![];
+        }
         if strip_keybinds {
-            if let Event::ModeUpdate(mode_info) = &mut event {
-                mode_info.keybinds = vec![];
-            }
+            keybinds = None;
         }
         if !subscriptions.contains(&event_type) && event_type != EventType::PermissionRequestResult
         {
@@ -442,10 +445,19 @@ pub fn apply_events_job(
         if is_deduplicated_event(event_type) {
             if let Some(shared) = running_plugin.store.data_mut().shared.as_mut() {
                 let key = (event_type, context.client_id);
-                if shared.last_events.get(&key) == Some(&event) {
+                let already_delivered = shared
+                    .last_events
+                    .get(&key)
+                    .map(|(last_event, last_keybinds)| {
+                        last_event == &event && last_keybinds == &keybinds
+                    })
+                    .unwrap_or(false);
+                if already_delivered {
                     continue;
                 }
-                shared.last_events.insert(key, event.clone());
+                shared
+                    .last_events
+                    .insert(key, (event.clone(), keybinds.clone()));
             }
         }
         match check_event_permission(running_plugin.store.data(), &event) {
@@ -462,7 +474,7 @@ pub fn apply_events_job(
                 continue;
             },
         }
-        match call_update(&mut running_plugin, &event, context) {
+        match call_update(&mut running_plugin, &event, keybinds.as_deref(), context) {
             Ok(requested) => {
                 render = render.merge(requested);
                 if event_type == EventType::PermissionRequestResult {
@@ -602,6 +614,7 @@ fn tear_down_instance(
         if let Err(e) = call_update(
             &mut running_plugin,
             &Event::BeforeClose,
+            None,
             EventContext::default(),
         ) {
             log::error!("Failed to send BeforeClose to shared plugin: {:?}", e);

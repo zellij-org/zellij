@@ -9,14 +9,13 @@ use std::{
 use wasmi::{Instance, Store, StoreLimits};
 use wasmi_wasi::WasiCtx;
 
-use crate::{thread_bus::ThreadSenders, ClientId};
+use crate::{thread_bus::ThreadSenders, ClientId, SharedKeybinds};
 
 use tokio::sync::mpsc::UnboundedSender;
 use zellij_utils::{
     data::{Event, EventType, Render, SlotKind},
     data::InputMode,
     input::command::TerminalAction,
-    input::keybinds::Keybinds,
     input::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation},
     input::plugins::PluginConfig,
 };
@@ -332,7 +331,7 @@ pub struct PluginEnv {
     pub subscriptions: Arc<Mutex<Subscriptions>>,
     pub stdin_pipe: Arc<Mutex<VecDeque<u8>>>,
     pub stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
-    pub keybinds: Keybinds,
+    pub keybinds: SharedKeybinds,
     pub intercepting_key_presses: bool,
     pub store_limits: StoreLimits,
     pub shared: Option<SharedEnv>,
@@ -354,7 +353,7 @@ pub struct SharedEnv {
     pub slots: BTreeMap<PluginId, SharedSlot>,
     pub clients: BTreeSet<ClientId>,
     pub visible_slots: HashMap<ClientId, HashSet<PluginId>>,
-    pub last_events: HashMap<(EventType, Option<ClientId>), Event>,
+    pub last_events: HashMap<(EventType, Option<ClientId>), (Event, Option<SharedKeybinds>)>,
 }
 
 impl SharedEnv {
@@ -504,7 +503,7 @@ impl RunningPlugin {
             false
         }
     }
-    pub fn update_keybinds(&mut self, keybinds: Keybinds) {
+    pub fn update_keybinds(&mut self, keybinds: SharedKeybinds) {
         self.store.data_mut().keybinds = keybinds;
     }
     pub fn update_default_mode(&mut self, default_mode: InputMode) {

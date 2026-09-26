@@ -157,37 +157,14 @@ impl Link {
 
         let context = self.cwd_context_for_pane(pane_id);
 
-        highlights.push(RegexHighlight {
-            pattern: FILE_PATH_REGEX.to_owned(),
-            style: HighlightStyle::None,
-            layer: HighlightLayer::Hint,
-            context: context.clone(),
-            on_hover: true,
-            bold: false,
-            italic: true,
-            underline: true,
-            tooltip_text: Some("Open".to_string()),
-        });
+        highlights.push(link_highlight(FILE_PATH_REGEX.to_owned(), context.clone()));
 
-        if let Some(entries) = self.pane_dir_entries.get(&pane_id) {
-            for entry_name in entries {
-                let path_chars = r#"[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]"#;
-                let pattern = format!(
-                    "(?:^|\\s)({}(?:/{path_chars}+)?(?::\\d+(?::\\d+)?)?)(?::|\\s|$)",
-                    regex_escape(entry_name),
-                );
-                highlights.push(RegexHighlight {
-                    pattern,
-                    style: HighlightStyle::None,
-                    layer: HighlightLayer::Hint,
-                    context: context.clone(),
-                    on_hover: true,
-                    bold: false,
-                    italic: true,
-                    underline: true,
-                    tooltip_text: Some("Open".to_string()),
-                });
-            }
+        if let Some(pattern) = self
+            .pane_dir_entries
+            .get(&pane_id)
+            .and_then(|entries| dir_entries_pattern(entries))
+        {
+            highlights.push(link_highlight(pattern, context));
         }
 
         set_pane_regex_highlights(pane_id, highlights);
@@ -209,6 +186,39 @@ impl Link {
 }
 
 const MAX_DIR_ENTRIES: usize = 500;
+
+const PATH_CHARS: &str = r#"[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]"#;
+
+fn link_highlight(pattern: String, context: BTreeMap<String, String>) -> RegexHighlight {
+    RegexHighlight {
+        pattern,
+        style: HighlightStyle::None,
+        layer: HighlightLayer::Hint,
+        context,
+        on_hover: true,
+        bold: false,
+        italic: true,
+        underline: true,
+        tooltip_text: Some("Open".to_string()),
+    }
+}
+
+fn dir_entries_pattern(entries: &[String]) -> Option<String> {
+    if entries.is_empty() {
+        return None;
+    }
+    let mut names: Vec<&str> = entries.iter().map(|e| e.as_str()).collect();
+    names.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
+    names.dedup();
+    let alternatives = names
+        .iter()
+        .map(|name| regex_escape(name))
+        .collect::<Vec<_>>()
+        .join("|");
+    Some(format!(
+        "(?:^|\\s)((?:{alternatives})(?:/{PATH_CHARS}+)?(?::\\d+(?::\\d+)?)?)(?::|\\s|$)"
+    ))
+}
 
 fn scan_directory(path: &Path) -> Vec<String> {
     let mut entries = Vec::new();
@@ -413,6 +423,41 @@ mod tests {
     fn regex_escape_no_special_chars() {
         assert_eq!(regex_escape("foobar"), "foobar");
         assert_eq!(regex_escape("hello_world"), "hello_world");
+    }
+
+    #[test]
+    fn dir_entries_pattern_empty_is_none() {
+        assert_eq!(dir_entries_pattern(&[]), None);
+    }
+
+    #[test]
+    fn dir_entries_pattern_combines_and_escapes() {
+        let entries = vec!["a.rs".to_owned(), "Cargo.toml".to_owned(), "(x)".to_owned()];
+        let pattern = dir_entries_pattern(&entries).unwrap();
+        assert_eq!(
+            pattern,
+            format!(
+                "(?:^|\\s)((?:Cargo\\.toml|a\\.rs|\\(x\\))(?:/{PATH_CHARS}+)?(?::\\d+(?::\\d+)?)?)(?::|\\s|$)"
+            )
+        );
+    }
+
+    #[test]
+    fn dir_entries_pattern_matches_space_separated_names() {
+        let entries = vec!["src".to_owned(), "Cargo.toml".to_owned()];
+        let regex = regex::Regex::new(&dir_entries_pattern(&entries).unwrap()).unwrap();
+        let text = "Cargo.toml src src/main.rs:12 other";
+        let mut found = vec![];
+        let mut pos = 0;
+        while pos <= text.len() {
+            let Some(captures) = regex.captures_at(text, pos) else {
+                break;
+            };
+            let m = captures.get(1).unwrap();
+            found.push(m.as_str().to_owned());
+            pos = m.end().max(pos + 1);
+        }
+        assert_eq!(found, vec!["Cargo.toml", "src", "src/main.rs:12"]);
     }
 
     #[test]

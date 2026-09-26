@@ -21,13 +21,13 @@ use wasmi_wasi::WasiCtx;
 
 use crate::{
     logging_pipe::LoggingPipe, thread_bus::ThreadSenders,
-    ui::loading_indication::LoadingIndication, ClientId,
+    ui::loading_indication::LoadingIndication, ClientId, SharedKeybinds,
 };
 
 use zellij_utils::plugin_api::action::ProtobufPluginConfiguration;
 use zellij_utils::{
     consts::ZELLIJ_TMP_DIR, data::InputMode, errors::prelude::*, input::command::TerminalAction,
-    input::keybinds::Keybinds, input::plugins::PluginConfig, pane_size::Size,
+    input::plugins::PluginConfig, pane_size::Size,
 };
 
 /// Open a directory as a `File` handle for WASI pre-opening.
@@ -74,7 +74,7 @@ pub struct PluginLoader<'a> {
     default_shell: Option<TerminalAction>,
     layout_dir: Option<PathBuf>,
     default_mode: InputMode,
-    keybinds: Keybinds,
+    keybinds: SharedKeybinds,
     plugin_dir: PathBuf,
     size: Size,
     loading_indication: LoadingIndication,

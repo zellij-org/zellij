@@ -99,15 +99,23 @@ impl ConPtyAsyncReader {
 #[async_trait]
 impl AsyncReader for ConPtyAsyncReader {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
+        self.pipe()?.read(buf).await
+    }
+    async fn wait_readable(&mut self) -> Result<(), io::Error> {
+        self.pipe()?.readable().await
+    }
+}
+
+impl ConPtyAsyncReader {
+    fn pipe(&mut self) -> Result<&mut NamedPipeServer, io::Error> {
         if let Some(handle) = self.pending.take() {
             let pipe = unsafe { NamedPipeServer::from_raw_handle(handle.into_raw_handle()) }?;
             self.pipe = Some(pipe);
         }
-        let pipe = self
+        Ok(self
             .pipe
             .as_mut()
-            .expect("ConPtyAsyncReader used after init");
-        pipe.read(buf).await
+            .expect("ConPtyAsyncReader used after init"))
     }
 }
 

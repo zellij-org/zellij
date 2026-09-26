@@ -5092,6 +5092,69 @@ fn plugin_highlight_at_wrapped_line() {
     assert_eq!(matched_string, "jklm");
 }
 
+const COMBINED_ENTRIES_PATTERN: &str = r"(?:^|\s)((?:abc\.rs|b\.rs)(?:/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+)?(?::\d+(?::\d+)?)?)(?::|\s|$)";
+
+#[test]
+fn combined_pattern_highlights_adjacent_entries_separated_by_single_space() {
+    let mut grid = create_grid_with_content("abc.rs b.rs\n");
+    let highlights = vec![create_highlight(
+        COMBINED_ENTRIES_PATTERN,
+        false,
+        false,
+        false,
+        true,
+        HighlightLayer::Hint,
+    )];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+
+    let first = grid.plugin_highlight_at(&Position::new(0, 0)).unwrap();
+    assert_eq!(first.2, "abc.rs");
+    let second = grid.plugin_highlight_at(&Position::new(0, 8)).unwrap();
+    assert_eq!(second.2, "b.rs");
+    assert!(grid.plugin_highlight_at(&Position::new(0, 6)).is_none());
+    assert_eq!(grid.compute_plugin_highlight_selections().len(), 2);
+}
+
+#[test]
+fn combined_pattern_highlights_entries_on_wrapped_line() {
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        5,
+        10,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, "12345 abc.rs b.rs".as_bytes());
+
+    let highlights = vec![create_highlight(
+        COMBINED_ENTRIES_PATTERN,
+        false,
+        false,
+        false,
+        true,
+        HighlightLayer::Hint,
+    )];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+
+    let wrapped = grid.plugin_highlight_at(&Position::new(1, 0)).unwrap();
+    assert_eq!(wrapped.2, "abc.rs");
+    let after_wrap = grid.plugin_highlight_at(&Position::new(1, 4)).unwrap();
+    assert_eq!(after_wrap.2, "b.rs");
+    assert_eq!(grid.compute_plugin_highlight_selections().len(), 2);
+}
+
 #[test]
 fn hover_position_triggers_on_hover_highlight() {
     let mut grid = create_grid_with_content("hello link_text bar\n");

@@ -22,7 +22,7 @@ use crate::panes::PaneId;
 use crate::route::NotificationEnd;
 use crate::screen::ScreenInstruction;
 use crate::session_layout_metadata::SessionLayoutMetadata;
-use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
+use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction, SharedKeybinds};
 use zellij_utils::data::PaneRenderReport;
 use zellij_utils::input::layout::TabLayoutInfo;
 
@@ -39,7 +39,6 @@ use zellij_utils::{
     input::{
         actions::Action,
         command::TerminalAction,
-        keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
         plugins::PluginAliases,
     },
@@ -187,7 +186,7 @@ pub enum PluginInstruction {
     UnblockCliPipes(Vec<PluginRenderAsset>),
     Reconfigure {
         client_id: ClientId,
-        keybinds: Option<Keybinds>,
+        keybinds: Option<SharedKeybinds>,
         default_mode: Option<InputMode>,
         default_shell: Option<TerminalAction>,
         layout_dir: Option<PathBuf>,
@@ -309,7 +308,7 @@ pub(crate) fn plugin_thread_main(
     default_shell: Option<TerminalAction>,
     plugin_aliases: PluginAliases,
     default_mode: InputMode,
-    default_keybinds: Keybinds,
+    default_keybinds: SharedKeybinds,
     background_plugins: HashSet<RunPluginOrAlias>,
     // the client id that started the session,
     // we need it here because the thread's own list of connected clients might not yet be updated

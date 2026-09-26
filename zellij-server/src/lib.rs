@@ -83,6 +83,8 @@ use zellij_utils::{
 
 pub use zellij_utils::data::ClientId;
 
+pub(crate) type SharedKeybinds = Arc<zellij_utils::data::KeybindsVec>;
+
 const ACCEPT_ERROR_BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
 
 const PRE_HANDSHAKE_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
@@ -242,6 +244,9 @@ impl SessionConfiguration {
     }
     pub fn set_client_runtime_configuration(&mut self, client_id: ClientId, client_config: Config) {
         self.runtime_config.insert(client_id, client_config);
+    }
+    pub fn remove_client(&mut self, client_id: &ClientId) {
+        self.runtime_config.remove(client_id);
     }
     pub fn get_client_keybinds(&self, client_id: &ClientId) -> &Keybinds {
         self.runtime_config
@@ -447,10 +452,11 @@ impl SessionMetaData {
                 );
             }
             let pane_frame_style = PaneFrameStyle::from_options(&new_config.options);
+            let shared_keybinds: SharedKeybinds = Arc::new(new_config.keybinds.to_keybinds_vec());
             self.senders
                 .send_to_screen(ScreenInstruction::Reconfigure {
                     client_id,
-                    keybinds: new_config.keybinds.clone(),
+                    keybinds: shared_keybinds.clone(),
                     default_mode: new_config
                         .options
                         .default_mode
@@ -515,7 +521,7 @@ impl SessionMetaData {
             self.senders
                 .send_to_plugin(PluginInstruction::Reconfigure {
                     client_id,
-                    keybinds: Some(new_config.keybinds),
+                    keybinds: Some(shared_keybinds),
                     default_mode: new_config.options.default_mode,
                     default_shell: self.default_shell.clone(),
                     layout_dir: new_config.options.layout_dir,
@@ -839,6 +845,16 @@ mod session_state_tests {
             .pick_forward_target()
             .expect("some client still connected");
         assert!(picked == 1 || picked == 2);
+    }
+
+    #[test]
+    fn session_configuration_remove_client_drops_runtime_config() {
+        let mut session_configuration = SessionConfiguration::default();
+        session_configuration.set_client_runtime_configuration(1, Config::default());
+        session_configuration.set_client_runtime_configuration(2, Config::default());
+        session_configuration.remove_client(&1);
+        assert!(!session_configuration.runtime_config.contains_key(&1));
+        assert!(session_configuration.runtime_config.contains_key(&2));
     }
 
     #[test]
@@ -1471,7 +1487,8 @@ pub fn start_server_impl(
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state, session_data);
                     drop(completion_tx); // prevent deadlock with route thread
-                    if let Some(session_data) = session_data.write().unwrap().as_ref() {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.session_configuration.remove_client(&client_id);
                         let _ = session_data
                             .senders
                             .send_to_screen(ScreenInstruction::RemoveClient(client_id));
@@ -1529,7 +1546,8 @@ pub fn start_server_impl(
                     }
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state, session_data);
-                    if let Some(session_data) = session_data.write().unwrap().as_ref() {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.session_configuration.remove_client(&client_id);
                         let _ = session_data
                             .senders
                             .send_to_screen(ScreenInstruction::RemoveClient(client_id));
@@ -1601,7 +1619,8 @@ pub fn start_server_impl(
                                      // by us having to wait for session_data to send cleanup
                                      // signals to the various threads
                 for client_id in client_ids {
-                    if let Some(session_data) = session_data.write().unwrap().as_ref() {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.session_configuration.remove_client(&client_id);
                         let _ = session_data
                             .senders
                             .send_to_screen(ScreenInstruction::RemoveClient(client_id));
@@ -1736,6 +1755,9 @@ pub fn start_server_impl(
                     remove_client!(client_id, os_input, session_state, session_data);
                     drop(completion_tx); // do not deadlock with route thread
 
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.session_configuration.remove_client(&client_id);
+                    }
                     session_data
                         .write()
                         .unwrap()
@@ -2190,7 +2212,7 @@ fn init_session(
         .unwrap_or_else(|| get_default_shell());
 
     let default_mode = config_options.default_mode.unwrap_or_default();
-    let default_keybinds = config.keybinds.clone();
+    let default_keybinds: SharedKeybinds = Arc::new(config.keybinds.to_keybinds_vec());
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
@@ -2236,6 +2258,7 @@ fn init_session(
             let debug = cli_assets.is_debug;
             let layout = layout.clone();
             let config = config.clone();
+            let default_keybinds = default_keybinds.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -2244,6 +2267,7 @@ fn init_session(
                     config,
                     debug,
                     layout,
+                    default_keybinds,
                 )
                 .fatal();
             }
