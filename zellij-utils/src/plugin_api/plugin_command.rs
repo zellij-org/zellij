@@ -1456,6 +1456,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     new_plugin_args,
                     destination_plugin_id,
                     floating_pane_coordinates,
+                    client_local,
                 })) => {
                     let plugin_config: BTreeMap<String, String> = plugin_config
                         .into_iter()
@@ -1486,6 +1487,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         destination_plugin_id,
                         floating_pane_coordinates: floating_pane_coordinates
                             .and_then(|f| f.try_into().ok()),
+                        client_local,
                     }))
                 },
                 _ => Err("Mismatched payload for MessageToPlugin"),
@@ -3435,6 +3437,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         floating_pane_coordinates: message_to_plugin
                             .floating_pane_coordinates
                             .and_then(|f| f.try_into().ok()),
+                        client_local: message_to_plugin.client_local,
                     })),
                 })
             },
