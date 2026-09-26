@@ -242,8 +242,23 @@ impl SessionConfiguration {
     pub fn set_saved_configuration(&mut self, config: Config) {
         self.saved_config = config;
     }
-    pub fn set_client_runtime_configuration(&mut self, client_id: ClientId, client_config: Config) {
+    pub fn set_client_runtime_configuration(
+        &mut self,
+        client_id: ClientId,
+        mut client_config: Config,
+    ) {
+        self.share_keybinds(&mut client_config);
         self.runtime_config.insert(client_id, client_config);
+    }
+    fn share_keybinds(&self, config: &mut Config) {
+        let known_configs =
+            || std::iter::once(&self.saved_config).chain(self.runtime_config.values());
+        if known_configs().any(|known| Arc::ptr_eq(&known.keybinds, &config.keybinds)) {
+            return;
+        }
+        if let Some(known) = known_configs().find(|known| known.keybinds == config.keybinds) {
+            config.keybinds = known.keybinds.clone();
+        }
     }
     pub fn remove_client(&mut self, client_id: &ClientId) {
         self.runtime_config.remove(client_id);
@@ -251,8 +266,8 @@ impl SessionConfiguration {
     pub fn get_client_keybinds(&self, client_id: &ClientId) -> &Keybinds {
         self.runtime_config
             .get(client_id)
-            .map(|c| &c.keybinds)
-            .unwrap_or(&self.saved_config.keybinds)
+            .map(|c| c.keybinds.as_ref())
+            .unwrap_or(self.saved_config.keybinds.as_ref())
     }
     pub fn get_client_default_input_mode(&self, client_id: &ClientId) -> InputMode {
         self.runtime_config
@@ -281,7 +296,8 @@ impl SessionConfiguration {
             &stringified_config,
             Some(current_client_configuration.clone()),
         ) {
-            Ok(new_config) => {
+            Ok(mut new_config) => {
+                self.share_keybinds(&mut new_config);
                 config_changed = current_client_configuration != new_config;
                 full_reconfigured_config = Some(new_config.clone());
                 self.runtime_config.insert(*client_id, new_config);
@@ -305,11 +321,20 @@ impl SessionConfiguration {
             self.runtime_config
                 .insert(*client_id, self.saved_config.clone());
         }
+        let mut rebound_config = None;
         match self.runtime_config.get_mut(client_id) {
             Some(config) => {
                 for (input_mode, key_with_modifier) in keys_to_unbind {
-                    let keys_in_mode = config
+                    let needs_change = config
                         .keybinds
+                        .0
+                        .get(&input_mode)
+                        .map(|keys_in_mode| keys_in_mode.contains_key(&key_with_modifier))
+                        .unwrap_or(true);
+                    if !needs_change {
+                        continue;
+                    }
+                    let keys_in_mode = Arc::make_mut(&mut config.keybinds)
                         .0
                         .entry(input_mode)
                         .or_insert_with(Default::default);
@@ -319,8 +344,16 @@ impl SessionConfiguration {
                     }
                 }
                 for (input_mode, key_with_modifier, actions) in keys_to_rebind {
-                    let keys_in_mode = config
+                    let needs_change = config
                         .keybinds
+                        .0
+                        .get(&input_mode)
+                        .map(|keys_in_mode| keys_in_mode.get(&key_with_modifier) != Some(&actions))
+                        .unwrap_or(true);
+                    if !needs_change {
+                        continue;
+                    }
+                    let keys_in_mode = Arc::make_mut(&mut config.keybinds)
                         .0
                         .entry(input_mode)
                         .or_insert_with(Default::default);
@@ -330,7 +363,7 @@ impl SessionConfiguration {
                     }
                 }
                 if config_changed {
-                    full_reconfigured_config = Some(config.clone());
+                    rebound_config = Some(config.clone());
                 }
             },
             None => {
@@ -338,6 +371,12 @@ impl SessionConfiguration {
                     "Could not find runtime or saved configuration for client, cannot rebind keys"
                 );
             },
+        }
+        if let Some(mut config) = rebound_config {
+            self.runtime_config.remove(client_id);
+            self.share_keybinds(&mut config);
+            self.runtime_config.insert(*client_id, config.clone());
+            full_reconfigured_config = Some(config);
         }
 
         (full_reconfigured_config, config_changed)
@@ -416,6 +455,7 @@ impl SessionMetaData {
         config_was_written_to_disk: bool,
     ) {
         let mut new_plugin_config = None;
+        let mut converted_keybinds: Vec<(Arc<Keybinds>, SharedKeybinds)> = vec![];
         for (client_id, new_config) in config_changes {
             if new_plugin_config.is_none() {
                 new_plugin_config = Some(new_config.plugins.clone());
@@ -452,7 +492,18 @@ impl SessionMetaData {
                 );
             }
             let pane_frame_style = PaneFrameStyle::from_options(&new_config.options);
-            let shared_keybinds: SharedKeybinds = Arc::new(new_config.keybinds.to_keybinds_vec());
+            let shared_keybinds = match converted_keybinds
+                .iter()
+                .find(|(keybinds, _)| Arc::ptr_eq(keybinds, &new_config.keybinds))
+            {
+                Some((_, shared_keybinds)) => shared_keybinds.clone(),
+                None => {
+                    let shared_keybinds: SharedKeybinds =
+                        Arc::new(new_config.keybinds.to_keybinds_vec());
+                    converted_keybinds.push((new_config.keybinds.clone(), shared_keybinds.clone()));
+                    shared_keybinds
+                },
+            };
             self.senders
                 .send_to_screen(ScreenInstruction::Reconfigure {
                     client_id,
@@ -855,6 +906,115 @@ mod session_state_tests {
         session_configuration.remove_client(&1);
         assert!(!session_configuration.runtime_config.contains_key(&1));
         assert!(session_configuration.runtime_config.contains_key(&2));
+    }
+
+    #[test]
+    fn session_configuration_shares_keybinds_until_a_client_changes_them() {
+        use zellij_utils::data::BareKey;
+        let config = Config::from_default_assets().unwrap();
+        assert!(Arc::ptr_eq(&config.keybinds, &config.clone().keybinds));
+        let mut session_configuration = SessionConfiguration::default();
+        session_configuration.set_saved_configuration(config.clone());
+        session_configuration.set_client_runtime_configuration(1, config.clone());
+        session_configuration.set_client_runtime_configuration(2, config.clone());
+        let keybinds_of = |session_configuration: &SessionConfiguration, client_id: ClientId| {
+            session_configuration.runtime_config[&client_id]
+                .keybinds
+                .clone()
+        };
+        let saved_keybinds = session_configuration.saved_config.keybinds.clone();
+        assert!(Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 1),
+            &saved_keybinds
+        ));
+        assert!(Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 2),
+            &saved_keybinds
+        ));
+
+        let (_, changed) =
+            session_configuration.reconfigure_runtime_config(&1, "simplified_ui true".to_owned());
+        assert!(changed);
+        assert!(Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 1),
+            &saved_keybinds
+        ));
+
+        let client_2_keybinds_before = (*keybinds_of(&session_configuration, 2)).clone();
+        let new_binding = r#"
+            keybinds {
+                normal {
+                    bind "Alt F1" { NewPane; }
+                }
+            }
+        "#;
+        let (_, changed) =
+            session_configuration.reconfigure_runtime_config(&1, new_binding.to_owned());
+        assert!(changed);
+        assert!(!Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 1),
+            &saved_keybinds
+        ));
+        assert!(Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 2),
+            &saved_keybinds
+        ));
+        assert_eq!(
+            *keybinds_of(&session_configuration, 2),
+            client_2_keybinds_before
+        );
+        assert_ne!(
+            session_configuration.get_client_keybinds(&1),
+            session_configuration.get_client_keybinds(&2)
+        );
+        let alt_f1 = KeyWithModifier::new(BareKey::F(1)).with_alt_modifier();
+        assert!(session_configuration
+            .get_client_keybinds(&1)
+            .get_actions_for_key_in_mode(&InputMode::Normal, &alt_f1)
+            .is_some());
+        assert_eq!(
+            session_configuration
+                .get_client_keybinds(&2)
+                .get_actions_for_key_in_mode(&InputMode::Normal, &alt_f1),
+            config
+                .keybinds
+                .get_actions_for_key_in_mode(&InputMode::Normal, &alt_f1)
+        );
+
+        let (_, changed) =
+            session_configuration.reconfigure_runtime_config(&2, new_binding.to_owned());
+        assert!(changed);
+        assert!(Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 1),
+            &keybinds_of(&session_configuration, 2)
+        ));
+
+        let (_, changed) = session_configuration.rebind_keys(
+            &2,
+            vec![],
+            vec![(InputMode::Normal, alt_f1.clone())],
+        );
+        assert!(changed);
+        assert!(!Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 1),
+            &keybinds_of(&session_configuration, 2)
+        ));
+        assert!(session_configuration
+            .get_client_keybinds(&1)
+            .get_actions_for_key_in_mode(&InputMode::Normal, &alt_f1)
+            .is_some());
+
+        let config_changes = session_configuration.change_saved_config(config.clone());
+        assert!(config_changes.iter().any(|(client_id, _)| *client_id == 1));
+        let saved_keybinds = session_configuration.saved_config.keybinds.clone();
+        assert!(Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 1),
+            &saved_keybinds
+        ));
+        assert!(Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 2),
+            &saved_keybinds
+        ));
     }
 
     #[test]

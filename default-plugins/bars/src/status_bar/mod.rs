@@ -24,6 +24,7 @@ use second_line::{
 };
 use tip::utils::get_cached_tip_name;
 
+use crate::keybinds::KeybindStore;
 use crate::ClientSeed;
 
 static ARROW_SEPARATOR: &str = "";
@@ -45,7 +46,6 @@ struct ClientState {
     text_copy_destination: Option<CopyDestination>,
     display_system_clipboard_failure: bool,
     base_mode_is_locked: bool,
-    cached_keybinds: KeybindsVec,
     new_pane_ribbon_hovered: bool,
     floating_ribbon_hovered: bool,
 }
@@ -282,6 +282,10 @@ impl StatusBar {
         self.slot_clients.retain(|(_, c), _| *c != client_id);
     }
 
+    pub fn client_ids(&self) -> impl Iterator<Item = ClientId> + '_ {
+        self.clients.keys().copied()
+    }
+
     pub fn reset(&mut self) {
         self.clients.clear();
         self.slot_clients.clear();
@@ -295,7 +299,6 @@ impl StatusBar {
                     *client_id,
                     ClientSeed {
                         mode_info: client.mode_info.clone(),
-                        keybinds: client.cached_keybinds.clone(),
                         tabs: client.tabs.clone(),
                     },
                 )
@@ -306,7 +309,6 @@ impl StatusBar {
     pub fn seed(&mut self, seeds: &BTreeMap<ClientId, ClientSeed>) {
         for (client_id, seed) in seeds {
             let client = self.clients.entry(*client_id).or_default();
-            client.cached_keybinds = seed.keybinds.clone();
             client.mode_info = seed.mode_info.clone();
             client.base_mode_is_locked = client.mode_info.base_mode == Some(InputMode::Locked);
             client.tabs = seed.tabs.clone();
@@ -346,24 +348,14 @@ impl StatusBar {
             .unwrap_or(&empty_slot_client);
         let mut should_render = false;
         match event {
-            Event::InitialKeybinds(keybinds) => {
-                client.cached_keybinds = keybinds.clone();
-                if !client.cached_keybinds.is_empty() {
-                    client.mode_info.keybinds = client.cached_keybinds.clone();
-                }
+            Event::InitialKeybinds(_) => {
                 should_render = true;
             },
             Event::ModeUpdate(mode_info) => {
-                let mut mode_info = mode_info.clone();
-                if mode_info.keybinds.is_empty() && !client.cached_keybinds.is_empty() {
-                    mode_info.keybinds = client.cached_keybinds.clone();
-                } else if !mode_info.keybinds.is_empty() {
-                    client.cached_keybinds = mode_info.keybinds.clone();
-                }
-                if client.mode_info != mode_info {
+                if &client.mode_info != mode_info {
                     should_render = true;
                 }
-                client.mode_info = mode_info;
+                client.mode_info = mode_info.clone();
                 client.base_mode_is_locked = client.mode_info.base_mode == Some(InputMode::Locked);
             },
             Event::TabUpdate(tabs) => {
@@ -428,7 +420,29 @@ impl StatusBar {
         should_render
     }
 
-    pub fn render(&mut self, rows: usize, cols: usize, slot_id: SlotId, client_id: ClientId) {
+    pub fn render(
+        &mut self,
+        rows: usize,
+        cols: usize,
+        slot_id: SlotId,
+        client_id: ClientId,
+        keybinds: &mut KeybindStore,
+    ) {
+        let lent = self.swap_keybinds(client_id, keybinds);
+        self.render_client(rows, cols, slot_id, client_id);
+        if lent {
+            self.swap_keybinds(client_id, keybinds);
+        }
+    }
+
+    fn swap_keybinds(&mut self, client_id: ClientId, keybinds: &mut KeybindStore) -> bool {
+        match self.clients.get_mut(&client_id) {
+            Some(client) => keybinds.swap(client_id, &mut client.mode_info.keybinds),
+            None => false,
+        }
+    }
+
+    fn render_client(&mut self, rows: usize, cols: usize, slot_id: SlotId, client_id: ClientId) {
         let Some(client) = self.clients.get(&client_id) else {
             return;
         };

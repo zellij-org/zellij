@@ -1,4 +1,5 @@
 mod compact_bar;
+mod keybinds;
 mod link;
 mod status_bar;
 mod tab_bar;
@@ -7,6 +8,7 @@ use std::collections::BTreeMap;
 use zellij_tile::prelude::*;
 
 use compact_bar::CompactBar;
+use keybinds::{take_keybinds, KeybindStore};
 use link::Link;
 use status_bar::StatusBar;
 use tab_bar::TabBar;
@@ -33,27 +35,14 @@ impl Role {
 #[derive(Debug, Clone, Default)]
 pub struct ClientSeed {
     pub mode_info: ModeInfo,
-    pub keybinds: KeybindsVec,
     pub tabs: Vec<TabInfo>,
 }
 
 impl ClientSeed {
     fn apply(&mut self, event: &Event) {
         match event {
-            Event::InitialKeybinds(keybinds) => {
-                self.keybinds = keybinds.clone();
-                if !self.keybinds.is_empty() {
-                    self.mode_info.keybinds = self.keybinds.clone();
-                }
-            },
             Event::ModeUpdate(mode_info) => {
-                let mut mode_info = mode_info.clone();
-                if mode_info.keybinds.is_empty() && !self.keybinds.is_empty() {
-                    mode_info.keybinds = self.keybinds.clone();
-                } else if !mode_info.keybinds.is_empty() {
-                    self.keybinds = mode_info.keybinds.clone();
-                }
-                self.mode_info = mode_info;
+                self.mode_info = mode_info.clone();
             },
             Event::TabUpdate(tabs) => {
                 if tabs.iter().any(|t| t.active) {
@@ -73,6 +62,7 @@ struct State {
     status_bar: StatusBar,
     compact_bar: CompactBar,
     link: Link,
+    keybinds: KeybindStore,
 }
 
 register_shared_plugin!(State);
@@ -100,6 +90,27 @@ impl State {
             self.compact_bar.snapshot()
         } else {
             self.pending.clone()
+        }
+    }
+
+    fn store_keybinds(&mut self, event: &mut Event, client_id: Option<ClientId>) {
+        let Some(keybinds) = take_keybinds(event) else {
+            return;
+        };
+        match client_id {
+            Some(client_id) => self.keybinds.set(client_id, keybinds),
+            None => {
+                let mut client_ids: Vec<ClientId> = self.keybinds.client_ids().collect();
+                client_ids.extend(self.pending.keys().copied());
+                client_ids.extend(self.tab_bar.client_ids());
+                client_ids.extend(self.status_bar.client_ids());
+                client_ids.extend(self.compact_bar.client_ids());
+                client_ids.sort_unstable();
+                client_ids.dedup();
+                for client_id in client_ids {
+                    self.keybinds.set(client_id, keybinds.clone());
+                }
+            },
         }
     }
 
@@ -177,13 +188,15 @@ impl ZellijSharedPlugin for State {
 
     fn client_disconnected(&mut self, client_id: ClientId) {
         self.pending.remove(&client_id);
+        self.keybinds.remove(client_id);
         self.tab_bar.client_disconnected(client_id);
         self.status_bar.client_disconnected(client_id);
         self.compact_bar.client_disconnected(client_id);
     }
 
-    fn update(&mut self, event: Event, context: EventContext) -> Render {
+    fn update(&mut self, mut event: Event, context: EventContext) -> Render {
         self.compact_bar.ensure_toggle_keybinds(context.client_id);
+        self.store_keybinds(&mut event, context.client_id);
         match &event {
             Event::Mouse(_) | Event::Key(_) => {
                 let role = context
@@ -192,7 +205,9 @@ impl ZellijSharedPlugin for State {
                 match role {
                     Some(Role::TabBar) => self.tab_bar.update(&event, context),
                     Some(Role::StatusBar) => self.status_bar.update(&event, context),
-                    Some(Role::CompactBar) => self.compact_bar.update(&event, context),
+                    Some(Role::CompactBar) => {
+                        self.compact_bar.update(&event, context, &mut self.keybinds)
+                    },
                     _ => Render::Nothing,
                 }
             },
@@ -218,7 +233,8 @@ impl ZellijSharedPlugin for State {
                     render = render.merge(self.status_bar.update(&event, context));
                 }
                 if self.compact_bar.has_slots() {
-                    render = render.merge(self.compact_bar.update(&event, context));
+                    render =
+                        render.merge(self.compact_bar.update(&event, context, &mut self.keybinds));
                 }
                 if self.link.has_slots() {
                     self.link.update(&event);
@@ -231,7 +247,8 @@ impl ZellijSharedPlugin for State {
     fn pipe(&mut self, pipe_message: PipeMessage, context: EventContext) -> Render {
         self.compact_bar.ensure_toggle_keybinds(context.client_id);
         if self.compact_bar.has_slots() {
-            self.compact_bar.pipe(pipe_message, context)
+            self.compact_bar
+                .pipe(pipe_message, context, &mut self.keybinds)
         } else {
             Render::Nothing
         }
@@ -239,9 +256,18 @@ impl ZellijSharedPlugin for State {
 
     fn render(&mut self, rows: usize, cols: usize, slot_id: SlotId, client_id: ClientId) {
         match self.slots.get(&slot_id) {
-            Some(Role::TabBar) => self.tab_bar.render(rows, cols, slot_id, client_id),
-            Some(Role::StatusBar) => self.status_bar.render(rows, cols, slot_id, client_id),
-            Some(Role::CompactBar) => self.compact_bar.render(rows, cols, slot_id, client_id),
+            Some(Role::TabBar) => {
+                self.tab_bar
+                    .render(rows, cols, slot_id, client_id, &mut self.keybinds)
+            },
+            Some(Role::StatusBar) => {
+                self.status_bar
+                    .render(rows, cols, slot_id, client_id, &mut self.keybinds)
+            },
+            Some(Role::CompactBar) => {
+                self.compact_bar
+                    .render(rows, cols, slot_id, client_id, &mut self.keybinds)
+            },
             _ => {},
         }
     }

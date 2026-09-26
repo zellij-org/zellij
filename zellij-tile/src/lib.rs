@@ -68,7 +68,7 @@ pub trait ZellijSharedPlugin: Default {
 pub fn read_shared_context() -> EventContext {
     use prost::Message;
     use zellij_utils::plugin_api::shared_plugin::ProtobufEventContext;
-    let protobuf_bytes: Vec<u8> = shim::object_from_stdin().unwrap_or_default();
+    let protobuf_bytes: Vec<u8> = shim::protobuf_bytes_from_stdin().unwrap_or_default();
     ProtobufEventContext::decode(protobuf_bytes.as_slice())
         .map(EventContext::from)
         .unwrap_or_default()
@@ -78,7 +78,7 @@ pub fn read_shared_context() -> EventContext {
 pub fn read_shared_slot() -> Slot {
     use prost::Message;
     use zellij_utils::plugin_api::shared_plugin::ProtobufSlot;
-    let protobuf_bytes: Vec<u8> = shim::object_from_stdin().unwrap();
+    let protobuf_bytes: Vec<u8> = shim::protobuf_bytes_from_stdin().unwrap();
     Slot::from(ProtobufSlot::decode(protobuf_bytes.as_slice()).unwrap())
 }
 
@@ -291,7 +291,7 @@ macro_rules! register_shared_plugin {
                 use std::convert::TryFrom;
                 use $crate::shim::plugin_api::action::ProtobufPluginConfiguration;
                 use $crate::shim::prost::Message;
-                let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
+                let protobuf_bytes: Vec<u8> = $crate::shim::protobuf_bytes_from_stdin().unwrap();
                 let protobuf_configuration: ProtobufPluginConfiguration =
                     ProtobufPluginConfiguration::decode(protobuf_bytes.as_slice()).unwrap();
                 let plugin_configuration: BTreeMap<String, String> =
@@ -305,14 +305,11 @@ macro_rules! register_shared_plugin {
 
         #[no_mangle]
         pub fn shared_update() -> i32 {
-            use std::convert::TryInto;
-            use $crate::shim::plugin_api::event::ProtobufEvent;
-            use $crate::shim::prost::Message;
             let context = $crate::read_shared_context();
-            let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
-            let protobuf_event: ProtobufEvent =
-                ProtobufEvent::decode(protobuf_bytes.as_slice()).unwrap();
-            let event = protobuf_event.try_into().unwrap();
+            let event = {
+                let protobuf_bytes: Vec<u8> = $crate::shim::protobuf_bytes_from_stdin().unwrap();
+                $crate::shim::plugin_api::event::event_from_protobuf_bytes(&protobuf_bytes).unwrap()
+            };
             let render = STATE.with(|state| {
                 <$t as $crate::ZellijSharedPlugin>::update(&mut *state.borrow_mut(), event, context)
             });
@@ -325,9 +322,10 @@ macro_rules! register_shared_plugin {
             use $crate::shim::plugin_api::pipe_message::ProtobufPipeMessage;
             use $crate::shim::prost::Message;
             let context = $crate::read_shared_context();
-            let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
-            let protobuf_pipe_message: ProtobufPipeMessage =
-                ProtobufPipeMessage::decode(protobuf_bytes.as_slice()).unwrap();
+            let protobuf_pipe_message: ProtobufPipeMessage = {
+                let protobuf_bytes: Vec<u8> = $crate::shim::protobuf_bytes_from_stdin().unwrap();
+                ProtobufPipeMessage::decode(protobuf_bytes.as_slice()).unwrap()
+            };
             let pipe_message = protobuf_pipe_message.try_into().unwrap();
             let render = STATE.with(|state| {
                 <$t as $crate::ZellijSharedPlugin>::pipe(

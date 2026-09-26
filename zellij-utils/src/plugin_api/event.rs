@@ -126,29 +126,83 @@ pub fn event_to_protobuf_with_keybinds(
 /// mode, key, or action a given build does not know about simply does not appear. This
 /// keeps a table readable across builds that do not share every mode and action.
 pub fn keybinds_from_protobuf(protobuf_keybinds: Vec<ProtobufInputModeKeybinds>) -> KeybindsVec {
-    protobuf_keybinds
-        .into_iter()
-        .filter_map(|input_mode_keybinds| {
-            let input_mode: InputMode = ProtobufInputMode::try_from(input_mode_keybinds.mode)
-                .ok()?
-                .try_into()
-                .ok()?;
-            let key_binds = input_mode_keybinds
-                .key_bind
-                .into_iter()
-                .filter_map(|key_bind| {
-                    let key: KeyWithModifier = key_bind.key?.try_into().ok()?;
-                    let actions: Vec<Action> = key_bind
-                        .action
+    let mut keybinds = Vec::with_capacity(protobuf_keybinds.len());
+    keybinds.extend(
+        protobuf_keybinds
+            .into_iter()
+            .filter_map(|input_mode_keybinds| {
+                let input_mode: InputMode = ProtobufInputMode::try_from(input_mode_keybinds.mode)
+                    .ok()?
+                    .try_into()
+                    .ok()?;
+                let mut key_binds = Vec::with_capacity(input_mode_keybinds.key_bind.len());
+                key_binds.extend(
+                    input_mode_keybinds
+                        .key_bind
                         .into_iter()
-                        .filter_map(|action| action.try_into().ok())
-                        .collect();
-                    Some((key, actions))
-                })
-                .collect();
-            Some((input_mode, key_binds))
-        })
-        .collect()
+                        .filter_map(|key_bind| {
+                            let key: KeyWithModifier = key_bind.key?.try_into().ok()?;
+                            let mut actions: Vec<Action> =
+                                Vec::with_capacity(key_bind.action.len());
+                            actions.extend(
+                                key_bind
+                                    .action
+                                    .into_iter()
+                                    .filter_map(|action| action.try_into().ok()),
+                            );
+                            Some((key, actions))
+                        }),
+                );
+                Some((input_mode, key_binds))
+            }),
+    );
+    keybinds
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct InitialKeybindsEventParts {
+    #[prost(int32, tag = "1")]
+    name: i32,
+    #[prost(bytes = "vec", optional, tag = "38")]
+    initial_keybinds_payload: Option<Vec<u8>>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct InitialKeybindsPayloadParts {
+    #[prost(bytes = "vec", repeated, tag = "1")]
+    keybinds: Vec<Vec<u8>>,
+}
+
+fn initial_keybinds_from_protobuf_bytes(bytes: &[u8]) -> Option<Result<Event, &'static str>> {
+    use prost::Message;
+    let parts = InitialKeybindsEventParts::decode(bytes).ok()?;
+    if parts.name != ProtobufEventType::InitialKeybinds as i32 {
+        return None;
+    }
+    let payload = parts.initial_keybinds_payload?;
+    let modes = match InitialKeybindsPayloadParts::decode(payload.as_slice()) {
+        Ok(payload) => payload.keybinds,
+        Err(_) => return Some(Err("Malformed payload for InitialKeybinds Event")),
+    };
+    drop(payload);
+    let mut keybinds = Vec::with_capacity(modes.len());
+    for mode_bytes in modes {
+        match ProtobufInputModeKeybinds::decode(mode_bytes.as_slice()) {
+            Ok(mode) => keybinds.extend(keybinds_from_protobuf(vec![mode])),
+            Err(_) => return Some(Err("Malformed payload for InitialKeybinds Event")),
+        }
+    }
+    Some(Ok(Event::InitialKeybinds(keybinds)))
+}
+
+pub fn event_from_protobuf_bytes(bytes: &[u8]) -> Result<Event, &'static str> {
+    use prost::Message;
+    if let Some(event) = initial_keybinds_from_protobuf_bytes(bytes) {
+        return event;
+    }
+    ProtobufEvent::decode(bytes)
+        .map_err(|_| "Failed to decode event")?
+        .try_into()
 }
 
 impl TryFrom<ProtobufEvent> for Event {
@@ -3750,4 +3804,38 @@ fn event_to_protobuf_with_keybinds_matches_embedded_keybinds() {
         expected_empty.encode_to_vec(),
         without_shared_keybinds.encode_to_vec()
     );
+}
+
+#[test]
+fn event_from_protobuf_bytes_matches_full_decoding() {
+    use crate::input::config::Config;
+    use prost::Message;
+    let keybinds = Config::from_default_assets()
+        .unwrap()
+        .keybinds
+        .to_keybinds_vec();
+    let events = vec![
+        Event::InitialKeybinds(keybinds.clone()),
+        Event::InitialKeybinds(vec![]),
+        Event::ModeUpdate(ModeInfo {
+            keybinds,
+            ..Default::default()
+        }),
+        Event::TabUpdate(vec![TabInfo {
+            name: "tab".to_owned(),
+            active: true,
+            ..Default::default()
+        }]),
+        Event::InputReceived,
+    ];
+    for event in events {
+        let bytes = ProtobufEvent::try_from(event.clone())
+            .unwrap()
+            .encode_to_vec();
+        let fully_decoded: Event = ProtobufEvent::decode(bytes.as_slice())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        assert_eq!(event_from_protobuf_bytes(&bytes).unwrap(), fully_decoded);
+    }
 }

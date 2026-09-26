@@ -2932,6 +2932,101 @@ pub fn bytes_from_stdin() -> Result<Vec<u8>> {
 }
 
 #[doc(hidden)]
+pub fn protobuf_bytes_from_stdin() -> Result<Vec<u8>> {
+    let stdin = io::stdin();
+    let mut stdin = stdin.lock();
+    read_json_byte_array_line(&mut stdin)
+        .with_context(|| "failed to deserialize bytes from stdin".to_string())
+}
+
+enum JsonBytesPosition {
+    BeforeArray,
+    InArray,
+    AfterArray,
+}
+
+struct JsonBytesParser {
+    position: JsonBytesPosition,
+    bytes: Vec<u8>,
+    current: Option<u16>,
+}
+
+impl JsonBytesParser {
+    fn feed(&mut self, byte: u8) -> std::result::Result<(), &'static str> {
+        match self.position {
+            JsonBytesPosition::BeforeArray => match byte {
+                b'[' => self.position = JsonBytesPosition::InArray,
+                byte if byte.is_ascii_whitespace() => {},
+                _ => return Err("expected a byte array"),
+            },
+            JsonBytesPosition::InArray => match byte {
+                b'0'..=b'9' => {
+                    let value = self.current.unwrap_or(0) * 10 + (byte - b'0') as u16;
+                    if value > u8::MAX as u16 {
+                        return Err("byte value out of range");
+                    }
+                    self.current = Some(value);
+                },
+                b',' | b']' => {
+                    match self.current.take() {
+                        Some(value) => self.bytes.push(value as u8),
+                        None if byte == b']' && self.bytes.is_empty() => {},
+                        None => return Err("missing byte value"),
+                    }
+                    if byte == b']' {
+                        self.position = JsonBytesPosition::AfterArray;
+                    }
+                },
+                byte if byte.is_ascii_whitespace() && self.current.is_none() => {},
+                _ => return Err("unexpected character in byte array"),
+            },
+            JsonBytesPosition::AfterArray => {
+                if !byte.is_ascii_whitespace() {
+                    return Err("unexpected character after byte array");
+                }
+            },
+        }
+        Ok(())
+    }
+}
+
+fn read_json_byte_array_line(reader: &mut impl io::BufRead) -> Result<Vec<u8>> {
+    let mut parser = JsonBytesParser {
+        position: JsonBytesPosition::BeforeArray,
+        bytes: Vec::new(),
+        current: None,
+    };
+    let mut error: Option<&'static str> = None;
+    loop {
+        let chunk = reader.fill_buf()?;
+        if chunk.is_empty() {
+            break;
+        }
+        let mut consumed = 0;
+        let mut line_ended = false;
+        for byte in chunk {
+            consumed += 1;
+            if *byte == b'\n' {
+                line_ended = true;
+                break;
+            }
+            if error.is_none() {
+                error = parser.feed(*byte).err();
+            }
+        }
+        reader.consume(consumed);
+        if line_ended {
+            break;
+        }
+    }
+    match (error, parser.position) {
+        (Some(error), _) => Err(anyhow!(error)),
+        (None, JsonBytesPosition::AfterArray) => Ok(parser.bytes),
+        (None, _) => Err(anyhow!("incomplete byte array")),
+    }
+}
+
+#[doc(hidden)]
 pub fn object_to_stdout(object: &impl Serialize) {
     // TODO: no crashy
     println!("{}", serde_json::to_string(object).unwrap());
@@ -3051,3 +3146,47 @@ extern "C" {
 
 #[cfg(not(target_arch = "wasm32"))]
 unsafe fn host_run_plugin_command() {}
+
+#[cfg(test)]
+mod tests {
+    use super::read_json_byte_array_line;
+    use std::io::{BufRead, BufReader, Cursor};
+
+    fn read_all(input: &str, capacity: usize) -> Vec<Result<Vec<u8>, String>> {
+        let mut reader = BufReader::with_capacity(capacity, Cursor::new(input.as_bytes().to_vec()));
+        let mut results = vec![];
+        while !reader.fill_buf().unwrap().is_empty() {
+            results.push(read_json_byte_array_line(&mut reader).map_err(|e| e.to_string()));
+        }
+        results
+    }
+
+    #[test]
+    fn reads_serde_json_byte_arrays_line_by_line() {
+        let first: Vec<u8> = (0..=255).collect();
+        let second: Vec<u8> = vec![];
+        let third: Vec<u8> = vec![7, 42, 255];
+        let input = format!(
+            "{}\r\n{}\r\n{}\r\n",
+            serde_json::to_string(&first).unwrap(),
+            serde_json::to_string(&second).unwrap(),
+            serde_json::to_string(&third).unwrap()
+        );
+        for capacity in [1, 3, 8192] {
+            assert_eq!(
+                read_all(&input, capacity),
+                vec![Ok(first.clone()), Ok(second.clone()), Ok(third.clone())]
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_line_is_consumed_and_reported() {
+        let results = read_all("[1,256]\r\n{\"a\":1}\r\n[1,,2]\r\n[3]\r\n", 4);
+        assert_eq!(results.len(), 4);
+        assert!(results[0].is_err());
+        assert!(results[1].is_err());
+        assert!(results[2].is_err());
+        assert_eq!(results[3], Ok(vec![3]));
+    }
+}

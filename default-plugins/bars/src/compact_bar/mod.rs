@@ -12,6 +12,7 @@ use std::convert::TryInto;
 use tab::get_tab_to_focus;
 use zellij_tile::prelude::*;
 
+use crate::keybinds::KeybindStore;
 use crate::ClientSeed;
 use clipboard_utils::{system_clipboard_error, text_copied_hint};
 use line::tab_line;
@@ -58,7 +59,6 @@ struct ClientState {
     display_area_cols: usize,
     text_copy_destination: Option<CopyDestination>,
     display_system_clipboard_failure: bool,
-    cached_keybinds: KeybindsVec,
 }
 
 #[derive(Default)]
@@ -140,6 +140,17 @@ impl CompactBar {
         self.configured_toggle_keys.retain(|(_, c)| *c != client_id);
     }
 
+    pub fn client_ids(&self) -> impl Iterator<Item = ClientId> + '_ {
+        self.clients.keys().copied()
+    }
+
+    fn swap_keybinds(&mut self, client_id: ClientId, keybinds: &mut KeybindStore) -> bool {
+        match self.clients.get_mut(&client_id) {
+            Some(client) => keybinds.swap(client_id, &mut client.mode_info.keybinds),
+            None => false,
+        }
+    }
+
     pub fn reset(&mut self) {
         self.clients.clear();
         self.slot_clients.clear();
@@ -155,7 +166,6 @@ impl CompactBar {
                     *client_id,
                     ClientSeed {
                         mode_info: client.mode_info.clone(),
-                        keybinds: client.cached_keybinds.clone(),
                         tabs: client.tabs.clone(),
                     },
                 )
@@ -166,7 +176,6 @@ impl CompactBar {
     pub fn seed(&mut self, seeds: &BTreeMap<ClientId, ClientSeed>) {
         for (client_id, seed) in seeds {
             let client = self.clients.entry(*client_id).or_default();
-            client.cached_keybinds = seed.keybinds.clone();
             client.mode_info = seed.mode_info.clone();
             update_display_area(client, &seed.tabs);
             if let Some(active_tab_index) = seed.tabs.iter().position(|t| t.active) {
@@ -266,7 +275,12 @@ impl CompactBar {
             .find(|id| self.slot_tabs.get(id) == Some(&active_tab_index))
     }
 
-    pub fn update(&mut self, event: &Event, context: EventContext) -> Render {
+    pub fn update(
+        &mut self,
+        event: &Event,
+        context: EventContext,
+        keybinds: &mut KeybindStore,
+    ) -> Render {
         match event {
             Event::ModeUpdate(_) | Event::TabUpdate(_) | Event::InitialKeybinds(_) => {
                 for slot in self.slots.values_mut() {
@@ -296,7 +310,7 @@ impl CompactBar {
                 };
                 let mut should_render = false;
                 for client_id in target_clients {
-                    if self.update_client(event, client_id) {
+                    if self.update_client(event, client_id, keybinds) {
                         should_render = true;
                     }
                 }
@@ -311,25 +325,19 @@ impl CompactBar {
         }
     }
 
-    fn update_client(&mut self, event: &Event, client_id: ClientId) -> bool {
+    fn update_client(
+        &mut self,
+        event: &Event,
+        client_id: ClientId,
+        keybinds: &mut KeybindStore,
+    ) -> bool {
         match event {
-            Event::InitialKeybinds(keybinds) => {
-                let client = self.clients.entry(client_id).or_default();
-                client.cached_keybinds = keybinds.clone();
-                if !client.cached_keybinds.is_empty() {
-                    client.mode_info.keybinds = client.cached_keybinds.clone();
-                }
+            Event::InitialKeybinds(_) => {
+                self.clients.entry(client_id).or_default();
                 true
             },
             Event::ModeUpdate(mode_info) => {
-                let client = self.clients.entry(client_id).or_default();
-                let mut mode_info = mode_info.clone();
-                if mode_info.keybinds.is_empty() && !client.cached_keybinds.is_empty() {
-                    mode_info.keybinds = client.cached_keybinds.clone();
-                } else if !mode_info.keybinds.is_empty() {
-                    client.cached_keybinds = mode_info.keybinds.clone();
-                }
-                self.handle_mode_update(client_id, mode_info)
+                self.handle_mode_update(client_id, mode_info.clone(), keybinds)
             },
             Event::TabUpdate(tabs) => self.handle_tab_update(client_id, tabs),
             Event::CopyToClipboard(copy_destination) => {
@@ -341,7 +349,12 @@ impl CompactBar {
         }
     }
 
-    fn handle_mode_update(&mut self, client_id: ClientId, mode_info: ModeInfo) -> bool {
+    fn handle_mode_update(
+        &mut self,
+        client_id: ClientId,
+        mode_info: ModeInfo,
+        keybinds: &mut KeybindStore,
+    ) -> bool {
         let client = self.clients.entry(client_id).or_default();
         let should_render = client.mode_info != mode_info;
         let old_mode = client.mode_info.mode;
@@ -350,10 +363,14 @@ impl CompactBar {
 
         client.mode_info = mode_info;
 
+        let lent = self.swap_keybinds(client_id, keybinds);
         for slot_id in self.tooltip_slots_for_client(client_id) {
             self.handle_tooltip_mode_update(slot_id, client_id, old_mode, new_mode, base_mode);
         }
         self.handle_main_mode_update(client_id, new_mode, base_mode);
+        if lent {
+            self.swap_keybinds(client_id, keybinds);
+        }
 
         should_render
     }
@@ -497,7 +514,12 @@ impl CompactBar {
         should_render
     }
 
-    pub fn pipe(&mut self, message: PipeMessage, context: EventContext) -> Render {
+    pub fn pipe(
+        &mut self,
+        message: PipeMessage,
+        context: EventContext,
+        keybinds: &mut KeybindStore,
+    ) -> Render {
         if let Some(slot_id) = context.slot_id {
             if self.slots.get(&slot_id).map(|s| s.is_tooltip).unwrap_or(false) {
                 if message.is_private {
@@ -518,7 +540,11 @@ impl CompactBar {
                         .get(&client_id)
                         .map(|c| c.mode_info.mode)
                         .unwrap_or(InputMode::Normal);
+                    let lent = self.swap_keybinds(client_id, keybinds);
                     self.toggle_persisted_tooltip(slot_id, client_id, mode);
+                    if lent {
+                        self.swap_keybinds(client_id, keybinds);
+                    }
                 }
             }
         } else if message.is_private
@@ -647,7 +673,22 @@ impl CompactBar {
         false
     }
 
-    pub fn render(&mut self, rows: usize, cols: usize, slot_id: SlotId, client_id: ClientId) {
+    pub fn render(
+        &mut self,
+        rows: usize,
+        cols: usize,
+        slot_id: SlotId,
+        client_id: ClientId,
+        keybinds: &mut KeybindStore,
+    ) {
+        let lent = self.swap_keybinds(client_id, keybinds);
+        self.render_client(rows, cols, slot_id, client_id);
+        if lent {
+            self.swap_keybinds(client_id, keybinds);
+        }
+    }
+
+    fn render_client(&mut self, rows: usize, cols: usize, slot_id: SlotId, client_id: ClientId) {
         let Some(slot) = self.slots.get(&slot_id) else {
             return;
         };
