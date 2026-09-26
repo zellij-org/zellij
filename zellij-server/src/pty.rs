@@ -1833,6 +1833,10 @@ impl Pty {
                     .send_to_plugin(PluginInstruction::Unload(pid)),
             ),
         }
+        let _ = self
+            .bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::TrimAllocator);
         Ok(())
     }
     pub fn close_tab(&mut self, ids: Vec<PaneId>) -> Result<()> {

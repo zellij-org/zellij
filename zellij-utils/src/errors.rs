@@ -675,6 +675,7 @@ pub enum BackgroundJobContext {
     StopFlashTabBell,
     StartNestedGuestPing,
     StopNestedGuestPing,
+    TrimAllocator,
     Exit,
 }
 
