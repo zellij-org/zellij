@@ -1,6 +1,6 @@
 use crate::{line::tab_separator, LinePart};
 use ansi_term::{ANSIString, ANSIStrings};
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
@@ -163,4 +163,27 @@ pub(crate) fn get_clicked_line_part(
         len += tab_line_part.len;
     }
     None
+}
+
+pub(crate) fn truncate_to_width(name: &str, max_width: usize) -> String {
+    if name.width() <= max_width {
+        return name.to_string();
+    }
+    if max_width == 0 {
+        return String::new();
+    }
+    if max_width == 1 {
+        return "…".to_string();
+    }
+    let mut width = 0;
+    let mut end = 0;
+    for (i, c) in name.char_indices() {
+        let char_width = c.width().unwrap_or(0);
+        if width + char_width > max_width - 1 {
+            break; // the last column is reserved for the ellipsis
+        }
+        width += char_width;
+        end = i + c.len_utf8();
+    }
+    format!("{}…", &name[..end])
 }

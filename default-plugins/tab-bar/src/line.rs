@@ -197,7 +197,7 @@ fn right_more_message(
     }
 }
 
-fn tab_line_prefix(
+pub(crate) fn tab_line_prefix(
     session_name: Option<&str>,
     palette: Styling,
     cols: usize,
