@@ -601,7 +601,20 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
                 {
                     continue;
                 },
-                Some((host_placement_id, _, _)) => host_placement_id,
+                Some((host_placement_id, _, existing_host_image_id)) => {
+                    if existing_host_image_id != host_image_id {
+                        // Placement IDs are scoped to an image: `a=p` under
+                        // the new image ID would add a second placement rather
+                        // than replace this one, leaving the old one painted.
+                        write!(
+                            out,
+                            "\u{1b}_Ga=d,q=2,d=i,i={},p={}\u{1b}\\",
+                            existing_host_image_id, host_placement_id
+                        )
+                        .context(err_context)?;
+                    }
+                    host_placement_id
+                },
                 None => {
                     let host_placement_id = host_state.next_host_placement_id;
                     host_state.next_host_placement_id += 1;
