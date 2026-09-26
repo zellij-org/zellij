@@ -1,0 +1,11 @@
+---
+source: zellij-server/src/panes/./unit/search_in_pane_tests.rs
+assertion_line: 461
+expression: "format!(\"{:?}\", terminal_pane.grid)"
+---
+00 (W): is in aliquam sem fringilla.
+01 (C): ⏎
+02 (C): zellij on  mouse-support [?] is 📦 v0.1
+03 (W): 4.0 via 🦀 v1.53.0-beta.3
+04 (C): ❯ ab🌍＃＃🚀cd
+

@@ -1,0 +1,11 @@
+---
+source: zellij-server/src/panes/./unit/search_in_pane_tests.rs
+assertion_line: 452
+expression: "format!(\"{:?}\", terminal_pane.grid)"
+---
+00 (C): zellij on  mouse-su
+01 (W): pport [?] is 📦 v0.1
+02 (W): 4.0 via 🦀 v1.53.0-b
+03 (W): eta.3
+04 (C): ❯ ＃＃＃
+
