@@ -11257,6 +11257,58 @@ fn closing_a_tab_resizes_the_tab_it_returns_to() {
     );
 }
 
+#[test]
+fn tabs_created_while_no_client_is_connected_survive_the_next_attach() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.remove_client(1).expect("TEST");
+
+    // a cli client (with no known viewport) creates a tab while no one is attached
+    let cli_client_id = 2;
+    screen
+        .new_tab(1, (vec![], vec![]), Some("detached".to_owned()), None)
+        .expect("TEST");
+    screen
+        .apply_layout(
+            TiledPaneLayout::default(),
+            vec![],
+            vec![(2, None)],
+            vec![],
+            HashMap::new(),
+            1,
+            false,
+            (cli_client_id, false),
+            None,
+        )
+        .expect("TEST");
+    screen.remove_client(cli_client_id).expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        size,
+        "A tab created with no connected clients takes the size of an existing tab"
+    );
+    assert!(
+        screen.tabs.get(&1).unwrap().has_selectable_tiled_panes(),
+        "The layout was applied to the tab created with no connected clients"
+    );
+
+    let attaching_client_id = 3;
+    screen.set_client_size(attaching_client_id, size);
+    screen.add_client(attaching_client_id, false).expect("TEST");
+    screen.render_to_clients().expect("TEST");
+
+    assert_eq!(
+        screen.tabs.len(),
+        2,
+        "The tab created with no connected clients survives the next attach"
+    );
+}
+
 fn add_second_pane_to_active_tab(screen: &mut Screen, pid: u32) {
     let active_tab = screen.get_active_tab_mut(1).unwrap();
     active_tab

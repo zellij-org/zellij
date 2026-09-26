@@ -2445,6 +2445,15 @@ impl Screen {
                     .and_then(|client_id| self.client_sizes.get(&client_id).copied())
             })
             .or_else(|| self.client_sizes.values().next().copied())
+            .or_else(|| {
+                // no client is connected (eg. a tab is created in a detached session): fall back
+                // to the last viewer-derived size of an existing tab, the tab will be resized
+                // once a client views it
+                self.tabs
+                    .get(&self.global_last_active_tab_id)
+                    .or_else(|| self.tabs.values().next())
+                    .map(|tab| tab.size)
+            })
             .unwrap_or_default()
     }
 
