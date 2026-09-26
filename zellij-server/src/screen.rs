@@ -1621,6 +1621,7 @@ pub(crate) struct Screen {
     default_layout: Box<Layout>,
     default_shell: PathBuf,
     styled_underlines: bool,
+    search_auto_jump_on_input: bool,
     osc8_hyperlinks: bool,
     arrow_fonts: bool,
     #[cfg_attr(test, allow(dead_code))]
@@ -1776,6 +1777,7 @@ impl Screen {
         serialize_pane_viewport: bool,
         scrollback_lines_to_serialize: Option<usize>,
         styled_underlines: bool,
+        search_auto_jump_on_input: bool,
         osc8_hyperlinks: bool,
         arrow_fonts: bool,
         layout_dir: Option<PathBuf>,
@@ -1847,6 +1849,7 @@ impl Screen {
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
             styled_underlines,
+            search_auto_jump_on_input,
             osc8_hyperlinks,
             arrow_fonts,
             resurrectable_sessions_cache,
@@ -5367,6 +5370,7 @@ impl Screen {
             self.debug,
             self.arrow_fonts,
             self.styled_underlines,
+            self.search_auto_jump_on_input,
             self.osc8_hyperlinks,
             self.explicitly_disable_kitty_keyboard_protocol,
             self.default_editor.clone(),
@@ -8773,6 +8777,7 @@ pub(crate) fn screen_thread_main(
         .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     let web_server_port = config_options.web_server_port.unwrap_or(8082);
     let styled_underlines = config_options.styled_underlines.unwrap_or(true);
+    let search_auto_jump_on_input = config_options.search_auto_jump_on_input.unwrap_or(true);
     let osc8_hyperlinks = config_options.osc8_hyperlinks.unwrap_or(true);
     let explicitly_disable_kitty_keyboard_protocol = config_options
         .support_kitty_keyboard_protocol
@@ -8836,6 +8841,7 @@ pub(crate) fn screen_thread_main(
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         arrow_fonts,
         layout_dir,
