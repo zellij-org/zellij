@@ -9500,3 +9500,44 @@ fn shrinking_keeps_cursor_on_its_own_line_when_it_sits_past_the_content() {
     assert_eq!(rendered_row(&grid, 1), "X prompt text here okay");
     assert_eq!(grid.viewport.len(), 2);
 }
+
+#[test]
+fn clear_to_end_of_screen_keeps_wide_characters_before_the_cursor() {
+    // Park the cursor on the second half of the row and erase from there to the end of the
+    // screen. Only what is at or after the cursor may go.
+    let first_row_after = |bytes: &str| {
+        let mut grid = Grid::new(
+            3,
+            20,
+            Rc::new(RefCell::new(Palette::default())),
+            Rc::new(RefCell::new(HashMap::new())),
+            Rc::new(RefCell::new(LinkHandler::new())),
+            Rc::new(RefCell::new(None)),
+            Rc::new(RefCell::new(SixelImageStore::default())),
+            Rc::new(RefCell::new(KittyImageStore::default())),
+            Style::default(),
+            false,
+            true,
+            true,
+            true,
+            false,
+        );
+        let mut vte_parser = vte::Parser::new();
+        vte_parser.advance(&mut grid, bytes.as_bytes());
+        let rendered = format!("{:?}", grid);
+        rendered.lines().next().unwrap().trim_end().to_owned()
+    };
+
+    // Two wide characters, cursor to display column 2, erase to end of screen.
+    assert_eq!(
+        first_row_after("\u{65e5}\u{672c}\u{1b}[3G\u{1b}[0J"),
+        "00 (C): \u{65e5}"
+    );
+    // A narrow character followed by two wide ones, cursor to display column 3.
+    assert_eq!(
+        first_row_after("a\u{65e5}\u{672c}\u{1b}[4G\u{1b}[0J"),
+        "00 (C): a\u{65e5}"
+    );
+    // Narrow characters only: unchanged by this fix.
+    assert_eq!(first_row_after("ab\u{1b}[3G\u{1b}[0J"), "00 (C): ab");
+}
