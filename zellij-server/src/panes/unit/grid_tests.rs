@@ -19,6 +19,36 @@ use zellij_utils::{
 
 use std::fmt::Write;
 
+#[test]
+fn erase_line_end_pads_wide_characters_to_display_width() {
+    use crate::panes::grid::Row;
+    use crate::panes::terminal_character::{TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
+
+    for (content, from, to, expected) in [
+        ("ab你cd", 2, 6, "ab    "),
+        ("ab你cd", 3, 6, "ab    "),
+        ("你ab好", 3, 6, "你a   "),
+        ("你好", 0, 6, "      "),
+        ("ab", 4, 6, "ab    "),
+    ] {
+        let mut row = Row::from_columns(
+            content
+                .chars()
+                .map(|character| TerminalCharacter::new_styled(character, Default::default()))
+                .collect(),
+        );
+        row.replace_and_pad_end(from, to, EMPTY_TERMINAL_CHARACTER);
+        assert_eq!(row.width_cached(), to, "content={content:?}, from={from}");
+        assert_eq!(
+            row.columns
+                .iter()
+                .map(|cell| cell.character)
+                .collect::<String>(),
+            expected,
+        );
+    }
+}
+
 fn read_fixture(fixture_name: &str) -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();
     path_to_file.push("../src");
