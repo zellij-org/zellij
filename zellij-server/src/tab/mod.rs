@@ -2350,6 +2350,8 @@ impl Tab {
                 None
             };
         }
+        self.tiled_panes.remove_client(client_id);
+        self.floating_panes.remove_client(client_id);
         self.mode_info
             .borrow_mut()
             .get_mut(&client_id)
