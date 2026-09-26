@@ -6063,12 +6063,10 @@ impl Row {
     ) {
         self.osc133_markers.retain(|marker| marker.column <= from);
         let from_position_accounting_for_widechars = self.position_accounting_for_widechars(from);
-        let to_position_accounting_for_widechars = self.position_accounting_for_widechars(to);
-        let replacement_length = to_position_accounting_for_widechars
-            .saturating_sub(from_position_accounting_for_widechars);
-        let mut replace_with = VecDeque::from(vec![terminal_character; replacement_length]);
         self.columns
             .truncate(from_position_accounting_for_widechars);
+        let replacement_length = to.saturating_sub(self.width());
+        let mut replace_with = VecDeque::from(vec![terminal_character; replacement_length]);
         self.columns.append(&mut replace_with);
         self.width = None;
     }
