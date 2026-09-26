@@ -49,11 +49,18 @@ pub fn spawn_new_session(
     session_name: &str,
     mut os_input: Box<dyn ClientOsApi>,
     zellij_ipc_pipe: &PathBuf,
-) {
+) -> Result<(), String> {
     let debug = false;
     envs::set_session_name(session_name.to_owned());
     os_input.update_session_name(session_name.to_owned());
-    spawn_server(&*zellij_ipc_pipe, debug).unwrap();
+    // LOCAL PATCH (zellient#18): a server refuses a name that already has a live server; that
+    // fails THIS connection, never the shared web daemon.
+    spawn_server(&*zellij_ipc_pipe, debug).map_err(|e| {
+        format!(
+            "Failed to start a server for session {:?}: {}",
+            session_name, e
+        )
+    })
 }
 
 pub fn create_first_message(

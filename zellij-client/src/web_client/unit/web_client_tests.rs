@@ -2573,7 +2573,7 @@ impl SessionManager for MockSessionManager {
         session_exists: bool,
         _zellij_ipc_pipe: &PathBuf,
         first_message: ClientToServerMsg,
-    ) {
+    ) -> Result<(), String> {
         // Track the message that was sent
         self.first_messages_sent
             .lock()
@@ -2593,6 +2593,7 @@ impl SessionManager for MockSessionManager {
                 .unwrap()
                 .push(session_name.to_owned());
         }
+        Ok(())
     }
 }
 

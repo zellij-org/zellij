@@ -19,6 +19,7 @@ mod pty;
 mod pty_writer;
 mod route;
 mod screen;
+mod session_claim;
 mod session_layout_metadata;
 mod terminal_bytes;
 mod thread_bus;
@@ -654,6 +655,17 @@ impl SessionState {
 pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     info!("Starting Zellij server!");
 
+    // LOCAL PATCH (zellient#18): one live server per session name. Held until this process
+    // exits; a refusal happens before daemonizing, so the spawning client sees it.
+    let mut name_claim = match session_claim::claim_session_name(&socket_path) {
+        Ok(claim) => claim,
+        Err(e) => {
+            log::error!("{}", e);
+            eprintln!("zellij: {}", e);
+            std::process::exit(1);
+        },
+    };
+
     // preserve the current umask: read current value by setting to another mode, and then restoring it
     let current_umask = umask(Mode::all());
     umask(current_umask);
@@ -662,6 +674,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         .umask(current_umask.bits() as u32)
         .start()
         .expect("could not daemonize the server process");
+    if let Err(e) = session_claim::record_holder(&mut name_claim) {
+        log::error!("could not record this server's pid in its name lock: {}", e);
+    }
 
     envs::set_zellij("0".to_string());
 

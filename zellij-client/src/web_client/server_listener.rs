@@ -159,13 +159,17 @@ pub fn zellij_server_listener(
                     let first_message = create_first_message(is_read_only, config_file_path.clone(), client_attributes.clone(), config_options.clone(), should_create_new_session, &session_name, initial_layout);
                     let zellij_ipc_pipe = create_ipc_pipe(&session_name);
 
-                    session_manager.spawn_session_if_needed(
+                    if let Err(e) = session_manager.spawn_session_if_needed(
                         &session_name,
                         os_input.clone(),
                         session_exists,
                         &zellij_ipc_pipe,
                         first_message,
-                    );
+                    ) {
+                        log::error!("{}", e);
+                        client_connection_bus.close_connection();
+                        return;
+                    }
 
                     if let Some(tx) = attachment_complete_tx.take() {
                         let _ = tx.send(());
