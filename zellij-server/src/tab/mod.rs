@@ -2119,10 +2119,20 @@ impl Tab {
     }
     /// The second half of `TiledPanes::take_collapsed_panes`: collapse the panes again over
     /// the layout that was just applied, and let the rest of the layout take their rows.
+    ///
+    /// The layout offsets the viewport while the collapsed panes are still taking part, so a
+    /// collapsed bar would go on holding its row out of the viewport. Offset it again once
+    /// they are gone, the same as `resize_whole_tab` does.
     fn restore_collapsed_panes_after_relayout(&mut self, collapsed_panes: HashSet<PaneId>) {
         if self.tiled_panes.restore_collapsed_panes(collapsed_panes) {
             let display_area = *self.display_area.borrow();
             self.tiled_panes.resize(display_area);
+            LayoutApplier::offset_viewport(
+                self.viewport.clone(),
+                self.display_area.clone(),
+                &mut self.tiled_panes,
+                self.pane_frame_style,
+            );
         }
     }
     fn apply_tiled_layout_candidate(
